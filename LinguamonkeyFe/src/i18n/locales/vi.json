@@ -1,0 +1,218 @@
+{
+  "DailyWelcomeScreen": {
+    "greeting": "Chào buổi sáng, {{name}}!",
+    "streakTitle": "{{count}} Ngày liên tiếp!",
+    "streakMessage": "Bắt đầu tuyệt vời!",
+    "motivationSection": "Thông điệp động lực",
+    "progressSection": "Tiến độ hôm nay",
+    "achievementsSection": "Thành tựu gần đây",
+    "continueButton": "Tiếp tục học",
+    "quickActions": {
+      "flashcards": "Flashcards",
+      "karaoke": "Karaoke",
+      "quiz": "Quiz"
+    },
+    "stats": {
+      "lessons": "Bài học",
+      "words": "Từ vựng",
+      "time": "Thời gian",
+      "xp": "XP"
+    }
+  },
+  "common": {
+    "loading": "Đang tải...",
+    "error": "Lỗi",
+    "success": "Thành công",
+    "cancel": "Hủy",
+    "save": "Lưu",
+    "delete": "Xóa",
+    "edit": "Chỉnh sửa",
+    "add": "Thêm",
+    "search": "Tìm kiếm",
+    "retry": "Thử lại",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "previous": "Trước",
+    "close": "Đóng",
+    "confirm": "Xác nhận"
+  },
+  "navigation": {
+    "home": "Trang chủ",
+    "lessons": "Bài học",
+    "grammar": "Ngữ pháp",
+    "videos": "Video",
+    "notes": "Ghi chú",
+    "profile": "Hồ sơ"
+  },
+  "lessons": {
+    "title": "Bài học miễn phí",
+    "chooseChapter": "Chọn chương",
+    "lessonCompleted": "Hoàn thành bài học!",
+    "quizScore": "Điểm của bạn: {{score}}%",
+    "submitQuiz": "Nộp bài kiểm tra",
+    "tryAgain": "Thử lại",
+    "difficulty": {
+      "beginner": "Cơ bản",
+      "intermediate": "Trung cấp",
+      "advanced": "Nâng cao"
+    },
+    "types": {
+      "video": "Video",
+      "article": "Bài viết",
+      "quiz": "Kiểm tra",
+      "image": "Hình ảnh",
+      "audio": "Âm thanh"
+    }
+  },
+  "grammar": {
+    "title": "Học ngữ pháp",
+    "topics": "Chủ đề ngữ pháp",
+    "subtitle": "Thành thạo ngữ pháp tiếng Anh từng bước",
+    "rules": "Quy tắc ngữ pháp",
+    "explanation": "Giải thích",
+    "examples": "Ví dụ",
+    "exercises": "Bài tập thực hành",
+    "checkAnswers": "Kiểm tra đáp án",
+    "correct": "✓ Đúng!",
+    "incorrect": "✗ Sai. Đáp án: {{answer}}",
+    "score": "Điểm của bạn: {{score}}%",
+    "retryExercises": "Thử lại"
+  },
+  "videos": {
+    "title": "Video song ngữ",
+    "categories": "Danh mục",
+    "vocabulary": "Từ vựng",
+    "subtitles": "Phụ đề",
+    "speed": "Tốc độ",
+    "language": {
+      "original": "Gốc",
+      "translated": "Dịch",
+      "both": "Cả hai"
+    }
+  },
+  "notes": {
+    "title": "Ghi chú của tôi",
+    "topics": "Chủ đề",
+    "addNote": "Thêm ghi chú mới",
+    "addTopic": "Thêm chủ đề mới",
+    "searchPlaceholder": "Tìm kiếm ghi chú...",
+    "typeHint": "AI sẽ tự động tạo phiên âm và bản dịch",
+    "types": {
+      "word": "Từ",
+      "phrase": "Cụm từ",
+      "sentence": "Câu"
+    },
+    "empty": {
+      "title": "Chưa có ghi chú nào",
+      "description": "Bắt đầu thêm ghi chú từ vựng để xây dựng từ điển cá nhân"
+    }
+  },
+  "profile": {
+    "title": "Hồ sơ",
+    "addFriend": "Kết bạn",
+    "message": "Nhắn tin",
+    "requestSent": "Đã gửi lời mời",
+    "languages": "Ngôn ngữ",
+    "native": "Bản ngữ:",
+    "learning": "Đang học:",
+    "statistics": "Thống kê học tập",
+    "achievements": "Thành tích",
+    "activity": "Hoạt động học tập",
+    "viewAll": "Xem tất cả",
+    "viewDetails": "Xem chi tiết",
+    "totalStudyTime": "Tổng thời gian học",
+    "lessonsCompleted": "Bài học hoàn thành",
+    "wordsLearned": "Từ đã học",
+    "averageScore": "Điểm trung bình",
+    "recentActivity": "Hoạt động gần đây"
+  },
+  "validation": {
+    "note": {
+      "content": {
+        "required": "Nội dung ghi chú là bắt buộc",
+        "min": "Nội dung ghi chú không được để trống",
+        "max": "Nội dung ghi chú không được vượt quá 500 ký tự"
+      },
+      "type": {
+        "required": "Loại ghi chú là bắt buộc",
+        "invalid": "Loại ghi chú không hợp lệ"
+      },
+      "topic": {
+        "required": "Chủ đề là bắt buộc"
+      },
+      "language": {
+        "required": "Ngôn ngữ là bắt buộc"
+      }
+    },
+    "topic": {
+      "name": {
+        "required": "Tên chủ đề là bắt buộc",
+        "min": "Tên chủ đề phải có ít nhất 2 ký tự",
+        "max": "Tên chủ đề không được vượt quá 50 ký tự"
+      },
+      "color": {
+        "required": "Màu sắc là bắt buộc",
+        "invalid": "Định dạng màu không hợp lệ"
+      },
+      "icon": {
+        "required": "Biểu tượng là bắt buộc"
+      }
+    },
+    "quiz": {
+      "lesson": {
+        "required": "ID bài học là bắt buộc"
+      },
+      "answers": {
+        "required": "Câu trả lời là bắt buộc",
+        "empty": "Vui lòng trả lời tất cả câu hỏi"
+      }
+    },
+    "grammar": {
+      "rule": {
+        "required": "ID quy tắc ngữ pháp là bắt buộc"
+      },
+      "answers": {
+        "required": "Câu trả lời là bắt buộc",
+        "empty": "Vui lòng trả lời tất cả bài tập"
+      }
+    },
+    "search": {
+      "query": {
+        "min": "Từ khóa tìm kiếm phải có ít nhất 2 ký tự",
+        "max": "Từ khóa tìm kiếm không được vượt quá 50 ký tự"
+      }
+    },
+    "friend": {
+      "userId": {
+        "required": "ID người dùng là bắt buộc"
+      }
+    }
+  },
+  "errors": {
+    "network": "Lỗi mạng. Vui lòng kiểm tra kết nối.",
+    "server": "Lỗi máy chủ. Vui lòng thử lại sau.",
+    "unauthorized": "Bạn không có quyền thực hiện hành động này.",
+    "notFound": "Không tìm thấy tài nguyên được yêu cầu.",
+    "validation": "Vui lòng kiểm tra thông tin nhập và thử lại.",
+    "unknown": "Đã xảy ra lỗi không mong muốn."
+  },
+  "success": {
+    "noteCreated": "Tạo ghi chú thành công",
+    "noteUpdated": "Cập nhật ghi chú thành công",
+    "noteDeleted": "Xóa ghi chú thành công",
+    "topicCreated": "Tạo chủ đề thành công",
+    "lessonCompleted": "Hoàn thành bài học thành công",
+    "quizSubmitted": "Nộp bài kiểm tra thành công",
+    "exerciseCompleted": "Hoàn thành bài tập thành công",
+    "friendRequestSent": "Gửi lời mời kết bạn thành công",
+    "friendRequestAccepted": "Chấp nhận lời mời kết bạn"
+  },
+  "assistant.name": "Trợ lý AI",
+  "environment.general": "Tổng quát",
+  "error.connection": "Xin lỗi, tôi đang gặp sự cố kết nối. Vui lòng thử lại sau.",
+  "loading.ai": "AI đang trả lời...",
+  "input.placeholder": "Nhập tin nhắn...",
+  "modal.environment.title": "Chọn môi trường trò chuyện",
+  "modal.topics.title": "Chủ đề gợi ý",
+  "environment.switch": "Đã chuyển sang môi trường: {{name}}"
+}
