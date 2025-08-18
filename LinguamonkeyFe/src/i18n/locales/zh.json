@@ -1,0 +1,30 @@
+{
+  "DailyWelcomeScreen": {
+    "greeting": "早上好，{{name}}!",
+    "streakTitle": "{{count}} 天连胜!",
+    "streakMessage": "好的开始!",
+    "motivationSection": "激励信息",
+    "progressSection": "今日进度",
+    "achievementsSection": "最近成就",
+    "continueButton": "继续学习",
+    "quickActions": {
+      "flashcards": "闪卡",
+      "karaoke": "卡拉OK",
+      "quiz": "测验"
+    },
+    "stats": {
+      "lessons": "课程",
+      "words": "单词",
+      "time": "时间",
+      "xp": "经验"
+    }
+  },
+    "assistant.name": "人工智能助手",
+  "environment.general": "通用",
+  "error.connection": "抱歉，我遇到了连接问题。请稍后再试。",
+  "loading.ai": "人工智能正在回复...",
+  "input.placeholder": "输入消息...",
+  "modal.environment.title": "选择聊天环境",
+  "modal.topics.title": "建议话题",
+  "environment.switch": "已切换到环境：{{name}}"
+}
