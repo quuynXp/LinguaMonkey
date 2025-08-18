@@ -1,0 +1,5 @@
+package com.connectJPA.LinguaVietnameseApp.enums;
+
+public enum GoalType {
+    COMMUNICATION, WORK, PERSONAL_DEVELOPMENT, TRAVEL, CERTIFICATE
+}
