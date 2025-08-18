@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/LinguaApp.iml" filepath="$PROJECT_DIR$/.idea/LinguaApp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/LinguaVietnameseApp/LinguaVietnameseApp/LinguaVietnameseApp.iml" filepath="$PROJECT_DIR$/LinguaVietnameseApp/LinguaVietnameseApp/LinguaVietnameseApp.iml" />
+      <module fileurl="file://$PROJECT_DIR$/PythonService/PythonService.iml" filepath="$PROJECT_DIR$/PythonService/PythonService.iml" />
+    </modules>
+  </component>
+</project>

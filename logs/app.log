@@ -1,0 +1,182 @@
+2025-08-18 00:00:00 - Creating new transaction with name [com.connectJPA.LinguaVietnameseApp.scheduler.StreakReminderScheduler.resetStreaks]: PROPAGATION_REQUIRED,ISOLATION_DEFAULT
+2025-08-18 00:00:00 - Opened new EntityManager [SessionImpl(475649249<open>)] for JPA transaction
+2025-08-18 00:00:00 - Exposing JPA transaction as JDBC [org.springframework.orm.jpa.vendor.HibernateJpaDialect$HibernateConnectionHandle@47c97f1c]
+2025-08-18 00:00:00 - 
+    select
+        u1_0.user_id,
+        u1_0.auth_provider,
+        u1_0.avatar_url,
+        u1_0.character3d_id,
+        u1_0.country,
+        u1_0.created_at,
+        u1_0.deleted_at,
+        u1_0.email,
+        u1_0.exp,
+        u1_0.fullname,
+        u1_0.is_deleted,
+        u1_0.level,
+        u1_0.native_language_code,
+        u1_0.nickname,
+        u1_0.password,
+        u1_0.phone,
+        u1_0.streak,
+        u1_0.updated_at 
+    from
+        users u1_0 
+    where
+        not(u1_0.is_deleted)
+2025-08-18 00:00:00 - Initiating transaction rollback
+2025-08-18 00:00:00 - Rolling back JPA transaction on EntityManager [SessionImpl(475649249<open>)]
+2025-08-18 00:00:00 - Closing JPA EntityManager [SessionImpl(475649249<open>)] after transaction
+2025-08-18 00:00:00 - Unexpected error occurred in scheduled task
+org.springframework.dao.InvalidDataAccessApiUsageException: No enum constant com.connectJPA.LinguaVietnameseApp.enums.Country.Korea
+	at org.springframework.orm.jpa.EntityManagerFactoryUtils.convertJpaAccessExceptionIfPossible(EntityManagerFactoryUtils.java:371)
+	at org.springframework.orm.jpa.vendor.HibernateJpaDialect.translateExceptionIfPossible(HibernateJpaDialect.java:246)
+	at org.springframework.orm.jpa.AbstractEntityManagerFactoryBean.translateExceptionIfPossible(AbstractEntityManagerFactoryBean.java:550)
+	at org.springframework.dao.support.ChainedPersistenceExceptionTranslator.translateExceptionIfPossible(ChainedPersistenceExceptionTranslator.java:61)
+	at org.springframework.dao.support.DataAccessUtils.translateIfNecessary(DataAccessUtils.java:335)
+	at org.springframework.dao.support.PersistenceExceptionTranslationInterceptor.invoke(PersistenceExceptionTranslationInterceptor.java:160)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)
+	at org.springframework.data.jpa.repository.support.CrudMethodMetadataPostProcessor$CrudMethodMetadataPopulatingMethodInterceptor.invoke(CrudMethodMetadataPostProcessor.java:136)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)
+	at org.springframework.aop.interceptor.ExposeInvocationInterceptor.invoke(ExposeInvocationInterceptor.java:97)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)
+	at org.springframework.aop.framework.JdkDynamicAopProxy.invoke(JdkDynamicAopProxy.java:223)
+	at jdk.proxy4/jdk.proxy4.$Proxy158.findAllByIsDeletedFalse(Unknown Source)
+	at com.connectJPA.LinguaVietnameseApp.scheduler.StreakReminderScheduler.resetStreaks(StreakReminderScheduler.java:49)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.springframework.aop.support.AopUtils.invokeJoinpointUsingReflection(AopUtils.java:354)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.invokeJoinpoint(ReflectiveMethodInvocation.java:196)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:163)
+	at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:768)
+	at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:123)
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:392)
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)
+	at org.springframework.aop.framework.CglibAopProxy$CglibMethodInvocation.proceed(CglibAopProxy.java:768)
+	at org.springframework.aop.framework.CglibAopProxy$DynamicAdvisedInterceptor.intercept(CglibAopProxy.java:720)
+	at com.connectJPA.LinguaVietnameseApp.scheduler.StreakReminderScheduler$$SpringCGLIB$$0.resetStreaks(<generated>)
+	at java.base/jdk.internal.reflect.DirectMethodHandleAccessor.invoke(DirectMethodHandleAccessor.java:103)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.runInternal(ScheduledMethodRunnable.java:130)
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.lambda$run$2(ScheduledMethodRunnable.java:124)
+	at io.micrometer.observation.Observation.observe(Observation.java:499)
+	at org.springframework.scheduling.support.ScheduledMethodRunnable.run(ScheduledMethodRunnable.java:124)
+	at org.springframework.scheduling.support.DelegatingErrorHandlingRunnable.run(DelegatingErrorHandlingRunnable.java:54)
+	at org.springframework.scheduling.concurrent.ReschedulingRunnable.run(ReschedulingRunnable.java:96)
+	at java.base/java.util.concurrent.Executors$RunnableAdapter.call(Executors.java:572)
+	at java.base/java.util.concurrent.FutureTask.run(FutureTask.java:317)
+	at java.base/java.util.concurrent.ScheduledThreadPoolExecutor$ScheduledFutureTask.run(ScheduledThreadPoolExecutor.java:304)
+	at java.base/java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1144)
+	at java.base/java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:642)
+	at java.base/java.lang.Thread.run(Thread.java:1570)
+Caused by: java.lang.IllegalArgumentException: No enum constant com.connectJPA.LinguaVietnameseApp.enums.Country.Korea
+	at java.base/java.lang.Enum.valueOf(Enum.java:293)
+	at org.hibernate.type.descriptor.java.EnumJavaType.fromName(EnumJavaType.java:254)
+	at org.hibernate.type.descriptor.java.EnumJavaType.wrap(EnumJavaType.java:122)
+	at org.hibernate.type.descriptor.java.EnumJavaType.wrap(EnumJavaType.java:36)
+	at org.hibernate.type.descriptor.jdbc.VarcharJdbcType$2.doExtract(VarcharJdbcType.java:118)
+	at org.hibernate.type.descriptor.jdbc.BasicExtractor.extract(BasicExtractor.java:44)
+	at org.hibernate.sql.results.jdbc.internal.JdbcValuesResultSetImpl.getCurrentRowValue(JdbcValuesResultSetImpl.java:379)
+	at org.hibernate.sql.results.internal.RowProcessingStateStandardImpl.getJdbcValue(RowProcessingStateStandardImpl.java:120)
+	at org.hibernate.sql.results.graph.basic.BasicResultAssembler.extractRawValue(BasicResultAssembler.java:52)
+	at org.hibernate.sql.results.graph.basic.BasicResultAssembler.assemble(BasicResultAssembler.java:59)
+	at org.hibernate.sql.results.graph.DomainResultAssembler.assemble(DomainResultAssembler.java:35)
+	at org.hibernate.sql.results.graph.entity.AbstractEntityInitializer.extractConcreteTypeStateValues(AbstractEntityInitializer.java:1037)
+	at org.hibernate.sql.results.graph.entity.AbstractEntityInitializer.initializeEntityInstance(AbstractEntityInitializer.java:794)
+	at org.hibernate.sql.results.graph.entity.AbstractEntityInitializer.initializeEntity(AbstractEntityInitializer.java:769)
+	at org.hibernate.sql.results.graph.entity.AbstractEntityInitializer.initializeInstance(AbstractEntityInitializer.java:761)
+	at org.hibernate.sql.results.internal.InitializersList.initializeInstance(InitializersList.java:73)
+	at org.hibernate.sql.results.internal.StandardRowReader.coordinateInitializers(StandardRowReader.java:113)
+	at org.hibernate.sql.results.internal.StandardRowReader.readRow(StandardRowReader.java:87)
+	at org.hibernate.sql.results.spi.ListResultsConsumer.consume(ListResultsConsumer.java:205)
+	at org.hibernate.sql.results.spi.ListResultsConsumer.consume(ListResultsConsumer.java:33)
+	at org.hibernate.sql.exec.internal.JdbcSelectExecutorStandardImpl.doExecuteQuery(JdbcSelectExecutorStandardImpl.java:211)
+	at org.hibernate.sql.exec.internal.JdbcSelectExecutorStandardImpl.executeQuery(JdbcSelectExecutorStandardImpl.java:83)
+	at org.hibernate.sql.exec.spi.JdbcSelectExecutor.list(JdbcSelectExecutor.java:76)
+	at org.hibernate.sql.exec.spi.JdbcSelectExecutor.list(JdbcSelectExecutor.java:65)
+	at org.hibernate.query.sqm.internal.ConcreteSqmSelectQueryPlan.lambda$new$2(ConcreteSqmSelectQueryPlan.java:139)
+	at org.hibernate.query.sqm.internal.ConcreteSqmSelectQueryPlan.withCacheableSqmInterpretation(ConcreteSqmSelectQueryPlan.java:382)
+	at org.hibernate.query.sqm.internal.ConcreteSqmSelectQueryPlan.performList(ConcreteSqmSelectQueryPlan.java:302)
+	at org.hibernate.query.sqm.internal.QuerySqmImpl.doList(QuerySqmImpl.java:526)
+	at org.hibernate.query.spi.AbstractSelectionQuery.list(AbstractSelectionQuery.java:423)
+	at org.hibernate.query.Query.getResultList(Query.java:120)
+	at org.springframework.data.jpa.repository.query.JpaQueryExecution$CollectionExecution.doExecute(JpaQueryExecution.java:129)
+	at org.springframework.data.jpa.repository.query.JpaQueryExecution.execute(JpaQueryExecution.java:92)
+	at org.springframework.data.jpa.repository.query.AbstractJpaQuery.doExecute(AbstractJpaQuery.java:152)
+	at org.springframework.data.jpa.repository.query.AbstractJpaQuery.execute(AbstractJpaQuery.java:140)
+	at org.springframework.data.repository.core.support.RepositoryMethodInvoker.doInvoke(RepositoryMethodInvoker.java:170)
+	at org.springframework.data.repository.core.support.RepositoryMethodInvoker.invoke(RepositoryMethodInvoker.java:158)
+	at org.springframework.data.repository.core.support.QueryExecutorMethodInterceptor.doInvoke(QueryExecutorMethodInterceptor.java:164)
+	at org.springframework.data.repository.core.support.QueryExecutorMethodInterceptor.invoke(QueryExecutorMethodInterceptor.java:143)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)
+	at org.springframework.data.projection.DefaultMethodInvokingMethodInterceptor.invoke(DefaultMethodInvokingMethodInterceptor.java:70)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)
+	at org.springframework.transaction.interceptor.TransactionInterceptor$1.proceedWithInvocation(TransactionInterceptor.java:123)
+	at org.springframework.transaction.interceptor.TransactionAspectSupport.invokeWithinTransaction(TransactionAspectSupport.java:392)
+	at org.springframework.transaction.interceptor.TransactionInterceptor.invoke(TransactionInterceptor.java:119)
+	at org.springframework.aop.framework.ReflectiveMethodInvocation.proceed(ReflectiveMethodInvocation.java:184)
+	at org.springframework.dao.support.PersistenceExceptionTranslationInterceptor.invoke(PersistenceExceptionTranslationInterceptor.java:138)
+	... 35 common frames omitted
+2025-08-18 00:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 12, active threads = 1, queued tasks = 4, completed tasks = 7]
+2025-08-18 00:40:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 13, active threads = 1, queued tasks = 4, completed tasks = 8]
+2025-08-18 01:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 14, active threads = 1, queued tasks = 4, completed tasks = 9]
+2025-08-18 01:40:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 15, active threads = 1, queued tasks = 4, completed tasks = 10]
+2025-08-18 02:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 11]
+2025-08-18 02:40:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 12]
+2025-08-18 03:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 13]
+2025-08-18 03:40:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 14]
+2025-08-18 04:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 15]
+2025-08-18 04:40:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 16]
+2025-08-18 05:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 17]
+2025-08-18 05:40:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 18]
+2025-08-18 06:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 19]
+2025-08-18 06:40:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 20]
+2025-08-18 07:10:03 - WebSocketSession[0 current WS(0)-HttpStream(0)-HttpPoll(0), 0 total, 0 closed abnormally (0 connect failure, 0 send limit, 0 transport error)], stompSubProtocol[processed CONNECT(0)-CONNECTED(0)-DISCONNECT(0)], stompBrokerRelay[null], inboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], outboundChannel[pool size = 0, active threads = 0, queued tasks = 0, completed tasks = 0], sockJsScheduler[pool size = 16, active threads = 1, queued tasks = 4, completed tasks = 21]
+2025-08-18 07:22:31 - Application availability state ReadinessState changed from ACCEPTING_TRAFFIC to REFUSING_TRAFFIC
+2025-08-18 07:22:31 - Closing org.springframework.boot.web.servlet.context.AnnotationConfigServletWebServerApplicationContext@4b6bc8e9, started on Sun Aug 17 21:38:46 ICT 2025
+2025-08-18 07:22:31 - Stopping beans in phase 2147483647
+2025-08-18 07:22:31 - Scheduler ReminderScheduler_$_NON_CLUSTERED paused.
+2025-08-18 07:22:31 - Bean 'schedulerFactoryBean' completed its stop procedure
+2025-08-18 07:22:31 - Bean 'stompWebSocketHandlerMapping' completed its stop procedure
+2025-08-18 07:22:31 - clientOutboundChannel removed SubProtocolWebSocketHandler[StompSubProtocolHandler[v10.stomp, v11.stomp, v12.stomp]]
+2025-08-18 07:22:31 - Bean 'subProtocolWebSocketHandler' completed its stop procedure
+2025-08-18 07:22:31 - Bean 'clientInboundChannelExecutor' completed its stop procedure
+2025-08-18 07:22:31 - Bean 'clientOutboundChannelExecutor' completed its stop procedure
+2025-08-18 07:22:31 - Bean 'brokerChannelExecutor' completed its stop procedure
+2025-08-18 07:22:31 - clientInboundChannel removed WebSocketAnnotationMethodMessageHandler[prefixes=[/app/]]
+2025-08-18 07:22:31 - Bean 'simpAnnotationMethodMessageHandler' completed its stop procedure
+2025-08-18 07:22:31 - Stopping...
+2025-08-18 07:22:31 - BrokerAvailabilityEvent[available=false, SimpleBrokerMessageHandler [org.springframework.messaging.simp.broker.DefaultSubscriptionRegistry@1f1ca56]]
+2025-08-18 07:22:31 - clientInboundChannel removed SimpleBrokerMessageHandler [org.springframework.messaging.simp.broker.DefaultSubscriptionRegistry@1f1ca56]
+2025-08-18 07:22:31 - brokerChannel removed SimpleBrokerMessageHandler [org.springframework.messaging.simp.broker.DefaultSubscriptionRegistry@1f1ca56]
+2025-08-18 07:22:31 - Stopped.
+2025-08-18 07:22:31 - Bean 'simpleBrokerMessageHandler' completed its stop procedure
+2025-08-18 07:22:31 - clientInboundChannel removed UserDestinationMessageHandler[DefaultUserDestinationResolver[prefix=/user/]]
+2025-08-18 07:22:31 - brokerChannel removed UserDestinationMessageHandler[DefaultUserDestinationResolver[prefix=/user/]]
+2025-08-18 07:22:31 - Bean 'userDestinationMessageHandler' completed its stop procedure
+2025-08-18 07:22:31 - Bean 'messageBrokerTaskScheduler' completed its stop procedure
+2025-08-18 07:22:31 - Stopping beans in phase 2147482623
+2025-08-18 07:22:31 - Bean 'webServerGracefulShutdown' completed its stop procedure
+2025-08-18 07:22:31 - Stopping beans in phase 2147481599
+2025-08-18 07:22:31 - Bean 'webServerStartStop' completed its stop procedure
+2025-08-18 07:22:31 - Stopping beans in phase 0
+2025-08-18 07:22:31 - Bean 'redisConnectionFactory' completed its stop procedure
+2025-08-18 07:22:31 - Stopping beans in phase -2147483647
+2025-08-18 07:22:31 - Bean 'springBootLoggingLifecycle' completed its stop procedure
+2025-08-18 07:22:31 - Stopped RedisMessageListenerContainer
+2025-08-18 07:22:31 - Shutting down ExecutorService 'messageBrokerTaskScheduler'
+2025-08-18 07:22:31 - Shutting down Quartz Scheduler
+2025-08-18 07:22:31 - Scheduler ReminderScheduler_$_NON_CLUSTERED shutting down.
+2025-08-18 07:22:31 - Scheduler ReminderScheduler_$_NON_CLUSTERED paused.
+2025-08-18 07:22:32 - Scheduler ReminderScheduler_$_NON_CLUSTERED shutdown complete.
+2025-08-18 07:22:32 - Shutting down ExecutorService 'brokerChannelExecutor'
+2025-08-18 07:22:32 - Shutting down ExecutorService 'clientOutboundChannelExecutor'
+2025-08-18 07:22:32 - Shutting down ExecutorService 'clientInboundChannelExecutor'
+2025-08-18 07:22:32 - Custom destroy method 'shutdown' on bean with name 'lettuceClientResources' completed asynchronously
+2025-08-18 07:22:32 - Closing JPA EntityManagerFactory for persistence unit 'default'
+2025-08-18 07:22:32 - Handling #sessionFactoryClosed from [org.hibernate.internal.SessionFactoryImpl@38062daa] for TypeConfiguration
+2025-08-18 07:22:32 - Un-scoping TypeConfiguration [org.hibernate.type.spi.TypeConfiguration$Scope@15e94de5] from SessionFactory [org.hibernate.internal.SessionFactoryImpl@38062daa]
+2025-08-18 07:22:32 - HikariPool-1 - Shutdown initiated...
+2025-08-18 07:22:32 - HikariPool-1 - Shutdown completed.

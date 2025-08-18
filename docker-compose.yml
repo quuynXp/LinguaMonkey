@@ -1,0 +1,28 @@
+#services:
+#  mysql:
+#    image: mysql:latest
+#    container_name: mysql-container
+#    environment:
+#      MYSQL_ROOT_PASSWORD: 12345678
+#      MYSQL_DATABASE: restaurant
+#      MYSQL_USER: root
+#      MYSQL_PASSWORD: 12345678
+#      MYSQL_TCP_PORT: 3306
+#    ports:
+#      - "3306:3306"
+#    volumes:
+#      - mysql-data:/var/lib/mysql
+#    networks:
+#      - my-network
+#  services:
+#    grpc-service:
+#      build: .
+#      environment:
+#        - PUBLIC_KEY=-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1LNS9rOO1cg//uC3GXvu
+#          - r6HIw9HsDRsU6r+yyV/RjioHLLwasQByDTJhMZfvRJkMmZWKLxam+v8p9tyDLBRa
+#          - /jm+LHrl37ZgRo3EnQeJvJRNWLr0Uahuqez8OLRXAKdydgZWf0B4fJxgN+RsSXP7
+#          - vWNm6idJ0h32M7Obnd8iJDP0+MXdgy2pVd8PUAVFcmS/+7VLcWj1V0gDoMbHscN1
+#          - kswUB8rykRF0m+v5l1jx4ldSX1eKeYoQdznRMjViUTkKuYf5vhTsApgbows5pzs4
+#          - 6NxKcxxm2kHLDpa4TKexdSJX9ckDkFAA4Z5ohAwcDvMcwyn0BHJaxIjGtRRwQP+H
+#          - OQIDAQAB\n-----END PUBLIC KEY-----
+#
