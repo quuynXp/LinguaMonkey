@@ -1,0 +1,54 @@
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### STS ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+
+### IntelliJ IDEA ###
+.idea
+*.iws
+*.iml
+*.ipr
+
+**/serviceAccountKey.json
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+
+### VS Code ###
+.vscode/
+
+
+# Loại bỏ các tệp hệ điều hành
+.DS_Store
+Thumbs.db
+
+# Loại bỏ tệp nhật ký
+*.log
+
+# Loại bỏ tệp biên dịch
+*.class
+*.o
+*.so
+
+# Loại bỏ thư mục đầu ra của dự án
+/build/
+
+# Loại bỏ tệp cấu hình cá nhân
+*.env

@@ -1,28 +1,131 @@
-#services:
-#  mysql:
-#    image: mysql:latest
-#    container_name: mysql-container
-#    environment:
-#      MYSQL_ROOT_PASSWORD: 12345678
-#      MYSQL_DATABASE: restaurant
-#      MYSQL_USER: root
-#      MYSQL_PASSWORD: 12345678
-#      MYSQL_TCP_PORT: 3306
-#    ports:
-#      - "3306:3306"
-#    volumes:
-#      - mysql-data:/var/lib/mysql
-#    networks:
-#      - my-network
-#  services:
-#    grpc-service:
-#      build: .
-#      environment:
-#        - PUBLIC_KEY=-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1LNS9rOO1cg//uC3GXvu
-#          - r6HIw9HsDRsU6r+yyV/RjioHLLwasQByDTJhMZfvRJkMmZWKLxam+v8p9tyDLBRa
-#          - /jm+LHrl37ZgRo3EnQeJvJRNWLr0Uahuqez8OLRXAKdydgZWf0B4fJxgN+RsSXP7
-#          - vWNm6idJ0h32M7Obnd8iJDP0+MXdgy2pVd8PUAVFcmS/+7VLcWj1V0gDoMbHscN1
-#          - kswUB8rykRF0m+v5l1jx4ldSX1eKeYoQdznRMjViUTkKuYf5vhTsApgbows5pzs4
-#          - 6NxKcxxm2kHLDpa4TKexdSJX9ckDkFAA4Z5ohAwcDvMcwyn0BHJaxIjGtRRwQP+H
-#          - OQIDAQAB\n-----END PUBLIC KEY-----
-#
+version: "3.9"
+
+name: lingua-stack
+
+services:
+  # ================== Database & Cache ==================
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    networks:
+      - app-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ================== Java Spring Boot ==================
+  spring-api:
+    build:
+      context: ./backend/spring-api
+      dockerfile: Dockerfile
+    container_name: spring-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      grpc-service:
+        condition: service_started
+    environment:
+      SERVER_PORT: ${SPRING_PORT}
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+      DB_USERNAME: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      JWT_SIGNER_KEY: ${JWT_SIGNER_KEY}
+    ports:
+      - "${SPRING_PORT}:${SPRING_PORT}"
+    networks:
+      - app-net
+
+  # ================== Python FastAPI ==================
+  fastapi-service:
+    build:
+      context: ./backend/py-fastapi
+      dockerfile: Dockerfile
+    container_name: fastapi-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      grpc-service:
+        condition: service_started
+    environment:
+      DB_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://${REDIS_HOST}:${REDIS_PORT}/0
+      JWT_SIGNER_KEY: ${JWT_SIGNER_KEY}
+    ports:
+      - "${FASTAPI_PORT}:${FASTAPI_PORT}"
+    networks:
+      - app-net
+
+  # ================== Python gRPC Service ==================
+  grpc-service:
+    build:
+      context: ./backend/grpc-service
+      dockerfile: Dockerfile
+    container_name: grpc-service
+    environment:
+      JWT_SIGNER_KEY: ${JWT_SIGNER_KEY}
+      GRPC_HOST: ${GRPC_HOST}
+      GRPC_PORT: ${GRPC_PORT}
+    expose:
+      - "${GRPC_PORT}"
+    networks:
+      - app-net
+
+  # ================== Frontend Expo (React Native) ==================
+  expo:
+    build:
+      context: ./frontend/expo
+      dockerfile: Dockerfile
+    container_name: expo
+    environment:
+      EXPO_DEV_SERVER_PORT: ${EXPO_DEV_SERVER_PORT}
+      EXPO_PUBLIC_API_BASE_URL: ${EXPO_PUBLIC_API_BASE_URL}
+      EXPO_PUBLIC_FASTAPI_URL: ${EXPO_PUBLIC_FASTAPI_URL}
+    command: ["npx", "expo", "start", "--tunnel"]
+    ports:
+      - "${EXPO_DEV_SERVER_PORT}:${EXPO_DEV_SERVER_PORT}"   # Metro bundler
+      - "19000:19000" # Expo Go HTTP
+      - "19001:19001" # WebSocket
+      - "19002:19002" # DevTools
+    networks:
+      - app-net
+
+# ================== Volumes & Network ==================
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  app-net:
+    driver: bridge
