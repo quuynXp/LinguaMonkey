@@ -1,0 +1,115 @@
+syntax = "proto3";
+
+package learning;
+
+service LearningService {
+  rpc SpeechToText (SpeechRequest) returns (SpeechResponse);
+  rpc ChatWithAI (ChatRequest) returns (ChatResponse);
+  rpc CheckSpelling (SpellingRequest) returns (SpellingResponse);
+  rpc CheckPronunciation (PronunciationRequest) returns (PronunciationResponse);
+  rpc CheckWritingWithImage (WritingImageRequest) returns (WritingImageResponse);
+  rpc GeneratePassage (GeneratePassageRequest) returns (GeneratePassageResponse);
+  rpc GenerateImage (GenerateImageRequest) returns (GenerateImageResponse);
+  rpc GenerateText (GenerateTextRequest) returns (GenerateTextResponse);
+  rpc CheckTranslation (CheckTranslationRequest) returns (CheckTranslationResponse);
+}
+
+message SpeechRequest {
+  bytes audio_data = 1;
+  string language = 2;
+}
+
+message SpeechResponse {
+  string text = 1;
+  string error = 2;
+}
+
+message ChatMessage {
+  string role = 1; // "user" or "assistant"
+  string content = 2;
+}
+
+message ChatRequest {
+  string user_id = 1;
+  string message = 2;
+  repeated ChatMessage history = 3;
+}
+
+message ChatResponse {
+  string response = 1;
+  string error = 2;
+}
+
+message SpellingRequest {
+  string text = 1;
+  string language = 2;
+}
+
+message SpellingResponse {
+  repeated string corrections = 1;
+  string error = 2;
+}
+
+message PronunciationRequest {
+  bytes audio_data = 1;
+  string language = 2;
+}
+
+message PronunciationResponse {
+  string feedback = 1;
+  float score = 2;
+  string error = 3;
+}
+
+message WritingImageRequest {
+  string text = 1;
+  bytes image_data = 2;
+}
+
+message WritingImageResponse {
+  string feedback = 1;
+  float score = 2;
+  string error = 3;
+}
+
+message GeneratePassageRequest {
+  string user_id = 1;
+  string language = 2;
+}
+
+message GeneratePassageResponse {
+  string passage = 1;
+  string error = 2;
+}
+
+message GenerateImageRequest {
+  string user_id = 1;
+  string language = 2;
+}
+
+message GenerateImageResponse {
+  bytes image_data = 1;
+  string error = 2;
+}
+
+message GenerateTextRequest {
+  string user_id = 1;
+  string language = 2;
+}
+
+message GenerateTextResponse {
+  string text = 1;
+  string error = 2;
+}
+
+message CheckTranslationRequest {
+  string reference_text = 1;
+  string translated_text = 2;
+  string target_language = 3;
+}
+
+message CheckTranslationResponse {
+  string feedback = 1;
+  float score = 2;
+  string error = 3;
+}
