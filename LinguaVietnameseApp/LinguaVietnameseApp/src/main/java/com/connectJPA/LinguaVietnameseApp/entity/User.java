@@ -1,8 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
-import com.connectJPA.LinguaVietnameseApp.enums.AuthProvider;
-import com.connectJPA.LinguaVietnameseApp.enums.Country;
+import com.connectJPA.LinguaVietnameseApp.enums.*;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
@@ -57,6 +56,12 @@ public class User extends BaseEntity {
     @Column(name = "country")
     private Country country;
 
+    @Enumerated(EnumType.STRING)
+    private AgeRange ageRange;
+
+    @Enumerated(EnumType.STRING)
+    private ProficiencyLevel proficiency;
+
     @Column(name = "level", nullable = false)
     private int level = 1;
 
@@ -65,4 +70,8 @@ public class User extends BaseEntity {
 
     @Column(name = "streak", nullable = false)
     private int streak = 0;
+
+    @Enumerated(EnumType.STRING)
+    private LearningPlace learningPace;
+
 }

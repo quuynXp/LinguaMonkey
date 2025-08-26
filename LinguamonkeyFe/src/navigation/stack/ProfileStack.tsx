@@ -1,15 +1,18 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
-import OnboardingScreen from '../../screens/appLaunch/OnboardingScreen';
 import AboutScreen from '../../screens/profile/AboutScreen';
 import EditProfileScreen from '../../screens/profile/EditProfileScreen';
 import EnhancedUserManagementScreen from '../../screens/profile/EnhancedUserManagementScreen';
 import HelpSupportScreen from '../../screens/profile/HelpSupportScreen';
-import LanguageManagementScreen from '../../screens/profile/LanguageManagement';
+import LanguageManagementScreen from '../../screens/profile/LanguageManagementScreen';
 import LeaderboardScreen from '../../screens/profile/LeaderboardScreen';
 import LearningGoalsScreen from '../../screens/profile/LearningGoalsScreen';
 import PrivacySettingsScreen from '../../screens/profile/PrivacySettingScreen';
 import ProfileScreen from '../../screens/profile/ProfileScreen';
+import NotificationHistoryScreen from '../../screens/notification/NotificationHistoryScreen';
+import NotificationSettingsScreen from '../../screens/notification/NotificationSettingsScreen';
+import TransactionHistoryScreen from '../../screens/payment/TransactionHistoryScreen';
+import TransactionDetailsScreen from '../../screens/payment/TransactionDetailsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,7 +27,10 @@ const ProfileStack = () => (
     <Stack.Screen name="About" component={AboutScreen} />
     <Stack.Screen name="EnhancedUserManagement" component={EnhancedUserManagementScreen} />
     <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
-    <Stack.Screen name="Onboarding" component={OnboardingScreen} />
+    <Stack.Screen name="NotificationHistoryScreen" component={NotificationHistoryScreen} />
+    <Stack.Screen name="NotificationSettingsScreen" component={NotificationSettingsScreen} />
+    <Stack.Screen name="TransactionHistoryScreen" component={TransactionHistoryScreen} />
+    <Stack.Screen name="TransactionDetailsScreen" component={TransactionDetailsScreen} />
   </Stack.Navigator>
 );
 

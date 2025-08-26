@@ -1,8 +1,11 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { Alert, Animated, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Modal, Alert, TextInput } from "react-native"
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useUserProfile } from "../../hooks/useUserProfile"
+import { useAppStore } from "../../stores/appStore"
+import { formatDateTime } from "../../utils/timeHelper"
 
 interface User3DCharacter {
   id: string
@@ -55,13 +58,15 @@ interface Achievement {
 }
 
 const EnhancedUserManagementScreen = ({ navigation }) => {
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null)
   const [showCoupleModal, setShowCoupleModal] = useState(false)
   const [showCharacterModal, setShowCharacterModal] = useState(false)
   const [partnerName, setPartnerName] = useState("")
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const characterScaleAnim = useRef(new Animated.Value(1)).current
+
+  const { user } = useAppStore()
+  const { data: userProfile, isLoading, error } = useUserProfile(user?.user_id)
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -70,77 +75,8 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
       useNativeDriver: true,
     }).start()
 
-    loadUserProfile()
     startCharacterAnimation()
   }, [])
-
-  const loadUserProfile = () => {
-    // Mock user data
-    const mockProfile: UserProfile = {
-      id: "user123",
-      name: "Alex Johnson",
-      email: "alex.johnson@email.com",
-      character: {
-        id: "wizard",
-        name: "Luna the Wizard",
-        type: "wizard",
-        emoji: "🧙‍♀️",
-        level: 23,
-        experience: 3200,
-        maxExperience: 4000,
-        totalExperience: 45600,
-      },
-      couple: {
-        isInCouple: true,
-        partnerName: "Emma Wilson",
-        partnerCharacter: {
-          id: "archer",
-          name: "Robin the Archer",
-          type: "archer",
-          emoji: "🏹",
-          level: 21,
-          experience: 2800,
-          maxExperience: 3800,
-          totalExperience: 42100,
-        },
-        coupleLevel: 12,
-        coupleExperience: 8500,
-        relationshipStartDate: new Date(2024, 0, 15),
-      },
-      stats: {
-        totalLessons: 156,
-        totalTime: 2340, // minutes
-        currentStreak: 28,
-        maxStreak: 45,
-        totalPoints: 15420,
-      },
-      achievements: [
-        {
-          id: "1",
-          name: "First Steps",
-          description: "Complete your first lesson",
-          icon: "star",
-          color: "#F59E0B",
-          unlockedAt: new Date(2024, 0, 1),
-        },
-        {
-          id: "2",
-          name: "Streak Master",
-          description: "Maintain a 30-day streak",
-          icon: "local-fire-department",
-          color: "#EF4444",
-          unlockedAt: new Date(2024, 0, 20),
-        },
-      ],
-      preferences: {
-        notifications: true,
-        soundEffects: true,
-        darkMode: false,
-      },
-    }
-
-    setUserProfile(mockProfile)
-  }
 
   const startCharacterAnimation = () => {
     const animation = Animated.loop(
@@ -166,12 +102,6 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
     return baseSize + sizeMultiplier * 20
   }
 
-  const formatTime = (minutes: number) => {
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`
-  }
-
   const handleSendCoupleRequest = () => {
     if (!partnerName.trim()) {
       Alert.alert("Error", "Please enter a partner name")
@@ -194,14 +124,14 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
         text: "Break Bond",
         style: "destructive",
         onPress: () => {
-          setUserProfile((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  couple: { isInCouple: false },
-                }
-              : null,
-          )
+          // setUserProfile((prev) =>
+          //   prev
+          //     ? {
+          //         ...prev,
+          //         couple: { isInCouple: false },
+          //       }
+          //     : null,
+          // )
           Alert.alert("Couple Bond Ended", "You're now learning solo again.")
         },
       },
@@ -341,7 +271,7 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
 
           <View style={styles.statCard}>
             <Icon name="schedule" size={24} color="#10B981" />
-            <Text style={styles.statValue}>{formatTime(userProfile.stats.totalTime)}</Text>
+            <Text style={styles.statValue}>{formatDateTime(userProfile.stats.totalTime)}</Text>
             <Text style={styles.statLabel}>Study Time</Text>
           </View>
 
@@ -400,8 +330,6 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
               <Icon name="close" size={24} color="#374151" />
             </TouchableOpacity>
           </View>
-
-          
 
           <Text style={styles.modalDescription}>
             Enter your partner's name to send a couple learning request. You'll learn together and unlock special couple
@@ -494,10 +422,20 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
     </Modal>
   )
 
-  if (!userProfile) {
+  if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
-        
+        <Icon name="person" size={48} color="#6B7280" />
+        <Text style={styles.loadingText}>Loading profile...</Text>
+      </View>
+    )
+  }
+
+  if (error) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Icon name="error" size={48} color="#6B7280" />
+        <Text style={styles.loadingText}>Error loading profile.</Text>
       </View>
     )
   }
@@ -825,8 +763,8 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: "45%",
     backgroundColor: "#FFFFFF",
+    padding: 20,
     borderRadius: 12,
-    padding: 16,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -835,7 +773,7 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   statValue: {
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#1F2937",
     marginVertical: 8,

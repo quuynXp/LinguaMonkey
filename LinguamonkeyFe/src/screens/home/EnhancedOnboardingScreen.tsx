@@ -2,18 +2,20 @@
 
 import { useEffect, useRef, useState } from "react"
 import {
-    Alert,
-    Animated,
-    Dimensions,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  Dimensions,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useToast } from "../../hooks/useToast"
+
 const { width } = Dimensions.get("window")
 
 interface UserAssessment {
@@ -47,6 +49,7 @@ const EnhancedOnboardingScreen = ({ navigation }: any) => {
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(50)).current
+  const { showToast } = useToast()
 
   const steps = [
     "Personal Info",
@@ -220,11 +223,10 @@ const EnhancedOnboardingScreen = ({ navigation }: any) => {
     try {
       // Save assessment data and create personalized learning path
       console.log("Assessment completed:", assessment)
-      Alert.alert("Assessment Complete!", "Your personalized learning path has been created.", [
-        { text: "Start Learning", onPress: () => navigation.navigate("LearningPath") },
-      ])
+      showToast({ message: "Assessment completed successfully!", type: "success" })
+      navigation.navigate("Home")
     } catch (error) {
-      Alert.alert("Error", "Failed to save assessment. Please try again.")
+      showToast({ message: "Failed to save assessment. Please try again.", type: "error" })
     }
   }
 
@@ -238,7 +240,6 @@ const EnhancedOnboardingScreen = ({ navigation }: any) => {
 
   const renderPersonalInfo = () => (
     <View style={styles.stepContainer}>
-      
       <Text style={styles.stepTitle}>Tell us about yourself</Text>
       <Text style={styles.stepDescription}>Help us create a personalized learning experience</Text>
 
@@ -769,11 +770,6 @@ const styles = StyleSheet.create({
   stepContainer: {
     alignItems: "center",
   },
-  stepAnimation: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
-  },
   stepTitle: {
     fontSize: 24,
     fontWeight: "bold",
@@ -1043,9 +1039,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     flex: 1,
   },
-  completeAnimation: {
-    width: 150,
-    height: 150,
+  completeIcon: {
     marginBottom: 24,
   },
   summaryContainer: {

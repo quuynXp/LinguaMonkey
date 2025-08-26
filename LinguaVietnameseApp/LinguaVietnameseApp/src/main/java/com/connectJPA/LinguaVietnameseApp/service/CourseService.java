@@ -13,4 +13,6 @@ public interface CourseService {
     CourseResponse createCourse(CourseRequest request);
     CourseResponse updateCourse(UUID id, CourseRequest request);
     void deleteCourse(UUID id);
+    Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable);
+
 }

@@ -16,10 +16,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Video from "react-native-video"
-import { useLessons } from "../hooks/useLessons"
-import { useAppStore } from "../stores/appStore"
-import type { Chapter, Lesson, QuizQuestion } from "../types/api"
-import { quizAnswerSchema, validateData } from "../utils/validation"
+import { useLessons } from "../../hooks/useLessons"
+import { useAppStore } from "../../stores/appStore"
+import type { Chapter, Lesson, QuizQuestion } from "../../types/api"
+import { quizAnswerSchema, validateData } from "../../utils/validation"
 
 const { width, height } = Dimensions.get("window")
 

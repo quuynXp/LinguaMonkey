@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,4 +21,6 @@ public interface VideoCallRepository extends JpaRepository<VideoCall, UUID> {
 
     @Query("UPDATE VideoCall vc SET vc.isDeleted = true, vc.deletedAt = CURRENT_TIMESTAMP WHERE vc.videoCallId = :id AND vc.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
+
+    List<VideoCall> findByCallerIdAndIsDeletedFalse(UUID callerId);
 }

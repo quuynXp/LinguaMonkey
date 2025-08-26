@@ -13,7 +13,6 @@ public class UserLearningActivityResponse {
     private UUID activityId;
     private UUID userId;
     private String activityType;
-    private Duration duration;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

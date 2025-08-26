@@ -13,6 +13,7 @@ public class MessageConfig {
         ReloadableResourceBundleMessageSource source = new ReloadableResourceBundleMessageSource();
         source.setBasename("classpath:messages/messages"); // Prefix file messages
         source.setDefaultEncoding("UTF-8");
+        source.setUseCodeAsDefaultMessage(true); // 👈 Không có key thì trả lại key
         return source;
     }
 }

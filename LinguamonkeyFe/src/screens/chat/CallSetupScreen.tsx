@@ -2,7 +2,14 @@
 
 import React, { useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useQuery, useMutation } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+import { useAppStore } from "../../stores/appStore"
+import { useToast } from "../../hooks/useToast"
+import instance from "../../api/axiosInstance"
+import { gotoTab } from "../../utils/navigationRef"
+
 interface CallPreferences {
   interests: string[]
   gender: "any" | "male" | "female"
@@ -13,6 +20,10 @@ interface CallPreferences {
 }
 
 const CallSetupScreen = ({ navigation }: { navigation: any }) => {
+  const { t } = useTranslation()
+  const { user } = useAppStore()
+  const { showToast } = useToast()
+
   const [preferences, setPreferences] = useState<CallPreferences>({
     interests: [],
     gender: "any",
@@ -24,6 +35,85 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
+
+  // Fetch available interests
+  const { data: interests = [] } = useQuery({
+    queryKey: ["call-interests"],
+    queryFn: async () => {
+      const response = await instance.get("/api/call/interests")
+      return response.data.interests
+    },
+  })
+
+  // Fetch supported languages
+  const { data: languages = [] } = useQuery({
+    queryKey: ["call-languages"],
+    queryFn: async () => {
+      const response = await instance.get("/call/languages")
+      return response.data.languages
+    },
+  })
+
+  // Save preferences mutation
+  const savePreferencesMutation = useMutation({
+    mutationFn: async (prefs: CallPreferences) => {
+      const response = await instance.post("/call/preferences", {
+        ...prefs,
+        userId: user?.id,
+      })
+      return response.data
+    },
+    onSuccess: () => {
+      navigation.navigate("CallSearch", { preferences })
+    },
+    onError: () => {
+      showToast(t("call.savePreferencesError"), "error")
+    },
+  })
+
+  const defaultInterests = [
+    { id: "travel", name: t("interests.travel"), icon: "flight", color: "#3B82F6" },
+    { id: "food", name: t("interests.food"), icon: "restaurant", color: "#EF4444" },
+    { id: "music", name: t("interests.music"), icon: "music-note", color: "#8B5CF6" },
+    { id: "sports", name: t("interests.sports"), icon: "sports-soccer", color: "#10B981" },
+    { id: "movies", name: t("interests.movies"), icon: "movie", color: "#F59E0B" },
+    { id: "books", name: t("interests.books"), icon: "menu-book", color: "#6B7280" },
+    { id: "technology", name: t("interests.technology"), icon: "computer", color: "#06B6D4" },
+    { id: "art", name: t("interests.art"), icon: "palette", color: "#EC4899" },
+    { id: "business", name: t("interests.business"), icon: "business", color: "#84CC16" },
+    { id: "culture", name: t("interests.culture"), icon: "public", color: "#F97316" },
+  ]
+
+  const defaultLanguages = [
+    { code: "en", name: "English", flag: "🇺🇸" },
+    { code: "zh", name: "中文", flag: "🇨🇳" },
+    { code: "vi", name: "Tiếng Việt", flag: "🇻🇳" },
+    { code: "ja", name: "日本語", flag: "🇯🇵" },
+    { code: "ko", name: "한국어", flag: "🇰🇷" },
+    { code: "fr", name: "Français", flag: "🇫🇷" },
+    { code: "es", name: "Español", flag: "🇪🇸" },
+    { code: "de", name: "Deutsch", flag: "🇩🇪" },
+  ]
+
+  const genderOptions = [
+    { value: "any", label: t("call.genderAny"), icon: "people" },
+    { value: "male", label: t("call.genderMale"), icon: "man" },
+    { value: "female", label: t("call.genderFemale"), icon: "woman" },
+  ]
+
+  const ageRanges = [
+    { value: "18-25", label: t("call.age18to25") },
+    { value: "26-35", label: t("call.age26to35") },
+    { value: "36-45", label: t("call.age36to45") },
+    { value: "46+", label: t("call.age46plus") },
+  ]
+
+  const callDurations = [
+    { value: "5", label: t("call.duration5min") },
+    { value: "15", label: t("call.duration15min") },
+    { value: "30", label: t("call.duration30min") },
+    { value: "60", label: t("call.duration1hour") },
+  ]
 
   React.useEffect(() => {
     Animated.parallel([
@@ -40,50 +130,6 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     ]).start()
   }, [])
 
-  const interests = [
-    { id: "travel", name: "Du lịch", icon: "flight", color: "#3B82F6" },
-    { id: "food", name: "Ẩm thực", icon: "restaurant", color: "#EF4444" },
-    { id: "music", name: "Âm nhạc", icon: "music-note", color: "#8B5CF6" },
-    { id: "sports", name: "Thể thao", icon: "sports-soccer", color: "#10B981" },
-    { id: "movies", name: "Phim ảnh", icon: "movie", color: "#F59E0B" },
-    { id: "books", name: "Sách", icon: "menu-book", color: "#6B7280" },
-    { id: "technology", name: "Công nghệ", icon: "computer", color: "#06B6D4" },
-    { id: "art", name: "Nghệ thuật", icon: "palette", color: "#EC4899" },
-    { id: "business", name: "Kinh doanh", icon: "business", color: "#84CC16" },
-    { id: "culture", name: "Văn hóa", icon: "public", color: "#F97316" },
-  ]
-
-  const languages = [
-    { code: "en", name: "English", flag: "🇺🇸" },
-    { code: "zh", name: "中文", flag: "🇨🇳" },
-    { code: "vi", name: "Tiếng Việt", flag: "🇻🇳" },
-    { code: "ja", name: "日本語", flag: "🇯🇵" },
-    { code: "ko", name: "한국어", flag: "🇰🇷" },
-    { code: "fr", name: "Français", flag: "🇫🇷" },
-    { code: "es", name: "Español", flag: "🇪🇸" },
-    { code: "de", name: "Deutsch", flag: "🇩🇪" },
-  ]
-
-  const genderOptions = [
-    { value: "any", label: "Bất kỳ", icon: "people" },
-    { value: "male", label: "Nam", icon: "man" },
-    { value: "female", label: "Nữ", icon: "woman" },
-  ]
-
-  const ageRanges = [
-    { value: "18-25", label: "18-25 tuổi" },
-    { value: "26-35", label: "26-35 tuổi" },
-    { value: "36-45", label: "36-45 tuổi" },
-    { value: "46+", label: "46+ tuổi" },
-  ]
-
-  const callDurations = [
-    { value: "5", label: "5 phút" },
-    { value: "15", label: "15 phút" },
-    { value: "30", label: "30 phút" },
-    { value: "60", label: "1 giờ" },
-  ]
-
   const toggleInterest = (interestId: string) => {
     setPreferences((prev) => ({
       ...prev,
@@ -99,11 +145,11 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
 
   const startSearch = () => {
     if (preferences.interests.length === 0) {
-      Alert.alert("Chọn sở thích", "Vui lòng chọn ít nhất một sở thích để tìm đối tác phù hợp.")
+      Alert.alert(t("call.selectInterests"), t("call.selectInterestsMessage"))
       return
     }
 
-    navigation.navigate("CallSearch", { preferences })
+    savePreferencesMutation.mutate(preferences)
   }
 
   const renderInterestItem = (interest: { id: string; name: string; icon: string; color: string }) => {
@@ -117,7 +163,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
         ]}
         onPress={() => toggleInterest(interest.id)}
       >
-        <Icon name={interest.MaterialIcons as any} size={20} color={isSelected ? interest.color : "#6B7280"} />
+        <Icon name={interest.icon as any} size={20} color={isSelected ? interest.color : "#6B7280"} />
         <Text style={[styles.interestText, isSelected && { color: interest.color, fontWeight: "600" }]}>
           {interest.name}
         </Text>
@@ -129,7 +175,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   const renderLanguageOption = (
     language: { code: string; name: string; flag: string },
     selectedLanguage: string,
-    onSelect: (code: string) => void
+    onSelect: (code: string) => void,
   ) => (
     <TouchableOpacity
       key={language.code}
@@ -147,7 +193,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     options: Array<{ [key: string]: any; label: string; icon?: string }>,
     selectedValue: string,
     onSelect: (value: string) => void,
-    keyExtractor: string = "value"
+    keyExtractor = "value",
   ) => (
     <View style={styles.optionsContainer}>
       {options.map((option) => (
@@ -156,7 +202,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
           style={[styles.optionButton, selectedValue === option[keyExtractor] && styles.selectedOptionButton]}
           onPress={() => onSelect(option[keyExtractor])}
         >
-          {option.MaterialIcons && (
+          {option.icon && (
             <Icon name={option.icon} size={18} color={selectedValue === option[keyExtractor] ? "#FFFFFF" : "#6B7280"} />
           )}
           <Text
@@ -169,13 +215,16 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     </View>
   )
 
+  const displayInterests = interests.length > 0 ? interests : defaultInterests
+  const displayLanguages = languages.length > 0 ? languages : defaultLanguages
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Thiết lập cuộc gọi</Text>
+        <Text style={styles.headerTitle}>{t("call.setupTitle")}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -191,33 +240,32 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
         >
           {/* Welcome Section */}
           <View style={styles.welcomeSection}>
-           
-            <Text style={styles.welcomeTitle}>Tìm đối tác trò chuyện</Text>
-            <Text style={styles.welcomeText}>Thiết lập thông tin để tìm người phù hợp cho cuộc gọi video</Text>
+            <Text style={styles.welcomeTitle}>{t("call.findPartner")}</Text>
+            <Text style={styles.welcomeText}>{t("call.setupDescription")}</Text>
           </View>
 
           {/* Interests */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sở thích chung</Text>
+            <Text style={styles.sectionTitle}>{t("call.commonInterests")}</Text>
             <Text style={styles.sectionSubtitle}>
-              Chọn các chủ đề bạn muốn trò chuyện ({preferences.interests.length} đã chọn)
+              {t("call.selectTopics", { count: preferences.interests.length })}
             </Text>
-            <View style={styles.interestsGrid}>{interests.map(renderInterestItem)}</View>
+            <View style={styles.interestsGrid}>{displayInterests.map(renderInterestItem)}</View>
           </View>
 
           {/* Gender Preference */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Giới tính đối tác</Text>
-            <Text style={styles.sectionSubtitle}>Chọn giới tính đối tác bạn muốn trò chuyện</Text>
+            <Text style={styles.sectionTitle}>{t("call.partnerGender")}</Text>
+            <Text style={styles.sectionSubtitle}>{t("call.selectPartnerGender")}</Text>
             {renderOptionButton(genderOptions, preferences.gender, (value) => updatePreference("gender", value))}
           </View>
 
           {/* Native Language */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ngôn ngữ mẹ đẻ của đối tác</Text>
-            <Text style={styles.sectionSubtitle}>Tìm người có ngôn ngữ mẹ đẻ là ngôn ngữ bạn đang học</Text>
+            <Text style={styles.sectionTitle}>{t("call.partnerNativeLanguage")}</Text>
+            <Text style={styles.sectionSubtitle}>{t("call.findNativeSpeaker")}</Text>
             <View style={styles.languagesGrid}>
-              {languages.map((lang) =>
+              {displayLanguages.map((lang) =>
                 renderLanguageOption(lang, preferences.nativeLanguage, (value) =>
                   updatePreference("nativeLanguage", value),
                 ),
@@ -227,10 +275,10 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
 
           {/* Learning Language */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ngôn ngữ đối tác đang học</Text>
-            <Text style={styles.sectionSubtitle}>Tìm người đang học cùng ngôn ngữ với bạn</Text>
+            <Text style={styles.sectionTitle}>{t("call.partnerLearningLanguage")}</Text>
+            <Text style={styles.sectionSubtitle}>{t("call.findLearner")}</Text>
             <View style={styles.languagesGrid}>
-              {languages.map((lang) =>
+              {displayLanguages.map((lang) =>
                 renderLanguageOption(lang, preferences.learningLanguage, (value) =>
                   updatePreference("learningLanguage", value),
                 ),
@@ -240,15 +288,15 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
 
           {/* Age Range */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Độ tuổi</Text>
-            <Text style={styles.sectionSubtitle}>Chọn độ tuổi phù hợp</Text>
+            <Text style={styles.sectionTitle}>{t("call.ageRange")}</Text>
+            <Text style={styles.sectionSubtitle}>{t("call.selectAgeRange")}</Text>
             {renderOptionButton(ageRanges, preferences.ageRange, (value) => updatePreference("ageRange", value))}
           </View>
 
           {/* Call Duration */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thời gian cuộc gọi</Text>
-            <Text style={styles.sectionSubtitle}>Thời gian dự kiến cho cuộc gọi</Text>
+            <Text style={styles.sectionTitle}>{t("call.duration")}</Text>
+            <Text style={styles.sectionSubtitle}>{t("call.expectedDuration")}</Text>
             {renderOptionButton(callDurations, preferences.callDuration, (value) =>
               updatePreference("callDuration", value),
             )}
@@ -256,34 +304,37 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
 
           {/* Summary */}
           <View style={styles.summarySection}>
-            <Text style={styles.summaryTitle}>Tóm tắt tìm kiếm</Text>
+            <Text style={styles.summaryTitle}>{t("call.searchSummary")}</Text>
             <View style={styles.summaryContent}>
               <View style={styles.summaryItem}>
                 <Icon name="interests" size={16} color="#4F46E5" />
-                <Text style={styles.summaryText}>{preferences.interests.length} sở thích đã chọn</Text>
+                <Text style={styles.summaryText}>
+                  {t("call.interestsSelected", { count: preferences.interests.length })}
+                </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="person" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  Giới tính: {genderOptions.find((g) => g.value === preferences.gender)?.label}
+                  {t("call.gender")}: {genderOptions.find((g) => g.value === preferences.gender)?.label}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="language" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  Ngôn ngữ mẹ đẻ: {languages.find((l) => l.code === preferences.nativeLanguage)?.name}
+                  {t("call.nativeLanguage")}:{" "}
+                  {displayLanguages.find((l) => l.code === preferences.nativeLanguage)?.name}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="school" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  Đang học: {languages.find((l) => l.code === preferences.learningLanguage)?.name}
+                  {t("call.learning")}: {displayLanguages.find((l) => l.code === preferences.learningLanguage)?.name}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="schedule" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  Thời gian: {callDurations.find((d) => d.value === preferences.callDuration)?.label}
+                  {t("call.time")}: {callDurations.find((d) => d.value === preferences.callDuration)?.label}
                 </Text>
               </View>
             </View>
@@ -293,10 +344,12 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
           <TouchableOpacity
             style={[styles.startButton, preferences.interests.length === 0 && styles.startButtonDisabled]}
             onPress={startSearch}
-            disabled={preferences.interests.length === 0}
+            disabled={preferences.interests.length === 0 || savePreferencesMutation.isPending}
           >
             <Icon name="search" size={20} color="#FFFFFF" />
-            <Text style={styles.startButtonText}>Bắt đầu tìm kiếm</Text>
+            <Text style={styles.startButtonText}>
+              {savePreferencesMutation.isPending ? t("call.saving") : t("call.startSearch")}
+            </Text>
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>
@@ -337,11 +390,6 @@ const styles = StyleSheet.create({
   welcomeSection: {
     alignItems: "center",
     marginBottom: 30,
-  },
-  welcomeAnimation: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
   },
   welcomeTitle: {
     fontSize: 20,

@@ -16,9 +16,9 @@ import {
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
-import { useMemorizations } from "../hooks/useMemorizations"
-import { useAppStore } from "../stores/appStore"
-import type { UserMemorization } from "../types/api"
+import { useMemorizations } from "../../hooks/useMemorizations"
+import { useAppStore } from "../../stores/appStore"
+import type { UserMemorization } from "../../types/api"
 
 const NotesScreen = ({ navigation }: any) => {
   const { t } = useTranslation()

@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.LeaderboardEntryResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.List;
 import java.util.UUID;
 
 public interface LeaderboardEntryService {
@@ -13,4 +14,6 @@ public interface LeaderboardEntryService {
     LeaderboardEntryResponse createLeaderboardEntry(LeaderboardEntryRequest request);
     LeaderboardEntryResponse updateLeaderboardEntry(UUID leaderboardId, UUID userId, LeaderboardEntryRequest request);
     void deleteLeaderboardEntry(UUID leaderboardId, UUID userId);
+    List<LeaderboardEntryResponse> getTop3LeaderboardEntries(UUID leaderboardId);
+    List<LeaderboardEntryResponse> getTop3GlobalLeaderboardEntries();
 }

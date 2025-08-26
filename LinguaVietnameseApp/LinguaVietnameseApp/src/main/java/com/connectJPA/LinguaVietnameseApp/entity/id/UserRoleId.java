@@ -13,10 +13,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @Builder
 public class UserRoleId implements Serializable {
-
-    @Column(name = "role_id", nullable = false)
-    private UUID roleId;
-
-    @Column(name = "user_id", nullable = false)
     private UUID userId;
+    private UUID roleId;
 }

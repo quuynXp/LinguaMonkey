@@ -73,7 +73,7 @@ public class TransactionController {
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public AppApiResponse<Page<TransactionResponse>> getAllTransactions(
-            @Parameter(description = "User ID filter") @RequestParam(required = false) String userId,
+            @Parameter(description = "User ID filter") @RequestParam(required = false) UUID userId,
             @Parameter(description = "Transaction status filter") @RequestParam(required = false) String status,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
@@ -91,6 +91,7 @@ public class TransactionController {
             @ApiResponse(responseCode = "404", description = "Transaction not found")
     })
     @GetMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<TransactionResponse> getTransactionById(
             @Parameter(description = "Transaction ID") @PathVariable UUID id,
             Locale locale) {
@@ -101,6 +102,26 @@ public class TransactionController {
                 .result(transaction)
                 .build();
     }
+
+    @Operation(summary = "Get all transactions by user", description = "Retrieve all transactions for the authenticated user")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved user transactions"),
+            @ApiResponse(responseCode = "400", description = "Invalid user ID")
+    })
+    @GetMapping("/user/{userId}")
+    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    public AppApiResponse<Page<TransactionResponse>> getTransactionsByUser(
+            @PathVariable UUID userId,
+            Pageable pageable,
+            Locale locale) {
+        Page<TransactionResponse> transactions = transactionService.getAllTransactions(userId, null, pageable);
+        return AppApiResponse.<Page<TransactionResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("transaction.list.success", null, locale))
+                .result(transactions)
+                .build();
+    }
+
 
     @Operation(summary = "Create a new transaction", description = "Create a new transaction with the provided details")
     @ApiResponses({

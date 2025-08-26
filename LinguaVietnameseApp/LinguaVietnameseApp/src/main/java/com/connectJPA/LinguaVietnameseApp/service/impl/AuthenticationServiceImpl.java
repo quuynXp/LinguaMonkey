@@ -124,7 +124,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
             // 4. Tạo JWT nội bộ + Refresh token
             String accessToken = generateToken(user);
-            String refreshToken = generateRefreshToken(user);
+            String refreshToken = generateRefreshToken(user, 30);
 
             refreshTokenRepository.save(RefreshToken.builder()
                     .token(refreshToken)
@@ -152,6 +152,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         refreshTokenRepository.saveAll(tokens);
     }
 
+    @Override
     public String generateToken(User user) {
         try {
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
@@ -226,7 +227,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 //        if (tokens.size() >= 5) throw new AppException(ErrorCode.MAX_SESSIONS_EXCEEDED);
 
         String accessToken = generateToken(user);
-        String refreshToken = generateRefreshToken(user);
+        String refreshToken = generateRefreshToken(user, 30);
 
         RefreshToken refreshTokenEntity = RefreshToken.builder()
                 .token(refreshToken)
@@ -276,7 +277,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             String newRefreshToken = oldRefreshToken;
 
             if (daysLeft <= 7) {
-                newRefreshToken = generateRefreshToken(user);
+                newRefreshToken = generateRefreshToken(user, 30);
                 oldToken.setToken(newRefreshToken);
                 oldToken.setExpiresAt(now.plusDays(30));
                 oldToken.setRevoked(false);
@@ -299,12 +300,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
 
-    public String generateRefreshToken(User user) {
+    @Override
+    public String generateRefreshToken(User user, int days) {
         try {
             JWTClaimsSet claims = new JWTClaimsSet.Builder()
                     .subject(user.getUserId().toString())
                     .issueTime(new Date())
-                    .expirationTime(Date.from(Instant.now().plus(30, ChronoUnit.DAYS)))
+                    .expirationTime(Date.from(Instant.now().plus(days, ChronoUnit.DAYS)))
                     .claim("type", "refresh")
                     .build();
 
@@ -344,7 +346,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         // optional: if (tokens.size() >= 5) throw new AppException(ErrorCode.MAX_SESSIONS_EXCEEDED);
 
         String accessToken = generateToken(user);
-        String refreshToken = generateRefreshToken(user);
+        String refreshToken = generateRefreshToken(user, 30);
 
         RefreshToken refreshTokenEntity = RefreshToken.builder()
                 .token(refreshToken)
@@ -408,7 +410,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             String newRefreshToken = oldRefreshToken;
 
             if (daysLeft <= 7) {
-                newRefreshToken = generateRefreshToken(user);
+                newRefreshToken = generateRefreshToken(user,30);
                 oldToken.setToken(newRefreshToken);
                 oldToken.setExpiresAt(now.plusDays(30));
                 oldToken.setIp(ip);

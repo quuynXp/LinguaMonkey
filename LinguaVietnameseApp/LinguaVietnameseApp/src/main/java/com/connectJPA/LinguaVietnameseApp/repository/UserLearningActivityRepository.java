@@ -8,6 +8,9 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -24,4 +27,9 @@ public interface UserLearningActivityRepository extends JpaRepository<UserLearni
     @Query("SELECT COUNT(ula) > 0 FROM UserLearningActivity ula WHERE ula.userId = :userId " +
             "AND DATE(ula.createdAt) = :date AND ula.isDeleted = false")
     boolean existsByUserIdAndDate(@Param("userId") UUID userId, @Param("date") LocalDate date);
+
+    List<UserLearningActivity> findByCreatedAtBetween(OffsetDateTime startDate, OffsetDateTime endDate);
+
+    List<UserLearningActivity> findByUserIdAndCreatedAtBetween(UUID userId, OffsetDateTime start, OffsetDateTime end);
+
 }

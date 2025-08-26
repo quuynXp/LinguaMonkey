@@ -1,5 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.enums;
 
 public enum AuthProvider {
-    EMAIL, FIREBASE, FACEBOOK
+    EMAIL, FIREBASE, FACEBOOK, QUICK_START
 }

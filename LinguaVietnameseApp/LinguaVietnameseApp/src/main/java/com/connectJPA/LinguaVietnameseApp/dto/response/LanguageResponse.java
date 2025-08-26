@@ -10,7 +10,7 @@ import java.util.UUID;
 
 @Data
 public class LanguageResponse {
-    private UUID languageId;
+    private String languageCode;
     private String languageName;
     private String description;
     private boolean isDeleted;

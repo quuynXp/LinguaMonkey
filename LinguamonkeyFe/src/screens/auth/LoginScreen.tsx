@@ -1,14 +1,13 @@
-"use client";
+// screens/auth/LoginScreen.tsx
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { showError, showSuccess } from "../../utils/toastHelper";
-
-
 import { loginWithEmail, loginWithGoogle, loginWithFacebook } from '../../services/authService';
+import { gotoTab } from '../../utils/navigationRef'; // Import RootNavigationRef
 
-const LoginScreen = ({ navigation, onLogin}) => {
+const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
 
   const [email, setEmail] = useState("");
@@ -24,7 +23,7 @@ const LoginScreen = ({ navigation, onLogin}) => {
       Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
     ]).start();
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
   const handleEmailLogin = async () => {
     if (!email || !password) {
@@ -33,13 +32,14 @@ const LoginScreen = ({ navigation, onLogin}) => {
     }
     setIsLoading(true);
     try {
-    const result =  await loginWithEmail(email, password);
+      const result = await loginWithEmail(email, password);
+      console.log("Login result:", result); // Debug
       if (result) {
-        onLogin();
         showSuccess(t("loginSuccess"));
       }
     } catch (err: any) {
       showError(err.message || t("loginFailed"));
+      console.error("Email login error:", err);
     } finally {
       setIsLoading(false);
     }
@@ -49,10 +49,7 @@ const LoginScreen = ({ navigation, onLogin}) => {
     setIsLoading(true);
     try {
       const result = await loginWithGoogle();
-      if (result) {
-      onLogin();
-      showSuccess(t("loginSuccess"));
-      }
+      if (result) showSuccess(t("loginSuccess"));
     } catch (err: any) {
       showError(err.message || t("loginFailed"));
     } finally {
@@ -64,10 +61,7 @@ const LoginScreen = ({ navigation, onLogin}) => {
     setIsLoading(true);
     try {
       const result = await loginWithFacebook();
-      if (result) {
-      onLogin();
-      showSuccess(t("loginSuccess"));
-      }
+      if (result) showSuccess(t("loginSuccess"));
     } catch (err: any) {
       showError(err.message || t("loginFailed"));
     } finally {
@@ -80,12 +74,10 @@ const LoginScreen = ({ navigation, onLogin}) => {
       <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
+          <TouchableOpacity onPress={() => gotoTab("AppLaunchScreen")}>
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
         </View>
-
-        {/* Welcome Animation */}
 
         {/* Title */}
         <Text style={styles.title}>{t('welcomeBack')}</Text>
@@ -138,7 +130,6 @@ const LoginScreen = ({ navigation, onLogin}) => {
 
           {/* Social Login Buttons */}
           <TouchableOpacity style={[styles.socialButton, isLoading && styles.loginButtonDisabled]} onPress={handleGoogleLogin} disabled={isLoading}>
-            {/* <Icon name="google" size={20} color="#4285F4" /> */}
             <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
           </TouchableOpacity>
 
@@ -156,7 +147,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   content: { flex: 1, paddingHorizontal: 24, paddingTop: 50 },
   header: { marginBottom: 20 },
-  welcomeAnimation: { width: 150, height: 150, alignSelf: "center", marginBottom: 24 },
   title: { fontSize: 28, fontWeight: "bold", color: "#1F2937", textAlign: "center", marginBottom: 8 },
   subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center", marginBottom: 40, lineHeight: 24 },
   formContainer: { marginBottom: 32 },
@@ -169,7 +159,6 @@ const styles = StyleSheet.create({
   loginButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#4F46E5", borderRadius: 12, paddingVertical: 16, gap: 8 },
   loginButtonDisabled: { opacity: 0.7 },
   loginButtonText: { fontSize: 16, color: "#FFFFFF", fontWeight: "600" },
-  loadingAnimation: { width: 24, height: 24 },
   socialButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFFF", borderRadius: 12, paddingVertical: 16, gap: 8, borderWidth: 1, borderColor: "#E5E7EB", marginTop: 16 },
   socialButtonText: { fontSize: 16, color: "#1F2937", fontWeight: "600" },
 });

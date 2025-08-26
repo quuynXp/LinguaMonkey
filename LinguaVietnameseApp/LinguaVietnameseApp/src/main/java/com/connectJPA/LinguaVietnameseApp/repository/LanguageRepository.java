@@ -11,8 +11,17 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface LanguageRepository extends JpaRepository<Language, UUID> {
-    @Query("SELECT l FROM Language l WHERE l.languageCode = :languageCode AND l.languageName = :languageName AND l.isDeleted = false")
-    Page<Language> findByLanguageCodeAndLanguageNameAndIsDeletedFalse(@Param("languageCode") String languageCode, @Param("languageName") String languageName, Pageable pageable);
+    @Query("""
+    SELECT l FROM Language l 
+    WHERE (:languageCode IS NULL OR l.languageCode = :languageCode) 
+      AND (:languageName IS NULL OR l.languageName = :languageName) 
+      AND l.isDeleted = false
+""")
+    Page<Language> findByLanguageCodeAndLanguageNameAndIsDeletedFalse(
+            @Param("languageCode") String languageCode,
+            @Param("languageName") String languageName,
+            Pageable pageable
+    );
 
     @Query("SELECT l FROM Language l WHERE l.languageCode = :languageCode AND l.isDeleted = false")
     Optional<Language> findByLanguageCodeAndIsDeletedFalse(@Param("languageCode") String languageCode);

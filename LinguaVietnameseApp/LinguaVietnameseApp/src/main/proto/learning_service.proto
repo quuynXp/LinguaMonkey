@@ -12,7 +12,96 @@ service LearningService {
   rpc GenerateImage (GenerateImageRequest) returns (GenerateImageResponse);
   rpc GenerateText (GenerateTextRequest) returns (GenerateTextResponse);
   rpc CheckTranslation (CheckTranslationRequest) returns (CheckTranslationResponse);
+    rpc CreateOrUpdateRoadmapDetailed (RoadmapDetailedRequest) returns (RoadmapDetailedResponse);
+      rpc CreateOrUpdateRoadmap (RoadmapRequest) returns (RoadmapResponse);
+
+
 }
+
+message RoadmapRequest {
+  string user_id = 1;      // có thể null nếu roadmap chung
+  string roadmap_id = 2;   // nếu update thì gửi ID
+  string title = 3;
+  string description = 4;
+  string language = 5;
+}
+
+message RoadmapResponse {
+  string roadmap_id = 1;
+  string title = 2;
+  string description = 3;
+  string language = 4;
+  string error = 5;
+}
+
+message RoadmapItemProto {
+  string item_id = 1;
+  string title = 2;
+  string description = 3;
+  string type = 4;
+  int32 level = 5;
+  int32 estimated_time = 6;
+  int32 order_index = 7;
+  string category = 8;
+  string difficulty = 9;
+  int32 exp_reward = 10;
+  string content_id = 11;
+}
+
+message GuidanceProto {
+  string guidance_id = 1;
+  string item_id = 2;
+  string stage = 3;
+  string title = 4;
+  string description = 5;
+  repeated string tips = 6;
+  int32 estimated_time = 7;
+  int32 order_index = 8;
+}
+
+message ResourceProto {
+  string resource_id = 1;
+  string item_id = 2;
+  string type = 3;
+  string title = 4;
+  string description = 5;
+  string url = 6;
+  string content_id = 7;
+  int32 duration = 8;
+}
+
+message MilestoneProto {
+  string milestone_id = 1;
+  string title = 2;
+  string description = 3;
+  int32 level = 4;
+  repeated string requirements = 5;
+  repeated string rewards = 6;
+  int32 order_index = 7;
+}
+
+message RoadmapDetailedRequest {
+  string user_id = 1;        // nullable: empty string = global template
+  string roadmap_id = 2;     // if non-empty => update mode
+  string language = 3;
+  string prompt = 4;         // optional instructions / prompt for generator
+  bool as_user_specific = 5; // true => generate tailored to user
+}
+
+message RoadmapDetailedResponse {
+  string roadmap_id = 1;
+  string title = 2;
+  string description = 3;
+  string language = 4;
+
+  repeated RoadmapItemProto items = 10;
+  repeated MilestoneProto milestones = 11;
+  repeated GuidanceProto guidances = 12;
+  repeated ResourceProto resources = 13;
+
+  string error = 99;
+}
+
 
 message SpeechRequest {
   bytes audio_data = 1;
