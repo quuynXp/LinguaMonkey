@@ -2,14 +2,18 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionProvider;
 import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
 @Getter
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class PaymentRequest {
     @NotNull(message = "User ID is required")
     private UUID userId;

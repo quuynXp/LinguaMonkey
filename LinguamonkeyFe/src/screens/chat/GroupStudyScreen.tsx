@@ -2,7 +2,14 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import { useTranslation } from "react-i18next"
+import { useAppStore } from "../../stores/appStore"
+import { useToast } from "../../hooks/useToast"
+import { formatTime } from "../../utils/timeHelper"
+import { apiClient } from "../../api/axiosInstance"
+
 interface StudyRoom {
   id: string
   title: string
@@ -34,7 +41,7 @@ interface QuizQuestion {
   timeLimit: number
 }
 
-interface InteractiveMaterialIcons {
+interface InteractiveIcon {
   id: string
   type: "thumbs-up" | "heart" | "fire" | "star" | "clap"
   emoji: string
@@ -42,8 +49,12 @@ interface InteractiveMaterialIcons {
 }
 
 const GroupStudyScreen = ({ navigation }) => {
+  const { t } = useTranslation()
+  const { user } = useAppStore()
+  const { showToast } = useToast()
+  const queryClient = useQueryClient()
+
   const [currentView, setCurrentView] = useState<"lobby" | "room" | "quiz">("lobby")
-  const [studyRooms, setStudyRooms] = useState<StudyRoom[]>([])
   const [currentRoom, setCurrentRoom] = useState<StudyRoom | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showJoinModal, setShowJoinModal] = useState(false)
@@ -67,6 +78,68 @@ const GroupStudyScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
   const iconAnimations = useRef<{ [key: string]: Animated.Value }>({}).current
 
+  // Fetch study rooms
+  const { data: studyRooms = [], isLoading: roomsLoading } = useQuery({
+    queryKey: ["study-rooms"],
+    queryFn: async () => {
+      const response = await apiClient.get("/api/study-rooms")
+      return response.data.rooms
+    },
+  })
+
+  // Fetch quiz questions
+  const { data: quizQuestions = [] } = useQuery({
+    queryKey: ["quiz-questions", currentRoom?.topic],
+    queryFn: async () => {
+      const response = await apiClient.get(`/api/quiz-questions?topic=${currentRoom?.topic}`)
+      return response.data.questions
+    },
+    enabled: !!currentRoom?.topic,
+  })
+
+  // Create room mutation
+  const createRoomMutation = useMutation({
+    mutationFn: async (roomData: any) => {
+      const response = await apiClient.post("/api/study-rooms", roomData)
+      return response.data
+    },
+    onSuccess: (data) => {
+      setCurrentRoom(data.room)
+      setCurrentView("room")
+      setShowCreateModal(false)
+      showToast(t("room.created"), "success")
+      queryClient.invalidateQueries({ queryKey: ["study-rooms"] })
+    },
+    onError: (error) => {
+      showToast(t("error.createRoom"), "error")
+    },
+  })
+
+  // Join room mutation
+  const joinRoomMutation = useMutation({
+    mutationFn: async (roomId: string) => {
+      const response = await apiClient.post(`/api/study-rooms/${roomId}/join`)
+      return response.data
+    },
+    onSuccess: (data) => {
+      setCurrentRoom(data.room)
+      setCurrentView("room")
+      setShowJoinModal(false)
+      showToast(t("room.joined"), "success")
+    },
+    onError: (error) => {
+      showToast(t("error.joinRoom"), "error")
+    },
+  })
+
+  // Send reaction mutation
+  const sendReactionMutation = useMutation({
+    mutationFn: async ({ roomId, reaction }: { roomId: string; reaction: string }) => {
+      const response = await apiClient.post(`/api/study-rooms/${roomId}/reactions`, { reaction })
+      return response.data
+    },
+  })
+
   const interactiveIcons: InteractiveIcon[] = [
     { id: "thumbs-up", type: "thumbs-up", emoji: "👍", color: "#10B981" },
     { id: "heart", type: "heart", emoji: "❤️", color: "#EF4444" },
@@ -75,33 +148,12 @@ const GroupStudyScreen = ({ navigation }) => {
     { id: "clap", type: "clap", emoji: "👏", color: "#3B82F6" },
   ]
 
-  const mockQuestions: QuizQuestion[] = [
-    {
-      id: "1",
-      question: "What is the past tense of 'go'?",
-      options: ["goed", "went", "gone", "going"],
-      correctAnswer: 1,
-      explanation: "'Went' is the correct past tense form of the irregular verb 'go'.",
-      timeLimit: 30,
-    },
-    {
-      id: "2",
-      question: "Choose the correct article: '__ apple a day keeps the doctor away.'",
-      options: ["A", "An", "The", "No article"],
-      correctAnswer: 1,
-      explanation: "We use 'an' before words that start with a vowel sound, like 'apple'.",
-      timeLimit: 30,
-    },
-  ]
-
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start()
-
-    loadStudyRooms()
   }, [])
 
   useEffect(() => {
@@ -113,110 +165,26 @@ const GroupStudyScreen = ({ navigation }) => {
     }
   }, [timeLeft, showExplanation, quizStarted])
 
-  const loadStudyRooms = () => {
-    const mockRooms: StudyRoom[] = [
-      {
-        id: "123456",
-        title: "English Grammar Basics",
-        creatorName: "Sarah Chen",
-        topic: "Grammar",
-        maxParticipants: 6,
-        currentParticipants: 4,
-        difficulty: "easy",
-        language: "en",
-        isPrivate: false,
-        participants: [
-          { id: "1", name: "Sarah Chen", avatar: "👩‍🦰", level: 25, isReady: true },
-          { id: "2", name: "Mike Johnson", avatar: "👨‍💼", level: 18, isReady: true },
-          { id: "3", name: "Lisa Wang", avatar: "👩‍🎓", level: 22, isReady: false },
-          { id: "4", name: "Alex Kim", avatar: "👨‍💻", level: 20, isReady: true },
-        ],
-      },
-      {
-        id: "789012",
-        title: "Business English Vocabulary",
-        creatorName: "David Park",
-        topic: "Vocabulary",
-        maxParticipants: 4,
-        currentParticipants: 2,
-        difficulty: "hard",
-        language: "en",
-        isPrivate: false,
-        participants: [
-          { id: "5", name: "David Park", avatar: "👨‍🏫", level: 35, isReady: true },
-          { id: "6", name: "Emma Wilson", avatar: "👩‍💼", level: 28, isReady: false },
-        ],
-      },
-    ]
-
-    setStudyRooms(mockRooms)
-  }
-
-  const generateRoomId = () => {
-    return Math.floor(100000 + Math.random() * 900000).toString()
-  }
-
   const handleCreateRoom = () => {
     if (!newRoomData.title || !newRoomData.topic) {
-      Alert.alert("Error", "Please fill in all required fields")
+      Alert.alert(t("error.title"), t("error.fillRequired"))
       return
     }
 
-    const newRoom: StudyRoom = {
-      id: generateRoomId(),
-      title: newRoomData.title,
-      creatorName: "You",
-      topic: newRoomData.topic,
-      maxParticipants: newRoomData.maxParticipants,
-      currentParticipants: 1,
-      difficulty: newRoomData.difficulty,
-      language: newRoomData.language,
-      isPrivate: false,
-      participants: [{ id: "current", name: "You", avatar: "🧑‍💻", level: 23, isReady: false }],
-    }
-
-    setCurrentRoom(newRoom)
-    setCurrentView("room")
-    setShowCreateModal(false)
-
-    // Reset form
-    setNewRoomData({
-      title: "",
-      topic: "",
-      maxParticipants: 4,
-      difficulty: "medium",
-      language: "en",
+    createRoomMutation.mutate({
+      ...newRoomData,
+      creatorId: user?.id,
+      creatorName: user?.name || "You",
     })
   }
 
   const handleJoinRoom = () => {
     if (!roomIdInput.trim()) {
-      Alert.alert("Error", "Please enter a room ID")
+      Alert.alert(t("error.title"), t("error.enterRoomId"))
       return
     }
 
-    const room = studyRooms.find((r) => r.id === roomIdInput)
-    if (!room) {
-      Alert.alert("Error", "Room not found")
-      return
-    }
-
-    if (room.currentParticipants >= room.maxParticipants) {
-      Alert.alert("Error", "Room is full")
-      return
-    }
-
-    // Add current user to room
-    const updatedRoom = {
-      ...room,
-      currentParticipants: room.currentParticipants + 1,
-      participants: [...room.participants, { id: "current", name: "You", avatar: "🧑‍💻", level: 23, isReady: false }],
-    }
-
-    setCurrentRoom(updatedRoom)
-    setCurrentView("room")
-    setShowJoinModal(false)
-    setRoomIdInput("")
+    joinRoomMutation.mutate(roomIdInput.trim())
   }
 
   const handleStartQuiz = () => {
@@ -224,7 +192,7 @@ const GroupStudyScreen = ({ navigation }) => {
 
     const allReady = currentRoom.participants.every((p) => p.isReady)
     if (!allReady) {
-      Alert.alert("Wait", "All participants must be ready before starting")
+      Alert.alert(t("wait"), t("room.allMustBeReady"))
       return
     }
 
@@ -253,8 +221,8 @@ const GroupStudyScreen = ({ navigation }) => {
     setSelectedAnswer(answerIndex)
     setShowExplanation(true)
 
-    // Update participant score
-    const isCorrect = answerIndex === mockQuestions[currentQuestionIndex].correctAnswer
+    const currentQuestion = quizQuestions[currentQuestionIndex]
+    const isCorrect = answerIndex === currentQuestion?.correctAnswer
     if (isCorrect) {
       setParticipants((prev) => prev.map((p) => (p.id === "current" ? { ...p, score: (p.score || 0) + 10 } : p)))
     }
@@ -265,18 +233,19 @@ const GroupStudyScreen = ({ navigation }) => {
   }
 
   const handleNextQuestion = () => {
-    if (currentQuestionIndex < mockQuestions.length - 1) {
+    if (currentQuestionIndex < quizQuestions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1)
       setSelectedAnswer(null)
       setShowExplanation(false)
       setTimeLeft(30)
     } else {
-      // Quiz finished
-      Alert.alert("Quiz Complete!", "Great job everyone!", [{ text: "OK", onPress: () => setCurrentView("room") }])
+      Alert.alert(t("quiz.complete"), t("quiz.greatJob"), [{ text: "OK", onPress: () => setCurrentView("room") }])
     }
   }
 
-  const sendInteractiveMaterialIcons = (icon: InteractiveIcon) => {
+  const sendInteractiveIcon = (icon: InteractiveIcon) => {
+    if (!currentRoom) return
+
     // Create animation for the icon
     if (!iconAnimations[icon.id]) {
       iconAnimations[icon.id] = new Animated.Value(0)
@@ -295,8 +264,10 @@ const GroupStudyScreen = ({ navigation }) => {
       }),
     ]).start()
 
-    // In real app, send to other participants
-    console.log(`Sent ${icon.emoji} to room`)
+    sendReactionMutation.mutate({
+      roomId: currentRoom.id,
+      reaction: icon.emoji,
+    })
   }
 
   const getDifficultyColor = (difficulty: string) => {
@@ -318,60 +289,72 @@ const GroupStudyScreen = ({ navigation }) => {
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <Icon name="group" size={120} color="#4F46E5" style={styles.welcomeAnimation} />
-          <Text style={styles.welcomeTitle}>Group Study Rooms</Text>
-          <Text style={styles.welcomeText}>
-            Join or create study rooms to learn with friends and compete in real-time quizzes
-          </Text>
+          <Text style={styles.welcomeTitle}>{t("groupStudy.title")}</Text>
+          <Text style={styles.welcomeText}>{t("groupStudy.description")}</Text>
         </View>
 
         {/* Quick Actions */}
         <View style={styles.quickActions}>
-          <TouchableOpacity style={styles.createRoomButton} onPress={() => setShowCreateModal(true)}>
+          <TouchableOpacity
+            style={styles.createRoomButton}
+            onPress={() => setShowCreateModal(true)}
+            disabled={createRoomMutation.isPending}
+          >
             <Icon name="add-circle" size={24} color="#FFFFFF" />
-            <Text style={styles.createRoomText}>Create Room</Text>
+            <Text style={styles.createRoomText}>{createRoomMutation.isPending ? t("creating") : t("room.create")}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={styles.joinRoomButton} onPress={() => setShowJoinModal(true)}>
             <Icon name="login" size={24} color="#4F46E5" />
-            <Text style={styles.joinRoomText}>Join with ID</Text>
+            <Text style={styles.joinRoomText}>{t("room.joinWithId")}</Text>
           </TouchableOpacity>
         </View>
 
         {/* Available Rooms */}
         <View style={styles.roomsSection}>
-          <Text style={styles.sectionTitle}>Available Rooms</Text>
-          {studyRooms.map((room) => (
-            <TouchableOpacity
-              key={room.id}
-              style={styles.roomCard}
-              onPress={() => {
-                setCurrentRoom(room)
-                setCurrentView("room")
-              }}
-            >
-              <View style={styles.roomHeader}>
-                <Text style={styles.roomTitle}>{room.title}</Text>
-                <View style={[styles.difficultyBadge, { backgroundColor: `${getDifficultyColor(room.difficulty)}20` }]}>
-                  <Text style={[styles.difficultyText, { color: getDifficultyColor(room.difficulty) }]}>
-                    {room.difficulty.toUpperCase()}
-                  </Text>
+          <Text style={styles.sectionTitle}>{t("room.available")}</Text>
+          {roomsLoading ? (
+            <View style={styles.loadingContainer}>
+              <Text>{t("loading")}</Text>
+            </View>
+          ) : (
+            studyRooms.map((room) => (
+              <TouchableOpacity
+                key={room.id}
+                style={styles.roomCard}
+                onPress={() => {
+                  setCurrentRoom(room)
+                  setCurrentView("room")
+                }}
+              >
+                <View style={styles.roomHeader}>
+                  <Text style={styles.roomTitle}>{room.title}</Text>
+                  <View
+                    style={[styles.difficultyBadge, { backgroundColor: `${getDifficultyColor(room.difficulty)}20` }]}
+                  >
+                    <Text style={[styles.difficultyText, { color: getDifficultyColor(room.difficulty) }]}>
+                      {t(`difficulty.${room.difficulty}`)}
+                    </Text>
+                  </View>
                 </View>
-              </View>
 
-              <Text style={styles.roomCreator}>Created by {room.creatorName}</Text>
-              <Text style={styles.roomTopic}>Topic: {room.topic}</Text>
+                <Text style={styles.roomCreator}>{t("room.createdBy", { name: room.creatorName })}</Text>
+                <Text style={styles.roomTopic}>
+                  {t("room.topic")}: {room.topic}
+                </Text>
 
-              <View style={styles.roomFooter}>
-                <View style={styles.participantsInfo}>
-                  <Icon name="people" size={16} color="#6B7280" />
-                  <Text style={styles.participantsText}>
-                    {room.currentParticipants}/{room.maxParticipants}
-                  </Text>
+                <View style={styles.roomFooter}>
+                  <View style={styles.participantsInfo}>
+                    <Icon name="people" size={16} color="#6B7280" />
+                    <Text style={styles.participantsText}>
+                      {room.currentParticipants}/{room.maxParticipants}
+                    </Text>
+                  </View>
+                  <Text style={styles.roomId}>ID: {room.id}</Text>
                 </View>
-                <Text style={styles.roomId}>ID: {room.id}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            ))
+          )}
         </View>
       </Animated.View>
     </ScrollView>
@@ -386,14 +369,18 @@ const GroupStudyScreen = ({ navigation }) => {
           {/* Room Info */}
           <View style={styles.roomInfoCard}>
             <Text style={styles.roomInfoTitle}>{currentRoom.title}</Text>
-            <Text style={styles.roomInfoTopic}>Topic: {currentRoom.topic}</Text>
+            <Text style={styles.roomInfoTopic}>
+              {t("room.topic")}: {currentRoom.topic}
+            </Text>
             <View style={styles.roomInfoMeta}>
-              <Text style={styles.roomInfoId}>Room ID: {currentRoom.id}</Text>
+              <Text style={styles.roomInfoId}>
+                {t("room.id")}: {currentRoom.id}
+              </Text>
               <View
                 style={[styles.difficultyBadge, { backgroundColor: `${getDifficultyColor(currentRoom.difficulty)}20` }]}
               >
                 <Text style={[styles.difficultyText, { color: getDifficultyColor(currentRoom.difficulty) }]}>
-                  {currentRoom.difficulty.toUpperCase()}
+                  {t(`difficulty.${currentRoom.difficulty}`)}
                 </Text>
               </View>
             </View>
@@ -402,7 +389,7 @@ const GroupStudyScreen = ({ navigation }) => {
           {/* Participants */}
           <View style={styles.participantsSection}>
             <Text style={styles.sectionTitle}>
-              Participants ({currentRoom.currentParticipants}/{currentRoom.maxParticipants})
+              {t("participants")} ({currentRoom.currentParticipants}/{currentRoom.maxParticipants})
             </Text>
             <View style={styles.participantsList}>
               {currentRoom.participants.map((participant) => (
@@ -410,7 +397,9 @@ const GroupStudyScreen = ({ navigation }) => {
                   <Text style={styles.participantAvatar}>{participant.avatar}</Text>
                   <View style={styles.participantInfo}>
                     <Text style={styles.participantName}>{participant.name}</Text>
-                    <Text style={styles.participantLevel}>Level {participant.level}</Text>
+                    <Text style={styles.participantLevel}>
+                      {t("level")} {participant.level}
+                    </Text>
                   </View>
                   <View style={styles.participantStatus}>
                     <Icon
@@ -421,7 +410,7 @@ const GroupStudyScreen = ({ navigation }) => {
                     <Text
                       style={[styles.participantStatusText, { color: participant.isReady ? "#10B981" : "#F59E0B" }]}
                     >
-                      {participant.isReady ? "Ready" : "Not Ready"}
+                      {participant.isReady ? t("ready") : t("notReady")}
                     </Text>
                   </View>
                 </View>
@@ -444,21 +433,21 @@ const GroupStudyScreen = ({ navigation }) => {
                 color="#FFFFFF"
               />
               <Text style={styles.readyButtonText}>
-                {currentRoom.participants.find((p) => p.id === "current")?.isReady ? "Ready!" : "Get Ready"}
+                {currentRoom.participants.find((p) => p.id === "current")?.isReady ? t("ready") : t("getReady")}
               </Text>
             </TouchableOpacity>
 
             {currentRoom.creatorName === "You" && (
               <TouchableOpacity style={styles.startQuizButton} onPress={handleStartQuiz}>
                 <Icon name="play-arrow" size={20} color="#FFFFFF" />
-                <Text style={styles.startQuizText}>Start Quiz</Text>
+                <Text style={styles.startQuizText}>{t("quiz.start")}</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {/* Interactive Icons */}
           <View style={styles.interactiveSection}>
-            <Text style={styles.sectionTitle}>Send Reactions</Text>
+            <Text style={styles.sectionTitle}>{t("reactions.send")}</Text>
             <View style={styles.interactiveIcons}>
               {interactiveIcons.map((icon) => (
                 <TouchableOpacity
@@ -495,7 +484,7 @@ const GroupStudyScreen = ({ navigation }) => {
   }
 
   const renderQuiz = () => {
-    const currentQuestion = mockQuestions[currentQuestionIndex]
+    const currentQuestion = quizQuestions[currentQuestionIndex]
     if (!currentQuestion) return null
 
     return (
@@ -503,10 +492,12 @@ const GroupStudyScreen = ({ navigation }) => {
         {/* Quiz Header */}
         <View style={styles.quizHeader}>
           <Text style={styles.quizProgress}>
-            Question {currentQuestionIndex + 1}/{mockQuestions.length}
+            {t("quiz.question")} {currentQuestionIndex + 1}/{quizQuestions.length}
           </Text>
           <View style={styles.timerContainer}>
-            <Text style={[styles.timerText, { color: timeLeft <= 10 ? "#EF4444" : "#4F46E5" }]}>{timeLeft}s</Text>
+            <Text style={[styles.timerText, { color: timeLeft <= 10 ? "#EF4444" : "#4F46E5" }]}>
+              {formatTime(timeLeft * 1000, "short")}
+            </Text>
           </View>
         </View>
 
@@ -557,12 +548,12 @@ const GroupStudyScreen = ({ navigation }) => {
           {/* Explanation */}
           {showExplanation && (
             <View style={styles.explanationContainer}>
-              <Text style={styles.explanationTitle}>Explanation</Text>
+              <Text style={styles.explanationTitle}>{t("quiz.explanation")}</Text>
               <Text style={styles.explanationText}>{currentQuestion.explanation}</Text>
 
               <TouchableOpacity style={styles.nextQuestionButton} onPress={handleNextQuestion}>
                 <Text style={styles.nextQuestionText}>
-                  {currentQuestionIndex < mockQuestions.length - 1 ? "Next Question" : "Finish Quiz"}
+                  {currentQuestionIndex < quizQuestions.length - 1 ? t("quiz.next") : t("quiz.finish")}
                 </Text>
                 <Icon name="arrow-forward" size={20} color="#FFFFFF" />
               </TouchableOpacity>
@@ -578,7 +569,7 @@ const GroupStudyScreen = ({ navigation }) => {
       <View style={styles.modalOverlay}>
         <View style={styles.createModal}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Create Study Room</Text>
+            <Text style={styles.modalTitle}>{t("room.create")}</Text>
             <TouchableOpacity onPress={() => setShowCreateModal(false)}>
               <Icon name="close" size={24} color="#374151" />
             </TouchableOpacity>
@@ -586,27 +577,27 @@ const GroupStudyScreen = ({ navigation }) => {
 
           <ScrollView style={styles.modalContent}>
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Room Title *</Text>
+              <Text style={styles.inputLabel}>{t("room.title")} *</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="Enter room title"
+                placeholder={t("room.titlePlaceholder")}
                 value={newRoomData.title}
                 onChangeText={(text) => setNewRoomData({ ...newRoomData, title: text })}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Topic *</Text>
+              <Text style={styles.inputLabel}>{t("room.topic")} *</Text>
               <TextInput
                 style={styles.textInput}
-                placeholder="e.g., Grammar, Vocabulary, Speaking"
+                placeholder={t("room.topicPlaceholder")}
                 value={newRoomData.topic}
                 onChangeText={(text) => setNewRoomData({ ...newRoomData, topic: text })}
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Max Participants</Text>
+              <Text style={styles.inputLabel}>{t("room.maxParticipants")}</Text>
               <View style={styles.participantOptions}>
                 {[2, 4, 6, 8, 10].map((num) => (
                   <TouchableOpacity
@@ -631,12 +622,12 @@ const GroupStudyScreen = ({ navigation }) => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Difficulty</Text>
+              <Text style={styles.inputLabel}>{t("difficulty.title")}</Text>
               <View style={styles.difficultyOptions}>
                 {[
-                  { value: "easy", label: "Easy", color: "#10B981" },
-                  { value: "medium", label: "Medium", color: "#F59E0B" },
-                  { value: "hard", label: "Hard", color: "#EF4444" },
+                  { value: "easy", label: t("difficulty.easy"), color: "#10B981" },
+                  { value: "medium", label: t("difficulty.medium"), color: "#F59E0B" },
+                  { value: "hard", label: t("difficulty.hard"), color: "#EF4444" },
                 ].map((diff) => (
                   <TouchableOpacity
                     key={diff.value}
@@ -665,10 +656,16 @@ const GroupStudyScreen = ({ navigation }) => {
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowCreateModal(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
+              <Text style={styles.modalCancelText}>{t("cancel")}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalCreateButton} onPress={handleCreateRoom}>
-              <Text style={styles.modalCreateText}>Create Room</Text>
+            <TouchableOpacity
+              style={styles.modalCreateButton}
+              onPress={handleCreateRoom}
+              disabled={createRoomMutation.isPending}
+            >
+              <Text style={styles.modalCreateText}>
+                {createRoomMutation.isPending ? t("creating") : t("room.create")}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -681,19 +678,17 @@ const GroupStudyScreen = ({ navigation }) => {
       <View style={styles.modalOverlay}>
         <View style={styles.joinModal}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Join Study Room</Text>
+            <Text style={styles.modalTitle}>{t("room.join")}</Text>
             <TouchableOpacity onPress={() => setShowJoinModal(false)}>
               <Icon name="close" size={24} color="#374151" />
             </TouchableOpacity>
           </View>
 
-          
-
-          <Text style={styles.joinModalDescription}>Enter the 6-digit room ID to join a study session</Text>
+          <Text style={styles.joinModalDescription}>{t("room.enterIdDescription")}</Text>
 
           <TextInput
             style={styles.roomIdInput}
-            placeholder="Enter Room ID (6 digits)"
+            placeholder={t("room.idPlaceholder")}
             value={roomIdInput}
             onChangeText={setRoomIdInput}
             keyboardType="numeric"
@@ -702,10 +697,14 @@ const GroupStudyScreen = ({ navigation }) => {
 
           <View style={styles.modalActions}>
             <TouchableOpacity style={styles.modalCancelButton} onPress={() => setShowJoinModal(false)}>
-              <Text style={styles.modalCancelText}>Cancel</Text>
+              <Text style={styles.modalCancelText}>{t("cancel")}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.modalJoinButton} onPress={handleJoinRoom}>
-              <Text style={styles.modalJoinText}>Join Room</Text>
+            <TouchableOpacity
+              style={styles.modalJoinButton}
+              onPress={handleJoinRoom}
+              disabled={joinRoomMutation.isPending}
+            >
+              <Text style={styles.modalJoinText}>{joinRoomMutation.isPending ? t("joining") : t("room.join")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -730,14 +729,14 @@ const GroupStudyScreen = ({ navigation }) => {
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {currentView === "lobby" ? "Group Study" : currentView === "room" ? "Study Room" : "Quiz"}
+          {currentView === "lobby" ? t("groupStudy.title") : currentView === "room" ? t("room.title") : t("quiz.title")}
         </Text>
         {currentView === "room" && (
           <TouchableOpacity
             onPress={() =>
-              Alert.alert("Leave Room", "Are you sure you want to leave?", [
-                { text: "Cancel", style: "cancel" },
-                { text: "Leave", onPress: () => setCurrentView("lobby") },
+              Alert.alert(t("room.leave"), t("room.leaveConfirm"), [
+                { text: t("cancel"), style: "cancel" },
+                { text: t("leave"), onPress: () => setCurrentView("lobby") },
               ])
             }
           >
@@ -853,6 +852,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#1F2937",
     marginBottom: 16,
+  },
+  loadingContainer: {
+    padding: 20,
+    alignItems: "center",
   },
   roomCard: {
     backgroundColor: "#FFFFFF",
@@ -1328,12 +1331,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#FFFFFF",
     fontWeight: "600",
-  },
-  joinModalAnimation: {
-    width: 100,
-    height: 100,
-    alignSelf: "center",
-    marginBottom: 16,
   },
   joinModalDescription: {
     fontSize: 14,

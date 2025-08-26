@@ -19,6 +19,9 @@ public interface Character3dRepository extends JpaRepository<Character3d, UUID> 
             nativeQuery = true)
     Page<Character3d> findByCharacter3dNameContainingAndIsDeletedFalse(@Param("character3dName") String character3dName, Pageable pageable);
 
+
+    Page<Character3d> findByIsDeletedFalse(Pageable pageable);
+
     @Query(value = "SELECT * FROM character3ds WHERE character3d_id = :id AND deleted = false", nativeQuery = true)
     Optional<Character3d> findByCharacter3dIdAndIsDeletedFalse(@Param("id") UUID id);
 }

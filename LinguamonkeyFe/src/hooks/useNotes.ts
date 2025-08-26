@@ -1,8 +1,10 @@
-import { mutate } from "swr"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import instance from "../api/axiosInstance"
 import type { Note, NoteTopic } from "../types/api"
-import { useApiDelete, useApiGet, useApiPost, useApiPut } from "./useApi"
 
 export const useNotes = () => {
+  const queryClient = useQueryClient()
+
   // Get user notes
   const useUserNotes = (topicId?: string, search?: string) => {
     let url = "/notes"
@@ -11,115 +13,88 @@ export const useNotes = () => {
     if (search) params.append("search", search)
     if (params.toString()) url += `?${params.toString()}`
 
-    return useApiGet<Note[]>(url)
+    return useQuery<Note[]>({
+      queryKey: ["notes", topicId, search],
+      queryFn: async () => {
+        const res = await instance.get(url)
+        return res.data
+      },
+    })
   }
 
   // Get note topics
-  const useNoteTopics = () => {
-    return useApiGet<NoteTopic[]>("/notes/topics")
-  }
+  const useNoteTopics = () =>
+    useQuery<NoteTopic[]>({
+      queryKey: ["noteTopics"],
+      queryFn: async () => {
+        const res = await instance.get("/notes/topics")
+        return res.data
+      },
+    })
 
   // Create note
-  const useCreateNote = () => {
-    const { trigger, isMutating } = useApiPost<Note>("/notes")
-
-    const createNote = async (noteData: {
-      content: string
-      type: "word" | "phrase" | "sentence"
-      topicId: string
-      language: string
-    }) => {
-      try {
-        const result = await trigger(noteData)
-        // Revalidate notes data
-        mutate("/notes")
-        mutate("/notes/topics")
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { createNote, isCreating: isMutating }
-  }
+  const useCreateNote = () =>
+    useMutation({
+      mutationFn: async (noteData: {
+        content: string
+        type: "word" | "phrase" | "sentence"
+        topicId: string
+        language: string
+      }) => {
+        const res = await instance.post("/notes", noteData)
+        return res.data
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["notes"] })
+        queryClient.invalidateQueries({ queryKey: ["noteTopics"] })
+      },
+    })
 
   // Update note
-  const useUpdateNote = () => {
-    const { trigger, isMutating } = useApiPut<Note>("/notes")
-
-    const updateNote = async (noteId: string, noteData: Partial<Note>) => {
-      try {
-        const result = await trigger({ id: noteId, ...noteData })
-        // Revalidate notes data
-        mutate("/notes")
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { updateNote, isUpdating: isMutating }
-  }
+  const useUpdateNote = () =>
+    useMutation({
+      mutationFn: async ({ noteId, noteData }: { noteId: string; noteData: Partial<Note> }) => {
+        const res = await instance.put(`/notes/${noteId}`, noteData)
+        return res.data
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["notes"] })
+      },
+    })
 
   // Delete note
-  const useDeleteNote = () => {
-    const { trigger, isMutating } = useApiDelete<{ success: boolean }>("/notes")
-
-    const deleteNote = async (noteId: string) => {
-      try {
-        const result = await trigger(`/notes/${noteId}`)
-        // Revalidate notes data
-        mutate("/notes")
-        mutate("/notes/topics")
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { deleteNote, isDeleting: isMutating }
-  }
+  const useDeleteNote = () =>
+    useMutation({
+      mutationFn: async (noteId: string) => {
+        const res = await instance.delete(`/notes/${noteId}`)
+        return res.data
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["notes"] })
+        queryClient.invalidateQueries({ queryKey: ["noteTopics"] })
+      },
+    })
 
   // Create note topic
-  const useCreateNoteTopic = () => {
-    const { trigger, isMutating } = useApiPost<NoteTopic>("/notes/topics")
-
-    const createTopic = async (topicData: {
-      name: string
-      color: string
-      icon: string
-    }) => {
-      try {
-        const result = await trigger(topicData)
-        // Revalidate topics data
-        mutate("/notes/topics")
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { createTopic, isCreating: isMutating }
-  }
+  const useCreateNoteTopic = () =>
+    useMutation({
+      mutationFn: async (topicData: { name: string; color: string; icon: string }) => {
+        const res = await instance.post("/notes/topics", topicData)
+        return res.data
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["noteTopics"] })
+      },
+    })
 
   // Generate phonetics and translation
-  const useGenerateNoteData = () => {
-    const { trigger, isMutating } = useApiPost<{
-      phonetic: string
-      translation: string
-    }>("/notes/generate")
-
-    const generateData = async (content: string, targetLanguage = "vi") => {
-      try {
-        const result = await trigger({ content, targetLanguage })
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { generateData, isGenerating: isMutating }
-  }
+  const useGenerateNoteData = () =>
+    useMutation({
+      mutationFn: async ({ content, targetLanguage = "vi" }: { content: string; targetLanguage?: string }) => {
+        const res = await instance.post("/notes/generate", { content, targetLanguage })
+        return res.data
+      },
+    })
 
   return {
     useUserNotes,

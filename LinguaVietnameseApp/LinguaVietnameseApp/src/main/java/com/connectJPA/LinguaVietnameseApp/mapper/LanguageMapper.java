@@ -8,9 +8,12 @@ import com.connectJPA.LinguaVietnameseApp.entity.CourseReview;
 import com.connectJPA.LinguaVietnameseApp.entity.Language;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LanguageMapper {
+    LanguageMapper INSTANCE = Mappers.getMapper(LanguageMapper.class);
+
     Language toEntity(LanguageRequest request);
     LanguageResponse toResponse(Language language);
     void updateEntityFromRequest(LanguageRequest request, @MappingTarget Language language);

@@ -1,9 +1,12 @@
 
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.CreateGroupCallRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateParticipantStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.VideoCallParticipant;
 import com.connectJPA.LinguaVietnameseApp.service.VideoCallService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -53,7 +57,6 @@ public class VideoCallController {
             @ApiResponse(responseCode = "404", description = "Video call not found")
     })
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<VideoCallResponse> getVideoCallById(
             @Parameter(description = "Video call ID") @PathVariable UUID id,
             Locale locale) {
@@ -79,6 +82,74 @@ public class VideoCallController {
                 .code(201)
                 .message(messageSource.getMessage("videoCall.created.success", null, locale))
                 .result(videoCall)
+                .build();
+    }
+    @PostMapping("/group")
+    public AppApiResponse<VideoCallResponse> createGroupCall(
+            @RequestBody CreateGroupCallRequest request, Locale locale) {
+        VideoCallResponse response = videoCallService.createGroupVideoCall(
+                request.getCallerId(),
+                request.getParticipantIds(),
+                request.getVideoCallType()
+        );
+        return AppApiResponse.<VideoCallResponse>builder()
+                .code(201)
+                .message(messageSource.getMessage("videoCall.created.success", null, locale))
+                .result(response)
+                .build();
+    }
+
+    @GetMapping("/{id}/participants")
+    public AppApiResponse<List<VideoCallParticipant>> getParticipants(@PathVariable UUID id, Locale locale) {
+        List<VideoCallParticipant> participants = videoCallService.getParticipants(id);
+        return AppApiResponse.<List<VideoCallParticipant>>builder()
+                .code(200)
+                .message(messageSource.getMessage("videoCall.participants.list.success", null, locale))
+                .result(participants)
+                .build();
+    }
+
+    @PostMapping("/{id}/participants")
+    public AppApiResponse<Void> addParticipant(@PathVariable UUID id, @RequestParam UUID userId, Locale locale) {
+        videoCallService.addParticipant(id, userId);
+        return AppApiResponse.<Void>builder()
+                .code(201)
+                .message(messageSource.getMessage("videoCall.participant.add.success", null, locale))
+                .build();
+    }
+
+    @DeleteMapping("/{id}/participants/{userId}")
+    public AppApiResponse<Void> removeParticipant(@PathVariable UUID id, @PathVariable UUID userId, Locale locale) {
+        videoCallService.removeParticipant(id, userId);
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message(messageSource.getMessage("videoCall.participant.remove.success", null, locale))
+                .build();
+    }
+
+    @GetMapping("/history/{userId}")
+    public AppApiResponse<List<VideoCallResponse>> getVideoCallHistory(
+            @PathVariable UUID userId,
+            Locale locale) {
+        List<VideoCallResponse> history = videoCallService.getVideoCallHistoryByUser(userId);
+        return AppApiResponse.<List<VideoCallResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("videoCall.history.success", null, locale))
+                .result(history)
+                .build();
+    }
+
+
+    @PutMapping("/{id}/participants/{userId}")
+    public AppApiResponse<Void> updateParticipantStatus(
+            @PathVariable UUID id,
+            @PathVariable UUID userId,
+            @RequestBody UpdateParticipantStatusRequest request,
+            Locale locale) {
+        videoCallService.updateParticipantStatus(id, userId, request.getStatus());
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message(messageSource.getMessage("videoCall.participant.update.success", null, locale))
                 .build();
     }
 

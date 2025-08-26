@@ -59,6 +59,16 @@ class LearningServiceStub(object):
                 request_serializer=learning__service__pb2.CheckTranslationRequest.SerializeToString,
                 response_deserializer=learning__service__pb2.CheckTranslationResponse.FromString,
                 )
+        self.CreateOrUpdateRoadmapDetailed = channel.unary_unary(
+                '/learning.LearningService/CreateOrUpdateRoadmapDetailed',
+                request_serializer=learning__service__pb2.RoadmapDetailedRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.RoadmapDetailedResponse.FromString,
+                )
+        self.CreateOrUpdateRoadmap = channel.unary_unary(
+                '/learning.LearningService/CreateOrUpdateRoadmap',
+                request_serializer=learning__service__pb2.RoadmapRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.RoadmapResponse.FromString,
+                )
 
 
 class LearningServiceServicer(object):
@@ -118,6 +128,18 @@ class LearningServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CreateOrUpdateRoadmapDetailed(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CreateOrUpdateRoadmap(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_LearningServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -165,6 +187,16 @@ def add_LearningServiceServicer_to_server(servicer, server):
                     servicer.CheckTranslation,
                     request_deserializer=learning__service__pb2.CheckTranslationRequest.FromString,
                     response_serializer=learning__service__pb2.CheckTranslationResponse.SerializeToString,
+            ),
+            'CreateOrUpdateRoadmapDetailed': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateOrUpdateRoadmapDetailed,
+                    request_deserializer=learning__service__pb2.RoadmapDetailedRequest.FromString,
+                    response_serializer=learning__service__pb2.RoadmapDetailedResponse.SerializeToString,
+            ),
+            'CreateOrUpdateRoadmap': grpc.unary_unary_rpc_method_handler(
+                    servicer.CreateOrUpdateRoadmap,
+                    request_deserializer=learning__service__pb2.RoadmapRequest.FromString,
+                    response_serializer=learning__service__pb2.RoadmapResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -326,5 +358,39 @@ class LearningService(object):
         return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckTranslation',
             learning__service__pb2.CheckTranslationRequest.SerializeToString,
             learning__service__pb2.CheckTranslationResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CreateOrUpdateRoadmapDetailed(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CreateOrUpdateRoadmapDetailed',
+            learning__service__pb2.RoadmapDetailedRequest.SerializeToString,
+            learning__service__pb2.RoadmapDetailedResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CreateOrUpdateRoadmap(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CreateOrUpdateRoadmap',
+            learning__service__pb2.RoadmapRequest.SerializeToString,
+            learning__service__pb2.RoadmapResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

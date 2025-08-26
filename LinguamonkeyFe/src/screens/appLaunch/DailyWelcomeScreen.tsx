@@ -1,5 +1,3 @@
-"use client";
-
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
 import {
@@ -19,9 +17,17 @@ import { getGreetingTime } from "../../utils/timeHelper";
 import { useProgressStats } from "../../hooks/useProgressStats";
 import { User, UserGoalResponse, UserBadge } from "../../types/api";
 import { StackNavigationProp } from "@react-navigation/stack";
+import { MaterialIcons } from '@expo/vector-icons';
+import { resetToTab, resetToAuth } from "../../utils/navigationRef";
+
+type RootStackParamList = {
+  DailyWelcome: undefined;
+  Main: { initialRouteName?: string; screen?: string; params?: any };
+  Auth: undefined;
+};
 
 type DailyWelcomeScreenProps = {
-  navigation: StackNavigationProp<any>;
+  navigation: StackNavigationProp<RootStackParamList, 'DailyWelcome'>;
 };
 
 const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
@@ -57,10 +63,12 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   };
 
   useEffect(() => {
-      if (!user?.user_id) return; // chỉ chạy khi có user_id
+    if (!user?.user_id) {
+      resetToAuth('Login');
+      return;
+    }
 
     const userId = user?.user_id;
-    console.log("User ID in DailyWC:", userId);
     const fetchAchievements = async () => {
       try {
         if (userId) {
@@ -76,7 +84,6 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
 
     const fetchUserGoal = async () => {
       try {
-        const userId = user?.user_id;
         if (userId) {
           const response = await axiosInstance.get<{ data: UserGoalResponse[] }>(`/api/user-goals`, {
             params: { userId },
@@ -117,7 +124,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         useNativeDriver: true,
       }).start();
     }, 500);
-  }, [currentLanguage, user?.user_id]);
+  }, [currentLanguage, user?.user_id, navigation]);
 
   const getGreeting = () => {
     return getGreetingTime(undefined, currentLanguage || "en");
@@ -133,26 +140,23 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
       <Animated.View
         style={[
-          styles.content,
           {
-            opacity: fadeAnim,
             transform: [{ scale: scaleAnim }],
           },
         ]}
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.navigate("Home")}>
+          <TouchableOpacity onPress={() => resetToTab('Home', 'HomeMain')}>
             <Icon name="close" size={24} color="#6B7280" />
           </TouchableOpacity>
         </View>
-
         {/* Greeting */}
         <Text style={styles.greeting}>
-          {getGreeting()}, {(user as User)?.fullname || "Alex"}!
+          {getGreeting()}, {(user as User)?.fullname || ""}! 🌅
         </Text>
 
         {/* Streak Section */}
@@ -178,6 +182,12 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
               <Text style={styles.streakMessage}>{getStreakMessage()}</Text>
             </View>
           </View>
+          <View style={styles.reminderContainer}>
+            <Icon name="lightbulb" size={20} color="#F59E0B" />
+            <Text style={styles.reminderText}>
+              {t("reminder.doLessonToKeepStreak")} 📚💥
+            </Text>
+          </View>
         </Animated.View>
 
         {/* Motivational Message */}
@@ -188,7 +198,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
 
         {/* Today's Progress */}
         <View style={styles.progressSection}>
-          <Text style={styles.sectionTitle}>{t("progressSection")}</Text>
+          <Text style={styles.sectionTitle}>{t("progressSection")} 📊</Text>
           <View style={styles.statsGrid}>
             <View style={styles.statCard}>
               <Icon name="school" size={24} color="#10B981" />
@@ -215,7 +225,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
 
         {/* Recent Achievements */}
         <View style={styles.achievementsSection}>
-          <Text style={styles.sectionTitle}>{t("achievementsSection")}</Text>
+          <Text style={styles.sectionTitle}>{t("achievementsSection")} 🏆</Text>
           <View style={styles.achievementsList}>
             {achievements.map((achievement) => (
               <View key={achievement.badge_id} style={styles.achievementCard}>
@@ -241,7 +251,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         {/* Continue Learning Button */}
         <TouchableOpacity
           style={styles.continueButton}
-          onPress={() => navigation.replace("TabApp")}
+          onPress={() => resetToTab('Learn', 'LearnMain')}
         >
           <Text style={styles.continueButtonText}>{t("continueButton")}</Text>
           <Icon name="arrow-forward" size={20} color="#FFFFFF" />
@@ -251,21 +261,15 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         <View style={styles.quickActions}>
           <TouchableOpacity
             style={styles.quickActionButton}
-            onPress={() => navigation.navigate("VocabularyFlashcards")}
+            onPress={() => resetToTab('Learn', 'LearnMain')}
           >
             <Icon name="style" size={20} color="#4F46E5" />
             <Text style={styles.quickActionText}>{t("quickActions.flashcards")}</Text>
           </TouchableOpacity>
+
           <TouchableOpacity
             style={styles.quickActionButton}
-            onPress={() => navigation.navigate("Learn", { screen: "KaraokeLearning" })}
-          >
-            <Icon name="mic" size={20} color="#4F46E5" />
-            <Text style={styles.quickActionText}>{t("quickActions.karaoke")}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={() => navigation.navigate("Learn", { screen: "QuizLearning" })}
+            onPress={() => resetToTab('Learn', 'QuizLearning')}
           >
             <Icon name="quiz" size={20} color="#4F46E5" />
             <Text style={styles.quickActionText}>{t("quickActions.quiz")}</Text>
@@ -278,17 +282,13 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    paddingHorizontal: 16,
+    paddingVertical: 20,
     backgroundColor: "#F8FAFC",
-  },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 50,
   },
   header: {
     alignItems: "flex-end",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   greeting: {
     fontSize: 28,
@@ -299,14 +299,14 @@ const styles = StyleSheet.create({
   },
   streakContainer: {
     alignItems: "center",
-    marginBottom: 32,
+    marginBottom: 16,
   },
   streakCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
-    padding: 20,
+    padding: 16,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -350,13 +350,28 @@ const styles = StyleSheet.create({
     color: "#F59E0B",
     fontWeight: "600",
   },
+  reminderContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 12,
+    padding: 8,
+    backgroundColor: "#FFF7ED",
+    borderRadius: 12,
+    width: "100%",
+  },
+  reminderText: {
+    fontSize: 14,
+    color: "#D97706",
+    marginLeft: 8,
+    fontWeight: "500",
+  },
   motivationCard: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#EEF2FF",
     borderRadius: 16,
-    padding: 16,
-    marginBottom: 32,
+    padding: 12,
+    marginBottom: 16,
     borderLeftWidth: 4,
     borderLeftColor: "#4F46E5",
   },
@@ -369,24 +384,24 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   progressSection: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "600",
     color: "#1F2937",
-    marginBottom: 16,
+    marginBottom: 12,
   },
   statsGrid: {
     flexDirection: "row",
     justifyContent: "space-between",
-    gap: 8,
+    gap: 4,
   },
   statCard: {
     flex: 1,
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -407,7 +422,7 @@ const styles = StyleSheet.create({
     fontWeight: "500",
   },
   achievementsSection: {
-    marginBottom: 32,
+    marginBottom: 16,
   },
   achievementsList: {
     gap: 8,
@@ -453,7 +468,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#4F46E5",
     borderRadius: 16,
     paddingVertical: 16,
-    marginBottom: 20,
+    marginBottom: 16,
     gap: 8,
   },
   continueButtonText: {
@@ -464,13 +479,13 @@ const styles = StyleSheet.create({
   quickActions: {
     flexDirection: "row",
     justifyContent: "space-around",
-    marginBottom: 20,
+    marginBottom: 16,
   },
   quickActionButton: {
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     minWidth: 80,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },

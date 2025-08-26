@@ -30,14 +30,14 @@ export const useProgressStats = (userId: string | undefined) => {
           `/api/lesson-progress`,
           { params: { userId } }
         );
-        const progressData = progressResponse.data.data;
+        const progressData = progressResponse.data.result;
         setLessonProgress(progressData);
 
         // Fetch all lessons
         const lessonsResponse = await axiosInstance.get<PaginatedResponse<LessonResponse>>(
           `/api/lessons`
         );
-        const lessonsData = lessonsResponse.data.data;
+        const lessonsData = lessonsResponse.data.result;
         setLessons(lessonsData);
 
         // Tính toán progress stats

@@ -9,7 +9,7 @@ import org.springframework.data.domain.Pageable;
 import java.util.UUID;
 
 public interface RoleService {
-    Page<RoleResponse> getAllRoles(String roleName, Pageable pageable);
+    Page<RoleResponse> getAllRoles(RoleName roleName, Pageable pageable);
     RoleResponse getRoleById(UUID id);
     RoleResponse createRole(RoleRequest request);
     RoleResponse updateRole(UUID id, RoleRequest request);

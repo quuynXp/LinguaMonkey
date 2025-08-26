@@ -1,11 +1,10 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.Character3dResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.LevelInfoResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.*;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
+import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -28,6 +27,7 @@ import java.util.UUID;
 public class UserController {
     private final UserService userService;
     private final MessageSource messageSource;
+    private final AuthenticationService authenticationService;
 
     @Operation(summary = "Get all users", description = "Retrieve a paginated list of users with optional filtering by email, fullname, or nickname")
     @ApiResponses({
@@ -77,15 +77,27 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public AppApiResponse<UserResponse> createUser(
+    public AppApiResponse<RegisterResponse> createUser(
             @RequestBody UserRequest request,
             Locale locale) {
-        UserResponse user = userService.createUser(request);
-        return AppApiResponse.<UserResponse>builder()
+        UserResponse userResponse = userService.createUser(request);
+
+        // Lấy lại User entity để generate token
+        User user = userService.findByUserId(userResponse.getUserId());
+
+        String accessToken = authenticationService.generateToken(user);
+        String refreshToken = authenticationService.generateRefreshToken(user , 360);
+
+        RegisterResponse registerResponse = RegisterResponse.builder()
+                .user(userResponse)
+                .accessToken(accessToken)
+                .refreshToken(refreshToken)
+                .build();
+
+        return AppApiResponse.<RegisterResponse>builder()
                 .code(201)
                 .message(messageSource.getMessage("user.created.success", null, locale))
-                .result(user)
+                .result(registerResponse)
                 .build();
     }
 

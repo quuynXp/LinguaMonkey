@@ -1,153 +1,144 @@
-import React, { useRef, useState } from 'react';
-import {
-    Alert,
-    Animated,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+"use client"
+
+import React, { useRef, useState } from "react"
+import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useAppStore } from "../../stores/appStore"
+import { useToast } from "../../hooks/useToast"
 
 interface Goal {
-  id: string;
-  title: string;
-  description: string;
-  target: number;
-  current: number;
-  unit: string;
-  icon: string;
-  color: string;
-  isActive: boolean;
+  id: string
+  title: string
+  description: string
+  target: number
+  current: number
+  unit: string
+  icon: string
+  color: string
+  isActive: boolean
 }
 
 interface GoalPreset {
-  id: string;
-  title: string;
-  description: string;
-  dailyMinutes: number;
-  weeklyLessons: number;
-  difficulty: 'Dễ' | 'Trung bình' | 'Khó';
-  icon: string;
+  id: string
+  title: string
+  description: string
+  dailyMinutes: number
+  weeklyLessons: number
+  difficulty: "Dễ" | "Trung bình" | "Khó"
+  icon: string
 }
 
 const LearningGoalsScreen = ({ navigation }) => {
   const [currentGoals, setCurrentGoals] = useState<Goal[]>([
     {
-      id: 'daily-minutes',
-      title: 'Học mỗi ngày',
-      description: 'Thời gian học tối thiểu mỗi ngày',
+      id: "daily-minutes",
+      title: "Học mỗi ngày",
+      description: "Thời gian học tối thiểu mỗi ngày",
       target: 30,
       current: 25,
-      unit: 'phút',
-      icon: 'schedule',
-      color: '#4F46E5',
+      unit: "phút",
+      icon: "schedule",
+      color: "#4F46E5",
       isActive: true,
     },
     {
-      id: 'weekly-lessons',
-      title: 'Bài học trong tuần',
-      description: 'Số bài học hoàn thành mỗi tuần',
+      id: "weekly-lessons",
+      title: "Bài học trong tuần",
+      description: "Số bài học hoàn thành mỗi tuần",
       target: 10,
       current: 7,
-      unit: 'bài',
-      icon: 'school',
-      color: '#10B981',
+      unit: "bài",
+      icon: "school",
+      color: "#10B981",
       isActive: true,
     },
     {
-      id: 'streak-days',
-      title: 'Chuỗi ngày học',
-      description: 'Học liên tục không nghỉ',
+      id: "streak-days",
+      title: "Chuỗi ngày học",
+      description: "Học liên tục không nghỉ",
       target: 30,
       current: 7,
-      unit: 'ngày',
-      icon: 'local-fire-department',
-      color: '#F59E0B',
+      unit: "ngày",
+      icon: "local-fire-department",
+      color: "#F59E0B",
       isActive: true,
     },
-  ]);
+  ])
 
   const [goalPresets] = useState<GoalPreset[]>([
     {
-      id: 'casual',
-      title: 'Học nhẹ nhàng',
-      description: 'Phù hợp cho người bận rộn',
+      id: "casual",
+      title: "Học nhẹ nhàng",
+      description: "Phù hợp cho người bận rộn",
       dailyMinutes: 15,
       weeklyLessons: 5,
-      difficulty: 'Dễ',
-      icon: 'self-improvement',
+      difficulty: "Dễ",
+      icon: "self-improvement",
     },
     {
-      id: 'regular',
-      title: 'Học đều đặn',
-      description: 'Cân bằng giữa học và nghỉ',
+      id: "regular",
+      title: "Học đều đặn",
+      description: "Cân bằng giữa học và nghỉ",
       dailyMinutes: 30,
       weeklyLessons: 10,
-      difficulty: 'Trung bình',
-      icon: 'trending-up',
+      difficulty: "Trung bình",
+      icon: "trending-up",
     },
     {
-      id: 'intensive',
-      title: 'Học chuyên sâu',
-      description: 'Dành cho người quyết tâm',
+      id: "intensive",
+      title: "Học chuyên sâu",
+      description: "Dành cho người quyết tâm",
       dailyMinutes: 60,
       weeklyLessons: 20,
-      difficulty: 'Khó',
-      icon: 'rocket-launch',
+      difficulty: "Khó",
+      icon: "rocket-launch",
     },
-  ]);
+  ])
 
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const [selectedPreset, setSelectedPreset] = useState<string>('regular');
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  const [selectedPreset, setSelectedPreset] = useState<string>("regular")
+  const { showToast } = useToast()
+  const { user } = useAppStore()
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
-    }).start();
-  }, []);
+    }).start()
+  }, [])
 
   const updateGoal = (goalId: string, newTarget: number) => {
-    setCurrentGoals(prev =>
-      prev.map(goal =>
-        goal.id === goalId ? { ...goal, target: newTarget } : goal
-      )
-    );
-  };
+    setCurrentGoals((prev) => prev.map((goal) => (goal.id === goalId ? { ...goal, target: newTarget } : goal)))
+  }
 
   const applyPreset = (preset: GoalPreset) => {
-    Alert.alert(
-      'Áp dụng mục tiêu',
-      `Bạn có muốn áp dụng gói "${preset.title}"?`,
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Áp dụng',
-          onPress: () => {
-            setCurrentGoals(prev =>
-              prev.map(goal => {
-                if (goal.id === 'daily-minutes') {
-                  return { ...goal, target: preset.dailyMinutes };
-                }
-                if (goal.id === 'weekly-lessons') {
-                  return { ...goal, target: preset.weeklyLessons };
-                }
-                return goal;
-              })
-            );
-            setSelectedPreset(preset.id);
-          },
+    Alert.alert("Áp dụng mục tiêu", `Bạn có muốn áp dụng gói "${preset.title}"?`, [
+      { text: "Hủy", style: "cancel" },
+      {
+        text: "Áp dụng",
+        onPress: () => {
+          setCurrentGoals((prev) =>
+            prev.map((goal) => {
+              if (goal.id === "daily-minutes") {
+                return { ...goal, target: preset.dailyMinutes }
+              }
+              if (goal.id === "weekly-lessons") {
+                return { ...goal, target: preset.weeklyLessons }
+              }
+              return goal
+            }),
+          )
+          setSelectedPreset(preset.id)
+          showToast({ message: `Applied preset "${preset.title}"`, type: "success" })
         },
-      ]
-    );
-  };
+      },
+    ])
+  }
 
   const renderGoalCard = (goal: Goal) => {
-    const progress = Math.min((goal.current / goal.target) * 100, 100);
-    
+    const progress = Math.min((goal.current / goal.target) * 100, 100)
+
     return (
       <View key={goal.id} style={styles.goalCard}>
         <View style={styles.goalHeader}>
@@ -168,17 +159,10 @@ const LearningGoalsScreen = ({ navigation }) => {
             <Text style={styles.progressText}>
               {goal.current}/{goal.target} {goal.unit}
             </Text>
-            <Text style={[styles.progressPercent, { color: goal.color }]}>
-              {Math.round(progress)}%
-            </Text>
+            <Text style={[styles.progressPercent, { color: goal.color }]}>{Math.round(progress)}%</Text>
           </View>
           <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${progress}%`, backgroundColor: goal.color },
-              ]}
-            />
+            <View style={[styles.progressFill, { width: `${progress}%`, backgroundColor: goal.color }]} />
           </View>
         </View>
 
@@ -189,12 +173,12 @@ const LearningGoalsScreen = ({ navigation }) => {
           </View>
         )}
       </View>
-    );
-  };
+    )
+  }
 
   const renderPresetCard = (preset: GoalPreset) => {
-    const isSelected = selectedPreset === preset.id;
-    
+    const isSelected = selectedPreset === preset.id
+
     return (
       <TouchableOpacity
         key={preset.id}
@@ -210,9 +194,7 @@ const LearningGoalsScreen = ({ navigation }) => {
             <Text style={styles.presetDescription}>{preset.description}</Text>
           </View>
           <View style={[styles.difficultyBadge, getDifficultyStyle(preset.difficulty)]}>
-            <Text style={[styles.difficultyText, getDifficultyTextStyle(preset.difficulty)]}>
-              {preset.difficulty}
-            </Text>
+            <Text style={[styles.difficultyText, getDifficultyTextStyle(preset.difficulty)]}>{preset.difficulty}</Text>
           </View>
         </View>
 
@@ -234,34 +216,34 @@ const LearningGoalsScreen = ({ navigation }) => {
           </View>
         )}
       </TouchableOpacity>
-    );
-  };
+    )
+  }
 
   const getDifficultyStyle = (difficulty: string) => {
     switch (difficulty) {
-      case 'Dễ':
-        return { backgroundColor: '#ECFDF5' };
-      case 'Trung bình':
-        return { backgroundColor: '#FFFBEB' };
-      case 'Khó':
-        return { backgroundColor: '#FEF2F2' };
+      case "Dễ":
+        return { backgroundColor: "#ECFDF5" }
+      case "Trung bình":
+        return { backgroundColor: "#FFFBEB" }
+      case "Khó":
+        return { backgroundColor: "#FEF2F2" }
       default:
-        return { backgroundColor: '#F3F4F6' };
+        return { backgroundColor: "#F3F4F6" }
     }
-  };
+  }
 
   const getDifficultyTextStyle = (difficulty: string) => {
     switch (difficulty) {
-      case 'Dễ':
-        return { color: '#10B981' };
-      case 'Trung bình':
-        return { color: '#F59E0B' };
-      case 'Khó':
-        return { color: '#EF4444' };
+      case "Dễ":
+        return { color: "#10B981" }
+      case "Trung bình":
+        return { color: "#F59E0B" }
+      case "Khó":
+        return { color: "#EF4444" }
       default:
-        return { color: '#6B7280' };
+        return { color: "#6B7280" }
     }
-  };
+  }
 
   return (
     <View style={styles.container}>
@@ -278,18 +260,14 @@ const LearningGoalsScreen = ({ navigation }) => {
           {/* Current Goals */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Mục tiêu hiện tại</Text>
-            <Text style={styles.sectionSubtitle}>
-              Theo dõi tiến độ học tập của bạn
-            </Text>
+            <Text style={styles.sectionSubtitle}>Theo dõi tiến độ học tập của bạn</Text>
             {currentGoals.map(renderGoalCard)}
           </View>
 
           {/* Goal Presets */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Gói mục tiêu</Text>
-            <Text style={styles.sectionSubtitle}>
-              Chọn gói phù hợp với lịch trình của bạn
-            </Text>
+            <Text style={styles.sectionSubtitle}>Chọn gói phù hợp với lịch trình của bạn</Text>
             {goalPresets.map(renderPresetCard)}
           </View>
 
@@ -301,10 +279,8 @@ const LearningGoalsScreen = ({ navigation }) => {
             </View>
             <View style={styles.motivationContent}>
               <Text style={styles.motivationText}>
-                "Thành công không phải là chìa khóa của hạnh phúc. 
-                Hạnh phúc là chìa khóa của thành công. 
-                Nếu bạn yêu thích những gì mình đang làm, 
-                bạn sẽ thành công."
+                "Thành công không phải là chìa khóa của hạnh phúc. Hạnh phúc là chìa khóa của thành công. Nếu bạn yêu
+                thích những gì mình đang làm, bạn sẽ thành công."
               </Text>
               <Text style={styles.motivationAuthor}>- Albert Schweitzer</Text>
             </View>
@@ -312,29 +288,29 @@ const LearningGoalsScreen = ({ navigation }) => {
         </Animated.View>
       </ScrollView>
     </View>
-  );
-};
+  )
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: "#E5E7EB",
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   placeholder: {
     width: 24,
@@ -350,37 +326,37 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
     marginBottom: 4,
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
     marginBottom: 16,
   },
   goalCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
   },
   goalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
   },
   goalIcon: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   goalInfo: {
@@ -388,12 +364,12 @@ const styles = StyleSheet.create({
   },
   goalTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   goalDescription: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
     marginTop: 2,
   },
   editButton: {
@@ -403,33 +379,33 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   progressInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     marginBottom: 8,
   },
   progressText: {
     fontSize: 14,
-    color: '#374151',
+    color: "#374151",
   },
   progressPercent: {
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: "600",
   },
   progressBar: {
     height: 8,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: "#E5E7EB",
     borderRadius: 4,
   },
   progressFill: {
-    height: '100%',
+    height: "100%",
     borderRadius: 4,
   },
   completedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#ECFDF5',
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#ECFDF5",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -437,38 +413,38 @@ const styles = StyleSheet.create({
   },
   completedText: {
     fontSize: 12,
-    color: '#10B981',
+    color: "#10B981",
     marginLeft: 4,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   presetCard: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 2,
-    borderColor: 'transparent',
-    shadowColor: '#000',
+    borderColor: "transparent",
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
   },
   selectedPreset: {
-    borderColor: '#4F46E5',
+    borderColor: "#4F46E5",
   },
   presetHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
   },
   presetIcon: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 12,
   },
   presetInfo: {
@@ -476,12 +452,12 @@ const styles = StyleSheet.create({
   },
   presetTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   presetDescription: {
     fontSize: 14,
-    color: '#6B7280',
+    color: "#6B7280",
     marginTop: 2,
   },
   difficultyBadge: {
@@ -491,27 +467,27 @@ const styles = StyleSheet.create({
   },
   difficultyText: {
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   presetDetails: {
-    flexDirection: 'row',
+    flexDirection: "row",
     gap: 16,
     marginBottom: 8,
   },
   presetStat: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   presetStatText: {
     fontSize: 12,
-    color: '#6B7280',
+    color: "#6B7280",
   },
   selectedIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    backgroundColor: '#EEF2FF',
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    backgroundColor: "#EEF2FF",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
@@ -519,23 +495,23 @@ const styles = StyleSheet.create({
   },
   selectedText: {
     fontSize: 12,
-    color: '#4F46E5',
+    color: "#4F46E5",
     marginLeft: 4,
-    fontWeight: '500',
+    fontWeight: "500",
   },
   motivationSection: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 20,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
   },
   motivationHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 16,
   },
   motivationIcon: {
@@ -545,25 +521,25 @@ const styles = StyleSheet.create({
   },
   motivationTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   motivationContent: {
-    alignItems: 'center',
+    alignItems: "center",
   },
   motivationText: {
     fontSize: 14,
-    color: '#374151',
-    textAlign: 'center',
+    color: "#374151",
+    textAlign: "center",
     lineHeight: 22,
-    fontStyle: 'italic',
+    fontStyle: "italic",
     marginBottom: 8,
   },
   motivationAuthor: {
     fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '500',
+    color: "#6B7280",
+    fontWeight: "500",
   },
-});
+})
 
-export default LearningGoalsScreen;
+export default LearningGoalsScreen

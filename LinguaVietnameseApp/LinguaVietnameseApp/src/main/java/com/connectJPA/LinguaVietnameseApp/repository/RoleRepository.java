@@ -13,7 +13,7 @@ import java.util.UUID;
 
 public interface RoleRepository extends JpaRepository<Role, UUID> {
     @Query("SELECT r FROM Role r WHERE r.roleName LIKE %:roleName% AND r.isDeleted = false")
-    Page<Role> findByRoleNameContainingAndIsDeletedFalse(@Param("roleName") String roleName, Pageable pageable);
+    Page<Role> findByRoleNameContainingAndIsDeletedFalse(@Param("roleName") RoleName roleName, Pageable pageable);
 
     @Query("SELECT r FROM Role r WHERE r.roleId = :id AND r.isDeleted = false")
     Optional<Role> findByRoleIdAndIsDeletedFalse(@Param("id") UUID id);
@@ -21,5 +21,6 @@ public interface RoleRepository extends JpaRepository<Role, UUID> {
     @Query("UPDATE Role r SET r.isDeleted = true, r.deletedAt = CURRENT_TIMESTAMP WHERE r.roleId = :id AND r.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
 
+    @Query("SELECT r FROM Role r WHERE r.roleName = :roleName AND r.isDeleted = false")
     Optional<Role> findByRoleNameAndIsDeletedFalse(RoleName roleName);
 }

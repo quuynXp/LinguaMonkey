@@ -29,7 +29,6 @@ public class LessonCategoryServiceImpl implements LessonCategoryService {
     private final LessonCategoryMapper lessonCategoryMapper;
 
     @Override
-    @Cacheable(value = "lessonCategories", key = "#lessonCategoryName + ':' + #languageCode + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LessonCategoryResponse> getAllLessonCategories(String lessonCategoryName, String languageCode, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -44,7 +43,6 @@ public class LessonCategoryServiceImpl implements LessonCategoryService {
     }
 
     @Override
-    @Cacheable(value = "lessonCategories", key = "#id")
     public LessonCategoryResponse getLessonCategoryById(UUID id) {
         try {
             if (id == null) {
@@ -61,7 +59,6 @@ public class LessonCategoryServiceImpl implements LessonCategoryService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonCategories", key = "#result.lessonCategoryId")
     public LessonCategoryResponse createLessonCategory(LessonCategoryRequest request) {
         try {
             if (request == null) {
@@ -78,7 +75,6 @@ public class LessonCategoryServiceImpl implements LessonCategoryService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonCategories", key = "#id")
     public LessonCategoryResponse updateLessonCategory(UUID id, LessonCategoryRequest request) {
         try {
             if (id == null || request == null) {
@@ -97,7 +93,6 @@ public class LessonCategoryServiceImpl implements LessonCategoryService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "lessonCategories", key = "#id")
     public void deleteLessonCategory(UUID id) {
         try {
             if (id == null) {

@@ -5,6 +5,7 @@
     "jsx": "react-native",
     "allowJs": true,
     "skipLibCheck": true,
+    "typeRoots": ["./src/types", "./node_modules/@types"],
     "noEmit": true,
     "isolatedModules": true,
     "strict": false,

@@ -67,7 +67,7 @@ public class BadgeController {
             @ApiResponse(responseCode = "400", description = "Invalid badge data")
     })
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<BadgeResponse> createBadge(
             @Valid @RequestBody BadgeRequest request,
             Locale locale) {
@@ -86,7 +86,7 @@ public class BadgeController {
             @ApiResponse(responseCode = "400", description = "Invalid badge data")
     })
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<BadgeResponse> updateBadge(
             @Parameter(description = "Badge ID") @PathVariable UUID id,
             @Valid @RequestBody BadgeRequest request,
@@ -105,7 +105,7 @@ public class BadgeController {
             @ApiResponse(responseCode = "404", description = "Badge not found")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Void> deleteBadge(
             @Parameter(description = "Badge ID") @PathVariable UUID id,
             Locale locale) {

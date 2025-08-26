@@ -1,28 +1,30 @@
-import { useQuery } from "@tanstack/react-query"
-import axiosInstance from "../api/axiosInstance"
-import { Leaderboard } from "../types/api"
+import { useEffect, useState } from 'react';
+import axiosIntansce from '../api/axiosInstance';
 
-interface LeaderboardResponse {
-  result: Leaderboard[];
-}
+const useTopThreeUsers = () => {
+  const [topThreeUsers, setTopThreeUsers] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isError, setIsError] = useState(false);
 
-const fetchTopThreeUsers = async (): Promise<Leaderboard[]> => {
-  const { data } = await axiosInstance.get<LeaderboardResponse>(
-    `/leaderboards/top3?tab=top100&period=all`
-  );
-  return data.result; 
+  useEffect(() => {
+    const fetchTopThreeUsers = async () => {
+      setIsLoading(true);
+      try {
+        const response = await axiosIntansce.get('/leaderboards/global/top-3');
+        setTopThreeUsers(response.data.result);
+        setIsError(false);
+      } catch (error) {
+        console.error('Error fetching top 3 global users:', error);
+        setIsError(true);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchTopThreeUsers();
+  }, []);
+
+  return { topThreeUsers, isLoading, isError };
 };
 
-
-export default function useTopThreeUsers() {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["topThreeUsers"],
-    queryFn: fetchTopThreeUsers,
-  });
-
-  return {
-    topThreeUsers: data || [],
-    isLoading,
-    isError,
-  };
-}
+export default useTopThreeUsers;

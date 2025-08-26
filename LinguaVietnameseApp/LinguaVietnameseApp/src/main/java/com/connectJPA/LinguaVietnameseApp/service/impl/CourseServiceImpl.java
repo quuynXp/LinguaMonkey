@@ -3,9 +3,11 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CourseRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseEnrollment;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.CourseEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.CourseRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CourseDiscountService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
@@ -29,6 +31,7 @@ public class CourseServiceImpl implements CourseService {
     private final CourseMapper courseMapper;
     private final CourseDiscountService courseDiscountService;
     private final CourseEnrollmentService courseEnrollmentService;
+    private final CourseEnrollmentRepository courseEnrollmentRepository;
 
     @Override
     @Cacheable(value = "courses", key = "#title + ':' + #languageCode + ':' + #pageable")
@@ -82,5 +85,17 @@ public class CourseServiceImpl implements CourseService {
         // Xử lý xóa liên quan
         courseDiscountService.deleteCourseDiscountsByCourseId(id);
         courseEnrollmentService.deleteCourseEnrollmentsByCourseId(id);
+    }
+
+    @Override
+    @Cacheable(value = "enrolledCoursesByUser", key = "#userId + ':' + #pageable")
+    public Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable) {
+        Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId, pageable);
+
+        return enrollments.map(enrollment -> {
+            Course course = courseRepository.findById(enrollment.getCourseId())
+                    .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
+            return courseMapper.toResponse(course);
+        });
     }
 }

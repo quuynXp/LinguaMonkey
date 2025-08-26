@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.Type;
 
 import java.time.Duration;
 import java.util.UUID;
@@ -24,6 +25,4 @@ public class UserLearningActivity extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     private ActivityType activityType;
-
-    private Duration duration;
 }

@@ -1,9 +1,10 @@
-"use client"
 
-import LottieView from "lottie-react-native"
 import { useState } from "react"
 import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
+import instance from "../../api/axiosInstance"
+import {useUserStore} from "../../stores/UserStore"
+import * as WebBrowser from "expo-web-browser"
 
 const PaymentScreen = ({ navigation, route }) => {
   const { course } = route.params
@@ -32,18 +33,24 @@ const PaymentScreen = ({ navigation, route }) => {
     setIsProcessing(true)
 
     try {
-      // Simulate payment processing
-      await new Promise((resolve) => setTimeout(resolve, 3000))
+      const paymentRequest = {
+        userId: "USER_ID_LAY_TU_JWT", // cần lấy từ auth context/store
+        amount: course.price,
+        provider: selectedPaymentMethod === "paypal" ? "STRIPE"
+          : selectedPaymentMethod === "card" ? "STRIPE"
+            : selectedPaymentMethod.toUpperCase(),
+        description: `Payment for ${course.title}`,
+        currency: "VND",
+        returnUrl: "myapp://payment-result" // deep link app
+      }
 
-      Alert.alert("Payment Successful!", "You now have access to the full course. Happy learning!", [
-        {
-          text: "Start Learning",
-          onPress: () => {
-            navigation.navigate("CourseDetails", { course, isPurchased: true })
-          },
-        },
-      ])
+      const res = await instance.post("/transactions/create-payment", paymentRequest)
+      const paymentUrl = res.data.result
+
+      // Mở trình duyệt thanh toán
+      await WebBrowser.openBrowserAsync(paymentUrl)
     } catch (error) {
+      console.log(error)
       Alert.alert("Payment Failed", "Please try again or use a different payment method.")
     } finally {
       setIsProcessing(false)

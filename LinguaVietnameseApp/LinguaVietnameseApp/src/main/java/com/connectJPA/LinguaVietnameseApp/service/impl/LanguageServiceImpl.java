@@ -27,7 +27,6 @@ public class LanguageServiceImpl implements LanguageService {
     private final LanguageMapper languageMapper;
 
     @Override
-    @Cacheable(value = "languages", key = "#languageCode + ':' + #languageName + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LanguageResponse> getAllLanguages(String languageCode, String languageName, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -42,7 +41,6 @@ public class LanguageServiceImpl implements LanguageService {
     }
 
     @Override
-    @Cacheable(value = "languages", key = "#languageCode")
     public LanguageResponse getLanguageByLanguageCode(String languageCode) {
         try {
             if (languageCode == null) {
@@ -59,7 +57,6 @@ public class LanguageServiceImpl implements LanguageService {
 
     @Override
     @Transactional
-    @CachePut(value = "languages", key = "#result.languageCode")
     public LanguageResponse createLanguage(LanguageRequest request) {
         try {
             if (request == null) {
@@ -76,7 +73,6 @@ public class LanguageServiceImpl implements LanguageService {
 
     @Override
     @Transactional
-    @CachePut(value = "languages", key = "#languageCode")
     public LanguageResponse updateLanguage(String languageCode, LanguageRequest request) {
         try {
             if (languageCode == null || request == null) {
@@ -95,7 +91,6 @@ public class LanguageServiceImpl implements LanguageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "languages", key = "#languageCode")
     public void deleteLanguage(String languageCode) {
         try {
             if (languageCode ==  null) {

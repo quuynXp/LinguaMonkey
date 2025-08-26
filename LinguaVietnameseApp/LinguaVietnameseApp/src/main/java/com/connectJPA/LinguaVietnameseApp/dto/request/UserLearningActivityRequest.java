@@ -1,15 +1,17 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
-import lombok.Builder;
-import lombok.Data;
-import lombok.Getter;
+import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
+import lombok.*;
 
+import java.time.Duration;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Getter
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class UserLearningActivityRequest {
     private UUID userId;
-    private String activityType;
-    private String duration;
+    private ActivityType activityType;
 }

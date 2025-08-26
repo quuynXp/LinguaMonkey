@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Three.js GLTF Viewer</title>
+  <style>html,body{margin:0;height:100%;background:#333;}canvas{display:block;width:100%;height:100%;}</style>
+</head>
+<body>
+  <div id="overlay">Loading…</div>
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js';
+    import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/controls/OrbitControls.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/loaders/GLTFLoader.js';
+
+    const overlay = document.getElementById('overlay');
+
+    const urlParams = new URLSearchParams(location.search);
+    const modelUrl = urlParams.get('model');
+    if(!modelUrl){ overlay.textContent = 'No model URL provided'; throw new Error('No model URL'); }
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(50, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({antialias:true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true; controls.dampingFactor = 0.05;
+
+    const light = new THREE.DirectionalLight(0xffffff,1);
+    light.position.set(2,2,5); scene.add(light);
+    scene.add(new THREE.AmbientLight(0xffffff,0.8));
+
+    const loader = new GLTFLoader();
+    loader.load(modelUrl,
+      gltf => {
+        const model = gltf.scene;
+        scene.add(model);
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        model.position.sub(center);
+        const maxDim = Math.max(...Object.values(box.getSize(new THREE.Vector3())));
+        model.scale.setScalar(1.5/maxDim);
+
+        camera.position.set(0,0, maxDim*2);
+        controls.target.set(0,0,0);
+        controls.update();
+        overlay.textContent = 'Model Loaded ✅';
+      },
+      progress => {
+        if(progress && progress.loaded && progress.total){
+          overlay.textContent = 'Loading: ' + Math.round(progress.loaded/progress.total*100) + '%';
+        }
+      },
+      e => { overlay.textContent = 'Error loading model'; console.error(e); }
+    );
+
+    function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene,camera); }
+    animate();
+    window.addEventListener('resize', ()=>{ camera.aspect=window.innerWidth/window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth,window.innerHeight); });
+  </script>
+</body>
+</html>
