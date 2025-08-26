@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.Certification;
 import com.connectJPA.LinguaVietnameseApp.enums.GoalType;
 import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import jakarta.persistence.*;
@@ -25,11 +26,14 @@ public class UserGoal extends BaseEntity {
 
     private UUID userId;
     private String languageCode;
-    private String examName;
+    @Enumerated(EnumType.STRING)
+    private Certification certificate;
     private int targetScore;
     private String targetSkill;
     private String customDescription;
+    @Enumerated(EnumType.STRING)
     private GoalType goalType;
+    @Enumerated(EnumType.STRING)
     private ProficiencyLevel targetProficiency;
     private OffsetDateTime targetDate;
 }

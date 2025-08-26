@@ -20,7 +20,7 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/certificates")
-@Tag(name = "Certificate Management", description = "APIs for managing certificates")
+@Tag(name = "Certification Management", description = "APIs for managing certificates")
 @RequiredArgsConstructor
 public class CertificateController {
     private final CertificateService certificateService;
@@ -44,11 +44,11 @@ public class CertificateController {
     @Operation(summary = "Get certificate by ID", description = "Retrieve a certificate by its ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved certificate"),
-            @ApiResponse(responseCode = "404", description = "Certificate not found")
+            @ApiResponse(responseCode = "404", description = "Certification not found")
     })
     @GetMapping("/{id}")
     public AppApiResponse<CertificateResponse> getCertificateById(
-            @Parameter(description = "Certificate ID") @PathVariable UUID id) {
+            @Parameter(description = "Certification ID") @PathVariable UUID id) {
         CertificateResponse certificate = certificateService.getCertificateById(id);
         return AppApiResponse.<CertificateResponse>builder()
                 .code(200)
@@ -59,53 +59,53 @@ public class CertificateController {
 
     @Operation(summary = "Create a new certificate", description = "Create a new certificate with the provided details")
     @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Certificate created successfully"),
+            @ApiResponse(responseCode = "201", description = "Certification created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid certificate data")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PostMapping
     public AppApiResponse<CertificateResponse> createCertificate(
             @Valid @RequestBody CertificateRequest request) {
         CertificateResponse certificate = certificateService.createCertificate(request);
         return AppApiResponse.<CertificateResponse>builder()
                 .code(201)
-                .message("Certificate created successfully")
+                .message("Certification created successfully")
                 .result(certificate)
                 .build();
     }
 
     @Operation(summary = "Update a certificate", description = "Update an existing certificate by its ID")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Certificate updated successfully"),
-            @ApiResponse(responseCode = "404", description = "Certificate not found"),
+            @ApiResponse(responseCode = "200", description = "Certification updated successfully"),
+            @ApiResponse(responseCode = "404", description = "Certification not found"),
             @ApiResponse(responseCode = "400", description = "Invalid certificate data")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PutMapping("/{id}")
     public AppApiResponse<CertificateResponse> updateCertificate(
-            @Parameter(description = "Certificate ID") @PathVariable UUID id,
+            @Parameter(description = "Certification ID") @PathVariable UUID id,
             @Valid @RequestBody CertificateRequest request) {
         CertificateResponse certificate = certificateService.updateCertificate(id, request);
         return AppApiResponse.<CertificateResponse>builder()
                 .code(200)
-                .message("Certificate updated successfully")
+                .message("Certification updated successfully")
                 .result(certificate)
                 .build();
     }
 
     @Operation(summary = "Delete a certificate", description = "Soft delete a certificate by its ID")
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Certificate deleted successfully"),
-            @ApiResponse(responseCode = "404", description = "Certificate not found")
+            @ApiResponse(responseCode = "200", description = "Certification deleted successfully"),
+            @ApiResponse(responseCode = "404", description = "Certification not found")
     })
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteCertificate(
-            @Parameter(description = "Certificate ID") @PathVariable UUID id) {
+            @Parameter(description = "Certification ID") @PathVariable UUID id) {
         certificateService.deleteCertificate(id);
         return AppApiResponse.<Void>builder()
                 .code(200)
-                .message("Certificate deleted successfully")
+                .message("Certification deleted successfully")
                 .build();
     }
 }

@@ -1,10 +1,10 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
-import { WebView } from 'react-native-webview';
+// path: src/screens/JitsiCallScreen.js
+import React from "react";
+import { StyleSheet, View } from "react-native";
+import { WebView } from "react-native-webview";
 
 const JitsiCallScreen = ({ route }) => {
-  const { roomId = 'language-learning-test-room' } = route.params || {};
-
+  const { roomId = "language-learning-test-room" } = route.params || {};
   const jitsiUrl = `https://meet.jit.si/${roomId}`;
 
   return (
@@ -15,7 +15,7 @@ const JitsiCallScreen = ({ route }) => {
         allowsFullscreenVideo
         javaScriptEnabled
         domStorageEnabled
-        originWhitelist={['*']}
+        originWhitelist={["*"]}
       />
     </View>
   );
@@ -24,10 +24,6 @@ const JitsiCallScreen = ({ route }) => {
 export default JitsiCallScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  webview: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  webview: { flex: 1 },
 });

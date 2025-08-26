@@ -30,10 +30,14 @@ public class Character3dServiceImpl implements Character3dService {
     private final Character3dMapper character3dMapper;
 
     @Override
-    @Cacheable(value = "character3ds", key = "#character3dName + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<Character3dResponse> getAllCharacter3ds(String character3dName, Pageable pageable) {
         try {
-            Page<Character3d> characters = character3dRepository.findByCharacter3dNameContainingAndIsDeletedFalse(character3dName, pageable);
+            Page<Character3d> characters;
+            if (character3dName == null || character3dName.isBlank()) {
+                characters = character3dRepository.findByIsDeletedFalse(pageable);
+            } else {
+                characters = character3dRepository.findByCharacter3dNameContainingAndIsDeletedFalse(character3dName, pageable);
+            }
             return characters.map(character3dMapper::toResponse);
         } catch (IllegalArgumentException e) {
             throw new AppException(ErrorCode.INVALID_KEY);
@@ -44,8 +48,8 @@ public class Character3dServiceImpl implements Character3dService {
         }
     }
 
+
     @Override
-    @Cacheable(value = "character3ds", key = "#id")
     public Character3dResponse getCharacter3dById(UUID id) {
         try {
             Character3d character = character3dRepository.findByCharacter3dIdAndIsDeletedFalse(id)
@@ -62,8 +66,6 @@ public class Character3dServiceImpl implements Character3dService {
 
     @Override
     @Transactional
-    @CachePut(value = "character3ds", key = "#result.character3dId")
-    @CacheEvict(value = "character3ds", allEntries = true)
     public Character3dResponse createCharacter3d(Character3dRequest request) {
         try {
             if (request == null) {
@@ -84,7 +86,6 @@ public class Character3dServiceImpl implements Character3dService {
 
     @Override
     @Transactional
-    @CachePut(value = "character3ds", key = "#id")
     public Character3dResponse updateCharacter3d(UUID id, Character3dRequest request) {
         try {
             if (request == null) {
@@ -106,7 +107,6 @@ public class Character3dServiceImpl implements Character3dService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "character3ds", key = "#id", allEntries = true)
     public void deleteCharacter3d(UUID id) {
         try {
             Character3d character = character3dRepository.findByCharacter3dIdAndIsDeletedFalse(id)

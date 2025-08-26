@@ -5,12 +5,17 @@ import { useTranslation } from 'react-i18next'
 import { Alert, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { verifyResetCode } from '../../services/authService'
+import { gotoTab, resetToTab } from "../../utils/navigationRef";
+
 
 const VerifyCodeScreen = ({ navigation, route }) => {
   const { t } = useTranslation();
   const { email } = route.params;
   const [code, setCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  const [timeLeft, setTimeLeft] = useState(300); // 5 phút = 300s
+  const [canResend, setCanResend] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
@@ -30,6 +35,24 @@ const VerifyCodeScreen = ({ navigation, route }) => {
     ]).start()
   }, [])
 
+  // Countdown logic
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      setCanResend(true);
+      return;
+    }
+    const interval = setInterval(() => {
+      setTimeLeft(prev => prev - 1);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [timeLeft]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? "0" : ""}${s}`;
+  }
+
   const handleVerify = async () => {
     if (code.length !== 6) {
       Alert.alert(t('error'), t('enter6DigitCode'));
@@ -38,13 +61,20 @@ const VerifyCodeScreen = ({ navigation, route }) => {
     setIsLoading(true);
     try {
       const resetToken = await verifyResetCode(email, code);
-      navigation.navigate("ResetPassword", { resetToken });
+      gotoTab("Auth", "ResetPasswordScreen", { email, resetToken });
     } catch (error: any) {
       Alert.alert(t('error'), error.message || t('verificationFailed'));
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handleResend = () => {
+    verifyResetCode(email, code);
+    Alert.alert(t('info'), t('codeResent', { email }));
+    setTimeLeft(300);
+    setCanResend(false);
+  }
 
   return (
     <View style={styles.container}>
@@ -71,6 +101,12 @@ const VerifyCodeScreen = ({ navigation, route }) => {
         <Text style={styles.title}>{t('verifyCode')}</Text>
         <Text style={styles.subtitle}>
           {t('enterCodeSentTo', { email })}
+        </Text>
+
+        <Text style={styles.countdown}>
+          {canResend
+            ? t('youCanResend')
+            : t('timeRemaining', { time: formatTime(timeLeft) })}
         </Text>
 
         {/* Code Input */}
@@ -104,10 +140,12 @@ const VerifyCodeScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
 
-        {/* Resend Link */}
-        <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
-          <Text style={styles.resendLink}>{t('resendCode')}</Text>
-        </TouchableOpacity>
+        {/* Resend Button */}
+        {canResend && (
+          <TouchableOpacity onPress={handleResend}>
+            <Text style={styles.resendLink}>{t('resendCode')}</Text>
+          </TouchableOpacity>
+        )}
       </Animated.View>
     </View>
   )
@@ -143,8 +181,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: "#6B7280",
     textAlign: "center",
-    marginBottom: 40,
+    marginBottom: 20,
     lineHeight: 24,
+  },
+  countdown: {
+    fontSize: 14,
+    color: "#EF4444",
+    textAlign: "center",
+    marginBottom: 20,
   },
   formContainer: {
     marginBottom: 32,
@@ -186,15 +230,12 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "600",
   },
-  loadingAnimation: {
-    width: 24,
-    height: 24,
-  },
   resendLink: {
     fontSize: 14,
     color: "#4F46E5",
     textAlign: "center",
     fontWeight: "500",
+    marginTop: 12,
   },
 })
 

@@ -3,10 +3,15 @@
 import DateTimePicker from "@react-native-community/datetimepicker"
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native"
-import { MaterialIcons } from '@expo/vector-icons';
-import NotificationService, { type NotificationPreferences } from "../../services/NotificationService"
+import Icon  from '@expo/vector-icons/MaterialIcons';
+import NotificationService, { type NotificationPreferences } from "../../services/notificationService"
 
 const NotificationSettingsScreen = ({ navigation }) => {
+
+  useEffect(() => {
+    // xin quyền khi vào màn hình
+    NotificationService.requestPermissions();
+  }, []);
   const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [showQuietStartPicker, setShowQuietStartPicker] = useState(false)

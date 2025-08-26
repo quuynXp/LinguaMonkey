@@ -1,10 +1,10 @@
-"use client"
 
 import { useState, useRef, useEffect } from "react"
 import { View, Text, StyleSheet, TouchableOpacity, Animated, TextInput, Alert, ScrollView } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { registerWithEmail, loginWithGoogle, loginWithFacebook } from '../../services/authService';
+import { resetToTab } from "../../utils/navigationRef";
 
 const RegisterScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -72,6 +72,7 @@ const RegisterScreen = ({ navigation }) => {
     setIsLoading(true)
     try {
       await registerWithEmail(formData.firstName, formData.lastName, formData.email, formData.password);
+      resetToTab('Home')
     } catch (error: any) {
       Alert.alert(t('error'), error.message || t('registerFailed'));
     } finally {

@@ -1,14 +1,18 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.UUID;
 
 @Data
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class LessonResponse {
     private UUID lessonId;
     private String lessonName;

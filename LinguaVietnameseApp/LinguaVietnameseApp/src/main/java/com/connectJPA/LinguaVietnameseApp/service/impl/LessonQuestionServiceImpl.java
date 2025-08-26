@@ -29,7 +29,6 @@ public class LessonQuestionServiceImpl implements LessonQuestionService {
     private final LessonQuestionMapper lessonQuestionMapper;
 
     @Override
-    @Cacheable(value = "lessonQuestions", key = "#lessonId + ':' + #languageCode + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LessonQuestionResponse> getAllLessonQuestions(String lessonId, String languageCode, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -45,7 +44,6 @@ public class LessonQuestionServiceImpl implements LessonQuestionService {
     }
 
     @Override
-    @Cacheable(value = "lessonQuestions", key = "#id")
     public LessonQuestionResponse getLessonQuestionById(UUID id) {
         try {
             if (id == null) {
@@ -62,7 +60,6 @@ public class LessonQuestionServiceImpl implements LessonQuestionService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonQuestions", key = "#result.lessonQuestionId")
     public LessonQuestionResponse createLessonQuestion(LessonQuestionRequest request) {
         try {
             if (request == null || request.getLessonId() == null) {
@@ -79,7 +76,6 @@ public class LessonQuestionServiceImpl implements LessonQuestionService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonQuestions", key = "#id")
     public LessonQuestionResponse updateLessonQuestion(UUID id, LessonQuestionRequest request) {
         try {
             if (id == null || request == null) {
@@ -98,7 +94,6 @@ public class LessonQuestionServiceImpl implements LessonQuestionService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "lessonQuestions", key = "#id")
     public void deleteLessonQuestion(UUID id) {
         try {
             if (id == null) {

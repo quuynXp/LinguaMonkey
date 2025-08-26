@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.service;
 import com.connectJPA.LinguaVietnameseApp.dto.request.AuthenticationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.IntrospectResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.nimbusds.jose.JOSEException;
 
 import java.text.ParseException;
@@ -32,4 +33,7 @@ public interface AuthenticationService {
     void sendPasswordResetCode(String email);
     String verifyResetCode(String email, String code);
     void resetPassword(String resetToken, String newPassword);
+    String generateRefreshToken(User user, int days);
+    String generateToken(User user);
+
 }

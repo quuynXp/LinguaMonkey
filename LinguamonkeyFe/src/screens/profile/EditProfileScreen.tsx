@@ -1,43 +1,52 @@
-import React, { useRef, useState } from 'react';
+"use client"
+
+import React, { useRef, useState } from "react"
 import {
-    Alert,
-    Animated,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native"
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useAppStore } from "../../stores/appStore"
+import { useProfile } from "../../hooks/useProfile"
+import { useToast } from "../../hooks/useToast"
 
 interface UserProfile {
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string;
-  dateOfBirth: string;
-  location: string;
-  bio: string;
+  firstName: string
+  lastName: string
+  email: string
+  phone: string
+  dateOfBirth: string
+  location: string
+  bio: string
 }
 
 const EditProfileScreen = ({ navigation }) => {
-  const [profile, setProfile] = useState<UserProfile>({
-    firstName: 'Minh',
-    lastName: 'Nguyen',
-    email: 'minh.nguyen@email.com',
-    phone: '+84 123 456 789',
-    dateOfBirth: '15/03/1995',
-    location: 'Hồ Chí Minh, Việt Nam',
-    bio: 'Đam mê học ngôn ngữ và khám phá văn hóa mới',
-  });
+  const { user } = useAppStore()
+  const { data: userProfile, isLoading, error, updateProfile } = useProfile(user?.user_id)
+  const { showToast } = useToast()
 
-  const [isEditing, setIsEditing] = useState(false);
-  const [hasChanges, setHasChanges] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(30)).current;
+  const [profile, setProfile] = useState<UserProfile>({
+    firstName: userProfile?.firstName || "",
+    lastName: userProfile?.lastName || "",
+    email: userProfile?.email || "",
+    phone: userProfile?.phone || "",
+    dateOfBirth: userProfile?.dateOfBirth || "",
+    location: userProfile?.country || "",
+    bio: userProfile?.bio || "",
+  })
+
+  const [isEditing, setIsEditing] = useState(false)
+  const [hasChanges, setHasChanges] = useState(false)
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  const slideAnim = useRef(new Animated.Value(30)).current
 
   React.useEffect(() => {
     Animated.parallel([
@@ -51,36 +60,34 @@ const EditProfileScreen = ({ navigation }) => {
         duration: 600,
         useNativeDriver: true,
       }),
-    ]).start();
-  }, []);
+    ]).start()
+  }, [])
 
   const handleInputChange = (field: keyof UserProfile, value: string) => {
-    setProfile(prev => ({ ...prev, [field]: value }));
-    setHasChanges(true);
-  };
+    setProfile((prev) => ({ ...prev, [field]: value }))
+    setHasChanges(true)
+  }
 
-  const handleSave = () => {
-    Alert.alert(
-      'Lưu thay đổi',
-      'Thông tin của bạn đã được cập nhật thành công!',
-      [{ text: 'OK', onPress: () => setHasChanges(false) }]
-    );
-  };
+  const handleSave = async () => {
+    try {
+      await updateProfile(profile)
+      showToast({ message: "Profile updated successfully!", type: "success" })
+      setHasChanges(false)
+    } catch (err) {
+      showToast({ message: "Failed to update profile", type: "error" })
+    }
+  }
 
   const handleCancel = () => {
     if (hasChanges) {
-      Alert.alert(
-        'Hủy thay đổi',
-        'Bạn có chắc chắn muốn hủy các thay đổi chưa lưu?',
-        [
-          { text: 'Tiếp tục chỉnh sửa', style: 'cancel' },
-          { text: 'Hủy thay đổi', onPress: () => navigation.goBack() },
-        ]
-      );
+      Alert.alert("Hủy thay đổi", "Bạn có chắc chắn muốn hủy các thay đổi chưa lưu?", [
+        { text: "Tiếp tục chỉnh sửa", style: "cancel" },
+        { text: "Hủy thay đổi", onPress: () => navigation.goBack() },
+      ])
     } else {
-      navigation.goBack();
+      navigation.goBack()
     }
-  };
+  }
 
   const renderInputField = (
     label: string,
@@ -88,7 +95,7 @@ const EditProfileScreen = ({ navigation }) => {
     field: keyof UserProfile,
     placeholder: string,
     multiline = false,
-    keyboardType: any = 'default'
+    keyboardType: any = "default",
   ) => (
     <View style={styles.inputGroup}>
       <Text style={styles.inputLabel}>{label}</Text>
@@ -103,13 +110,10 @@ const EditProfileScreen = ({ navigation }) => {
         keyboardType={keyboardType}
       />
     </View>
-  );
+  )
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
       <View style={styles.header}>
         <TouchableOpacity onPress={handleCancel} style={styles.headerButton}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -120,9 +124,7 @@ const EditProfileScreen = ({ navigation }) => {
           style={[styles.headerButton, hasChanges && styles.saveButton]}
           disabled={!hasChanges}
         >
-          <Text style={[styles.saveText, hasChanges && styles.saveTextActive]}>
-            Lưu
-          </Text>
+          <Text style={[styles.saveText, hasChanges && styles.saveTextActive]}>Lưu</Text>
         </TouchableOpacity>
       </View>
 
@@ -153,12 +155,12 @@ const EditProfileScreen = ({ navigation }) => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
             <View style={styles.sectionContent}>
-              {renderInputField('Tên', profile.firstName, 'firstName', 'Nhập tên của bạn')}
-              {renderInputField('Họ', profile.lastName, 'lastName', 'Nhập họ của bạn')}
-              {renderInputField('Email', profile.email, 'email', 'Nhập email', false, 'email-address')}
-              {renderInputField('Số điện thoại', profile.phone, 'phone', 'Nhập số điện thoại', false, 'phone-pad')}
-              {renderInputField('Ngày sinh', profile.dateOfBirth, 'dateOfBirth', 'DD/MM/YYYY')}
-              {renderInputField('Địa chỉ', profile.location, 'location', 'Nhập địa chỉ của bạn')}
+              {renderInputField("Tên", profile.firstName, "firstName", "Nhập tên của bạn")}
+              {renderInputField("Họ", profile.lastName, "lastName", "Nhập họ của bạn")}
+              {renderInputField("Email", profile.email, "email", "Nhập email", false, "email-address")}
+              {renderInputField("Số điện thoại", profile.phone, "phone", "Nhập số điện thoại", false, "phone-pad")}
+              {renderInputField("Ngày sinh", profile.dateOfBirth, "dateOfBirth", "DD/MM/YYYY")}
+              {renderInputField("Địa chỉ", profile.location, "location", "Nhập địa chỉ của bạn")}
             </View>
           </View>
 
@@ -166,13 +168,7 @@ const EditProfileScreen = ({ navigation }) => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Giới thiệu</Text>
             <View style={styles.sectionContent}>
-              {renderInputField(
-                'Mô tả bản thân',
-                profile.bio,
-                'bio',
-                'Viết vài dòng về bản thân bạn...',
-                true
-              )}
+              {renderInputField("Mô tả bản thân", profile.bio, "bio", "Viết vài dòng về bản thân bạn...", true)}
             </View>
           </View>
 
@@ -185,7 +181,7 @@ const EditProfileScreen = ({ navigation }) => {
                 <Text style={styles.actionText}>Đổi mật khẩu</Text>
                 <Icon name="chevron-right" size={20} color="#9CA3AF" />
               </TouchableOpacity>
-              
+
               <TouchableOpacity style={styles.actionItem}>
                 <Icon name="email" size={20} color="#4F46E5" />
                 <Text style={styles.actionText}>Xác thực email</Text>
@@ -199,45 +195,45 @@ const EditProfileScreen = ({ navigation }) => {
         </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-};
+  )
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F8FAFC',
+    backgroundColor: "#F8FAFC",
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 16,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
+    borderBottomColor: "#E5E7EB",
   },
   headerButton: {
     padding: 8,
   },
   headerTitle: {
     fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
+    fontWeight: "600",
+    color: "#1F2937",
   },
   saveButton: {
-    backgroundColor: '#4F46E5',
+    backgroundColor: "#4F46E5",
     borderRadius: 8,
     paddingHorizontal: 12,
   },
   saveText: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#9CA3AF',
+    fontWeight: "600",
+    color: "#9CA3AF",
   },
   saveTextActive: {
-    color: '#FFFFFF',
+    color: "#FFFFFF",
   },
   content: {
     flex: 1,
@@ -246,57 +242,57 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   avatarSection: {
-    alignItems: 'center',
+    alignItems: "center",
     marginBottom: 30,
   },
   avatarContainer: {
-    position: 'relative',
+    position: "relative",
     marginBottom: 12,
   },
   avatar: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#EEF2FF",
+    alignItems: "center",
+    justifyContent: "center",
   },
   avatarAnimation: {
     width: 80,
     height: 80,
   },
   changeAvatarButton: {
-    position: 'absolute',
+    position: "absolute",
     bottom: 0,
     right: 0,
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 2,
-    borderColor: '#E5E7EB',
+    borderColor: "#E5E7EB",
   },
   changeAvatarText: {
     fontSize: 14,
-    color: '#4F46E5',
-    fontWeight: '500',
+    color: "#4F46E5",
+    fontWeight: "500",
   },
   section: {
     marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
+    fontWeight: "600",
+    color: "#374151",
     marginBottom: 12,
   },
   sectionContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
@@ -307,51 +303,51 @@ const styles = StyleSheet.create({
   },
   inputLabel: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
+    fontWeight: "500",
+    color: "#374151",
     marginBottom: 8,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: "#D1D5DB",
     borderRadius: 8,
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
-    color: '#1F2937',
-    backgroundColor: '#FFFFFF',
+    color: "#1F2937",
+    backgroundColor: "#FFFFFF",
   },
   multilineInput: {
     height: 80,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   actionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: "#F3F4F6",
   },
   actionText: {
     flex: 1,
     fontSize: 16,
-    color: '#374151',
+    color: "#374151",
     marginLeft: 12,
   },
   verifiedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ECFDF5',
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#ECFDF5",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
   },
   verifiedText: {
     fontSize: 12,
-    color: '#10B981',
+    color: "#10B981",
     marginLeft: 4,
-    fontWeight: '500',
+    fontWeight: "500",
   },
-});
+})
 
-export default EditProfileScreen;
+export default EditProfileScreen

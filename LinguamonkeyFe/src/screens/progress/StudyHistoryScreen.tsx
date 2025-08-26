@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useStudyHistory } from "../../hooks/useStudyHistory"
+import { formatDuration } from "../../utils/timeHelper"
 
 interface StudySession {
   id: string
@@ -35,10 +37,11 @@ interface TestResult {
 const StudyHistoryScreen = ({ navigation }) => {
   const [currentTab, setCurrentTab] = useState<"sessions" | "tests" | "stats">("sessions")
   const [timeFilter, setTimeFilter] = useState<"week" | "month" | "year">("month")
-  const [studySessions, setStudySessions] = useState<StudySession[]>([])
-  const [testResults, setTestResults] = useState<TestResult[]>([])
-
   const fadeAnim = useRef(new Animated.Value(0)).current
+
+  const { data: studyHistory, isLoading, error } = useStudyHistory(timeFilter)
+  const studySessions = studyHistory?.sessions || []
+  const testResults = studyHistory?.tests || []
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -46,95 +49,9 @@ const StudyHistoryScreen = ({ navigation }) => {
       duration: 600,
       useNativeDriver: true,
     }).start()
-
-    loadStudyHistory()
   }, [timeFilter])
 
-  const loadStudyHistory = () => {
-    // Mock data
-    const mockSessions: StudySession[] = [
-      {
-        id: "1",
-        type: "toeic",
-        title: "TOEIC Practice Test #5",
-        date: new Date(2024, 0, 15),
-        duration: 120,
-        score: 850,
-        maxScore: 990,
-        experience: 250,
-        skills: ["listening", "reading"],
-        completed: true,
-      },
-      {
-        id: "2",
-        type: "daily",
-        title: "Daily Vocabulary Challenge",
-        date: new Date(2024, 0, 14),
-        duration: 15,
-        score: 18,
-        maxScore: 20,
-        experience: 50,
-        skills: ["vocabulary"],
-        completed: true,
-      },
-      {
-        id: "3",
-        type: "lesson",
-        title: "Business English - Lesson 12",
-        date: new Date(2024, 0, 13),
-        duration: 45,
-        experience: 120,
-        skills: ["speaking", "vocabulary"],
-        completed: true,
-      },
-      {
-        id: "4",
-        type: "ielts",
-        title: "IELTS Writing Task 1 Practice",
-        date: new Date(2024, 0, 12),
-        duration: 60,
-        score: 7.0,
-        maxScore: 9.0,
-        experience: 180,
-        skills: ["writing"],
-        completed: true,
-      },
-    ]
-
-    const mockTestResults: TestResult[] = [
-      {
-        id: "1",
-        testType: "toeic",
-        date: new Date(2024, 0, 15),
-        overallScore: 850,
-        sections: {
-          listening: 420,
-          reading: 430,
-        },
-        targetScore: 900,
-        improvement: 45,
-      },
-      {
-        id: "2",
-        testType: "ielts",
-        date: new Date(2024, 0, 8),
-        overallScore: 7.5,
-        sections: {
-          listening: 8.0,
-          reading: 7.5,
-          writing: 7.0,
-          speaking: 7.5,
-        },
-        targetScore: 8.0,
-        improvement: 0.5,
-      },
-    ]
-
-    setStudySessions(mockSessions)
-    setTestResults(mockTestResults)
-  }
-
-  const getTypeMaterialIcons = (type: string) => {
+  const getTypeIcon = (type: string) => {
     switch (type) {
       case "toeic":
         return "assignment"
@@ -166,13 +83,6 @@ const StudyHistoryScreen = ({ navigation }) => {
       default:
         return "#6B7280"
     }
-  }
-
-  const formatDuration = (minutes: number) => {
-    if (minutes < 60) return `${minutes}m`
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
   }
 
   const renderSessionCard = (session: StudySession) => (
@@ -272,12 +182,14 @@ const StudyHistoryScreen = ({ navigation }) => {
   )
 
   const renderStatsTab = () => {
-    const totalSessions = studySessions.length
-    const totalTime = studySessions.reduce((sum, session) => sum + session.duration, 0)
-    const totalExperience = studySessions.reduce((sum, session) => sum + session.experience, 0)
+    const totalSessions = studyHistory?.sessions.length || 0
+    const totalTime = studyHistory?.sessions.reduce((sum, session) => sum + session.duration, 0) || 0
+    const totalExperience = studyHistory?.sessions.reduce((sum, session) => sum + session.experience, 0) || 0
     const averageScore =
-      studySessions.filter((s) => s.score && s.maxScore).reduce((sum, s) => sum + (s.score! / s.maxScore!) * 100, 0) /
-      studySessions.filter((s) => s.score).length
+      studyHistory?.sessions
+        .filter((s) => s.score && s.maxScore)
+        .reduce((sum, s) => sum + (s.score! / s.maxScore!) * 100, 0) /
+        studyHistory?.sessions.filter((s) => s.score).length || 0
 
     return (
       <View style={styles.statsContainer}>
@@ -309,7 +221,6 @@ const StudyHistoryScreen = ({ navigation }) => {
 
         <View style={styles.chartSection}>
           <Text style={styles.chartTitle}>Weekly Progress</Text>
-          
         </View>
 
         <View style={styles.achievementsSection}>

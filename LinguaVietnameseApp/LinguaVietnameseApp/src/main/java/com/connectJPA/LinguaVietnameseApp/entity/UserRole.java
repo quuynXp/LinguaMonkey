@@ -17,4 +17,14 @@ import java.time.LocalDateTime;
 public class UserRole extends BaseEntity {
     @EmbeddedId
     private UserRoleId id;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @MapsId("userId")
+    @JoinColumn(name = "user_id")
+    private User user;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @MapsId("roleId")
+    @JoinColumn(name = "role_id")
+    private Role role;
 }

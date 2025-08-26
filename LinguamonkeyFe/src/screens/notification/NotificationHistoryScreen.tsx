@@ -1,9 +1,11 @@
 "use client"
 
+import { Alert , Animated, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+
 import { useEffect, useRef, useState } from "react"
-import { Alert, Animated, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
-import { MaterialIcons } from '@expo/vector-icons';
-import NotificationService from "../../services/NotificationService"
+
+import Icon from "react-native-vector-icons/MaterialIcons"
+import NotificationService from "../../services/notificationService"
 
 interface NotificationHistoryItem {
   id: string

@@ -21,6 +21,7 @@ public enum ErrorCode {
     EXCEEDS_MAX_MEMBERS(1012, "error.exceeds_max_members", HttpStatus.BAD_REQUEST),
     INVALID_INPUT(1013, "error.invalid_input", HttpStatus.BAD_REQUEST),
     INVALID_PAGEABLE(1014, "error.invalid_pageable", HttpStatus.BAD_REQUEST),
+    PARTICIPANT_NOT_FOUND(44, "PARTICIPANT_NOT_FOUND", HttpStatus.NOT_FOUND),
 
     EMAIL_SEND_FAILED(1020, "EMAIL_SEND_FAILED", HttpStatus.BAD_REQUEST),
     INVALID_FILE_FORMAT(1015, "error.invalid_file_format", HttpStatus.BAD_REQUEST),
@@ -28,6 +29,11 @@ public enum ErrorCode {
     INVALID_URL(1017, "error.invalid_url", HttpStatus.BAD_REQUEST),
     AI_PROCESSING_FAILED(1018, "error.ai_processing_failed", HttpStatus.BAD_REQUEST),
     RESET_TOKEN_INVALID(1021, "RESET_TOKEN_INVALID", HttpStatus.BAD_REQUEST),
+    ROADMAP_NOT_FOUND(3333, "ROADMAP_NOT_FOUND", HttpStatus.NOT_FOUND),
+    INVALID_REQUEST(3333, "INVALID_REQUEST", HttpStatus.BAD_REQUEST),
+    ROADMAP_NOT_ASSIGNED(333, "ROADMAP_NOT_ASSIGNED", HttpStatus.NOT_FOUND),
+    ROADMAP_ITEM_NOT_FOUND(33, "ROADMAP_ITEM_NOT_FOUND", HttpStatus.NOT_FOUND),
+    EMAIL_EXISTED(400, "EMAIL_EXISTED", HttpStatus.BAD_REQUEST),
 
     // ===== 401 Unauthorized =====
     UNAUTHENTICATED(2000, "error.unauthenticated", HttpStatus.UNAUTHORIZED),

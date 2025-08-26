@@ -1,47 +1,49 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
-import com.connectJPA.LinguaVietnameseApp.dto.request.MoveRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.Character3dResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LevelInfoResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
-import com.connectJPA.LinguaVietnameseApp.entity.Character3d;
-import com.connectJPA.LinguaVietnameseApp.entity.User;
-import com.connectJPA.LinguaVietnameseApp.enums.AuthProvider;
-import com.connectJPA.LinguaVietnameseApp.enums.Country;
+import com.connectJPA.LinguaVietnameseApp.entity.*;
+import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
+import com.connectJPA.LinguaVietnameseApp.entity.id.UserCertificateId;
+import com.connectJPA.LinguaVietnameseApp.entity.id.UserInterestId;
+import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.Character3dRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.LanguageRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserLearningActivityRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.*;
 import com.connectJPA.LinguaVietnameseApp.service.*;
 import com.connectJPA.LinguaVietnameseApp.utils.CloudinaryHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Locale;
-import java.util.Map;
-import java.util.UUID;
+import java.time.OffsetDateTime;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserServiceImpl implements UserService {
+    private final LeaderboardEntryRepository leaderboardEntryRepository;
+    private final LeaderboardRepository leaderboardRepository;
+    private final InterestRepository interestRepository;
     private final UserRepository userRepository;
     private final LanguageRepository languageRepository;
     private final UserLearningActivityRepository userLearningActivityRepository;
@@ -51,8 +53,14 @@ public class UserServiceImpl implements UserService {
     private final Character3dRepository character3dRepository;
     private final NotificationService notificationService;
     private final CloudinaryService cloudinaryService;
+    private final UserGoalRepository  userGoalRepository;
+    private final UserInterestRepository userInterestRepository;
     private final CloudinaryHelper cloudinaryHelper;
+    private final LeaderboardEntryService leaderboardEntryService;
     private static final int EXP_PER_LEVEL = 1000;
+    private final UserLearningActivityService userLearningActivityService;
+    private final UserCertificateRepository userCertificateRepository;
+    private final PasswordEncoder  passwordEncoder;
 
 
     @Override
@@ -73,7 +81,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Cacheable(value = "users", key = "#email + ':' + #fullname + ':' + #nickname + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<UserResponse> getAllUsers(String email, String fullname, String nickname, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -88,7 +95,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Cacheable(value = "users", key = "#id")
     public UserResponse getUserById(UUID id) {
         try {
             if (id == null) {
@@ -105,26 +111,125 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CachePut(value = "users", key = "#result.userId")
     public UserResponse createUser(UserRequest request) {
         try {
-            if (request == null || request.getEmail() == null) {
+            if (request == null) {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
-            User user = userMapper.toEntity(request);
-            user.setAuthProvider(AuthProvider.EMAIL);
-            user = userRepository.save(user);
-            roleService.assignDefaultStudentRole(user.getUserId());
+
+            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+                throw new AppException(ErrorCode.INVALID_REQUEST);
+            }
+
+            if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
+                throw new AppException(ErrorCode.EMAIL_EXISTED);
+            }
+
+            User user = new User();
+            user.setEmail(request.getEmail().trim());
+
+            if (request.getPassword() != null && !request.getPassword().isBlank()) {
+                user.setPassword(passwordEncoder.encode(request.getPassword()));
+            } else {
+                user.setPassword(RandomStringUtils.randomAlphanumeric(12));
+            }
+
+            if (request.getNickname() != null) user.setNickname(request.getNickname());
+            if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
+            if (request.getNativeLanguageCode() != null)
+                user.setNativeLanguageCode(request.getNativeLanguageCode().toLowerCase());
+            if (request.getCountry() != null) user.setCountry(request.getCountry());
+            if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
+            if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
+
+            user.setAuthProvider(AuthProvider.QUICK_START);
+
+            user = userRepository.saveAndFlush(user);
+
+            roleService.assignRoleToUser(user.getUserId(), RoleName.STUDENT);
+
+            Leaderboard lb = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global")
+                    .orElseThrow();
+            leaderboardEntryRepository.save(LeaderboardEntry.builder()
+                    .leaderboardEntryId(new LeaderboardEntryId(user.getUserId(), lb.getLeaderboardId()))
+                    .user(user)
+                    .leaderboard(lb)
+                    .build());
+
+            userLearningActivityRepository.save(UserLearningActivity.builder()
+                    .userId(user.getUserId())
+                    .activityType(ActivityType.START_LEARNING)
+                    .build());
+
+            final User savedUser = user;
+
+            if (request.getGoalIds() != null && !request.getGoalIds().isEmpty()) {
+                List<UserGoal> userGoals = request.getGoalIds().stream()
+                        .filter(Objects::nonNull)
+                        .map(goalStr -> {
+                            try {
+                                return UserGoal.builder()
+                                        .userId(savedUser.getUserId())
+                                        .goalType(GoalType.valueOf(goalStr))
+                                        .build();
+                            } catch (IllegalArgumentException ex) {
+                                log.warn("Unknown GoalType from request: {}", goalStr);
+                                return null;
+                            }
+                        })
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+
+                if (!userGoals.isEmpty()) userGoalRepository.saveAll(userGoals);
+            }
+
+            if (request.getCertificationIds() != null && !request.getCertificationIds().isEmpty()) {
+                List<UserCertificate> certs = request.getCertificationIds().stream()
+                        .filter(Objects::nonNull)
+                        .map(certStr -> {
+                            try {
+                                return UserCertificate.builder()
+                                        .id(new UserCertificateId(savedUser.getUserId(),
+                                                Certification.valueOf(certStr).toString()))
+                                        .build();
+                            } catch (IllegalArgumentException ex) {
+                                log.warn("Unknown Certification: {}", certStr);
+                                return null;
+                            }
+                        })
+                        .filter(Objects::nonNull)
+                        .toList();
+
+                if (!certs.isEmpty()) userCertificateRepository.saveAll(certs);
+            }
+
+            if (request.getInterestestIds() != null && !request.getInterestestIds().isEmpty()) {
+                List<UserInterest> interests = request.getInterestestIds().stream()
+                        .filter(Objects::nonNull)
+                        .map(interestId -> UserInterest.builder()
+                                .id(new UserInterestId(savedUser.getUserId(), interestId))
+                                .user(savedUser)
+                                .interest(interestRepository.findById(interestId).orElse(null))
+                                .build())
+                        .filter(ui -> ui.getInterest() != null)
+                        .collect(Collectors.toList());
+
+                if (!interests.isEmpty()) userInterestRepository.saveAll(interests);
+            }
+
             return userMapper.toResponse(user);
+
+        } catch (AppException ae) {
+            throw ae;
         } catch (Exception e) {
-            log.error("Error while creating user: {}", e.getMessage());
+            log.error("Error while creating user: {}", e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 
+
     @Override
     @Transactional
-    @CachePut(value = "users", key = "#id")
     public UserResponse updateUser(UUID id, UserRequest request) {
         try {
             if (id == null || request == null) {
@@ -143,7 +248,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "users", key = "#id")
     public void deleteUser(UUID id) {
         try {
             if (id == null) {
@@ -171,7 +275,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Transactional
-    @CachePut(value = "users", key = "#id")
     public UserResponse updateAvatarUrl(UUID id, String avatarUrl) {
         try {
             if (id == null || avatarUrl == null || avatarUrl.isBlank()) {
@@ -227,7 +330,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CachePut(value = "users", key = "#id")
     public UserResponse updateNativeLanguage(UUID id, String nativeLanguageCode) {
         try {
             if (id == null || nativeLanguageCode == null || nativeLanguageCode.isBlank()) {
@@ -259,7 +361,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CachePut(value = "users", key = "#id")
     public UserResponse updateCountry(UUID id, Country country) {
         try {
             if (id == null || country == null) {
@@ -288,7 +389,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CachePut(value = "users", key = "#id")
     public UserResponse updateExp(UUID id, int exp) {
         try {
             if (id == null || exp < 0) {
@@ -334,7 +434,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CachePut(value = "users", key = "#id")
     public UserResponse updateStreakOnActivity(UUID id) {
         try {
             if (id == null) {
@@ -368,7 +467,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    @CachePut(value = "users", key = "#id")
     public void resetStreakIfNoActivity(UUID id) {
         try {
             if (id == null) {
@@ -425,7 +523,6 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Cacheable(value = "levelInfo", key = "#id")
     public LevelInfoResponse getLevelInfo(UUID id) {
         try {
             if (id == null) {

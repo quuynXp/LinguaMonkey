@@ -1,49 +1,40 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { UserProfile } from '../types/api';
+import type { UserProfile, Language, Lesson } from '../types/api';
 
-interface LanguageInfo {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-  quickLessonTime: number;
-}
 
 interface DailyGoal {
   completedLessons: number;
   totalLessons: number;
 }
 
-interface Lesson {
-  id: string;
-  title: string;
-  language: string;
-  lessonNumber: number;
-}
 
 interface UserState {
   user: UserProfile | null;
   isAuthenticated: boolean;
   badges: string[];
   nativeLanguage: string | null;
+  level?: number;
 
   // 🔥 Các field thêm để khớp với HomeScreen
   name: string;
   streak: number;
-  languages: LanguageInfo[];
+  languages: Language[];
   dailyGoal: DailyGoal;
   recentLessons: Lesson[];
   statusMessage: string;
+  hasDonePlacementTest?: boolean;
 
   // Actions
   setUser: (user: UserProfile | null) => void;
+  setUserId: (userId: string | null) => void;
   setAuthenticated: (authenticated: boolean) => void;
   addBadge: (badgeId: string) => void;
   setNativeLanguage: (language: string | null) => void;
   setProfileData: (data: Partial<UserState>) => void;
   logout: () => void;
+  setHasDonePlacementTest: (value: boolean) => void;
 }
 
 export const useUserStore = create<UserState>()(
@@ -66,8 +57,10 @@ export const useUserStore = create<UserState>()(
       setAuthenticated: (authenticated) => set({ isAuthenticated: authenticated }),
       addBadge: (badgeId) =>
         set((state) => ({ badges: [...state.badges, badgeId] })),
+      setUserId: (userId) => set((state) => ({ user: { ...state.user, userId } as UserProfile })),
       setNativeLanguage: (language) => set({ nativeLanguage: language }),
       setProfileData: (data) => set((state) => ({ ...state, ...data })),
+      setHasDonePlacementTest: (value) => set({ hasDonePlacementTest: value }),
       logout: () =>
         set({
           user: null,
@@ -96,6 +89,7 @@ export const useUserStore = create<UserState>()(
         dailyGoal: state.dailyGoal,
         recentLessons: state.recentLessons,
         statusMessage: state.statusMessage,
+        hasDonePlacementTest: state.hasDonePlacementTest,
       }),
     }
   )

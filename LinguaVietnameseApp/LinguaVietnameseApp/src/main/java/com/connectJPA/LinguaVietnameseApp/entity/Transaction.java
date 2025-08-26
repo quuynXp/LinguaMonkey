@@ -18,6 +18,8 @@ import java.util.UUID;
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
+@Getter
+@Setter
 public class Transaction extends BaseEntity {
     @Id
     @Column(name = "transaction_id")
@@ -40,4 +42,6 @@ public class Transaction extends BaseEntity {
 
     @Column(name = "description")
     private String description;
+
+    private String currency;
 }

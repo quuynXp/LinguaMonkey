@@ -1,60 +1,69 @@
-import { mutate } from "swr"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import instance from "../api/axiosInstance"
 import type { GrammarRule, GrammarTopic } from "../types/api"
-import { useApiGet, useApiPost } from "./useApi"
 
 export const useGrammar = () => {
-  // Get all grammar topics
-  const useGrammarTopics = () => {
-    return useApiGet<GrammarTopic[]>("/grammar/topics")
-  }
+  const queryClient = useQueryClient()
 
-  // Get grammar topic by ID
-  const useGrammarTopic = (topicId: string | null) => {
-    return useApiGet<GrammarTopic>(topicId ? `/grammar/topics/${topicId}` : null)
-  }
+  // Get all topics
+  const useGrammarTopics = () =>
+    useQuery<GrammarTopic[]>({
+      queryKey: ["grammarTopics"],
+      queryFn: async () => {
+        const res = await instance.get("/grammar/topics")
+        return res.data
+      },
+    })
 
-  // Get grammar rule by ID
-  const useGrammarRule = (ruleId: string | null) => {
-    return useApiGet<GrammarRule>(ruleId ? `/grammar/rules/${ruleId}` : null)
-  }
+  // Get topic by ID
+  const useGrammarTopic = (topicId: string | null) =>
+    useQuery<GrammarTopic>({
+      queryKey: ["grammarTopic", topicId],
+      queryFn: async () => {
+        if (!topicId) throw new Error("Invalid topicId")
+        const res = await instance.get(`/grammar/topics/${topicId}`)
+        return res.data
+      },
+      enabled: !!topicId,
+    })
+
+  // Get rule by ID
+  const useGrammarRule = (ruleId: string | null) =>
+    useQuery<GrammarRule>({
+      queryKey: ["grammarRule", ruleId],
+      queryFn: async () => {
+        if (!ruleId) throw new Error("Invalid ruleId")
+        const res = await instance.get(`/grammar/rules/${ruleId}`)
+        return res.data
+      },
+      enabled: !!ruleId,
+    })
 
   // Submit grammar exercise
-  const useSubmitGrammarExercise = () => {
-    const { trigger, isMutating } = useApiPost<{ score: number; results: any[] }>("/grammar/exercises/submit")
+  const useSubmitGrammarExercise = () =>
+    useMutation({
+      mutationFn: async ({ ruleId, answers }: { ruleId: string; answers: Record<string, string> }) => {
+        const res = await instance.post("/grammar/exercises/submit", { ruleId, answers })
+        return res.data
+      },
+      onSuccess: (data, variables) => {
+        queryClient.invalidateQueries({ queryKey: ["grammarTopics"] })
+        queryClient.invalidateQueries({ queryKey: ["grammarRule", variables.ruleId] })
+      },
+    })
 
-    const submitExercise = async (ruleId: string, answers: Record<string, string>) => {
-      try {
-        const result = await trigger({ ruleId, answers })
-        // Revalidate grammar data
-        mutate("/grammar/topics")
-        mutate(`/grammar/rules/${ruleId}`)
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { submitExercise, isSubmitting: isMutating }
-  }
-
-  // Update grammar progress
-  const useUpdateGrammarProgress = () => {
-    const { trigger, isMutating } = useApiPost<{ success: boolean }>("/grammar/progress")
-
-    const updateProgress = async (topicId: string, ruleId: string, score: number) => {
-      try {
-        const result = await trigger({ topicId, ruleId, score })
-        // Revalidate grammar data
-        mutate("/grammar/topics")
-        mutate(`/grammar/topics/${topicId}`)
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { updateProgress, isUpdating: isMutating }
-  }
+  // Update progress
+  const useUpdateGrammarProgress = () =>
+    useMutation({
+      mutationFn: async ({ topicId, ruleId, score }: { topicId: string; ruleId: string; score: number }) => {
+        const res = await instance.post("/grammar/progress", { topicId, ruleId, score })
+        return res.data
+      },
+      onSuccess: (data, variables) => {
+        queryClient.invalidateQueries({ queryKey: ["grammarTopics"] })
+        queryClient.invalidateQueries({ queryKey: ["grammarTopic", variables.topicId] })
+      },
+    })
 
   return {
     useGrammarTopics,

@@ -11,6 +11,11 @@ import io.grpc.Metadata;
 import io.grpc.stub.MetadataUtils;
 import learning.LearningServiceGrpc;
 import learning.LearningServiceOuterClass.*;
+import learning.LearningServiceOuterClass.RoadmapDetailedRequest;
+import learning.LearningServiceOuterClass.RoadmapDetailedResponse;
+import learning.LearningServiceOuterClass.RoadmapRequest;
+import learning.LearningServiceOuterClass.RoadmapResponse;
+
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,7 +25,7 @@ import java.util.stream.Collectors;
 @Service
 public class GrpcClientService {
 
-    private final String grpcServerAddress = "localhost";
+    private final String grpcServerAddress = "192.168.1.46";
     private final int grpcServerPort = 50051;
 
     private ManagedChannel createChannelWithToken(String token) {
@@ -254,6 +259,85 @@ public class GrpcClientService {
                 result.setFeedback(response.getFeedback());
                 result.setScore(response.getScore());
                 return result;
+            } catch (Exception e) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
+    public CompletableFuture<RoadmapDetailedResponse> callCreateOrUpdateRoadmapDetailedAsync(
+            String token,
+            String userId,
+            String roadmapId,
+            String language,
+            String prompt,
+            boolean asUserSpecific) {
+
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        RoadmapDetailedRequest request = RoadmapDetailedRequest.newBuilder()
+                .setUserId(userId == null ? "" : userId)
+                .setRoadmapId(roadmapId == null ? "" : roadmapId)
+                .setLanguage(language == null ? "" : language)
+                .setPrompt(prompt == null ? "" : prompt)
+                .setAsUserSpecific(asUserSpecific)
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                RoadmapDetailedResponse response = stub.createOrUpdateRoadmapDetailed(request).get();
+                if (response == null) {
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                if (!response.getError().isEmpty()) {
+                    // bạn có thể map error code/message chi tiết ở đây nếu muốn
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                return response;
+            } catch (AppException ae) {
+                throw ae;
+            } catch (Exception e) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
+    public CompletableFuture<RoadmapResponse> callCreateOrUpdateRoadmapAsync(
+            String token,
+            String userId,
+            String roadmapId,
+            String title,
+            String description,
+            String language) {
+
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        RoadmapRequest request = RoadmapRequest.newBuilder()
+                .setUserId(userId == null ? "" : userId)
+                .setRoadmapId(roadmapId == null ? "" : roadmapId)
+                .setTitle(title == null ? "" : title)
+                .setDescription(description == null ? "" : description)
+                .setLanguage(language == null ? "" : language)
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                RoadmapResponse response = stub.createOrUpdateRoadmap(request).get();
+                if (response == null) {
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                if (!response.getError().isEmpty()) {
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                return response;
+            } catch (AppException ae) {
+                throw ae;
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             } finally {

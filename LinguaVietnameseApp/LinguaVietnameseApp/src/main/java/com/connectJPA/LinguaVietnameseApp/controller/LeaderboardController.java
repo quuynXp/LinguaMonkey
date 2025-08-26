@@ -2,7 +2,9 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LeaderboardRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.LeaderboardEntryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LeaderboardResponse;
+import com.connectJPA.LinguaVietnameseApp.service.LeaderboardEntryService;
 import com.connectJPA.LinguaVietnameseApp.service.LeaderboardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -16,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -25,6 +28,7 @@ import java.util.UUID;
 public class LeaderboardController {
     private final LeaderboardService leaderboardService;
     private final MessageSource messageSource;
+    private final LeaderboardEntryService leaderboardEntryService;
 
     @Operation(summary = "Get all leaderboards", description = "Retrieve a paginated list of leaderboards with optional filtering by period or tab")
     @ApiResponses({
@@ -111,6 +115,39 @@ public class LeaderboardController {
         return AppApiResponse.<Void>builder()
                 .code(200)
                 .message(messageSource.getMessage("leaderboard.deleted.success", null, locale))
+                .build();
+    }
+
+    @Operation(summary = "Get top 3 leaderboard entries", description = "Retrieve the top 3 leaderboard entries for a specific leaderboard ID")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved top 3 leaderboard entries"),
+            @ApiResponse(responseCode = "400", description = "Invalid leaderboard ID"),
+            @ApiResponse(responseCode = "404", description = "Leaderboard not found")
+    })
+    @GetMapping("/{id}/top-3")
+    public AppApiResponse<List<LeaderboardEntryResponse>> getTop3LeaderboardEntries(
+            @Parameter(description = "Leaderboard ID") @PathVariable UUID id,
+            Locale locale) {
+        List<LeaderboardEntryResponse> topEntries = leaderboardEntryService.getTop3LeaderboardEntries(id);
+        return AppApiResponse.<List<LeaderboardEntryResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("leaderboard.top3.success", null, locale))
+                .result(topEntries)
+                .build();
+    }
+
+    @Operation(summary = "Get top 3 global leaderboard entries", description = "Retrieve the top 3 leaderboard entries for the global leaderboard")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved top 3 global leaderboard entries"),
+            @ApiResponse(responseCode = "404", description = "Global leaderboard not found")
+    })
+    @GetMapping("/global/top-3")
+    public AppApiResponse<List<LeaderboardEntryResponse>> getTop3GlobalLeaderboardEntries(Locale locale) {
+        List<LeaderboardEntryResponse> topEntries = leaderboardEntryService.getTop3GlobalLeaderboardEntries();
+        return AppApiResponse.<List<LeaderboardEntryResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("leaderboard.top3.global.success", null, locale))
+                .result(topEntries)
                 .build();
     }
 }

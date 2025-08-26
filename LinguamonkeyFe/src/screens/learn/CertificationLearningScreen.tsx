@@ -1,170 +1,50 @@
-"use client"
 
 import { useEffect, useState } from "react"
-import { Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import Icon from 'react-native-vector-icons/MaterialIcons';
-interface CertificationTest {
-  id: string
-  language: "English" | "Chinese" | "Japanese" | "Korean" | "French"
-  level: string
-  name: string
-  description: string
-  duration: number // in minutes
-  totalQuestions: number
-  passingScore: number
-  icon: string
-  color: string
-}
-
-interface TestQuestion {
-  id: string
-  question: string
-  options: string[]
-  correctAnswer: number
-  explanation: string
-  skill: "reading" | "listening" | "grammar" | "vocabulary"
-}
-
-interface TestResult {
-  score: number
-  totalQuestions: number
-  correctAnswers: number
-  skillBreakdown: {
-    reading: { correct: number; total: number }
-    listening: { correct: number; total: number }
-    grammar: { correct: number; total: number }
-    vocabulary: { correct: number; total: number }
-  }
-  suggestions: string[]
-  passed: boolean
-}
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useTranslation } from "react-i18next"
+import { useCertifications } from "../../hooks/useCertifications"
+import { useUserStore } from "../../stores/UserStore"
+import { formatDateTime } from "../../utils/timeHelper"
+import Toast from "../../utils/toastConfig"
 
 const CertificationLearningScreen = ({ navigation }: any) => {
-  const [selectedLanguage, setSelectedLanguage] = useState<string>("English")
-  const [selectedTest, setSelectedTest] = useState<CertificationTest | null>(null)
+  const { t } = useTranslation()
+  const { user } = useUserStore()
+
+  const [selectedLanguage, setSelectedLanguage] = useState<string>("All")
+  const [selectedTest, setSelectedTest] = useState<any>(null)
   const [currentQuestion, setCurrentQuestion] = useState(0)
-  const [selectedAnswers, setSelectedAnswers] = useState<number[]>([])
+  const [selectedAnswers, setSelectedAnswers] = useState<{ [key: string]: number }>({})
   const [timeLeft, setTimeLeft] = useState(0)
   const [testMode, setTestMode] = useState<"selection" | "practice" | "exam" | "results">("selection")
-  const [testResult, setTestResult] = useState<TestResult | null>(null)
+  const [testResult, setTestResult] = useState<any>(null)
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [startTime, setStartTime] = useState<string | null>(null)
 
-  const certificationTests: CertificationTest[] = [
-    {
-      id: "1",
-      language: "English",
-      level: "TOEFL iBT",
-      name: "Test of English as a Foreign Language",
-      description: "Academic English proficiency test for university admission",
-      duration: 180,
-      totalQuestions: 80,
-      passingScore: 80,
-      icon: "🇺🇸",
-      color: "#4285F4",
-    },
-    {
-      id: "2",
-      language: "English",
-      level: "IELTS",
-      name: "International English Language Testing System",
-      description: "English proficiency test for study, work and migration",
-      duration: 165,
-      totalQuestions: 40,
-      passingScore: 6.5,
-      icon: "🇬🇧",
-      color: "#34A853",
-    },
-    {
-      id: "3",
-      language: "Chinese",
-      level: "HSK 6",
-      name: "Hanyu Shuiping Kaoshi Level 6",
-      description: "Highest level Chinese proficiency test",
-      duration: 140,
-      totalQuestions: 101,
-      passingScore: 180,
-      icon: "🇨🇳",
-      color: "#EA4335",
-    },
-    {
-      id: "4",
-      language: "Japanese",
-      level: "JLPT N1",
-      name: "Japanese Language Proficiency Test N1",
-      description: "Advanced Japanese language certification",
-      duration: 170,
-      totalQuestions: 100,
-      passingScore: 100,
-      icon: "🇯🇵",
-      color: "#FBBC04",
-    },
-    {
-      id: "5",
-      language: "Korean",
-      level: "TOPIK II",
-      name: "Test of Proficiency in Korean Level 6",
-      description: "Advanced Korean language proficiency test",
-      duration: 180,
-      totalQuestions: 50,
-      passingScore: 230,
-      icon: "🇰🇷",
-      color: "#9C27B0",
-    },
-    {
-      id: "6",
-      language: "French",
-      level: "DALF C2",
-      name: "Diplôme Approfondi de Langue Française",
-      description: "Advanced French language diploma",
-      duration: 210,
-      totalQuestions: 60,
-      passingScore: 50,
-      icon: "🇫🇷",
-      color: "#FF5722",
-    },
-  ]
+  const { useAvailableCertifications, useTestQuestions, useSubmitTest, useStartTest } = useCertifications()
 
-  const sampleQuestions: TestQuestion[] = [
-    {
-      id: "1",
-      question:
-        'Choose the best word to complete the sentence: "The research findings were _____ with previous studies."',
-      options: ["consistent", "consisting", "consistency", "consistently"],
-      correctAnswer: 0,
-      explanation: '"Consistent" is the correct adjective form meaning "in agreement with" previous studies.',
-      skill: "vocabulary",
-    },
-    {
-      id: "2",
-      question: "Which sentence demonstrates correct parallel structure?",
-      options: [
-        "She likes reading, writing, and to paint.",
-        "She likes reading, writing, and painting.",
-        "She likes to read, writing, and painting.",
-        "She likes read, write, and paint.",
-      ],
-      correctAnswer: 1,
-      explanation:
-        "Parallel structure requires all items in a series to have the same grammatical form (gerunds: reading, writing, painting).",
-      skill: "grammar",
-    },
-    {
-      id: "3",
-      question: "Based on the passage, what can be inferred about the author's opinion?",
-      options: [
-        "The author strongly supports the policy.",
-        "The author is neutral about the policy.",
-        "The author has reservations about the policy.",
-        "The author completely opposes the policy.",
-      ],
-      correctAnswer: 2,
-      explanation:
-        "The author uses cautious language and presents counterarguments, indicating reservations rather than strong support or opposition.",
-      skill: "reading",
-    },
-  ]
+  // Get user's learning languages
+  const userLanguages = user?.learningLanguages || []
 
-  const languages = ["English", "Chinese", "Japanese", "Korean", "French"]
+  const {
+    data: certifications,
+    isLoading,
+    error,
+    refetch,
+  } = useAvailableCertifications(selectedLanguage === "All" ? userLanguages : [selectedLanguage])
+
+  const { data: testQuestions, isLoading: questionsLoading } = useTestQuestions(
+    selectedTest?.id || null,
+    testMode as "practice" | "exam",
+  )
+
+  const { submitTest, isSubmitting } = useSubmitTest()
+  const { startTest, isStarting } = useStartTest()
+
+  // Get unique languages from certifications
+  const availableLanguages = ["All", ...new Set(certifications?.map((cert) => cert.language) || [])]
 
   useEffect(() => {
     let interval: NodeJS.Timeout
@@ -183,33 +63,60 @@ const CertificationLearningScreen = ({ navigation }: any) => {
   }, [testMode, timeLeft])
 
   const handleTimeUp = () => {
-    Alert.alert("Time's Up!", "Your exam time has expired. Submitting your answers now.")
-    submitTest()
+    Toast.show({
+      type: "error",
+      text1: t("certifications.timeUp"),
+      text2: t("certifications.timeUpMessage"),
+    })
+    submitTestAnswers()
   }
 
-  const startPracticeTest = (test: CertificationTest) => {
-    setSelectedTest(test)
-    setCurrentQuestion(0)
-    setSelectedAnswers(new Array(sampleQuestions.length).fill(-1))
-    setTestMode("practice")
+  const startPracticeTest = async (test: any) => {
+    try {
+      const result = await startTest({ testId: test.id, mode: "practice" })
+      setSelectedTest(test)
+      setCurrentQuestion(0)
+      setSelectedAnswers({})
+      setTestMode("practice")
+      setSessionId(result.sessionId)
+      setStartTime(result.startTime)
+    } catch (error: any) {
+      Toast.show({
+        type: "error",
+        text1: t("common.error"),
+        text2: error.message || t("errors.unknown"),
+      })
+    }
   }
 
-  const startFullExam = (test: CertificationTest) => {
-    setSelectedTest(test)
-    setCurrentQuestion(0)
-    setSelectedAnswers(new Array(test.totalQuestions).fill(-1))
-    setTimeLeft(test.duration * 60) // Convert minutes to seconds
-    setTestMode("exam")
+  const startFullExam = async (test: any) => {
+    try {
+      const result = await startTest({ testId: test.id, mode: "exam" })
+      setSelectedTest(test)
+      setCurrentQuestion(0)
+      setSelectedAnswers({})
+      setTimeLeft(test.duration * 60) // Convert minutes to seconds
+      setTestMode("exam")
+      setSessionId(result.sessionId)
+      setStartTime(result.startTime)
+    } catch (error: any) {
+      Toast.show({
+        type: "error",
+        text1: t("common.error"),
+        text2: error.message || t("errors.unknown"),
+      })
+    }
   }
 
-  const handleAnswerSelect = (answerIndex: number) => {
-    const newAnswers = [...selectedAnswers]
-    newAnswers[currentQuestion] = answerIndex
-    setSelectedAnswers(newAnswers)
+  const handleAnswerSelect = (questionId: string, answerIndex: number) => {
+    setSelectedAnswers((prev) => ({
+      ...prev,
+      [questionId]: answerIndex,
+    }))
   }
 
   const nextQuestion = () => {
-    if (currentQuestion < sampleQuestions.length - 1) {
+    if (testQuestions && currentQuestion < testQuestions.length - 1) {
       setCurrentQuestion((prev) => prev + 1)
     }
   }
@@ -220,79 +127,42 @@ const CertificationLearningScreen = ({ navigation }: any) => {
     }
   }
 
-  const submitTest = () => {
-    // Calculate results
-    let correctAnswers = 0
-    const skillBreakdown = {
-      reading: { correct: 0, total: 0 },
-      listening: { correct: 0, total: 0 },
-      grammar: { correct: 0, total: 0 },
-      vocabulary: { correct: 0, total: 0 },
-    }
+  const submitTestAnswers = async () => {
+    if (!selectedTest || !testQuestions || !startTime) return
 
-    sampleQuestions.forEach((question, index) => {
-      const skill = question.skill
-      skillBreakdown[skill].total++
+    const timeSpent = Math.floor((Date.now() - new Date(startTime).getTime()) / 1000)
 
-      if (selectedAnswers[index] === question.correctAnswer) {
-        correctAnswers++
-        skillBreakdown[skill].correct++
+    try {
+      const result = await submitTest({
+        testId: selectedTest.id,
+        answers: selectedAnswers,
+        mode: testMode as "practice" | "exam",
+        timeSpent,
+      })
+
+      setTestResult(result)
+      setTestMode("results")
+
+      if (result.passed) {
+        Toast.show({
+          type: "success",
+          text1: t("certifications.testPassed"),
+          text2: t("certifications.congratulations"),
+        })
+      } else {
+        Toast.show({
+          type: "error",
+          text1: t("certifications.testFailed"),
+          text2: t("certifications.tryAgain"),
+        })
       }
-    })
-
-    const score = (correctAnswers / sampleQuestions.length) * 100
-    const passed = selectedTest ? score >= selectedTest.passingScore : false
-
-    const suggestions = generateSuggestions(skillBreakdown)
-
-    const result: TestResult = {
-      score,
-      totalQuestions: sampleQuestions.length,
-      correctAnswers,
-      skillBreakdown,
-      suggestions,
-      passed,
+    } catch (error: any) {
+      Toast.show({
+        type: "error",
+        text1: t("common.error"),
+        text2: error.message || t("errors.unknown"),
+      })
     }
-
-    setTestResult(result)
-    setTestMode("results")
-  }
-
-  const generateSuggestions = (skillBreakdown: TestResult["skillBreakdown"]): string[] => {
-    const suggestions: string[] = []
-
-    Object.entries(skillBreakdown).forEach(([skill, data]) => {
-      const percentage = data.total > 0 ? (data.correct / data.total) * 100 : 0
-
-      if (percentage < 60) {
-        switch (skill) {
-          case "reading":
-            suggestions.push(
-              "Focus on reading comprehension exercises and practice identifying main ideas and inferences.",
-            )
-            break
-          case "listening":
-            suggestions.push("Improve listening skills by practicing with audio materials at various speeds.")
-            break
-          case "grammar":
-            suggestions.push(
-              "Review grammar rules, especially parallel structure, verb tenses, and sentence construction.",
-            )
-            break
-          case "vocabulary":
-            suggestions.push(
-              "Expand vocabulary through reading and using flashcards for academic and professional terms.",
-            )
-            break
-        }
-      }
-    })
-
-    if (suggestions.length === 0) {
-      suggestions.push("Excellent work! Continue practicing to maintain your proficiency level.")
-    }
-
-    return suggestions
   }
 
   const formatTime = (seconds: number): string => {
@@ -306,7 +176,13 @@ const CertificationLearningScreen = ({ navigation }: any) => {
     return `${minutes}:${secs.toString().padStart(2, "0")}`
   }
 
-  const renderTestCard = ({ item }: { item: CertificationTest }) => (
+  const getSkillColor = (percentage: number): string => {
+    if (percentage >= 80) return "#4CAF50"
+    if (percentage >= 60) return "#FF9800"
+    return "#F44336"
+  }
+
+  const renderTestCard = ({ item }: { item: any }) => (
     <View style={[styles.testCard, { borderLeftColor: item.color }]}>
       <View style={styles.testHeader}>
         <Text style={styles.testIcon}>{item.icon}</Text>
@@ -321,28 +197,78 @@ const CertificationLearningScreen = ({ navigation }: any) => {
       <View style={styles.testStats}>
         <View style={styles.statItem}>
           <Icon name="schedule" size={16} color="#666" />
-          <Text style={styles.statText}>{item.duration} min</Text>
+          <Text style={styles.statText}>
+            {item.duration} {t("common.minutes")}
+          </Text>
         </View>
         <View style={styles.statItem}>
           <Icon name="quiz" size={16} color="#666" />
-          <Text style={styles.statText}>{item.totalQuestions} questions</Text>
+          <Text style={styles.statText}>
+            {item.totalQuestions} {t("certifications.questions")}
+          </Text>
         </View>
         <View style={styles.statItem}>
           <Icon name="grade" size={16} color="#666" />
-          <Text style={styles.statText}>Pass: {item.passingScore}%</Text>
+          <Text style={styles.statText}>
+            {t("certifications.pass")}: {item.passingScore}%
+          </Text>
         </View>
       </View>
 
+      {item.userProgress && (
+        <View style={styles.progressInfo}>
+          <Text style={styles.progressText}>
+            {t("certifications.attempts")}: {item.userProgress.attempts}
+          </Text>
+          {item.userProgress.bestScore && (
+            <Text style={styles.progressText}>
+              {t("certifications.bestScore")}: {item.userProgress.bestScore}%
+            </Text>
+          )}
+        </View>
+      )}
+
       <View style={styles.testActions}>
-        <TouchableOpacity style={[styles.actionButton, styles.practiceButton]} onPress={() => startPracticeTest(item)}>
-          <Text style={styles.practiceButtonText}>Practice Test</Text>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.practiceButton]}
+          onPress={() => startPracticeTest(item)}
+          disabled={isStarting}
+        >
+          <Text style={styles.practiceButtonText}>
+            {isStarting ? t("common.starting") : t("certifications.practiceTest")}
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.actionButton, styles.examButton]} onPress={() => startFullExam(item)}>
-          <Text style={styles.examButtonText}>Full Exam</Text>
+        <TouchableOpacity
+          style={[styles.actionButton, styles.examButton]}
+          onPress={() => startFullExam(item)}
+          disabled={isStarting}
+        >
+          <Text style={styles.examButtonText}>{isStarting ? t("common.starting") : t("certifications.fullExam")}</Text>
         </TouchableOpacity>
       </View>
     </View>
   )
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Icon name="arrow-back" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.title}>{t("certifications.title")}</Text>
+          <View />
+        </View>
+        <View style={styles.errorContainer}>
+          <Icon name="error" size={64} color="#F44336" />
+          <Text style={styles.errorText}>{t("errors.loadCertificationsFailed")}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => refetch()}>
+            <Text style={styles.retryText}>{t("common.retry")}</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    )
+  }
 
   if (testMode === "results" && testResult) {
     return (
@@ -351,7 +277,7 @@ const CertificationLearningScreen = ({ navigation }: any) => {
           <TouchableOpacity onPress={() => setTestMode("selection")}>
             <Icon name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
-          <Text style={styles.title}>Test Results</Text>
+          <Text style={styles.title}>{t("certifications.testResults")}</Text>
           <View />
         </View>
 
@@ -363,21 +289,25 @@ const CertificationLearningScreen = ({ navigation }: any) => {
               </Text>
             </View>
             <Text style={[styles.resultStatus, { color: testResult.passed ? "#4CAF50" : "#F44336" }]}>
-              {testResult.passed ? "PASSED" : "FAILED"}
+              {testResult.passed ? t("certifications.passed") : t("certifications.failed")}
             </Text>
             <Text style={styles.resultSubtext}>
-              {testResult.correctAnswers} out of {testResult.totalQuestions} correct
+              {testResult.correctAnswers} {t("certifications.outOf")} {testResult.totalQuestions}{" "}
+              {t("certifications.correct")}
+            </Text>
+            <Text style={styles.completedDate}>
+              {t("certifications.completedOn")} {formatDateTime(testResult.completedAt)}
             </Text>
           </View>
 
           <View style={styles.skillBreakdownCard}>
-            <Text style={styles.sectionTitle}>Skill Breakdown</Text>
-            {Object.entries(testResult.skillBreakdown).map(([skill, data]) => {
+            <Text style={styles.sectionTitle}>{t("certifications.skillBreakdown")}</Text>
+            {Object.entries(testResult.skillBreakdown).map(([skill, data]: [string, any]) => {
               const percentage = data.total > 0 ? (data.correct / data.total) * 100 : 0
               return (
                 <View key={skill} style={styles.skillItem}>
                   <View style={styles.skillHeader}>
-                    <Text style={styles.skillName}>{skill.charAt(0).toUpperCase() + skill.slice(1)}</Text>
+                    <Text style={styles.skillName}>{t(`certifications.skills.${skill}`)}</Text>
                     <Text style={styles.skillScore}>
                       {data.correct}/{data.total}
                     </Text>
@@ -396,8 +326,8 @@ const CertificationLearningScreen = ({ navigation }: any) => {
           </View>
 
           <View style={styles.suggestionsCard}>
-            <Text style={styles.sectionTitle}>Improvement Suggestions</Text>
-            {testResult.suggestions.map((suggestion, index) => (
+            <Text style={styles.sectionTitle}>{t("certifications.improvementSuggestions")}</Text>
+            {testResult.suggestions.map((suggestion: string, index: number) => (
               <View key={index} style={styles.suggestionItem}>
                 <Icon name="lightbulb-outline" size={20} color="#FF9800" />
                 <Text style={styles.suggestionText}>{suggestion}</Text>
@@ -407,10 +337,7 @@ const CertificationLearningScreen = ({ navigation }: any) => {
 
           <View style={styles.actionButtons}>
             <TouchableOpacity style={styles.retakeButton} onPress={() => setTestMode("selection")}>
-              <Text style={styles.retakeButtonText}>Take Another Test</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.reviewButton} onPress={() => {}}>
-              <Text style={styles.reviewButtonText}>Review Answers</Text>
+              <Text style={styles.retakeButtonText}>{t("certifications.takeAnotherTest")}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -419,8 +346,33 @@ const CertificationLearningScreen = ({ navigation }: any) => {
   }
 
   if (testMode === "practice" || testMode === "exam") {
-    const currentQ = sampleQuestions[currentQuestion]
-    const progress = ((currentQuestion + 1) / sampleQuestions.length) * 100
+    if (questionsLoading) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4ECDC4" />
+            <Text style={styles.loadingText}>{t("certifications.loadingQuestions")}</Text>
+          </View>
+        </SafeAreaView>
+      )
+    }
+
+    if (!testQuestions || testQuestions.length === 0) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.errorContainer}>
+            <Icon name="quiz" size={64} color="#9CA3AF" />
+            <Text style={styles.errorText}>{t("certifications.noQuestionsAvailable")}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={() => setTestMode("selection")}>
+              <Text style={styles.retryText}>{t("common.back")}</Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      )
+    }
+
+    const currentQ = testQuestions[currentQuestion]
+    const progress = ((currentQuestion + 1) / testQuestions.length) * 100
 
     return (
       <SafeAreaView style={styles.container}>
@@ -429,7 +381,7 @@ const CertificationLearningScreen = ({ navigation }: any) => {
             <Icon name="arrow-back" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.title}>
-            {selectedTest?.level} - {testMode === "exam" ? "Exam" : "Practice"}
+            {selectedTest?.level} - {testMode === "exam" ? t("certifications.exam") : t("certifications.practice")}
           </Text>
           {testMode === "exam" && <Text style={styles.timerText}>{formatTime(timeLeft)}</Text>}
         </View>
@@ -439,32 +391,29 @@ const CertificationLearningScreen = ({ navigation }: any) => {
             <View style={[styles.progressFill, { width: `${progress}%` }]} />
           </View>
           <Text style={styles.progressText}>
-            Question {currentQuestion + 1} of {sampleQuestions.length}
+            {t("certifications.question")} {currentQuestion + 1} {t("certifications.of")} {testQuestions.length}
           </Text>
         </View>
 
         <ScrollView style={styles.questionContainer}>
           <View style={styles.questionCard}>
             <View style={styles.skillBadge}>
-              <Text style={styles.skillBadgeText}>{currentQ.skill.toUpperCase()}</Text>
+              <Text style={styles.skillBadgeText}>{t(`certifications.skills.${currentQ.skill}`).toUpperCase()}</Text>
             </View>
 
             <Text style={styles.questionText}>{currentQ.question}</Text>
 
             <View style={styles.optionsContainer}>
-              {currentQ.options.map((option, index) => (
+              {currentQ.options.map((option: string, index: number) => (
                 <TouchableOpacity
                   key={index}
-                  style={[styles.optionButton, selectedAnswers[currentQuestion] === index && styles.selectedOption]}
-                  onPress={() => handleAnswerSelect(index)}
+                  style={[styles.optionButton, selectedAnswers[currentQ.id] === index && styles.selectedOption]}
+                  onPress={() => handleAnswerSelect(currentQ.id, index)}
                 >
                   <View style={styles.optionContent}>
                     <Text style={styles.optionLetter}>{String.fromCharCode(65 + index)}</Text>
                     <Text
-                      style={[
-                        styles.optionText,
-                        selectedAnswers[currentQuestion] === index && styles.selectedOptionText,
-                      ]}
+                      style={[styles.optionText, selectedAnswers[currentQ.id] === index && styles.selectedOptionText]}
                     >
                       {option}
                     </Text>
@@ -481,16 +430,22 @@ const CertificationLearningScreen = ({ navigation }: any) => {
             onPress={previousQuestion}
             disabled={currentQuestion === 0}
           >
-            <Text style={styles.navButtonText}>Previous</Text>
+            <Text style={styles.navButtonText}>{t("common.previous")}</Text>
           </TouchableOpacity>
 
-          {currentQuestion === sampleQuestions.length - 1 ? (
-            <TouchableOpacity style={styles.submitButton} onPress={submitTest}>
-              <Text style={styles.submitButtonText}>Submit Test</Text>
+          {currentQuestion === testQuestions.length - 1 ? (
+            <TouchableOpacity
+              style={[styles.submitButton, isSubmitting && styles.disabledButton]}
+              onPress={submitTestAnswers}
+              disabled={isSubmitting}
+            >
+              <Text style={styles.submitButtonText}>
+                {isSubmitting ? t("common.submitting") : t("certifications.submitTest")}
+              </Text>
             </TouchableOpacity>
           ) : (
             <TouchableOpacity style={styles.navButton} onPress={nextQuestion}>
-              <Text style={styles.navButtonText}>Next</Text>
+              <Text style={styles.navButtonText}>{t("common.next")}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -498,7 +453,8 @@ const CertificationLearningScreen = ({ navigation }: any) => {
     )
   }
 
-  const filteredTests = certificationTests.filter((test) => test.language === selectedLanguage)
+  const filteredTests =
+    certifications?.filter((test) => selectedLanguage === "All" || test.language === selectedLanguage) || []
 
   return (
     <SafeAreaView style={styles.container}>
@@ -506,41 +462,49 @@ const CertificationLearningScreen = ({ navigation }: any) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.title}>Certification Tests</Text>
+        <Text style={styles.title}>{t("certifications.title")}</Text>
         <View />
       </View>
 
       <View style={styles.languageSelector}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-          {languages.map((language) => (
+          {availableLanguages.map((language) => (
             <TouchableOpacity
               key={language}
               style={[styles.languageChip, selectedLanguage === language && styles.selectedLanguageChip]}
               onPress={() => setSelectedLanguage(language)}
             >
               <Text style={[styles.languageChipText, selectedLanguage === language && styles.selectedLanguageChipText]}>
-                {language}
+                {language === "All" ? t("common.all") : language}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      <FlatList
-        data={filteredTests}
-        renderItem={renderTestCard}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.testsList}
-        showsVerticalScrollIndicator={false}
-      />
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+          <Text style={styles.loadingText}>{t("certifications.loadingCertifications")}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredTests}
+          renderItem={renderTestCard}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.testsList}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Icon name="school" size={64} color="#D1D5DB" />
+              <Text style={styles.emptyText}>{t("certifications.noCertificationsAvailable")}</Text>
+              <Text style={styles.emptySubtext}>{t("certifications.checkBackLater")}</Text>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   )
-}
-
-const getSkillColor = (percentage: number): string => {
-  if (percentage >= 80) return "#4CAF50"
-  if (percentage >= 60) return "#FF9800"
-  return "#F44336"
 }
 
 const styles = StyleSheet.create({
@@ -592,6 +556,40 @@ const styles = StyleSheet.create({
   },
   selectedLanguageChipText: {
     color: "#FFFFFF",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    color: "#6B7280",
+    textAlign: "center",
+    marginVertical: 16,
+  },
+  retryButton: {
+    backgroundColor: "#4ECDC4",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  retryText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
   testsList: {
     padding: 20,
@@ -649,6 +647,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#666",
     marginLeft: 4,
+  },
+  progressInfo: {
+    marginBottom: 15,
+  },
+  progressText: {
+    fontSize: 12,
+    color: "#4ECDC4",
+    fontWeight: "500",
+    marginBottom: 2,
   },
   testActions: {
     flexDirection: "row",
@@ -847,6 +854,11 @@ const styles = StyleSheet.create({
   resultSubtext: {
     fontSize: 14,
     color: "#666",
+    marginBottom: 8,
+  },
+  completedDate: {
+    fontSize: 12,
+    color: "#9CA3AF",
   },
   skillBreakdownCard: {
     backgroundColor: "#FFFFFF",
@@ -908,32 +920,35 @@ const styles = StyleSheet.create({
   },
   actionButtons: {
     flexDirection: "row",
-    justifyContent: "space-between",
+    justifyContent: "center",
     marginBottom: 30,
   },
   retakeButton: {
-    flex: 0.48,
     backgroundColor: "#4ECDC4",
+    paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 8,
-    alignItems: "center",
   },
   retakeButtonText: {
     color: "#FFFFFF",
     fontSize: 14,
     fontWeight: "500",
   },
-  reviewButton: {
-    flex: 0.48,
-    backgroundColor: "#F0F0F0",
-    paddingVertical: 12,
-    borderRadius: 8,
+  emptyContainer: {
     alignItems: "center",
+    paddingVertical: 60,
   },
-  reviewButtonText: {
-    color: "#666",
+  emptyText: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
     fontSize: 14,
-    fontWeight: "500",
+    color: "#D1D5DB",
+    textAlign: "center",
   },
 })
 

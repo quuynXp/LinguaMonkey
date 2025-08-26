@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import Icon from "react-native-vector-icons/MaterialIcons"
 
 interface User {
   id: string
@@ -280,12 +280,12 @@ const LeaderboardScreen = ({ navigation }) => {
 
           <View style={styles.currentUserStats}>
             <View style={styles.currentUserStat}>
-              <Text style={styles.currentUserStatValue}>{currentUser.points.toLocaleString()}</Text>
-              <Text style={styles.currentUserStatLabel}>Points</Text>
+              <Icon name="stars" size={14} color="#F59E0B" />
+              <Text style={styles.statText}>{currentUser.points.toLocaleString()}</Text>
             </View>
             <View style={styles.currentUserStat}>
-              <Text style={styles.currentUserStatValue}>{currentUser.streak}</Text>
-              <Text style={styles.currentUserStatLabel}>Streak</Text>
+              <Icon name="local-fire-department" size={14} color="#EF4444" />
+              <Text style={styles.statText}>{currentUser.streak}</Text>
             </View>
           </View>
         </View>

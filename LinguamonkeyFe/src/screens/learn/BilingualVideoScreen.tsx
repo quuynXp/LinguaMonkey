@@ -7,8 +7,8 @@ import { Alert, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacit
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Video from "react-native-video"
-import { useAppStore } from "../stores/appStore"
-import type { BilingualVideo, Subtitle } from "../types/api"
+import { useAppStore } from "../../stores/appStore"
+import type { BilingualVideo, Subtitle } from "../../types/api"
 
 const { width, height } = Dimensions.get("window")
 

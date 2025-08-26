@@ -45,6 +45,24 @@ public class CourseController {
                 .build();
     }
 
+    @Operation(summary = "Get enrolled courses of a user", description = "Retrieve courses a user has enrolled in")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved enrolled courses"),
+            @ApiResponse(responseCode = "404", description = "User not found or no courses enrolled")
+    })
+    @GetMapping("/enrolled/{userId}")
+    public AppApiResponse<Page<CourseResponse>> getEnrolledCoursesByUserId(
+            @Parameter(description = "User ID") @PathVariable UUID userId,
+            @Parameter(description = "Pagination and sorting") Pageable pageable,
+            Locale locale) {
+        Page<CourseResponse> courses = courseService.getEnrolledCoursesByUserId(userId, pageable);
+        return AppApiResponse.<Page<CourseResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("course.enrolled.byUser.success", null, locale))
+                .result(courses)
+                .build();
+    }
+
     @Operation(summary = "Get course by ID", description = "Retrieve a course by its ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved course"),

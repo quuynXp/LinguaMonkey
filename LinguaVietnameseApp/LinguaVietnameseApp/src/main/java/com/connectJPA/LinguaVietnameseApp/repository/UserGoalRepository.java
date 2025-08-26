@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -20,4 +21,6 @@ public interface UserGoalRepository extends JpaRepository<UserGoal, UUID> {
 
     @Query("UPDATE UserGoal ug SET ug.isDeleted = true, ug.deletedAt = CURRENT_TIMESTAMP WHERE ug.goalId = :id AND ug.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
+
+    List<UserGoal> findByUserIdAndIsDeletedFalse(UUID userId);
 }

@@ -14,19 +14,19 @@ import {
   TouchableOpacity,
   View,
 } from "react-native"
-import MaterialIcons from "react-native-vector-icons/Ionicons"
-import axios from "axios"
+import Icon from "react-native-vector-icons/Ionicons"
+import { useQuery, useMutation } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import "../../i18n"
-
-// Custom fetcher for useSWR
-const fetcher = (url) => axios.get(url).then((res) => res.data)
+import { useAppStore } from "../../stores/appStore"
+import { useToast } from "../../hooks/useToast"
+import instance from "../../api/axiosInstance"
 
 const ChatAIScreen = () => {
   const { t, i18n } = useTranslation()
+  const { user } = useAppStore()
+  const { showToast } = useToast()
   const [messages, setMessages] = useState([])
   const [inputText, setInputText] = useState("")
-  const [loading, setLoading] = useState(false)
   const [showEnvironmentModal, setShowEnvironmentModal] = useState(false)
   const [showTopicsModal, setShowTopicsModal] = useState(false)
   const [currentEnvironment, setCurrentEnvironment] = useState("general")
@@ -34,19 +34,145 @@ const ChatAIScreen = () => {
   const scrollViewRef = useRef()
   const navigation = useNavigation()
 
-  // Fetch messages using useSWR
-  const { data: fetchedMessages, error: messagesError } = useSWR("/api/chat-ai/messages", fetcher, {
+  // Fetch chat messages
+  const { data: fetchedMessages } = useQuery({
+    queryKey: ["chat-ai-messages", user?.user_id],
+    queryFn: async () => {
+      const response = await instance.get("/api/chat-ai/messages")
+      return response.data.messages
+    },
     onSuccess: (data) => {
-      setMessages(data.messages || [])
+      setMessages(data || [])
     },
   })
 
   // Fetch environments and topics from backend
-  const { data: environmentsData } = useSWR("/api/chat-ai/environments", fetcher)
-  const { data: topicsData } = useSWR("/api/chat-ai/topics", fetcher)
+  const { data: environmentsData } = useQuery({
+    queryKey: ["chat-ai-environments"],
+    queryFn: async () => {
+      const response = await instance.get("/api/chat-ai/environments")
+      return response.data.environments
+    },
+  })
 
-  const environments = environmentsData || []
-  const conversationTopics = topicsData || []
+  const { data: topicsData } = useQuery({
+    queryKey: ["chat-ai-topics"],
+    queryFn: async () => {
+      const response = await instance.get("/api/chat-ai/topics")
+      return response.data.topics
+    },
+  })
+
+  // Send message mutation
+  const sendMessageMutation = useMutation({
+    mutationFn: async ({ message, environment, language }) => {
+      const response = await instance.post("/api/chat-ai", {
+        message,
+        environment,
+        language,
+        userId: user?.user_id,
+      })
+      return response.data
+    },
+    onSuccess: (data) => {
+      const aiMessage = {
+        id: Date.now() + 1,
+        text: data.message,
+        sender: "ai",
+        timestamp: new Date().toLocaleTimeString(),
+        translated: false,
+      }
+      setMessages((prevMessages) => [...prevMessages, aiMessage])
+    },
+    onError: (error) => {
+      const errorMessage = {
+        id: Date.now() + 1,
+        text: t("error.connection"),
+        sender: "ai",
+        timestamp: new Date().toLocaleTimeString(),
+      }
+      setMessages((prevMessages) => [...prevMessages, errorMessage])
+      showToast(t("error.sendMessage"), "error")
+    },
+  })
+
+  // Translate message mutation
+  const translateMessageMutation = useMutation({
+    mutationFn: async ({ text, targetLanguage }) => {
+      const response = await instance.post("/api/chat-ai/translate", {
+        text,
+        targetLanguage,
+      })
+      return response.data
+    },
+    onSuccess: (data, variables) => {
+      setMessages((prevMessages) =>
+        prevMessages.map((msg) =>
+          msg.id === variables.messageId ? { ...msg, translatedText: data.translatedText, translated: true } : msg,
+        ),
+      )
+    },
+    onError: () => {
+      showToast(t("error.translation"), "error")
+    },
+  })
+
+  const environments = environmentsData || [
+    { id: "general", name: t("environment.general"), icon: "chatbubble", description: t("environment.generalDesc") },
+    { id: "business", name: t("environment.business"), icon: "briefcase", description: t("environment.businessDesc") },
+    { id: "casual", name: t("environment.casual"), icon: "heart", description: t("environment.casualDesc") },
+    { id: "academic", name: t("environment.academic"), icon: "school", description: t("environment.academicDesc") },
+    { id: "travel", name: t("environment.travel"), icon: "airplane", description: t("environment.travelDesc") },
+    {
+      id: "restaurant",
+      name: t("environment.restaurant"),
+      icon: "restaurant",
+      description: t("environment.restaurantDesc"),
+    },
+  ]
+
+  const conversationTopics = topicsData || [
+    {
+      id: "introduction",
+      title: t("topics.introduction"),
+      prompt: t("topics.introductionPrompt"),
+    },
+    {
+      id: "job_interview",
+      title: t("topics.jobInterview"),
+      prompt: t("topics.jobInterviewPrompt"),
+    },
+    {
+      id: "daily_routine",
+      title: t("topics.dailyRoutine"),
+      prompt: t("topics.dailyRoutinePrompt"),
+    },
+    {
+      id: "hobbies",
+      title: t("topics.hobbies"),
+      prompt: t("topics.hobbiesPrompt"),
+    },
+    {
+      id: "travel_planning",
+      title: t("topics.travelPlanning"),
+      prompt: t("topics.travelPlanningPrompt"),
+    },
+    {
+      id: "food_culture",
+      title: t("topics.foodCulture"),
+      prompt: t("topics.foodCulturePrompt"),
+    },
+    {
+      id: "technology",
+      title: t("topics.technology"),
+      prompt: t("topics.technologyPrompt"),
+    },
+    {
+      id: "environment",
+      title: t("topics.environment"),
+      prompt: t("topics.environmentPrompt"),
+    },
+  ]
 
   useEffect(() => {
     scrollViewRef.current?.scrollToEnd({ animated: true })
@@ -63,53 +189,22 @@ const ChatAIScreen = () => {
     }
     setMessages((prevMessages) => [...prevMessages, newMessage])
     setInputText("")
-    setLoading(true)
 
-    try {
-      const response = await axios.post("/api/chat-ai", {
-        message: messageText,
-        environment: currentEnvironment,
-        language: i18n.language,
-      })
-      const aiMessage = {
-        id: Date.now() + 1,
-        text: response.data.message,
-        sender: "ai",
-        timestamp: new Date().toLocaleTimeString(),
-        translated: false,
-      }
-      setMessages((prevMessages) => [...prevMessages, aiMessage])
-    } catch (error) {
-      console.error("Error sending message:", error)
-      const errorMessage = {
-        id: Date.now() + 1,
-        text: t("error.connection"),
-        sender: "ai",
-        timestamp: new Date().toLocaleTimeString(),
-      }
-      setMessages((prevMessages) => [...prevMessages, errorMessage])
-    } finally {
-      setLoading(false)
-    }
+    sendMessageMutation.mutate({
+      message: messageText,
+      environment: currentEnvironment,
+      language: i18n.language,
+    })
   }
 
   const translateMessage = async (messageId, messageText) => {
     setTranslatingMessageId(messageId)
-    try {
-      const response = await axios.post("/api/chat-ai/translate", {
-        text: messageText,
-        targetLanguage: i18n.language,
-      })
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) =>
-          msg.id === messageId ? { ...msg, translatedText: response.data.translatedText, translated: true } : msg,
-        ),
-      )
-    } catch (error) {
-      console.error("Translation error:", error)
-    } finally {
-      setTranslatingMessageId(null)
-    }
+    translateMessageMutation.mutate({
+      text: messageText,
+      targetLanguage: i18n.language,
+      messageId,
+    })
+    setTranslatingMessageId(null)
   }
 
   const selectEnvironment = (environment) => {
@@ -131,6 +226,7 @@ const ChatAIScreen = () => {
 
   const changeLanguage = (lang) => {
     i18n.changeLanguage(lang)
+    showToast(t("language.changed"), "success")
   }
 
   const renderMessage = ({ item: message }) => (
@@ -156,9 +252,9 @@ const ChatAIScreen = () => {
           <TouchableOpacity
             style={styles.actionButton}
             onPress={() => translateMessage(message.id, message.text)}
-            disabled={translatingMessageId === message.id}
+            disabled={translatingMessageId === message.id || translateMessageMutation.isPending}
           >
-            {translatingMessageId === message.id ? (
+            {translatingMessageId === message.id || translateMessageMutation.isPending ? (
               <ActivityIndicator size="small" color="#6B7280" />
             ) : (
               <Icon name={message.translated ? "language" : "language-outline"} size={16} color="#6B7280" />
@@ -219,7 +315,7 @@ const ChatAIScreen = () => {
           onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         />
 
-        {loading && (
+        {sendMessageMutation.isPending && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#6B7280" />
             <Text style={styles.loadingText}>{t("loading.ai")}</Text>
@@ -236,7 +332,11 @@ const ChatAIScreen = () => {
             returnKeyType="send"
             multiline
           />
-          <TouchableOpacity style={styles.sendButton} onPress={() => sendMessage()}>
+          <TouchableOpacity
+            style={styles.sendButton}
+            onPress={() => sendMessage()}
+            disabled={sendMessageMutation.isPending}
+          >
             <Icon name="send" size={24} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -313,7 +413,38 @@ const ChatAIScreen = () => {
 }
 
 const styles = StyleSheet.create({
-  // ... (Existing styles remain unchanged, adding language switcher styles)
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 50,
+    paddingBottom: 12,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  aiInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  aiName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  aiStatus: {
+    fontSize: 12,
+    color: "#10B981",
+    marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerButton: {
+    padding: 8,
+    marginLeft: 4,
+  },
   languageSwitcher: {
     flexDirection: "row",
     marginLeft: 8,
@@ -328,6 +459,149 @@ const styles = StyleSheet.create({
     color: "#3B82F6",
     fontWeight: "600",
     padding: 8,
+  },
+  chatContainer: {
+    flex: 1,
+    padding: 16,
+  },
+  message: {
+    maxWidth: "85%",
+    marginBottom: 12,
+  },
+  userMessage: {
+    alignSelf: "flex-end",
+  },
+  aiMessage: {
+    alignSelf: "flex-start",
+  },
+  systemMessage: {
+    alignSelf: "center",
+    maxWidth: "70%",
+  },
+  messageContent: {
+    backgroundColor: "#F3F4F6",
+    borderRadius: 12,
+    padding: 12,
+  },
+  messageText: {
+    fontSize: 16,
+    color: "#1F2937",
+    lineHeight: 22,
+  },
+  systemMessageText: {
+    fontStyle: "italic",
+    textAlign: "center",
+    color: "#6B7280",
+  },
+  timestamp: {
+    fontSize: 11,
+    color: "#9CA3AF",
+    marginTop: 4,
+  },
+  messageActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginTop: 4,
+  },
+  actionButton: {
+    padding: 6,
+    borderRadius: 12,
+    backgroundColor: "#F9FAFB",
+  },
+  loadingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 12,
+  },
+  loadingText: {
+    marginLeft: 8,
+    color: "#6B7280",
+    fontSize: 14,
+  },
+  inputContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    padding: 16,
+    backgroundColor: "#FFFFFF",
+    borderTopWidth: 1,
+    borderTopColor: "#E5E7EB",
+  },
+  input: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+    borderRadius: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    marginRight: 12,
+    maxHeight: 100,
+    fontSize: 16,
+  },
+  sendButton: {
+    backgroundColor: "#3B82F6",
+    borderRadius: 25,
+    padding: 12,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    backgroundColor: "#FFFFFF",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "80%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  environmentItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  selectedEnvironment: {
+    backgroundColor: "#EFF6FF",
+  },
+  environmentInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  environmentName: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#1F2937",
+  },
+  environmentDescription: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  topicItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F4F6",
+  },
+  topicTitle: {
+    fontSize: 16,
+    color: "#1F2937",
+    flex: 1,
   },
 })
 

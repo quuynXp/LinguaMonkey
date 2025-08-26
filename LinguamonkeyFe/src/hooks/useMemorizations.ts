@@ -1,9 +1,11 @@
-import { mutate } from "swr"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
+import instance from "../api/axiosInstance"
 import type { UserMemorization } from "../types/api"
-import { useApiDelete, useApiGet, useApiPost, useApiPut } from "./useApi"
 
 export const useMemorizations = () => {
-  // Get user memorizations (notes)
+  const queryClient = useQueryClient()
+
+  // Get memorizations
   const useUserMemorizations = (params?: {
     content_type?: string
     is_favorite?: boolean
@@ -19,92 +21,77 @@ export const useMemorizations = () => {
     if (params?.limit) queryParams.append("limit", params.limit.toString())
 
     const url = `/user/memorizations${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
-    return useApiGet<UserMemorization[]>(url)
+
+    return useQuery<UserMemorization[]>({
+      queryKey: ["memorizations", params],
+      queryFn: async () => {
+        const res = await instance.get(url)
+        return res.data
+      },
+    })
   }
 
   // Get memorization by ID
-  const useMemorization = (memorizationId: string | null) => {
-    return useApiGet<UserMemorization>(memorizationId ? `/user/memorizations/${memorizationId}` : null)
-  }
+  const useMemorization = (memorizationId: string | null) =>
+    useQuery<UserMemorization>({
+      queryKey: ["memorization", memorizationId],
+      queryFn: async () => {
+        if (!memorizationId) throw new Error("Invalid memorizationId")
+        const res = await instance.get(`/user/memorizations/${memorizationId}`)
+        return res.data
+      },
+      enabled: !!memorizationId,
+    })
 
-  // Create memorization
-  const useCreateMemorization = () => {
-    const { trigger, isMutating } = useApiPost<UserMemorization>("/user/memorizations")
+  // Create
+  const useCreateMemorization = () =>
+    useMutation({
+      mutationFn: async (data: { content_type: string; content_id?: string; note_text?: string; is_favorite?: boolean }) => {
+        const res = await instance.post("/user/memorizations", data)
+        return res.data
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["memorizations"] })
+      },
+    })
 
-    const createMemorization = async (data: {
-      content_type: string
-      content_id?: string
-      note_text?: string
-      is_favorite?: boolean
-    }) => {
-      try {
-        const result = await trigger(data)
-        // Revalidate memorizations
-        mutate("/user/memorizations")
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
+  // Update
+  const useUpdateMemorization = () =>
+    useMutation({
+      mutationFn: async ({ memorizationId, data }: { memorizationId: string; data: Partial<UserMemorization> }) => {
+        const res = await instance.put(`/user/memorizations/${memorizationId}`, data)
+        return res.data
+      },
+      onSuccess: (data, variables) => {
+        queryClient.invalidateQueries({ queryKey: ["memorizations"] })
+        queryClient.invalidateQueries({ queryKey: ["memorization", variables.memorizationId] })
+      },
+    })
 
-    return { createMemorization, isCreating: isMutating }
-  }
-
-  // Update memorization
-  const useUpdateMemorization = () => {
-    const { trigger, isMutating } = useApiPut<UserMemorization>("/user/memorizations")
-
-    const updateMemorization = async (memorizationId: string, data: Partial<UserMemorization>) => {
-      try {
-        const result = await trigger({ memorization_id: memorizationId, ...data })
-        // Revalidate memorizations
-        mutate("/user/memorizations")
-        mutate(`/user/memorizations/${memorizationId}`)
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { updateMemorization, isUpdating: isMutating }
-  }
-
-  // Delete memorization
-  const useDeleteMemorization = () => {
-    const { trigger, isMutating } = useApiDelete<{ success: boolean }>("/user/memorizations")
-
-    const deleteMemorization = async (memorizationId: string) => {
-      try {
-        const result = await trigger(`/user/memorizations/${memorizationId}`)
-        // Revalidate memorizations
-        mutate("/user/memorizations")
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { deleteMemorization, isDeleting: isMutating }
-  }
+  // Delete
+  const useDeleteMemorization = () =>
+    useMutation({
+      mutationFn: async (memorizationId: string) => {
+        const res = await instance.delete(`/user/memorizations/${memorizationId}`)
+        return res.data
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["memorizations"] })
+      },
+    })
 
   // Toggle favorite
-  const useToggleFavorite = () => {
-    const { trigger, isMutating } = useApiPut<{ is_favorite: boolean }>("/user/memorizations/favorite")
-
-    const toggleFavorite = async (memorizationId: string) => {
-      try {
-        const result = await trigger({ memorization_id: memorizationId })
-        // Revalidate memorizations
-        mutate("/user/memorizations")
-        mutate(`/user/memorizations/${memorizationId}`)
-        return result
-      } catch (error) {
-        throw error
-      }
-    }
-
-    return { toggleFavorite, isToggling: isMutating }
-  }
+  const useToggleFavorite = () =>
+    useMutation({
+      mutationFn: async (memorizationId: string) => {
+        const res = await instance.put(`/user/memorizations/favorite`, { memorization_id: memorizationId })
+        return res.data
+      },
+      onSuccess: (data, memorizationId) => {
+        queryClient.invalidateQueries({ queryKey: ["memorizations"] })
+        queryClient.invalidateQueries({ queryKey: ["memorization", memorizationId] })
+      },
+    })
 
   return {
     useUserMemorizations,

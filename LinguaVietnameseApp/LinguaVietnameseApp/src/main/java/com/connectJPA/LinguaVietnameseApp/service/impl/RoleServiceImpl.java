@@ -41,7 +41,7 @@ public class RoleServiceImpl implements RoleService {
 
     @Override
     @Cacheable(value = "roles", key = "#roleName + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
-    public Page<RoleResponse> getAllRoles(String roleName, Pageable pageable) {
+    public Page<RoleResponse> getAllRoles(RoleName roleName, Pageable pageable) {
         try {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
@@ -124,7 +124,6 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
-    @Transactional
     public void assignDefaultStudentRole(UUID userId) {
         assignRoleToUser(userId, RoleName.STUDENT);
     }
@@ -132,17 +131,38 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional
     public void assignRoleToUser(UUID userId, RoleName roleName) {
+        // 1) Lấy user từ DB
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
+        // 2) Lấy role từ DB theo roleName
         Role role = roleRepository.findByRoleNameAndIsDeletedFalse(roleName)
                 .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
+        System.out.println("Role id:" + role.getRoleId() + " ROle name: "+ role.getRoleName());
 
+        // 3) Kiểm tra role đã tồn tại trong DB chưa (dù fetch đã có, để chắc chắn)
+        if (role.getRoleId() == null) {
+            // Nếu role chưa persist, force persist và flush để UUID tồn tại trong DB
+            role = roleRepository.saveAndFlush(role);
+            log.warn("Role was not persisted yet, forced saveAndFlush. New roleId={}", role.getRoleId());
+        }
+
+        // 4) Kiểm tra user đã có role này chưa
         boolean exists = userRoleRepository.existsByIdUserIdAndIdRoleId(userId, role.getRoleId());
+        log.debug("Assigning role id={} name={} to userId={}", role.getRoleId(), role.getRoleName(), userId);
+
+        // 5) Lưu vào user_roles nếu chưa tồn tại
         if (!exists) {
-            userRoleRepository.save(new UserRole (new UserRoleId( userId, role.getRoleId())));
+            UserRole userRole = UserRole.builder()
+                    .id(new UserRoleId(userId, role.getRoleId()))
+                    .user(user)
+                    .role(role)
+                    .build();
+            userRoleRepository.save(userRole);
+            log.debug("Assigned role successfully.");
         }
     }
+
 
 
 

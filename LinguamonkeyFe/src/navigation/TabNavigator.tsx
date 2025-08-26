@@ -1,12 +1,12 @@
 import { MaterialIcons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import React from 'react';
-
 import ChatStack from './stack/ChatStack';
 import HomeStack from './stack/HomeStack';
 import ProfileStack from './stack/ProfileStack';
 import ProgressStack from './stack/ProgressStack';
 import SkillsLearnStack from './stack/SkillsLearnStack';
+
 
 const Tab = createBottomTabNavigator();
 
@@ -22,6 +22,7 @@ type TabRoute = keyof typeof iconMap;
 type IconName = typeof iconMap[TabRoute];
 
 export default function TabNavigator() {
+  
   return (
     <Tab.Navigator
       initialRouteName="Home"

@@ -16,6 +16,7 @@ from src.api.image_text_analyzer import analyze_image_with_text
 from src.api.passage_generator import generate_passage
 from src.api.image_generator import generate_image
 from src.api.text_generator import generate_text
+from src.api.roadmap_generator import generate_roadmap
 from src.api.translation_checker import check_translation
 load_dotenv()
 
@@ -137,6 +138,42 @@ class LearningService(learning_service_pb2_grpc.LearningServiceServicer):
         text, error = generate_text(request.user_id, request.language)
         return learning_service_pb2.GenerateTextResponse(text=text, error=error)
 
+    def CreateOrUpdateRoadmapDetailed(self, request, context):
+        is_valid, result = self._verify_token(context)
+        if not is_valid:
+            context.set_code(grpc.StatusCode.UNAUTHENTICATED)
+            context.set_details(result)
+            return learning_service_pb2.CreateOrUpdateRoadmapResponse()
+
+        roadmap_text, items, milestones, guidances, resources, error = generate_roadmap(
+            request.language, request.prompt, request.as_user_specific
+        )
+
+        if error:
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(error)
+            return learning_service_pb2.CreateOrUpdateRoadmapResponse()
+
+        return learning_service_pb2.CreateOrUpdateRoadmapResponse(
+            roadmap_id=request.roadmap_id if request.roadmap_id else "new-id",
+            title=request.title or "Generated Roadmap",
+            description=roadmap_text,
+            language=request.language,
+            items=[
+                learning_service_pb2.RoadmapItemProto(
+                    title=i["title"], description=i["description"], order_index=i["order_index"]
+                ) for i in items
+            ],
+            milestones=[
+                learning_service_pb2.MilestoneProto(
+                    title=m["title"], description=m["description"], order_index=m["order_index"]
+                ) for m in milestones
+            ],
+            guidances=guidances,
+            resources=resources
+        )
+
+
     def CheckTranslation(self, request, context):
         is_valid, result = self._verify_token(context)
         if not is_valid:
@@ -146,6 +183,8 @@ class LearningService(learning_service_pb2_grpc.LearningServiceServicer):
 
         feedback, score, error = check_translation(request.reference_text, request.translated_text, request.target_language)
         return learning_service_pb2.CheckTranslationResponse(feedback=feedback, score=score, error=error)
+
+
 
 def serve():
     server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))

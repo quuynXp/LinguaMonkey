@@ -20,10 +20,7 @@ public class TransactionResponse {
     private TransactionProvider provider;
     private String description;
     private boolean isDeleted;
-    @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;
-    @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime updatedAt;
-    @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime deletedAt;
 }

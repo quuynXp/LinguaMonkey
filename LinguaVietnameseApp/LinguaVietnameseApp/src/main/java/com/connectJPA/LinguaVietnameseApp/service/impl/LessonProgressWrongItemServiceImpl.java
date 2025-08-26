@@ -29,7 +29,6 @@ public class LessonProgressWrongItemServiceImpl implements LessonProgressWrongIt
     private final LessonProgressWrongItemMapper lessonProgressWrongItemMapper;
 
     @Override
-    @Cacheable(value = "lessonProgressWrongItems", key = "#lessonId + ':' + #userId + ':' + #lessonQuestionId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LessonProgressWrongItemResponse> getAllLessonProgressWrongItems(UUID lessonId, UUID userId, UUID lessonQuestionId, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -44,7 +43,6 @@ public class LessonProgressWrongItemServiceImpl implements LessonProgressWrongIt
     }
 
     @Override
-    @Cacheable(value = "lessonProgressWrongItems", key = "#lessonId + ':' + #userId + ':' + #lessonQuestionId")
     public LessonProgressWrongItemResponse getLessonProgressWrongItemByIds(UUID lessonId, UUID userId, UUID lessonQuestionId) {
         try {
             if (lessonId == null || userId == null || lessonQuestionId == null) {
@@ -61,7 +59,6 @@ public class LessonProgressWrongItemServiceImpl implements LessonProgressWrongIt
 
     @Override
     @Transactional
-    @CachePut(value = "lessonProgressWrongItems", key = "#result.lessonId + ':' + #result.userId + ':' + #result.lessonQuestionId")
     public LessonProgressWrongItemResponse createLessonProgressWrongItem(LessonProgressWrongItemRequest request) {
         try {
             if (request == null || request.getLessonId() == null || request.getUserId() == null || request.getLessonQuestionId() == null) {
@@ -78,7 +75,6 @@ public class LessonProgressWrongItemServiceImpl implements LessonProgressWrongIt
 
     @Override
     @Transactional
-    @CachePut(value = "lessonProgressWrongItems", key = "#lessonId + ':' + #userId + ':' + #lessonQuestionId")
     public LessonProgressWrongItemResponse updateLessonProgressWrongItem(UUID lessonId, UUID userId, UUID lessonQuestionId, LessonProgressWrongItemRequest request) {
         try {
             if (lessonId == null || userId == null || lessonQuestionId == null || request == null) {
@@ -97,7 +93,6 @@ public class LessonProgressWrongItemServiceImpl implements LessonProgressWrongIt
 
     @Override
     @Transactional
-    @CacheEvict(value = "lessonProgressWrongItems", key = "#lessonId + ':' + #userId + ':' + #lessonQuestionId")
     public void deleteLessonProgressWrongItem(UUID lessonId, UUID userId, UUID lessonQuestionId) {
         try {
             if (lessonId == null || userId == null || lessonQuestionId == null) {

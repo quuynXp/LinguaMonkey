@@ -10,7 +10,7 @@ import org.springframework.data.domain.Pageable;
 import java.util.UUID;
 
 public interface TransactionService {
-    Page<TransactionResponse> getAllTransactions(String userId, String status, Pageable pageable);
+    Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable);
     TransactionResponse getTransactionById(UUID id);
     TransactionResponse createTransaction(TransactionRequest request);
     TransactionResponse updateTransaction(UUID id, TransactionRequest request);

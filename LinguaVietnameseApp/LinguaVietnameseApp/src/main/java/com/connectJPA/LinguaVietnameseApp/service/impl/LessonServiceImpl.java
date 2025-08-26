@@ -46,7 +46,6 @@ public class LessonServiceImpl implements LessonService {
     private final UserLearningActivityRepository userLearningActivityRepository;
 
     @Override
-    @Cacheable(value = "lessons", key = "{#lessonName, #languageCode, #minExpReward, #categoryId, #subCategoryId, #courseId, #seriesId, #pageable.pageNumber, #pageable.pageSize, #pageable.sort}")
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
                                               UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId,
                                               Pageable pageable) {
@@ -101,7 +100,6 @@ public class LessonServiceImpl implements LessonService {
     }
 
     @Override
-    @Cacheable(value = "lesson", key = "#id")
     public LessonResponse getLessonById(UUID id) {
         try {
             Lesson lesson = lessonRepository.findById(id)
@@ -117,7 +115,6 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"lessons", "lesson", "lessonsBySkill", "lessonsByCategory"}, allEntries = true)
     public LessonResponse createLesson(LessonRequest request) {
         try {
             if (request.getLessonName() == null || request.getLessonName().isBlank()) {
@@ -142,7 +139,6 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"lessons", "lesson", "lessonsBySkill", "lessonsByCategory"}, allEntries = true)
     public LessonResponse updateLesson(UUID id, LessonRequest request) {
         try {
             Lesson lesson = lessonRepository.findById(id)
@@ -170,7 +166,6 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"lessons", "lesson", "lessonsBySkill", "lessonsByCategory"}, allEntries = true)
     public void deleteLesson(UUID id) {
         try {
             Lesson lesson = lessonRepository.findById(id)
@@ -220,7 +215,6 @@ public class LessonServiceImpl implements LessonService {
     }
 
     @Override
-    @Cacheable(value = "lessonsBySkill", key = "{#skillType, #pageable.pageNumber, #pageable.pageSize, #pageable.sort}")
     public Page<LessonResponse> getLessonsBySkillType(SkillType skillType, Pageable pageable) {
         try {
             // Validate pagination
@@ -245,7 +239,6 @@ public class LessonServiceImpl implements LessonService {
     }
 
     @Override
-    @Cacheable(value = "lessonsByCategory", key = "{#categoryId, #subCategoryId, #pageable.pageNumber, #pageable.pageSize, #pageable.sort}")
     public Page<LessonResponse> getLessonsByCertificateOrTopic(UUID categoryId, UUID subCategoryId, Pageable pageable) {
         try {
             // Validate pagination

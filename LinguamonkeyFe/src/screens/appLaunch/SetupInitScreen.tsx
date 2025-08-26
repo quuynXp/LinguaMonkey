@@ -4,134 +4,344 @@ import * as Localization from "expo-localization"
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { Character3D, Language, Interest, Country, AgeRange, LearningPace, CreateUserPayload } from "../../types/api"
+import instance from "../../api/axiosInstance"
+import ModelViewer from "../../components/ModelViewer"
+import CountryFlag from "react-native-country-flag"
+import { useTranslation } from "react-i18next"
+import { SafeAreaView } from "react-native-safe-area-context"
 
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { useUserStore } from "../../stores/UserStore";
+import { t } from "i18next"
+import { useTokenStore } from "../../stores/tokenStore";
+
 
 type SetupInitScreenProps = {
   navigation: NativeStackNavigationProp<any>
 }
 
 const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
+  const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(1)
-  const [isGenerating, setIsGenerating] = useState(false)
-
-  // User customization data
-  type Character = {
-    id: number
-    name: string
-    avatar: string
-    model: string
-    personality: string
-  }
-  const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null)
+  const [selectedCharacter, setSelectedCharacter] = useState<Character3D | null>(null)
   const [accountName, setAccountName] = useState("")
+  const [email, setEmail] = useState("")
+  const [country, setCountry] = useState("")
+  const [ageRange, setAgeRange] = useState("")
   const [nativeLanguage, setNativeLanguage] = useState("")
   const [targetLanguages, setTargetLanguages] = useState<string[]>([])
-  const [selectedInterests, setSelectedInterests] = useState<number[]>([])
+  const [certificationsSelected, setCertificationsSelected] = useState<string[]>([])
+  const [selectedInterests, setSelectedInterests] = useState<string[]>([])
+  const [learningGoalsSelected, setLearningGoalsSelected] = useState<string[]>([])
+  const [learningPace, setLearningPace] = useState("")
+
+  const [characters, setCharacters] = useState<Character3D[]>([])
+  const [languages, setLanguages] = useState<Language[]>([])
+  const [interests, setInterests] = useState<Interest[]>([])
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  // Available 3D characters
-  const characters = [
-    { id: 1, name: "Alex", avatar: "🦊", model: "fox-character.json", personality: "Adventurous" },
-    { id: 2, name: "Luna", avatar: "🐨", model: "koala-character.json", personality: "Calm" },
-    { id: 3, name: "Panda", avatar: "🐼", model: "panda-character.json", personality: "Friendly" },
-    { id: 4, name: "Leo", avatar: "🦁", model: "lion-character.json", personality: "Confident" },
-    { id: 5, name: "Sage", avatar: "🐸", model: "frog-character.json", personality: "Wise" },
-    { id: 6, name: "Penny", avatar: "🐧", model: "penguin-character.json", personality: "Cheerful" },
-    { id: 7, name: "Bella", avatar: "🦋", model: "butterfly-character.json", personality: "Creative" },
-    { id: 8, name: "Ollie", avatar: "🐙", model: "octopus-character.json", personality: "Smart" },
-    { id: 9, name: "Nova", avatar: "🦄", model: "unicorn-character.json", personality: "Magical" },
-    { id: 10, name: "Drake", avatar: "🐲", model: "dragon-character.json", personality: "Powerful" },
+  const countries = [
+    { code: "US", name: "United States" },
+    { code: "VN", name: "Vietnam" },
+    { code: "JP", name: "Japan" },
+    { code: "ZH", name: "China" },
+    { code: "FR", name: "France" },
+    { code: "DE", name: "Germany" },
+    { code: "ES", name: "Spain" },
+    { code: "IT", name: "Italy" },
+    { code: "KR", name: "South Korea" },
+    { code: "RU", name: "Russia" },
+    { code: "IN", name: "India" },
   ]
 
-  // Available languages
-  const languages = [
-    { code: "en", name: "English", flag: "🇺🇸" },
-    { code: "es", name: "Spanish", flag: "🇪🇸" },
-    { code: "fr", name: "French", flag: "🇫🇷" },
-    { code: "de", name: "German", flag: "🇩🇪" },
-    { code: "it", name: "Italian", flag: "🇮🇹" },
-    { code: "pt", name: "Portuguese", flag: "🇵🇹" },
-    { code: "ru", name: "Russian", flag: "🇷🇺" },
-    { code: "ja", name: "Japanese", flag: "🇯🇵" },
-    { code: "ko", name: "Korean", flag: "🇰🇷" },
-    { code: "zh", name: "Chinese", flag: "🇨🇳" },
-    { code: "ar", name: "Arabic", flag: "🇸🇦" },
-    { code: "hi", name: "Hindi", flag: "🇮🇳" },
-    { code: "vi", name: "Vietnamese", flag: "🇻🇳" },
-    { code: "th", name: "Thai", flag: "🇹🇭" },
+  const certifications = [
+    { id: "toefl", name: "TOEFL", description: "Test of English as a Foreign Language", languageCode: "EN" },
+    { id: "ielts", name: "IELTS", description: "International English Language Testing System", languageCode: "EN" },
+    { id: "hsk", name: "HSK", description: "Hanyu Shuiping Kaoshi (Chinese)", languageCode: "ZH" },
+    { id: "jlpt", name: "JLPT", description: "Japanese Language Proficiency Test", languageCode: "JP" },
+    { id: "topik", name: "TOPIK", description: "Test of Proficiency in Korean", languageCode: "KR" },
+    { id: "dalf", name: "DALF", description: "Diplôme Approfondi de Langue Française", languageCode: "FR" },
+    { id: "dele", name: "DELE", description: "Diplomas de Español como Lengua Extranjera", languageCode: "ES" },
+    { id: "goethe", name: "Goethe", description: "German Language Certificate", languageCode: "DE" },
   ]
 
-  // Interest categories
-  const interests = [
-    { id: 1, name: "Travel", icon: "flight", color: "#3B82F6" },
-    { id: 2, name: "Business", icon: "business", color: "#1F2937" },
-    { id: 3, name: "Technology", icon: "computer", color: "#8B5CF6" },
-    { id: 4, name: "Food & Cooking", icon: "restaurant", color: "#F59E0B" },
-    { id: 5, name: "Sports", icon: "sports-soccer", color: "#10B981" },
-    { id: 6, name: "Music", icon: "music-note", color: "#EF4444" },
-    { id: 7, name: "Movies & TV", icon: "movie", color: "#F97316" },
-    { id: 8, name: "Science", icon: "science", color: "#06B6D4" },
-    { id: 9, name: "Art & Design", icon: "palette", color: "#EC4899" },
-    { id: 10, name: "Health & Fitness", icon: "fitness-center", color: "#84CC16" },
-    { id: 11, name: "Education", icon: "school", color: "#6366F1" },
-    { id: 12, name: "Gaming", icon: "sports-esports", color: "#A855F7" },
+  const interestsWithDesc = interests.map((interest) => ({
+    ...interest,
+    description:
+      interest.description ||
+      `Explore ${interest.interest_name.toLowerCase()} to enhance your learning experience.`,
+    id: interest.interest_id, // luôn dùng id từ backend
+  }))
+
+  const learningGoals = [
+    { id: "conversation", name: "Daily Conversation", icon: "chat", description: "Practice everyday speaking and listening" },
+    { id: "business", name: "Business Communication", icon: "work", description: "Master professional language skills" },
+    { id: "academic", name: "Academic Study", icon: "school", description: "Prepare for academic success" },
+    { id: "travel", name: "Travel Communication", icon: "luggage", description: "Learn phrases for travel" },
+    { id: "certification", name: "Test Preparation", icon: "assignment", description: "Get ready for language exams" },
+    { id: "culture", name: "Cultural Understanding", icon: "explore", description: "Dive into cultural nuances" },
   ]
+
+  const learningPaces = [
+    { id: "slow", name: "Slow & Steady", description: "10-15 min/day • Relaxed pace", icon: "directions-walk", color: "#10B981" },
+    { id: "maintain", name: "Maintain Skills", description: "15-30 min/day • Keep current level", icon: "trending-flat", color: "#3B82F6" },
+    { id: "fast", name: "Fast Progress", description: "30-45 min/day • Quick improvement", icon: "directions-run", color: "#F59E0B" },
+    { id: "accelerated", name: "Accelerated", description: "45+ min/day • Intensive learning", icon: "rocket-launch", color: "#EF4444" },
+  ]
+
+  const randomSuffix = (len = 6) =>
+    Math.random().toString(36).slice(2, 2 + len);
+
+  const mapCountryToEnum = (c: string | undefined) => {
+    if (!c) return undefined;
+    const normalized = c.trim().toLowerCase();
+    const map: Record<string, string> = {
+      "united states": "UNITED_STATES",
+      "us": "UNITED_STATES",
+      "vietnam": "VIETNAM",
+      "vn": "VIETNAM",
+      "japan": "JAPAN",
+      "jp": "JAPAN",
+      "china": "CHINA",
+      "zh": "CHINA",
+      "france": "FRANCE",
+      "fr": "FRANCE",
+      "germany": "GERMANY",
+      "de": "GERMANY",
+      "italy": "ITALY",
+      "it": "ITALY",
+      "spain": "SPAIN",
+      "es": "SPAIN",
+      "south korea": "SOUTH_KOREA",
+      "kr": "SOUTH_KOREA",
+      "india": "INDIA",
+      "in": "INDIA",
+      "tonga": "TONGA"
+    };
+    return map[normalized] ?? undefined;
+  };
+
+  const AGE_ENUM_MAP: Record<string, string> = {
+    "13-17": "AGE_13_17",
+    "18-24": "AGE_18_24",
+    "25-34": "AGE_25_34",
+    "35-44": "AGE_35_44",
+    "45-54": "AGE_45_54",
+    "55+": "AGE_55_PLUS",
+  };
+
+  const mapAgeRangeToEnum = (display: string | undefined) => {
+    if (!display) return undefined;
+    return AGE_ENUM_MAP[display] ?? undefined; // undefined nếu không tìm thấy
+  };
+
 
   useEffect(() => {
-    // Auto-detect system language
-    const systemLocale = Localization.getLocales()[0]
-    const systemLang = languages.find((lang) => lang.code === systemLocale.languageCode)
-    if (systemLang) {
-      setNativeLanguage(systemLang.code)
-    }
-
-    // Entrance animation
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-    ]).start()
+    fetchLanguages()
+    fetchCharacters()
+    fetchInterests()
   }, [])
 
-  const handleNext = () => {
-    if (currentStep === 1 && !selectedCharacter) {
-      Alert.alert("Character Required", "Please select a character to continue.")
-      return
+  useEffect(() => {
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 400,
+      useNativeDriver: true,
+    }).start()
+
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 400,
+      useNativeDriver: true,
+    }).start()
+  }, [])
+
+  useEffect(() => {
+    if (characters.length && !selectedCharacter) setSelectedCharacter(characters[0])
+  }, [characters])
+
+  useEffect(() => {
+    if (interests.length && selectedInterests.length === 0) {
+      setSelectedInterests([interests[0].interest_id])
     }
-    if (currentStep === 2 && (!accountName.trim() || !nativeLanguage || targetLanguages.length === 0)) {
-      Alert.alert("Information Required", "Please fill in all required fields.")
-      return
-    }
-    if (currentStep === 3 && selectedInterests.length === 0) {
-      Alert.alert("Interests Required", "Please select at least one interest.")
-      return
+  }, [interests])
+
+  useEffect(() => {
+    // Initialize country and native language based on location
+    const locales = Localization.getLocales()
+    if (locales && locales.length > 0) {
+      const regionCode = locales[0]?.regionCode?.toUpperCase()
+      const languageCode = locales[0]?.languageCode?.toUpperCase()
+      const foundCountry = countries.find(c => c.code === regionCode)
+      if (foundCountry) setCountry(foundCountry.name.toUpperCase())
+      if (languageCode) {
+        setNativeLanguage(languageCode)
+        setTargetLanguages([languageCode]) // Default target language
+      }
     }
 
-    if (currentStep < 4) {
-      setCurrentStep(currentStep + 1)
-    } else {
-      // Start proficiency test
-      navigation.navigate("ProficiencyTest", {
-        userData: {
-          character: selectedCharacter,
-          accountName,
-          nativeLanguage,
-          targetLanguages,
-          interests: selectedInterests,
-        },
-      })
+    // Set default selections
+    if (characters.length > 0) setSelectedCharacter(characters[0])
+    if (interests.length > 0) setSelectedInterests([interests[0].interest_id])
+    if (learningGoals.length > 0) setLearningGoalsSelected(["conversation"])
+    setLearningPace("slow")
+    setAgeRange("18-24")
+  }, [])
+
+  const fetchCharacters = async () => {
+    try {
+      const response = await instance.get('/character3ds');
+      const charactersArray = response.data.result?.content;
+
+      console.log("Fetched characters:", charactersArray);
+
+      if (Array.isArray(charactersArray)) {
+        const normalized = charactersArray.map((c: any) => ({
+          ...c,
+          character3d_id: c.character3dId,
+          character3d_name: c.character3dName,
+          model_url: c.modelUrl,
+        }));
+        setCharacters(normalized);
+      } else {
+        setCharacters([]);
+      }
+    } catch (error) {
+      Alert.alert(t("error.title"), t("error.loadCharacters"));
+    }
+  };
+
+
+  const fetchLanguages = async () => {
+    try {
+      const response = await instance.get('/languages')
+      const languageArray = response.data.result?.content
+      if (Array.isArray(languageArray)) {
+        setLanguages(languageArray)
+      } else {
+        setLanguages([])
+      }
+    } catch (error) {
+      Alert.alert(t("error.title"), t("error.loadLanguages"))
     }
   }
+
+  const fetchInterests = async () => {
+    try {
+      const response = await instance.get('/interests')
+      const data = response.data.result || []
+
+      // map BE -> FE đồng bộ field
+      const normalized = data.map((item: any) => ({
+        interest_id: item.interestId,        // convert
+        interest_name: item.interestName,    // convert
+        description: item.description,
+      }))
+
+      setInterests(normalized)
+    } catch (error) {
+      Alert.alert(t("error.title"), t("error.loadInterests"))
+    }
+  }
+
+  const handleNext = async () => {
+    if (currentStep === 1 && !selectedCharacter) {
+      Alert.alert(t("error.title"), t("error.characterRequired"))
+      return
+    }
+    if (currentStep === 2) {
+      if (!accountName.trim()) {
+        Alert.alert(t("error.title"), t("error.nameRequired"))
+        return
+      }
+      if (!email.trim() || !email.includes('@')) {
+        Alert.alert(t("error.title"), t("error.enterValidEmail") || "Please enter a valid email")
+        return
+      }
+    }
+
+    // Optional fields can be empty, so no validation for steps 3 and 4
+
+    if (currentStep < 5) {
+      setCurrentStep(currentStep + 1)
+    } else {
+      await createTempAccountAndSetup()
+    }
+  }
+
+
+  // thay nguyên hàm createTempAccountAndSetup bằng đoạn này
+  const createTempAccountAndSetup = async () => {
+    try {
+      // basic client-side validation
+      if (!email || !email.includes("@")) {
+        Alert.alert(t("error.title"), t("error.enterValidEmail") || "Please enter a valid email")
+        return
+      }
+
+      // build payload but only attach keys that have real values (no "undefined" strings)
+      const payload: Partial<CreateUserPayload> = {
+        email: email.toLowerCase(),
+        fullname: accountName || undefined,
+        nickname: accountName || undefined,
+      }
+
+      // character3dId: only set if value exists and is a proper UUID-like string
+      if (selectedCharacter?.character3d_id) {
+        payload.character3dId = selectedCharacter.character3d_id // do NOT call String(...) when might be undefined
+      }
+
+      // country: use mapped enum token
+      const mappedCountry = mapCountryToEnum(country)
+      if (mappedCountry) payload.country = mappedCountry as Country
+
+      // ageRange: map display -> BE enum (AGE_18_24 ...)
+      const mappedAge = mapAgeRangeToEnum(ageRange)
+      if (mappedAge) payload.ageRange = mappedAge as unknown as string
+
+      if (nativeLanguage) payload.nativeLanguageCode = nativeLanguage.toUpperCase()
+      if (targetLanguages?.length) payload.languages = targetLanguages.map(code => code.toUpperCase())
+
+      if (certificationsSelected?.length) {
+        // ensure we only map valid non-empty strings
+        payload.certificationIds = certificationsSelected
+          .map(id => id?.toUpperCase())
+          .filter(Boolean) as string[]
+      }
+
+      // IMPORTANT: backend expects 'interestestIds' (typo) as array of UUID strings
+      if (selectedInterests?.length) {
+        payload.interestestIds = selectedInterests
+          .map(id => (id ? String(id) : null))
+          .filter(Boolean) as string[]
+      }
+
+      if (learningGoalsSelected?.length) {
+        payload.goalIds = learningGoalsSelected.map(id => id.toUpperCase()).filter(Boolean) as string[]
+      }
+
+      if (learningPace) payload.learningPace = learningPace.toUpperCase() as LearningPace
+
+      // DEBUG: ensure nothing silly like "undefined" exists
+      console.log("Create user payload ->", JSON.stringify(payload, null, 2))
+
+      console.log("Creating temp account with payload:", payload)
+      const response = await instance.post('/users', payload)
+      console.log("Account created, response:", response.data)
+      useUserStore.getState().setUser(response.data.result.user)
+      useTokenStore.getState().setTokens(response.data.result.accessToken, response.data.result.refreshToken)
+
+
+      navigation.navigate("ProficiencyTest")
+    } catch (error) {
+      console.error("createTempAccountAndSetup error:", error)
+      Alert.alert(t("error.title"), t("error.setupAccount"))
+    }
+  }
+
 
   const handleBack = () => {
     if (currentStep > 1) {
@@ -141,52 +351,68 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     }
   }
 
-  const toggleTargetLanguage = (langCode: string) => {
-    if (targetLanguages.includes(langCode)) {
-      setTargetLanguages(targetLanguages.filter((code) => code !== langCode))
-    } else {
-      setTargetLanguages([...targetLanguages, langCode])
-    }
+  const toggleArraySelection = (array: string[], item: string, setter: (arr: string[]) => void) => {
+    const newArray = array.includes(item) ? array.filter(i => i !== item) : [...array, item]
+    console.log(`Toggling ${item}, new state:`, newArray) // Debug log
+    setter(newArray)
   }
 
-  const toggleInterest = (interestId: number) => {
-    if (selectedInterests.includes(interestId)) {
-      setSelectedInterests(selectedInterests.filter((id) => id !== interestId))
-    } else {
-      setSelectedInterests([...selectedInterests, interestId])
-    }
+  const toggleTargetLanguage = (langCode: string) => {
+    toggleArraySelection(targetLanguages, langCode, setTargetLanguages)
+  }
+
+  const toggleCertification = (certId: string) => {
+    toggleArraySelection(certificationsSelected, certId, setCertificationsSelected)
+  }
+
+  const toggleInterest = (interestId: string) => {
+    toggleArraySelection(selectedInterests, interestId, setSelectedInterests)
+  }
+
+  const toggleLearningGoal = (goalId: string) => {
+    toggleArraySelection(learningGoalsSelected, goalId, setLearningGoalsSelected)
+  }
+
+  const getFilteredCertifications = () => {
+    if (targetLanguages.length === 0) return []
+    return certifications.filter(cert => targetLanguages.includes(cert.languageCode))
   }
 
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
-      {[1, 2, 3, 4].map((step) => (
-        <View key={step} style={styles.stepContainer}>
+      {[1, 2, 3, 4, 5].map((step) => (
+        <View key={`step-${step}`} style={styles.stepContainer}>
           <View style={[styles.stepCircle, currentStep >= step && styles.stepCircleActive]}>
             <Text style={[styles.stepText, currentStep >= step && styles.stepTextActive]}>{step}</Text>
           </View>
-          {step < 4 && <View style={[styles.stepLine, currentStep > step && styles.stepLineActive]} />}
+          {step < 5 && <View style={[styles.stepLine, currentStep > step && styles.stepLineActive]} />}
         </View>
       ))}
     </View>
   )
 
+
   const renderCharacterSelection = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Choose Your Learning Companion</Text>
-      <Text style={styles.stepSubtitle}>Select a 3D character that will guide you through your learning journey</Text>
+      <Text style={styles.stepTitle}>{t("setup.chooseCompanion")}</Text>
+      <Text style={styles.stepSubtitle}>{t("setup.chooseCompanion.desc")}</Text>
 
       <ScrollView style={styles.charactersGrid} showsVerticalScrollIndicator={false}>
         <View style={styles.charactersRow}>
           {characters.map((character) => (
             <TouchableOpacity
-              key={character.id}
-              style={[styles.characterCard, selectedCharacter?.id === character.id && styles.characterCardSelected]}
+              key={`char-${character.character3d_id}-${character.model_url ?? 'na'}`}
+              style={[
+                styles.characterCard,
+                selectedCharacter?.character3d_id === character.character3d_id && styles.characterCardSelected
+              ]}
               onPress={() => setSelectedCharacter(character)}
+
             >
-              <Text style={styles.characterAvatar}>{character.avatar}</Text>
-              <Text style={styles.characterName}>{character.name}</Text>
-              <Text style={styles.characterPersonality}>{character.personality}</Text>
-              {selectedCharacter?.id === character.id && (
+              <ModelViewer modelUrl={character.model_url} />
+              <Text style={styles.characterName}>{character.character3d_name}</Text>
+              <Text style={styles.characterPersonality}>{character.description}</Text>
+              {selectedCharacter?.character3d_id === character.character3d_id && (
                 <View style={styles.selectedIndicator}>
                   <Icon name="check-circle" size={20} color="#10B981" />
                 </View>
@@ -200,55 +426,99 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const renderBasicInfo = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Tell Us About Yourself</Text>
-      <Text style={styles.stepSubtitle}>Help us personalize your learning experience</Text>
+      <Text style={styles.stepTitle}>{t("setup.createAccount")}</Text>
+      <Text style={styles.stepSubtitle}>{t("setup.createAccount.desc")}</Text>
 
-      {/* Account Name */}
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Account Name *</Text>
+        <Text style={styles.inputLabel}>{t("auth.fullName")} *</Text>
         <TextInput
           style={styles.textInput}
           value={accountName}
           onChangeText={setAccountName}
-          placeholder="Enter your preferred name"
-          maxLength={20}
+          placeholder={t("auth.enterName")}
         />
       </View>
 
-      {/* Native Language */}
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Native Language *</Text>
+        <Text style={styles.inputLabel}>{t("auth.email")} *</Text>
+        <TextInput
+          style={styles.textInput}
+          value={email}
+          onChangeText={setEmail}
+          placeholder={t("auth.enterEmail")}
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>{t("profile.country")}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
-          {languages.map((lang) => (
-            <TouchableOpacity
-              key={lang.code}
-              style={[styles.languageChip, nativeLanguage === lang.code && styles.languageChipSelected]}
-              onPress={() => setNativeLanguage(lang.code)}
+          {countries.map((c) => (
+            <TouchableOpacity key={`country-${c.code}`}
+              style={[styles.languageChip, country === c.name && styles.languageChipSelected]}
+              onPress={() => setCountry(c.name)}
             >
-              <Text style={styles.languageFlag}>{lang.flag}</Text>
-              <Text style={[styles.languageText, nativeLanguage === lang.code && styles.languageTextSelected]}>
-                {lang.name}
+              <CountryFlag isoCode={c.code} size={25} style={{ marginRight: 6 }} />
+              <Text style={[styles.languageText, country === c.name && styles.languageTextSelected]}>
+                {c.name}
               </Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
 
-      {/* Target Languages */}
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>Languages to Learn * ({targetLanguages.length} selected)</Text>
+        <Text style={styles.inputLabel}>{t("setup.ageRange")}</Text>
+        <View style={styles.ageGrid}>
+          {["13-17", "18-24", "25-34", "35-44", "45-54", "55+"].map((age) => (
+            <TouchableOpacity key={`age-${age}`}
+              style={[styles.ageCard, ageRange === age && styles.selectedAgeCard]}
+              onPress={() => setAgeRange(age)}
+            >
+              <Text style={[styles.ageText, ageRange === age && styles.selectedAgeText]}>{age}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>{t("language.nativeLanguage")}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
           {languages
-            .filter((lang) => lang.code !== nativeLanguage)
+            .filter((lang) => lang.languageCode !== nativeLanguage)
+            .map((lang, i) => (
+              <TouchableOpacity key={`target-${lang.languageCode}-${i}`}
+                style={[styles.languageChip, nativeLanguage === lang.languageCode && styles.languageChipSelected]}
+                onPress={() => setNativeLanguage(lang.languageCode)}
+              >
+                <CountryFlag isoCode={lang.languageCode} size={25} style={{ marginRight: 6 }} />
+                <Text style={[styles.languageText, nativeLanguage === lang.languageCode && styles.languageTextSelected]}>
+                  {lang.languageName}
+                </Text>
+              </TouchableOpacity>
+            ))}
+        </ScrollView>
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>
+          {t("language.learningLanguage")} ({targetLanguages.length} {t("setup.selected")})
+        </Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
+          {languages
+            .filter((lang) => lang.languageCode !== nativeLanguage)
             .map((lang) => (
               <TouchableOpacity
-                key={lang.code}
-                style={[styles.languageChip, targetLanguages.includes(lang.code) && styles.languageChipSelected]}
-                onPress={() => toggleTargetLanguage(lang.code)}
+                key={lang.languageCode}
+                style={[styles.languageChip, targetLanguages.includes(lang.languageCode) && styles.languageChipSelected]}
+                onPress={() => toggleTargetLanguage(lang.languageCode)}
               >
-                <Text style={styles.languageFlag}>{lang.flag}</Text>
-                <Text style={[styles.languageText, targetLanguages.includes(lang.code) && styles.languageTextSelected]}>
-                  {lang.name}
+                <CountryFlag isoCode={lang.languageCode} size={25} style={{ marginRight: 6 }} />
+                <Text
+                  style={[styles.languageText, targetLanguages.includes(lang.languageCode) && styles.languageTextSelected]}
+                >
+                  {lang.languageName}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -257,17 +527,15 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     </View>
   )
 
-  const renderInterests = () => (
+  const renderInterestsAndGoals = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>What Are Your Interests?</Text>
-      <Text style={styles.stepSubtitle}>
-        We'll customize content based on your interests ({selectedInterests.length} selected)
-      </Text>
+      <Text style={styles.stepTitle}>{t("setup.interestsAndGoals")}</Text>
+      <Text style={styles.stepSubtitle}>{t("setup.interestsAndGoals.desc")}</Text>
 
+      <Text style={styles.sectionTitle}>{t("setup.interests")} ({selectedInterests.length} {t("setup.selected")})</Text>
       <View style={styles.interestsGrid}>
-        {interests.map((interest) => (
-          <TouchableOpacity
-            key={interest.id}
+        {interestsWithDesc.map((interest) => (
+          <TouchableOpacity key={`interest-${interest.id}`}
             style={[
               styles.interestCard,
               selectedInterests.includes(interest.id) && styles.interestCardSelected,
@@ -281,8 +549,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
               color={selectedInterests.includes(interest.id) ? "#FFFFFF" : interest.color}
             />
             <Text style={[styles.interestText, selectedInterests.includes(interest.id) && styles.interestTextSelected]}>
-              {interest.name}
+              {interest.interest_name}
             </Text>
+            <Text style={styles.interestDescription}>{interest.description}</Text>
             {selectedInterests.includes(interest.id) && (
               <View style={styles.interestSelectedIndicator}>
                 <Icon name="check" size={16} color="#FFFFFF" />
@@ -291,68 +560,190 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
           </TouchableOpacity>
         ))}
       </View>
+
+      <Text style={styles.sectionTitle}>{t("setup.learningGoals")} ({learningGoalsSelected.length} {t("setup.selected")})</Text>
+      <View style={styles.goalsList}>
+        {learningGoals.map((goal) => (
+          <TouchableOpacity key={`goal-${goal.id}`}
+            style={[styles.goalCard, learningGoalsSelected.includes(goal.id) && styles.selectedGoalCard]}
+            onPress={() => toggleLearningGoal(goal.id)}
+          >
+            <View style={styles.goalIcon}>
+              <Icon
+                name={goal.icon}
+                size={24}
+                color={learningGoalsSelected.includes(goal.id) ? "#4F46E5" : "#6B7280"}
+              />
+            </View>
+            <View style={styles.goalInfo}>
+              <Text style={[styles.goalName, learningGoalsSelected.includes(goal.id) && styles.selectedGoalName]}>
+                {goal.name}
+              </Text>
+              <Text style={styles.goalDescription}>{goal.description}</Text>
+            </View>
+            {learningGoalsSelected.includes(goal.id) && <Icon name="check-circle" size={20} color="#4F46E5" />}
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  )
+
+  const renderCertificationsAndPace = () => (
+    <View style={styles.stepContent}>
+      <Text style={styles.stepTitle}>{t("setup.certificationsAndPace")}</Text>
+      <Text style={styles.stepSubtitle}>{t("setup.certificationsAndPace.desc")}</Text>
+
+      <Text style={styles.sectionTitle}>{t("setup.certificationGoals")}</Text>
+      <View style={styles.certificationsList}>
+        {getFilteredCertifications().map((cert, i) => (
+          <TouchableOpacity key={`cert-${cert.id}-${i}`}
+            style={[
+              styles.certificationCard,
+              certificationsSelected.includes(cert.id) && styles.selectedCertificationCard,
+            ]}
+            onPress={() => toggleCertification(cert.id)}
+          >
+            <View style={styles.certificationInfo}>
+              <Text style={styles.certificationName}>{cert.name}</Text>
+              <Text style={styles.certificationDescription}>{cert.description}</Text>
+            </View>
+            {certificationsSelected.includes(cert.id) && <Icon name="check-circle" size={20} color="#4F46E5" />}
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={styles.sectionTitle}>{t("setup.learningPace")}</Text>
+      <View style={styles.paceContainer}>
+        {learningPaces.map((pace) => (
+          <TouchableOpacity key={`pace-${pace.id}`}
+            style={[styles.paceCard, learningPace === pace.id && styles.selectedPaceCard]}
+            onPress={() => setLearningPace(pace.id)}
+          >
+            <View style={[styles.paceIcon, { backgroundColor: `${pace.color}20` }]}>
+              <Icon name={pace.icon} size={32} color={pace.color} />
+            </View>
+            <Text style={styles.paceName}>{pace.name}</Text>
+            <Text style={styles.paceDescription}>{pace.description}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     </View>
   )
 
   const renderSummary = () => (
     <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>Ready to Start Learning!</Text>
-      <Text style={styles.stepSubtitle}>Review your choices before taking the proficiency test</Text>
+      <Text style={styles.stepTitle}>{t("setup.readyToStart")}</Text>
+      <Text style={styles.stepSubtitle}>{t("setup.readyToStart.desc")}</Text>
 
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Character:</Text>
-          <View style={styles.summaryValue}>
-            <Text style={styles.summaryCharacter}>{selectedCharacter?.avatar}</Text>
-            <Text style={styles.summaryText}>{selectedCharacter?.name}</Text>
-          </View>
+          <Text style={styles.summaryLabel}>{t("setup.character")}:</Text>
+          <Text style={styles.summaryText}>{selectedCharacter?.character3d_name || "None"}</Text>
         </View>
 
         <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Name:</Text>
+          <Text style={styles.summaryLabel}>{t("auth.fullName")}:</Text>
           <Text style={styles.summaryText}>{accountName}</Text>
         </View>
 
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Native Language:</Text>
-          <Text style={styles.summaryText}>
-            {languages.find((lang) => lang.code === nativeLanguage)?.flag}{" "}
-            {languages.find((lang) => lang.code === nativeLanguage)?.name}
-          </Text>
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Learning:</Text>
-          <View style={styles.summaryLanguages}>
-            {targetLanguages.map((code) => {
-              const lang = languages.find((l) => l.code === code)
-              return (
-                <Text key={code} style={styles.summaryLanguage}>
-                  {lang?.flag} {lang?.name}
-                </Text>
-              )
-            })}
+        {email && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("auth.email")}:</Text>
+            <Text style={styles.summaryText}>{email}</Text>
           </View>
-        </View>
+        )}
 
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>Interests:</Text>
-          <View style={styles.summaryInterests}>
-            {selectedInterests.map((id) => {
-              const interest = interests.find((i) => i.id === id)
-              return (
-                <Text key={id} style={styles.summaryInterest}>
-                  {interest?.name}
-                </Text>
-              )
-            })}
+        {country && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("profile.country")}:</Text>
+            <Text style={styles.summaryText}>{country}</Text>
           </View>
-        </View>
+        )}
+
+        {ageRange && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("setup.ageRange")}:</Text>
+            <Text style={styles.summaryText}>{ageRange}</Text>
+          </View>
+        )}
+
+        {nativeLanguage && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("language.nativeLanguage")}:</Text>
+            <Text style={styles.summaryText}>
+              {languages.find((lang) => lang.languageCode === nativeLanguage)?.languageName || "None"}
+            </Text>
+          </View>
+        )}
+
+        {targetLanguages.length > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("language.learningLanguage")}:</Text>
+            <View style={styles.summaryLanguages}>
+              {targetLanguages.map((code) => {
+                const lang = languages.find((l) => l.languageCode === code)
+                return (
+                  <Text key={code} style={styles.summaryLanguage}>
+                    {lang?.languageName || code}
+                  </Text>
+                )
+              })}
+            </View>
+          </View>
+        )}
+
+        {selectedInterests.length > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("setup.interests")}:</Text>
+            <View style={styles.summaryInterests}>
+              {selectedInterests.map((id) => {
+                const interest = interests.find((i) => i.interest_id === id)
+                return (
+                  <Text key={id} style={styles.summaryInterest}>
+                    {interest?.interest_name || id}
+                  </Text>
+                )
+              })}
+            </View>
+          </View>
+        )}
+
+        {learningGoalsSelected.length > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("setup.learningGoals")}:</Text>
+            <View style={styles.summaryInterests}>
+              {learningGoalsSelected.map((id) => {
+                const goal = learningGoals.find((g) => g.id === id)
+                return (
+                  <Text key={id} style={styles.summaryInterest}>
+                    {goal?.name || id}
+                  </Text>
+                )
+              })}
+            </View>
+          </View>
+        )}
+
+        {certificationsSelected.length > 0 && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("setup.certifications")}:</Text>
+            <Text style={styles.summaryText}>{certificationsSelected.length} {t("setup.selected")}</Text>
+          </View>
+        )}
+
+        {learningPace && (
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryLabel}>{t("setup.learningPace")}:</Text>
+            <Text style={styles.summaryText}>
+              {learningPaces.find((p) => p.id === learningPace)?.name || "None"}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.nextStepInfo}>
         <Icon name="quiz" size={24} color="#4F46E5" />
-        <Text style={styles.nextStepText}>Next: Take a quick proficiency test to determine your starting level</Text>
+        <Text style={styles.nextStepText}>{t("setup.nextProficiencyTest")}</Text>
       </View>
     </View>
   )
@@ -368,30 +759,27 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
           },
         ]}
       >
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBack}>
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Quick Start Setup</Text>
+          <Text style={styles.headerTitle}>{t("setup.title")}</Text>
           <View style={{ width: 24 }} />
         </View>
 
-        {/* Step Indicator */}
         {renderStepIndicator()}
 
-        {/* Step Content */}
         <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
           {currentStep === 1 && renderCharacterSelection()}
           {currentStep === 2 && renderBasicInfo()}
-          {currentStep === 3 && renderInterests()}
-          {currentStep === 4 && renderSummary()}
+          {currentStep === 3 && renderInterestsAndGoals()}
+          {currentStep === 4 && renderCertificationsAndPace()}
+          {currentStep === 5 && renderSummary()}
         </ScrollView>
 
-        {/* Navigation Buttons */}
         <View style={styles.navigationButtons}>
           <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>{currentStep === 4 ? "Take Proficiency Test" : "Continue"}</Text>
+            <Text style={styles.nextButtonText}>{currentStep === 5 ? t("setup.takeTest") : t("setup.continue")}</Text>
             <Icon name="arrow-forward" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -480,6 +868,13 @@ const styles = StyleSheet.create({
     marginBottom: 32,
     lineHeight: 24,
   },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 16,
+    marginTop: 24,
+  },
   charactersGrid: {
     maxHeight: 400,
   },
@@ -507,10 +902,6 @@ const styles = StyleSheet.create({
   characterCardSelected: {
     borderColor: "#10B981",
     backgroundColor: "#F0FDF4",
-  },
-  characterAvatar: {
-    fontSize: 32,
-    marginBottom: 8,
   },
   characterName: {
     fontSize: 16,
@@ -563,15 +954,70 @@ const styles = StyleSheet.create({
     backgroundColor: "#4F46E5",
     borderColor: "#4F46E5",
   },
-  languageFlag: {
-    fontSize: 16,
-    marginRight: 6,
-  },
   languageText: {
     fontSize: 14,
     color: "#374151",
   },
   languageTextSelected: {
+    color: "#FFFFFF",
+  },
+  certificationsList: {
+    width: "100%",
+    gap: 12,
+  },
+  certificationCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+  },
+  selectedCertificationCard: {
+    borderColor: "#4F46E5",
+    backgroundColor: "#EEF2FF",
+  },
+  certificationInfo: {
+    flex: 1,
+  },
+  certificationName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  certificationDescription: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  ageGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  ageCard: {
+    flex: 1,
+    minWidth: "30%",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    backgroundColor: "#FFFFFF",
+  },
+  selectedAgeCard: {
+    backgroundColor: "#4F46E5",
+    borderColor: "#4F46E5",
+  },
+  ageText: {
+    fontSize: 14,
+    color: "#374151",
+    fontWeight: "500",
+  },
+  selectedAgeText: {
     color: "#FFFFFF",
   },
   interestsGrid: {
@@ -602,6 +1048,12 @@ const styles = StyleSheet.create({
   interestTextSelected: {
     color: "#FFFFFF",
   },
+  interestDescription: {
+    fontSize: 12,
+    color: "#6B7280",
+    textAlign: "center",
+    marginTop: 4,
+  },
   interestSelectedIndicator: {
     position: "absolute",
     top: 8,
@@ -612,6 +1064,82 @@ const styles = StyleSheet.create({
     height: 20,
     alignItems: "center",
     justifyContent: "center",
+  },
+  goalsList: {
+    width: "100%",
+    gap: 12,
+  },
+  goalCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+  },
+  selectedGoalCard: {
+    borderColor: "#4F46E5",
+    backgroundColor: "#EEF2FF",
+  },
+  goalIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: "#F3F4F6",
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
+  },
+  goalInfo: {
+    flex: 1,
+  },
+  goalName: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  selectedGoalName: {
+    color: "#4F46E5",
+  },
+  goalDescription: {
+    fontSize: 14,
+    color: "#6B7280",
+  },
+  paceContainer: {
+    width: "100%",
+    gap: 16,
+  },
+  paceCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 2,
+    borderColor: "#E5E7EB",
+    alignItems: "center",
+  },
+  selectedPaceCard: {
+    borderColor: "#4F46E5",
+    backgroundColor: "#EEF2FF",
+  },
+  paceIcon: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 16,
+  },
+  paceName: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  paceDescription: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
   },
   summaryCard: {
     backgroundColor: "#FFFFFF",
@@ -634,15 +1162,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#6B7280",
     width: 100,
-  },
-  summaryValue: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-  },
-  summaryCharacter: {
-    fontSize: 20,
-    marginRight: 8,
   },
   summaryText: {
     fontSize: 14,

@@ -35,7 +35,7 @@ public class RoleController {
     @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     public AppApiResponse<Page<RoleResponse>> getAllRoles(
-            @Parameter(description = "Role name filter") @RequestParam(required = false) String roleName,
+            @Parameter(description = "Role name filter") @RequestParam(required = false) RoleName roleName,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
         Page<RoleResponse> roles = roleService.getAllRoles(roleName, pageable);

@@ -66,11 +66,10 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Cacheable(value = "transactions", key = "#userId + ':' + #status + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
-    public Page<TransactionResponse> getAllTransactions(String userId, String status, Pageable pageable) {
+    public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) {
         try {
-            UUID userUuid = userId != null ? UUID.fromString(userId) : null;
             TransactionStatus transactionStatus = status != null ? TransactionStatus.valueOf(status) : null;
-            Page<Transaction> transactions = transactionRepository.findByUserIdAndStatusAndIsDeletedFalse(userUuid, transactionStatus, pageable);
+            Page<Transaction> transactions = transactionRepository.findByUserIdAndStatusAndIsDeletedFalse(userId, transactionStatus, pageable);
             return transactions.map(transactionMapper::toResponse);
         } catch (IllegalArgumentException e) {
             log.error("Invalid userId or status: {}", e.getMessage());

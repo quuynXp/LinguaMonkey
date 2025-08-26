@@ -3,22 +3,30 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCall;
+import com.connectJPA.LinguaVietnameseApp.entity.VideoCallParticipant;
+import com.connectJPA.LinguaVietnameseApp.entity.id.VideoCallParticipantId;
+import com.connectJPA.LinguaVietnameseApp.enums.VideoCallParticipantStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.VideoCallRole;
+import com.connectJPA.LinguaVietnameseApp.enums.VideoCallStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.VideoCallType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.VideoCallMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.VideoCallParticipantRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.VideoCallRepository;
 import com.connectJPA.LinguaVietnameseApp.service.VideoCallService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -27,9 +35,10 @@ import java.util.UUID;
 public class VideoCallServiceImpl implements VideoCallService {
     private final VideoCallRepository videoCallRepository;
     private final VideoCallMapper videoCallMapper;
+    private final VideoCallParticipantRepository videoCallParticipantRepository;
+    private final UserRepository userRepository;
 
     @Override
-    @Cacheable(value = "videoCalls", key = "#callerId + ':' + #status + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<VideoCallResponse> getAllVideoCalls(String callerId, String status, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -45,7 +54,6 @@ public class VideoCallServiceImpl implements VideoCallService {
     }
 
     @Override
-    @Cacheable(value = "videoCalls", key = "#id")
     public VideoCallResponse getVideoCallById(UUID id) {
         try {
             if (id == null) {
@@ -61,25 +69,113 @@ public class VideoCallServiceImpl implements VideoCallService {
     }
 
     @Override
-    @Transactional
-    @CachePut(value = "videoCalls", key = "#result.videoCallId")
     public VideoCallResponse createVideoCall(VideoCallRequest request) {
+        VideoCall videoCall = videoCallMapper.toEntity(request);
+        videoCall = videoCallRepository.save(videoCall);
+        return videoCallMapper.toResponse(videoCall);
+    }
+
+    @Override
+    public VideoCallResponse createGroupVideoCall(UUID callerId, List<UUID> participantIds, VideoCallType type) {
+        VideoCall videoCall = VideoCall.builder()
+                .callerId(callerId)
+                .videoCallType(type)
+                .status(VideoCallStatus.INITIATED)
+                .build();
+        videoCall = videoCallRepository.save(videoCall);
+
+        List<VideoCallParticipant> participants = new ArrayList<>();
+        for (UUID userId : participantIds) {
+            VideoCallParticipant participant = VideoCallParticipant.builder()
+                    .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
+                    .videoCall(videoCall)
+                    .user(userRepository.getReferenceById(userId))
+                    .joinedAt(OffsetDateTime.now())
+                    .role(userId.equals(callerId) ? VideoCallRole.HOST : VideoCallRole.GUEST)
+                    .status(VideoCallParticipantStatus.CONNECTED)
+                    .build();
+            participants.add(participant);
+        }
+        videoCallParticipantRepository.saveAll(participants);
+        return videoCallMapper.toResponse(videoCall);
+    }
+
+    // Participants management
+    @Transactional
+    @Override
+    public void addParticipant(UUID videoCallId, UUID userId) {
+        VideoCall videoCall = videoCallRepository.findByVideoCallIdAndIsDeletedFalse(videoCallId)
+                .orElseThrow(() -> new AppException(ErrorCode.VIDEO_CALL_NOT_FOUND));
+        VideoCallParticipant participant = VideoCallParticipant.builder()
+                .id(new VideoCallParticipantId(videoCallId, userId))
+                .videoCall(videoCall)
+                .user(userRepository.getReferenceById(userId))
+                .joinedAt(OffsetDateTime.now())
+                .role(VideoCallRole.GUEST)
+                .status(VideoCallParticipantStatus.CONNECTED)
+                .build();
+        videoCallParticipantRepository.save(participant);
+    }
+
+    @Transactional
+    @Override
+    public void removeParticipant(UUID videoCallId, UUID userId) {
+        VideoCallParticipant participant = videoCallParticipantRepository.findById(
+                        new VideoCallParticipantId(videoCallId, userId))
+                .orElseThrow(() -> new AppException(ErrorCode.PARTICIPANT_NOT_FOUND));
+        videoCallParticipantRepository.delete(participant);
+    }
+
+    @Override
+    public List<VideoCallParticipant> getParticipants(UUID videoCallId) {
+        return videoCallParticipantRepository.findByVideoCall_VideoCallId(videoCallId);
+    }
+
+
+    @Override
+    public List<VideoCallResponse> getVideoCallHistoryByUser(UUID userId) {
         try {
-            if (request == null || request.getCallerId() == null) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+            // 1. Lấy tất cả VideoCallParticipant của user
+            List<VideoCallParticipant> participantList = videoCallParticipantRepository.findByUser_UserId(userId);
+
+            // 2. Map sang VideoCallResponse
+            List<VideoCallResponse> responses = new ArrayList<>();
+            for (VideoCallParticipant participant : participantList) {
+                VideoCall videoCall = participant.getVideoCall();
+                if (!videoCall.isDeleted()) {
+                    responses.add(videoCallMapper.toResponse(videoCall));
+                }
             }
-            VideoCall videoCall = videoCallMapper.toEntity(request);
-            videoCall = videoCallRepository.save(videoCall);
-            return videoCallMapper.toResponse(videoCall);
+
+            // 3. Thêm cả video call mà user là caller nhưng chưa tham gia participant
+            List<VideoCall> callerVideoCalls = videoCallRepository.findByCallerIdAndIsDeletedFalse(userId);
+            for (VideoCall vc : callerVideoCalls) {
+                if (responses.stream().noneMatch(r -> r.getVideoCallId().equals(vc.getVideoCallId()))) {
+                    responses.add(videoCallMapper.toResponse(vc));
+                }
+            }
+
+            return responses;
         } catch (Exception e) {
-            log.error("Error while creating video call: {}", e.getMessage());
+            log.error("Error fetching video call history for user {}: {}", userId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 
+
+    @Transactional
+    @Override
+    public void updateParticipantStatus(UUID videoCallId, UUID userId, VideoCallParticipantStatus status) {
+        VideoCallParticipant participant = videoCallParticipantRepository.findById(
+                        new VideoCallParticipantId(videoCallId, userId))
+                .orElseThrow(() -> new AppException(ErrorCode.PARTICIPANT_NOT_FOUND));
+        participant.setStatus(status);
+        videoCallParticipantRepository.save(participant);
+    }
+
+
     @Override
     @Transactional
-    @CachePut(value = "videoCalls", key = "#id")
     public VideoCallResponse updateVideoCall(UUID id, VideoCallRequest request) {
         try {
             if (id == null || request == null) {
@@ -98,7 +194,6 @@ public class VideoCallServiceImpl implements VideoCallService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "videoCalls", key = "#id")
     public void deleteVideoCall(UUID id) {
         try {
             if (id == null) {

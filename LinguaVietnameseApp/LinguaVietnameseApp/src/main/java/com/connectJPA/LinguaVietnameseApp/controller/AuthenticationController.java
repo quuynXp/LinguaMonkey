@@ -1,11 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.dto.request.AuthenticationRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.IntrospectResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.exception.AppException;
+import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.nimbusds.jose.JOSEException;
@@ -108,17 +108,20 @@ public class AuthenticationController {
                         .build());
     }
 
-    @PostMapping("/users")
+    @PostMapping
     @Operation(summary = "Đăng ký người dùng", description = "Tạo mới một người dùng")
     @ApiResponse(responseCode = "200", description = "Người dùng được tạo thành công")
     @ApiResponse(responseCode = "400", description = "Dữ liệu đầu vào không hợp lệ")
     public AppApiResponse<UserResponse> registerUser(@Valid @RequestBody UserRequest request) {
+        UserResponse userResponse = userService.createUser(request);
+
         return AppApiResponse.<UserResponse>builder()
                 .code(200)
                 .message("Người dùng được tạo thành công")
-                .result(userService.createUser(request))
+                .result(userResponse)
                 .build();
     }
+
 
     @PostMapping("/refresh-token")
     @Operation(summary = "Làm mới token", description = "Làm mới access token từ refresh token, kiểm tra thiết bị để xử lý đúng luồng")
@@ -135,6 +138,10 @@ public class AuthenticationController {
         String refreshToken = refreshTokenCookie != null
                 ? refreshTokenCookie
                 : (body != null ? body.get("refreshToken") : null);
+
+        if (refreshToken == null || refreshToken.isBlank()) {
+            throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
+        }
 
         String deviceIdStrim = deviceId == null ?  "" : deviceId;
         String ipStrim = ip == null ?  "" : ip;
@@ -167,6 +174,7 @@ public class AuthenticationController {
     @Operation(summary = "Đăng xuất", description = "Vô hiệu hóa token hiện tại")
     @ApiResponse(responseCode = "200", description = "Đăng xuất thành công")
     @ApiResponse(responseCode = "400", description = "Token không hợp lệ")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Void> logout(@RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         authenticationService.logout(token);
@@ -204,11 +212,11 @@ public class AuthenticationController {
                 .build();
     }
 
+
     @PostMapping("/forgot-password")
     @Operation(summary = "Quên mật khẩu", description = "Gửi email đặt lại mật khẩu")
     @ApiResponse(responseCode = "200", description = "Đã gửi email đặt lại mật khẩu")
     @ApiResponse(responseCode = "400", description = "Email không tồn tại")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Void> forgotPassword(@RequestBody Map<String, String> body) {
         String email = body.get("email");
         authenticationService.sendPasswordResetCode(email);
@@ -222,7 +230,6 @@ public class AuthenticationController {
     @Operation(summary = "Xác thực mã đặt lại mật khẩu", description = "Xác minh mã được gửi qua email để lấy reset token")
     @ApiResponse(responseCode = "200", description = "Mã hợp lệ")
     @ApiResponse(responseCode = "400", description = "Mã không hợp lệ hoặc hết hạn")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Map<String, String>> verifyResetCode(@RequestBody Map<String, String> body) {
         String email = body.get("email");
         String code = body.get("code");
@@ -235,7 +242,6 @@ public class AuthenticationController {
     }
 
     @PostMapping("/reset-password")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     @Operation(summary = "Đặt lại mật khẩu", description = "Đổi mật khẩu mới bằng reset token")
     @ApiResponse(responseCode = "200", description = "Đặt lại mật khẩu thành công")
     @ApiResponse(responseCode = "400", description = "Token không hợp lệ hoặc mật khẩu không hợp lệ")
