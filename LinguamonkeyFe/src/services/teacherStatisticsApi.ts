@@ -1,51 +1,71 @@
-import axios from "axios";
+import instance from "../api/axiosInstance";
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || "http://localhost:8080/api/teacher/statistics";
+// teacher overview
+export const getTeacherOverview = async (params: {
+  teacherId: string;
+  startDate?: Date;
+  endDate?: Date;
+  aggregate?: "day"|"week"|"month";
+  period?: "week"|"month"|"year";
+}) => {
+  const formatted: any = {};
+  if (params.teacherId) formatted.teacherId = params.teacherId;
+  if (params.startDate instanceof Date) formatted.startDate = params.startDate.toISOString().split("T")[0];
+  if (params.endDate instanceof Date) formatted.endDate = params.endDate.toISOString().split("T")[0];
+  if (params.aggregate) formatted.aggregate = params.aggregate;
+  if (params.period) formatted.period = params.period;
 
-// Lấy overview cho teacher (courses, lessons, students, revenue)
-export const getTeacherStatisticsOverview = async (
-  period: "week" | "month" | "year"
-) => {
-  try {
-    const [coursesRes, lessonsRes, studentsRes, revenueRes] = await Promise.all([
-      axios.get(`${API_URL}/courses/count`, { params: { period } }),
-      axios.get(`${API_URL}/lessons/count`, { params: { period } }),
-      axios.get(`${API_URL}/students/count`, { params: { period } }),
-      axios.get(`${API_URL}/revenue`, { params: { period } }),
-    ]);
-
-    return {
-      courses: coursesRes.data.result || 0,
-      lessons: lessonsRes.data.result || 0,
-      students: studentsRes.data.result || 0,
-      revenue: revenueRes.data.result || 0,
-    };
-  } catch (error: any) {
-    console.error("Error fetching teacher statistics:", error?.response?.data || error.message);
-    throw error;
-  }
-};
-
-// Chi tiết revenue theo thời gian
-export const getTeacherRevenue = async (
-  params: { period: "week" | "month" | "year"; startDate?: string; endDate?: string }
-) => {
-  const res = await axios.get(`${API_URL}/revenue`, { params });
+  const res = await instance.get(`/statistics/teacher/overview`, { params: formatted });
   return res.data.result;
 };
 
-// Lấy activity log cho teacher
-export const getTeacherActivities = async (
-  params: { activityType?: string; startDate?: string; endDate?: string } = {}
-) => {
-  const res = await axios.get(`${API_URL}/activities`, { params });
+// courses performance
+export const getTeacherCoursesPerformance = async (params: {
+  teacherId: string;
+  startDate?: Date;
+  endDate?: Date;
+  aggregate?: "day"|"week"|"month";
+  period?: "week"|"month"|"year";
+}) => {
+  const formatted: any = {};
+  if (params.teacherId) formatted.teacherId = params.teacherId;
+  if (params.startDate instanceof Date) formatted.startDate = params.startDate.toISOString().split("T")[0];
+  if (params.endDate instanceof Date) formatted.endDate = params.endDate.toISOString().split("T")[0];
+  if (params.aggregate) formatted.aggregate = params.aggregate;
+  if (params.period) formatted.period = params.period;
+
+  const res = await instance.get(`/statistics/teacher/courses/performance`, { params: formatted });
   return res.data.result;
 };
 
-// Performance từng course
-export const getTeacherCoursePerformance = async (courseId: number, period: "week" | "month" | "year") => {
-  const res = await axios.get(`${API_URL}/courses/${courseId}/performance`, {
-    params: { period },
-  });
+// lesson stats for a course
+export const getTeacherCourseLessons = async (courseId: string, params: {
+  teacherId?: string;
+  startDate?: Date;
+  endDate?: Date;
+}) => {
+  const formatted: any = {};
+  if (params.teacherId) formatted.teacherId = params.teacherId;
+  if (params.startDate instanceof Date) formatted.startDate = params.startDate.toISOString().split("T")[0];
+  if (params.endDate instanceof Date) formatted.endDate = params.endDate.toISOString().split("T")[0];
+
+  const res = await instance.get(`/statistics/teacher/courses/${courseId}/lessons`, { params: formatted });
+  return res.data.result;
+};
+
+// revenue timeseries for a course
+export const getTeacherCourseRevenue = async (courseId: string, params: {
+  teacherId?: string;
+  startDate?: Date;
+  endDate?: Date;
+  aggregate?: "day"|"week"|"month";
+}) => {
+  const formatted: any = {};
+  if (params.teacherId) formatted.teacherId = params.teacherId;
+  if (params.startDate instanceof Date) formatted.startDate = params.startDate.toISOString().split("T")[0];
+  if (params.endDate instanceof Date) formatted.endDate = params.endDate.toISOString().split("T")[0];
+  if (params.aggregate) formatted.aggregate = params.aggregate;
+
+  const res = await instance.get(`/statistics/teacher/courses/${courseId}/revenue`, { params: formatted });
   return res.data.result;
 };

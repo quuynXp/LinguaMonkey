@@ -29,7 +29,6 @@ public class LeaderboardServiceImpl implements LeaderboardService {
     private final LeaderboardMapper leaderboardMapper;
 
     @Override
-    @Cacheable(value = "leaderboards", key = "#period + ':' + #tab + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LeaderboardResponse> getAllLeaderboards(String period, String tab, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -44,7 +43,6 @@ public class LeaderboardServiceImpl implements LeaderboardService {
     }
 
     @Override
-    @Cacheable(value = "leaderboards", key = "#id")
     public LeaderboardResponse getLeaderboardById(UUID id) {
         try {
             if (id == null) {
@@ -61,7 +59,6 @@ public class LeaderboardServiceImpl implements LeaderboardService {
 
     @Override
     @Transactional
-    @CachePut(value = "leaderboards", key = "#result.leaderboardId")
     public LeaderboardResponse createLeaderboard(LeaderboardRequest request) {
         try {
             if (request == null) {
@@ -78,7 +75,6 @@ public class LeaderboardServiceImpl implements LeaderboardService {
 
     @Override
     @Transactional
-    @CachePut(value = "leaderboards", key = "#id")
     public LeaderboardResponse updateLeaderboard(UUID id, LeaderboardRequest request) {
         try {
             if (id == null || request == null) {
@@ -97,7 +93,6 @@ public class LeaderboardServiceImpl implements LeaderboardService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "leaderboards", key = "#id")
     public void deleteLeaderboard(UUID id) {
         try {
             if (id == null) {

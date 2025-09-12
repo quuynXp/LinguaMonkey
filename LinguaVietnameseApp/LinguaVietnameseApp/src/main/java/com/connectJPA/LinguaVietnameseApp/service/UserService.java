@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.Character3dResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LevelInfoResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.UserStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import org.springframework.data.domain.Page;
@@ -24,6 +25,10 @@ public interface UserService {
     UserResponse updateNativeLanguage(UUID id, String nativeLanguageCode);
     UserResponse updateCountry(UUID id, Country country);
     UserResponse updateExp(UUID id, int exp);
+    UserStatsResponse getUserStats(UUID userId);
+
+    void updateLastActive(UUID userId);
+
     UserResponse updateStreakOnActivity(UUID id);
     void resetStreakIfNoActivity(UUID id);
     void sendStreakReminder(UUID id);

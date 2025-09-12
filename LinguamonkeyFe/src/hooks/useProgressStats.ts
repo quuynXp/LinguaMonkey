@@ -27,17 +27,17 @@ export const useProgressStats = (userId: string | undefined) => {
       try {
         // Fetch lesson progress
         const progressResponse = await axiosInstance.get<PaginatedResponse<LessonProgressResponse>>(
-          `/api/lesson-progress`,
+          `/lesson-progress`,
           { params: { userId } }
         );
-        const progressData = progressResponse.data.result;
+        const progressData = progressResponse.data.data;
         setLessonProgress(progressData);
 
         // Fetch all lessons
         const lessonsResponse = await axiosInstance.get<PaginatedResponse<LessonResponse>>(
-          `/api/lessons`
+          `/lessons`
         );
-        const lessonsData = lessonsResponse.data.result;
+        const lessonsData = lessonsResponse.data.data;
         setLessons(lessonsData);
 
         // Tính toán progress stats

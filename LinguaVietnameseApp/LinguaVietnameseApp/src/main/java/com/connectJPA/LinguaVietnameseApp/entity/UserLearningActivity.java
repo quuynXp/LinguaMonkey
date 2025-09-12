@@ -23,6 +23,8 @@ public class UserLearningActivity extends BaseEntity {
 
     private UUID userId;
 
+    private UUID targetId;
+
     @Enumerated(EnumType.STRING)
     private ActivityType activityType;
 }

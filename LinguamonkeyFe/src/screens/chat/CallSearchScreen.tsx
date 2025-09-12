@@ -3,6 +3,7 @@
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useChatStore } from '../../stores/ChatStore';
 
 const CallSearchScreen = ({ navigation, route }) => {
   const { preferences } = route.params

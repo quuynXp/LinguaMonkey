@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.FriendshipRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.FriendRequestStatusResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FriendshipResponse;
 import com.connectJPA.LinguaVietnameseApp.service.FriendshipService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,6 +26,41 @@ import java.util.UUID;
 public class FriendshipController {
     private final FriendshipService friendshipService;
     private final MessageSource messageSource;
+
+
+    @Operation(summary = "Check if two users are friends", description = "Returns true if users are friends (status ACCEPTED, bidirectional check)")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Check completed")
+    })
+    @GetMapping("/check")
+    public AppApiResponse<Boolean> checkIfFriends(
+            @Parameter(description = "User1 ID") @RequestParam UUID user1Id,
+            @Parameter(description = "User2 ID") @RequestParam UUID user2Id,
+            Locale locale) {
+        boolean isFriends = friendshipService.isFriends(user1Id, user2Id);
+        return AppApiResponse.<Boolean>builder()
+                .code(200)
+                .message(messageSource.getMessage("friendship.check.success", null, locale))
+                .result(isFriends)
+                .build();
+    }
+
+    @Operation(summary = "Check friend request status between two users", description = "Check if current user has sent or received a pending friend request to/from the other user")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Check completed")
+    })
+    @GetMapping("/request-status")
+    public AppApiResponse<FriendRequestStatusResponse> checkFriendRequestStatus(
+            @Parameter(description = "Current User ID") @RequestParam UUID currentUserId,
+            @Parameter(description = "Other User ID") @RequestParam UUID otherUserId,
+            Locale locale) {
+        FriendRequestStatusResponse status = friendshipService.getFriendRequestStatus(currentUserId, otherUserId);
+        return AppApiResponse.<FriendRequestStatusResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("friendship.request.status.success", null, locale))
+                .result(status)
+                .build();
+    }
 
     @Operation(summary = "Get all friendships", description = "Retrieve a paginated list of friendships with optional filtering by user1Id or status")
     @ApiResponses({

@@ -1,20 +1,22 @@
 import { useEffect, useRef, useState } from "react"
-import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Modal, TextInput, ImageSourcePropType } from "react-native"
+import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Modal, TextInput } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import useTopThreeUsers from "../../hooks/useTopThreeUsers"
 import { useUserStore } from "../../stores/UserStore"
 import { useRoadmap } from "../../hooks/useRoadmap"
 import { getGreetingTime } from "../../utils/timeHelper"
 import instance from "../../api/axiosInstance"
-import { useDailyChallenges, useAssignChallenge, useCompleteChallenge } from "../../hooks/useDailyChallenge";
-import CountryFlag from "react-native-country-flag";
+import { useDailyChallenges, useAssignChallenge, useCompleteChallenge } from "../../hooks/useDailyChallenge"
+import CountryFlag from "react-native-country-flag"
 import { languageToCountry } from "../../types/api"
 import { queryClient } from "../../services/queryClient"
+import { useTranslation } from "react-i18next"
+import { gotoTab } from "../../utils/navigationRef"
 
 const HomeScreen = ({ navigation }) => {
+  const { t } = useTranslation()
   const bounceAnim = useRef(new Animated.Value(1)).current
   const fadeAnim = useRef(new Animated.Value(0)).current
-
 
   const { topThreeUsers, isLoading, isError } = useTopThreeUsers()
   const { useUserRoadmap, useDefaultRoadmaps, useGenerateRoadmap } = useRoadmap()
@@ -28,19 +30,16 @@ const HomeScreen = ({ navigation }) => {
     user,
   } = useUserStore()
 
+  const { data: dailyChallenges, isLoading: dailyLoading } = useDailyChallenges(user?.userId)
+  const assignMutation = useAssignChallenge(user?.userId)
+  const completeMutation = useCompleteChallenge(user?.userId)
 
-  const { data: dailyChallenges, isLoading: dailyLoading } = useDailyChallenges(user?.user_id);
-  const assignMutation = useAssignChallenge(user?.user_id);
-  const completeMutation = useCompleteChallenge(user?.user_id);
+  const mainLanguage = languages[0] || "en"
+  const { data: roadmap, isLoading: roadmapLoading } = useUserRoadmap(mainLanguage)
+  const { data: defaultRoadmaps } = useDefaultRoadmaps(mainLanguage)
 
-
-  // Assume main language is first in languages or native
-  const mainLanguage = languages[0]?.language_code || "en";
-  const { data: roadmap, isLoading: roadmapLoading } = useUserRoadmap(mainLanguage);
-  const { data: defaultRoadmaps } = useDefaultRoadmaps(mainLanguage);
-
-  const generateMutation = useGenerateRoadmap();
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
+  const generateMutation = useGenerateRoadmap()
+  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [preferences, setPreferences] = useState({
     language_code: mainLanguage,
     target_proficiency: "",
@@ -49,11 +48,10 @@ const HomeScreen = ({ navigation }) => {
     study_time_per_day: 0,
     is_custom: true,
     additional_prompt: "",
-  });
+  })
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start()
-
     const bounceAnimation = () => {
       Animated.sequence([
         Animated.timing(bounceAnim, { toValue: 1.05, duration: 2000, useNativeDriver: true }),
@@ -66,155 +64,145 @@ const HomeScreen = ({ navigation }) => {
   const handleGenerate = () => {
     generateMutation.mutate(preferences, {
       onSuccess: () => setShowGenerateDialog(false),
-    });
-  };
+    })
+  }
 
   const selectDefault = (defaultId) => {
-    // Mutation to assign default to user, assume endpoint /api/roadmaps/assign
     instance.post("/roadmaps/assign", { roadmapId: defaultId }).then(() => {
-      queryClient.invalidateQueries(["userRoadmap"]);
-    });
-  };
+      queryClient.invalidateQueries({queryKey :["userRoadmap"] })
+    })
+  }
 
   const handleLeaderboardPress = () => navigation.navigate("EnhancedLeaderboard")
   const handleRoadmapPress = () => navigation.navigate("RoadmapScreen")
   const goalProgress = dailyGoal?.totalLessons ? (dailyGoal.completedLessons / dailyGoal.totalLessons) * 100 : 0
-
-  const greeting = getGreetingTime()
+  const greeting = getGreetingTime(undefined, undefined, undefined, t)
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
-        {/* Enhanced Header */}
+        {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
             <Text style={styles.greeting}>{greeting} 👋</Text>
-            <Text style={styles.userName}>{name || "Học viên"}</Text>
-            <Text style={styles.motivationText}>Hôm nay bạn muốn học gì?</Text>
+            <Text style={styles.userName}>{name || t("home.student")}</Text>
           </View>
-          <TouchableOpacity style={styles.streakContainer} onPress={() => navigation.navigate("DailyWelcome")}>
+          <TouchableOpacity style={styles.streakContainer} onPress={() => gotoTab('DailyWelcome')}>
             <Icon name="local-fire-department" size={20} color="#FF6B35" />
-            <Text style={styles.streakText}>{streak} ngày</Text>
+            <Text style={styles.streakText}>{t("home.progress.streak")}: {t("home.days", { count: streak })}</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Enhanced Character Section */}
-        <Animated.View style={[styles.characterSection, { transform: [{ scale: bounceAnim }] }]}>
-          <View style={styles.characterContainer}>
-            <View style={styles.characterCircle}>
-              <Icon name="school" size={48} color="#4ECDC4" />
-            </View>
-            <View style={styles.speechBubble}>
-              <Text style={styles.speechText}>Chúng ta cùng học nhé! 🚀</Text>
-            </View>
-          </View>
-        </Animated.View>
-
-        {/* Enhanced Progress Overview */}
-        <View style={styles.progressOverview}>
-          <Text style={styles.sectionTitle}>📊 Tiến độ học tập</Text>
-          <View style={styles.progressCards}>
-            <View style={styles.progressCard}>
-              <Icon name="trending-up" size={24} color="#4ECDC4" />
-              <Text style={styles.progressNumber}>{user?.level || 1}</Text>
-              <Text style={styles.progressLabel}>Cấp độ</Text>
-            </View>
-            <View style={styles.progressCard}>
-              <Icon name="local-fire-department" size={24} color="#FF6B35" />
-              <Text style={styles.progressNumber}>{user.streak}</Text>
-              <Text style={styles.progressLabel}>Ngày liên tiếp</Text>
-            </View>
-            <View style={styles.progressCard}>
-              <Icon name="star" size={24} color="#F59E0B" />
-              <Text style={styles.progressNumber}>{user?.exp || 0}</Text>
-              <Text style={styles.progressLabel}>Điểm XP</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Top 3 Leaderboard */}
+        {/* Leaderboard */}
         {isLoading && <ActivityIndicator style={{ padding: 20 }} size="small" color="#3B82F6" />}
-        {isError && <Text style={{ padding: 20, color: "red" }}>Không thể tải bảng xếp hạng</Text>}
+        {isError && <Text style={{ padding: 20, color: "red" }}>{t("home.leaderboard.error")}</Text>}
 
         {Array.isArray(topThreeUsers) && topThreeUsers.length === 3 && (
           <TouchableOpacity style={styles.leaderboardSection} onPress={handleLeaderboardPress}>
-            <Text style={styles.sectionTitle}>🏆 Bảng xếp hạng</Text>
+            <Text style={styles.sectionTitle}>{t("home.leaderboard.title")}</Text>
             <View style={styles.podiumContainer}>
-              {topThreeUsers.map((u, index) => (
-                <View
-                  key={u.leaderboardId}
-                  style={[
-                    styles.podiumItem,
-                    index === 0 ? styles.firstPlace : index === 1 ? styles.secondPlace : styles.thirdPlace,
-                  ]}
-                >
-                  {index === 0 && <Icon name="emoji-events" size={24} color="#FFD700" style={styles.crownAnimation} />}
-                  <View
-                    style={[
-                      styles.medal,
-                      index === 0 ? styles.goldMedal : index === 1 ? styles.silverMedal : styles.bronzeMedal,
-                    ]}
-                  >
-                    <Text style={styles.medalText}>{index + 1}</Text>
-                  </View>
-                  <Image source={{ uri: u.avatarUrl }} style={styles.podiumAvatar} />
-                  <Text style={styles.podiumName}>{u.name.split(" ")[0]}</Text>
-                  <Text style={styles.podiumScore}>{u.score}</Text>
-                </View>
-              ))}
+              {/* Silver */}
+              <View style={[styles.podiumItem, styles.secondPlace]}>
+                <View style={[styles.medal, styles.silverMedal]}><Text style={styles.medalText}>2</Text></View>
+                <Image source={{ uri: topThreeUsers[1].avatarUrl }} style={styles.podiumAvatar} />
+                <Text style={styles.podiumName}>{topThreeUsers[1].fullname} ({topThreeUsers[1].nickname})</Text>
+                <Text style={styles.podiumScore}>{t("home.progress.level")}: {topThreeUsers[1].level}</Text>
+              </View>
+
+              {/* Gold */}
+              <View style={[styles.podiumItem, styles.firstPlace]}>
+                <Icon name="emoji-events" size={24} color="#FFD700" style={styles.crownAnimation} />
+                <View style={[styles.medal, styles.goldMedal]}><Text style={styles.medalText}>1</Text></View>
+                <Image source={{ uri: topThreeUsers[0].avatarUrl }} style={styles.podiumAvatar} />
+                <Text style={styles.podiumName}>{topThreeUsers[0].fullname} ({topThreeUsers[0].nickname})</Text>
+                <Text style={styles.podiumScore}>{t("home.progress.level")}: {topThreeUsers[0].level}</Text>
+              </View>
+
+              {/* Bronze */}
+              <View style={[styles.podiumItem, styles.thirdPlace]}>
+                <View style={[styles.medal, styles.bronzeMedal]}><Text style={styles.medalText}>3</Text></View>
+                <Image source={{ uri: topThreeUsers[2].avatarUrl }} style={styles.podiumAvatar} />
+                <Text style={styles.podiumName}>{topThreeUsers[2].fullname} ({topThreeUsers[2].nickname})</Text>
+                <Text style={styles.podiumScore}>{t("home.progress.level")}: {topThreeUsers[2].level}</Text>
+              </View>
             </View>
+
             <View style={styles.viewMoreContainer}>
-              <Text style={styles.viewMoreText}>Xem bảng xếp hạng đầy đủ</Text>
+              <Text style={styles.viewMoreText}>{t("home.leaderboard.viewMore")}</Text>
               <Icon name="chevron-right" size={16} color="#6B7280" />
             </View>
           </TouchableOpacity>
         )}
 
-        {/* Roadmap Section */}
-        {roadmapLoading ? <ActivityIndicator /> : roadmap ? (
+        {/* Character */}
+        <Animated.View style={[styles.characterSection, { transform: [{ scale: bounceAnim }] }]}>
+          <View style={styles.characterContainer}>
+            <View style={styles.characterCircle}><Icon name="school" size={48} color="#4ECDC4" /></View>
+            <View style={styles.speechBubble}><Text style={styles.speechText}>{t("home.character.message")}</Text></View>
+          </View>
+        </Animated.View>
+
+        {/* Progress */}
+        <View style={styles.progressOverview}>
+          <Text style={styles.sectionTitle}>{t("home.progress.title")}</Text>
+          <View style={styles.progressCard}>
+            <Icon name="star" size={24} color="#F59E0B" />
+            <Text style={styles.progressNumber}>
+              {user?.exp || 0} / {user?.expToNextLevel || 0}
+            </Text>
+            <View style={styles.progressBar}>
+              <View style={[
+                styles.progressFill,
+                { width: `${(user?.exp / user?.expToNextLevel) * 100 || 0}%` }
+              ]} />
+            </View>
+            <Text style={styles.progressLabel}>{t("home.progress.xp")}</Text>
+          </View>
+        </View>
+
+        {/* Status */}
+        <View style={styles.statusSection}>
+          <Text style={styles.statusText}>{statusMessage || t("home.status.default")}</Text>
+        </View>
+
+        {/* Roadmap */}
+        {roadmapLoading ? (
+          <ActivityIndicator />
+        ) : roadmap ? (
           <TouchableOpacity style={styles.roadmapSection} onPress={handleRoadmapPress}>
-            <Text style={styles.sectionTitle}>🗺️ Lộ trình học tập</Text>
+            <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
             <View style={styles.roadmapCard}>
               <View style={styles.roadmapHeader}>
                 <View style={styles.roadmapInfo}>
-                  <Text style={styles.roadmapTitle}>Lộ trình cá nhân</Text>
-                  <Text style={styles.roadmapSubtitle}>
-                    {roadmap.completedItems}/{roadmap.total_items} mục đã hoàn thành
-                  </Text>
+                  <Text style={styles.roadmapTitle}>{t("home.roadmap.personal")}</Text>
+                  <Text style={styles.roadmapSubtitle}>{t("home.roadmap.completed", { count: roadmap.totalItems })}</Text>
                 </View>
-                <View style={styles.roadmapProgress}>
-                  <Text style={styles.roadmapPercentage}>
-                    {Math.round((roadmap.completedItems / roadmap.total_items) * 100)}%
-                  </Text>
-                </View>
+                <View style={styles.roadmapProgress}><Text style={styles.roadmapPercentage}>{Math.round(roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0)}%</Text></View>
               </View>
-              <View style={styles.roadmapProgressBar}>
-                <View
-                  style={[
-                    styles.roadmapProgressFill,
-                    { width: `${(roadmap.completedItems / roadmap.total_items) * 100}%` },
-                  ]}
-                />
-              </View>
-              <View style={styles.roadmapFooter}>
-                <Text style={styles.roadmapEstimate}>Ước tính: {roadmap.estimated_completion_time} ngày</Text>
-                <Icon name="arrow-forward" size={16} color="#4ECDC4" />
-              </View>
+              <View style={styles.roadmapProgressBar}><View style={[styles.roadmapProgressFill, { width: `${roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0}%` }]} /></View>
+              <View style={styles.roadmapFooter}><Text style={styles.roadmapEstimate}>{t("home.roadmap.estimate", { days: roadmap.estimatedCompletionTime })}</Text><Icon name="arrow-forward" size={16} color="#4ECDC4" /></View>
             </View>
           </TouchableOpacity>
         ) : (
           <View style={styles.roadmapSection}>
-            <Text style={styles.sectionTitle}>🗺️ Tạo lộ trình học tập</Text>
-            <Text>Chưa có lộ trình cho ngôn ngữ {mainLanguage}. Chọn mặc định hoặc tạo mới.</Text>
-            <ScrollView horizontal style={{ marginVertical: 10 }}>
-              {defaultRoadmaps?.map((def) => (
-                <TouchableOpacity key={def.roadmap_id} onPress={() => selectDefault(def.roadmap_id)} style={styles.defaultCard}>
-                  <Text>{def.title} ({def.language_code})</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
+            {defaultRoadmaps && defaultRoadmaps.length > 0 ? (
+              <>
+                <Text>{t("home.roadmap.noPersonal", { language: mainLanguage })}</Text>
+                <ScrollView horizontal style={{ marginVertical: 10 }}>
+                  {defaultRoadmaps.map((def) => (
+                    <TouchableOpacity key={def.roadmapId} onPress={() => selectDefault(def.roadmapId)} style={styles.defaultCard}>
+                      <Text style={{ fontWeight: "600" }}>{def.title}</Text>
+                      <Text style={{ fontSize: 12, color: "#6B7280" }}>{def.languageCode}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </>
+            ) : (
+              <Text>{t("home.roadmap.notFound")}</Text>
+            )}
             <TouchableOpacity style={styles.generateButton} onPress={() => setShowGenerateDialog(true)}>
-              <Text>Tạo lộ trình tùy chỉnh</Text>
+              <Text>{t("home.roadmap.createCustom")}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -222,86 +210,48 @@ const HomeScreen = ({ navigation }) => {
         {/* Generate Dialog */}
         <Modal visible={showGenerateDialog} animationType="slide">
           <View style={styles.dialog}>
-            <Text>Nhập thông tin để tạo lộ trình</Text>
-            <TextInput placeholder="Target Proficiency" onChangeText={(t) => setPreferences({ ...preferences, target_proficiency: t })} />
-            <TextInput placeholder="Target Date" onChangeText={(t) => setPreferences({ ...preferences, target_date: t })} />
-            {/* Add more inputs for focus_areas, etc. */}
+            <Text>{t("home.roadmap.dialogTitle")}</Text>
+            <TextInput placeholder={t("home.roadmap.targetProficiency")} onChangeText={(tVal) => setPreferences({ ...preferences, target_proficiency: tVal })} />
+            <TextInput placeholder={t("home.roadmap.targetDate")} onChangeText={(tVal) => setPreferences({ ...preferences, target_date: tVal })} />
             <TouchableOpacity onPress={handleGenerate} disabled={generateMutation.isPending}>
-              {generateMutation.isPending ? <ActivityIndicator /> : <Text>Tạo</Text>}
+              {generateMutation.isPending ? <ActivityIndicator /> : <Text>{t("home.roadmap.createCustom")}</Text>}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowGenerateDialog(false)}><Text>Hủy</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowGenerateDialog(false)}><Text>{t("home.roadmap.cancel")}</Text></TouchableOpacity>
           </View>
         </Modal>
 
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <Text style={styles.sectionTitle}>⚡ Học nhanh</Text>
-          <View style={styles.actionGrid}>
-            {languages.map((lang) => {
-              const countryCode = languageToCountry[lang.language_code] || "US";
-
-              return (
-                <TouchableOpacity
-                  key={lang.language_code}
-                  style={[styles.actionCard, { backgroundColor: "#4ECDC4" }]}
-                >
-                  <CountryFlag isoCode={countryCode} size={24} style={{ marginBottom: 6 }} />
-                  <Text style={styles.actionTitle}>{lang.language_name}</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </View>
-
         {/* Daily Goal */}
         <View style={styles.dailyGoal}>
-          <Text style={styles.sectionTitle}>🎯 Mục tiêu hôm nay</Text>
+          <Text style={styles.sectionTitle}>{t("home.dailyGoal.title")}</Text>
           <View style={styles.goalCard}>
             <View style={styles.goalHeader}>
               <View style={styles.goalInfo}>
-                <Text style={styles.goalText}>Hoàn thành {dailyGoal.totalLessons} bài học</Text>
-                <Text style={styles.goalProgress}>
-                  {dailyGoal.completedLessons}/{dailyGoal.totalLessons} bài
-                </Text>
+                <Text style={styles.goalText}>{t("home.dailyGoal.complete", { total: dailyGoal.totalLessons })}</Text>
+                <Text style={styles.goalProgress}>{dailyGoal.completedLessons}/{dailyGoal.totalLessons} {t("home.dailyGoal.lesson")}</Text>
               </View>
-              <View style={styles.goalIcon}>
-                <Icon name="flag" size={24} color="#4ECDC4" />
-              </View>
+              <View style={styles.goalIcon}><Icon name="flag" size={24} color="#4ECDC4" /></View>
             </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${goalProgress}%` }]} />
-            </View>
+            <View style={styles.progressBar}><View style={[styles.progressFill, { width: `${goalProgress}%` }]} /></View>
           </View>
         </View>
 
-        {/* Daily Challenge Section */}
+        {/* Daily Challenge */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>🎮 Thử thách hàng ngày</Text>
+          <Text style={styles.sectionTitle}>🎮 {t("home.challenge.title")}</Text>
           {dailyLoading ? (
             <ActivityIndicator />
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.challengeScroll}>
               {dailyChallenges?.map((challenge) => (
-                <TouchableOpacity
-                  key={challenge.id.challengeId}
-                  style={[styles.challengeCard, { backgroundColor: challenge.isCompleted ? "#4ECDC4" : "#F59E0B" }]}
-                  onPress={() => completeMutation.mutate(challenge.id.challengeId)}
-                >
-                  <View style={styles.challengeIcon}>
-                    <Icon name="sports-esports" size={32} color="#FFFFFF" />
-                  </View>
-                  <Text style={styles.challengeTitle}>Thử thách</Text>
-                  <Text style={styles.challengeDescription}>
-                    {challenge.expReward} XP {challenge.isCompleted ? "(Đã xong)" : ""}
-                  </Text>
+                <TouchableOpacity key={challenge.id.challengeId} style={[styles.challengeCard, { backgroundColor: challenge.isCompleted ? "#4ECDC4" : "#F59E0B" }]} onPress={() => completeMutation.mutate(challenge.id.challengeId)}>
+                  <View style={styles.challengeIcon}><Icon name="sports-esports" size={32} color="#FFFFFF" /></View>
+                  <Text style={styles.challengeTitle}>{t("home.challenge.challenge")}</Text>
+                  <Text style={styles.challengeDescription}>{challenge.expReward} XP {challenge.isCompleted ? `(${t("home.challenge.completed")})` : ""}</Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity
-                style={[styles.challengeCard, { backgroundColor: "#3B82F6" }]}
-                onPress={() => assignMutation.mutate()}
-              >
+              <TouchableOpacity style={[styles.challengeCard, { backgroundColor: "#3B82F6" }]} onPress={() => assignMutation.mutate()}>
                 <Icon name="add" size={32} color="#FFF" />
-                <Text style={styles.challengeTitle}>Nhận thêm</Text>
+                <Text style={styles.challengeTitle}>{t("home.challenge.add")}</Text>
               </TouchableOpacity>
             </ScrollView>
           )}
@@ -310,35 +260,20 @@ const HomeScreen = ({ navigation }) => {
         {/* Recent Lessons */}
         {recentLessons.length > 0 && (
           <View style={styles.recentLessons}>
-            <Text style={styles.sectionTitle}>📚 Tiếp tục học</Text>
+            <Text style={styles.sectionTitle}>📚 {t("home.recentLessons.title")}</Text>
             {recentLessons.map((lesson) => (
-              <TouchableOpacity key={lesson.lesson_id} style={styles.lessonCard}>
-                <View style={styles.lessonIcon}>
-                  <Icon name="quiz" size={20} color="#4F46E5" />
-                </View>
+              <TouchableOpacity key={lesson.lessonId} style={styles.lessonCard}>
+                <View style={styles.lessonIcon}><Icon name="quiz" size={20} color="#4F46E5" /></View>
                 <View style={styles.lessonInfo}>
                   <Text style={styles.lessonTitle}>{lesson.title}</Text>
-                  <CountryFlag
-                    isoCode={languageToCountry[lesson.language_code] || "US"}
-                    size={20}
-                    style={{ marginRight: 8 }}
-                  />
-                  <Text style={styles.lessonSubtitle}>
-                    {lesson.language_code} • Bài {lesson.lesson_name}
-                  </Text>
+                  <CountryFlag isoCode={languageToCountry[lesson.languageCode] || "US"} size={20} style={{ marginRight: 8 }} />
+                  <Text style={styles.lessonSubtitle}>{lesson.languageCode} • {t("home.recentLessons.lesson")} {lesson.lessonName}</Text>
                 </View>
                 <Icon name="chevron-right" size={20} color="#9CA3AF" />
               </TouchableOpacity>
             ))}
           </View>
         )}
-
-        {/* Status */}
-        <View style={styles.statusSection}>
-          <Text style={styles.statusText}>
-            {statusMessage || "Bạn đang có tiến bộ tốt! Hãy tiếp tục duy trì nhé! 🌟"}
-          </Text>
-        </View>
       </Animated.View>
     </ScrollView>
   )
@@ -398,6 +333,37 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FF6B35",
     marginLeft: 4,
+  },
+  podiumContainer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "center",
+    marginBottom: 12,
+  },
+  podiumItem: {
+    alignItems: "center",
+    flex: 1,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginHorizontal: 4,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  firstPlace: {
+    marginTop: -20, // cao nhất
+    paddingTop: 32,
+  },
+  secondPlace: {
+    marginTop: -10, // cao hơn bronze một chút
+    paddingTop: 24,
+  },
+  thirdPlace: {
+    marginTop: 0,
+    paddingTop: 20,
   },
   characterSection: {
     alignItems: "center",
@@ -481,35 +447,6 @@ const styles = StyleSheet.create({
     color: "#1F2937",
     marginBottom: 16,
   },
-  podiumContainer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  podiumItem: {
-    alignItems: "center",
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    paddingVertical: 12,
-    marginHorizontal: 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  firstPlace: {
-    marginTop: -16,
-    paddingTop: 28,
-  },
-  secondPlace: {
-    marginTop: -8,
-  },
-  thirdPlace: {
-    marginTop: 0,
-  },
   crownAnimation: {
     position: "absolute",
     top: -12,
@@ -536,6 +473,7 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#FFFFFF",
   },
+
   podiumAvatar: {
     width: 50,
     height: 50,
@@ -553,6 +491,71 @@ const styles = StyleSheet.create({
     color: "#6B7280",
     fontWeight: "500",
   },
+  dialogTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    marginBottom: 20,
+    textAlign: "center",
+    color: "#1F2937",
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 6,
+    marginTop: 12,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    backgroundColor: "#FFF",
+  },
+  chipContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  chip: {
+    borderWidth: 1,
+    borderColor: "#9CA3AF",
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  chipSelected: {
+    backgroundColor: "#4ECDC4",
+    borderColor: "#4ECDC4",
+  },
+  chipText: {
+    fontSize: 13,
+    color: "#374151",
+  },
+  chipTextSelected: {
+    color: "#FFF",
+  },
+  dialogActions: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginTop: 24,
+  },
+  dialogButton: {
+    flex: 1,
+    marginHorizontal: 8,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  dialogButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFF",
+  },
+
   viewMoreContainer: {
     flexDirection: "row",
     alignItems: "center",

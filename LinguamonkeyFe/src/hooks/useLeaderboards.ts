@@ -1,71 +1,81 @@
-import { useQuery } from "@tanstack/react-query"
-import instance from "../api/axiosInstance"
-import type { Leaderboard, LeaderboardEntry } from "../types/api"
+// hooks/useLeaderboards.ts
+import { useQuery } from "@tanstack/react-query";
+import instance from "../api/axiosInstance";
+import type { Leaderboard, LeaderboardEntry } from "../types/api";
 
 export const useLeaderboards = () => {
-  // Get leaderboards
   const useLeaderboards = (params?: { period?: string; tab?: string; page?: number; limit?: number }) => {
-    const queryParams = new URLSearchParams()
-    if (params?.period) queryParams.append("period", params.period)
-    if (params?.tab) queryParams.append("tab", params.tab)
-    if (params?.page) queryParams.append("page", params.page.toString())
-    if (params?.limit) queryParams.append("limit", params.limit.toString())
+    const queryParams = new URLSearchParams();
+    if (params?.period) queryParams.append("period", params.period);
+    if (params?.tab) queryParams.append("tab", params.tab);
+    if (params?.page !== undefined) queryParams.append("page", String(params.page));
+    if (params?.limit !== undefined) queryParams.append("limit", String(params.limit));
 
-    const url = `/leaderboards${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
+    const url = `/leaderboards${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
 
     return useQuery<Leaderboard[]>({
       queryKey: ["leaderboards", params],
       queryFn: async () => {
-        const res = await instance.get(url)
-        return res.data
+        const res = await instance.get(url);
+        return res.data.result;
       },
-    })
-  }
+    });
+  };
 
-  // Get leaderboard by ID
   const useLeaderboard = (leaderboardId: string | null) =>
     useQuery<Leaderboard>({
       queryKey: ["leaderboard", leaderboardId],
       queryFn: async () => {
-        if (!leaderboardId) throw new Error("Invalid leaderboardId")
-        const res = await instance.get(`/leaderboards/${leaderboardId}`)
-        return res.data
+        if (!leaderboardId) throw new Error("Invalid leaderboardId");
+        const res = await instance.get(`/leaderboards/${leaderboardId}`);
+        return res.data.result;
       },
       enabled: !!leaderboardId,
-    })
+    });
 
-  // Get leaderboard entries
-  const useLeaderboardEntries = (leaderboardId: string | null, params?: { page?: number; limit?: number }) => {
-    const queryParams = new URLSearchParams()
-    if (params?.page) queryParams.append("page", params.page.toString())
-    if (params?.limit) queryParams.append("limit", params.limit.toString())
+  // IMPORTANT: only fetch entries when leaderboardId exists
+  const useLeaderboardEntries = (
+    leaderboardId: string | null,
+    params?: { page?: number; limit?: number; sort?: string | string[] }
+  ) => {
+    const queryParams = new URLSearchParams();
+    // leaderboardId MUST be provided
+    if (leaderboardId) queryParams.append("leaderboardId", leaderboardId);
+    if (params?.page !== undefined) queryParams.append("page", String(params.page));
+    if (params?.limit !== undefined) queryParams.append("size", String(params.limit));
 
-    const url = leaderboardId
-      ? `/leaderboards/${leaderboardId}/entries${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
-      : null
+    if (params?.sort) {
+      if (Array.isArray(params.sort)) {
+        params.sort.forEach((s) => queryParams.append("sort", s));
+      } else {
+        queryParams.append("sort", params.sort);
+      }
+    }
+
+    const url = `/leaderboard-entries?${queryParams.toString()}`;
 
     return useQuery<LeaderboardEntry[]>({
       queryKey: ["leaderboardEntries", leaderboardId, params],
       queryFn: async () => {
-        if (!url) throw new Error("Invalid leaderboardId")
-        const res = await instance.get(url)
-        return res.data
+        if (!leaderboardId) return []; // defensive, but enabled will be false anyway
+        const res = await instance.get(url);
+        return res.data.result;
       },
-      enabled: !!leaderboardId,
-    })
-  }
+      enabled: !!leaderboardId, // <-- CRITICAL: only run when we have an id
+      keepPreviousData: true,
+    });
+  };
 
-  // Get user's leaderboard position
   const useUserLeaderboardPosition = (leaderboardId: string | null) =>
     useQuery<LeaderboardEntry>({
       queryKey: ["userLeaderboardPosition", leaderboardId],
       queryFn: async () => {
-        if (!leaderboardId) throw new Error("Invalid leaderboardId")
-        const res = await instance.get(`/leaderboards/${leaderboardId}/user-position`)
-        return res.data
+        if (!leaderboardId) throw new Error("Invalid leaderboardId");
+        const res = await instance.get(`/leaderboards/${leaderboardId}/user-position`);
+        return res.data.result;
       },
       enabled: !!leaderboardId,
-    })
+    });
 
-  return { useLeaderboards, useLeaderboard, useLeaderboardEntries, useUserLeaderboardPosition }
-}
+  return { useLeaderboards, useLeaderboard, useLeaderboardEntries, useUserLeaderboardPosition };
+};

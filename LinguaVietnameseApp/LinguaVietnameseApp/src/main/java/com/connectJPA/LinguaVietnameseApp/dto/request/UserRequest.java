@@ -33,6 +33,8 @@ public class UserRequest {
     @Size(max = 50, message = "Nickname must not exceed 50 characters")
     private String nickname;
 
+    private String bio;
+
     @Size(max = 20, message = "Phone must not exceed 20 characters")
     private String phone;
 

@@ -16,6 +16,7 @@ import { useNavigation } from "@react-navigation/native";
 import { useVideoCalls } from "../../hooks/useVideos"; // đường dẫn theo project bạn
 import { v4 as uuidv4 } from "uuid"; // nếu bạn chưa có, dùng react-native-get-random-values + uuid
 import { gotoTab } from "../../utils/navigationRef";
+import { useChatStore } from "../../stores/ChatStore";
 
 const STATUS_OPTIONS = ["CONNECTED", "MUTED", "LEFT"];
 
@@ -156,7 +157,6 @@ const VideoCallManagerScreen = ({ route }) => {
     };
 
     const onJoinJitsi = () => {
-        // prefer server-provided roomId, fallback to videoCallId or generate
         const targetRoom = roomId || videoCallId || `call-${uuidv4().slice(0, 8)}`;
         gotoTab("Chat", "JitsiCall", { roomId: targetRoom });
     };

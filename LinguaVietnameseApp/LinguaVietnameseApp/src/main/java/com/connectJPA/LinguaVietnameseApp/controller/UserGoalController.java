@@ -33,7 +33,6 @@ public class UserGoalController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved user goals"),
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     @GetMapping
     public AppApiResponse<Page<UserGoalResponse>> getAllUserGoals(
             @Parameter(description = "User ID filter") @RequestParam(required = false) UUID userId,
@@ -71,7 +70,7 @@ public class UserGoalController {
             @ApiResponse(responseCode = "400", description = "Invalid user goal data")
     })
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserGoalResponse> createUserGoal(
             @Valid @RequestBody UserGoalRequest request,
             Locale locale) {
@@ -90,7 +89,7 @@ public class UserGoalController {
             @ApiResponse(responseCode = "400", description = "Invalid user goal data")
     })
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserGoalResponse> updateUserGoal(
             @Parameter(description = "User goal ID") @PathVariable UUID id,
             @Valid @RequestBody UserGoalRequest request,
@@ -109,7 +108,7 @@ public class UserGoalController {
             @ApiResponse(responseCode = "404", description = "User goal not found")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Void> deleteUserGoal(
             @Parameter(description = "User goal ID") @PathVariable UUID id,
             Locale locale) {

@@ -115,8 +115,13 @@ public class RoadmapServiceImpl implements RoadmapService {
     }
 
     private RoadmapUserResponse mapToUserResponse(UserRoadmap ur) {
-        Roadmap r = roadmapRepository.findById(ur.getUserRoadmapId().getRoadmapId()).orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
-        List<RoadmapItem> itemsEnt = roadmapItemRepository.findByRoadmapIdOrderByOrderIndexAsc(ur.getUserRoadmapId().getRoadmapId());
+        Roadmap r = roadmapRepository.findById(ur.getUserRoadmapId().getRoadmapId())
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+
+        List<RoadmapItem> itemsEnt = roadmapItemRepository.findByRoadmapIdOrderByOrderIndexAsc(
+                ur.getUserRoadmapId().getRoadmapId()
+        );
+
         List<RoadmapItemUserResponse> items = itemsEnt.stream()
                 .map(i -> RoadmapItemUserResponse.builder()
                         .id(i.getItemId())
@@ -125,7 +130,10 @@ public class RoadmapServiceImpl implements RoadmapService {
                         .completed(i.getOrderIndex() <= ur.getCompletedItems())
                         .build())
                 .collect(Collectors.toList());
-        List<RoadmapMilestone> milestonesEnt = roadmapMilestoneRepository.findByRoadmapIdOrderByOrderIndexAsc(ur.getUserRoadmapId().getRoadmapId());
+
+        List<RoadmapMilestone> milestonesEnt = roadmapMilestoneRepository
+                .findByRoadmapIdOrderByOrderIndexAsc(ur.getUserRoadmapId().getRoadmapId());
+
         List<MilestoneUserResponse> milestones = milestonesEnt.stream()
                 .map(m -> MilestoneUserResponse.builder()
                         .id(m.getMilestoneId())
@@ -134,7 +142,17 @@ public class RoadmapServiceImpl implements RoadmapService {
                         .achieved(m.getLevel() <= ur.getCurrentLevel())
                         .build())
                 .collect(Collectors.toList());
-        int progress = r.getTotalItems() > 0 ? (ur.getCompletedItems() * 100 / r.getTotalItems()) : 0;
+
+        int totalItems = r.getTotalItems() != null ? r.getTotalItems() : itemsEnt.size();
+        int completedItems = ur.getCompletedItems();
+        int progress = totalItems > 0 ? (completedItems * 100 / totalItems) : 0;
+
+        int estimatedCompletionTime = ur.getEstimatedCompletionTime();
+        if (estimatedCompletionTime == 0 && totalItems > 0) {
+            int avgDaysPerItem = 1; // fallback nếu chưa có logic chi tiết
+            estimatedCompletionTime = (totalItems - completedItems) * avgDaysPerItem;
+        }
+
         return RoadmapUserResponse.builder()
                 .roadmapId(ur.getUserRoadmapId().getRoadmapId())
                 .userId(ur.getUserRoadmapId().getUserId())
@@ -142,10 +160,14 @@ public class RoadmapServiceImpl implements RoadmapService {
                 .description(r.getDescription())
                 .language(r.getLanguageCode())
                 .progressPercentage(progress)
+                .totalItems(totalItems)
+                .completedItems(completedItems)
+                .estimatedCompletionTime(estimatedCompletionTime)
                 .items(items)
                 .milestones(milestones)
                 .build();
     }
+
 
     private RoadmapResponse mapToResponse(Roadmap r) {
         return RoadmapResponse.builder()

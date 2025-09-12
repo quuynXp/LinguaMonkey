@@ -1,124 +1,123 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import instance from "../api/axiosInstance"
-import type { ApiResponse, PaginatedResponse, User, RegisterResult } from "../types/api"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import instance from "../api/axiosInstance";
+import type { ApiResponse, PaginatedResponse, User, RegisterResult } from "../types/api";
 
-// 1. Get user by ID (cả admin hoặc self)
-export const useUser = (id?: string) => {
-  return useQuery<User>({
+export const useUser = (id?: string) =>
+  useQuery<any>({ 
     queryKey: ["user", id],
     queryFn: async () => {
-      if (!id) throw new Error("User ID is required")
-      const res = await instance.get<ApiResponse<User>>(`/users/${id}`)
-      return res.data.result!
+      if (!id) throw new Error("User ID is required");
+      const res = await instance.get<ApiResponse<User>>(`/users/${id}`);
+      // backend uses { code, message, result }
+      return (res.data as any)?.result ?? (res.data as any);
     },
     enabled: !!id,
     staleTime: 5 * 60 * 1000,
-  })
-}
+  });
 
-// 2. Get all users (admin only)
-export const useAllUsers = (params?: {
-  page?: number
-  size?: number
-  email?: string
-  fullname?: string
-  nickname?: string
-}) => {
-  const { page = 0, size = 20, email, fullname, nickname } = params || {}
-
-  return useQuery<PaginatedResponse<User>>({
-    queryKey: ["allUsers", page, size, email, fullname, nickname],
+export const useUserAchievements = (id?: string) =>
+  useQuery<any[]>({
+    queryKey: ["user", id, "achievements"],
     queryFn: async () => {
-      const queryParams = new URLSearchParams()
-      queryParams.append("page", page.toString())
-      queryParams.append("size", size.toString())
-      if (email) queryParams.append("email", email)
-      if (fullname) queryParams.append("fullname", fullname)
-      if (nickname) queryParams.append("nickname", nickname)
-
-      const res = await instance.get<ApiResponse<PaginatedResponse<User>>>(`/users?${queryParams.toString()}`)
-      return res.data.result!
-    },
-    staleTime: 2 * 60 * 1000,
-  })
-}
-
-// 3. Create user (register)
-export const useCreateUser = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (payload: any) => {
-      const res = await instance.post<ApiResponse<RegisterResult>>("/users", payload)
-      return res.data.result!
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["allUsers"] })
-    },
-  })
-}
-
-// 4. Update user
-export const useUpdateUser = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
-      const res = await instance.put<ApiResponse<User>>(`/users/${id}`, data)
-      return res.data.result!
-    },
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ["allUsers"] })
-      queryClient.invalidateQueries({ queryKey: ["user", id] })
-    },
-  })
-}
-
-// 5. Delete user
-export const useDeleteUser = () => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await instance.delete<ApiResponse<void>>(`/users/${id}`)
-      return res.data.result
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["allUsers"] })
-    },
-  })
-}
-
-// 6. Patch user fields (avatar, country, exp, streak, native-language)
-export const usePatchUser = (field: "avatar" | "country" | "exp" | "streak" | "native-language") => {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: async ({ id, value }: { id: string; value: any }) => {
-      const url = `/api/users/${id}/${field}`
-      const res = await instance.patch<ApiResponse<User>>(url, null, { params: { [field]: value } })
-      return res.data.result!
-    },
-    onSuccess: (_, { id }) => {
-      queryClient.invalidateQueries({ queryKey: ["user", id] })
-      queryClient.invalidateQueries({ queryKey: ["allUsers"] })
-    },
-  })
-}
-
-// 7. Get user level info (nay trả về User luôn vì trong User đã có level info)
-export const useUserLevelInfo = (id?: string) => {
-  return useQuery<User>({
-    queryKey: ["userLevelInfo", id],
-    queryFn: async () => {
-      if (!id) throw new Error("User ID is required")
-      const res = await instance.get<ApiResponse<User>>(`/users/${id}/level-info`)
-      return res.data.result!
+      if (!id) return [];
+      const res = await instance.get(`/users/${id}/achievements`);
+      return (res.data as any)?.result ?? res.data ?? [];
     },
     enabled: !!id,
-  })
-}
+    staleTime: 60 * 1000,
+  });
 
-export const useUsers = () => {
-  return {
-    useAllUsers,
-    useUpdateUser,
-    useDeleteUser,
-  }
-}
+export const useUserLearningActivities = (id?: string, timeframe: "week" | "month" | "year" = "month") =>
+  useQuery<any[]>({
+    queryKey: ["user", id, "activities", timeframe],
+    queryFn: async () => {
+      if (!id) return [];
+      const res = await instance.get(`/users/${id}/learning-activities`, { params: { timeframe } });
+      return (res.data as any)?.result ?? res.data ?? [];
+    },
+    enabled: !!id,
+    staleTime: 60 * 1000,
+  });
+
+export const useSendFriendRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { currentUserId?: string; targetUserId: string } | string) => {
+      const target =
+        typeof payload === "string" ? payload : (payload as any).targetUserId || (payload as any).requestedId;
+      const res = await instance.post(`/friendships`, { requestedUserId: target });
+      return (res.data as any)?.result ?? res.data;
+    },
+    onSuccess: (_, payload) => {
+      const targetId = typeof payload === "string" ? payload : (payload as any).targetUserId;
+      qc.invalidateQueries({ queryKey: ["user", targetId] });
+      qc.invalidateQueries({ queryKey: ["user", targetId, "achievements"] });
+      qc.invalidateQueries({ queryKey: ["user", targetId, "activities"] });
+      qc.invalidateQueries({ queryKey: ["friendship", "request-status"] });
+    },
+  });
+};
+
+
+export const useAcceptFriendRequest = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { currentUserId: string; otherUserId: string }) => {
+      const { currentUserId, otherUserId } = payload;
+      // adjust endpoint if your backend uses different path
+      const res = await instance.put(`/friendships/${currentUserId}/${otherUserId}`, { status: "ACCEPTED" });
+      return (res.data as any)?.result ?? res.data;
+    },
+    onSuccess: (_, payload) => {
+      qc.invalidateQueries({ queryKey: ["user", (payload as any).otherUserId] });
+      qc.invalidateQueries({ queryKey: ["user", (payload as any).currentUserId] });
+      qc.invalidateQueries({ queryKey: ["friendship", "request-status"] });
+    },
+  });
+};
+
+export const useFriendRequestStatus = (currentUserId?: string, otherUserId?: string) =>
+  useQuery<any | null>({
+    queryKey: ["friendship", "request-status", currentUserId, otherUserId],
+    queryFn: async () => {
+      if (!currentUserId || !otherUserId) return null;
+      const res = await instance.get(`/friendships/request-status`, {
+        params: { currentUserId, otherUserId },
+      });
+      return (res.data as any)?.result ?? res.data ?? null;
+    },
+    enabled: !!currentUserId && !!otherUserId,
+    staleTime: 30 * 1000,
+  });
+
+export const useCheckIfFriends = (user1Id?: string, user2Id?: string) =>
+  useQuery<boolean>({
+    queryKey: ["friendship", "check", user1Id, user2Id],
+    queryFn: async () => {
+      if (!user1Id || !user2Id) return false;
+      const res = await instance.get(`/friendships/check`, { params: { user1Id, user2Id } });
+      return ((res.data as any)?.result ?? res.data) as boolean;
+    },
+    enabled: !!user1Id && !!user2Id,
+    staleTime: 30 * 1000,
+  });
+
+export const useUsers = () => ({
+  useUser,
+  useUserAchievements,
+  useUserLearningActivities,
+  useSendFriendRequest,
+  useAcceptFriendRequest,
+  useFriendRequestStatus,
+  useCheckIfFriends,
+  useUserLevelInfo: (id?: string) =>
+    useQuery<any>({
+      queryKey: ["userLevelInfo", id],
+      queryFn: async () => {
+        if (!id) throw new Error("User ID is required");
+        const res = await instance.get(`/users/${id}/level-info`);
+        return (res.data as any)?.result ?? res.data;
+      },
+      enabled: !!id,
+    }),
+});

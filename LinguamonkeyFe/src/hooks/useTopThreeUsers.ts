@@ -12,6 +12,7 @@ const useTopThreeUsers = () => {
       try {
         const response = await axiosIntansce.get('/leaderboards/global/top-3');
         setTopThreeUsers(response.data.result);
+        console.log("Data result top3", response.data.result)
         setIsError(false);
       } catch (error) {
         console.error('Error fetching top 3 global users:', error);

@@ -1,29 +1,11 @@
-import { useEffect, useState } from "react"
 import { ScrollView, Text, View, ActivityIndicator } from "react-native"
-import axios from "../../api/axiosInstance"
-import { Transaction } from "../../types/api"
+import { useTransaction } from "../../hooks/useTransaction"
 
 const TransactionDetailsScreen = ({ route }) => {
   const { id } = route.params
-  const [transaction, setTransaction] = useState<Transaction | null>(null)
-  const [loading, setLoading] = useState(false)
+  const { data: transaction, isLoading } = useTransaction(id)
 
-  useEffect(() => {
-    const fetchTransaction = async () => {
-      try {
-        setLoading(true)
-        const res = await axios.get(`/transactions/${id}`)
-        setTransaction(res.data.result)
-      } catch (err) {
-        console.error(err)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchTransaction()
-  }, [id])
-
-  if (loading || !transaction) {
+  if (isLoading || !transaction) {
     return (
       <View className="flex-1 items-center justify-center">
         <ActivityIndicator size="large" color="#4F46E5" />
@@ -40,15 +22,11 @@ const TransactionDetailsScreen = ({ route }) => {
           💰 Amount: <Text className="font-semibold">{transaction.amount.toLocaleString()} đ</Text>
         </Text>
 
-        {transaction.description && (
+        {transaction.method && (
           <Text className="text-base text-gray-800 mt-2">
-            📝 Description: <Text className="font-medium">{transaction.description}</Text>
+            🔗 Provider: <Text className="font-medium">{transaction.method}</Text>
           </Text>
         )}
-
-        <Text className="text-base text-gray-800 mt-2">
-          🔗 Provider: <Text className="font-medium">{transaction.provider}</Text>
-        </Text>
 
         <Text className="text-base text-gray-800 mt-2">
           📌 Status:{" "}
@@ -68,13 +46,11 @@ const TransactionDetailsScreen = ({ route }) => {
         </Text>
 
         <Text className="text-base text-gray-800 mt-2">
-          🕒 Created At:{" "}
-          <Text className="font-medium">{new Date(transaction.created_at).toLocaleString()}</Text>
+          🕒 Created At: <Text className="font-medium">{new Date(transaction.createdAt).toLocaleString()}</Text>
         </Text>
 
         <Text className="text-base text-gray-800 mt-2">
-          🔄 Updated At:{" "}
-          <Text className="font-medium">{new Date(transaction.updated_at).toLocaleString()}</Text>
+          🔄 Updated At: <Text className="font-medium">{new Date(transaction.updatedAt).toLocaleString()}</Text>
         </Text>
       </View>
     </ScrollView>

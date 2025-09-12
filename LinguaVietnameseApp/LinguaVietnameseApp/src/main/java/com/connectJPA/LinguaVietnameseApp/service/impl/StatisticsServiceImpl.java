@@ -31,6 +31,8 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final UserDailyChallengeRepository userDailyChallengeRepository;
     private final VideoCallParticipantRepository videoCallParticipantRepository;
     private final UserEventRepository userEventRepository;
+    private final CourseRepository courseRepository;
+    private final LessonRepository lessonRepository;
 
 
     @Override
@@ -43,13 +45,13 @@ public class StatisticsServiceImpl implements StatisticsService {
         long totalUsers = usersInRange == null ? 0L : usersInRange.size();
 
         int totalCourses;
+        List<?> enrollments;
         if (userId != null) {
-            List<?> enrollments = courseEnrollmentRepository.findByUserIdAndEnrolledAtBetween(userId, start, end);
-            totalCourses = enrollments == null ? 0 : enrollments.size();
+            enrollments = courseEnrollmentRepository.findByUserIdAndEnrolledAtBetween(userId, start, end);
         } else {
-            List<?> enrollments = courseEnrollmentRepository.findByEnrolledAtBetween(start, end);
-            totalCourses = enrollments == null ? 0 : enrollments.size();
+            enrollments = courseEnrollmentRepository.findByEnrolledAtBetween(start, end);
         }
+        totalCourses = enrollments == null ? 0 : enrollments.size();
 
         List<UserLearningActivity> activities;
         if (userId != null) {
@@ -191,15 +193,16 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
 
+    // trong StatisticsServiceImpl
     @Override
-    public StatisticsResponse getUserStatistics(UUID userId, LocalDate startDate, LocalDate endDate) {
-        // assume controller already ensured startDate/endDate not null and start <= end
+    public StatisticsResponse getUserStatistics(UUID userId, LocalDate startDate, LocalDate endDate, String aggregate) {
         OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
 
         // 1. Transactions
         List<Transaction> transactions = transactionRepository.findByUserIdAndCreatedAtBetween(userId, start, end);
         BigDecimal totalAmount = transactions.stream()
+                .filter(t -> t != null && t.getAmount() != null)
                 .map(Transaction::getAmount)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         long totalTransactions = transactions.size();
@@ -209,28 +212,24 @@ public class StatisticsServiceImpl implements StatisticsService {
         Map<String, Long> activityBreakdown = activities.stream()
                 .collect(Collectors.groupingBy(a -> a.getActivityType().name(), Collectors.counting()));
 
-        int lessonsCompleted = activityBreakdown.getOrDefault("LESSON_COMPLETE", 0L).intValue();
-        int quizzesCompleted = activityBreakdown.getOrDefault("QUIZ_COMPLETE", 0L).intValue();
-        int groupSessions = activityBreakdown.getOrDefault("GROUP_SESSION_JOINED", 0L).intValue();
-        int examsTaken = activityBreakdown.getOrDefault("EXAM", 0L).intValue();
+        int lessonsCompleted = activityBreakdown.getOrDefault(ActivityType.LESSON_COMPLETION.toString(), 0L).intValue();
+        int quizzesCompleted = activityBreakdown.getOrDefault(ActivityType.QUIZ_COMPLETE.toString(), 0L).intValue();
+        int groupSessions = activityBreakdown.getOrDefault(ActivityType.GROUP_SESSION_JOINED.toString(), 0L).intValue();
+        int examsTaken = activityBreakdown.getOrDefault(ActivityType.EXAM.toString(), 0L).intValue();
 
         // 3. Courses enrolled
         List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserIdAndEnrolledAtBetween(userId, start, end);
         int coursesEnrolled = enrollments.size();
 
-        // 4. Daily challenges
+        // other metrics...
         List<UserDailyChallenge> challenges = userDailyChallengeRepository.findByUser_UserIdAndCreatedAtBetween(userId, start, end);
         int challengesCompleted = (int) challenges.stream().filter(UserDailyChallenge::isCompleted).count();
-
-        // 5. Events
         List<UserEvent> events = userEventRepository.findById_UserIdAndParticipatedAtBetween(userId, start, end);
         int eventsParticipated = events.size();
-
-        // 6. Video calls
         List<VideoCallParticipant> calls = videoCallParticipantRepository.findByUser_UserIdAndJoinedAtBetween(userId, start, end);
         int callsJoined = calls.size();
 
-        // Build response
+        // Build response object
         StatisticsResponse response = new StatisticsResponse();
         response.setTotalLessonsCompleted(lessonsCompleted);
         response.setTotalCoursesEnrolled(coursesEnrolled);
@@ -244,8 +243,15 @@ public class StatisticsServiceImpl implements StatisticsService {
         response.setTotalTransactions(totalTransactions);
         response.setActivityBreakdown(activityBreakdown);
 
+        // Build timeSeries for this user (prefer transactions for revenue/transactions chart)
+        List<TimeSeriesPoint> ts = buildTimeSeries(startDate, endDate,
+                (aggregate == null ? "day" : aggregate),
+                transactions);
+        response.setTimeSeries(ts);
+
         return response;
     }
+
 
     @Override
     public List<UserCountResponse> getUserCounts(String period, LocalDate startDate, LocalDate endDate) {
@@ -398,4 +404,219 @@ public class StatisticsServiceImpl implements StatisticsService {
             default -> DateTimeFormatter.ofPattern("yyyy-MM-dd");
         };
     }
+
+    // ---------------------------
+    // TEACHER methods
+    // ---------------------------
+
+    @Override
+    public TeacherOverviewResponse getTeacherOverview(UUID teacherId, LocalDate startDate, LocalDate endDate, String aggregate) {
+        // if teacherId null -> caller's identity should be used (controller will pass it); for now assume provided
+        if (teacherId == null) throw new IllegalArgumentException("teacherId is required");
+
+        // find courses by this teacher (creatorId)
+        List<Course> courses = courseRepository.findByCreatorIdAndIsDeletedFalse(teacherId);
+        if (courses == null) courses = Collections.emptyList();
+
+        int totalCourses = courses.size();
+
+        // lessons count
+        int totalLessons = 0;
+        List<UUID> courseIds = courses.stream().map(Course::getCourseId).collect(Collectors.toList());
+        if (!courseIds.isEmpty()) {
+            List<Lesson> lessons = lessonRepository.findByCourseIdIn(courseIds);
+            totalLessons = lessons == null ? 0 : lessons.size();
+        }
+
+        // students: distinct users enrolled in these courses in range
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        long totalStudents = 0;
+        BigDecimal totalRevenue = BigDecimal.ZERO;
+        long totalTransactions = 0;
+
+        if (!courseIds.isEmpty()) {
+            // enrollments
+            List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByCourseIdInAndEnrolledAtBetween(courseIds, start, end);
+            totalStudents = enrollments == null ? 0L : enrollments.stream().map(CourseEnrollment::getUserId).distinct().count();
+
+            // transactions: try to sum transactions referencing courseId; fallback sum by enrolled users' transactions
+            List<Transaction> txs = transactionRepository.findByCreatedAtBetween(start, end);
+            // filter txs where tx.courseId in courseIds OR tx.userId in enrolled users
+            Set<UUID> enrolledUsers = enrollments == null ? Collections.emptySet() : enrollments.stream().map(CourseEnrollment::getUserId).collect(Collectors.toSet());
+
+            List<Transaction> relevant = txs.stream().filter(t -> {
+                try {
+                    // check course id on transaction if exists
+                    Object txCourse = null;
+                    try {
+                        txCourse = t.getClass().getMethod("getCourseId").invoke(t);
+                    } catch (NoSuchMethodException ignored) { }
+                    if (txCourse instanceof UUID && courseIds.contains(txCourse)) return true;
+                } catch (Exception ignored) { }
+                // fallback check user id
+                return t.getUserId() != null && enrolledUsers.contains(t.getUserId());
+            }).toList();
+
+            totalTransactions = relevant.size();
+            totalRevenue = relevant.stream()
+                    .filter(tx -> tx != null && tx.getAmount() != null && "USD".equalsIgnoreCase(tx.getCurrency()))
+                    .map(Transaction::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        // build overall timeSeries across teacher's courses
+        List<Transaction> txForSeries = new ArrayList<>();
+        if (!courseIds.isEmpty()) {
+            // we can reuse transactions filtered above across whole date range
+            OffsetDateTime fullStart = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+            OffsetDateTime fullEnd = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+            List<Transaction> txsAll = transactionRepository.findByCreatedAtBetween(fullStart, fullEnd);
+            if (txsAll != null) {
+                Set<UUID> courseIdSet = new HashSet<>(courseIds);
+                Set<UUID> enrolledUsersSet = courseEnrollmentRepository.findByCourseIdIn(courseIds).stream()
+                        .map(CourseEnrollment::getUserId).collect(Collectors.toSet());
+                txForSeries = txsAll.stream().filter(t -> {
+                    try {
+                        Object txCourse = null;
+                        try {
+                            txCourse = t.getClass().getMethod("getCourseId").invoke(t);
+                        } catch (NoSuchMethodException ignored) { }
+                        if (txCourse instanceof UUID && courseIdSet.contains(txCourse)) return true;
+                    } catch (Exception ignored) { }
+                    return t.getUserId() != null && enrolledUsersSet.contains(t.getUserId());
+                }).collect(Collectors.toList());
+            }
+        }
+
+        List<TimeSeriesPoint> series = buildTimeSeries(startDate, endDate, aggregate, txForSeries);
+
+        TeacherOverviewResponse resp = new TeacherOverviewResponse();
+        resp.setTotalCourses(totalCourses);
+        resp.setTotalLessons(totalLessons);
+        resp.setTotalStudents(totalStudents);
+        resp.setTotalRevenue(totalRevenue);
+        resp.setTotalTransactions(totalTransactions);
+        resp.setTimeSeries(series);
+        return resp;
+    }
+
+    @Override
+    public List<CoursePerformanceResponse> getTeacherCoursesPerformance(UUID teacherId, LocalDate startDate, LocalDate endDate, String aggregate) {
+        if (teacherId == null) throw new IllegalArgumentException("teacherId is required");
+
+        List<Course> courses = courseRepository.findByCreatorIdAndIsDeletedFalse(teacherId);
+        if (courses == null) courses = Collections.emptyList();
+
+        List<CoursePerformanceResponse> out = new ArrayList<>();
+        for (Course c : courses) {
+            CoursePerformanceResponse cp = new CoursePerformanceResponse();
+            cp.setCourseId(c.getCourseId());
+            cp.setTitle(c.getTitle());
+
+            // lessons count
+            List<Lesson> lessons = lessonRepository.findByCourseIdAndIsDeletedFalse(c.getCourseId());
+            cp.setLessonsCount(lessons == null ? 0 : lessons.size());
+
+            // students
+            OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+            OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+            List<CourseEnrollment> enrolls = courseEnrollmentRepository.findByCourseIdAndEnrolledAtBetween(c.getCourseId(), start, end);
+            cp.setStudentsCount(enrolls == null ? 0L : enrolls.stream().map(CourseEnrollment::getUserId).distinct().count());
+
+            // transactions & revenue
+            List<Transaction> txs = transactionRepository.findByCreatedAtBetween(start, end);
+            List<Transaction> relevant = txs.stream().filter(t -> {
+                try {
+                    Object txCourse = null;
+                    try {
+                        txCourse = t.getClass().getMethod("getCourseId").invoke(t);
+                    } catch (NoSuchMethodException ignored) { }
+                    if (txCourse instanceof UUID && c.getCourseId().equals(txCourse)) return true;
+                } catch (Exception ignored) { }
+                return t.getUserId() != null && enrolls != null && enrolls.stream()
+                        .anyMatch(e -> e.getUserId()
+                                .equals(t.getUserId()));
+            }).collect(Collectors.toList());
+
+            BigDecimal totalRev = relevant.stream()
+                    .filter(r -> r != null && r.getAmount() != null && "USD".equalsIgnoreCase(r.getCurrency()))
+                    .map(Transaction::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            cp.setRevenue(totalRev);
+            cp.setTransactions(relevant.size());
+
+            // timeseries for this course
+            List<TimeSeriesPoint> ts = buildTimeSeries(startDate, endDate, aggregate, relevant);
+            cp.setTimeSeries(ts);
+
+            out.add(cp);
+        }
+
+        return out;
+    }
+
+    @Override
+    public List<LessonStatsResponse> getTeacherCourseLessonStats(UUID teacherId, UUID courseId, LocalDate startDate, LocalDate endDate) {
+        // ensure teacher owns course
+        Optional<Course> opt = courseRepository.findByCourseIdAndIsDeletedFalse(courseId);
+        if (opt.isEmpty()) throw new IllegalArgumentException("Course not found");
+        Course course = opt.get();
+        if (!course.getCreatorId().equals(teacherId)) throw new SecurityException("Not course owner");
+
+        // get lessons
+        List<Lesson> lessons = lessonRepository.findByCourseIdAndIsDeletedFalse(courseId);
+        if (lessons == null) lessons = Collections.emptyList();
+
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        List<LessonStatsResponse> out = new ArrayList<>();
+        for (Lesson l : lessons) {
+            LessonStatsResponse r = new LessonStatsResponse();
+            r.setLessonId(l.getLessonId());
+            r.setLessonName(l.getLessonName());
+            r.setExpReward(l.getExpReward());
+            // completions in activities
+            List<UserLearningActivity> acts = userLearningActivityRepository.findLessonActivities(
+                    l.getLessonId(),
+                    List.of(ActivityType.LESSON_COMPLETE, ActivityType.LESSON_COMPLETION),
+                    start,
+                    end
+            );
+            long completions = acts == null ? 0L : acts.stream()
+                    .filter(a -> a.getActivityType() != null && a.getActivityType().name().equalsIgnoreCase(ActivityType.LESSON_COMPLETION.toString()))
+                    .count();
+            r.setCompletions(completions);
+            out.add(r);
+        }
+        return out;
+    }
+
+    @Override
+    public List<TimeSeriesPoint> getTeacherCourseRevenue(UUID teacherId, UUID courseId, LocalDate startDate, LocalDate endDate, String aggregate) {
+        Optional<Course> opt = courseRepository.findByCourseIdAndIsDeletedFalse(courseId);
+        if (opt.isEmpty()) throw new IllegalArgumentException("Course not found");
+        Course course = opt.get();
+        if (!course.getCreatorId().equals(teacherId)) throw new SecurityException("Not course owner");
+
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        List<Transaction> txs = transactionRepository.findByCreatedAtBetween(start, end);
+        List<Transaction> relevant = txs.stream().filter(t -> {
+            try {
+                Object txCourse = null;
+                try {
+                    txCourse = t.getClass().getMethod("getCourseId").invoke(t);
+                } catch (NoSuchMethodException ignored) { }
+                if (txCourse instanceof UUID && courseId.equals(txCourse)) return true;
+            } catch (Exception ignored) { }
+            // fallback by user enrollments
+            return courseEnrollmentRepository.findByCourseIdAndIsDeletedFalse(courseId).stream().map(CourseEnrollment::getUserId).anyMatch(u-> u.equals(t.getUserId()));
+        }).collect(Collectors.toList());
+
+        return buildTimeSeries(startDate, endDate, aggregate, relevant);
+    }
+
 }

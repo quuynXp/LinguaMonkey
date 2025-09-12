@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
 import com.connectJPA.LinguaVietnameseApp.entity.id.RoomMemberId;
@@ -22,6 +23,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
@@ -59,6 +61,22 @@ public class ChatController {
                 .message(messageSource.getMessage("chatMessage.list.success", null, locale))
                 .result(messages)
                 .build();
+    }
+
+    @GetMapping("/stats/{userId}")
+    public ResponseEntity<AppApiResponse<ChatStatsResponse>> getStats(
+            @PathVariable UUID userId,
+            Locale locale) {
+
+        ChatStatsResponse stats = chatMessageService.getStatsByUser(userId);
+
+        AppApiResponse<ChatStatsResponse> res = AppApiResponse.<ChatStatsResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("chat.stats.success", null, locale))
+                .result(stats)
+                .build();
+
+        return ResponseEntity.ok(res);
     }
 
     @Operation(summary = "Delete a chat message", description = "Soft delete a chat message by ID")

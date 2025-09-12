@@ -1,18 +1,19 @@
-"use client"
-
 import DateTimePicker from "@react-native-community/datetimepicker"
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native"
-import Icon  from '@expo/vector-icons/MaterialIcons';
+import Icon from '@expo/vector-icons/MaterialIcons';
+import { useTranslation } from 'react-i18next';
+import { useAppStore } from '../../stores/appStore';
 import NotificationService, { type NotificationPreferences } from "../../services/notificationService"
 
 const NotificationSettingsScreen = ({ navigation }) => {
+  const { t } = useTranslation();
+  const { notificationPreferences, setNotificationPreferences } = useAppStore();
 
   useEffect(() => {
-    // xin quyền khi vào màn hình
     NotificationService.requestPermissions();
   }, []);
-  const [preferences, setPreferences] = useState<NotificationPreferences | null>(null)
+
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [showQuietStartPicker, setShowQuietStartPicker] = useState(false)
   const [showQuietEndPicker, setShowQuietEndPicker] = useState(false)
@@ -33,7 +34,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
   const loadPreferences = async () => {
     try {
       const prefs = await NotificationService.getNotificationPreferences()
-      setPreferences(prefs)
+      setNotificationPreferences(prefs)
     } catch (error) {
       console.error("Error loading preferences:", error)
     }
@@ -42,27 +43,27 @@ const NotificationSettingsScreen = ({ navigation }) => {
   const savePreferences = async (newPreferences: NotificationPreferences) => {
     try {
       await NotificationService.saveNotificationPreferences(newPreferences)
-      setPreferences(newPreferences)
+      setNotificationPreferences(newPreferences)
     } catch (error) {
       console.error("Error saving preferences:", error)
-      Alert.alert("Error", "Failed to save notification preferences")
+      Alert.alert(t("notification.errorSavingPreferences"), t("notification.errorSavingPreferences"))
     }
   }
 
   const updatePreference = (key: keyof NotificationPreferences, value: any) => {
-    if (!preferences) return
+    if (!notificationPreferences) return
 
-    const newPreferences = { ...preferences, [key]: value }
+    const newPreferences = { ...notificationPreferences, [key]: value }
     savePreferences(newPreferences)
   }
 
   const updateQuietHours = (key: "enabled" | "start" | "end", value: any) => {
-    if (!preferences) return
+    if (!notificationPreferences) return
 
     const newPreferences = {
-      ...preferences,
+      ...notificationPreferences,
       quietHours: {
-        ...preferences.quietHours,
+        ...notificationPreferences.quietHours,
         [key]: value,
       },
     }
@@ -70,18 +71,18 @@ const NotificationSettingsScreen = ({ navigation }) => {
   }
 
   const toggleCustomDay = (day: number) => {
-    if (!preferences) return
+    if (!notificationPreferences) return
 
-    const customDays = preferences.customDays.includes(day)
-      ? preferences.customDays.filter((d) => d !== day)
-      : [...preferences.customDays, day].sort()
+    const customDays = notificationPreferences.customDays.includes(day)
+      ? notificationPreferences.customDays.filter((d) => d !== day)
+      : [...notificationPreferences.customDays, day].sort()
 
     updatePreference("customDays", customDays)
   }
 
   const handleTimeChange = (event: any, selectedTime?: Date) => {
     setShowTimePicker(false)
-    if (selectedTime && preferences) {
+    if (selectedTime && notificationPreferences) {
       const timeString = selectedTime.toTimeString().slice(0, 5)
       updatePreference("studyTime", timeString)
     }
@@ -89,7 +90,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
   const handleQuietStartChange = (event: any, selectedTime?: Date) => {
     setShowQuietStartPicker(false)
-    if (selectedTime && preferences) {
+    if (selectedTime && notificationPreferences) {
       const timeString = selectedTime.toTimeString().slice(0, 5)
       updateQuietHours("start", timeString)
     }
@@ -97,7 +98,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
   const handleQuietEndChange = (event: any, selectedTime?: Date) => {
     setShowQuietEndPicker(false)
-    if (selectedTime && preferences) {
+    if (selectedTime && notificationPreferences) {
       const timeString = selectedTime.toTimeString().slice(0, 5)
       updateQuietHours("end", timeString)
     }
@@ -107,59 +108,67 @@ const NotificationSettingsScreen = ({ navigation }) => {
     try {
       await NotificationService.sendMessageNotification(
         "Test User",
-        "This is a test notification to check your settings!",
+        t("notification.testNotificationMessage"),
         "test_chat",
       )
       setTestNotificationSent(true)
       setTimeout(() => setTestNotificationSent(false), 3000)
     } catch (error) {
-      Alert.alert("Error", "Failed to send test notification")
+      Alert.alert(t("notification.errorSendingTest"), t("notification.errorSendingTest"))
     }
   }
 
   const requestPermissions = async () => {
     const granted = await NotificationService.requestPermissions()
     if (granted) {
-      Alert.alert("Success", "Notification permissions granted!")
+      Alert.alert(t("notification.permissionsSuccess"), t("notification.permissionsSuccessMessage"))
     } else {
-      Alert.alert("Permissions Required", "Please enable notifications in your device settings to receive reminders.")
+      Alert.alert(t("notification.permissionsRequired"), t("notification.permissionsRequiredMessage"))
     }
   }
 
   const getDayName = (day: number) => {
-    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+    const days = [
+      t("notification.days.sun"),
+      t("notification.days.mon"),
+      t("notification.days.tue"),
+      t("notification.days.wed"),
+      t("notification.days.thu"),
+      t("notification.days.fri"),
+      t("notification.days.sat")
+    ]
     return days[day]
   }
 
   const getStudyTimeDate = () => {
-    if (!preferences) return new Date()
-    const [hours, minutes] = preferences.studyTime.split(":").map(Number)
+    if (!notificationPreferences) return new Date()
+    const [hours, minutes] = notificationPreferences.studyTime.split(":").map(Number)
     const date = new Date()
     date.setHours(hours, minutes, 0, 0)
     return date
   }
 
   const getQuietStartDate = () => {
-    if (!preferences) return new Date()
-    const [hours, minutes] = preferences.quietHours.start.split(":").map(Number)
+    if (!notificationPreferences) return new Date()
+    const [hours, minutes] = notificationPreferences.quietHours.start.split(":").map(Number)
     const date = new Date()
     date.setHours(hours, minutes, 0, 0)
     return date
   }
 
   const getQuietEndDate = () => {
-    if (!preferences) return new Date()
-    const [hours, minutes] = preferences.quietHours.end.split(":").map(Number)
+    if (!notificationPreferences) return new Date()
+    const [hours, minutes] = notificationPreferences.quietHours.end.split(":").map(Number)
     const date = new Date()
     date.setHours(hours, minutes, 0, 0)
     return date
   }
 
-  if (!preferences) {
+  if (!notificationPreferences) {
     return (
       <View style={styles.loadingContainer}>
         <Icon name="notifications" size={48} color="#6B7280" />
-        <Text style={styles.loadingText}>Loading notification settings...</Text>
+        <Text style={styles.loadingText}>{t("notification.loading")}</Text>
       </View>
     )
   }
@@ -170,7 +179,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Notification Settings</Text>
+        <Text style={styles.headerTitle}>{t("notification.settingsTitle")}</Text>
         <TouchableOpacity onPress={() => navigation.navigate("NotificationHistory")}>
           <Icon name="history" size={24} color="#6B7280" />
         </TouchableOpacity>
@@ -180,14 +189,14 @@ const NotificationSettingsScreen = ({ navigation }) => {
         <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
           {/* Permissions Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Permissions</Text>
+            <Text style={styles.sectionTitle}>{t("notification.permissionsSection")}</Text>
             <TouchableOpacity style={styles.permissionCard} onPress={requestPermissions}>
               <View style={styles.permissionIcon}>
                 <Icon name="security" size={24} color="#4F46E5" />
               </View>
               <View style={styles.permissionInfo}>
-                <Text style={styles.permissionTitle}>Enable Notifications</Text>
-                <Text style={styles.permissionDescription}>Allow the app to send you study reminders and messages</Text>
+                <Text style={styles.permissionTitle}>{t("notification.enableNotifications")}</Text>
+                <Text style={styles.permissionDescription}>{t("notification.enableNotificationsDesc")}</Text>
               </View>
               <Icon name="chevron-right" size={20} color="#6B7280" />
             </TouchableOpacity>
@@ -195,52 +204,52 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
           {/* Study Reminders Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Study Reminders</Text>
+            <Text style={styles.sectionTitle}>{t("notification.studyRemindersSection")}</Text>
 
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Daily Study Reminders</Text>
-                  <Text style={styles.settingDescription}>Get reminded to study at your preferred time</Text>
+                  <Text style={styles.settingTitle}>{t("notification.studyReminders")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.studyRemindersDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.studyReminders}
+                  value={notificationPreferences.studyReminders}
                   onValueChange={(value) => updatePreference("studyReminders", value)}
                   trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
-                  thumbColor={preferences.studyReminders ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.studyReminders ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
 
-              {preferences.studyReminders && (
+              {notificationPreferences.studyReminders && (
                 <View style={styles.settingDetails}>
                   {/* Study Time */}
                   <TouchableOpacity style={styles.timeSelector} onPress={() => setShowTimePicker(true)}>
                     <Icon name="schedule" size={20} color="#6B7280" />
-                    <Text style={styles.timeSelectorText}>Study Time: {preferences.studyTime}</Text>
+                    <Text style={styles.timeSelectorText}>{t("notification.studyTime", { time: notificationPreferences.studyTime })}</Text>
                     <Icon name="chevron-right" size={16} color="#6B7280" />
                   </TouchableOpacity>
 
                   {/* Frequency */}
                   <View style={styles.frequencyContainer}>
-                    <Text style={styles.frequencyTitle}>Reminder Frequency</Text>
+                    <Text style={styles.frequencyTitle}>{t("notification.reminderFrequency")}</Text>
                     <View style={styles.frequencyOptions}>
                       {[
-                        { value: "daily", label: "Daily" },
-                        { value: "weekdays", label: "Weekdays Only" },
-                        { value: "custom", label: "Custom Days" },
+                        { value: "daily", label: t("notification.daily") },
+                        { value: "weekdays", label: t("notification.weekdays") },
+                        { value: "custom", label: t("notification.custom") },
                       ].map((option) => (
                         <TouchableOpacity
                           key={option.value}
                           style={[
                             styles.frequencyOption,
-                            preferences.reminderFrequency === option.value && styles.selectedFrequencyOption,
+                            notificationPreferences.reminderFrequency === option.value && styles.selectedFrequencyOption,
                           ]}
                           onPress={() => updatePreference("reminderFrequency", option.value)}
                         >
                           <Text
                             style={[
                               styles.frequencyOptionText,
-                              preferences.reminderFrequency === option.value && styles.selectedFrequencyOptionText,
+                              notificationPreferences.reminderFrequency === option.value && styles.selectedFrequencyOptionText,
                             ]}
                           >
                             {option.label}
@@ -251,20 +260,20 @@ const NotificationSettingsScreen = ({ navigation }) => {
                   </View>
 
                   {/* Custom Days */}
-                  {preferences.reminderFrequency === "custom" && (
+                  {notificationPreferences.reminderFrequency === "custom" && (
                     <View style={styles.customDaysContainer}>
-                      <Text style={styles.customDaysTitle}>Select Days</Text>
+                      <Text style={styles.customDaysTitle}>{t("notification.selectDays")}</Text>
                       <View style={styles.daysGrid}>
                         {[0, 1, 2, 3, 4, 5, 6].map((day) => (
                           <TouchableOpacity
                             key={day}
-                            style={[styles.dayButton, preferences.customDays.includes(day) && styles.selectedDayButton]}
+                            style={[styles.dayButton, notificationPreferences.customDays.includes(day) && styles.selectedDayButton]}
                             onPress={() => toggleCustomDay(day)}
                           >
                             <Text
                               style={[
                                 styles.dayButtonText,
-                                preferences.customDays.includes(day) && styles.selectedDayButtonText,
+                                notificationPreferences.customDays.includes(day) && styles.selectedDayButtonText,
                               ]}
                             >
                               {getDayName(day)}
@@ -282,14 +291,14 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Streak Warnings</Text>
-                  <Text style={styles.settingDescription}>Get warned before losing your study streak</Text>
+                  <Text style={styles.settingTitle}>{t("notification.streakReminders")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.streakRemindersDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.streakReminders}
+                  value={notificationPreferences.streakReminders}
                   onValueChange={(value) => updatePreference("streakReminders", value)}
                   trackColor={{ false: "#E5E7EB", true: "#EF4444" }}
-                  thumbColor={preferences.streakReminders ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.streakReminders ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
             </View>
@@ -297,19 +306,19 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
           {/* Message Notifications Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Message Notifications</Text>
+            <Text style={styles.sectionTitle}>{t("notification.messageNotificationsSection")}</Text>
 
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Chat Messages</Text>
-                  <Text style={styles.settingDescription}>Notifications for new chat messages</Text>
+                  <Text style={styles.settingTitle}>{t("notification.chatMessages")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.chatMessagesDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.messageNotifications}
+                  value={notificationPreferences.messageNotifications}
                   onValueChange={(value) => updatePreference("messageNotifications", value)}
                   trackColor={{ false: "#E5E7EB", true: "#10B981" }}
-                  thumbColor={preferences.messageNotifications ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.messageNotifications ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
             </View>
@@ -317,14 +326,14 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Couple Notifications</Text>
-                  <Text style={styles.settingDescription}>Updates from your learning partner</Text>
+                  <Text style={styles.settingTitle}>{t("notification.coupleNotifications")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.coupleNotificationsDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.coupleNotifications}
+                  value={notificationPreferences.coupleNotifications}
                   onValueChange={(value) => updatePreference("coupleNotifications", value)}
                   trackColor={{ false: "#E5E7EB", true: "#EC4899" }}
-                  thumbColor={preferences.coupleNotifications ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.coupleNotifications ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
             </View>
@@ -332,14 +341,14 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Group Invitations</Text>
-                  <Text style={styles.settingDescription}>Invitations to group study sessions</Text>
+                  <Text style={styles.settingTitle}>{t("notification.groupInvitations")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.groupInvitationsDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.groupInvitations}
+                  value={notificationPreferences.groupInvitations}
                   onValueChange={(value) => updatePreference("groupInvitations", value)}
                   trackColor={{ false: "#E5E7EB", true: "#F59E0B" }}
-                  thumbColor={preferences.groupInvitations ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.groupInvitations ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
             </View>
@@ -347,14 +356,14 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Achievement Notifications</Text>
-                  <Text style={styles.settingDescription}>Celebrate your learning milestones</Text>
+                  <Text style={styles.settingTitle}>{t("notification.achievementNotifications")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.achievementNotificationsDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.achievementNotifications}
+                  value={notificationPreferences.achievementNotifications}
                   onValueChange={(value) => updatePreference("achievementNotifications", value)}
                   trackColor={{ false: "#E5E7EB", true: "#8B5CF6" }}
-                  thumbColor={preferences.achievementNotifications ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.achievementNotifications ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
             </View>
@@ -362,19 +371,19 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
           {/* Sound & Vibration Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sound & Vibration</Text>
+            <Text style={styles.sectionTitle}>{t("notification.soundVibrationSection")}</Text>
 
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Sound Effects</Text>
-                  <Text style={styles.settingDescription}>Play sound with notifications</Text>
+                  <Text style={styles.settingTitle}>{t("notification.soundEffects")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.soundEffectsDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.soundEnabled}
+                  value={notificationPreferences.soundEnabled}
                   onValueChange={(value) => updatePreference("soundEnabled", value)}
                   trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
-                  thumbColor={preferences.soundEnabled ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.soundEnabled ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
             </View>
@@ -382,14 +391,14 @@ const NotificationSettingsScreen = ({ navigation }) => {
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Vibration</Text>
-                  <Text style={styles.settingDescription}>Vibrate device for notifications</Text>
+                  <Text style={styles.settingTitle}>{t("notification.vibration")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.vibrationDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.vibrationEnabled}
+                  value={notificationPreferences.vibrationEnabled}
                   onValueChange={(value) => updatePreference("vibrationEnabled", value)}
                   trackColor={{ false: "#E5E7EB", true: "#4F46E5" }}
-                  thumbColor={preferences.vibrationEnabled ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.vibrationEnabled ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
             </View>
@@ -397,33 +406,33 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
           {/* Quiet Hours Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Quiet Hours</Text>
+            <Text style={styles.sectionTitle}>{t("notification.quietHoursSection")}</Text>
 
             <View style={styles.settingCard}>
               <View style={styles.settingHeader}>
                 <View style={styles.settingInfo}>
-                  <Text style={styles.settingTitle}>Enable Quiet Hours</Text>
-                  <Text style={styles.settingDescription}>Silence notifications during specific hours</Text>
+                  <Text style={styles.settingTitle}>{t("notification.quietHours")}</Text>
+                  <Text style={styles.settingDescription}>{t("notification.quietHoursDesc")}</Text>
                 </View>
                 <Switch
-                  value={preferences.quietHours.enabled}
+                  value={notificationPreferences.quietHours.enabled}
                   onValueChange={(value) => updateQuietHours("enabled", value)}
                   trackColor={{ false: "#E5E7EB", true: "#6B7280" }}
-                  thumbColor={preferences.quietHours.enabled ? "#FFFFFF" : "#F3F4F6"}
+                  thumbColor={notificationPreferences.quietHours.enabled ? "#FFFFFF" : "#F3F4F6"}
                 />
               </View>
 
-              {preferences.quietHours.enabled && (
+              {notificationPreferences.quietHours.enabled && (
                 <View style={styles.quietHoursDetails}>
                   <TouchableOpacity style={styles.timeSelector} onPress={() => setShowQuietStartPicker(true)}>
                     <Icon name="bedtime" size={20} color="#6B7280" />
-                    <Text style={styles.timeSelectorText}>Start: {preferences.quietHours.start}</Text>
+                    <Text style={styles.timeSelectorText}>{t("notification.quietHoursStart", { time: notificationPreferences.quietHours.start })}</Text>
                     <Icon name="chevron-right" size={16} color="#6B7280" />
                   </TouchableOpacity>
 
                   <TouchableOpacity style={styles.timeSelector} onPress={() => setShowQuietEndPicker(true)}>
                     <Icon name="wb-sunny" size={20} color="#6B7280" />
-                    <Text style={styles.timeSelectorText}>End: {preferences.quietHours.end}</Text>
+                    <Text style={styles.timeSelectorText}>{t("notification.quietHoursEnd", { time: notificationPreferences.quietHours.end })}</Text>
                     <Icon name="chevron-right" size={16} color="#6B7280" />
                   </TouchableOpacity>
                 </View>
@@ -433,7 +442,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
           {/* Test Notification Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Test Notifications</Text>
+            <Text style={styles.sectionTitle}>{t("notification.testNotificationsSection")}</Text>
 
             <TouchableOpacity
               style={[styles.testButton, testNotificationSent && styles.testButtonSent]}
@@ -442,7 +451,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
             >
               <Icon name={testNotificationSent ? "check" : "notifications-active"} size={20} color="#FFFFFF" />
               <Text style={styles.testButtonText}>
-                {testNotificationSent ? "Test Sent!" : "Send Test Notification"}
+                {testNotificationSent ? t("notification.testNotificationSent") : t("notification.sendTestNotification")}
               </Text>
             </TouchableOpacity>
           </View>

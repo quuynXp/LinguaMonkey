@@ -1,12 +1,47 @@
+// types.ts
 export interface ApiResponse<T> {
-  code: number;
-  result?: T;
-  message?: string;
+  code: number
+  result?: T
+  message?: string
 }
+
+
+export interface DailyChallenge {
+  id: string; 
+  title?: string | null;
+  description?: string | null;
+  baseExp?: number;
+  rewardCoins?: number;
+  difficulty?: string | null;
+  isDeleted?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
+}
+
+export interface UserDailyChallenge {
+  id?: {
+    userId?: string;
+    challengeId?: string;
+  };
+  userId?: string;
+  challengeId?: string;
+  expReward?: number;
+  rewardCoins?: number;
+  progress?: number;
+  isCompleted?: boolean;
+  assignedAt?: string | null; 
+  completedAt?: string | null;
+  dailyChallenge?: DailyChallenge | null;
+  createdAt?: string;
+  updatedAt?: string;
+  deletedAt?: string | null;
+}
+
 
 export const languageToCountry: Record<string, string> = {
   vi: "VN",
-  en: "US", // hoặc GB tùy bạn muốn flag nào
+  en: "US",
   ja: "JP",
   fr: "FR",
   ko: "KR",
@@ -15,47 +50,64 @@ export const languageToCountry: Record<string, string> = {
   de: "DE",
   it: "IT",
   ru: "RU",
-  pt: "PT"
-};
-
-export type Country =
-  | "CHINA" | "TONGA" | "VIETNAM" | "KOREA" | "JAPAN" | "UNITED_STATES"
-  | "FRANCE" | "GERMANY" | "ITALY" | "SPAIN" | "SOUTH_KOREA" | "INDIA";
-
-export type LearningPace = "SLOW" | "MAINTAIN" | "FAST" | "ACCELERATED";
-
-export interface CreateUserPayload {
-  username?: string;
-  email?: string | null;
-  password?: string;
-  fullname?: string | null;
-  nickname?: string | null;
-  phone?: string | null;
-  avatarUrl?: string | null;
-  character3dId?: string | null;
-  badgeId?: string | null; 
-  ageRange?: string | null; 
-  learningPace?: LearningPace;
-  interestestIds?: string[]; 
-  goalIds?: string[]; // ["CONVERSATION","BUSINESS"]
-  certificationIds?: string[]; // e.g. ["TOEFL","IELTS"]
-  nativeLanguageCode?: string | null; // "EN","VI",...
-  country?: Country;
-  level?: number;
-  score?: number;
-  streak?: number;
-  languages?: string[]; 
+  pt: "PT",
 }
 
-export interface RegisterResult  {
-  user : User,
-  accessToken: string,
+export type Country =
+  | "CHINA"
+  | "TONGA"
+  | "VIETNAM"
+  | "KOREA"
+  | "JAPAN"
+  | "UNITED_STATES"
+  | "FRANCE"
+  | "GERMANY"
+  | "ITALY"
+  | "SPAIN"
+  | "SOUTH_KOREA"
+  | "INDIA"
+
+export type LearningPace = "SLOW" | "MAINTAIN" | "FAST" | "ACCELERATED"
+
+export interface CreateUserPayload {
+  username?: string
+  email?: string | null
+  password?: string
+  fullname?: string | null
+  nickname?: string | null
+  phone?: string | null
+  avatarUrl?: string | null
+  character3dId?: string | null
+  badgeId?: string | null
+  ageRange?: string | null
+  learningPace?: LearningPace
+  interestestIds?: string[]
+  goalIds?: string[] // ["CONVERSATION","BUSINESS"]
+  certificationIds?: string[] // e.g. ["TOEFL","IELTS"]
+  nativeLanguageCode?: string | null // "EN","VI",...
+  country?: Country
+  level?: number
+  score?: number
+  streak?: number
+  languages?: string[]
+}
+
+export interface RegisterResult {
+  user: User
+  accessToken: string
   refreshToken: string
 }
 
-export interface LessonCategoryResponse { lessonCategoryId: string; lessonCategoryName?: string }
-export interface LessonResponse { lessonId: string; lessonName?: string }
-export interface LessonQuestionResponse  {
+/* Generic responses / DTOs */
+export interface LessonCategoryResponse {
+  lessonCategoryId: string
+  lessonCategoryName?: string
+}
+export interface LessonResponse {
+  lessonId: string
+  lessonName?: string
+}
+export interface LessonQuestionResponse {
   lessonQuestionId: string
   lessonId: string
   question: string
@@ -89,864 +141,894 @@ export enum AgeRange {
   AGE_45_PLUS = "45_PLUS",
 }
 
+/* --- Entities (camelCase) --- */
+
 export interface Interest {
-  interest_id: string;
-  interest_name: string;
-  description?: string;
-  icon?: string;
-  color?: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  interestId: string
+  interestName: string
+  description?: string | null
+  icon?: string | null
+  color?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface UserInterest {
-  user_id: string;
-  interest_id: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  userId: string
+  interestId: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface BilingualVideo {
-  video_id: string;
-  title: string;
-  description?: string;
-  video_url: string;
-  thumbnail_url?: string;
-  language_code?: string;
-  created_at: string;
-  updated_at: string;
+  videoId: string
+  title: string
+  description?: string | null
+  videoUrl: string
+  thumbnailUrl?: string | null
+  languageCode?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Subtitle {
-  subtitle_id: string;
-  video_id: string;
-  language_code: string;
-  subtitle_url: string;
-  created_at: string;
-  updated_at: string;
+  subtitleId: string
+  videoId: string
+  languageCode: string
+  subtitleUrl: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Note {
-  note_id: string
-  user_id: string
-  target_id?: string
-  target_type?: string
+  noteId: string
+  userId: string
+  targetId?: string | null
+  targetType?: string | null
   content: string
-  created_at: string
-  updated_at: string
+  createdAt: string
+  updatedAt: string
 }
 
 export interface Grammar {
-  grammar_id: string
+  grammarId: string
   title: string
   content: string
-  description?: string
-  examples?: string[]
-  language_code?: string
-  created_at: string
-  updated_at: string
+  description?: string | null
+  examples?: string[] | null
+  languageCode?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface GrammarTopic {
-  topic_id: string
-  topic_name: string
-  language_code?: string
-  description?: string
-  created_at: string
-  updated_at: string
+  topicId: string
+  topicName: string
+  languageCode?: string | null
+  description?: string | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface GrammarRule {
-  rule_id: string
-  topic_id: string
+  ruleId: string
+  topicId: string
   title: string
   content: string
-  examples?: string[]
-  created_at: string
-  updated_at: string
+  examples?: string[] | null
+  createdAt: string
+  updatedAt: string
 }
 
 export interface PaginatedResponse<T> {
-  data: T[];
+  data: T[]
   pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
+    page: number
+    limit: number
+    total: number
+    totalPages: number
+  }
 }
 
-// User related types
+/* --- User related types --- */
+
 export interface User {
-  user_id: string;
-  email?: string | null;
-  password?: string | null;
-  fullname?: string | null;
-  nickname?: string | null;
-  phone?: string | null;
-  avatar_url?: string | null;
-  character3d_id?: string | null;
-  native_language_code?: string | null;
-  auth_provider?: string | null;
-  country?: string | null;
-  level: number;
-  exp: number;
-  streak: number;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  learning_pace?: string | null;
-  age_range?: string | null;
-  proficiency?: string | null;
+  userId: string
+  email?: string | null
+  password?: string | null
+  fullname?: string | null
+  nickname?: string | null
+  phone?: string | null
+  avatarUrl?: string | null
+  character3dId?: string | null
+  nativeLanguageCode?: string | null
+  authProvider?: string | null
+  country?: string | null
+  level: number
+  exp: number
+  streak: number
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  learningPace?: string | null
+  ageRange?: string | null
+  proficiency?: string | null
 }
 
 export interface UserProfile {
-  user_id: string;
-  email: string;
-  avatar_url?: string;
-  character3d_id?: string;
-  level?: number;
-  exp?: number;
-  streak: number,
-  fullname: string;
-  nickname: string;
-  country: string;
-  ageRange: string;
-  nativeLanguageCode: string;
-  languages: string[];
-  certificationIds: string[];
-  interestestIds: string[];
-  goalIds: string[];
-  learningPace: string;
-  hasDonePlacementTest: boolean;
-  authProvider: string;
+  userId: string
+  email: string
+  fullname: string
+  nickname: string
+  bio?: string
+  phone?: string
+  avatarUrl?: string
+  character3dId?: string
+  badgeId?: string
+  nativeLanguageId?: string
+  nativeLanguageCode?: string
+  authProvider: string
+  country: string
+  ageRange?: string
+  proficiency?: string
+  level?: number
+  exp?: number
+  expToNextLevel?: number
+  progress?: number
+  streak: number
+  languages: string[]
+  certificationIds: string[]
+  interestestIds: string[]
+  goalIds: string[]
+  learningPace: string
+  hasDonePlacementTest: boolean
+  isDeleted?: boolean
+  createdAt?: string
+  updatedAt?: string
 }
 
+
 export interface UserStats {
-  totalStudyTime: number;
-  lessonsCompleted: number;
-  wordsLearned: number;
-  testsCompleted: number;
-  averageScore: number;
+  totalStudyTime: number
+  lessonsCompleted: number
+  wordsLearned: number
+  testsCompleted: number
+  averageScore: number
 }
 
 export interface UserBadge {
-  badge_id: string;
-  user_id: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  badgeId: string
+  userId: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Badge {
-  badge_id: string;
-  badge_name: string;
-  description?: string | null;
-  image_url?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  badgeId: string
+  badgeName: string
+  description?: string | null
+  imageUrl?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface UserLanguage {
-  language_code: string;
-  user_id: string;
-  proficiency_level?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  languageCode: string
+  userId: string
+  proficiencyLevel?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Language {
-  language_code: string;
-  language_name: string;
-  description?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  languageCode: string
+  languageName: string
+  description?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
-// Learning content types
+/* --- Learning content types --- */
+
 export interface Lesson {
-  lesson_id: string;
-  lesson_name: string;
-  title: string;
-  language_code?: string | null;
-  exp_reward: number;
-  lesson_series_id?: string | null;
-  lesson_category_id?: string | null;
-  lesson_sub_category_id?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  course_id?: string | null;
+  lessonId: string
+  lessonName: string
+  title: string
+  languageCode?: string | null
+  expReward: number
+  lessonSeriesId?: string | null
+  lessonCategoryId?: string | null
+  lessonSubCategoryId?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  courseId?: string | null
 }
 
 export interface LessonQuestion {
-  lesson_question_id: string;
-  lesson_id: string;
-  language_code?: string | null;
-  question: string;
-  optiona?: string | null;
-  optionb?: string | null;
-  optionc?: string | null;
-  optiond?: string | null;
-  correct_option?: string | null;
-  skill_type?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  lessonQuestionId: string
+  lessonId: string
+  languageCode?: string | null
+  question: string
+  optionA?: string | null
+  optionB?: string | null
+  optionC?: string | null
+  optionD?: string | null
+  correctOption?: string | null
+  skillType?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface LessonProgress {
-  lesson_id: string;
-  user_id: string;
-  score: number;
-  is_deleted?: boolean;
-  completed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  lessonId: string
+  userId: string
+  score: number
+  isDeleted?: boolean
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
-// Integrated backend DTOs
+/* --- Integrated backend DTOs --- */
+
 export interface UserGoalResponse {
-  goalId: string;
-  userId: string;
-  languageCode: string;
-  examName: string;
-  targetScore: number;
-  targetSkill: string;
-  customDescription: string;
-  goalType: string;
-  targetProficiency: string;
-  targetDate: string;
-  createdAt: string;
-  updatedAt: string;
-  isDeleted?: boolean;
-  deletedAt?: string | null;
+  goalId: string
+  userId: string
+  languageCode: string
+  examName: string
+  targetScore: number
+  targetSkill: string
+  customDescription: string
+  goalType: string
+  targetProficiency: string
+  targetDate: string
+  createdAt: string
+  updatedAt: string
+  isDeleted?: boolean
+  deletedAt?: string | null
 }
 
 export interface LessonProgressResponse {
-  lessonId: string;
-  userId: string;
-  score: number;
-  completedAt: string;
-  isDeleted: boolean;
-  createdAt: string;
-  updatedAt: string;
+  lessonId: string
+  userId: string
+  score: number
+  completedAt: string
+  isDeleted: boolean
+  createdAt: string
+  updatedAt: string
 }
 
 export interface LessonCategory {
-  lesson_category_id: string;
-  lesson_category_name: string;
-  language_code?: string | null;
-  description?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  lessonCategoryId: string
+  lessonCategoryName: string
+  languageCode?: string | null
+  description?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface LessonSeries {
-  lesson_series_id: string;
-  lesson_series_name: string;
-  title: string;
-  language_code?: string | null;
-  description?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  lessonSeriesId: string
+  lessonSeriesName: string
+  title: string
+  languageCode?: string | null
+  description?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface UserSeriesProgress {
-  series_id: string;
-  user_id: string;
-  current_index: number;
-  is_deleted?: boolean;
-  started_at: string;
-  completed_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  seriesId: string
+  userId: string
+  currentIndex: number
+  isDeleted?: boolean
+  startedAt: string
+  completedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Course {
-  course_id: string;
-  title: string;
-  language_code?: string | null;
-  description?: string | null;
-  thumbnail_url?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  creator_id?: string | null;
-  difficulty_level?: string | null;
+  courseId: string
+  title: string
+  languageCode?: string | null
+  description?: string | null
+  thumbnailUrl?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  creatorId?: string | null
+  difficultyLevel?: string | null
 }
 
 export interface CourseEnrollment {
-  enrollment_id: string;
-  course_id: string;
-  user_id: string;
-  enrolled_at: string;
-  completed_at?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  status: string;
+  enrollmentId: string
+  courseId: string
+  userId: string
+  enrolledAt: string
+  completedAt?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  status: string
 }
 
-// Video and multimedia types
+/* --- Video & multimedia --- */
+
 export interface Video {
-  video_id: string;
-  video_url: string;
-  original_subtitle_url?: string | null;
-  lesson_id: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  videoId: string
+  videoUrl: string
+  originalSubtitleUrl?: string | null
+  lessonId: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface VideoSubtitle {
-  video_subtitle_id: string;
-  video_id: string;
-  language_code: string;
-  subtitle_url: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  videoSubtitleId: string
+  videoId: string
+  languageCode: string
+  subtitleUrl: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
-// Memorization/Notes types
+/* --- Memorization / Notes --- */
+
 export interface UserMemorization {
-  memorization_id: string;
-  user_id: string;
-  content_type: string;
-  content_id?: string | null;
-  note_text?: string | null;
-  is_favorite: boolean;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  memorizationId: string
+  userId: string
+  contentType: string
+  contentId?: string | null
+  noteText?: string | null
+  isFavorite: boolean
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
-// Social features
+/* --- Social features --- */
+
 export interface Friendship {
-  user1_id: string;
-  user2_id: string;
-  status: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  user1Id: string
+  user2Id: string
+  status: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Room {
-  room_id: string;
-  room_name: string;
-  creator_id?: string | null;
-  max_members: number;
-  purpose?: string | null;
-  room_type: string;
-  status: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  roomId: string
+  roomName: string
+  creatorId?: string | null
+  maxMembers: number
+  purpose?: string | null
+  roomType: string
+  status: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface RoomMember {
-  room_id: string;
-  user_id: string;
-  role?: string | null;
-  is_deleted?: boolean;
-  joined_at: string;
-  end_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  roomId: string
+  userId: string
+  role?: string | null
+  isDeleted?: boolean
+  joinedAt: string
+  endAt?: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface ChatMessage {
-  chat_message_id: string;
-  content?: string | null;
-  media_url?: string | null;
-  message_type?: string | null;
-  room_id: string;
-  sender_id: string;
-  is_read: boolean;
-  is_deleted?: boolean;
-  sent_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  chatMessageId: string
+  content?: string | null
+  mediaUrl?: string | null
+  messageType?: string | null
+  roomId: string
+  senderId: string
+  isRead: boolean
+  isDeleted?: boolean
+  sentAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface MessageReaction {
-  reaction_id: string;
-  chat_message_id: string;
-  sent_at: string;
-  user_id: string;
-  reaction: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  reactionId: string
+  chatMessageId: string
+  sentAt: string
+  userId: string
+  reaction: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
-// Gamification
+/* --- Gamification --- */
+
 export interface Event {
-  event_id: string;
-  event_name: string;
-  description?: string | null;
-  start_date: string;
-  end_date: string;
-  event_type: string;
-  max_score: number;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  eventId: string
+  eventName: string
+  description?: string | null
+  startDate: string
+  endDate: string
+  eventType: string
+  maxScore: number
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface UserEvent {
-  event_id: string;
-  user_id: string;
-  score: number;
-  rank?: number | null;
-  participated_at: string;
-  is_completed: boolean;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  eventId: string
+  userId: string
+  score: number
+  rank?: number | null
+  participatedAt: string
+  isCompleted: boolean
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface LeaderboardEntry {
-  leaderboard_entry_id: {
-     leaderboard_id?: string | null;
-     user_id?: string | null;
-  },
-  score: number;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  leaderboardEntryId: {
+    leaderboardId?: string | null
+    userId?: string | null
+  }
+  score: number
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Leaderboard {
-  leaderboard_id: string;
-  period?: string | null;
-  tab?: string | null;
-  snapshot_date?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  leaderboardId: string
+  period?: string | null
+  tab?: string | null
+  snapshotDate?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
-// Reminders
+/* --- Reminders --- */
+
 export interface UserReminder {
-  id: string;
-  user_id: string;
-  target_type: string;
-  target_id?: string | null;
-  title?: string | null;
-  message?: string | null;
-  reminder_time: string;
-  reminder_date?: string | null;
-  repeat_type?: string | null;
-  enabled: boolean;
-  is_deleted?: boolean;
-  created_at: string;
+  id: string
+  userId: string
+  targetType: string
+  targetId?: string | null
+  title?: string | null
+  message?: string | null
+  reminderTime: string
+  reminderDate?: string | null
+  repeatType?: string | null
+  enabled: boolean
+  isDeleted?: boolean
+  createdAt: string
 }
 
-// Learning activities
+/* --- Learning activities --- */
+
 export interface UserLearningActivity {
-  activity_id: string;
-  user_id: string;
-  activity_type: string;
-  duration?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  activityId: string
+  userId: string
+  activityType: string
+  duration?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  targetId?: string | null
 }
 
-// Notifications
+/* --- Notifications --- */
+
 export interface Notification {
-  notification_id: string;
-  user_id: string;
-  language_code?: string | null;
-  title: string;
-  content?: string | null;
-  type?: string | null;
-  payload?: any | null;
-  read: boolean;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  notificationId: string
+  userId: string
+  languageCode?: string | null
+  title: string
+  content?: string | null
+  type?: string | null
+  payload?: any | null
+  read: boolean
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
-// User Goals and Roadmap
+/* --- User Goals & Roadmap --- */
+
 export interface UserGoal {
-  goal_id: string;
-  user_id: string;
-  language_code?: string | null;
-  certificate?: string | null;
-  target_score?: number | null;
-  target_skill?: string | null;
-  custom_description?: string | null;
-  goal_type: string;
-  target_proficiency?: string | null;
-  target_date?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  goalId: string
+  userId: string
+  languageCode?: string | null
+  certificate?: string | null
+  targetScore?: number | null
+  targetSkill?: string | null
+  customDescription?: string | null
+  goalType: string
+  targetProficiency?: string | null
+  targetDate?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Roadmap {
-  roadmap_id: string;
-  language_code: string;
-  title: string;
-  description?: string | null;
-  total_items: number;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  is_deleted: boolean;
+  roadmapId: string
+  languageCode: string
+  title: string
+  description?: string | null
+  completedItems : number
+  estimatedCompletionTime : number
+  totalItems: number
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  isDeleted: boolean
 }
 
 export interface UserRoadmap {
-  user_roadmap_id: string;
-  roadmap_id: string;
-  user_id: string;
-  current_level: number;
-  target_level?: number | null;
-  target_proficiency?: string | null;
-  estimated_completion_time?: number | null;
-  completed_items: number;
-  status: string;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  is_deleted: boolean;
+  userRoadmapId: string
+  roadmapId: string
+  userId: string
+  currentLevel: number
+  targetLevel?: number | null
+  targetProficiency?: string | null
+  estimatedCompletionTime?: number | null
+  completedItems: number
+  status: string
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  isDeleted: boolean
+  language?: string | null
 }
 
 export interface RoadmapItem {
-  item_id: string;
-  roadmap_id: string;
-  title: string;
-  description?: string | null;
-  type?: string | null;
-  level?: number | null;
-  estimated_time?: number | null;
-  order_index?: number | null;
-  category?: string | null;
-  difficulty?: string | null;
-  exp_reward: number;
-  content_id?: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  is_deleted: boolean;
+  itemId: string
+  roadmapId: string
+  title: string
+  description?: string | null
+  type?: string | null
+  level?: number | null
+  estimatedTime?: number | null
+  orderIndex?: number | null
+  category?: string | null
+  difficulty?: string | null
+  expReward: number
+  contentId?: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  isDeleted: boolean
 }
 
 export interface RoadmapMilestone {
-  milestone_id: string;
-  roadmap_id: string;
-  title: string;
-  description?: string | null;
-  level?: number | null;
-  requirements?: string[] | null;
-  rewards?: string[] | null;
-  order_index?: number | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  is_deleted: boolean;
+  milestoneId: string
+  roadmapId: string
+  title: string
+  description?: string | null
+  level?: number | null
+  requirements?: string[] | null
+  rewards?: string[] | null
+  orderIndex?: number | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  isDeleted: boolean
 }
 
 export interface RoadmapGuidance {
-  guidance_id: string;
-  item_id: string;
-  stage?: string | null;
-  title?: string | null;
-  description?: string | null;
-  tips?: string[] | null;
-  estimated_time?: number | null;
-  order_index?: number | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  is_deleted: boolean;
+  guidanceId: string
+  itemId: string
+  stage?: string | null
+  title?: string | null
+  description?: string | null
+  tips?: string[] | null
+  estimatedTime?: number | null
+  orderIndex?: number | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  isDeleted: boolean
 }
 
 export interface RoadmapResource {
-  resource_id: string;
-  item_id: string;
-  type?: string | null;
-  title?: string | null;
-  description?: string | null;
-  url?: string | null;
-  content_id?: string | null;
-  duration?: number | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  is_deleted: boolean;
+  resourceId: string
+  itemId: string
+  type?: string | null
+  title?: string | null
+  description?: string | null
+  url?: string | null
+  contentId?: string | null
+  duration?: number | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  isDeleted: boolean
 }
 
-// Missing types from DB
+/* --- Missing / other DB types (camelCase) --- */
+
 export interface Character3D {
-  character3d_id: string;
-  character3d_name: string;
-  description?: string | null;
-  model_url?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  character3dId: string
+  character3dName: string
+  description?: string | null
+  modelUrl?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Couple {
-  user1_id: string;
-  user2_id: string;
-  status: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  user1Id: string
+  user2Id: string
+  status: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface CourseDiscount {
-  discount_id: string;
-  course_id: string;
-  discount_percentage: number;
-  start_date?: string | null;
-  end_date?: string | null;
-  is_active: boolean;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  discountId: string
+  courseId: string
+  discountPercentage: number
+  startDate?: string | null
+  endDate?: string | null
+  isActive: boolean
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface CourseReview {
-  review_id: string;
-  course_id: string;
-  user_id: string;
-  language_code?: string | null;
-  rating: number;
-  comment?: string | null;
-  reviewed_at: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  reviewId: string
+  courseId: string
+  userId: string
+  languageCode?: string | null
+  rating: number
+  comment?: string | null
+  reviewedAt: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface GroupAnswer {
-  group_answer_id: string;
-  group_session_id?: string | null;
-  lesson_question_id?: string | null;
-  user_id?: string | null;
-  selected_option?: string | null;
-  is_correct: boolean;
-  is_deleted?: boolean;
-  answered_at: string;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  groupAnswerId: string
+  groupSessionId?: string | null
+  lessonQuestionId?: string | null
+  userId?: string | null
+  selectedOption?: string | null
+  isCorrect: boolean
+  isDeleted?: boolean
+  answeredAt: string
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface GroupSession {
-  group_session_id: string;
-  lesson_id?: string | null;
-  room_id?: string | null;
-  user_id?: string | null;
-  is_deleted?: boolean;
-  started_at: string;
-  ended_at?: string | null;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  groupSessionId: string
+  lessonId?: string | null
+  roomId?: string | null
+  userId?: string | null
+  isDeleted?: boolean
+  startedAt: string
+  endedAt?: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface InvalidatedToken {
-  token: string;
-  expiry_time: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  token: string
+  expiryTime: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface LessonSubCategory {
-  lesson_sub_category_id: string;
-  lesson_sub_category_name: string;
-  lesson_category_id?: string | null;
-  language_code?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  lessonSubCategoryId: string
+  lessonSubCategoryName: string
+  lessonCategoryId?: string | null
+  languageCode?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface LessonOrderInSeries {
-  lesson_id: string;
-  lesson_series_id: string;
-  order_index: number;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  lessonId: string
+  lessonSeriesId: string
+  orderIndex: number
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface LessonProgressWrongItem {
-  lesson_id: string;
-  user_id: string;
-  lesson_question_id: string;
-  wrong_answer?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  lessonId: string
+  userId: string
+  lessonQuestionId: string
+  wrongAnswer?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface LessonReview {
-  review_id: string;
-  lesson_id: string;
-  user_id: string;
-  language_code?: string | null;
-  rating: number;
-  comment?: string | null;
-  reviewed_at: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  reviewId: string
+  lessonId: string
+  userId: string
+  languageCode?: string | null
+  rating: number
+  comment?: string | null
+  reviewedAt: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Permission {
-  permission_id: string;
-  name: string;
-  description?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  permissionId: string
+  name: string
+  description?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface RefreshToken {
-  id: string;
-  user_id: string;
-  token: string;
-  is_revoked: boolean;
-  expires_at?: string | null;
-  created_at: string;
-  device_id?: string | null;
-  ip?: string | null;
-  user_agent?: string | null;
+  id: string
+  userId: string
+  token: string
+  isRevoked: boolean
+  expiresAt?: string | null
+  createdAt: string
+  deviceId?: string | null
+  ip?: string | null
+  userAgent?: string | null
 }
 
 export interface RolePermission {
-  permission_id: string;
-  role_id: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  permissionId: string
+  roleId: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Role {
-  role_id: string;
-  role_name: string;
-  description?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  roleId: string
+  roleName: string
+  description?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface Transaction {
-  transaction_id: string;
-  user_id: string;
-  amount: number;
-  description?: string | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
-  status: string;
-  provider: string;
+  transactionId: string
+  userId: string
+  amount: number
+  description?: string | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
+  status: string
+  provider: string
+  currency: string
 }
 
 export interface UserCertificate {
-  user_id: string;
-  certificate: string;
-  created_at: string;
+  userId: string
+  certificate: string
+  createdAt: string
 }
 
 export interface UserFcmToken {
-  user_fcm_token_id: string;
-  user_id?: string | null;
-  fcm_token: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  userFcmTokenId: string
+  userId?: string | null
+  fcmToken: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface UserRole {
-  role_id: string;
-  user_id: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  roleId: string
+  userId: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface VideoCallParticipant {
-  video_call_id: string;
-  user_id: string;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  videoCallId: string
+  userId: string
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }
 
 export interface VideoCall {
-  video_call_id: string;
-  room_id?: string | null;
-  caller_id?: string | null;
-  callee_id?: string | null;
-  video_call_type?: string | null;
-  status: string;
-  start_time?: string | null;
-  end_time?: string | null;
-  duration?: string | null;
-  quality_metrics?: any | null;
-  is_deleted?: boolean;
-  created_at: string;
-  updated_at: string;
-  deleted_at?: string | null;
+  videoCallId: string
+  roomId?: string | null
+  callerId?: string | null
+  calleeId?: string | null
+  videoCallType?: string | null
+  status: string
+  startTime?: string | null
+  endTime?: string | null
+  duration?: string | null
+  qualityMetrics?: any | null
+  isDeleted?: boolean
+  createdAt: string
+  updatedAt: string
+  deletedAt?: string | null
 }

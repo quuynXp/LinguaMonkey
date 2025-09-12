@@ -12,10 +12,19 @@ service LearningService {
   rpc GenerateImage (GenerateImageRequest) returns (GenerateImageResponse);
   rpc GenerateText (GenerateTextRequest) returns (GenerateTextResponse);
   rpc CheckTranslation (CheckTranslationRequest) returns (CheckTranslationResponse);
-    rpc CreateOrUpdateRoadmapDetailed (RoadmapDetailedRequest) returns (RoadmapDetailedResponse);
-      rpc CreateOrUpdateRoadmap (RoadmapRequest) returns (RoadmapResponse);
+  rpc CreateOrUpdateRoadmapDetailed (RoadmapDetailedRequest) returns (RoadmapDetailedResponse);
+  rpc CreateOrUpdateRoadmap (RoadmapRequest) returns (RoadmapResponse);
+  rpc GenerateTts (TtsRequest) returns (TtsResponse);
+}
 
+message TtsRequest {
+  string text = 1;
+  string language = 2;
+}
 
+message TtsResponse {
+  bytes audio_data = 1;
+  string error = 2;
 }
 
 message RoadmapRequest {

@@ -20,8 +20,13 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
     @Query(value = "SELECT * FROM chat_messages WHERE chat_message_id = :id AND deleted = false", nativeQuery = true)
     Optional<ChatMessage> findByChatMessageIdAndIsDeletedFalse(@Param("id") UUID id);
 
+    long  countBySenderIdAndIsDeletedFalse(UUID senderId);
+
 
     Page<ChatMessage> findByRoomIdAndIsDeletedFalse(UUID roomId, Pageable pageable);
+
+    Page<ChatMessage> findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(UUID roomId, Pageable pageable);
+
 
 
     @Query("SELECT cm FROM ChatMessage cm WHERE cm.id.chatMessageId = :chatMessageId AND cm.isDeleted = false")
@@ -31,4 +36,12 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
     @Query("UPDATE ChatMessage cm SET cm.isDeleted = true, cm.deletedAt = CURRENT_TIMESTAMP " +
             "WHERE cm.id.chatMessageId = :chatMessageId")
     void softDeleteByChatMessageId(@Param("chatMessageId") UUID chatMessageId);
+
+    // total messages where user is sender OR receiver and not deleted
+    @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE (cm.senderId = :userId OR cm.receiverId = :userId) AND cm.isDeleted = false")
+    long countMessagesForUser(@Param("userId") UUID userId);
+
+    // translationsUsed: depends on MessageType enum name; adjust if different
+    @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.messageType = com.connectJPA.LinguaVietnameseApp.enums.MessageType.TRANSLATION AND cm.isDeleted = false")
+    long countTranslationsForUser(@Param("userId") UUID userId);
 }

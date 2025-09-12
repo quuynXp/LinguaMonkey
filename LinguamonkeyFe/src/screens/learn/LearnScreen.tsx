@@ -1,6 +1,5 @@
-
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useEffect } from "react"
+import { useEffect, useMemo } from "react"
 import {
   ScrollView,
   StyleSheet,
@@ -20,38 +19,57 @@ const LearnScreen = ({ navigation }) => {
   const { t } = useTranslation()
   const { user, isAuthenticated } = useUserStore()
 
-  const { usePurchasedCourses, useFreeCourses, useRecommendedCourses, useBilingualVideos } = useCourses()
-  const { useAvailableCertifications } = useCertifications()
+  const {
+    usePurchasedCourses,
+    useFreeCourses,
+    useRecommendedCourses,
+    useBilingualVideos,
+  } = useCourses()
 
   const {
     data: purchasedCoursesData,
     isLoading: purchasedLoading,
     refetch: refetchPurchased,
-  } = usePurchasedCourses(1, 5)
-  const { data: freeCoursesData, isLoading: freeLoading, refetch: refetchFree } = useFreeCourses(1, 5)
+  } = usePurchasedCourses(0, 5)
+  const { data: freeCoursesData, isLoading: freeLoading, refetch: refetchFree } = useFreeCourses(0, 5)
+
   const {
     data: recommendedCourses,
     isLoading: recommendedLoading,
     refetch: refetchRecommended,
-  } = useRecommendedCourses(5)
-  const { data: videosData, isLoading: videosLoading, refetch: refetchVideos } = useBilingualVideos({ limit: 5 })
+  } = useRecommendedCourses(user?.userId || user?.userId || "", 5)
+
+  const { data: videosData, isLoading: videosLoading, refetch: refetchVideos } = useBilingualVideos({
+    page: 0,
+    size: 5,
+  })
+
   const {
     data: certifications,
     isLoading: certificationsLoading,
     refetch: refetchCertifications,
-  } = useAvailableCertifications(user?.learningLanguages)
+  } = useCertifications().useAvailableCertifications(user?.languages)
 
-  const purchasedCourses = purchasedCoursesData?.data || []
-  const freeCourses = freeCoursesData?.data || []
-  const videos = videosData?.data || []
+  const purchasedCourses = useMemo(
+  () => purchasedCoursesData?.data || [],
+  [purchasedCoursesData]
+)
+
+const freeCourses = useMemo(
+  () => freeCoursesData?.data || [],
+  [freeCoursesData]
+)
+  const videos = useMemo(
+  () => videosData?.data || [],
+  [videosData]
+)
+
 
   const isLoading = purchasedLoading || freeLoading || recommendedLoading || videosLoading || certificationsLoading
   const isRefreshing = false
 
   useEffect(() => {
     console.log("LearnScreen - User:", user)
-    console.log("LearnScreen - Courses:", { purchasedCourses, freeCourses, recommendedCourses })
-    console.log("LearnScreen - Certifications:", certifications)
   }, [user, purchasedCourses, freeCourses, recommendedCourses, certifications])
 
   const handleRefresh = () => {
@@ -63,161 +81,190 @@ const LearnScreen = ({ navigation }) => {
   }
 
   const handleCoursePress = (course, isPurchased = false) => {
-    navigation.navigate("CourseDetails", { course, isPurchased })
+    const safeCourse = {
+      ...course,
+      courseId: course.courseId || course.id,
+    }
+    navigation.navigate("CourseDetails", { course: safeCourse, isPurchased })
   }
 
-  const handleVideoPress = (video) => {
-    navigation.navigate("BilingualVideo", { selectedVideo: video })
+  // video navigation: provide mode 'original' or 'bilingual'
+  const handleVideoPress = (video, mode = "bilingual") => {
+    navigation.navigate("BilingualVideo", { selectedVideo: video, mode })
   }
 
-  const handleViewAllCourses = () => {
-    navigation.navigate("StudentCourses")
-  }
+  const handleViewAllCourses = () => navigation.navigate("StudentCourses")
+  const handleViewAllVideos = () => navigation.navigate("BilingualVideo")
+  const handleViewAllCertifications = () => navigation.navigate("CertificationLearning")
 
-  const handleViewAllVideos = () => {
-    navigation.navigate("BilingualVideo")
-  }
+  // helper to map fields safely
+  const mapCourseFields = (course) => ({
+    id: course.courseId || course.id,
+    title: course.title || course.name,
+    image: course.thumbnailUrl || course.image || null,
+    instructor: course.creatorName || course.instructor || "",
+    isFree: course.type === "FREE" || course.isFree || false,
+    price: course.price,
+    originalPrice: course.originalPrice,
+    rating: course.rating ?? 0,
+    students: course.students ?? 0,
+    level: course.difficultyLevel || course.level || "",
+    duration: course.duration || "",
+    progress: course.progress ?? course.percentageCompleted ?? 0,
+    completedLessons: course.completedLessons ?? 0,
+    totalLessons: course.totalLessons ?? 0,
+    discount: course.discount,
+  })
 
-  const handleViewAllCertifications = () => {
-    navigation.navigate("CertificationLearning")
-  }
-
-  const renderCourseCard = (course, isPurchased = false) => (
-    <TouchableOpacity
-      key={course.id}
-      style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
-      onPress={() => handleCoursePress(course, isPurchased)}
-    >
-      <Image source={{ uri: course.image }} style={styles.courseImage} />
-
-      {isPurchased && (
-        <View style={styles.purchasedBadge}>
-          <Icon name="check-circle" size={16} color="#FFFFFF" />
-          <Text style={styles.purchasedText}>{t("courses.purchased")}</Text>
-        </View>
-      )}
-
-      {course.isFree && (
-        <View style={styles.freeBadge}>
-          <Text style={styles.freeText}>{t("courses.free")}</Text>
-        </View>
-      )}
-
-      <View style={styles.courseContent}>
-        <Text style={styles.courseTitle}>{course.title}</Text>
-        <Text style={styles.courseInstructor}>by {course.instructor}</Text>
-
-        <View style={styles.courseStats}>
-          <View style={styles.ratingContainer}>
-            <Icon name="star" size={14} color="#F59E0B" />
-            <Text style={styles.ratingText}>{course.rating}</Text>
-            <Text style={styles.studentsText}>({course.students.toLocaleString()})</Text>
-          </View>
-          <View style={styles.courseMeta}>
-            <Text style={styles.levelText}>{course.level}</Text>
-            <Text style={styles.durationText}>{course.duration}</Text>
-          </View>
-        </View>
-
-        {isPurchased && course.progress !== undefined ? (
-          <View style={styles.progressSection}>
-            <View style={styles.progressInfo}>
-              <Text style={styles.progressText}>
-                {t("courses.progress")}: {course.progress}%
-              </Text>
-              <Text style={styles.lessonsText}>
-                {course.completedLessons}/{course.totalLessons} {t("courses.lessons")}
-              </Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
-            </View>
-          </View>
+  const renderCourseCard = (rawCourse, isPurchased = false) => {
+    const course = mapCourseFields(rawCourse)
+    return (
+      <TouchableOpacity
+        key={course.id}
+        style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
+        onPress={() => handleCoursePress(rawCourse, isPurchased)}
+      >
+        {course.image ? (
+          <Image source={{ uri: course.image }} style={styles.courseImage} />
         ) : (
-          <View style={styles.priceSection}>
-            {course.originalPrice && <Text style={styles.originalPrice}>${course.originalPrice}</Text>}
-            <Text style={styles.price}>{course.isFree ? t("courses.free") : `$${course.price}`}</Text>
+          <View style={[styles.courseImage, { justifyContent: "center", alignItems: "center" }]}>
+            <Icon name="menu-book" size={40} color="#9CA3AF" />
           </View>
         )}
-      </View>
-    </TouchableOpacity>
-  )
 
-  const renderVideoCard = (video) => (
-    <TouchableOpacity key={video.id} style={styles.videoCard} onPress={() => handleVideoPress(video)}>
-      <View style={styles.videoThumbnail}>
-        {video.thumbnailUrl ? (
-          <Image source={{ uri: video.thumbnailUrl }} style={styles.thumbnailImage} />
-        ) : (
-          <View style={styles.thumbnailPlaceholder}>
-            <Icon name="play-circle-filled" size={48} color="rgba(255,255,255,0.9)" />
+        {isPurchased && (
+          <View style={styles.purchasedBadge}>
+            <Icon name="check-circle" size={16} color="#FFFFFF" />
+            <Text style={styles.purchasedText}>{t("courses.purchased")}</Text>
           </View>
         )}
-        <View style={styles.durationBadge}>
-          <Text style={styles.durationText}>{video.duration}</Text>
-        </View>
-        {video.progress && video.progress > 0 && (
-          <View style={styles.videoProgressIndicator}>
-            <View style={[styles.videoProgressBar, { width: `${video.progress}%` }]} />
-          </View>
-        )}
-      </View>
-      <View style={styles.videoInfo}>
-        <Text style={styles.videoTitle}>{video.title}</Text>
-        <Text style={styles.videoDescription} numberOfLines={2}>
-          {video.description}
-        </Text>
-        <View style={styles.videoMeta}>
-          <View style={[styles.levelBadge, { backgroundColor: getLevelColor(video.level) }]}>
-            <Text style={styles.levelText}>{t(`videos.levels.${video.level}`)}</Text>
-          </View>
-          <Text style={styles.categoryText}>{video.category}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  )
 
-  const renderCertificationCard = (certification) => (
-    <TouchableOpacity
-      key={certification.id}
-      style={[styles.certificationCard, { borderLeftColor: certification.color }]}
-      onPress={() => navigation.navigate("CertificationLearning", { selectedCertification: certification })}
-    >
-      <View style={styles.certificationHeader}>
-        <Text style={styles.certificationIcon}>{certification.icon}</Text>
-        <View style={styles.certificationInfo}>
-          <Text style={styles.certificationLevel}>{certification.level}</Text>
-          <Text style={styles.certificationLanguage}>{certification.language}</Text>
-        </View>
-        {certification.userProgress?.status === "completed" && (
-          <View style={styles.completedBadge}>
-            <Icon name="verified" size={16} color="#10B981" />
+        {course.isFree && (
+          <View style={styles.freeBadge}>
+            <Text style={styles.freeText}>{t("courses.free")}</Text>
           </View>
         )}
-      </View>
-      <Text style={styles.certificationName} numberOfLines={2}>
-        {certification.name}
-      </Text>
-      <View style={styles.certificationStats}>
-        <View style={styles.certificationStat}>
-          <Icon name="schedule" size={14} color="#6B7280" />
-          <Text style={styles.certificationStatText}>{certification.duration}min</Text>
-        </View>
-        <View style={styles.certificationStat}>
-          <Icon name="quiz" size={14} color="#6B7280" />
-          <Text style={styles.certificationStatText}>{certification.totalQuestions}</Text>
-        </View>
-      </View>
-      {certification.userProgress?.bestScore && (
-        <Text style={styles.bestScore}>
-          {t("certifications.bestScore")}: {certification.userProgress.bestScore}%
-        </Text>
-      )}
-    </TouchableOpacity>
-  )
 
-  const getLevelColor = (level: string) => {
-    switch (level) {
+        <View style={styles.courseContent}>
+          <Text style={styles.courseTitle}>{course.title}</Text>
+          <Text style={styles.courseInstructor}>by {course.instructor}</Text>
+
+          <View style={styles.courseStats}>
+            <View style={styles.ratingContainer}>
+              <Icon name="star" size={14} color="#F59E0B" />
+              <Text style={styles.ratingText}>{course.rating}</Text>
+              <Text style={styles.studentsText}>({(course.students || 0).toLocaleString()})</Text>
+            </View>
+            <View style={styles.courseMeta}>
+              <Text style={styles.levelText}>{course.level}</Text>
+              <Text style={styles.durationText}>{course.duration}</Text>
+            </View>
+          </View>
+
+          {isPurchased && course.progress !== undefined ? (
+            <View style={styles.progressSection}>
+              <View style={styles.progressInfo}>
+                <Text style={styles.progressText}>
+                  {t("courses.progress")}: {course.progress}%
+                </Text>
+                <Text style={styles.lessonsText}>
+                  {course.completedLessons}/{course.totalLessons} {t("courses.lessons")}
+                </Text>
+              </View>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.priceSection}>
+              {course.originalPrice && <Text style={styles.originalPrice}>${course.originalPrice}</Text>}
+              <Text style={styles.price}>{course.isFree ? t("courses.free") : `$${course.price ?? 0}`}</Text>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    )
+  }
+
+  const renderVideoCard = (rawVideo) => {
+    const video = {
+      id: rawVideo.videoId || rawVideo.id,
+      title: rawVideo.title,
+      thumbnail: rawVideo.thumbnailUrl || rawVideo.thumbnail || null,
+      duration: rawVideo.duration || rawVideo.length || "",
+      description: rawVideo.description || "",
+      level: rawVideo.level,
+      category: rawVideo.category,
+      progress: rawVideo.progress,
+    }
+
+    return (
+      <TouchableOpacity key={video.id} style={styles.videoCard} onPress={() => handleVideoPress(rawVideo, "bilingual")}>
+        <View style={styles.videoThumbnail}>
+          {video.thumbnail ? (
+            <Image source={{ uri: video.thumbnail }} style={styles.thumbnailImage} />
+          ) : (
+            <View style={styles.thumbnailPlaceholder}>
+              <Icon name="play-circle-filled" size={48} color="rgba(255,255,255,0.9)" />
+            </View>
+          )}
+
+          <View style={styles.durationBadge}>
+            <Text style={styles.durationText}>{video.duration}</Text>
+          </View>
+
+          {/* small control: Original vs Bilingual */}
+          <View style={{ position: "absolute", top: 8, left: 8, flexDirection: "row", gap: 6 }}>
+            <TouchableOpacity
+              onPress={() => handleVideoPress(rawVideo, "original")}
+              style={{
+                backgroundColor: "rgba(0,0,0,0.5)",
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 6,
+                marginRight: 6,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12 }}>{t("videos.original")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleVideoPress(rawVideo, "bilingual")}
+              style={{
+                backgroundColor: "rgba(0,0,0,0.5)",
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: 6,
+              }}
+            >
+              <Text style={{ color: "#fff", fontSize: 12 }}>{t("videos.bilingual")}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {video.progress && video.progress > 0 && (
+            <View style={styles.videoProgressIndicator}>
+              <View style={[styles.videoProgressBar, { width: `${video.progress}%` }]} />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.videoInfo}>
+          <Text style={styles.videoTitle}>{video.title}</Text>
+          <Text style={styles.videoDescription} numberOfLines={2}>
+            {video.description}
+          </Text>
+          <View style={styles.videoMeta}>
+            <View style={[styles.levelBadge, { backgroundColor: getLevelColor(video.level) }]}>
+              <Text style={styles.levelText}>{t(`videos.levels.${video.level}`) || video.level}</Text>
+            </View>
+            <Text style={styles.categoryText}>{video.category}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    )
+  }
+
+  const getLevelColor = (level) => {
+    switch ((level || "").toLowerCase()) {
       case "beginner":
         return "#4CAF50"
       case "intermediate":
@@ -250,7 +297,6 @@ const LearnScreen = ({ navigation }) => {
         <Text style={styles.title}>{t("learn.title")}</Text>
       </View>
 
-      {/* User Welcome Section */}
       {isAuthenticated && user && (
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeText}>
@@ -273,7 +319,6 @@ const LearnScreen = ({ navigation }) => {
         </View>
       )}
 
-      {/* Certifications Section */}
       {certifications && certifications.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -283,12 +328,15 @@ const LearnScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {certifications.slice(0, 5).map(renderCertificationCard)}
+            {certifications.slice(0, 5).map((c) => (
+              <View key={c.id} style={styles.certificationCard}>
+                <Text>{c.name}</Text>
+              </View>
+            ))}
           </ScrollView>
         </View>
       )}
 
-      {/* Bilingual Videos Section */}
       {videos.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -303,7 +351,6 @@ const LearnScreen = ({ navigation }) => {
         </View>
       )}
 
-      {/* My Courses Section */}
       {purchasedCourses.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -313,12 +360,11 @@ const LearnScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {purchasedCourses.map((course) => renderCourseCard(course, true))}
+            {purchasedCourses.map((c) => renderCourseCard(c, true))}
           </ScrollView>
         </View>
       )}
 
-      {/* Free Courses Section */}
       {freeCourses.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -328,43 +374,11 @@ const LearnScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-            {freeCourses.map((course) => renderCourseCard(course, false))}
+            {freeCourses.map((c) => renderCourseCard(c, false))}
           </ScrollView>
         </View>
       )}
 
-      {/* Learning Categories */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t("learn.categories")}</Text>
-        <View style={styles.categoryGrid}>
-          {[
-            { id: "listening", name: t("learn.categories.listening"), icon: "hearing", screen: "ListeningScreen" },
-            {
-              id: "speaking",
-              name: t("learn.categories.speaking"),
-              icon: "record-voice-over",
-              screen: "SpeakingScreen",
-            },
-            { id: "reading", name: t("learn.categories.reading"), icon: "menu-book", screen: "ReadingScreen" },
-            { id: "writing", name: t("learn.categories.writing"), icon: "edit", screen: "WritingScreen" },
-            { id: "grammar", name: t("learn.categories.grammar"), icon: "school", screen: "GrammarLearning" },
-            { id: "vocabulary", name: t("learn.categories.vocabulary"), icon: "style", screen: "VocabularyFlashcards" },
-          ].map((category) => (
-            <TouchableOpacity
-              key={category.id}
-              style={styles.categoryCard}
-              onPress={() => navigation.navigate(category.screen)}
-            >
-              <View style={styles.categoryIcon}>
-                <Icon name={category.icon} size={24} color="#4F46E5" />
-              </View>
-              <Text style={styles.categoryName}>{category.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Recommended Courses */}
       {recommendedCourses && recommendedCourses.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -373,11 +387,10 @@ const LearnScreen = ({ navigation }) => {
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          {recommendedCourses.map((course) => renderCourseCard(course, false))}
+          {recommendedCourses.map((c) => renderCourseCard(c, false))}
         </View>
       )}
 
-      {/* View All Courses Button */}
       <View style={styles.section}>
         <TouchableOpacity style={styles.viewAllCoursesButton} onPress={handleViewAllCourses}>
           <Icon name="school" size={24} color="#FFFFFF" />
@@ -386,7 +399,6 @@ const LearnScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Empty State */}
       {!isLoading && purchasedCourses.length === 0 && freeCourses.length === 0 && (
         <View style={styles.emptyState}>
           <Icon name="school" size={64} color="#9CA3AF" />
@@ -717,11 +729,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
-  },
-  durationText: {
-    color: "#FFFFFF",
-    fontSize: 12,
-    fontWeight: "bold",
   },
   videoProgressIndicator: {
     position: "absolute",

@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.FriendshipRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.FriendRequestStatusResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FriendshipResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -13,4 +14,6 @@ public interface FriendshipService {
     FriendshipResponse createFriendship(FriendshipRequest request);
     FriendshipResponse updateFriendship(UUID user1Id, UUID user2Id, FriendshipRequest request);
     void deleteFriendship(UUID user1Id, UUID user2Id);
+    boolean isFriends(UUID user1Id, UUID user2Id);
+    FriendRequestStatusResponse getFriendRequestStatus(UUID currentUserId, UUID otherUserId);
 }

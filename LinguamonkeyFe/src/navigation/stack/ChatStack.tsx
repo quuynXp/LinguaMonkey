@@ -24,7 +24,7 @@ const ChatStack = () => (
     <Stack.Screen name="ChatRoomList" component={ChatRoomListScreen} />
     <Stack.Screen name="CreateRoom" component={CreateRoomScreen} />
     <Stack.Screen name="CallSearch" component={CallSearchScreen} />
-    <Stack.Screen name="VideoCallManagerScreen" component={VideoCallManagerScreen} />
+    <Stack.Screen name="VideoCallManager" component={VideoCallManagerScreen} />
     <Stack.Screen name="GroupStudy" component={GroupStudyScreen} />
     <Stack.Screen name="JitsiCall" component={JitsiCallScreen} />
   </Stack.Navigator>

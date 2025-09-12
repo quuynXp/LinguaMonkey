@@ -1,7 +1,9 @@
 package com.connectJPA.LinguaVietnameseApp.grpc;
 
 import com.connectJPA.LinguaVietnameseApp.dto.ChatMessageBody;
+import com.connectJPA.LinguaVietnameseApp.dto.request.TtsRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
+import com.connectJPA.LinguaVietnameseApp.dto.response.TtsResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -34,6 +36,32 @@ public class GrpcClientService {
                 .intercept(new GrpcAuthInterceptor(token))
                 .build();
     }
+
+    public CompletableFuture<byte[]> callGenerateTtsAsync(String token, String text, String language) {
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        learning.LearningServiceOuterClass.TtsRequest request =
+                learning.LearningServiceOuterClass.TtsRequest.newBuilder()
+                        .setText(text)
+                        .setLanguage(language)
+                        .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                learning.LearningServiceOuterClass.TtsResponse response = stub.generateTts(request).get();
+                if (!response.getError().isEmpty()) {
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                return response.getAudioData().toByteArray();
+            } catch (Exception e) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
 
     public CompletableFuture<String> callSpeechToTextAsync(String token, byte[] audioData, String language) {
         ManagedChannel channel = createChannelWithToken(token);

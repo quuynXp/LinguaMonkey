@@ -8,6 +8,10 @@ export default function TeacherStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="TeacherDashboardScreen" component={TeacherDashboardScreen} />
+            {/* <Stack.Screen name="TeacherDashboardScreen" component={TeacherCourse} />
+      <Stack.Screen name="TeacherDashboardScreen" component={TeacherDashboardScreen} />
+      <Stack.Screen name="TeacherDashboardScreen" component={TeacherDashboardScreen} /> */}
+
     </Stack.Navigator>
   );
 }

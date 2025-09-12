@@ -10,6 +10,9 @@ import {
     View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from 'react-i18next';
+import { useAppStore } from '../../stores/appStore';
+
 interface SettingItem {
   id: string;
   title: string;
@@ -22,18 +25,8 @@ interface SettingItem {
 }
 
 const ChatSettingsScreen = ({ navigation }) => {
-  const [settings, setSettings] = useState({
-    autoTranslate: true,
-    showOriginalButton: true,
-    translateToVietnamese: true,
-    soundNotifications: true,
-    vibrationNotifications: false,
-    showTypingIndicator: true,
-    autoCorrect: true,
-    wordSuggestions: true,
-    saveTranslationHistory: true,
-    offlineTranslation: false,
-  });
+  const { t } = useTranslation();
+  const { chatSettings, setChatSettings, resetChatSettings } = useAppStore();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -46,43 +39,16 @@ const ChatSettingsScreen = ({ navigation }) => {
   }, []);
 
   const updateSetting = (key: string, value: boolean) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+    setChatSettings({ [key]: value });
   };
 
   const clearTranslationHistory = () => {
     Alert.alert(
-      'Xóa lịch sử dịch',
-      'Bạn có chắc chắn muốn xóa tất cả lịch sử dịch thuật?',
+      t('chat.clearHistoryConfirmTitle'),
+      t('chat.clearHistoryConfirmMessage'),
       [
-        { text: 'Hủy', style: 'cancel' },
-        { text: 'Xóa', style: 'destructive', onPress: () => {} },
-      ]
-    );
-  };
-
-  const resetSettings = () => {
-    Alert.alert(
-      'Đặt lại cài đặt',
-      'Bạn có muốn đặt lại tất cả cài đặt về mặc định?',
-      [
-        { text: 'Hủy', style: 'cancel' },
-        {
-          text: 'Đặt lại',
-          onPress: () => {
-            setSettings({
-              autoTranslate: true,
-              showOriginalButton: true,
-              translateToVietnamese: true,
-              soundNotifications: true,
-              vibrationNotifications: false,
-              showTypingIndicator: true,
-              autoCorrect: true,
-              wordSuggestions: true,
-              saveTranslationHistory: true,
-              offlineTranslation: false,
-            });
-          },
-        },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.delete'), style: 'destructive', onPress: () => {} },
       ]
     );
   };
@@ -90,95 +56,95 @@ const ChatSettingsScreen = ({ navigation }) => {
   const translationSettings: SettingItem[] = [
     {
       id: 'auto-translate',
-      title: 'Dịch tự động',
-      description: 'Tự động dịch tin nhắn từ người khác',
+      title: t('chat.autoTranslate'),
+      description: t('chat.autoTranslateDesc'),
       icon: 'translate',
       type: 'toggle',
-      value: settings.autoTranslate,
+      value: chatSettings.autoTranslate,
       onToggle: (value) => updateSetting('autoTranslate', value),
     },
     {
       id: 'show-original',
-      title: 'Hiển thị nút "Xem gốc"',
-      description: 'Cho phép xem tin nhắn gốc chưa dịch',
+      title: t('chat.showOriginal'),
+      description: t('chat.showOriginalDesc'),
       icon: 'visibility',
       type: 'toggle',
-      value: settings.showOriginalButton,
+      value: chatSettings.showOriginalButton,
       onToggle: (value) => updateSetting('showOriginalButton', value),
     },
     {
       id: 'translate-vietnamese',
-      title: 'Dịch sang tiếng Việt',
-      description: 'Dịch tất cả tin nhắn sang tiếng Việt',
+      title: t('chat.translateVietnamese'),
+      description: t('chat.translateVietnameseDesc'),
       icon: 'language',
       type: 'toggle',
-      value: settings.translateToVietnamese,
+      value: chatSettings.translateToVietnamese,
       onToggle: (value) => updateSetting('translateToVietnamese', value),
     },
     {
       id: 'save-history',
-      title: 'Lưu lịch sử dịch',
-      description: 'Lưu các bản dịch để sử dụng offline',
+      title: t('chat.saveHistory'),
+      description: t('chat.saveHistoryDesc'),
       icon: 'history',
       type: 'toggle',
-      value: settings.saveTranslationHistory,
+      value: chatSettings.saveTranslationHistory,
       onToggle: (value) => updateSetting('saveTranslationHistory', value),
     },
     {
       id: 'offline-translation',
-      title: 'Dịch offline',
-      description: 'Sử dụng dịch thuật offline khi không có mạng',
+      title: t('chat.offlineTranslation'),
+      description: t('chat.offlineTranslationDesc'),
       icon: 'cloud-off',
       type: 'toggle',
-      value: settings.offlineTranslation,
+      value: chatSettings.offlineTranslation,
       onToggle: (value) => updateSetting('offlineTranslation', value),
     },
   ];
 
-  const chatSettings: SettingItem[] = [
+  const chatSettingsItems: SettingItem[] = [
     {
       id: 'sound-notifications',
-      title: 'Thông báo âm thanh',
-      description: 'Phát âm thanh khi có tin nhắn mới',
+      title: t('chat.soundNotifications'),
+      description: t('chat.soundNotificationsDesc'),
       icon: 'volume-up',
       type: 'toggle',
-      value: settings.soundNotifications,
+      value: chatSettings.soundNotifications,
       onToggle: (value) => updateSetting('soundNotifications', value),
     },
     {
       id: 'vibration',
-      title: 'Rung thông báo',
-      description: 'Rung điện thoại khi có tin nhắn mới',
+      title: t('chat.vibrationNotifications'),
+      description: t('chat.vibrationNotificationsDesc'),
       icon: 'vibration',
       type: 'toggle',
-      value: settings.vibrationNotifications,
+      value: chatSettings.vibrationNotifications,
       onToggle: (value) => updateSetting('vibrationNotifications', value),
     },
     {
       id: 'typing-indicator',
-      title: 'Hiển thị đang gõ',
-      description: 'Cho người khác biết khi bạn đang gõ tin nhắn',
+      title: t('chat.typingIndicator'),
+      description: t('chat.typingIndicatorDesc'),
       icon: 'edit',
       type: 'toggle',
-      value: settings.showTypingIndicator,
+      value: chatSettings.showTypingIndicator,
       onToggle: (value) => updateSetting('showTypingIndicator', value),
     },
     {
       id: 'auto-correct',
-      title: 'Tự động sửa lỗi',
-      description: 'Tự động sửa lỗi chính tả khi gõ',
+      title: t('chat Godot::TimedAnimation'),
+      description: t('chat.autoCorrectDesc'),
       icon: 'spellcheck',
       type: 'toggle',
-      value: settings.autoCorrect,
+      value: chatSettings.autoCorrect,
       onToggle: (value) => updateSetting('autoCorrect', value),
     },
     {
       id: 'word-suggestions',
-      title: 'Gợi ý từ',
-      description: 'Hiển thị gợi ý từ khi gõ tin nhắn',
+      title: t('chat.wordSuggestions'),
+      description: t('chat.wordSuggestionsDesc'),
       icon: 'lightbulb',
       type: 'toggle',
-      value: settings.wordSuggestions,
+      value: chatSettings.wordSuggestions,
       onToggle: (value) => updateSetting('wordSuggestions', value),
     },
   ];
@@ -186,19 +152,19 @@ const ChatSettingsScreen = ({ navigation }) => {
   const actionSettings: SettingItem[] = [
     {
       id: 'clear-history',
-      title: 'Xóa lịch sử dịch',
-      description: 'Xóa tất cả lịch sử dịch thuật đã lưu',
+      title: t('chat.clearHistory'),
+      description: t('chat.clearHistoryDesc'),
       icon: 'delete-sweep',
       type: 'action',
       onPress: clearTranslationHistory,
     },
     {
       id: 'reset-settings',
-      title: 'Đặt lại cài đặt',
-      description: 'Khôi phục tất cả cài đặt về mặc định',
+      title: t('chat.resetSettings'),
+      description: t('chat.resetSettingsDesc'),
       icon: 'restore',
       type: 'action',
-      onPress: resetSettings,
+      onPress: resetChatSettings,
     },
   ];
 
@@ -253,7 +219,7 @@ const ChatSettingsScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Cài đặt Chat</Text>
+        <Text style={styles.headerTitle}>{t('chat.settingsTitle')}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -263,49 +229,48 @@ const ChatSettingsScreen = ({ navigation }) => {
           <View style={styles.infoCard}>
             <View style={styles.infoHeader}>
               <Icon name="translate" size={24} color="#4F46E5" />
-              <Text style={styles.infoTitle}>Dịch thuật thông minh</Text>
+              <Text style={styles.infoTitle}>{t('chat.translationInfoTitle')}</Text>
             </View>
             <Text style={styles.infoText}>
-              Sử dụng AI để dịch tin nhắn chính xác và tự nhiên. 
-              Hỗ trợ hơn 100 ngôn ngữ với khả năng hiểu ngữ cảnh.
+              {t('chat.translationInfoDesc')}
             </Text>
           </View>
 
           {renderSection(
-            'Cài đặt dịch thuật',
-            'Tùy chỉnh cách dịch tin nhắn trong chat',
+            t('chat.translationSection'),
+            t('chat.translationSubtitle'),
             translationSettings
           )}
 
           {renderSection(
-            'Cài đặt chat',
-            'Tùy chỉnh trải nghiệm chat của bạn',
-            chatSettings
+            t('chat.chatSection'),
+            t('chat.chatSubtitle'),
+            chatSettingsItems
           )}
 
           {renderSection(
-            'Hành động',
-            'Quản lý dữ liệu và đặt lại cài đặt',
+            t('chat.actionSection'),
+            t('chat.actionSubtitle'),
             actionSettings,
             true
           )}
 
           {/* Translation Languages */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ngôn ngữ hỗ trợ</Text>
+            <Text style={styles.sectionTitle}>{t('chat.supportedLanguages')}</Text>
             <Text style={styles.sectionSubtitle}>
-              Các ngôn ngữ được hỗ trợ dịch thuật
+              {t('chat.supportedLanguagesDesc')}
             </Text>
             <View style={styles.languageGrid}>
               {[
-                { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
-                { code: 'en', name: 'English', flag: '🇺🇸' },
-                { code: 'zh', name: '中文', flag: '🇨🇳' },
-                { code: 'ja', name: '日本語', flag: '🇯🇵' },
-                { code: 'ko', name: '한국어', flag: '🇰🇷' },
-                { code: 'fr', name: 'Français', flag: '🇫🇷' },
-                { code: 'es', name: 'Español', flag: '🇪🇸' },
-                { code: 'de', name: 'Deutsch', flag: '🇩🇪' },
+                { code: 'vi', name: t('call.languages.vi'), flag: '🇻🇳' },
+                { code: 'en', name: t('call.languages.en'), flag: '🇺🇸' },
+                { code: 'zh', name: t('call.languages.zh'), flag: '🇨🇳' },
+                { code: 'ja', name: t('call.languages.ja'), flag: '🇯🇵' },
+                { code: 'ko', name: t('call.languages.ko'), flag: '🇰🇷' },
+                { code: 'fr', name: t('call.languages.fr'), flag: '🇫🇷' },
+                { code: 'es', name: t('call.languages.es'), flag: '🇪🇸' },
+                { code: 'de', name: t('call.languages.de'), flag: '🇩🇪' },
               ].map((lang) => (
                 <View key={lang.code} style={styles.languageItem}>
                   <Text style={styles.languageFlag}>{lang.flag}</Text>
@@ -319,25 +284,25 @@ const ChatSettingsScreen = ({ navigation }) => {
           <View style={styles.tipsSection}>
             <View style={styles.tipsHeader}>
               <Icon name="tips-and-updates" size={20} color="#F59E0B" />
-              <Text style={styles.tipsTitle}>Mẹo sử dụng</Text>
+              <Text style={styles.tipsTitle}>{t('chat.tipsTitle')}</Text>
             </View>
             <View style={styles.tipsList}>
               <View style={styles.tipItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
                 <Text style={styles.tipText}>
-                  Bật dịch tự động để hiểu tin nhắn ngay lập tức
+                  {t('chat.tip1')}
                 </Text>
               </View>
               <View style={styles.tipItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
                 <Text style={styles.tipText}>
-                  Sử dụng nút "Xem gốc" để học từ vựng mới
+                  {t('chat.tip2')}
                 </Text>
               </View>
               <View style={styles.tipItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
                 <Text style={styles.tipText}>
-                  Lưu lịch sử dịch để ôn tập sau này
+                  {t('chat.tip3')}
                 </Text>
               </View>
             </View>

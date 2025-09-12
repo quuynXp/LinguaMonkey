@@ -45,7 +45,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   const [achievements, setAchievements] = useState<UserBadge[]>([]);
   const [userGoal, setUserGoal] = useState<UserGoalResponse | null>(null);
 
-  const { progressStats, lessonProgress } = useProgressStats(user?.user_id);
+  const { progressStats, lessonProgress } = useProgressStats(user?.userId);
 
   const motivationalMessages = {
     en: [
@@ -63,19 +63,19 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   };
 
   useEffect(() => {
-    if (!user?.user_id) {
+    if (!user?.userId) {
       resetToAuth('Login');
       return;
     }
 
-    const userId = user?.user_id;
+    const userId = user?.userId;
     const fetchAchievements = async () => {
       try {
         if (userId) {
           const response = await axiosInstance.get<{ data: UserBadge[] }>(`/badge/${userId}`);
           const badgesData = response.data.data;
-          setAchievements(badgesData.filter((badge) => badge.badge.earned));
-          badgesData.forEach((badge) => addBadge(badge.badge_id));
+          setAchievements(badgesData.filter((badge) => badge.badgeId.earned));
+          badgesData.forEach((badge) => addBadge(badge.badgeId));
         }
       } catch (error) {
         console.error("Failed to fetch achievements:", error);
@@ -85,7 +85,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
     const fetchUserGoal = async () => {
       try {
         if (userId) {
-          const response = await axiosInstance.get<{ data: UserGoalResponse[] }>(`/api/user-goals`, {
+          const response = await axiosInstance.get<{ data: UserGoalResponse[] }>(`/user-goals`, {
             params: { userId },
           });
           const goalsData = response.data.data;
@@ -124,7 +124,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         useNativeDriver: true,
       }).start();
     }, 500);
-  }, [currentLanguage, user?.user_id, navigation]);
+  }, [currentLanguage, user?.userId, navigation]);
 
   const getGreeting = () => {
     return getGreetingTime(undefined, currentLanguage || "en");
@@ -140,53 +140,38 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <Animated.View
-        style={[
-          {
-            transform: [{ scale: scaleAnim }],
-          },
-        ]}
-      >
+    <ScrollView
+      contentContainerStyle={{ ...styles.container, flexGrow: 1 }}
+      showsVerticalScrollIndicator={false}
+    >
+      <Animated.View style={{ transform: [{ scale: scaleAnim }], opacity: fadeAnim }}>
+
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => resetToTab('Home', 'HomeMain')}>
+          <TouchableOpacity onPress={() => resetToTab('Home')}>
             <Icon name="close" size={24} color="#6B7280" />
           </TouchableOpacity>
         </View>
+
         {/* Greeting */}
         <Text style={styles.greeting}>
-          {getGreeting()}, {(user as User)?.fullname || ""}! 🌅
+          {getGreeting()}, {user?.fullname || user?.nickname || ""} 🌅
         </Text>
 
         {/* Streak Section */}
         <Animated.View
-          style={[
-            styles.streakContainer,
-            {
-              transform: [{ scale: fireAnim }],
-            },
-          ]}
+          style={[styles.streakContainer, { transform: [{ scale: fireAnim }] }]}
         >
           <View style={styles.streakCard}>
             <View style={styles.fireIcon}>
               <Text style={styles.fireEmoji}>🔥</Text>
-              <View style={styles.streakBadge}>
-                <Text style={styles.streakNumber}>+1</Text>
-              </View>
             </View>
             <View style={styles.streakInfo}>
               <Text style={styles.streakCount}>
-                {t("streakTitle", { count: (user as User)?.streak || 0 })}
+                {t("streakTitle", { count: user?.streak || 0 })}
               </Text>
               <Text style={styles.streakMessage}>{getStreakMessage()}</Text>
             </View>
-          </View>
-          <View style={styles.reminderContainer}>
-            <Icon name="lightbulb" size={20} color="#F59E0B" />
-            <Text style={styles.reminderText}>
-              {t("reminder.doLessonToKeepStreak")} 📚💥
-            </Text>
           </View>
         </Animated.View>
 
@@ -196,7 +181,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
           <Text style={styles.motivationText}>{motivationalMessage}</Text>
         </View>
 
-        {/* Today's Progress */}
+        {/* Progress Section */}
         <View style={styles.progressSection}>
           <Text style={styles.sectionTitle}>{t("progressSection")} 📊</Text>
           <View style={styles.statsGrid}>
@@ -206,49 +191,44 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
               <Text style={styles.statLabel}>{t("stats.lessons")}</Text>
             </View>
             <View style={styles.statCard}>
-              <Icon name="menu-book" size={24} color="#3B82F6" />
-              <Text style={styles.statNumber}>{progressStats.totalWords}</Text>
-              <Text style={styles.statLabel}>{t("stats.words")}</Text>
+              <Icon name="stars" size={24} color="#8B5CF6" />
+              <Text style={styles.statNumber}>{user?.exp || 0}</Text>
+              <Text style={styles.statLabel}>
+                {t("stats.xp")} / {user?.expToNextLevel || 0}
+              </Text>
             </View>
             <View style={styles.statCard}>
-              <Icon name="schedule" size={24} color="#F59E0B" />
+              <Icon name="leaderboard" size={24} color="#F59E0B" />
+              <Text style={styles.statNumber}>{user?.level || 1}</Text>
+              <Text style={styles.statLabel}>{t("stats.level")}</Text>
+            </View>
+            <View style={styles.statCard}>
+              <Icon name="schedule" size={24} color="#3B82F6" />
               <Text style={styles.statNumber}>{progressStats.timeSpent}m</Text>
               <Text style={styles.statLabel}>{t("stats.time")}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Icon name="stars" size={24} color="#8B5CF6" />
-              <Text style={styles.statNumber}>{progressStats.xpEarned}</Text>
-              <Text style={styles.statLabel}>{t("stats.xp")}</Text>
             </View>
           </View>
         </View>
 
-        {/* Recent Achievements */}
+        {/* Achievements */}
         <View style={styles.achievementsSection}>
           <Text style={styles.sectionTitle}>{t("achievementsSection")} 🏆</Text>
           <View style={styles.achievementsList}>
-            {achievements.map((achievement) => (
-              <View key={achievement.badge_id} style={styles.achievementCard}>
-                <View style={styles.achievementIcon}>
-                  <MaterialIcons
-                    name={achievement.badge.image_url ? "image" : "star"}
-                    size={20}
-                    color="#F59E0B"
-                  />
-                </View>
+            {achievements.map((ach) => (
+              <View key={ach.badgeId} style={styles.achievementCard}>
+                <Icon name="emoji-events" size={20} color="#F59E0B" />
                 <View style={styles.achievementInfo}>
-                  <Text style={styles.achievementTitle}>{achievement.badge.badge_name}</Text>
+                  <Text style={styles.achievementTitle}>{ach.badge.badge_name}</Text>
                   <Text style={styles.achievementDescription}>
-                    {achievement.badge.description || "No description"}
+                    {ach.badge.description}
                   </Text>
                 </View>
-                <Icon name="check-circle" size={20} color="#10B981" />
               </View>
             ))}
           </View>
         </View>
 
-        {/* Continue Learning Button */}
+        {/* Continue Learning */}
         <TouchableOpacity
           style={styles.continueButton}
           onPress={() => resetToTab('Learn', 'LearnMain')}
@@ -256,25 +236,6 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
           <Text style={styles.continueButtonText}>{t("continueButton")}</Text>
           <Icon name="arrow-forward" size={20} color="#FFFFFF" />
         </TouchableOpacity>
-
-        {/* Quick Actions */}
-        <View style={styles.quickActions}>
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={() => resetToTab('Learn', 'LearnMain')}
-          >
-            <Icon name="style" size={20} color="#4F46E5" />
-            <Text style={styles.quickActionText}>{t("quickActions.flashcards")}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.quickActionButton}
-            onPress={() => resetToTab('Learn', 'QuizLearning')}
-          >
-            <Icon name="quiz" size={20} color="#4F46E5" />
-            <Text style={styles.quickActionText}>{t("quickActions.quiz")}</Text>
-          </TouchableOpacity>
-        </View>
       </Animated.View>
     </ScrollView>
   );

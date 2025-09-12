@@ -20,6 +20,7 @@ import Toast from "../../components/Toast";
 import { getStatisticsOverview } from "../../services/statisticsApi";
 import { LineChart, BarChart } from "react-native-chart-kit";
 import DateTimePicker from "@react-native-community/datetimepicker";
+import { gotoTab, resetToAuth } from "../../utils/navigationRef";
 
 const { width } = Dimensions.get("window");
 type Period = "week" | "month" | "year" | "custom";
@@ -99,12 +100,12 @@ const AdminDashboardScreen = ({ navigation }: any) => {
   // query key
   const queryKey = computedRange
     ? [
-        "statisticsOverview",
-        "range",
-        formatISODate(computedRange.start),
-        formatISODate(new Date(computedRange.end.getTime() - 1)),
-        computeAggregate(),
-      ]
+      "statisticsOverview",
+      "range",
+      formatISODate(computedRange.start),
+      formatISODate(new Date(computedRange.end.getTime() - 1)),
+      computeAggregate(),
+    ]
     : ["statisticsOverview", "period", selectedPeriod];
 
   // fetch overview (send aggregate + dates when possible)
@@ -225,8 +226,8 @@ const AdminDashboardScreen = ({ navigation }: any) => {
       }
       if (selectedPeriod === "year") {
         const labels = [
-          "Jan","Feb","Mar","Apr","May","Jun",
-          "Jul","Aug","Sep","Oct","Nov","Dec"
+          "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+          "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
         ];
         const values = Array(12).fill(Math.round((data.revenue ?? 0) / 12));
         return { labels, values, transactions: Array(12).fill(0) };
@@ -238,7 +239,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
         let count = 0;
         while (cur <= e && count < 60) {
           labels.push(`${cur.getDate()}/${cur.getMonth() + 1}`);
-          values.push(Math.round((data.revenue ?? 0) / Math.max(1, (Math.ceil((e.getTime()-s.getTime())/(24*3600*1000))+1))));
+          values.push(Math.round((data.revenue ?? 0) / Math.max(1, (Math.ceil((e.getTime() - s.getTime()) / (24 * 3600 * 1000)) + 1))));
           cur.setDate(cur.getDate() + 1);
           count++;
         }
@@ -328,7 +329,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     <TouchableOpacity
       key={stat.id}
       style={[styles.statsCard, { borderLeftColor: stat.color }]}
-      onPress={() => navigation.navigate(stat.screen)}
+      onPress={() => gotoTab(stat.screen)}
     >
       <View style={styles.statsCardHeader}>
         <View
@@ -412,8 +413,8 @@ const AdminDashboardScreen = ({ navigation }: any) => {
               showDatePicker === "anchor"
                 ? anchorDate || new Date()
                 : showDatePicker === "start"
-                ? customDate.start || new Date()
-                : customDate.end || new Date()
+                  ? customDate.start || new Date()
+                  : customDate.end || new Date()
             }
             mode="date"
             display="default"
@@ -486,12 +487,18 @@ const AdminDashboardScreen = ({ navigation }: any) => {
           <Text style={styles.sectionTitle}>{t("admin.dashboard.overview")}</Text>
           <View style={styles.statsGrid}>{statsCards.map(renderStatsCard)}</View>
         </View>
+        {/* Logout button */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={() => resetToAuth()}
+        >
+          <Icon name="logout" size={22} color="#EF4444" />
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
 };
 
-/* styles (unchanged except small adjustments) */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   content: { flex: 1 },
@@ -543,6 +550,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 8,
     paddingBottom: 16,
+  },
+  logoutButton: {
+    marginLeft: 12,
+    padding: 8,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
   },
   sectionTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
   statsSection: { padding: 24 },

@@ -34,7 +34,7 @@ public class StatisticsController {
             @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String startDateStr,
             @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String endDateStr,
             @RequestParam(value = "period", required = false) String period,
-            @RequestParam(required = false, defaultValue = "day") String aggregate
+            @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate
     ) {
         // parse / default dates
         LocalDate today = LocalDate.now();
@@ -99,13 +99,14 @@ public class StatisticsController {
             @ApiResponse(responseCode = "404", description = "User not found"),
             @ApiResponse(responseCode = "400", description = "Invalid date range")
     })
-    @PreAuthorize("@PreAuthorize(\"hasAuthority('ROLE_ADMIN')\")  or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     @GetMapping("/user/{userId}")
     public AppApiResponse<StatisticsResponse> getUserStatistics(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             @RequestParam(required = false) String period,
             @Parameter(description = "Start date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "End date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate,
             Locale locale) {
 
         // Nếu không truyền start/end thì set theo period (phải làm trước khi gọi service)
@@ -143,7 +144,7 @@ public class StatisticsController {
         }
 
         // Gọi service sau khi đã có startDate/endDate
-        StatisticsResponse statistics = statisticsService.getUserStatistics(userId, startDate, endDate);
+        StatisticsResponse statistics = statisticsService.getUserStatistics(userId, startDate, endDate, aggregate);
 
         return AppApiResponse.<StatisticsResponse>builder()
                 .code(200)
@@ -159,7 +160,7 @@ public class StatisticsController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved user counts"),
             @ApiResponse(responseCode = "400", description = "Invalid parameters")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     @GetMapping("/users/count")
     public AppApiResponse<List<UserCountResponse>> getUserCounts(
             @RequestParam String period,
@@ -207,7 +208,7 @@ public class StatisticsController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved user growth"),
             @ApiResponse(responseCode = "400", description = "Invalid parameters")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     @GetMapping("/users/growth")
     public AppApiResponse<List<UserCountResponse>> getUserGrowth(
             @Parameter(description = "Period: day, month, year") @RequestParam String period,
@@ -255,13 +256,14 @@ public class StatisticsController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved activity statistics"),
             @ApiResponse(responseCode = "400", description = "Invalid parameters")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     @GetMapping("/activities")
     public AppApiResponse<List<ActivityCountResponse>> getActivityStatistics(
             @Parameter(description = "Activity type (optional)") @RequestParam(required = false) String activityType,
             @Parameter(description = "Start date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "End date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @Parameter(description = "Period shortcut (optional): day, week, month, year") @RequestParam(required = false) String period,
+            @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate,
             Locale locale) {
 
         // If client provided period, use it to compute start/end when they're missing
@@ -294,8 +296,10 @@ public class StatisticsController {
 
         if (startDate == null) startDate = LocalDate.now().minusWeeks(1).plusDays(1);
         if (endDate == null) endDate = LocalDate.now();
+        String usedPeriod = (aggregate != null ? aggregate : period);
+        if (usedPeriod == null) usedPeriod = "day";
 
-        List<ActivityCountResponse> activities = statisticsService.getActivityStatistics(activityType, startDate, endDate, period);
+        List<ActivityCountResponse> activities = statisticsService.getActivityStatistics(activityType, startDate, endDate, usedPeriod);
         return AppApiResponse.<List<ActivityCountResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("statistics.activities.success", null, locale))
@@ -308,7 +312,7 @@ public class StatisticsController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved transaction statistics"),
             @ApiResponse(responseCode = "400", description = "Invalid parameters")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     @GetMapping("/transactions")
     public AppApiResponse<List<TransactionStatsResponse>> getTransactionStatistics(
             @Parameter(description = "Status (optional)") @RequestParam(required = false) String status,
@@ -316,6 +320,7 @@ public class StatisticsController {
             @Parameter(description = "Provider (optional)") @RequestParam(required = false) String provider,
             @Parameter(description = "Start date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @Parameter(description = "End date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate,
             Locale locale) {
 
 
@@ -359,13 +364,167 @@ public class StatisticsController {
         if (startDate.isAfter(endDate)) {
             throw new IllegalArgumentException("startDate cannot be after endDate");
         }
+        String usedPeriod = (aggregate != null ? aggregate : period);
+        if (usedPeriod == null) usedPeriod = "day";
 
         // truyền period xuống service để group đúng
-        List<TransactionStatsResponse> transactions = statisticsService.getTransactionStatistics(status, provider, startDate, endDate, period);
+        List<TransactionStatsResponse> transactions = statisticsService.getTransactionStatistics(status, provider, startDate, endDate, usedPeriod);
         return AppApiResponse.<List<TransactionStatsResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("statistics.transactions.success", null, locale))
                 .result(transactions)
+                .build();
+    }
+
+    @PreAuthorize("hasAuthority('ROLE_TEACHER') or hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/teacher/overview")
+    public AppApiResponse<TeacherOverviewResponse> teacherOverview(
+            @RequestParam(value = "teacherId", required = false) UUID teacherId,
+            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String startDateStr,
+            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String endDateStr,
+            @RequestParam(value = "period", required = false) String period,
+            @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate
+    ) {
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = null;
+        LocalDate endDate = null;
+
+        try {
+            if (startDateStr != null && endDateStr != null) {
+                startDate = LocalDate.parse(startDateStr);
+                endDate = LocalDate.parse(endDateStr);
+            } else if (period != null) {
+                switch (period.toLowerCase()) {
+                    case "day" -> {
+                        startDate = today;
+                        endDate = today;
+                    }
+                    case "month" -> {
+                        endDate = today;
+                        startDate = today.minusMonths(1).plusDays(1);
+                    }
+                    case "year" -> {
+                        endDate = today;
+                        startDate = today.minusYears(1).plusDays(1);
+                    }
+                    default -> {
+                        endDate = today;
+                        startDate = today.minusWeeks(1).plusDays(1);
+                    }
+                }
+            } else {
+                endDate = today;
+                startDate = today.minusWeeks(1).plusDays(1);
+            }
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
+        }
+
+        if (startDate.isAfter(endDate)) throw new IllegalArgumentException("startDate cannot be after endDate");
+
+        TeacherOverviewResponse resp = statisticsService.getTeacherOverview(teacherId, startDate, endDate, aggregate);
+        Locale locale = LocaleContextHolder.getLocale();
+        String msg = messageSource.getMessage("statistics.get.success", null, "OK", locale);
+
+        return AppApiResponse.<TeacherOverviewResponse>builder().code(200).message(msg).result(resp).build();
+    }
+
+    /**
+     * Performance across teacher's courses (one entry per course)
+     */
+    @PreAuthorize("hasAuthority('ROLE_TEACHER') or hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/teacher/courses/performance")
+    public AppApiResponse<List<CoursePerformanceResponse>> teacherCoursesPerformance(
+            @RequestParam(value = "teacherId", required = false) UUID teacherId,
+            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String startDateStr,
+            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String endDateStr,
+            @RequestParam(value = "period", required = false) String period,
+            @RequestParam(value = "aggregate", required = false, defaultValue = "week") String aggregate
+    ) {
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = null;
+        LocalDate endDate = null;
+        try {
+            if (startDateStr != null && endDateStr != null) {
+                startDate = LocalDate.parse(startDateStr);
+                endDate = LocalDate.parse(endDateStr);
+            } else if (period != null) {
+                switch (period.toLowerCase()) {
+                    case "day" -> { startDate = today; endDate = today; }
+                    case "month" -> { endDate = today; startDate = today.minusMonths(1).plusDays(1); }
+                    case "year" -> { endDate = today; startDate = today.minusYears(1).plusDays(1); }
+                    default -> { endDate = today; startDate = today.minusMonths(1).plusDays(1); }
+                }
+            } else {
+                endDate = today;
+                startDate = today.minusMonths(1).plusDays(1);
+            }
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
+        }
+
+        if (startDate.isAfter(endDate)) throw new IllegalArgumentException("startDate cannot be after endDate");
+
+        List<CoursePerformanceResponse> out = statisticsService.getTeacherCoursesPerformance(teacherId, startDate, endDate, aggregate);
+
+        return AppApiResponse.<List<CoursePerformanceResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("statistics.get.success", null, LocaleContextHolder.getLocale()))
+                .result(out)
+                .build();
+    }
+
+    /**
+     * Lesson stats for a specific course (teacher must be owner)
+     */
+    @PreAuthorize("hasAuthority('ROLE_TEACHER') or hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/teacher/courses/{courseId}/lessons")
+    public AppApiResponse<List<LessonStatsResponse>> teacherCourseLessons(
+            @PathVariable UUID courseId,
+            @RequestParam(value = "teacherId", required = false) UUID teacherId,
+            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
+    ) {
+        // startDate/endDate optional, default: last 30 days
+        LocalDate today = LocalDate.now();
+        if (startDate == null || endDate == null) {
+            endDate = today;
+            startDate = today.minusDays(29);
+        }
+        if (startDate.isAfter(endDate)) throw new IllegalArgumentException("startDate cannot be after endDate");
+
+        List<LessonStatsResponse> out = statisticsService.getTeacherCourseLessonStats(teacherId, courseId, startDate, endDate);
+        return AppApiResponse.<List<LessonStatsResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("statistics.get.success", null, LocaleContextHolder.getLocale()))
+                .result(out)
+                .build();
+    }
+
+    /**
+     * Revenue timeseries for a specific course (teacher must be owner)
+     */
+    @PreAuthorize("hasAuthority('ROLE_TEACHER') or hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/teacher/courses/{courseId}/revenue")
+    public AppApiResponse<List<com.connectJPA.LinguaVietnameseApp.dto.TimeSeriesPoint>> teacherCourseRevenue(
+            @PathVariable UUID courseId,
+            @RequestParam(value = "teacherId", required = false) UUID teacherId,
+            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate
+    ) {
+        LocalDate today = LocalDate.now();
+        if (startDate == null || endDate == null) {
+            endDate = today;
+            startDate = today.minusMonths(1).plusDays(1);
+        }
+        if (startDate.isAfter(endDate)) throw new IllegalArgumentException("startDate cannot be after endDate");
+
+        List<com.connectJPA.LinguaVietnameseApp.dto.TimeSeriesPoint> ts = statisticsService.getTeacherCourseRevenue(teacherId, courseId, startDate, endDate, aggregate);
+        return AppApiResponse.<List<com.connectJPA.LinguaVietnameseApp.dto.TimeSeriesPoint>>builder()
+                .code(200)
+                .message(messageSource.getMessage("statistics.get.success", null, LocaleContextHolder.getLocale()))
+                .result(ts)
                 .build();
     }
 }

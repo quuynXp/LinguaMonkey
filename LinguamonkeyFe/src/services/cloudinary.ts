@@ -1,35 +1,56 @@
 import { EXPO_PUBLIC_CLOUDINARY_PRESET, EXPO_PUBLIC_CLOUDINARY_API_UPLOAD } from '@env';
+import instance from '../api/axiosInstance';
+import { useUserStore } from '../stores/UserStore';
 
-/**
- * Upload ảnh tạm vào Cloudinary (folder: temp/)
- * file: { uri, name, type } theo chuẩn React Native
- */
+
+
 export async function uploadAvatarToTemp(file: { uri: string; name: string; type: string }) {
   const form = new FormData();
-  form.append('file', {
-    // @ts-ignore React Native FormData
+  form.append("file", {
     uri: file.uri,
-    name: file.name,
     type: file.type,
-  });
-  form.append('upload_preset', EXPO_PUBLIC_CLOUDINARY_PRESET!);
-  form.append('folder', 'temp');
+    name: file.name,
+  } as any);
+  form.append("upload_preset", EXPO_PUBLIC_CLOUDINARY_PRESET!);
+  form.append("folder", "my-folder");
 
-  const res = await fetch(EXPO_PUBLIC_CLOUDINARY_API_UPLOAD, {
-    method: 'POST',
-    body: form,
-  });
+  try {
+    const res = await fetch(EXPO_PUBLIC_CLOUDINARY_API_UPLOAD, {
+      method: "POST",
+      body: form,
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
 
-  if (!res.ok) {
-    const t = await res.text().catch(() => '');
-    throw new Error(`Upload Cloudinary fail: ${res.status} ${t}`);
+    if (!res.ok) {
+      const t = await res.text();
+      console.log("Upload failed");
+      throw new Error(`Upload failed: ${res.status} ${t}`);
+    }
+
+    const data = await res.json();
+    console.log("Cloudinary upload success:", data);
+
+    return {
+      secureUrl: data.secure_url,
+      publicId: data.public_id,
+    };
+  } catch (err) {
+    console.error("Upload error", err);
+    throw err;
   }
+}
 
-  const data = await res.json();
 
-  return {
-    secureUrl: data.secure_url as string,
-    publicId: data.public_id as string, // ví dụ: "temp/abc123"
-    originalFilename: data.original_filename as string,
-  };
+async function saveAvatarUrl(userId: string, avatarUrl: string) {
+  try {
+    const res = await instance.patch(`/users/${userId}/avatar`, null, {
+      params: { avatarUrl }, // backend đang nhận @RequestParam
+    });
+    return res.data;
+  } catch (err: any) {
+    console.error('Save avatar URL fail:', err.response?.data || err.message);
+    throw err;
+  }
 }

@@ -6,9 +6,10 @@ import { RootNavigationRef, flushPendingActions, resetToTab } from "./utils/navi
 import { NavigationContainer } from "@react-navigation/native";
 import MainStack from "./navigation/stack/MainStack";
 import { useTokenStore } from "./stores/tokenStore";
-import { getRoleFromToken } from "./utils/decodeToken";
+import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
 import * as Localization from 'expo-localization';
+import instance from "./api/axiosInstance";
 
 type InitialRoute =
   | "Auth"
@@ -21,7 +22,7 @@ type InitialRoute =
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [initialScreenName, setInitialScreenName] = useState<InitialRoute>("Auth");
+  const [initialScreenName, setInitialScreenName] = useState<InitialRoute>("AppLaunchScreen");
 
   const initializeTokens = useTokenStore((s) => s.initializeTokens);
 
@@ -35,14 +36,18 @@ const RootNavigation = () => {
       try {
         const hasValidToken = await initializeTokens();
 
-        // Parse string -> boolean
-        const hasDonePlacementTestStr = await AsyncStorage.getItem("hasDonePlacementTest");
-        const hasLoggedInStr = await AsyncStorage.getItem("hasLoggedIn");
-
-        const hasDonePlacementTest = hasDonePlacementTestStr === "true";
-        const hasLoggedIn = hasLoggedInStr === "true";
+        const hasDonePlacementTest = (await AsyncStorage.getItem("hasDonePlacementTest")) === "true";
+        const hasLoggedIn = (await AsyncStorage.getItem("hasLoggedIn")) === "true";
 
         console.log("Boot flags:", { hasValidToken, hasDonePlacementTest, hasLoggedIn });
+
+        if (!hasValidToken && hasLoggedIn) {
+          console.log("Token invalid but hasLoggedIn=true, cleaning up");
+          await useTokenStore.getState().clearTokens();
+          await AsyncStorage.setItem("hasLoggedIn", "false");
+          setInitialScreenName("AppLaunchScreen");
+          return;
+        }
 
         const userStore = useUserStore.getState();
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
@@ -62,35 +67,53 @@ const RootNavigation = () => {
 
         const state = useTokenStore.getState();
         const accessToken = state.accessToken;
-        const refreshToken = state.refreshToken;
 
-        if (hasValidToken) {
-          const roles = accessToken ? getRoleFromToken(accessToken) : [];
-          console.log("User roles from token:", roles);
 
-          if (roles.includes("ROLE_ADMIN")) {
-            console.log("Navigating to Admin");
-            setInitialScreenName("Admin");
-          } else if (roles.includes("ROLE_TEACHER")) {
-            console.log("Navigating to Teacher");
-            setInitialScreenName("Teacher");
-          } else if (!hasDonePlacementTest) {
-            setInitialScreenName("ProficiencyTestScreen");
-          } else {
-            console.log("Navigating to", isFirstOpenToday);
-            setInitialScreenName(isFirstOpenToday ? "DailyWelcome" : "TabApp");
-            if (!isFirstOpenToday) {
-              resetToTab("Home");
+
+        if (hasValidToken && accessToken) {
+          try {
+            const payload = decodeToken(accessToken);
+            if (payload?.userId) {
+              userStore.setUserId(payload.userId);
+              const userRes = await instance.get(`/users/${payload.userId}`);
+              const rawUser = userRes.data.result || {};
+              const normalizedUser = { ...rawUser, userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id, roles: getRoleFromToken(accessToken) };
+              userStore.setUser(normalizedUser);
+              userStore.setAuthenticated(true);
+              await AsyncStorage.setItem("hasLoggedIn", "true");
+
+              const roles = getRoleFromToken(accessToken);
+              console.log("User roles from token:", roles);
+
+              if (roles.includes("ROLE_ADMIN")) {
+                console.log("Navigating to Admin");
+                setInitialScreenName("Admin");
+              } else if (roles.includes("ROLE_TEACHER")) {
+                console.log("Navigating to Teacher");
+                setInitialScreenName("Teacher");
+              } else {
+                setInitialScreenName(isFirstOpenToday ? "DailyWelcome" : "TabApp");
+                if (!isFirstOpenToday) {
+                  resetToTab("Home");
+                }
+              }
+            } else {
+              throw new Error('Invalid token payload: missing userId');
             }
+          } catch (e) {
+            console.error('Boot fetch user failed:', e);
+            await useTokenStore.getState().clearTokens();
+            setInitialScreenName('Auth');
+            return false;
           }
-        } else if (refreshToken) {
-          setInitialScreenName("Auth");
         } else {
           setInitialScreenName("AppLaunchScreen");
         }
+        return false;
       } catch (e) {
         console.error("RootNavigation boot error:", e);
         setInitialScreenName("AppLaunchScreen");
+        return false;
       } finally {
         if (mounted) setIsLoading(false);
       }

@@ -1,16 +1,18 @@
 import React, { useRef } from 'react';
 import {
-    Animated,
-    Linking,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Animated,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from 'react-i18next';
 
 const AboutScreen = ({ navigation }) => {
+  const { t } = useTranslation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -30,32 +32,32 @@ const AboutScreen = ({ navigation }) => {
   }, []);
 
   const teamMembers = [
-    { name: 'Nguyễn Văn A', role: 'CEO & Founder', avatar: '👨‍💼' },
-    { name: 'Trần Thị B', role: 'CTO', avatar: '👩‍💻' },
-    { name: 'Lê Văn C', role: 'Lead Designer', avatar: '👨‍🎨' },
-    { name: 'Phạm Thị D', role: 'Language Expert', avatar: '👩‍🏫' },
+    { name: 'Nguyễn Văn A', role: t('about.team.roles.ceo'), avatar: '👨‍💼' },
+    { name: 'Trần Thị B', role: t('about.team.roles.cto'), avatar: '👩‍💻' },
+    { name: 'Lê Văn C', role: t('about.team.roles.designer'), avatar: '👨‍🎨' },
+    { name: 'Phạm Thị D', role: t('about.team.roles.languageExpert'), avatar: '👩‍🏫' },
   ];
 
   const features = [
     {
       icon: 'school',
-      title: 'Học tập thông minh',
-      description: 'AI cá nhân hóa trải nghiệm học tập cho từng người dùng',
+      title: t('about.features.smartLearning.title'),
+      description: t('about.features.smartLearning.desc'),
     },
     {
       icon: 'chat',
-      title: 'Trò chuyện với AI',
-      description: 'Luyện tập hội thoại với trợ lý AI thông minh',
+      title: t('about.features.aiChat.title'),
+      description: t('about.features.aiChat.desc'),
     },
     {
       icon: 'trending-up',
-      title: 'Theo dõi tiến độ',
-      description: 'Phân tích chi tiết về quá trình học tập của bạn',
+      title: t('about.features.progress.title'),
+      description: t('about.features.progress.desc'),
     },
     {
       icon: 'group',
-      title: 'Cộng đồng',
-      description: 'Kết nối với hàng triệu người học trên toàn thế giới',
+      title: t('about.features.community.title'),
+      description: t('about.features.community.desc'),
     },
   ];
 
@@ -66,9 +68,7 @@ const AboutScreen = ({ navigation }) => {
     { name: 'YouTube', icon: 'play-circle', url: 'https://youtube.com/linguaviet' },
   ];
 
-  const openLink = (url: string) => {
-    Linking.openURL(url);
-  };
+  const openLink = (url: string) => Linking.openURL(url);
 
   return (
     <View style={styles.container}>
@@ -76,7 +76,7 @@ const AboutScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Về ứng dụng</Text>
+        <Text style={styles.headerTitle}>{t('about.title')}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -84,53 +84,40 @@ const AboutScreen = ({ navigation }) => {
         <Animated.View
           style={[
             styles.scrollContent,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
           ]}
         >
-          {/* App Logo & Info */}
+          {/* App Info */}
           <View style={styles.appSection}>
-            <View style={styles.logoContainer}>
-              
-            </View>
             <Text style={styles.appName}>LinguaViet</Text>
-            <Text style={styles.appTagline}>
-              Ứng dụng học ngôn ngữ thông minh cho người Việt
-            </Text>
+            <Text style={styles.appTagline}>{t('about.tagline')}</Text>
             <View style={styles.versionContainer}>
-              <Text style={styles.versionText}>Phiên bản 1.0.0</Text>
+              <Text style={styles.versionText}>{t('about.version', { version: '1.0.0' })}</Text>
               <View style={styles.versionBadge}>
-                <Text style={styles.versionBadgeText}>Mới nhất</Text>
+                <Text style={styles.versionBadgeText}>{t('about.latest')}</Text>
               </View>
             </View>
           </View>
 
           {/* Mission */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Sứ mệnh</Text>
+            <Text style={styles.sectionTitle}>{t('about.mission.title')}</Text>
             <View style={styles.missionCard}>
-              <Text style={styles.missionText}>
-                Chúng tôi tin rằng việc học ngôn ngữ không chỉ là học từ vựng và ngữ pháp, 
-                mà còn là cầu nối văn hóa giữa các dân tộc. LinguaViet được tạo ra để 
-                giúp người Việt Nam tiếp cận và thành thạo các ngôn ngữ quốc tế một cách 
-                hiệu quả và thú vị nhất.
-              </Text>
+              <Text style={styles.missionText}>{t('about.mission.content')}</Text>
             </View>
           </View>
 
           {/* Features */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tính năng nổi bật</Text>
+            <Text style={styles.sectionTitle}>{t('about.features.title')}</Text>
             <View style={styles.featuresGrid}>
-              {features.map((feature, index) => (
-                <View key={index} style={styles.featureCard}>
+              {features.map((f, i) => (
+                <View key={i} style={styles.featureCard}>
                   <View style={styles.featureIcon}>
-                    <Icon name={feature.icon} size={24} color="#4F46E5" />
+                    <Icon name={f.icon} size={24} color="#4F46E5" />
                   </View>
-                  <Text style={styles.featureTitle}>{feature.title}</Text>
-                  <Text style={styles.featureDescription}>{feature.description}</Text>
+                  <Text style={styles.featureTitle}>{f.title}</Text>
+                  <Text style={styles.featureDescription}>{f.description}</Text>
                 </View>
               ))}
             </View>
@@ -138,75 +125,71 @@ const AboutScreen = ({ navigation }) => {
 
           {/* Team */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Đội ngũ phát triển</Text>
+            <Text style={styles.sectionTitle}>{t('about.team.title')}</Text>
             <View style={styles.teamGrid}>
-              {teamMembers.map((member, index) => (
-                <View key={index} style={styles.teamCard}>
-                  <Text style={styles.teamAvatar}>{member.avatar}</Text>
-                  <Text style={styles.teamName}>{member.name}</Text>
-                  <Text style={styles.teamRole}>{member.role}</Text>
+              {teamMembers.map((m, i) => (
+                <View key={i} style={styles.teamCard}>
+                  <Text style={styles.teamAvatar}>{m.avatar}</Text>
+                  <Text style={styles.teamName}>{m.name}</Text>
+                  <Text style={styles.teamRole}>{m.role}</Text>
                 </View>
               ))}
             </View>
           </View>
 
-          {/* Statistics */}
+          {/* Stats */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thống kê</Text>
+            <Text style={styles.sectionTitle}>{t('about.stats.title')}</Text>
             <View style={styles.statsContainer}>
               <View style={styles.statCard}>
                 <Text style={styles.statNumber}>100K+</Text>
-                <Text style={styles.statLabel}>Người dùng</Text>
+                <Text style={styles.statLabel}>{t('about.stats.users')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statNumber}>50+</Text>
-                <Text style={styles.statLabel}>Quốc gia</Text>
+                <Text style={styles.statLabel}>{t('about.stats.countries')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statNumber}>1M+</Text>
-                <Text style={styles.statLabel}>Bài học</Text>
+                <Text style={styles.statLabel}>{t('about.stats.lessons')}</Text>
               </View>
               <View style={styles.statCard}>
                 <Text style={styles.statNumber}>4.8★</Text>
-                <Text style={styles.statLabel}>Đánh giá</Text>
+                <Text style={styles.statLabel}>{t('about.stats.reviews')}</Text>
               </View>
             </View>
           </View>
 
-          {/* Social Media */}
+          {/* Social */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Theo dõi chúng tôi</Text>
+            <Text style={styles.sectionTitle}>{t('about.social.title')}</Text>
             <View style={styles.socialContainer}>
-              {socialLinks.map((social, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={styles.socialButton}
-                  onPress={() => openLink(social.url)}
-                >
-                  <Icon name={social.icon} size={24} color="#4F46E5" />
-                  <Text style={styles.socialText}>{social.name}</Text>
+              {socialLinks.map((s, i) => (
+                <TouchableOpacity key={i} style={styles.socialButton} onPress={() => openLink(s.url)}>
+                  <Icon name={s.icon} size={24} color="#4F46E5" />
+                  <Text style={styles.socialText}>{s.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
 
-          {/* Legal & Contact */}
+          {/* Legal */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Pháp lý & Liên hệ</Text>
+            <Text style={styles.sectionTitle}>{t('about.legal.title')}</Text>
             <View style={styles.legalContainer}>
               <TouchableOpacity style={styles.legalItem}>
                 <Icon name="description" size={20} color="#6B7280" />
-                <Text style={styles.legalText}>Điều khoản sử dụng</Text>
+                <Text style={styles.legalText}>{t('about.legal.terms')}</Text>
                 <Icon name="open-in-new" size={16} color="#9CA3AF" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.legalItem}>
                 <Icon name="security" size={20} color="#6B7280" />
-                <Text style={styles.legalText}>Chính sách bảo mật</Text>
+                <Text style={styles.legalText}>{t('about.legal.privacy')}</Text>
                 <Icon name="open-in-new" size={16} color="#9CA3AF" />
               </TouchableOpacity>
               <TouchableOpacity style={styles.legalItem}>
                 <Icon name="email" size={20} color="#6B7280" />
-                <Text style={styles.legalText}>Liên hệ: info@linguaviet.com</Text>
+                <Text style={styles.legalText}>{t('about.legal.contact')}</Text>
                 <Icon name="open-in-new" size={16} color="#9CA3AF" />
               </TouchableOpacity>
             </View>
@@ -214,12 +197,8 @@ const AboutScreen = ({ navigation }) => {
 
           {/* Copyright */}
           <View style={styles.copyrightSection}>
-            <Text style={styles.copyrightText}>
-              © 2024 LinguaViet. Tất cả quyền được bảo lưu.
-            </Text>
-            <Text style={styles.copyrightSubtext}>
-              Được phát triển với ❤️ tại Việt Nam
-            </Text>
+            <Text style={styles.copyrightText}>{t('about.copyright')}</Text>
+            <Text style={styles.copyrightSubtext}>{t('about.madeWithLove')}</Text>
           </View>
         </Animated.View>
       </ScrollView>

@@ -5,8 +5,11 @@ import com.connectJPA.LinguaVietnameseApp.enums.NotificationType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.hibernate.annotations.Type;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 
 @Entity
@@ -37,7 +40,6 @@ public class Notification extends BaseEntity {
     @Column(name = "language_code")
     private String languageCode;
 
-    @Column(name = "payload", columnDefinition = "jsonb")
     private String payload;
 
     @Column(name = "read", nullable = false)

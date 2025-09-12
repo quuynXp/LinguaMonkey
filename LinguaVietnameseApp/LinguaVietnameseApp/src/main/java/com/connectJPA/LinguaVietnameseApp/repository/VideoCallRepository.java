@@ -23,4 +23,8 @@ public interface VideoCallRepository extends JpaRepository<VideoCall, UUID> {
     void softDeleteById(@Param("id") UUID id);
 
     List<VideoCall> findByCallerIdAndIsDeletedFalse(UUID callerId);
+
+    // count calls where user is caller or callee and call had start_time (or status = COMPLETED)
+    @Query("SELECT COUNT(vc) FROM VideoCall vc WHERE (vc.callerId = :userId OR vc.calleeId = :userId) AND vc.startTime IS NOT NULL")
+    long countCompletedCallsForUser(@Param("userId") UUID userId);
 }

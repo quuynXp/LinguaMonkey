@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.LessonType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -33,6 +34,13 @@ public class Lesson extends BaseEntity {
 
     @Column(name = "course_id", nullable = false)
     private UUID courseId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "lesson_type")
+    private LessonType lessonType;
+
+    @Column(name = "skill_types") // save as CSV e.g. "LISTENING,SPEAKING"
+    private String skillTypes;
 
     @Column(name = "lesson_series_id")
     private UUID lessonSeriesId;

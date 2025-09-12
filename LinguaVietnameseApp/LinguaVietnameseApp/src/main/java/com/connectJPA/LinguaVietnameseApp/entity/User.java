@@ -8,6 +8,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
 
@@ -35,6 +36,8 @@ public class User extends BaseEntity {
 
     @Column(name = "nickname")
     private String nickname;
+
+    private String bio;
 
     @Column(name = "phone", unique = true)
     private String phone;
@@ -70,6 +73,9 @@ public class User extends BaseEntity {
 
     @Column(name = "streak", nullable = false)
     private int streak = 0;
+
+    @Column(name = "last_active_at")
+    private OffsetDateTime lastActiveAt;
 
     @Enumerated(EnumType.STRING)
     private LearningPlace learningPace;

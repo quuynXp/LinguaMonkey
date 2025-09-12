@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -16,6 +17,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @SuperBuilder
+@JsonIgnoreProperties({"hibernateLazyInitializer", "handler"})
 public class DailyChallenge extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -25,7 +27,8 @@ public class DailyChallenge extends BaseEntity {
     private String description;
     private int baseExp;
 
+    private int rewardCoins;
+
     @Enumerated(EnumType.STRING)
     private DifficultyLevel difficulty;
 }
-

@@ -2,17 +2,33 @@ import { EXPO_PUBLIC_API_BASE_URL } from '@env';
 import axios, { AxiosRequestConfig } from 'axios';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
-import { useTokenStore, setTokens, clearTokens } from '../stores/tokenStore';
+import { useTokenStore } from '../stores/tokenStore';
 import { showError } from '../utils/toastHelper';
 import * as Localization from 'expo-localization';
 import { getErrorMessageFromCode } from '../types/errorCodes';
 import { t } from 'i18next';
-import { RootNavigationRef } from '../utils/navigationRef';
 import * as Application from 'expo-application';
 import { resetToAuth } from '../utils/navigationRef';
-import { useUserStore } from '../stores/UserStore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+let isClearingTokens = false;
+
+function waitForTokenStoreInit(timeout = 5000) {
+  return new Promise<void>((resolve) => {
+    const start = Date.now();
+    const tick = () => {
+      if (useTokenStore.getState().initialized) return resolve();
+      if (Date.now() - start > timeout) return resolve();
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
+export const refreshClient = axios.create({
+  baseURL: EXPO_PUBLIC_API_BASE_URL,
+  withCredentials: true,
+});
 
 const userLocale = Localization.getLocales()[0]?.languageTag || 'en-US';
 
@@ -21,117 +37,206 @@ const instance = axios.create({
   withCredentials: true,
 });
 
-// ===== REQUEST INTERCEPTOR =====
 instance.interceptors.request.use(async (config: AxiosRequestConfig) => {
-  const tokenStore = useTokenStore.getState();
-  const accessToken = tokenStore.accessToken;
+  await waitForTokenStoreInit(5000);
 
-  // Device ID chuẩn
-  let deviceId = 'unknown-device';
-  if (Platform.OS === 'android') {
-    deviceId = Application.androidId || 'unknown-device';
-  } else if (Platform.OS === 'ios') {
-    deviceId = await Application.getIosIdForVendorAsync();
+  // nếu url chứa refresh-token -> bắt buộc body có refreshToken
+  if (config.url?.toLowerCase().includes('/auth/refresh-token')) {
+    const rawData = config.data;
+    let dataObj: any = rawData;
+
+    if (typeof rawData === 'string') {
+      try { dataObj = JSON.parse(rawData); } catch { dataObj = rawData; }
+    }
+
+    const bodyHasRefresh =
+      dataObj &&
+      typeof dataObj === 'object' &&
+      'refreshToken' in dataObj &&
+      typeof dataObj.refreshToken === 'string' &&
+      dataObj.refreshToken.trim().length > 0;
+
+    console.log('[instance.request] /auth/refresh-token request detected', {
+      url: config.url,
+      bodyPresent: !!dataObj,
+      bodyHasRefresh,
+      callerStack: new Error().stack?.split('\n').slice(2, 7) // short stack
+    });
+
+    if (!bodyHasRefresh) {
+      // Throw so request doesn't go out with empty body; this surfaces where call originated
+      throw new Error('[instance.request] Blocked /auth/refresh-token call: missing refreshToken in body');
+    }
   }
 
-  // Chỉ set những header thực sự có giá trị
+  const accessToken = useTokenStore.getState().accessToken;
+
+  let deviceId = 'unknown-device';
+  try {
+    if (Platform.OS === 'android') {
+      deviceId = Application.androidId || 'unknown-device';
+    } else if (Platform.OS === 'ios') {
+      deviceId = await Application.getIosIdForVendorAsync();
+    }
+  } catch (e) {
+    console.warn('device id read error', e);
+  }
+
   const headers: Record<string, string> = {
     'Accept-Language': userLocale,
     'Device-Id': deviceId,
     'X-Forwarded-For': 'unknown-ip',
   };
-  if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`;
-  if (Platform.OS !== 'web') headers['User-Agent'] = `${Device.osName} ${Device.osVersion}`;
 
-  config.headers = {
-    ...config.headers,
-    ...headers,
-  };
+  if (accessToken && accessToken.trim().length > 0) {
+    headers['Authorization'] = `Bearer ${accessToken.trim()}`;
+  }
 
+  config.headers = { ...config.headers, ...headers };
   return config;
-}, (error) => Promise.reject(error));
+});
 
 
-// ===== RESPONSE INTERCEPTOR =====
+let isRefreshing = false;
+let refreshPromise: Promise<string | null> | null = null;
+
 instance.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
-    const { refreshToken, setTokens, clearTokens, initialized } = useTokenStore.getState();
+    const originalRequest = error.config || {};
+    const { setTokens, clearTokens, initialized } = useTokenStore.getState();
     const hasLoggedIn = (await AsyncStorage.getItem('hasLoggedIn')) === 'true';
 
     const status = error.response?.status;
     const errorCode = error.response?.data?.code;
     const errorMessage = error.response?.data?.message || 'Unknown error';
 
-    // Skip retry if store is not initialized
+    console.log('[axios response] error details', { status, errorCode, errorMessage, url: originalRequest.url });
+
     if (!initialized) {
-      console.log('Token store not initialized, skipping retry');
+      console.log('Token store not initialized, skipping retry/reset. url=', originalRequest.url);
       return Promise.reject(error);
     }
 
-    const shouldRetry =
-      status === 401 &&
-      !originalRequest._retry &&
-      originalRequest.url !== '/auth/refresh-token';
+    const requestUrl = originalRequest.url || '';
+    const isRefreshEndpoint = requestUrl.includes('/auth/refresh-token');
 
-    if (shouldRetry && refreshToken) {
-      originalRequest._retry = true;
-      try {
-        const res = await axios.post('/auth/refresh-token', { refreshToken });
-        const newAccessToken = res.data.result?.token;
-        const newRefreshToken = res.data.result?.refreshToken;
+    // ensure not infinite retry
+    originalRequest._retryCount = originalRequest._retryCount ?? 0;
 
-        if (newAccessToken && newRefreshToken) {
-          await setTokens(newAccessToken, newRefreshToken);
-          originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
-          return instance(originalRequest);
-        } else {
-          throw new Error('Invalid refresh token response');
+    if (status === 401 && !isRefreshEndpoint) {
+      if (originalRequest._retryCount >= 1) {
+        console.log('[axios response] already retried once, aborting and clearing tokens');
+        await clearTokens();
+        if (hasLoggedIn) resetToAuth('Login');
+        return Promise.reject(error);
+      }
+      originalRequest._retryCount += 1;
+
+      // READ LATEST tokens trực tiếp từ store (no stale)
+      const latestAccess = useTokenStore.getState().accessToken;
+      const latestRefresh = useTokenStore.getState().refreshToken;
+
+      // If there's an access token, introspect it **now**
+      if (latestAccess) {
+        try {
+          const { introspectToken } = await import('../services/authService');
+          const tokenStillValid = await introspectToken(latestAccess);
+          console.log('[axios response] introspectToken result:', tokenStillValid);
+
+          if (tokenStillValid === true) {
+            // token vẫn valid -> retry request with latest access
+            originalRequest.headers = originalRequest.headers || {};
+            originalRequest.headers['Authorization'] = `Bearer ${latestAccess}`;
+            return instance(originalRequest);
+          }
+        } catch (ie) {
+          console.error('[axios response] introspectToken error:', ie);
+          // tiếp tục flow -> sẽ thử refresh nếu có refresh token
         }
+      }
+
+      // Nếu không có refresh token vào thời điểm này -> không gọi refresh
+      if (!latestRefresh || latestRefresh.trim().length === 0) {
+        console.log('[axios response] No refresh token present at refresh time -> clearing tokens');
+        await clearTokens();
+        if (hasLoggedIn) resetToAuth('Login');
+        return Promise.reject(error);
+      }
+
+      // Thực hiện refresh (single-flight)
+      try {
+        if (!isRefreshing) {
+          isRefreshing = true;
+          refreshPromise = (async () => {
+            try {
+              const { refreshTokenApi } = await import('../services/authService');
+              const result = await refreshTokenApi(latestRefresh);
+              if (!result?.token || !result?.refreshToken) {
+                throw new Error('Invalid refresh result');
+              }
+              await setTokens(result.token, result.refreshToken);
+              return result.token;
+            } catch (e) {
+              console.error('[Refresh] failure inside refreshPromise', e);
+              await clearTokens();
+              return null;
+            } finally {
+              isRefreshing = false;
+              refreshPromise = null;
+            }
+          })();
+        }
+
+        const newAccessToken = await refreshPromise;
+        if (!newAccessToken) {
+          if (hasLoggedIn) resetToAuth('Login');
+          return Promise.reject(error);
+        }
+
+        originalRequest.headers = originalRequest.headers || {};
+        originalRequest.headers['Authorization'] = `Bearer ${newAccessToken}`;
+        return instance(originalRequest);
       } catch (refreshError) {
         console.error('Refresh token error:', refreshError);
-        if (hasLoggedIn) {
-          resetToAuth('Login');
-        }
+        await clearTokens();
+        if (hasLoggedIn) resetToAuth('Login');
         return Promise.reject(refreshError);
       }
     }
 
+    // 401 returned from refresh endpoint itself -> clear tokens and stop
+    if (status === 401 && isRefreshEndpoint) {
+      console.log('401 on refresh endpoint -> clear tokens and stop');
+      await clearTokens();
+      if (hasLoggedIn) resetToAuth('Login');
+      return Promise.reject(error);
+    }
+
+    // other sensitive errors...
     const sensitiveErrorCodes = ['TOKEN_INVALID', 'REFRESH_TOKEN_EXPIRED'];
-    if (sensitiveErrorCodes.includes(errorCode) || status === 401) {
-      if (hasLoggedIn && initialized) {
-        resetToAuth('Login');
+    if (sensitiveErrorCodes.includes(errorCode)) {
+      console.log('Sensitive auth error -> resetToAuth', { errorCode });
+      await clearTokens();
+      if (hasLoggedIn) resetToAuth('Login');
+      return Promise.reject(error);
+    }
+
+    // fallback error handling
+    if (status === 401) {
+      console.log('401 after retry => clearTokens');
+      if (!isClearingTokens) {
+        isClearingTokens = true;
+        try { await clearTokens(); } finally { isClearingTokens = false; }
       }
       return Promise.reject(error);
     }
 
-    const friendlyMessage = errorCode
-      ? getErrorMessageFromCode(errorCode, errorMessage)
-      : errorMessage;
-
-    showError(
-      t(
-        errorCode && errorCode < 5000 ? 'apiError' : friendlyMessage,
-        { code: errorCode, message: friendlyMessage }
-      )
-    );
-
+    // show friendly error
+    const friendlyMessage = errorCode ? getErrorMessageFromCode(errorCode, errorMessage) : errorMessage;
+    showError(t(errorCode && errorCode < 5000 ? 'apiError' : friendlyMessage, { code: errorCode, message: friendlyMessage }));
     return Promise.reject(error);
   }
 );
 
 export default instance;
-
-// ===== Hỗ trợ move Cloudinary =====
-export async function moveCloudinaryFromTemp(userId: number | string, fromPublicId: string) {
-  const leaf = fromPublicId.replace(/^temp\//, '');
-  const toPublicId = `avatars/${userId}/${leaf}`;
-
-  return instance.post('/api/media/move', {
-    fromPublicId,
-    toPublicId,
-    overwrite: true,
-    resourceType: 'image',
-  });
-}

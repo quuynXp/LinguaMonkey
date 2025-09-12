@@ -1,6 +1,4 @@
-"use client"
-
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import {
   Image,
   ScrollView,
@@ -25,27 +23,52 @@ const StudentCoursesScreen = ({ navigation }) => {
 
   const { usePurchasedCourses, useRecommendedCourses, useAllCourses } = useCourses()
 
-  const { data: purchasedData, isLoading: purchasedLoading, refetch: refetchPurchased } = usePurchasedCourses(1, 20)
+  const { data: purchasedData, isLoading: purchasedLoading, refetch: refetchPurchased } = usePurchasedCourses(0, 20)
   const {
     data: recommendedCourses,
     isLoading: recommendedLoading,
     refetch: refetchRecommended,
-  } = useRecommendedCourses(10)
-  const {
-    data: allCoursesData,
-    isLoading: allLoading,
-    refetch: refetchAll,
-  } = useAllCourses({
-    page: 1,
-    limit: 20,
-    category: selectedCategory !== "All" ? selectedCategory : undefined,
-    level: selectedLevel || undefined,
-    search: searchQuery || undefined,
-    sortBy,
+  } = useRecommendedCourses("", 10) 
+
+  const sortField = useMemo(() => {
+    switch (sortBy) {
+      case "newest":
+        return "createdAt"
+      case "price_low":
+      case "price_high":
+        return "price"
+      case "rating":
+        return "rating"
+      default:
+        return "popularity"
+    }
+  }, [sortBy])
+
+  const sortOrder = useMemo(() => {
+    if (sortBy === "price_high") return "desc"
+    if (sortBy === "newest") return "desc"
+    return "asc"
+  }, [sortBy])
+
+  const { data: allCoursesData, isLoading: allLoading, refetch: refetchAll } = useAllCourses({
+    page: 0,
+    size: 20,
+    title: searchQuery || undefined,
+    sortBy: sortField,
+    sortOrder,
   })
 
   const purchasedCourses = purchasedData?.data || []
   const allCourses = allCoursesData?.data || []
+
+  // Client-side filtering for category/level because backend hook signature differs
+  const filteredCourses = allCourses.filter((c) => {
+    const categoryMatches = selectedCategory === "All" || (c.category || c.tags || "").toString().includes(selectedCategory)
+    const levelMatches =
+      !selectedLevel ||
+      (c.difficultyLevel || c.level || "").toString().toLowerCase().includes(selectedLevel.toLowerCase())
+    return categoryMatches && levelMatches
+  })
 
   const categories = ["All", "Business", "Conversation", "Grammar", "Vocabulary", "Pronunciation", "Technology"]
   const levels = ["", "Beginner", "Intermediate", "Advanced"]
@@ -67,94 +90,122 @@ const StudentCoursesScreen = ({ navigation }) => {
   }
 
   const handleCoursePress = (course, isPurchased = false) => {
-    navigation.navigate("CourseDetails", { course, isPurchased })
+    const safeCourse = { ...course, courseId: course.courseId || course.id }
+    navigation.navigate("CourseDetails", { course: safeCourse, isPurchased })
   }
 
-  const renderCourseCard = (course, isPurchased = false, isRecommended = false) => (
-    <TouchableOpacity
-      key={course.id}
-      style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
-      onPress={() => handleCoursePress(course, isPurchased)}
-    >
-      <Image source={{ uri: course.image }} style={styles.courseImage} />
+  const mapCourseFields = (course) => ({
+    id: course.courseId || course.id,
+    title: course.title || course.name,
+    image: course.thumbnailUrl || course.image || null,
+    instructor: course.creatorName || course.instructor || "",
+    isFree: course.type === "FREE" || course.isFree || false,
+    price: course.price,
+    originalPrice: course.originalPrice,
+    rating: course.rating ?? 0,
+    students: course.students ?? 0,
+    level: course.difficultyLevel || course.level || "",
+    duration: course.duration || "",
+    progress: course.progress ?? 0,
+    completedLessons: course.completedLessons ?? 0,
+    totalLessons: course.totalLessons ?? 0,
+    discount: course.discount,
+  })
 
-      {isPurchased && (
-        <View style={styles.purchasedBadge}>
-          <Icon name="check-circle" size={16} color="#FFFFFF" />
-          <Text style={styles.purchasedText}>{t("courses.purchased")}</Text>
-        </View>
-      )}
-
-      {isRecommended && course.discount && (
-        <View style={styles.discountBadge}>
-          <Text style={styles.discountText}>{course.discount}% OFF</Text>
-        </View>
-      )}
-
-      {course.isFree && (
-        <View style={styles.freeBadge}>
-          <Text style={styles.freeText}>{t("courses.free")}</Text>
-        </View>
-      )}
-
-      <View style={styles.courseContent}>
-        <Text style={styles.courseTitle}>{course.title}</Text>
-        <Text style={styles.courseInstructor}>by {course.instructor}</Text>
-
-        <View style={styles.courseStats}>
-          <View style={styles.ratingContainer}>
-            <Icon name="star" size={14} color="#F59E0B" />
-            <Text style={styles.ratingText}>{course.rating}</Text>
-            <Text style={styles.studentsText}>({course.students.toLocaleString()})</Text>
-          </View>
-          <View style={styles.courseMeta}>
-            <Text style={styles.levelText}>{course.level}</Text>
-            <Text style={styles.durationText}>{course.duration}</Text>
-          </View>
-        </View>
-
-        {isPurchased ? (
-          <View style={styles.progressSection}>
-            <View style={styles.progressInfo}>
-              <Text style={styles.progressText}>
-                {t("courses.progress")}: {course.progress || 0}%
-              </Text>
-              <Text style={styles.lessonsText}>
-                {course.completedLessons || 0}/{course.totalLessons} {t("courses.lessons")}
-              </Text>
-            </View>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${course.progress || 0}%` }]} />
-            </View>
-            <TouchableOpacity style={styles.continueButton}>
-              <Text style={styles.continueButtonText}>{t("courses.continueLearning")}</Text>
-            </TouchableOpacity>
-          </View>
+  const renderCourseCard = (rawCourse, isPurchased = false, isRecommended = false) => {
+    const course = mapCourseFields(rawCourse)
+    return (
+      <TouchableOpacity
+        key={course.id}
+        style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
+        onPress={() => handleCoursePress(rawCourse, isPurchased)}
+      >
+        {course.image ? (
+          <Image source={{ uri: course.image }} style={styles.courseImage} />
         ) : (
-          <View style={styles.priceSection}>
-            {course.originalPrice && <Text style={styles.originalPrice}>${course.originalPrice}</Text>}
-            <Text style={styles.price}>{course.isFree ? t("courses.free") : `$${course.price}`}</Text>
-            <TouchableOpacity
-              style={styles.enrollButton}
-              onPress={() => {
-                if (course.isFree) {
-                  handleCoursePress(course, false)
-                } else {
-                  navigation.navigate("PaymentScreen", { course })
-                }
-              }}
-            >
-              <Text style={styles.enrollButtonText}>
-                {course.isFree ? t("courses.startLearning") : t("courses.enrollNow")}
-              </Text>
-            </TouchableOpacity>
+          <View style={[styles.courseImage, { justifyContent: "center", alignItems: "center" }]}>
+            <Icon name="menu-book" size={40} color="#9CA3AF" />
           </View>
         )}
-      </View>
-    </TouchableOpacity>
-  )
 
-  if (isLoading && !purchasedCourses.length && !allCourses.length) {
+        {isPurchased && (
+          <View style={styles.purchasedBadge}>
+            <Icon name="check-circle" size={16} color="#FFFFFF" />
+            <Text style={styles.purchasedText}>{t("courses.purchased")}</Text>
+          </View>
+        )}
+
+        {isRecommended && course.discount && (
+          <View style={styles.discountBadge}>
+            <Text style={styles.discountText}>{course.discount}% OFF</Text>
+          </View>
+        )}
+
+        {course.isFree && (
+          <View style={styles.freeBadge}>
+            <Text style={styles.freeText}>{t("courses.free")}</Text>
+          </View>
+        )}
+
+        <View style={styles.courseContent}>
+          <Text style={styles.courseTitle}>{course.title}</Text>
+          <Text style={styles.courseInstructor}>by {course.instructor}</Text>
+
+          <View style={styles.courseStats}>
+            <View style={styles.ratingContainer}>
+              <Icon name="star" size={14} color="#F59E0B" />
+              <Text style={styles.ratingText}>{course.rating}</Text>
+              <Text style={styles.studentsText}>({(course.students || 0).toLocaleString()})</Text>
+            </View>
+            <View style={styles.courseMeta}>
+              <Text style={styles.levelText}>{course.level}</Text>
+              <Text style={styles.durationText}>{course.duration}</Text>
+            </View>
+          </View>
+
+          {isPurchased ? (
+            <View style={styles.progressSection}>
+              <View style={styles.progressInfo}>
+                <Text style={styles.progressText}>
+                  {t("courses.progress")}: {course.progress || 0}%
+                </Text>
+                <Text style={styles.lessonsText}>
+                  {course.completedLessons || 0}/{course.totalLessons || 0} {t("courses.lessons")}
+                </Text>
+              </View>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${course.progress || 0}%` }]} />
+              </View>
+              <TouchableOpacity style={styles.continueButton}>
+                <Text style={styles.continueButtonText}>{t("courses.continueLearning")}</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.priceSection}>
+              {course.originalPrice && <Text style={styles.originalPrice}>${course.originalPrice}</Text>}
+              <Text style={styles.price}>{course.isFree ? t("courses.free") : `$${course.price ?? 0}`}</Text>
+              <TouchableOpacity
+                style={styles.enrollButton}
+                onPress={() => {
+                  if (course.isFree) {
+                    handleCoursePress(rawCourse, false)
+                  } else {
+                    navigation.navigate("PaymentScreen", { course: rawCourse })
+                  }
+                }}
+              >
+                <Text style={styles.enrollButtonText}>
+                  {course.isFree ? t("courses.startLearning") : t("courses.enrollNow")}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    )
+  }
+
+  if (isLoading && !purchasedCourses.length && !filteredCourses.length) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#4F46E5" />
@@ -165,7 +216,6 @@ const StudentCoursesScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#1F2937" />
@@ -176,7 +226,6 @@ const StudentCoursesScreen = ({ navigation }) => {
         </TouchableOpacity>
       </View>
 
-      {/* Search Bar */}
       <View style={styles.searchContainer}>
         <Icon name="search" size={20} color="#6B7280" />
         <TextInput
@@ -187,7 +236,6 @@ const StudentCoursesScreen = ({ navigation }) => {
         />
       </View>
 
-      {/* Category Filter */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryContainer}>
         {categories.map((category) => (
           <TouchableOpacity
@@ -202,13 +250,12 @@ const StudentCoursesScreen = ({ navigation }) => {
         ))}
       </ScrollView>
 
-      {/* Sort and Level Filters */}
       <View style={styles.filtersRow}>
         <TouchableOpacity style={styles.filterButton}>
           <Icon name="sort" size={16} color="#6B7280" />
           <Text style={styles.filterButtonText}>{t("courses.sortBy.title")}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.filterButton}>
+        <TouchableOpacity style={styles.filterButton} onPress={() => {}}>
           <Icon name="school" size={16} color="#6B7280" />
           <Text style={styles.filterButtonText}>{t("courses.level")}</Text>
         </TouchableOpacity>
@@ -218,15 +265,9 @@ const StudentCoursesScreen = ({ navigation }) => {
         style={styles.content}
         showsVerticalScrollIndicator={false}
         refreshControl={
-          <RefreshControl
-            refreshing={isRefreshing}
-            onRefresh={handleRefresh}
-            colors={["#4F46E5"]}
-            tintColor="#4F46E5"
-          />
+          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={["#4F46E5"]} tintColor="#4F46E5" />
         }
       >
-        {/* Purchased Courses */}
         {purchasedCourses.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("courses.myPurchasedCourses")}</Text>
@@ -234,7 +275,6 @@ const StudentCoursesScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* Recommended Courses */}
         {recommendedCourses && recommendedCourses.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("courses.recommendedForYou")}</Text>
@@ -242,14 +282,12 @@ const StudentCoursesScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* All Courses */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t("courses.allCourses")}</Text>
-          {allCourses.map((course) => renderCourseCard(course))}
+          {filteredCourses.map((course) => renderCourseCard(course))}
         </View>
 
-        {/* Empty State */}
-        {!isLoading && allCourses.length === 0 && (
+        {!isLoading && filteredCourses.length === 0 && (
           <View style={styles.emptyState}>
             <Icon name="school" size={64} color="#9CA3AF" />
             <Text style={styles.emptyTitle}>{t("courses.noCoursesFound")}</Text>

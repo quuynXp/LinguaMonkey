@@ -1,9 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -17,6 +19,8 @@ public class CourseResponse {
     private String thumbnailUrl;
     private boolean isDeleted;
     private UUID creatorId;
+    private CourseType type;
+    private BigDecimal price;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

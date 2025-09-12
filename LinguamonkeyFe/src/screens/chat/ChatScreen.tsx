@@ -1,39 +1,41 @@
-"use client"
-
-import React, { useRef } from "react"
+import React, { useRef, useEffect } from "react"
 import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { useAppStore } from "../../stores/appStore"
-import instance from "../../api/axiosInstance"
+import { useUserStore } from "../../stores/UserStore"
 import { gotoTab } from "../../utils/navigationRef"
+import { useChatStore } from "../../stores/ChatStore"
+import { useTokenStore } from "../../stores/tokenStore"
 
 const ChatScreen = ({ navigation }) => {
   const { t } = useTranslation()
-  const { user } = useAppStore()
+  const user = useUserStore.getState().user
+
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  // Fetch recent chat activity
-  const { data: recentActivity = [] } = useQuery({
-    queryKey: ["chat-activity", user?.user_id],
-    queryFn: async () => {
-      const response = await instance.get("/chat/recent-activity")
-      return response.data.activities
-    },
-  })
+  const connect = useChatStore((state) => state.connect)
+  const disconnect = useChatStore((state) => state.disconnect)
+  const activities = useChatStore((state) => state.activities)
+  const stats = useChatStore((state) => state.stats)
+  const sendLastActive = useChatStore((state) => state.updateLastActive)
 
-  // Fetch chat statistics
-  const { data: chatStats } = useQuery({
-    queryKey: ["chat-stats", user?.user_id],
-    queryFn: async () => {
-      const response = await instance.get("/chat/stats")
-      return response.data
-    },
-  })
+  useEffect(() => {
+    if (!user) return
+    const token = useTokenStore.getState().accessToken
+    connect(token)
 
-  React.useEffect(() => {
+    const iv = setInterval(() => {
+      sendLastActive(user.userId)
+    }, 60 * 1000)
+
+    return () => {
+      clearInterval(iv)
+      disconnect()
+    }
+  }, [user])
+
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -55,7 +57,7 @@ const ChatScreen = ({ navigation }) => {
       subtitle: t("chat.aiChatDescription"),
       icon: "smart-toy",
       color: "#4F46E5",
-      onPress: () => gotoTab("Chat" , "AIChat"),
+      onPress: () => gotoTab("Chat", "ChatAI"),
     },
     {
       id: "user-chat",
@@ -63,7 +65,7 @@ const ChatScreen = ({ navigation }) => {
       subtitle: t("chat.userChatDescription"),
       icon: "group",
       color: "#10B981",
-      onPress: () => gotoTab("Chat" , "UserChat"),
+      onPress: () => gotoTab("Chat", "UserChat"),
     },
   ]
 
@@ -73,28 +75,21 @@ const ChatScreen = ({ navigation }) => {
       title: t("chat.videoCall"),
       icon: "videocam",
       color: "#EF4444",
-      onPress: () => gotoTab("Chat" , "VideoCallManager"),
+      onPress: () => gotoTab("Chat", "VideoCallManager"),
     },
     {
       id: "join-room",
       title: t("chat.joinRoom"),
       icon: "meeting-room",
       color: "#F59E0B",
-      onPress: () => gotoTab("Chat" , "ChatRoomList"),
+      onPress: () => gotoTab("Chat", "ChatRoomList"),
     },
     {
       id: "create-room",
       title: t("chat.createRoom"),
       icon: "add-circle",
       color: "#EF4444",
-      onPress: () => gotoTab("Chat" , "CreateRoom"),
-    },
-    {
-      id: "chat-settings",
-      title: t("chat.settings"),
-      icon: "settings",
-      color: "#8B5CF6",
-      onPress: () => gotoTab("Chat" , "ChatSettings"),
+      onPress: () => gotoTab("Chat", "CreateRoom"),
     },
   ]
 
@@ -149,23 +144,23 @@ const ChatScreen = ({ navigation }) => {
           </View>
 
           {/* Chat Statistics */}
-          {chatStats && (
+          {stats && (
             <View style={styles.statsSection}>
               <Text style={styles.sectionTitle}>{t("chat.yourStats")}</Text>
               <View style={styles.statsGrid}>
                 <View style={styles.statCard}>
                   <Icon name="chat" size={24} color="#4F46E5" />
-                  <Text style={styles.statValue}>{chatStats.totalMessages || 0}</Text>
+                  <Text style={styles.statValue}>{stats.totalMessages || 0}</Text>
                   <Text style={styles.statLabel}>{t("chat.messages")}</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Icon name="translate" size={24} color="#10B981" />
-                  <Text style={styles.statValue}>{chatStats.translationsUsed || 0}</Text>
+                  <Text style={styles.statValue}>{stats.translationsUsed || 0}</Text>
                   <Text style={styles.statLabel}>{t("chat.translations")}</Text>
                 </View>
                 <View style={styles.statCard}>
                   <Icon name="videocam" size={24} color="#EF4444" />
-                  <Text style={styles.statValue}>{chatStats.videoCalls || 0}</Text>
+                  <Text style={styles.statValue}>{stats.videoCalls || 0}</Text>
                   <Text style={styles.statLabel}>{t("chat.videoCalls")}</Text>
                 </View>
               </View>
@@ -188,8 +183,8 @@ const ChatScreen = ({ navigation }) => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("chat.recentActivity")}</Text>
             <View style={styles.activityCard}>
-              {recentActivity.length > 0 ? (
-                recentActivity.map((activity, index) => (
+              {activities.length > 0 ? (
+                activities.map((activity, index) => (
                   <View key={index} style={styles.activityItem}>
                     <View style={styles.activityIcon}>
                       <Icon
@@ -200,7 +195,7 @@ const ChatScreen = ({ navigation }) => {
                     </View>
                     <View style={styles.activityInfo}>
                       <Text style={styles.activityTitle}>{activity.title}</Text>
-                      <Text style={styles.activityTime}>{activity.timeAgo}</Text>
+                      <Text style={styles.activityTime}>{activity.createdAt || ""}</Text>
                     </View>
                   </View>
                 ))

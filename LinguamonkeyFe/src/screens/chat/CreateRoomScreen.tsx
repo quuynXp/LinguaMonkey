@@ -12,6 +12,8 @@ import {
     View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useChatStore } from '../../stores/ChatStore';
+
 const CreateRoomScreen = ({ navigation }) => {
   const [roomName, setRoomName] = useState('');
   const [roomDescription, setRoomDescription] = useState('');

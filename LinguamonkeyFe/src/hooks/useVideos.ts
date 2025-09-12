@@ -105,9 +105,9 @@ export const useVideoCalls = () => {
       },
       onSuccess: (data) => {
         // invalidate lists so UI refreshes
-        queryClient.invalidateQueries(["videoCalls"]);
+        queryClient.invalidateQueries({ queryKey: ["videoCalls"] });
         if (data?.videoCallId) {
-          queryClient.invalidateQueries(["videoCall", data.videoCallId]);
+          queryClient.invalidateQueries({ queryKey: ["videoCall", data.videoCallId] });
         }
       },
     });
@@ -123,8 +123,8 @@ export const useVideoCalls = () => {
         return res.data.result;
       },
       onSuccess: (data) => {
-        queryClient.invalidateQueries(["videoCalls"]);
-        if (data?.videoCallId) queryClient.invalidateQueries(["videoCall", data.videoCallId]);
+        queryClient.invalidateQueries({ queryKey: ["videoCalls"] });
+        if (data?.videoCallId) queryClient.invalidateQueries({ queryKey: ["videoCall", data.videoCallId] });
       },
     });
 
@@ -154,8 +154,8 @@ export const useVideoCalls = () => {
         return res.data;
       },
       onSuccess: (_res, variables) => {
-        queryClient.invalidateQueries(["videoCallParticipants", variables.videoCallId]);
-        queryClient.invalidateQueries(["videoCall", variables.videoCallId]);
+        queryClient.invalidateQueries({ queryKey: ["videoCallParticipants", variables.videoCallId] });
+        queryClient.invalidateQueries({ queryKey: ["videoCall", variables.videoCallId] });
       },
     });
 
@@ -169,8 +169,8 @@ export const useVideoCalls = () => {
         return res.data;
       },
       onSuccess: (_res, variables) => {
-        queryClient.invalidateQueries(["videoCallParticipants", variables.videoCallId]);
-        queryClient.invalidateQueries(["videoCall", variables.videoCallId]);
+        queryClient.invalidateQueries({ queryKey: ["videoCallParticipants", variables.videoCallId] });
+        queryClient.invalidateQueries({ queryKey: ["videoCall", variables.videoCallId] });
       },
     });
 
@@ -190,8 +190,8 @@ export const useVideoCalls = () => {
         return res.data;
       },
       onSuccess: (_res, variables) => {
-        queryClient.invalidateQueries(["videoCallParticipants", variables.videoCallId]);
-        queryClient.invalidateQueries(["videoCall", variables.videoCallId]);
+        queryClient.invalidateQueries({ queryKey: ["videoCallParticipants", variables.videoCallId] });
+        queryClient.invalidateQueries({ queryKey: ["videoCall", variables.videoCallId] });
       },
     });
 
@@ -216,8 +216,8 @@ export const useVideoCalls = () => {
         return res.data;
       },
       onSuccess: (_res, videoCallId) => {
-        queryClient.invalidateQueries(["videoCalls"]);
-        queryClient.invalidateQueries(["videoCall", videoCallId]);
+        queryClient.invalidateQueries({ queryKey: ["videoCalls"] });
+        queryClient.invalidateQueries({ queryKey: ["videoCall", videoCallId] });
       },
     });
 
@@ -233,8 +233,8 @@ export const useVideoCalls = () => {
       },
       onSuccess: (result) => {
         if (result?.videoCallId) {
-          queryClient.invalidateQueries(["videoCall", result.videoCallId]);
-          queryClient.invalidateQueries(["videoCalls"]);
+          queryClient.invalidateQueries({ queryKey: ["videoCall", result.videoCallId] });
+          queryClient.invalidateQueries({ queryKey: ["videoCalls"] });
         }
       },
     });

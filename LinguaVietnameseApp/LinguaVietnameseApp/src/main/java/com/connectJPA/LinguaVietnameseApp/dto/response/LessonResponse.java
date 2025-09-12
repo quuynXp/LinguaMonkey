@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.enums.LessonType;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -23,6 +24,9 @@ public class LessonResponse {
     private UUID lessonSeriesId;
     private UUID lessonCategoryId;
     private UUID lessonSubCategoryId;
-    private List<SkillType> skillTypes; // Derived from lesson_questions
+    private LessonType lessonType;
+    private SkillType skillTypes;
+    private Integer flashcardCount;
+    private Integer dueFlashcardsCount;
     private List<String> videoUrls; // From videos table
 }

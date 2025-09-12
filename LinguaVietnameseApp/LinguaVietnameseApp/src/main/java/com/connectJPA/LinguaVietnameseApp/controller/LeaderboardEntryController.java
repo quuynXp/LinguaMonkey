@@ -34,10 +34,9 @@ public class LeaderboardEntryController {
     @GetMapping
     public AppApiResponse<Page<LeaderboardEntryResponse>> getAllLeaderboardEntries(
             @Parameter(description = "Leaderboard ID filter") @RequestParam(required = false) String leaderboardId,
-            @Parameter(description = "User ID filter") @RequestParam(required = false) String userId,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
-        Page<LeaderboardEntryResponse> entries = leaderboardEntryService.getAllLeaderboardEntries(leaderboardId, userId, pageable);
+        Page<LeaderboardEntryResponse> entries = leaderboardEntryService.getAllLeaderboardEntries(leaderboardId, pageable);
         return AppApiResponse.<Page<LeaderboardEntryResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("leaderboardEntry.list.success", null, locale))
@@ -50,15 +49,15 @@ public class LeaderboardEntryController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved leaderboard entry"),
             @ApiResponse(responseCode = "404", description = "Leaderboard entry not found")
     })
-    @GetMapping("/{leaderboardId}/{userId}")
+    @GetMapping("/{leaderboardId}")
     public AppApiResponse<LeaderboardEntryResponse> getLeaderboardEntryByIds(
             @Parameter(description = "Leaderboard ID") @PathVariable UUID leaderboardId,
-            @Parameter(description = "User ID") @PathVariable UUID userId,
+            Pageable pageable,
             Locale locale) {
-        LeaderboardEntryResponse entry = leaderboardEntryService.getLeaderboardEntryByIds(leaderboardId, userId);
+        LeaderboardEntryResponse entry = leaderboardEntryService.getLeaderboardEntryByIds(leaderboardId, pageable);
         return AppApiResponse.<LeaderboardEntryResponse>builder()
                 .code(200)
-                .message(messageSource.getMessage("leaderboardEntry.get.success", null, locale))
+                .message(messageSource.getMessage("leaderboardEntry.get.success", null,  locale))
                 .result(entry)
                 .build();
     }

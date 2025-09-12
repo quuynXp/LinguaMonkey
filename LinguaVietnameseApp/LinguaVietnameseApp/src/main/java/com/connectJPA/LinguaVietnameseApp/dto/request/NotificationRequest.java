@@ -4,6 +4,7 @@ import jakarta.validation.constraints.*;
 import lombok.Builder;
 import lombok.Getter;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Getter

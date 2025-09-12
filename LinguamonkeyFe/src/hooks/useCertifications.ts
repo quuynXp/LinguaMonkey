@@ -1,5 +1,4 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import { useTranslation } from "react-i18next"
 import instance from "../api/axiosInstance"
 import type { ApiResponse, PaginatedResponse } from "../types/api"
 
@@ -50,7 +49,6 @@ interface TestResult {
 }
 
 export const useCertifications = () => {
-  const { t } = useTranslation()
   const queryClient = useQueryClient()
 
   // Get available certification tests for user's learning languages

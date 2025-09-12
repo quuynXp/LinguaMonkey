@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
 import instance from "../../api/axiosInstance"
+import { useChatStore } from "../../stores/ChatStore"
 
 const ChatAIScreen = () => {
   const { t, i18n } = useTranslation()
@@ -31,14 +32,16 @@ const ChatAIScreen = () => {
   const [showTopicsModal, setShowTopicsModal] = useState(false)
   const [currentEnvironment, setCurrentEnvironment] = useState("general")
   const [translatingMessageId, setTranslatingMessageId] = useState(null)
-  const scrollViewRef = useRef()
+  const scrollViewRef = useRef(null)
   const navigation = useNavigation()
+  const activities = useChatStore(state => state.activities)
+  const stats = useChatStore(state => state.stats)
 
   // Fetch chat messages
   const { data: fetchedMessages } = useQuery({
-    queryKey: ["chat-ai-messages", user?.user_id],
+    queryKey: ["chat-ai-messages", user?.userId],
     queryFn: async () => {
-      const response = await instance.get("/api/chat-ai/messages")
+      const response = await instance.get("/chat-ai/messages")
       return response.data.messages
     },
     onSuccess: (data) => {
@@ -50,7 +53,7 @@ const ChatAIScreen = () => {
   const { data: environmentsData } = useQuery({
     queryKey: ["chat-ai-environments"],
     queryFn: async () => {
-      const response = await instance.get("/api/chat-ai/environments")
+      const response = await instance.get("/chat-ai/environments")
       return response.data.environments
     },
   })
@@ -58,7 +61,7 @@ const ChatAIScreen = () => {
   const { data: topicsData } = useQuery({
     queryKey: ["chat-ai-topics"],
     queryFn: async () => {
-      const response = await instance.get("/api/chat-ai/topics")
+      const response = await instance.get("/chat-ai/topics")
       return response.data.topics
     },
   })
@@ -66,11 +69,11 @@ const ChatAIScreen = () => {
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async ({ message, environment, language }) => {
-      const response = await instance.post("/api/chat-ai", {
+      const response = await instance.post("/chat-ai", {
         message,
         environment,
         language,
-        userId: user?.user_id,
+        userId: user?.userId,
       })
       return response.data
     },
@@ -99,7 +102,7 @@ const ChatAIScreen = () => {
   // Translate message mutation
   const translateMessageMutation = useMutation({
     mutationFn: async ({ text, targetLanguage }) => {
-      const response = await instance.post("/api/chat-ai/translate", {
+      const response = await instance.post("/chat-ai/translate", {
         text,
         targetLanguage,
       })

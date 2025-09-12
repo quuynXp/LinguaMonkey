@@ -10,7 +10,7 @@ import java.util.UUID;
 
 public interface LessonService {
     Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
-                                       UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId,
+                                       UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
                                        Pageable pageable);
     LessonResponse getLessonById(UUID id);
     LessonResponse createLesson(LessonRequest request);

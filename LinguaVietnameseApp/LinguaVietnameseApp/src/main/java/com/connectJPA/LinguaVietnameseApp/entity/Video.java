@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.VideoType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -20,9 +21,18 @@ public class Video extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID videoId;
 
+    private String title;
+
     private String videoUrl;
+
+    @Enumerated(EnumType.STRING)
+    private VideoType type;
 
     private String originalSubtitleUrl;
 
     private UUID lessonId;
+
+    private String level;
+
+
 }
