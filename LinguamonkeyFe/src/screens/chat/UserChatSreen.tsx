@@ -20,6 +20,7 @@ import { useTranslation } from "react-i18next"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
 import instance from "../../api/axiosInstance"
+import { useChatStore } from "../../stores/ChatStore"
 
 const UserChatScreen = () => {
   const { t } = useTranslation()
@@ -41,6 +42,8 @@ const UserChatScreen = () => {
   })
   const [editingChatName, setEditingChatName] = useState(false)
   const [newChatName, setNewChatName] = useState(chatInfo.name)
+  const activities = useChatStore(state => state.activities)
+  const stats = useChatStore(state => state.stats)
 
   const flatListRef = useRef(null)
   const navigation = useNavigation()
@@ -61,7 +64,7 @@ const UserChatScreen = () => {
   // Send message mutation
   const sendMessageMutation = useMutation({
     mutationFn: async (messageData) => {
-      const response = await instance.post("/api/chat/send", messageData)
+      const response = await instance.post("/chat/send", messageData)
       return response.data
     },
     onSuccess: (data) => {
@@ -76,7 +79,7 @@ const UserChatScreen = () => {
   // Translate message mutation
   const translateMessageMutation = useMutation({
     mutationFn: async ({ text, targetLanguage }) => {
-      const response = await instance.post("/api/chat-ai/translate", {
+      const response = await instance.post("/chat-ai/translate", {
         text,
         targetLanguage,
       })
@@ -186,8 +189,6 @@ const UserChatScreen = () => {
         message.sender === "user" ? styles.userMessageContainer : styles.otherMessageContainer,
       ]}
     >
-      {message.sender === "other" && <Text style={styles.senderName}>{message.user}</Text>}
-
       <View style={[styles.messageBubble, message.sender === "user" ? styles.userMessage : styles.otherMessage]}>
         <Text
           style={[styles.messageText, message.sender === "user" ? styles.userMessageText : styles.otherMessageText]}
@@ -222,7 +223,6 @@ const UserChatScreen = () => {
       keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
     >
       <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
-        {/* Header */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color="#374151" />
@@ -243,7 +243,6 @@ const UserChatScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Messages */}
         <FlatList
           ref={flatListRef}
           data={messages}
@@ -254,7 +253,6 @@ const UserChatScreen = () => {
           showsVerticalScrollIndicator={false}
         />
 
-        {/* Input */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
@@ -270,7 +268,6 @@ const UserChatScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Chat Settings Modal */}
         <Modal
           visible={showChatSettings}
           transparent={true}
@@ -287,7 +284,6 @@ const UserChatScreen = () => {
               </View>
 
               <View style={styles.settingsContent}>
-                {/* Chat Name */}
                 <View style={styles.settingItem}>
                   <Icon name="chatbubble-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
@@ -313,7 +309,6 @@ const UserChatScreen = () => {
                   </View>
                 </View>
 
-                {/* Members Count */}
                 <View style={styles.settingItem}>
                   <Icon name="people-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
@@ -324,7 +319,6 @@ const UserChatScreen = () => {
                   </View>
                 </View>
 
-                {/* Room ID */}
                 <View style={styles.settingItem}>
                   <Icon name="key-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
@@ -336,7 +330,6 @@ const UserChatScreen = () => {
                   </TouchableOpacity>
                 </View>
 
-                {/* Action Buttons */}
                 <View style={styles.actionButtons}>
                   <TouchableOpacity style={styles.actionButton} onPress={shareRoomId}>
                     <Icon name="share-outline" size={20} color="#3B82F6" />

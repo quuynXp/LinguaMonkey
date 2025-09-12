@@ -22,6 +22,9 @@ public class LessonRequest {
     @Min(value = 0, message = "EXP reward must be non-negative")
     private int expReward;
 
+
+    private SkillType skillType;
+
     private UUID courseId;
 
     private UUID lessonSeriesId;

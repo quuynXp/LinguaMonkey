@@ -15,15 +15,16 @@ export const useRoadmap = () => {
 
   const useUserRoadmap = (languageCode?: string) => {
     return useQuery({
-      queryKey: ["userRoadmap", languageCode, user?.user_id],
+      queryKey: ["userRoadmap", languageCode, user?.userId],
       queryFn: async () => {
-        if (!user?.user_id) throw new Error("User not logged in");
-        let endpoint = `/roadmaps/user/${user.user_id}`;
+        if (!user?.userId) throw new Error("User not logged in");
+        let endpoint = `/roadmaps/user/${user.userId}`;
         if (languageCode) endpoint += `?language=${languageCode}`;
-        const res = await instance.get<AppApiResponse<LearningRoadmap>>(endpoint);
-        return res.data.result;
+        const res = await instance.get<AppApiResponse<LearningRoadmap[]>>(endpoint);
+        const list = res.data.result || [];
+        return list.length > 0 ? list[0] : null; // return first assigned roadmap or null
       },
-      enabled: !!user?.user_id,
+      enabled: !!user?.userId,
     });
   };
 
@@ -90,7 +91,11 @@ export const useRoadmap = () => {
   const useStartRoadmapItem = () => {
     return useMutation({
       mutationFn: async (itemId: string) => {
-        const res = await instance.post<AppApiResponse<{ success: boolean }>>("/roadmaps/items/start", { itemId });
+        if (!user?.userId) throw new Error("User not logged in");
+        const res = await instance.post<AppApiResponse<{ success: boolean }>>("/roadmaps/items/start", {
+          userId: user.userId,
+          itemId,
+        });
         return res.data.result;
       },
       onSuccess: (_data, itemId) => {
@@ -103,7 +108,9 @@ export const useRoadmap = () => {
   const useCompleteRoadmapItem = () => {
     return useMutation({
       mutationFn: async ({ itemId, score }: { itemId: string; score?: number }) => {
+        if (!user?.userId) throw new Error("User not logged in");
         const res = await instance.post<AppApiResponse<{ success: boolean }>>("/roadmaps/items/complete", {
+          userId: user.userId,
           itemId,
           score,
         });
@@ -127,9 +134,9 @@ export const useRoadmap = () => {
         is_custom?: boolean;
         additional_prompt?: string;
       }) => {
-        if (!user?.user_id) throw new Error("User not logged in");
+        if (!user?.userId) throw new Error("User not logged in");
         const payload = {
-          userId: user.user_id,
+          userId: user.userId,
           languageCode: preferences.language_code.toLowerCase(), // <- fixed
           targetProficiency: preferences.target_proficiency,
           targetDate: preferences.target_date,
@@ -150,9 +157,9 @@ export const useRoadmap = () => {
   const useAssignDefaultRoadmap = () => { // FE action to assign default roadmap to user
     return useMutation({
       mutationFn: async ({ roadmapId }: { roadmapId: string }) => {
-        if (!user?.user_id) throw new Error("User not logged in");
+        if (!user?.userId) throw new Error("User not logged in");
         const res = await instance.post<AppApiResponse<Void>>("/roadmaps/assign", {
-          userId: user.user_id,
+          userId: user.userId,
           roadmapId,
         });
         return res.data;

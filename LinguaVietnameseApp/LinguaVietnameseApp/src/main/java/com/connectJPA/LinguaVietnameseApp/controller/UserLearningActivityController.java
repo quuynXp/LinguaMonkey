@@ -34,7 +34,7 @@ public class UserLearningActivityController {
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Page<UserLearningActivityResponse>> getAllUserLearningActivities(
             @Parameter(description = "User ID filter") @RequestParam(required = false) UUID userId,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
@@ -53,7 +53,7 @@ public class UserLearningActivityController {
             @ApiResponse(responseCode = "404", description = "User learning activity not found")
     })
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserLearningActivityResponse> getUserLearningActivityById(
             @Parameter(description = "User learning activity ID") @PathVariable UUID id,
             Locale locale) {
@@ -71,7 +71,7 @@ public class UserLearningActivityController {
             @ApiResponse(responseCode = "400", description = "Invalid user learning activity data")
     })
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserLearningActivityResponse> createUserLearningActivity(
             @Valid @RequestBody UserLearningActivityRequest request,
             Locale locale) {
@@ -90,7 +90,7 @@ public class UserLearningActivityController {
             @ApiResponse(responseCode = "400", description = "Invalid user learning activity data")
     })
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<UserLearningActivityResponse> updateUserLearningActivity(
             @Parameter(description = "User learning activity ID") @PathVariable UUID id,
             @Valid @RequestBody UserLearningActivityRequest request,
@@ -109,7 +109,7 @@ public class UserLearningActivityController {
             @ApiResponse(responseCode = "404", description = "User learning activity not found")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Void> deleteUserLearningActivity(
             @Parameter(description = "User learning activity ID") @PathVariable UUID id,
             Locale locale) {

@@ -36,11 +36,8 @@ public class QuartzSchedulerConfig {
         factory.setJobFactory(jobFactory);
         factory.setJobDetails(reminderJobDetail);
         factory.setTriggers(reminderJobTrigger);
-        // Ensure scheduler waits for jobs to complete during shutdown
         factory.setWaitForJobsToCompleteOnShutdown(true);
-        // Set application context scheduler name to avoid conflicts
         factory.setSchedulerName("ReminderScheduler");
-        // Ensure scheduler is started after Spring context is fully initialized
         factory.setAutoStartup(true);
         return factory;
     }

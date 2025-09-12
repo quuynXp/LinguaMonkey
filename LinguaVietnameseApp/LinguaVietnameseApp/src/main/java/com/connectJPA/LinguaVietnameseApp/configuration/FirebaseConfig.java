@@ -23,7 +23,7 @@ public class FirebaseConfig {
     @Bean
     public FirebaseMessaging firebaseMessaging() throws IOException {
         GoogleCredentials credentials = GoogleCredentials.fromStream(
-                new FileInputStream("C:\\Users\\PC\\OneDrive\\Desktop\\dev\\Project\\Spring boot\\LinguaApp\\LinguaVietnameseApp\\LinguaVietnameseApp\\src\\main\\resources\\firebase\\web-app-love-firebase-adminsdk-fbsvc-a1828b2f9a.json"));
+                new FileInputStream("C:\\Users\\PC\\OneDrive\\Desktop\\dev\\Project\\Spring boot\\LinguaApp\\LinguaVietnameseApp\\LinguaVietnameseApp\\src\\main\\resources\\firebase\\web-app-love-firebase-adminsdk-fbsvc-9bafbc5626.json"));
         FirebaseOptions options = FirebaseOptions.builder()
                 .setCredentials(credentials)
                 .build();

@@ -39,6 +39,10 @@ public class ChatMessage{
     @Column(name = "sender_id", nullable = false)
     private UUID senderId;
 
+    @Column(name = "receiver_id")
+    private UUID receiverId;
+
+
     private boolean isDeleted;
     private OffsetDateTime updatedAt;
     private OffsetDateTime deletedAt;

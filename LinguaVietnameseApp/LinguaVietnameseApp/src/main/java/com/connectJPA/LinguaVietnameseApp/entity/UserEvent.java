@@ -26,5 +26,5 @@ public class UserEvent extends BaseEntity {
     private int score;
     private int rank;
     private OffsetDateTime participatedAt;
-    private boolean isComplete;
+    private boolean isCompleted;
 }

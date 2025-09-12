@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.AssignRoadmapRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateRoadmapRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.GenerateRoadmapRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.StartCompleteRoadmapItemRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapUserResponse;
@@ -131,22 +132,20 @@ public class RoadmapController {
     @Operation(summary = "Mark roadmap item as started")
     @PostMapping("/items/start")
     public AppApiResponse<Void> startItem(
-            @RequestParam UUID userId,
-            @RequestParam UUID itemId,
+            @RequestBody StartCompleteRoadmapItemRequest req,
             Locale locale
     ) {
-        roadmapService.startItem(userId, itemId);
+        roadmapService.startItem(req.getUserId(), req.getItemId());
         return buildResponse(200, "roadmap.item.start", locale, null);
     }
 
     @Operation(summary = "Mark roadmap item as completed")
     @PostMapping("/items/complete")
     public AppApiResponse<Void> completeItem(
-            @RequestParam UUID userId,
-            @RequestParam UUID itemId,
+            @RequestBody StartCompleteRoadmapItemRequest req,
             Locale locale
     ) {
-        roadmapService.completeItem(userId, itemId);
+        roadmapService.completeItem(req.getUserId(), req.getItemId());
         return buildResponse(200, "roadmap.item.complete", locale, null);
     }
 

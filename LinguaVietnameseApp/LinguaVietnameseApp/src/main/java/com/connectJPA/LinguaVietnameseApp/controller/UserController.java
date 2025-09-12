@@ -15,9 +15,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -36,7 +38,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Page<UserResponse>> getAllUsers(
             @Parameter(description = "Email filter") @RequestParam(required = false) String email,
             @Parameter(description = "Fullname filter") @RequestParam(required = false) String fullname,
@@ -58,7 +60,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> getUserById(
             @Parameter(description = "User ID") @PathVariable UUID id,
             Locale locale) {
@@ -82,7 +84,6 @@ public class UserController {
             Locale locale) {
         UserResponse userResponse = userService.createUser(request);
 
-        // Lấy lại User entity để generate token
         User user = userService.findByUserId(userResponse.getUserId());
 
         String accessToken = authenticationService.generateToken(user);
@@ -109,7 +110,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateUser(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @RequestBody UserRequest request,
@@ -129,7 +130,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('TEACHER') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Void> deleteUser(
             @Parameter(description = "User ID") @PathVariable UUID id,
             Locale locale) {
@@ -148,7 +149,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PatchMapping("/{id}/avatar")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateAvatarUrl(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @Parameter(description = "Avatar URL") @RequestParam String avatarUrl,
@@ -166,8 +167,7 @@ public class UserController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved 3D character"),
             @ApiResponse(responseCode = "404", description = "3D character not found")
     })
-    @GetMapping("/{id}/character3d")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @GetMapping("/{userId}/character3d")
     public AppApiResponse<Character3dResponse> getCharacter3dByUserId(
             @Parameter(description = "Character3d ID") @PathVariable UUID userId,
             Locale locale) {
@@ -179,6 +179,29 @@ public class UserController {
                 .build();
     }
 
+    @PatchMapping("/{userId}/last-active")
+    public ResponseEntity<AppApiResponse<Void>> updateLastActive(
+            @PathVariable UUID userId,
+            Principal principal,
+            Locale locale) {
+
+        if (principal == null || !principal.getName().equals(userId.toString())) {
+            AppApiResponse<Void> res = AppApiResponse.<Void>builder()
+                    .code(403)
+                    .message(messageSource.getMessage("user.update.lastActive.unauthorized", null, locale))
+                    .build();
+            return ResponseEntity.status(403).body(res);
+        }
+
+        userService.updateLastActive(userId);
+
+        AppApiResponse<Void> res = AppApiResponse.<Void>builder()
+                .code(200)
+                .message(messageSource.getMessage("user.update.lastActive.success", null, locale))
+                .build();
+        return ResponseEntity.ok(res);
+    }
+
     @Operation(summary = "Update user native language", description = "Update the native language code for a user")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Native language updated successfully"),
@@ -187,7 +210,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PatchMapping("/{id}/native-language")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateNativeLanguage(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @Parameter(description = "Native language code") @RequestParam String nativeLanguageCode,
@@ -197,6 +220,31 @@ public class UserController {
                 .code(200)
                 .message(messageSource.getMessage("user.native_language.updated.success", null, locale))
                 .result(user)
+                .build();
+    }
+
+    @PatchMapping("/{id}/last-active")
+    public AppApiResponse<Void> updateLastActive(
+            @PathVariable UUID id,
+            Locale locale) {
+        userService.updateLastActive(id);
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message(messageSource.getMessage("user.last_active.updated", null, locale))
+                .build();
+    }
+
+    @Operation(summary = "Get user stats (derived from existing tables)")
+    @GetMapping("/{id}/stats")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
+    public AppApiResponse<UserStatsResponse> getUserStats(
+            @PathVariable UUID id,
+            Locale locale) {
+        UserStatsResponse stats = userService.getUserStats(id);
+        return AppApiResponse.<UserStatsResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("user.stats.success", null, locale))
+                .result(stats)
                 .build();
     }
 

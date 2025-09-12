@@ -13,6 +13,7 @@ import NotificationHistoryScreen from '../../screens/notification/NotificationHi
 import NotificationSettingsScreen from '../../screens/notification/NotificationSettingsScreen';
 import TransactionHistoryScreen from '../../screens/payment/TransactionHistoryScreen';
 import TransactionDetailsScreen from '../../screens/payment/TransactionDetailsScreen';
+import UserProfileViewScreen from '../../screens/profile/UserProfileViewScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -24,6 +25,7 @@ const ProfileStack = () => (
     <Stack.Screen name="LearningGoals" component={LearningGoalsScreen} />
     <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} />
     <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+    <Stack.Screen name="UserProfileView" component={UserProfileViewScreen} />
     <Stack.Screen name="About" component={AboutScreen} />
     <Stack.Screen name="EnhancedUserManagement" component={EnhancedUserManagementScreen} />
     <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />

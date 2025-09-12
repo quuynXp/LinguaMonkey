@@ -47,7 +47,7 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
-                                              UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId,
+                                              UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
                                               Pageable pageable) {
         try {
             // Validate pagination
@@ -66,6 +66,7 @@ public class LessonServiceImpl implements LessonService {
             Specification<Lesson> spec = (root, query, cb) -> {
                 query.distinct(true);
                 List<Predicate> predicates = new ArrayList<>();
+
                 if (lessonName != null && !lessonName.isBlank()) {
                     predicates.add(cb.like(cb.lower(root.get("lessonName")), "%" + lessonName.toLowerCase() + "%"));
                 }
@@ -86,6 +87,9 @@ public class LessonServiceImpl implements LessonService {
                 }
                 if (seriesId != null) {
                     predicates.add(cb.equal(root.get("lessonSeriesId"), seriesId));
+                }
+                if (skillType != null) {
+                    predicates.add(cb.like(cb.coalesce(root.get("skillTypes"), ""), "%" + skillType.name() + "%"));
                 }
                 predicates.add(cb.isFalse(root.get("isDeleted")));
                 return cb.and(predicates.toArray(new Predicate[0]));
@@ -276,18 +280,14 @@ public class LessonServiceImpl implements LessonService {
 
     private LessonResponse toLessonResponse(Lesson lesson) {
         try {
-            List<SkillType> skillTypes = lessonQuestionRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
-                    .stream()
-                    .map(LessonQuestion::getSkillType)
-                    .distinct()
-                    .collect(Collectors.toList());
+            SkillType skillType = lessonRepository.findSkillTypeByLessonIdAndIsDeletedFalse(lesson.getLessonId());
             List<String> videoUrls = videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
                     .stream()
                     .map(Video::getVideoUrl)
                     .collect(Collectors.toList());
 
             LessonResponse response = lessonMapper.toResponse(lesson);
-            response.setSkillTypes(skillTypes);
+            response.setSkillTypes(skillType != null ? skillType : SkillType.READING);
             response.setVideoUrls(videoUrls);
             return response;
         } catch (Exception e) {

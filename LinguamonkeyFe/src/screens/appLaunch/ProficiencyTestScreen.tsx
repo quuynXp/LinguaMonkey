@@ -6,7 +6,7 @@ import type { NativeStackScreenProps } from "@react-navigation/native-stack"
 import instance from "../../api/axiosInstance"
 import { useUserStore } from "../../stores/UserStore"
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { resetToTab } from "../../utils/navigationRef"
+import { gotoTab, resetToTab } from "../../utils/navigationRef"
 import {  LessonCategoryResponse,LessonResponse, LessonQuestionResponse, LessonProgressWrongItemRequest, UIQuestion } from "../../types/api"
 import { t } from "i18next"
 import { formatDateTime } from "../../utils/timeHelper"
@@ -42,8 +42,8 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
 
   useEffect(() => {
     // read languages from userStore: expect user.languages is array of codes (e.g. ["EN","FR"])
-    const langs = (user?.languages ?? []).map((l: string) => String(l))
-    setAvailableLanguages(langs.length ? langs : ["EN"]) // fallback
+    const langs = (user?.languages ?? []).map((l: string) => String(l.toLowerCase()))
+    setAvailableLanguages(langs.length ? langs : ["en"]) // fallback
   }, [user])
 
   useEffect(() => {
@@ -178,7 +178,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
     setResults(testResults)
 
     // Build wrong items and POST
-    const userId = user?.user_id
+    const userId = user?.userId
     if (userId) {
       const wrongItems: LessonProgressWrongItemRequest[] = []
       questions.forEach((q, idx) => {
@@ -261,7 +261,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
     level.toUpperCase()
     try {
       await instance.put('/users',
-        { user_id: useUserStore.getState().user.user_id, proficiency: level, })
+        { user_id: useUserStore.getState().user.userId, proficiency: level, })
       navigation.navigate("Dashboard")
     } catch (error) {
       Alert.alert(t("error.title"), t("error.classifyLevel"))
@@ -275,7 +275,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
       <View style={styles.container}>
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
+            <TouchableOpacity onPress={() => gotoTab("Home")}>
               <Icon name="arrow-back" size={24} color="#374151" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>Proficiency Test</Text>

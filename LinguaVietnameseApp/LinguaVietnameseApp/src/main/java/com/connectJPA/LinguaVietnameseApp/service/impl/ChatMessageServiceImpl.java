@@ -3,25 +3,21 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.ChatMessage;
 import com.connectJPA.LinguaVietnameseApp.entity.MessageReaction;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.ChatMessageRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.MessageReactionRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.RoomMemberRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.RoomRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.*;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -40,15 +36,15 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final ChatMessageMapper chatMessageMapper;
+    private final UserRepository userRepository;
 
     @Override
-    @Cacheable(value = "chatMessages", key = "#roomId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
         try {
             if (roomId == null || pageable == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            Page<ChatMessage> messages = chatMessageRepository.findByRoomIdAndSenderIdAndIsDeletedFalse(roomId, null, pageable);
+            Page<ChatMessage> messages = chatMessageRepository.findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(roomId, pageable);
             return messages.map(message -> {
                 ChatMessageResponse response = chatMessageMapper.toResponse(message);
                 Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
@@ -64,7 +60,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CachePut(value = "chatMessages", key = "#result.messageId")
     public ChatMessageResponse saveMessage(UUID roomId, ChatMessageRequest request) {
         try {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
@@ -93,7 +88,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "chatMessages", key = "#id")
     public void deleteChatMessage(UUID id) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(id)
@@ -112,7 +106,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CachePut(value = "chatMessages", key = "#messageId")
     public ChatMessageResponse addReaction(UUID messageId, String reaction, UUID userId) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
@@ -140,7 +133,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
     @Override
     @Transactional
-    @CachePut(value = "chatMessages", key = "#messageId")
     public ChatMessageResponse markAsRead(UUID messageId, UUID userId) {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
@@ -199,5 +191,24 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             log.error("Error while handling typing status for room ID {}: {}", roomId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Override
+    public ChatStatsResponse getStatsByUser(UUID userId) {
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        long totalMessages = chatMessageRepository.countBySenderIdAndIsDeletedFalse(userId);
+
+        return ChatStatsResponse.builder()
+                .totalMessages(totalMessages)
+                .translationsUsed(0)
+                .videoCalls(0)
+                .lastActiveAt(user.getLastActiveAt())
+                .online(false)
+                .level(user.getLevel())
+                .exp(user.getExp())
+                .streak(user.getStreak())
+                .build();
     }
 }

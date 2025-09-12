@@ -1,353 +1,289 @@
-"use client"
-
-import React, { useRef, useState } from "react"
+// === EditProfileScreen.tsx ===
+// Thay thế/đặt vào màn EditProfile (nút 'Edit' trong ProfileScreen sẽ gotoTab('Profile','EditProfile'))
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  Animated,
-  KeyboardAvoidingView,
-  Platform,
+  View,
+  Text,
   ScrollView,
   StyleSheet,
-  Text,
-  TextInput,
   TouchableOpacity,
-  View,
-} from "react-native"
-import Icon from "react-native-vector-icons/MaterialIcons"
-import { useAppStore } from "../../stores/appStore"
-import { useProfile } from "../../hooks/useProfile"
-import { useToast } from "../../hooks/useToast"
+  TextInput,
+  ActivityIndicator,
+  Modal,
+  FlatList
+} from 'react-native';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from 'react-i18next';
+import { useUserStore } from '../../stores/UserStore';
+import instance from '../../api/axiosInstance';
+import { gotoTab } from '../../utils/navigationRef';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-interface UserProfile {
-  firstName: string
-  lastName: string
-  email: string
-  phone: string
-  dateOfBirth: string
-  location: string
-  bio: string
-}
 
-const EditProfileScreen = ({ navigation }) => {
-  const { user } = useAppStore()
-  const { data: userProfile, isLoading, error, updateProfile } = useProfile(user?.user_id)
-  const { showToast } = useToast()
 
-  const [profile, setProfile] = useState<UserProfile>({
-    firstName: userProfile?.firstName || "",
-    lastName: userProfile?.lastName || "",
-    email: userProfile?.email || "",
-    phone: userProfile?.phone || "",
-    dateOfBirth: userProfile?.dateOfBirth || "",
-    location: userProfile?.country || "",
-    bio: userProfile?.bio || "",
-  })
 
-  const [isEditing, setIsEditing] = useState(false)
-  const [hasChanges, setHasChanges] = useState(false)
-  const fadeAnim = useRef(new Animated.Value(0)).current
-  const slideAnim = useRef(new Animated.Value(30)).current
+const ccToFlag = (code?: string | null) => {
+  if (!code) return '🏳️';
+  const cc = code.toUpperCase();
+  if (!/^[A-Z]{2}$/.test(cc)) return '🏳️';
+  const A = 127397;
+  return String.fromCodePoint(...[...cc].map(c => A + c.charCodeAt(0)));
+};
 
-  React.useEffect(() => {
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 600,
-        useNativeDriver: true,
-      }),
-    ]).start()
-  }, [])
+// Small local pickers (no external deps) ------------------------------------------------
+const SimpleSelect = ({ label, value, options, onChange }: any) => (
+  <View style={localStyles.fieldRow}>
+    <Text style={localStyles.fieldLabel}>{label}</Text>
+    <TouchableOpacity style={localStyles.selectBox} onPress={() => onChange(null)}>
+      <Text style={localStyles.selectText}>{value ?? '—'}</Text>
+      <Icon name="edit" size={18} color="#6B7280" />
+    </TouchableOpacity>
+  </View>
+);
 
-  const handleInputChange = (field: keyof UserProfile, value: string) => {
-    setProfile((prev) => ({ ...prev, [field]: value }))
-    setHasChanges(true)
-  }
-
-  const handleSave = async () => {
-    try {
-      await updateProfile(profile)
-      showToast({ message: "Profile updated successfully!", type: "success" })
-      setHasChanges(false)
-    } catch (err) {
-      showToast({ message: "Failed to update profile", type: "error" })
-    }
-  }
-
-  const handleCancel = () => {
-    if (hasChanges) {
-      Alert.alert("Hủy thay đổi", "Bạn có chắc chắn muốn hủy các thay đổi chưa lưu?", [
-        { text: "Tiếp tục chỉnh sửa", style: "cancel" },
-        { text: "Hủy thay đổi", onPress: () => navigation.goBack() },
-      ])
-    } else {
-      navigation.goBack()
-    }
-  }
-
-  const renderInputField = (
-    label: string,
-    value: string,
-    field: keyof UserProfile,
-    placeholder: string,
-    multiline = false,
-    keyboardType: any = "default",
-  ) => (
-    <View style={styles.inputGroup}>
-      <Text style={styles.inputLabel}>{label}</Text>
-      <TextInput
-        style={[styles.textInput, multiline && styles.multilineInput]}
-        value={value}
-        onChangeText={(text) => handleInputChange(field, text)}
-        placeholder={placeholder}
-        placeholderTextColor="#9CA3AF"
-        multiline={multiline}
-        numberOfLines={multiline ? 3 : 1}
-        keyboardType={keyboardType}
-      />
-    </View>
-  )
-
-  return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={handleCancel} style={styles.headerButton}>
-          <Icon name="arrow-back" size={24} color="#374151" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Chỉnh sửa hồ sơ</Text>
-        <TouchableOpacity
-          onPress={handleSave}
-          style={[styles.headerButton, hasChanges && styles.saveButton]}
-          disabled={!hasChanges}
-        >
-          <Text style={[styles.saveText, hasChanges && styles.saveTextActive]}>Lưu</Text>
+const OptionModal = ({ visible, onClose, options, onSelect, title }: any) => (
+  <Modal visible={visible} animationType="slide" transparent>
+    <View style={localStyles.modalWrap}>
+      <View style={localStyles.modalCard}>
+        <Text style={localStyles.modalTitle}>{title}</Text>
+        <FlatList
+          data={options}
+          keyExtractor={(i: any) => i.value ?? i}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={localStyles.optionRow} onPress={() => { onSelect(item); onClose(); }}>
+              {item.flag && <Text style={{ marginRight: 8 }}>{item.flag}</Text>}
+              <Text>{item.label ?? item}</Text>
+            </TouchableOpacity>
+          )}
+        />
+        <TouchableOpacity style={localStyles.modalClose} onPress={onClose}>
+          <Text style={{ color: '#4F46E5', fontWeight: '600' }}>Close</Text>
         </TouchableOpacity>
       </View>
+    </View>
+  </Modal>
+);
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Animated.View
-          style={[
-            styles.form,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          {/* Avatar Section */}
-          <View style={styles.avatarSection}>
-            <View style={styles.avatarContainer}>
-              <View style={styles.avatar}>
-                <Icon name="person" size={50} color="#4F46E5" />
-              </View>
-              <TouchableOpacity style={styles.changeAvatarButton}>
-                <Icon name="camera-alt" size={20} color="#4F46E5" />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.changeAvatarText}>Thay đổi ảnh đại diện</Text>
+const COUNTRIES = [
+  { value: 'VIETNAM', label: 'Vietnam', flag: '🇻🇳' },
+  { value: 'UNITED_STATES', label: 'United States', flag: '🇺🇸' },
+  { value: 'JAPAN', label: 'Japan', flag: '🇯🇵' },
+  { value: 'SOUTH_KOREA', label: 'Korea', flag: '🇰🇷' },
+  { value: 'CHINA', label: 'China', flag: '🇨🇳' },
+  { value: 'FRANCE', label: 'France', flag: '🇫🇷' },
+  { value: 'GERMANY', label: 'Germany', flag: '🇩🇪' },
+  { value: 'ITALY', label: 'Italy', flag: '🇮🇹' },
+  { value: 'SPAIN', label: 'Spain', flag: '🇪🇸' },
+  { value: 'INDIA', label: 'India', flag: '🇮🇳' },
+];
+
+const COUNTRY_CODE_MAP: Record<string, string> = {
+  VIETNAM: 'VN',
+  UNITED_STATES: 'US',
+  JAPAN: 'JP',
+  SOUTH_KOREA: 'KR',
+  CHINA: 'CN',
+  FRANCE: 'FR',
+  GERMANY: 'DE',
+  ITALY: 'IT',
+  SPAIN: 'ES',
+  INDIA: 'IN',
+};
+const AGE_RANGES = [
+  { value: 'AGE_13_17', label: '13-17' },
+  { value: 'AGE_18_24', label: '18-24' },
+  { value: 'AGE_25_34', label: '25-34' },
+  { value: 'AGE_35_44', label: '35-44' },
+  { value: 'AGE_45_54', label: '45-54' },
+  { value: 'AGE_55_PLUS', label: '55+' },
+];
+const LEARNING_PACES = [
+  { value: 'SLOW', label: 'Slow' },
+  { value: 'MAINTAIN', label: 'Maintain' },
+  { value: 'FAST', label: 'Fast' },
+  { value: 'ACCELERATED', label: 'Accelerated' },
+];
+
+const PROFICIENCIES = [
+  { value: 'A1', label: 'A1' },
+  { value: 'A2', label: 'A2' },
+  { value: 'B1', label: 'B1' },
+  { value: 'B2', label: 'B2' },
+  { value: 'C1', label: 'C1' },
+  { value: 'C2', label: 'C2' },
+  { value: 'NATIVE', label: 'Native' },
+];const LEVELS = Array.from({ length: 20 }, (_, i) => String(i + 1));
+
+const EditProfileScreen: React.FC = () => {
+  const { t } = useTranslation();
+  const { user, setProfileData } = useUserStore();
+  const [local, setLocal] = useState<any>({});
+  const [saving, setSaving] = useState(false);
+  const [modal, setModal] = useState<{ key?: string, visible: boolean }>({ visible: false });
+
+  useEffect(() => {
+    setLocal({
+      fullname: user?.fullname ?? user?.nickname ?? '',
+      bio: user?.bio ?? '',
+      country: user?.country ?? null,
+      email : user?.email ?? null,
+      ageRange: user?.ageRange ?? null,
+      learningPace: user?.learningPace ?? null,
+      proficiency: user?.proficiency ?? null,
+      level: user?.level ?? null,
+      phone: user?.phone ?? '',
+    });
+  }, [user?.userId]);
+
+  const showPicker = (key: string) => setModal({ key, visible: true });
+  const closePicker = () => setModal({ visible: false });
+
+  const onSelectOption = (item: any) => {
+    if (!modal.key) return;
+    const value = item.value ?? item;
+    setLocal((s: any) => ({ ...s, [modal.key!]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!user?.userId) return Alert.alert('Error', 'Missing userId');
+    setSaving(true);
+    try {
+      // Build payload only with editable fields
+      const payload: any = {
+        fullname: local.fullname,
+        bio: local.bio,
+        phone: local.phone,
+        country: local.country,
+        email : local.email,
+        ageRange: local.ageRange,
+        learningPace: local.learningPace,
+        proficiency: local.proficiency,
+        level: local.level ? Number(local.level) : undefined,
+      };
+
+      const response = await instance.put(`/users/${user.userId}`, payload);
+      if (response?.data?.result) {
+        setProfileData({ user: response.data.result });
+        Alert.alert(t('profile.saved') ?? 'Saved', t('profile.savedSuccess') ?? 'Profile updated');
+        gotoTab('Profile', 'Profile');
+      } else {
+        throw new Error(response?.data?.message ?? 'Unknown response');
+      }
+    } catch (err: any) {
+      Alert.alert(t('errors.server') ?? 'Error', err?.message ?? 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!local) return <ActivityIndicator style={{ flex: 1 }} />;
+
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+      <ScrollView style={styles.container} contentContainerStyle={{ padding: 20 }}>
+        <View style={styles.card}>
+          <Text style={styles.title}>{t('profile.editProfile') ?? 'Edit profile'}</Text>
+
+          <View style={styles.field}>
+            <Text style={styles.label}>{t('profile.fullname') ?? 'Full name'}</Text>
+            <TextInput value={local.fullname} onChangeText={(v) => setLocal((s: any) => ({ ...s, fullname: v }))} style={styles.input} />
           </View>
 
-          {/* Personal Information */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thông tin cá nhân</Text>
-            <View style={styles.sectionContent}>
-              {renderInputField("Tên", profile.firstName, "firstName", "Nhập tên của bạn")}
-              {renderInputField("Họ", profile.lastName, "lastName", "Nhập họ của bạn")}
-              {renderInputField("Email", profile.email, "email", "Nhập email", false, "email-address")}
-              {renderInputField("Số điện thoại", profile.phone, "phone", "Nhập số điện thoại", false, "phone-pad")}
-              {renderInputField("Ngày sinh", profile.dateOfBirth, "dateOfBirth", "DD/MM/YYYY")}
-              {renderInputField("Địa chỉ", profile.location, "location", "Nhập địa chỉ của bạn")}
-            </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>{t('profile.bio') ?? 'Bio'}</Text>
+            <TextInput multiline numberOfLines={3} value={local.bio} onChangeText={(v) => setLocal((s: any) => ({ ...s, bio: v }))} style={[styles.input, { height: 80 }]} />
           </View>
 
-          {/* Bio Section */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Giới thiệu</Text>
-            <View style={styles.sectionContent}>
-              {renderInputField("Mô tả bản thân", profile.bio, "bio", "Viết vài dòng về bản thân bạn...", true)}
+          <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('country')}>
+            <Text style={styles.label}>{t('profile.country') ?? 'Country'}</Text>
+            <View style={styles.pillRight}>
+              <Text style={{ marginRight: 8 }}>
+      {local.country ? ccToFlag(COUNTRY_CODE_MAP[local.country]) : '—'}
+    </Text>
+              <Text style={styles.rightText}>{local.country ?? 'Select'}</Text>
+              <Icon name="chevron-right" size={20} color="#9CA3AF" />
             </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('ageRange')}>
+            <Text style={styles.label}>{t('profile.ageRange') ?? 'Age range'}</Text>
+            <View style={styles.pillRight}>
+              <Text style={styles.rightText}>{local.ageRange ?? 'Select'}</Text>
+              <Icon name="chevron-right" size={20} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('learningPace')}>
+            <Text style={styles.label}>{t('profile.learningPace') ?? 'Learning pace'}</Text>
+            <View style={styles.pillRight}>
+              <Text style={styles.rightText}>{local.learningPace ?? 'Select suggestion'}</Text>
+              <Icon name="chevron-right" size={20} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('proficiency')}>
+            <Text style={styles.label}>{t('profile.proficiency') ?? 'Proficiency'}</Text>
+            <View style={styles.pillRight}>
+              <Text style={styles.rightText}>{local.proficiency ?? 'Select'}</Text>
+              <Icon name="chevron-right" size={20} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+
+          
+
+          <View style={styles.field}>
+            <Text style={styles.label}>{t('profile.phone') ?? 'Phone'}</Text>
+            <TextInput value={local.phone} keyboardType="phone-pad" onChangeText={(v) => setLocal((s: any) => ({ ...s, phone: v }))} style={styles.input} />
           </View>
 
-          {/* Account Actions */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tài khoản</Text>
-            <View style={styles.sectionContent}>
-              <TouchableOpacity style={styles.actionItem}>
-                <Icon name="lock" size={20} color="#4F46E5" />
-                <Text style={styles.actionText}>Đổi mật khẩu</Text>
-                <Icon name="chevron-right" size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.actionItem}>
-                <Icon name="email" size={20} color="#4F46E5" />
-                <Text style={styles.actionText}>Xác thực email</Text>
-                <View style={styles.verifiedBadge}>
-                  <Icon name="verified" size={16} color="#10B981" />
-                  <Text style={styles.verifiedText}>Đã xác thực</Text>
-                </View>
-              </TouchableOpacity>
-            </View>
+          <View style={{ marginTop: 18, flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '600' }}>{t('profile.save') ?? 'Save'}</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => gotoTab('Profile', "ProfileMain")}>
+              <Text style={{ color: '#374151', fontWeight: '600' }}>{t('profile.cancel') ?? 'Cancel'}</Text>
+            </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
+
+        {/* Option modal */}
+        <OptionModal
+          visible={modal.visible}
+          onClose={closePicker}
+          options={modal.key === 'country' ? COUNTRIES : modal.key === 'ageRange' ? AGE_RANGES : modal.key === 'learningPace' ? LEARNING_PACES : modal.key === 'proficiency' ? PROFICIENCIES : LEVELS.map(l => ({ value: l, label: `Level ${l}` }))}
+          onSelect={onSelectOption}
+          title={modal.key}
+        />
       </ScrollView>
-    </KeyboardAvoidingView>
-  )
-}
+    </SafeAreaView>
+  );
+};
+
+export default EditProfileScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  headerButton: {
-    padding: 8,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  saveButton: {
-    backgroundColor: "#4F46E5",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-  },
-  saveText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#9CA3AF",
-  },
-  saveTextActive: {
-    color: "#FFFFFF",
-  },
-  content: {
-    flex: 1,
-  },
-  form: {
-    padding: 20,
-  },
-  avatarSection: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  avatarContainer: {
-    position: "relative",
-    marginBottom: 12,
-  },
-  avatar: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#EEF2FF",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  avatarAnimation: {
-    width: 80,
-    height: 80,
-  },
-  changeAvatarButton: {
-    position: "absolute",
-    bottom: 0,
-    right: 0,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#FFFFFF",
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-  },
-  changeAvatarText: {
-    fontSize: 14,
-    color: "#4F46E5",
-    fontWeight: "500",
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 12,
-  },
-  sectionContent: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#374151",
-    marginBottom: 8,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: "#1F2937",
-    backgroundColor: "#FFFFFF",
-  },
-  multilineInput: {
-    height: 80,
-    textAlignVertical: "top",
-  },
-  actionItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F3F4F6",
-  },
-  actionText: {
-    flex: 1,
-    fontSize: 16,
-    color: "#374151",
-    marginLeft: 12,
-  },
-  verifiedBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  verifiedText: {
-    fontSize: 12,
-    color: "#10B981",
-    marginLeft: 4,
-    fontWeight: "500",
-  },
-})
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  card: { backgroundColor: '#fff', padding: 16, borderRadius: 12 },
+  title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
+  field: { marginBottom: 12 },
+  label: { fontSize: 13, color: '#6B7280', marginBottom: 6 },
+  input: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 10, fontSize: 14, backgroundColor: '#fff' },
+  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  pillRight: { flexDirection: 'row', alignItems: 'center' },
+  rightText: { color: '#374151', marginRight: 8 },
+  saveBtn: { flex: 1, backgroundColor: '#4F46E5', padding: 12, borderRadius: 8, alignItems: 'center' },
+  cancelBtn: { padding: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E5E7EB', marginLeft: 8 },
+});
 
-export default EditProfileScreen
+const localStyles = StyleSheet.create({
+  fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  fieldLabel: { color: '#6B7280' },
+  selectBox: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  selectText: { color: '#111827', fontWeight: '600' },
+  modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalCard: { backgroundColor: '#fff', padding: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '70%' },
+  modalTitle: { fontWeight: '700', marginBottom: 12 },
+  optionRow: { paddingVertical: 12, flexDirection: 'row', alignItems: 'center' },
+  modalClose: { marginTop: 12, alignItems: 'center' },
+});

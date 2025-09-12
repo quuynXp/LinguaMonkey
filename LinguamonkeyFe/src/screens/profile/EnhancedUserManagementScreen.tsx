@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Animated, Modal, Alert, TextInput } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useUserProfile } from "../../hooks/useUserProfile"
+import { useUserStore } from "../../stores/UserStore"
 import { useAppStore } from "../../stores/appStore"
 import { formatDateTime } from "../../utils/timeHelper"
 
@@ -66,7 +66,7 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
   const characterScaleAnim = useRef(new Animated.Value(1)).current
 
   const { user } = useAppStore()
-  const { data: userProfile, isLoading, error } = useUserProfile(user?.user_id)
+  const { data: userProfile, isLoading, error } = useUserStore.getState().user?.userId
 
   useEffect(() => {
     Animated.timing(fadeAnim, {

@@ -11,6 +11,9 @@ import {
     View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation } from 'react-i18next';
+import { useChatStore } from "../../stores/ChatStore";
+
 interface Room {
   id: string;
   name: string;
@@ -26,6 +29,7 @@ interface Room {
 }
 
 const ChatRoomListScreen = ({ navigation }) => {
+  const { t } = useTranslation();
   const [rooms, setRooms] = useState<Room[]>([
     {
       id: '1',
@@ -86,6 +90,8 @@ const ChatRoomListScreen = ({ navigation }) => {
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const activities = useChatStore(state => state.activities)
+  const stats = useChatStore(state => state.stats)
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -104,17 +110,17 @@ const ChatRoomListScreen = ({ navigation }) => {
 
   const joinRoom = (room: Room) => {
     if (room.memberCount >= room.maxMembers) {
-      Alert.alert('Phòng đầy', 'Phòng chat này đã đầy. Vui lòng thử phòng khác.');
+      Alert.alert(t('room.full'), t('room.full.message'));
       return;
     }
 
     Alert.alert(
-      'Tham gia phòng',
-      `Bạn có muốn tham gia phòng "${room.name}"?`,
+      t('room.join'),
+      t('room.join.confirm', { name: room.name }),
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: t('cancel'), style: 'cancel' },
         {
-          text: 'Tham gia',
+          text: t('join'),
           onPress: () => {
             navigation.navigate('UserChat', { room });
           },
@@ -132,7 +138,7 @@ const ChatRoomListScreen = ({ navigation }) => {
         setRoomCode('');
         joinRoom(foundRoom);
       } else {
-        Alert.alert('Không tìm thấy', 'Không tìm thấy phòng với mã này.');
+        Alert.alert(t('room.not.found'), t('room.not.found.message'));
       }
     }
   };
@@ -148,9 +154,9 @@ const ChatRoomListScreen = ({ navigation }) => {
 
   const getLevelText = (level: string) => {
     switch (level) {
-      case 'beginner': return 'Sơ cấp';
-      case 'intermediate': return 'Trung cấp';
-      case 'advanced': return 'Nâng cao';
+      case 'beginner': return t('level.beginner');
+      case 'intermediate': return t('level.intermediate');
+      case 'advanced': return t('level.advanced');
       default: return level;
     }
   };
@@ -174,7 +180,7 @@ const ChatRoomListScreen = ({ navigation }) => {
           <Text style={styles.roomFlag}>{getLanguageFlag(item.language)}</Text>
           <View style={styles.roomTitleInfo}>
             <Text style={styles.roomName}>{item.name}</Text>
-            <Text style={styles.roomCreator}>Tạo bởi {item.createdBy}</Text>
+            <Text style={styles.roomCreator}>{t('room.created.by')} {item.createdBy}</Text>
           </View>
         </View>
         
@@ -186,7 +192,7 @@ const ChatRoomListScreen = ({ navigation }) => {
           </View>
           <View style={[styles.purposeBadge, item.purpose === 'learning' ? styles.learningBadge : styles.socialBadge]}>
             <Text style={[styles.purposeText, item.purpose === 'learning' ? styles.learningText : styles.socialText]}>
-              {item.purpose === 'learning' ? 'Học tập' : 'Giao lưu'}
+              {item.purpose === 'learning' ? t('purpose.learning') : t('purpose.social')}
             </Text>
           </View>
         </View>
@@ -198,7 +204,7 @@ const ChatRoomListScreen = ({ navigation }) => {
         <View style={styles.memberInfo}>
           <Icon name="group" size={16} color="#6B7280" />
           <Text style={styles.memberCount}>
-            {item.memberCount}/{item.maxMembers} thành viên
+            {item.memberCount}/{item.maxMembers} {t('members')}
           </Text>
         </View>
         
@@ -231,7 +237,7 @@ const ChatRoomListScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Danh sách phòng</Text>
+        <Text style={styles.headerTitle}>{t('room.list')}</Text>
         <TouchableOpacity onPress={() => setShowJoinModal(true)}>
           <Icon name="vpn-key" size={24} color="#4F46E5" />
         </TouchableOpacity>
@@ -243,7 +249,7 @@ const ChatRoomListScreen = ({ navigation }) => {
           <Icon name="search" size={20} color="#9CA3AF" />
           <TextInput
             style={styles.searchInput}
-            placeholder="Tìm kiếm phòng..."
+            placeholder={t('room.search')}
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -252,9 +258,9 @@ const ChatRoomListScreen = ({ navigation }) => {
 
         {/* Filters */}
         <View style={styles.filtersContainer}>
-          {renderFilterButton('all', 'Tất cả')}
-          {renderFilterButton('learning', 'Học tập')}
-          {renderFilterButton('social', 'Giao lưu')}
+          {renderFilterButton('all', t('all'))}
+          {renderFilterButton('learning', t('learning'))}
+          {renderFilterButton('social', t('social'))}
         </View>
 
         {/* Room List */}
@@ -267,8 +273,8 @@ const ChatRoomListScreen = ({ navigation }) => {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Icon name="chat-bubble-outline" size={48} color="#D1D5DB" />
-              <Text style={styles.emptyText}>Không tìm thấy phòng nào</Text>
-              <Text style={styles.emptySubtext}>Thử thay đổi từ khóa tìm kiếm</Text>
+              <Text style={styles.emptyText}>{t('room.empty')}</Text>
+              <Text style={styles.emptySubtext}>{t('room.empty.subtext')}</Text>
             </View>
           }
         />
@@ -279,7 +285,7 @@ const ChatRoomListScreen = ({ navigation }) => {
           onPress={() => navigation.navigate('CreateRoom')}
         >
           <Icon name="add" size={24} color="#FFFFFF" />
-          <Text style={styles.createRoomButtonText}>Tạo phòng mới</Text>
+          <Text style={styles.createRoomButtonText}>{t('room.create')}</Text>
         </TouchableOpacity>
       </Animated.View>
 
@@ -293,19 +299,19 @@ const ChatRoomListScreen = ({ navigation }) => {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Tham gia bằng mã</Text>
+              <Text style={styles.modalTitle}>{t('room.join.by.code')}</Text>
               <TouchableOpacity onPress={() => setShowJoinModal(false)}>
                 <Icon name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
             
             <Text style={styles.modalDescription}>
-              Nhập mã phòng để tham gia trực tiếp
+              {t('room.join.by.code.desc')}
             </Text>
             
             <TextInput
               style={styles.codeInput}
-              placeholder="Nhập mã phòng..."
+              placeholder={t('room.code.placeholder')}
               placeholderTextColor="#9CA3AF"
               value={roomCode}
               onChangeText={setRoomCode}
@@ -317,7 +323,7 @@ const ChatRoomListScreen = ({ navigation }) => {
                 style={styles.cancelButton}
                 onPress={() => setShowJoinModal(false)}
               >
-                <Text style={styles.cancelButtonText}>Hủy</Text>
+                <Text style={styles.cancelButtonText}>{t('cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.joinButton, !roomCode.trim() && styles.joinButtonDisabled]}
@@ -325,7 +331,7 @@ const ChatRoomListScreen = ({ navigation }) => {
                 disabled={!roomCode.trim()}
               >
                 <Text style={[styles.joinButtonText, !roomCode.trim() && styles.joinButtonTextDisabled]}>
-                  Tham gia
+                  {t('join')}
                 </Text>
               </TouchableOpacity>
             </View>

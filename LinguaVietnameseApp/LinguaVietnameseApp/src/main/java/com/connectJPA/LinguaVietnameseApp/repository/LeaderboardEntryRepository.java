@@ -18,6 +18,13 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
 
     @Query("SELECT le FROM LeaderboardEntry le " +
             "WHERE le.id.leaderboardId = :leaderboardId " +
+            "AND le.isDeleted = false")
+    Page<LeaderboardEntry> findByLeaderboardIdAndIsDeletedFalse(
+            @Param("leaderboardId") UUID leaderboardId,
+            Pageable pageable);
+
+    @Query("SELECT le FROM LeaderboardEntry le " +
+            "WHERE le.id.leaderboardId = :leaderboardId " +
             "AND le.id.userId = :userId " +
             "AND le.isDeleted = false")
     Page<LeaderboardEntry> findByLeaderboardIdAndUserIdAndIsDeletedFalse(
@@ -45,10 +52,12 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             @Param("userId") UUID userId);
 
     @Query("SELECT le FROM LeaderboardEntry le " +
-            "WHERE le.id.leaderboardId = :leaderboardId " +
-            "AND le.isDeleted = false " +
-            "ORDER BY le.score DESC")
-    List<LeaderboardEntry> findTopByLeaderboardIdAndIsDeletedFalse(
+            "JOIN User u ON le.leaderboardEntryId.userId = u.userId " +
+            "WHERE le.leaderboardEntryId.leaderboardId = :leaderboardId " +
+            "AND le.isDeleted = false AND u.isDeleted = false " +
+            "ORDER BY u.level DESC")
+    List<LeaderboardEntry> findTop3ByLeaderboardIdOrderByUserLevelDesc(
             @Param("leaderboardId") UUID leaderboardId,
             Pageable pageable);
+
 }

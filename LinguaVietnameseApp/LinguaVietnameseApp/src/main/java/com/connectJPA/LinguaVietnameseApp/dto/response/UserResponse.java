@@ -14,11 +14,14 @@ import java.util.Set;
 import java.util.UUID;
 
 @Data
+@AllArgsConstructor
+@NoArgsConstructor
 public class UserResponse {
     private UUID userId;
     private String email;
     private String fullname;
     private String nickname;
+    private String bio;
     private String phone;
     private String avatarUrl;
     private UUID character3dId;
@@ -28,8 +31,7 @@ public class UserResponse {
     private String country;
     private Integer level;
     private Integer exp;
-    private Integer expForCurrentLevel;
-    private Integer expForNextLevel;
+    private Integer expToNextLevel;
     private BigDecimal progress;
     private Integer streak;
     private boolean isDeleted;

@@ -1,5 +1,3 @@
-"use client"
-
 import React, { useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
@@ -8,7 +6,6 @@ import { useTranslation } from "react-i18next"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
 import instance from "../../api/axiosInstance"
-import { gotoTab } from "../../utils/navigationRef"
 
 interface CallPreferences {
   interests: string[]
@@ -21,7 +18,7 @@ interface CallPreferences {
 
 const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   const { t } = useTranslation()
-  const { user } = useAppStore()
+  const { user, setCallPreferences } = useAppStore()
   const { showToast } = useToast()
 
   const [preferences, setPreferences] = useState<CallPreferences>({
@@ -36,11 +33,10 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  // Fetch available interests
   const { data: interests = [] } = useQuery({
     queryKey: ["call-interests"],
     queryFn: async () => {
-      const response = await instance.get("/api/call/interests")
+      const response = await instance.get("/call/interests")
       return response.data.interests
     },
   })
@@ -54,16 +50,16 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     },
   })
 
-  // Save preferences mutation
   const savePreferencesMutation = useMutation({
     mutationFn: async (prefs: CallPreferences) => {
       const response = await instance.post("/call/preferences", {
         ...prefs,
-        userId: user?.id,
+        userId: user?.userId,
       })
       return response.data
     },
     onSuccess: () => {
+      setCallPreferences(preferences)
       navigation.navigate("CallSearch", { preferences })
     },
     onError: () => {
@@ -85,14 +81,14 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   ]
 
   const defaultLanguages = [
-    { code: "en", name: "English", flag: "🇺🇸" },
-    { code: "zh", name: "中文", flag: "🇨🇳" },
-    { code: "vi", name: "Tiếng Việt", flag: "🇻🇳" },
-    { code: "ja", name: "日本語", flag: "🇯🇵" },
-    { code: "ko", name: "한국어", flag: "🇰🇷" },
-    { code: "fr", name: "Français", flag: "🇫🇷" },
-    { code: "es", name: "Español", flag: "🇪🇸" },
-    { code: "de", name: "Deutsch", flag: "🇩🇪" },
+    { code: "en", name: t("call.languages.en"), flag: "🇺🇸" },
+    { code: "zh", name: t("call.languages.zh"), flag: "🇨🇳" },
+    { code: "vi", name: t("call.languages.vi"), flag: "🇻🇳" },
+    { code: "ja", name: t("call.languages.ja"), flag: "🇯🇵" },
+    { code: "ko", name: t("call.languages.ko"), flag: "🇰🇷" },
+    { code: "fr", name: t("call.languages.fr"), flag: "🇫🇷" },
+    { code: "es", name: t("call.languages.es"), flag: "🇪🇸" },
+    { code: "de", name: t("call.languages.de"), flag: "🇩🇪" },
   ]
 
   const genderOptions = [
@@ -293,7 +289,6 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
             {renderOptionButton(ageRanges, preferences.ageRange, (value) => updatePreference("ageRange", value))}
           </View>
 
-          {/* Call Duration */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.duration")}</Text>
             <Text style={styles.sectionSubtitle}>{t("call.expectedDuration")}</Text>

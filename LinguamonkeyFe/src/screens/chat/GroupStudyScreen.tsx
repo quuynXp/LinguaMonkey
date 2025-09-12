@@ -7,8 +7,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
-import { formatTime } from "../../utils/timeHelper"
-import { apiClient } from "../../api/axiosInstance"
+import { formatDateTime } from "../../utils/timeHelper"
+import instance from "../../api/axiosInstance"
+import {} from "../../types/api"
 
 interface StudyRoom {
   id: string
@@ -82,7 +83,7 @@ const GroupStudyScreen = ({ navigation }) => {
   const { data: studyRooms = [], isLoading: roomsLoading } = useQuery({
     queryKey: ["study-rooms"],
     queryFn: async () => {
-      const response = await apiClient.get("/api/study-rooms")
+      const response = await apiClient.get("/study-rooms")
       return response.data.rooms
     },
   })
@@ -100,7 +101,7 @@ const GroupStudyScreen = ({ navigation }) => {
   // Create room mutation
   const createRoomMutation = useMutation({
     mutationFn: async (roomData: any) => {
-      const response = await apiClient.post("/api/study-rooms", roomData)
+      const response = await apiClient.post("/study-rooms", roomData)
       return response.data
     },
     onSuccess: (data) => {

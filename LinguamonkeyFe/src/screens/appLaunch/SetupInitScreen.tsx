@@ -2,14 +2,15 @@
 
 import * as Localization from "expo-localization"
 import { useEffect, useRef, useState } from "react"
-import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
+import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Character3D, Language, Interest, Country, AgeRange, LearningPace, CreateUserPayload } from "../../types/api"
+import { Character3D, Language, Interest, Country, AgeRange, LearningPace, CreateUserPayload, languageToCountry } from "../../types/api"
 import instance from "../../api/axiosInstance"
 import ModelViewer from "../../components/ModelViewer"
 import CountryFlag from "react-native-country-flag"
 import { useTranslation } from "react-i18next"
 import { SafeAreaView } from "react-native-safe-area-context"
+import { gotoTab } from "../../utils/navigationRef";
 
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useUserStore } from "../../stores/UserStore";
@@ -21,24 +22,42 @@ type SetupInitScreenProps = {
   navigation: NativeStackNavigationProp<any>
 }
 
+const countryToDefaultLanguage: Record<string, string> = {
+  US: "EN",
+  VN: "VI",
+  JP: "JA",
+  CN: "ZH",
+  FR: "FR",
+  DE: "DE",
+  ES: "ES",
+  IT: "IT",
+  KR: "KO",
+  RU: "RU",
+  IN: "EN",
+  ZH: "ZH",
+}
+
 const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(1)
   const [selectedCharacter, setSelectedCharacter] = useState<Character3D | null>(null)
   const [accountName, setAccountName] = useState("")
   const [email, setEmail] = useState("")
-  const [country, setCountry] = useState("")
+  const [country, setCountry] = useState<string | null>(null) // store country CODE (e.g. "VN", "US")
   const [ageRange, setAgeRange] = useState("")
-  const [nativeLanguage, setNativeLanguage] = useState("")
+  const [nativeLanguage, setNativeLanguage] = useState<string | null>(null) // store language CODE uppercase (e.g. "VI", "EN")
   const [targetLanguages, setTargetLanguages] = useState<string[]>([])
   const [certificationsSelected, setCertificationsSelected] = useState<string[]>([])
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
   const [learningGoalsSelected, setLearningGoalsSelected] = useState<string[]>([])
   const [learningPace, setLearningPace] = useState("")
 
+
   const [characters, setCharacters] = useState<Character3D[]>([])
   const [languages, setLanguages] = useState<Language[]>([])
   const [interests, setInterests] = useState<Interest[]>([])
+
+
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
@@ -47,7 +66,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     { code: "US", name: "United States" },
     { code: "VN", name: "Vietnam" },
     { code: "JP", name: "Japan" },
-    { code: "ZH", name: "China" },
+    { code: "CN", name: "China" },
     { code: "FR", name: "France" },
     { code: "DE", name: "Germany" },
     { code: "ES", name: "Spain" },
@@ -68,13 +87,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     { id: "goethe", name: "Goethe", description: "German Language Certificate", languageCode: "DE" },
   ]
 
-  const interestsWithDesc = interests.map((interest) => ({
-    ...interest,
-    description:
-      interest.description ||
-      `Explore ${interest.interest_name.toLowerCase()} to enhance your learning experience.`,
-    id: interest.interest_id, // luôn dùng id từ backend
-  }))
 
   const learningGoals = [
     { id: "conversation", name: "Daily Conversation", icon: "chat", description: "Practice everyday speaking and listening" },
@@ -95,31 +107,41 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const randomSuffix = (len = 6) =>
     Math.random().toString(36).slice(2, 2 + len);
 
+  const interestsWithDesc = interests.map((interest) => ({
+    ...interest,
+    description:
+      interest.description ||
+      `Explore ${(interest.interestName ?? "interest").toLowerCase()} to enhance your learning experience.`,
+    id: interest.interestId,
+  }))
+
+
   const mapCountryToEnum = (c: string | undefined) => {
     if (!c) return undefined;
-    const normalized = c.trim().toLowerCase();
+    const normalized = c.trim().toUpperCase();
     const map: Record<string, string> = {
-      "united states": "UNITED_STATES",
-      "us": "UNITED_STATES",
-      "vietnam": "VIETNAM",
-      "vn": "VIETNAM",
-      "japan": "JAPAN",
-      "jp": "JAPAN",
-      "china": "CHINA",
-      "zh": "CHINA",
-      "france": "FRANCE",
-      "fr": "FRANCE",
-      "germany": "GERMANY",
-      "de": "GERMANY",
-      "italy": "ITALY",
-      "it": "ITALY",
-      "spain": "SPAIN",
-      "es": "SPAIN",
-      "south korea": "SOUTH_KOREA",
-      "kr": "SOUTH_KOREA",
-      "india": "INDIA",
-      "in": "INDIA",
-      "tonga": "TONGA"
+      "UNITED STATES": "UNITED_STATES",
+      "US": "UNITED_STATES",
+      "VN": "VIETNAM",
+      "VIETNAM": "VIETNAM",
+      "JP": "JAPAN",
+      "JAPAN": "JAPAN",
+      "CN": "CHINA",
+      "CHINA": "CHINA",
+      "FR": "FRANCE",
+      "FRANCE": "FRANCE",
+      "DE": "GERMANY",
+      "GERMANY": "GERMANY",
+      "IT": "ITALY",
+      "ITALY": "ITALY",
+      "ES": "SPAIN",
+      "SPAIN": "SPAIN",
+      "KR": "SOUTH_KOREA",
+      "SOUTH KOREA": "SOUTH_KOREA",
+      "IN": "INDIA",
+      "INDIA": "INDIA",
+      "TOGA": "TONGA",
+      "TONGA": "TONGA"
     };
     return map[normalized] ?? undefined;
   };
@@ -145,6 +167,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     fetchInterests()
   }, [])
 
+
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -165,27 +188,36 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   useEffect(() => {
     if (interests.length && selectedInterests.length === 0) {
-      setSelectedInterests([interests[0].interest_id])
+      setSelectedInterests([interests[0].interestId])
     }
   }, [interests])
 
   useEffect(() => {
-    // Initialize country and native language based on location
+    // Initialize country and native language based on location (store codes and uppercase language codes)
     const locales = Localization.getLocales()
     if (locales && locales.length > 0) {
       const regionCode = locales[0]?.regionCode?.toUpperCase()
-      const languageCode = locales[0]?.languageCode?.toUpperCase()
+      const languageCodeRaw = locales[0]?.languageCode
+      const languageCode = languageCodeRaw ? languageCodeRaw.toUpperCase() : undefined
       const foundCountry = countries.find(c => c.code === regionCode)
-      if (foundCountry) setCountry(foundCountry.name.toUpperCase())
-      if (languageCode) {
+      if (foundCountry) {
+        setCountry(foundCountry.code)
+        // set default native language from country mapping (fallback to locale)
+        const defaultLang = countryToDefaultLanguage[foundCountry.code] ?? languageCode
+        if (defaultLang) {
+          setNativeLanguage(String(defaultLang).toUpperCase())
+          // ensure targetLanguages doesn't accidentally include native
+          setTargetLanguages(prev => prev.filter(c => c !== String(defaultLang).toUpperCase()))
+        }
+      } else if (languageCode) {
         setNativeLanguage(languageCode)
-        setTargetLanguages([languageCode]) // Default target language
+        setTargetLanguages(prev => prev.filter(c => c !== languageCode))
       }
     }
 
     // Set default selections
     if (characters.length > 0) setSelectedCharacter(characters[0])
-    if (interests.length > 0) setSelectedInterests([interests[0].interest_id])
+    if (interests.length > 0) setSelectedInterests([interests[0].interestId])
     if (learningGoals.length > 0) setLearningGoalsSelected(["conversation"])
     setLearningPace("slow")
     setAgeRange("18-24")
@@ -196,16 +228,8 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const response = await instance.get('/character3ds');
       const charactersArray = response.data.result?.content;
 
-      console.log("Fetched characters:", charactersArray);
-
       if (Array.isArray(charactersArray)) {
-        const normalized = charactersArray.map((c: any) => ({
-          ...c,
-          character3d_id: c.character3dId,
-          character3d_name: c.character3dName,
-          model_url: c.modelUrl,
-        }));
-        setCharacters(normalized);
+        setCharacters(charactersArray); // BE đã trả camelCase, giữ nguyên
       } else {
         setCharacters([]);
       }
@@ -220,7 +244,13 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const response = await instance.get('/languages')
       const languageArray = response.data.result?.content
       if (Array.isArray(languageArray)) {
-        setLanguages(languageArray)
+        // normalize language codes to uppercase to avoid mismatch
+        const normalized = languageArray.map((lang: any) => ({
+          languageCode: String(lang.languageCode ?? "").toUpperCase(),
+          languageName: lang.languageName,
+          description: lang.description ?? undefined,
+        }))
+        setLanguages(normalized)
       } else {
         setLanguages([])
       }
@@ -229,19 +259,12 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     }
   }
 
+
   const fetchInterests = async () => {
     try {
       const response = await instance.get('/interests')
       const data = response.data.result || []
-
-      // map BE -> FE đồng bộ field
-      const normalized = data.map((item: any) => ({
-        interest_id: item.interestId,        // convert
-        interest_name: item.interestName,    // convert
-        description: item.description,
-      }))
-
-      setInterests(normalized)
+      setInterests(data) // giữ nguyên camelCase từ BE
     } catch (error) {
       Alert.alert(t("error.title"), t("error.loadInterests"))
     }
@@ -290,12 +313,12 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
 
       // character3dId: only set if value exists and is a proper UUID-like string
-      if (selectedCharacter?.character3d_id) {
-        payload.character3dId = selectedCharacter.character3d_id // do NOT call String(...) when might be undefined
+      if (selectedCharacter?.character3dId) {
+        payload.character3dId = selectedCharacter.character3dId // do NOT call String(...) when might be undefined
       }
 
       // country: use mapped enum token
-      const mappedCountry = mapCountryToEnum(country)
+      const mappedCountry = mapCountryToEnum(country ?? undefined)
       if (mappedCountry) payload.country = mappedCountry as Country
 
       // ageRange: map display -> BE enum (AGE_18_24 ...)
@@ -335,7 +358,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       useTokenStore.getState().setTokens(response.data.result.accessToken, response.data.result.refreshToken)
 
 
-      navigation.navigate("ProficiencyTest")
+      gotoTab("ProficiencyTestScreen")
     } catch (error) {
       console.error("createTempAccountAndSetup error:", error)
       Alert.alert(t("error.title"), t("error.setupAccount"))
@@ -357,8 +380,24 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     setter(newArray)
   }
 
-  const toggleTargetLanguage = (langCode: string) => {
-    toggleArraySelection(targetLanguages, langCode, setTargetLanguages)
+  const normalizeLangCode = (code?: string) => (code ? String(code).toUpperCase() : "")
+
+  // prevent selecting the same as native: user must explicitly choose a non-native language
+  const toggleTargetLanguage = (langCodeRaw: string) => {
+    const langCode = normalizeLangCode(langCodeRaw)
+    if (!langCode) return
+
+    if (nativeLanguage && langCode === nativeLanguage) {
+      // disallow auto-selecting native as a learning language
+      Alert.alert(t("error.title"), t("setup.cannotSelectNativeAsTarget") || "Cannot select native language as learning target")
+      return
+    }
+
+    if (targetLanguages.includes(langCode)) {
+      setTargetLanguages(prev => prev.filter(c => c !== langCode))
+    } else {
+      setTargetLanguages(prev => [...prev, langCode])
+    }
   }
 
   const toggleCertification = (certId: string) => {
@@ -376,6 +415,33 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const getFilteredCertifications = () => {
     if (targetLanguages.length === 0) return []
     return certifications.filter(cert => targetLanguages.includes(cert.languageCode))
+  }
+
+  const onSelectCountry = (countryCode: string) => {
+    setCountry(countryCode)
+    const defaultLang = countryToDefaultLanguage[countryCode]
+    if (defaultLang) {
+      const code = defaultLang.toUpperCase()
+      setNativeLanguage(code)
+      // remove native from targets if present
+      setTargetLanguages(prev => prev.filter(c => c !== code))
+    }
+  }
+
+  const onSelectNativeLanguage = (langCodeRaw: string) => {
+    const code = normalizeLangCode(langCodeRaw)
+    setNativeLanguage(code)
+    // remove native from targets if present
+    setTargetLanguages(prev => prev.filter(c => c !== code))
+  }
+
+  const getFlagIsoFromLang = (langCode?: string) => {
+    if (!langCode) return undefined
+    const lower = String(langCode).toLowerCase()
+    const mapped = (languageToCountry as Record<string, string>)[lower]
+    if (mapped) return mapped
+    // fallback: try first two letters, uppercase
+    return langCode.slice(0, 2).toUpperCase()
   }
 
   const renderStepIndicator = () => (
@@ -397,30 +463,35 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       <Text style={styles.stepTitle}>{t("setup.chooseCompanion")}</Text>
       <Text style={styles.stepSubtitle}>{t("setup.chooseCompanion.desc")}</Text>
 
-      <ScrollView style={styles.charactersGrid} showsVerticalScrollIndicator={false}>
-        <View style={styles.charactersRow}>
-          {characters.map((character) => (
-            <TouchableOpacity
-              key={`char-${character.character3d_id}-${character.model_url ?? 'na'}`}
-              style={[
-                styles.characterCard,
-                selectedCharacter?.character3d_id === character.character3d_id && styles.characterCardSelected
-              ]}
-              onPress={() => setSelectedCharacter(character)}
+      <FlatList
+        data={characters}
+        numColumns={2} // 2 nhân vật mỗi hàng
+        keyExtractor={(item) => item.character3dId}
+        columnWrapperStyle={styles.charactersRow} // căn đều 2 item mỗi row
+        renderItem={({ item }) => (
+          <View
+            style={[
+              styles.characterCard,
+              selectedCharacter?.character3dId === item.character3dId && styles.characterCardSelected
+            ]}
+          >
+            {/* Truyền onTap để chọn khi user tap nhanh vào model */}
+            <ModelViewer
+              modelUrl={item.modelUrl}
+              onTap={() => setSelectedCharacter(item)}
+            />
+            <Text style={styles.characterName}>{item.character3dName}</Text>
+            <Text style={styles.characterPersonality}>{item.description}</Text>
 
-            >
-              <ModelViewer modelUrl={character.model_url} />
-              <Text style={styles.characterName}>{character.character3d_name}</Text>
-              <Text style={styles.characterPersonality}>{character.description}</Text>
-              {selectedCharacter?.character3d_id === character.character3d_id && (
-                <View style={styles.selectedIndicator}>
-                  <Icon name="check-circle" size={20} color="#10B981" />
-                </View>
-              )}
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+            {selectedCharacter?.character3dId === item.character3dId && (
+              <View style={styles.selectedIndicator}>
+                <Icon name="check-circle" size={20} color="#10B981" />
+              </View>
+            )}
+          </View>
+        )}
+        contentContainerStyle={styles.charactersGrid}
+      />
     </View>
   )
 
@@ -456,11 +527,11 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
           {countries.map((c) => (
             <TouchableOpacity key={`country-${c.code}`}
-              style={[styles.languageChip, country === c.name && styles.languageChipSelected]}
-              onPress={() => setCountry(c.name)}
+              style={[styles.languageChip, country === c.code && styles.languageChipSelected]}
+              onPress={() => onSelectCountry(c.code)}
             >
-              <CountryFlag isoCode={c.code} size={25} style={{ marginRight: 6 }} />
-              <Text style={[styles.languageText, country === c.name && styles.languageTextSelected]}>
+              <CountryFlag isoCode={c.code} size={22} style={{ marginRight: 8 }} />
+              <Text style={[styles.languageText, country === c.code && styles.languageTextSelected]}>
                 {c.name}
               </Text>
             </TouchableOpacity>
@@ -476,28 +547,32 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
               style={[styles.ageCard, ageRange === age && styles.selectedAgeCard]}
               onPress={() => setAgeRange(age)}
             >
-              <Text style={[styles.ageText, ageRange === age && styles.selectedAgeText]}>{age}</Text>
+              <View style={styles.ageInner}>
+                <Icon name="person" size={14} color={ageRange === age ? "#FFFFFF" : "#6B7280"} style={{ marginRight: 6 }} />
+                <Text style={[styles.ageText, ageRange === age && styles.selectedAgeText]}>{age}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, styles.nativeContainer]}>
         <Text style={styles.inputLabel}>{t("language.nativeLanguage")}</Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
-          {languages
-            .filter((lang) => lang.languageCode !== nativeLanguage)
-            .map((lang, i) => (
-              <TouchableOpacity key={`target-${lang.languageCode}-${i}`}
+          {languages.map((lang, i) => {
+            const iso = getFlagIsoFromLang(lang.languageCode)
+            return (
+              <TouchableOpacity key={`native-${lang.languageCode}-${i}`}
                 style={[styles.languageChip, nativeLanguage === lang.languageCode && styles.languageChipSelected]}
-                onPress={() => setNativeLanguage(lang.languageCode)}
+                onPress={() => onSelectNativeLanguage(lang.languageCode)}
               >
-                <CountryFlag isoCode={lang.languageCode} size={25} style={{ marginRight: 6 }} />
+                {iso ? <CountryFlag isoCode={iso} size={22} style={{ marginRight: 8 }} /> : <View style={{ width: 22, height: 22, marginRight: 8 }} />}
                 <Text style={[styles.languageText, nativeLanguage === lang.languageCode && styles.languageTextSelected]}>
                   {lang.languageName}
                 </Text>
               </TouchableOpacity>
-            ))}
+            )
+          })}
         </ScrollView>
       </View>
 
@@ -507,21 +582,25 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
           {languages
+            // hide native from learning-language options so user cannot accidentally pick it
             .filter((lang) => lang.languageCode !== nativeLanguage)
-            .map((lang) => (
-              <TouchableOpacity
-                key={lang.languageCode}
-                style={[styles.languageChip, targetLanguages.includes(lang.languageCode) && styles.languageChipSelected]}
-                onPress={() => toggleTargetLanguage(lang.languageCode)}
-              >
-                <CountryFlag isoCode={lang.languageCode} size={25} style={{ marginRight: 6 }} />
-                <Text
-                  style={[styles.languageText, targetLanguages.includes(lang.languageCode) && styles.languageTextSelected]}
+            .map((lang) => {
+              const iso = getFlagIsoFromLang(lang.languageCode)
+              return (
+                <TouchableOpacity
+                  key={lang.languageCode}
+                  style={[styles.languageChip, targetLanguages.includes(lang.languageCode) && styles.languageChipSelected]}
+                  onPress={() => toggleTargetLanguage(lang.languageCode)}
                 >
-                  {lang.languageName}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  {iso ? <CountryFlag isoCode={iso} size={22} style={{ marginRight: 8 }} /> : <View style={{ width: 22, height: 22, marginRight: 8 }} />}
+                  <Text
+                    style={[styles.languageText, targetLanguages.includes(lang.languageCode) && styles.languageTextSelected]}
+                  >
+                    {lang.languageName}
+                  </Text>
+                </TouchableOpacity>
+              )
+            })}
         </ScrollView>
       </View>
     </View>
@@ -544,12 +623,12 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
             onPress={() => toggleInterest(interest.id)}
           >
             <Icon
-              name={interest.icon}
+              name={interest.icon ?? "star"}
               size={24}
-              color={selectedInterests.includes(interest.id) ? "#FFFFFF" : interest.color}
+              color={selectedInterests.includes(interest.id) ? "#FFFFFF" : interest.color ?? "#4F46E5"}
             />
             <Text style={[styles.interestText, selectedInterests.includes(interest.id) && styles.interestTextSelected]}>
-              {interest.interest_name}
+              {interest.interestName}
             </Text>
             <Text style={styles.interestDescription}>{interest.description}</Text>
             {selectedInterests.includes(interest.id) && (
@@ -638,7 +717,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>{t("setup.character")}:</Text>
-          <Text style={styles.summaryText}>{selectedCharacter?.character3d_name || "None"}</Text>
+          <Text style={styles.summaryText}>{selectedCharacter?.character3dName || "None"}</Text>
         </View>
 
         <View style={styles.summaryRow}>
@@ -656,7 +735,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         {country && (
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t("profile.country")}:</Text>
-            <Text style={styles.summaryText}>{country}</Text>
+            <Text style={styles.summaryText}>{countries.find(c => c.code === country)?.name || country}</Text>
           </View>
         )}
 
@@ -671,7 +750,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
           <View style={styles.summaryRow}>
             <Text style={styles.summaryLabel}>{t("language.nativeLanguage")}:</Text>
             <Text style={styles.summaryText}>
-              {languages.find((lang) => lang.languageCode === nativeLanguage)?.languageName || "None"}
+              {languages.find((lang) => lang.languageCode === nativeLanguage)?.languageName || nativeLanguage}
             </Text>
           </View>
         )}
@@ -697,10 +776,10 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
             <Text style={styles.summaryLabel}>{t("setup.interests")}:</Text>
             <View style={styles.summaryInterests}>
               {selectedInterests.map((id) => {
-                const interest = interests.find((i) => i.interest_id === id)
+                const interest = interests.find((i) => i.interestId === id)
                 return (
                   <Text key={id} style={styles.summaryInterest}>
-                    {interest?.interest_name || id}
+                    {interest?.interestName || id}
                   </Text>
                 )
               })}
@@ -876,28 +955,19 @@ const styles = StyleSheet.create({
     marginTop: 24,
   },
   charactersGrid: {
-    maxHeight: 400,
+    paddingHorizontal: 16,
   },
   charactersRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
     justifyContent: "space-between",
+    marginBottom: 16,
   },
   characterCard: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
+    flex: 1,
+    margin: 8,
+    backgroundColor: "#fff",
     borderRadius: 12,
-    padding: 16,
+    padding: 12,
     alignItems: "center",
-    marginBottom: 12,
-    borderWidth: 2,
-    borderColor: "transparent",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    position: "relative",
   },
   characterCardSelected: {
     borderColor: "#10B981",
@@ -919,7 +989,10 @@ const styles = StyleSheet.create({
     right: 8,
   },
   inputContainer: {
-    marginBottom: 24,
+    marginBottom: 18, // slightly smaller so sections don't feel too tall and reduce overlap risk
+  },
+  nativeContainer: {
+    marginTop: 6, // ensure native language block doesn't sit tight on the previous block
   },
   inputLabel: {
     fontSize: 16,
@@ -938,14 +1011,15 @@ const styles = StyleSheet.create({
   },
   languageScroll: {
     flexDirection: "row",
+    paddingVertical: 4,
   },
   languageChip: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6, // reduce vertical padding so chips are not too tall
     marginRight: 8,
     borderWidth: 1,
     borderColor: "#D1D5DB",
@@ -955,7 +1029,7 @@ const styles = StyleSheet.create({
     borderColor: "#4F46E5",
   },
   languageText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#374151",
   },
   languageTextSelected: {
@@ -994,26 +1068,30 @@ const styles = StyleSheet.create({
   ageGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 12,
+    justifyContent: "space-between",
   },
   ageCard: {
-    flex: 1,
-    minWidth: "30%",
+    width: "30%",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
+    paddingVertical: 6, // reduce vertical padding to avoid text dropping
+    paddingHorizontal: 8,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#D1D5DB",
     backgroundColor: "#FFFFFF",
+    marginBottom: 10,
   },
   selectedAgeCard: {
     backgroundColor: "#4F46E5",
     borderColor: "#4F46E5",
   },
+  ageInner: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   ageText: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#374151",
     fontWeight: "500",
   },

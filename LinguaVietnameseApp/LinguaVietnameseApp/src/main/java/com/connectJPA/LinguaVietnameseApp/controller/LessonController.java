@@ -45,10 +45,11 @@ public class LessonController {
             @Parameter(description = "Subcategory ID filter (e.g., specific topic)") @RequestParam(required = false) UUID subCategoryId,
             @Parameter(description = "Course ID filter") @RequestParam(required = false) UUID courseId,
             @Parameter(description = "Series ID filter") @RequestParam(required = false) UUID seriesId,
+            @Parameter(description = "SkillType filter") @RequestParam(required = false) SkillType skillType,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
         try {
-            Page<LessonResponse> lessons = lessonService.getAllLessons(lessonName, languageCode, minExpReward, categoryId, subCategoryId, courseId, seriesId, pageable);
+            Page<LessonResponse> lessons = lessonService.getAllLessons(lessonName, languageCode, minExpReward, categoryId, subCategoryId, courseId, seriesId, skillType, pageable);
             return AppApiResponse.<Page<LessonResponse>>builder()
                     .code(200)
                     .message(messageSource.getMessage("lesson.list.success", null, locale))

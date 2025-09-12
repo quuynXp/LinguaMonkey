@@ -16,6 +16,10 @@ public class RoadmapUserResponse {
     private String language;
     private int progressPercentage;
 
+    private int totalItems;
+    private int completedItems;
+    private int estimatedCompletionTime;
+
     private List<RoadmapItemUserResponse> items;  // item + trạng thái completed/ongoing
     private List<MilestoneUserResponse> milestones; // milestone + completed flag
 }

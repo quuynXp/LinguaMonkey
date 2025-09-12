@@ -4,7 +4,7 @@ export const RootNavigationRef = createNavigationContainerRef();
 
 // Reset về TabApp và mở đúng tab + (tuỳ chọn) màn hình trong stack của tab đó
 export function resetToTab(
-  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile' | 'Admin' | 'Teacher',
+  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile' | 'Admin' | 'Teacher' | 'DailyWelcome',
   stackScreen?: string,
   stackParams?: object
 ) {
@@ -36,7 +36,7 @@ export function resetToTab(
 }
 
 export function gotoTab(
-  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile' | 'Admin' | 'Teacher' | 'Auth' | 'SetupInitScreen' | 'AppLaunchScreen' | 'ProficiencyTestScreen',
+  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile' | 'Admin' | 'Teacher' | 'Auth' | 'SetupInitScreen' | 'AppLaunchScreen' | 'ProficiencyTestScreen' | 'DailyWelcome',
   stackScreen?: string,
   stackParams?: object
 ) {

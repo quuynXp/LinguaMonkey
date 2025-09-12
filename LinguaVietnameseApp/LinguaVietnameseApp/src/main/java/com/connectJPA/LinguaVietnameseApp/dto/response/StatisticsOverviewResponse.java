@@ -19,5 +19,6 @@ public class StatisticsOverviewResponse {
     // thêm timeSeries để FE vẽ chart
     // có thể null nếu không cần
     private List<TimeSeriesPoint> timeSeries;
+
 }
 

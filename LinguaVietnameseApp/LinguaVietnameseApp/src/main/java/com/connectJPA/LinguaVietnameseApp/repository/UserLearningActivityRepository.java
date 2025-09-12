@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.repository;
 
 import com.connectJPA.LinguaVietnameseApp.entity.UserLearningActivity;
+import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -27,6 +28,16 @@ public interface UserLearningActivityRepository extends JpaRepository<UserLearni
     @Query("SELECT COUNT(ula) > 0 FROM UserLearningActivity ula WHERE ula.userId = :userId " +
             "AND DATE(ula.createdAt) = :date AND ula.isDeleted = false")
     boolean existsByUserIdAndDate(@Param("userId") UUID userId, @Param("date") LocalDate date);
+
+    @Query("SELECT ula FROM UserLearningActivity ula " +
+            "WHERE ula.targetId = :lessonId " +
+            "AND ula.activityType IN (:lessonTypes) " +
+            "AND ula.createdAt BETWEEN :start AND :end")
+    List<UserLearningActivity> findLessonActivities(
+            @Param("lessonId") UUID lessonId,
+            @Param("lessonTypes") List<ActivityType> lessonTypes,
+            @Param("start") OffsetDateTime start,
+            @Param("end") OffsetDateTime end);
 
     List<UserLearningActivity> findByCreatedAtBetween(OffsetDateTime startDate, OffsetDateTime endDate);
 

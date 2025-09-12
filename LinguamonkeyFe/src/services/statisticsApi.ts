@@ -55,7 +55,7 @@ export const getUserGrowth = async (period: "day" | "month" | "year") => {
 
 // Lấy activity statistics
 export const getActivities = async (
-  params: { activityType?: string; startDate?: string; endDate?: string } = {}
+  params: { status?: string; provider?: string; startDate?: string; endDate?: string; aggregate?: "day" | "week" | "month" } = {}
 ) => {
   const res = await instance.get(`/statistics/activities`, { params });
   return res.data.result;
@@ -63,8 +63,24 @@ export const getActivities = async (
 
 // Lấy transaction statistics
 export const getTransactions = async (
-  params: { status?: string; provider?: string; startDate?: string; endDate?: string } = {}
+  params: { status?: string; provider?: string; startDate?: string; endDate?: string; aggregate?: "day" | "week" | "month" } = {}
 ) => {
   const res = await instance.get(`/statistics/transactions`, { params });
+  return res.data.result;
+};
+
+export const getUserStatistics = async (userId: string, params: {
+  period?: "week" | "month" | "year",
+  startDate?: Date,
+  endDate?: Date,
+  aggregate?: "day" | "week" | "month"
+} = {}) => {
+  const formattedParams: any = {};
+  if (params.period) formattedParams.period = params.period;
+  if (params.startDate instanceof Date) formattedParams.startDate = params.startDate.toISOString().split("T")[0];
+  if (params.endDate instanceof Date) formattedParams.endDate = params.endDate.toISOString().split("T")[0];
+  if (params.aggregate) formattedParams.aggregate = params.aggregate;
+
+  const res = await instance.get(`/statistics/user/${userId}`, { params: formattedParams });
   return res.data.result;
 };

@@ -23,5 +23,11 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     @Query("UPDATE Lesson l SET l.isDeleted = true, l.deletedAt = CURRENT_TIMESTAMP WHERE l.lessonId = :id AND l.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
 
+    List<Lesson> findByCourseIdIn(List<UUID> courseIds);
+
+    List<Lesson> findByCourseIdAndIsDeletedFalse(UUID courseId);
+
+    SkillType findSkillTypeByLessonIdAndIsDeletedFalse(UUID lessonId);
+
     Page<Lesson> findAll(Specification<com.connectJPA.LinguaVietnameseApp.entity.Lesson> spec, Pageable pageable);
 }

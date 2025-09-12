@@ -9,8 +9,8 @@ import java.util.List;
 import java.util.UUID;
 
 public interface LeaderboardEntryService {
-    Page<LeaderboardEntryResponse> getAllLeaderboardEntries(String leaderboardId, String userId, Pageable pageable);
-    LeaderboardEntryResponse getLeaderboardEntryByIds(UUID leaderboardId, UUID userId);
+    Page<LeaderboardEntryResponse> getAllLeaderboardEntries(String leaderboardId, Pageable pageable);
+    LeaderboardEntryResponse getLeaderboardEntryByIds(UUID leaderboardId, Pageable pageable);
     LeaderboardEntryResponse createLeaderboardEntry(LeaderboardEntryRequest request);
     LeaderboardEntryResponse updateLeaderboardEntry(UUID leaderboardId, UUID userId, LeaderboardEntryRequest request);
     void deleteLeaderboardEntry(UUID leaderboardId, UUID userId);

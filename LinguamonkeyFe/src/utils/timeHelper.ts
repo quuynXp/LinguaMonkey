@@ -22,23 +22,25 @@ export function formatDateTime(date?: Date | string | number, locale?: string, t
   }).format(dateObj)
 }
 
-export function getGreetingTime(date?: Date | string | number, locale?: string, timeZone?: string) {
+export function getGreetingTime(date?: Date | string | number, locale?: string, timeZone?: string, t?: (key: string) => string) {
   const dateObj = date ? new Date(date) : new Date()
   const { locale: sysLocale, timeZone: sysTimeZone } = getSystemLocaleAndTimeZone()
 
   const hour = new Intl.DateTimeFormat(locale || sysLocale, {
     hour: "numeric",
     timeZone: timeZone || sysTimeZone,
+    hour12: false,         // 👈 luôn 0–23h
   })
     .formatToParts(dateObj)
     .find((part) => part.type === "hour")?.value
 
   const hourNum = Number.parseInt(hour || "0", 10)
 
-  if (hourNum >= 0 && hourNum < 12) return "Chào buổi sáng"
-  if (hourNum >= 12 && hourNum < 17) return "Chào buổi chiều"
-  return "Chào buổi tối"
+  if (hourNum >= 0 && hourNum < 12) return t ? t("greeting.morning") : "Chào buổi sáng"
+  if (hourNum >= 12 && hourNum < 17) return t ? t("greeting.afternoon") : "Chào buổi chiều"
+  return t ? t("greeting.evening") : "Chào buổi tối"
 }
+
 
 export function formatShortTime(date?: Date | string | number, locale?: string, timeZone?: string) {
   const dateObj = date ? new Date(date) : new Date()

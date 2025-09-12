@@ -82,10 +82,11 @@ public class AuthenticationController {
     @ApiResponse(responseCode = "401", description = "Thông tin xác thực không hợp lệ")
     public ResponseEntity<AppApiResponse<AuthenticationResponse>> authenticate(
             @Valid @RequestBody AuthenticationRequest request,
-            @RequestHeader("Device-Id") String deviceId,
-            @RequestHeader("X-Forwarded-For") String ip,
-            @RequestHeader("User-Agent") String userAgent,
+            @RequestHeader(value = "Device-Id", required = false, defaultValue = "") String deviceId,
+            @RequestHeader(value = "X-Forwarded-For", required = false, defaultValue = "") String ip,
+            @RequestHeader(value = "User-Agent", required = false, defaultValue = "") String userAgent,
             HttpServletResponse response) {
+
         AuthenticationResponse result = authenticationService.authenticate(request, deviceId, ip, userAgent);
 
         String refreshToken = result.getRefreshToken();
@@ -94,11 +95,12 @@ public class AuthenticationController {
         cookie.setHttpOnly(true);
         cookie.setSecure(true); // nếu dùng HTTPS
         cookie.setPath("/");
-        cookie.setMaxAge(30 * 24 * 60 * 60);
+        cookie.setMaxAge(30 * 24 * 60 * 60); // 30 ngày
         response.addCookie(cookie);
 
         HttpHeaders headers = new HttpHeaders();
         headers.set("Authorization", "Bearer " + result.getToken());
+
         return ResponseEntity.ok()
                 .headers(headers)
                 .body(AppApiResponse.<AuthenticationResponse>builder()
@@ -107,6 +109,7 @@ public class AuthenticationController {
                         .result(result)
                         .build());
     }
+
 
     @PostMapping
     @Operation(summary = "Đăng ký người dùng", description = "Tạo mới một người dùng")
@@ -135,17 +138,21 @@ public class AuthenticationController {
             @RequestHeader(value = "User-Agent", required = false) String userAgent,
             HttpServletResponse response) {
 
-        String refreshToken = refreshTokenCookie != null
-                ? refreshTokenCookie
-                : (body != null ? body.get("refreshToken") : null);
+        System.out.println("Raw body: " + (body != null ? body.toString() : "null"));
+        System.out.println("Refresh token from cookie: " + refreshTokenCookie);
+        System.out.println("Refresh token from body: " + (body != null ? body.get("refreshToken") : "null"));
+
+        String refreshToken = (body != null && body.get("refreshToken") != null)
+                ? body.get("refreshToken")
+                : refreshTokenCookie;
 
         if (refreshToken == null || refreshToken.isBlank()) {
             throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
         }
 
-        String deviceIdStrim = deviceId == null ?  "" : deviceId;
-        String ipStrim = ip == null ?  "" : ip;
-        String userAgentStrim = userAgent == null ?  "" : userAgent;
+        String deviceIdStrim = deviceId == null ? "" : deviceId;
+        String ipStrim = ip == null ? "" : ip;
+        String userAgentStrim = userAgent == null ? "" : userAgent;
         AuthenticationResponse result = authenticationService.handleRefreshToken(refreshToken, deviceIdStrim, ipStrim, userAgentStrim);
 
         String newRefreshToken = result.getRefreshToken();

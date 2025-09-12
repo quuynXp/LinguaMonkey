@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.Character3dResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LevelInfoResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.UserStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserCertificateId;
@@ -20,19 +21,15 @@ import com.connectJPA.LinguaVietnameseApp.utils.CloudinaryHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Duration;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -61,6 +58,8 @@ public class UserServiceImpl implements UserService {
     private final UserLearningActivityService userLearningActivityService;
     private final UserCertificateRepository userCertificateRepository;
     private final PasswordEncoder  passwordEncoder;
+    private final ChatMessageRepository chatMessageRepository;
+    private final VideoCallRepository videoCallRepository;
 
 
     @Override
@@ -87,12 +86,19 @@ public class UserServiceImpl implements UserService {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
             Page<User> users = userRepository.findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(email, fullname, nickname, pageable);
-            return users.map(userMapper::toResponse);
+
+            return users.map(user -> {
+                UserResponse response = userMapper.toResponse(user);
+                int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
+                response.setExpToNextLevel(nextLevelExp);
+                return response;
+            });
         } catch (Exception e) {
             log.error("Error while fetching all users: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
 
     @Override
     public UserResponse getUserById(UUID id) {
@@ -102,12 +108,18 @@ public class UserServiceImpl implements UserService {
             }
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            return userMapper.toResponse(user);
+
+            UserResponse response = userMapper.toResponse(user);
+            int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
+            response.setExpToNextLevel(nextLevelExp);
+
+            return response;
         } catch (Exception e) {
             log.error("Error while fetching user by ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
 
     @Override
     @Transactional
@@ -148,8 +160,9 @@ public class UserServiceImpl implements UserService {
 
             roleService.assignRoleToUser(user.getUserId(), RoleName.STUDENT);
 
-            Leaderboard lb = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global")
-                    .orElseThrow();
+            Leaderboard lb = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global", PageRequest.of(0,1))
+                    .stream().findFirst()
+                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
             leaderboardEntryRepository.save(LeaderboardEntry.builder()
                     .leaderboardEntryId(new LeaderboardEntryId(user.getUserId(), lb.getLeaderboardId()))
                     .user(user)
@@ -235,9 +248,28 @@ public class UserServiceImpl implements UserService {
             if (id == null || request == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
+
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            userMapper.updateEntityFromRequest(request, user);
+
+            if (request.getEmail() != null) user.setEmail(request.getEmail());
+            if (request.getPassword() != null && !request.getPassword().isBlank()) {
+                user.setPassword(passwordEncoder.encode(request.getPassword()));
+            }
+            if (request.getFullname() != null) user.setFullname(request.getFullname());
+            if (request.getNickname() != null) user.setNickname(request.getNickname());
+            if (request.getBio() != null) user.setBio(request.getBio());
+            if (request.getPhone() != null) user.setPhone(request.getPhone());
+            if (request.getAvatarUrl() != null) user.setAvatarUrl(request.getAvatarUrl());
+            if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
+            if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
+            if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
+            if (request.getCountry() != null) user.setCountry(request.getCountry());
+            if (request.getNativeLanguageCode() != null) user.setNativeLanguageCode(request.getNativeLanguageCode());
+            if (request.getProficiency() != null) user.setProficiency(request.getProficiency());
+            if (request.getLevel() != null) user.setLevel(request.getLevel());
+            if (request.getStreak() != null) user.setStreak(request.getStreak());
+
             user = userRepository.save(user);
             return userMapper.toResponse(user);
         } catch (Exception e) {
@@ -245,6 +277,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
 
     @Override
     @Transactional
@@ -433,6 +466,50 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public UserStatsResponse getUserStats(UUID userId) {
+        if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
+
+        // 1) lấy user để có lastActiveAt, level, exp, streak
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // 2) query aggregates (repositories implement these methods)
+        long totalMessages = chatMessageRepository.countMessagesForUser(userId);
+        long translationsUsed = chatMessageRepository.countTranslationsForUser(userId);
+        long videoCalls = videoCallRepository.countCompletedCallsForUser(userId);
+
+        OffsetDateTime lastActive = user.getUpdatedAt();
+        // If you store last_active_at as OffsetDateTime in user entity, use that field.
+
+        boolean online = false;
+        if (lastActive != null) {
+            online = lastActive.isAfter(OffsetDateTime.now().minusMinutes(5));
+        }
+
+        return UserStatsResponse.builder()
+                .userId(userId)
+                .totalMessages(totalMessages)
+                .translationsUsed(translationsUsed)
+                .videoCalls(videoCalls)
+                .lastActiveAt(lastActive)
+                .online(online)
+                .level(user.getLevel())
+                .exp(user.getExp())
+                .streak(user.getStreak())
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void updateLastActive(UUID userId) {
+        User u = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        u.setLastActiveAt(OffsetDateTime.now());
+        userRepository.save(u);
+    }
+
+
+    @Override
     @Transactional
     public UserResponse updateStreakOnActivity(UUID id) {
         try {
@@ -558,14 +635,14 @@ public class UserServiceImpl implements UserService {
     public Character3dResponse getCharacter3dByUserId(UUID userId) {
         try {
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(()-> new AppException((ErrorCode.USER_NOT_FOUND)));
+            if (user.getCharacter3dId() == null) throw new AppException(ErrorCode.CHARACTER3D_NOT_FOUND);
+
             Character3d character =  character3dRepository.findByCharacter3dIdAndIsDeletedFalse(user.getCharacter3dId())
                     .orElseThrow(() -> new AppException(ErrorCode.CHARACTER3D_NOT_FOUND));
 
             return character3dMapper.toResponse(character);
         } catch (IllegalArgumentException e) {
             throw new AppException(ErrorCode.INVALID_KEY);
-        } catch (DataAccessException e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         } catch (Exception e) {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }

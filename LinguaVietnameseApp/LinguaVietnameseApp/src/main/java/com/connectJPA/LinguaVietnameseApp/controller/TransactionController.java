@@ -71,7 +71,7 @@ public class TransactionController {
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Page<TransactionResponse>> getAllTransactions(
             @Parameter(description = "User ID filter") @RequestParam(required = false) UUID userId,
             @Parameter(description = "Transaction status filter") @RequestParam(required = false) String status,
@@ -91,7 +91,7 @@ public class TransactionController {
             @ApiResponse(responseCode = "404", description = "Transaction not found")
     })
     @GetMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<TransactionResponse> getTransactionById(
             @Parameter(description = "Transaction ID") @PathVariable UUID id,
             Locale locale) {
@@ -109,7 +109,7 @@ public class TransactionController {
             @ApiResponse(responseCode = "400", description = "Invalid user ID")
     })
     @GetMapping("/user/{userId}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Page<TransactionResponse>> getTransactionsByUser(
             @PathVariable UUID userId,
             Pageable pageable,
@@ -165,7 +165,7 @@ public class TransactionController {
             @ApiResponse(responseCode = "404", description = "Transaction not found")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Void> deleteTransaction(
             @Parameter(description = "Transaction ID") @PathVariable UUID id,
             Locale locale) {

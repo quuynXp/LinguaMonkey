@@ -13,7 +13,9 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
-import { getTeacherStatisticsOverview } from "../../services/teacherStatisticsApi"
+import { getTeacherOverview } from "../../services/teacherStatisticsApi"
+import { useUserStore } from "../../stores/UserStore"
+import { gotoTab, resetToAuth } from "../../utils/navigationRef"
 import Toast from "../../components/Toast"
 import { LineChart } from "react-native-chart-kit"
 
@@ -21,6 +23,8 @@ const { width } = Dimensions.get("window")
 
 const TeacherDashboardScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
+  const teacherId = useUserStore.getState().user.user_id
+
   const [selectedPeriod, setSelectedPeriod] = useState<"week" | "month" | "year">("month")
 
   const {
@@ -29,8 +33,14 @@ const TeacherDashboardScreen = ({ navigation }: any) => {
     isFetching,
     refetch,
   } = useQuery({
-    queryKey: ["teacherStats", selectedPeriod],
-    queryFn: () => getTeacherStatisticsOverview(selectedPeriod),
+    queryKey: ["teacherStats", teacherId, selectedPeriod],
+    queryFn: () =>
+      getTeacherOverview({
+        teacherId,
+        period: selectedPeriod,
+        aggregate: selectedPeriod === "week" ? "day" : "week", // ví dụ: tuần → theo ngày, tháng/năm → theo tuần
+      }),
+    enabled: !!teacherId, // chỉ fetch khi có teacherId
   })
 
   const statsCards = [
@@ -60,46 +70,11 @@ const TeacherDashboardScreen = ({ navigation }: any) => {
     },
     {
       id: "revenue",
-      title: t("teacher.dashboard.monthlyRevenue"),
+      title: t("teacher.dashboard.revenue"),
       value: `$${data?.revenue || 0}`,
       icon: "attach-money",
       color: "#EF4444",
       screen: "TeacherRevenueAnalytics",
-    },
-  ]
-
-  const quickActions = [
-    {
-      id: "create-course",
-      title: t("teacher.dashboard.createCourse"),
-      description: t("teacher.dashboard.createCourseDesc"),
-      icon: "add-circle",
-      color: "#3B82F6",
-      screen: "CreateCourse",
-    },
-    {
-      id: "create-lesson",
-      title: t("teacher.dashboard.createLesson"),
-      description: t("teacher.dashboard.createLessonDesc"),
-      icon: "add-box",
-      color: "#10B981",
-      screen: "CreateLesson",
-    },
-    {
-      id: "manage-students",
-      title: t("teacher.dashboard.manageStudents"),
-      description: t("teacher.dashboard.manageStudentsDesc"),
-      icon: "people",
-      color: "#F59E0B",
-      screen: "TeacherStudentManagement",
-    },
-    {
-      id: "analytics",
-      title: t("teacher.dashboard.viewAnalytics"),
-      description: t("teacher.dashboard.viewAnalyticsDesc"),
-      icon: "analytics",
-      color: "#8B5CF6",
-      screen: "TeacherAnalytics",
     },
   ]
 
@@ -124,7 +99,7 @@ const TeacherDashboardScreen = ({ navigation }: any) => {
     <TouchableOpacity
       key={action.id}
       style={styles.actionCard}
-      onPress={() => navigation.navigate(action.screen)}
+      onPress={() => gotoTab(action.screen)}
     >
       <View style={[styles.actionIcon, { backgroundColor: `${action.color}20` }]}>
         <Icon name={action.icon} size={28} color={action.color} />
@@ -190,43 +165,14 @@ const TeacherDashboardScreen = ({ navigation }: any) => {
           <Text style={styles.sectionTitle}>{t("teacher.dashboard.overview")}</Text>
           <View style={styles.statsGrid}>{statsCards.map(renderStatsCard)}</View>
         </View>
-
-        {/* Quick Actions */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("teacher.dashboard.quickActions")}</Text>
-          <View style={styles.actionsGrid}>{quickActions.map(renderQuickAction)}</View>
-        </View>
-
-        {/* (Optional) Biểu đồ doanh thu */}
-        {/* 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("teacher.dashboard.revenueChart")}</Text>
-          <LineChart
-            data={{
-              labels: ["W1", "W2", "W3", "W4"],
-              datasets: [{ data: [500, 1200, 900, 1500] }],
-            }}
-            width={width - 48}
-            height={220}
-            yAxisLabel="$"
-            chartConfig={{
-              backgroundColor: "#fff",
-              backgroundGradientFrom: "#fff",
-              backgroundGradientTo: "#fff",
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(107, 114, 128, ${opacity})`,
-              propsForDots: {
-                r: "4",
-                strokeWidth: "2",
-                stroke: "#3B82F6",
-              },
-            }}
-            style={{ borderRadius: 12 }}
-          />
-        </View>
-        */}
       </ScrollView>
+
+      <TouchableOpacity
+        style={styles.logoutButton}
+        onPress={() => resetToAuth()}
+      >
+        <Icon name="logout" size={22} color="#EF4444" />
+      </TouchableOpacity>
     </SafeAreaView>
   )
 }
@@ -311,6 +257,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  logoutButton: {
+    marginLeft: 12,
+    padding: 8,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 8,
   },
   actionIcon: {
     width: 56,

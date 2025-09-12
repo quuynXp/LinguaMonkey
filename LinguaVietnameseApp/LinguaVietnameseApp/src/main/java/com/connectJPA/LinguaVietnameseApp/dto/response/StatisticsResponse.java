@@ -1,10 +1,12 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.dto.TimeSeriesPoint;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @Data
@@ -23,4 +25,6 @@ public class StatisticsResponse {
     private BigDecimal totalTransactionAmount;
     private long totalTransactions;
     private Map<String, Long> activityBreakdown; // đếm theo ActivityType
+    private List<TimeSeriesPoint> timeSeries;
+
 }

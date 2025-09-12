@@ -1,10 +1,14 @@
 
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.CourseEnrollmentRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CourseRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CourseEnrollmentResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
+import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -16,7 +20,9 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -25,19 +31,17 @@ import java.util.UUID;
 public class CourseController {
     private final CourseService courseService;
     private final MessageSource messageSource;
+    private final UserService userService;
 
-    @Operation(summary = "Get all courses", description = "Retrieve a paginated list of courses with optional filtering by title or languageCode")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved courses"),
-            @ApiResponse(responseCode = "400", description = "Invalid query parameters")
-    })
     @GetMapping
     public AppApiResponse<Page<CourseResponse>> getAllCourses(
-            @Parameter(description = "Title filter") @RequestParam(required = false) String title,
-            @Parameter(description = "Language code filter") @RequestParam(required = false) String languageCode,
-            @Parameter(description = "Pagination and sorting") Pageable pageable,
+            @RequestParam(required = false) String title,
+            @RequestParam(required = false) String languageCode,
+            @RequestParam(required = false) CourseType type, // FREE, PURCHASED
+            Pageable pageable,
             Locale locale) {
-        Page<CourseResponse> courses = courseService.getAllCourses(title, languageCode, pageable);
+
+        Page<CourseResponse> courses = courseService.getAllCourses(title, languageCode, type, pageable);
         return AppApiResponse.<Page<CourseResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("course.list.success", null, locale))
@@ -45,23 +49,20 @@ public class CourseController {
                 .build();
     }
 
-    @Operation(summary = "Get enrolled courses of a user", description = "Retrieve courses a user has enrolled in")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved enrolled courses"),
-            @ApiResponse(responseCode = "404", description = "User not found or no courses enrolled")
-    })
-    @GetMapping("/enrolled/{userId}")
-    public AppApiResponse<Page<CourseResponse>> getEnrolledCoursesByUserId(
-            @Parameter(description = "User ID") @PathVariable UUID userId,
-            @Parameter(description = "Pagination and sorting") Pageable pageable,
+    @GetMapping("/recommended")
+    public AppApiResponse<List<CourseResponse>> getRecommendedCourses(
+            @RequestParam(defaultValue = "5") int limit,
+            @RequestParam(required = true) UUID userId,
             Locale locale) {
-        Page<CourseResponse> courses = courseService.getEnrolledCoursesByUserId(userId, pageable);
-        return AppApiResponse.<Page<CourseResponse>>builder()
+        List<CourseResponse> courses = courseService.getRecommendedCourses(userId, limit);
+        return AppApiResponse.<List<CourseResponse>>builder()
                 .code(200)
-                .message(messageSource.getMessage("course.enrolled.byUser.success", null, locale))
+                .message(messageSource.getMessage("course.recommended.success", null, locale))
                 .result(courses)
                 .build();
     }
+
+
 
     @Operation(summary = "Get course by ID", description = "Retrieve a course by its ID")
     @ApiResponses({
@@ -129,6 +130,19 @@ public class CourseController {
         return AppApiResponse.<Void>builder()
                 .code(200)
                 .message(messageSource.getMessage("course.deleted.success", null, locale))
+                .build();
+    }
+
+    @GetMapping("/creator/{creatorId}")
+    public AppApiResponse<Page<CourseResponse>> getCoursesByCreator(
+            @PathVariable UUID creatorId,
+            Pageable pageable,
+            Locale locale) {
+        Page<CourseResponse> courses = courseService.getCoursesByCreator(creatorId, pageable);
+        return AppApiResponse.<Page<CourseResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("course.by.creator.success", null, locale))
+                .result(courses)
                 .build();
     }
 }

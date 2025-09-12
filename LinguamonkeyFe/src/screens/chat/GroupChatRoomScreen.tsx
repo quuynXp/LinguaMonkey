@@ -17,9 +17,13 @@ import {
     View,
 } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { translateText } from "../api/openai"
+import { useTranslation } from "react-i18next"
+import { useChatStore } from "../../stores/ChatStore"
+import { translateText } from "../../services/pythonService" // assuming path
+import { } from "../../types/api"
 
 const GroupChatRoomScreen = () => {
+  const { t } = useTranslation()
   const [messages, setMessages] = useState([
     {
       id: 1,
@@ -62,8 +66,10 @@ const GroupChatRoomScreen = () => {
   const [editingRoomName, setEditingRoomName] = useState(false)
   const [newRoomName, setNewRoomName] = useState(roomInfo.name)
   const [showMembersList, setShowMembersList] = useState(false)
+  const activities = useChatStore(state => state.activities)
+  const stats = useChatStore(state => state.stats)
 
-  const flatListRef = useRef()
+  const flatListRef = useRef(null)
   const navigation = useNavigation()
   const route = useRoute()
 
@@ -102,7 +108,7 @@ const GroupChatRoomScreen = () => {
       )
     } catch (error) {
       console.error("Translation error:", error)
-      Alert.alert("Lỗi", "Không thể dịch tin nhắn. Vui lòng thử lại.")
+      Alert.alert(t('error'), t('translation.error'))
     } finally {
       setTranslatingMessageId(null)
     }
@@ -111,8 +117,8 @@ const GroupChatRoomScreen = () => {
   const shareRoomId = async () => {
     try {
       await Share.share({
-        message: `Tham gia nhóm học tiếng Anh với ID: ${roomInfo.roomId}\n\n"${roomInfo.description}"`,
-        title: "Chia sẻ nhóm học",
+        message: t("group.share.message", { roomId: roomInfo.roomId, description: roomInfo.description }),
+        title: t("group.share.title"),
       })
     } catch (error) {
       console.error("Error sharing:", error)
@@ -126,13 +132,13 @@ const GroupChatRoomScreen = () => {
   }
 
   const kickMember = (member) => {
-    Alert.alert("Xác nhận loại bỏ thành viên", `Bạn có chắc chắn muốn loại bỏ ${member.name} khỏi nhóm?`, [
-      { text: "Hủy", style: "cancel" },
+    Alert.alert(t("group.kick.confirm"), t("group.kick.confirm.message", { name: member.name }), [
+      { text: t("cancel"), style: "cancel" },
       {
-        text: "Xác nhận",
+        text: t("confirm"),
         style: "destructive",
         onPress: () => {
-          Alert.alert("Thành công", `Đã loại bỏ ${member.name} khỏi nhóm.`)
+          Alert.alert(t("success"), t("group.kick.success", { name: member.name }))
         },
       },
     ])
@@ -187,7 +193,7 @@ const GroupChatRoomScreen = () => {
           <Text style={styles.memberName}>{member.name}</Text>
           <View style={styles.memberStatus}>
             <View style={[styles.onlineIndicator, { backgroundColor: member.isOnline ? "#10B981" : "#6B7280" }]} />
-            <Text style={styles.memberRole}>{member.role === "moderator" ? "Quản trị viên" : "Thành viên"}</Text>
+            <Text style={styles.memberRole}>{member.role === "moderator" ? t("moderator") : t("member")}</Text>
           </View>
         </View>
       </View>
@@ -216,7 +222,7 @@ const GroupChatRoomScreen = () => {
           <View style={styles.roomInfo}>
             <Text style={styles.roomName}>{roomInfo.name}</Text>
             <Text style={styles.memberCount}>
-              {roomInfo.onlineMembers}/{roomInfo.members} thành viên đang hoạt động
+              {roomInfo.onlineMembers}/{roomInfo.members} {t("group.members.online")}
             </Text>
           </View>
 
@@ -240,7 +246,7 @@ const GroupChatRoomScreen = () => {
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
-            placeholder="Nhập tin nhắn vào nhóm..."
+            placeholder={t("group.input.placeholder")}
             value={inputText}
             onChangeText={setInputText}
             onSubmitEditing={sendMessage}
@@ -262,7 +268,7 @@ const GroupChatRoomScreen = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Cài đặt nhóm</Text>
+                <Text style={styles.modalTitle}>{t("group.settings")}</Text>
                 <TouchableOpacity onPress={() => setShowRoomSettings(false)}>
                   <Icon name="close" size={24} color="#374151" />
                 </TouchableOpacity>
@@ -273,7 +279,7 @@ const GroupChatRoomScreen = () => {
                 <View style={styles.settingItem}>
                   <Icon name="chatbubbles-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>Tên nhóm</Text>
+                    <Text style={styles.settingLabel}>{t("group.name")}</Text>
                     {editingRoomName ? (
                       <View style={styles.editNameContainer}>
                         <TextInput
@@ -299,9 +305,9 @@ const GroupChatRoomScreen = () => {
                 <TouchableOpacity style={styles.settingItem} onPress={() => setShowMembersList(true)}>
                   <Icon name="people-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>Thành viên</Text>
+                    <Text style={styles.settingLabel}>{t("group.members")}</Text>
                     <Text style={styles.settingValue}>
-                      {roomInfo.members} người ({roomInfo.onlineMembers} đang hoạt động)
+                      {roomInfo.members} {t("people")} ({roomInfo.onlineMembers} {t("online")})
                     </Text>
                   </View>
                   <Icon name="chevron-forward" size={16} color="#9CA3AF" />
@@ -311,7 +317,7 @@ const GroupChatRoomScreen = () => {
                 <View style={styles.settingItem}>
                   <Icon name="key-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>ID nhóm</Text>
+                    <Text style={styles.settingLabel}>{t("group.id")}</Text>
                     <Text style={styles.settingValue}>{roomInfo.roomId}</Text>
                   </View>
                   <TouchableOpacity onPress={shareRoomId} style={styles.shareButton}>
@@ -323,7 +329,7 @@ const GroupChatRoomScreen = () => {
                 <View style={styles.settingItem}>
                   <Icon name="document-text-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>Mô tả</Text>
+                    <Text style={styles.settingLabel}>{t("group.desc")}</Text>
                     <Text style={styles.settingValue}>{roomInfo.description}</Text>
                   </View>
                 </View>
@@ -332,17 +338,17 @@ const GroupChatRoomScreen = () => {
                 <View style={styles.actionButtons}>
                   <TouchableOpacity style={styles.actionButton} onPress={shareRoomId}>
                     <Icon name="share-outline" size={20} color="#3B82F6" />
-                    <Text style={styles.actionButtonText}>Chia sẻ nhóm</Text>
+                    <Text style={styles.actionButtonText}>{t("group.share")}</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={styles.actionButton}>
                     <Icon name="notifications-outline" size={20} color="#3B82F6" />
-                    <Text style={styles.actionButtonText}>Cài đặt thông báo</Text>
+                    <Text style={styles.actionButtonText}>{t("group.notifications")}</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity style={[styles.actionButton, styles.dangerButton]}>
                     <Icon name="exit-outline" size={20} color="#EF4444" />
-                    <Text style={[styles.actionButtonText, styles.dangerButtonText]}>Rời khỏi nhóm</Text>
+                    <Text style={[styles.actionButtonText, styles.dangerButtonText]}>{t("group.leave")}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -360,7 +366,7 @@ const GroupChatRoomScreen = () => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>Danh sách thành viên</Text>
+                <Text style={styles.modalTitle}>{t("group.members.list")}</Text>
                 <TouchableOpacity onPress={() => setShowMembersList(false)}>
                   <Icon name="close" size={24} color="#374151" />
                 </TouchableOpacity>
