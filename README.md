@@ -68,8 +68,8 @@ The full schema defines ~50 tables. Key tables / domains include:
 ## Requirements & environment variables
 Minimum runtime:
 - Docker & Docker Compose (for quick local deployment)
-- Java 21+ (for Spring Boot)
-- Node 18+ / npm (for Expo)
+- Java 17+ (for Spring Boot)
+- Node 18+ / Yarn or npm (for Expo)
 - Python 3.10+ for AI service (if run locally)
 
 Important environment variables (example — **do not commit** `.env` to VCS):
@@ -172,6 +172,12 @@ This will bring up backend on `:8080`, ai-service gRPC on `:50051`, and Expo dev
 - Fork → feature branch → PR with clear description & tests.  
 - Backend: follow existing package structure and Spring conventions; write unit tests for service + controller.  
 - Frontend: React Native + TypeScript; use Zustand for global state, React Query for server state.  
+
+---
+
+## Useful references
+- [Canonical DB schema (schema.sql)](https://drive.google.com/file/d/1XhzeVPcVjhPkpStgQQmjaM3mHSvHAHZf/view?usp=sharing)  
+- [Project report & system design (docx)](https://docs.google.com/document/d/1xWuEr5XKgFyimcMBCXzdA5gh73D1gXWg/edit?usp=sharing&ouid=108222992508585295715&rtpof=true&sd=true)
 
 ---
 
