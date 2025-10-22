@@ -17,7 +17,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/memorizations")
+@RequestMapping("/api/v1/memorizations")
 @RequiredArgsConstructor
 public class MemorizationController {
     private final UserMemorizationService memorizationService;

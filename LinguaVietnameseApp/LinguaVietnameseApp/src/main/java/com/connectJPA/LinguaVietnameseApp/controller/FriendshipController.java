@@ -21,7 +21,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/friendships")
+@RequestMapping("/api/v1/friendships")
 @RequiredArgsConstructor
 public class FriendshipController {
     private final FriendshipService friendshipService;

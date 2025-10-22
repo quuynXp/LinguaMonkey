@@ -21,7 +21,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/user-goals")
+@RequestMapping("/api/v1/user-goals")
 @Tag(name = "User Goal Management", description = "APIs for managing user goals")
 @RequiredArgsConstructor
 public class UserGoalController {

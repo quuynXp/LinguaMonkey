@@ -21,20 +21,15 @@ public enum ErrorCode {
     EXCEEDS_MAX_MEMBERS(1012, "error.exceeds_max_members", HttpStatus.BAD_REQUEST),
     INVALID_INPUT(1013, "error.invalid_input", HttpStatus.BAD_REQUEST),
     INVALID_PAGEABLE(1014, "error.invalid_pageable", HttpStatus.BAD_REQUEST),
-    PARTICIPANT_NOT_FOUND(44, "PARTICIPANT_NOT_FOUND", HttpStatus.NOT_FOUND),
-
-    EMAIL_SEND_FAILED(1020, "EMAIL_SEND_FAILED", HttpStatus.BAD_REQUEST),
     INVALID_FILE_FORMAT(1015, "error.invalid_file_format", HttpStatus.BAD_REQUEST),
     FILE_UPLOAD_FAILED(1016, "error.file_upload_failed", HttpStatus.BAD_REQUEST),
     INVALID_URL(1017, "error.invalid_url", HttpStatus.BAD_REQUEST),
     AI_PROCESSING_FAILED(1018, "error.ai_processing_failed", HttpStatus.BAD_REQUEST),
-    RESET_TOKEN_INVALID(1021, "RESET_TOKEN_INVALID", HttpStatus.BAD_REQUEST),
-    ROADMAP_NOT_FOUND(3333, "ROADMAP_NOT_FOUND", HttpStatus.NOT_FOUND),
-    INVALID_REQUEST(3333, "INVALID_REQUEST", HttpStatus.BAD_REQUEST),
-    ROADMAP_NOT_ASSIGNED(333, "ROADMAP_NOT_ASSIGNED", HttpStatus.NOT_FOUND),
-    ROADMAP_ITEM_NOT_FOUND(33, "ROADMAP_ITEM_NOT_FOUND", HttpStatus.NOT_FOUND),
-    EMAIL_EXISTED(400, "EMAIL_EXISTED", HttpStatus.BAD_REQUEST),
-    INVALID_COURSE_TYPE(333, "INVALID_COURSE_TYPE", HttpStatus.BAD_REQUEST),
+    EMAIL_ALREADY_EXISTS(1019, "error.email_already_exists", HttpStatus.BAD_REQUEST),
+    EMAIL_SEND_FAILED(1020, "error.email_send_failed", HttpStatus.BAD_REQUEST),
+    RESET_TOKEN_INVALID(1021, "error.reset_token_invalid", HttpStatus.BAD_REQUEST),
+    INVALID_COURSE_TYPE(1022, "error.invalid_course_type", HttpStatus.BAD_REQUEST),
+    INVALID_REQUEST(1023, "error.invalid_request", HttpStatus.BAD_REQUEST),
 
     // ===== 401 Unauthorized =====
     UNAUTHENTICATED(2000, "error.unauthenticated", HttpStatus.UNAUTHORIZED),
@@ -90,9 +85,12 @@ public enum ErrorCode {
     COURSE_ENROLLMENT_NOT_FOUND(4030, "error.course_enrollment_not_found", HttpStatus.NOT_FOUND),
     COURSE_LESSON_NOT_FOUND(4031, "error.course_lesson_not_found", HttpStatus.NOT_FOUND),
     COURSE_REVIEW_NOT_FOUND(4032, "error.course_review_not_found", HttpStatus.NOT_FOUND),
-
     MEMORIZATION_NOT_FOUND(4033, "error.memorization_not_found", HttpStatus.NOT_FOUND),
     VIDEO_NOT_FOUND(4034, "error.video_not_found", HttpStatus.NOT_FOUND),
+    ROADMAP_NOT_FOUND(4035, "error.roadmap_not_found", HttpStatus.NOT_FOUND),
+    ROADMAP_ITEM_NOT_FOUND(4036, "error.roadmap_item_not_found", HttpStatus.NOT_FOUND),
+    ROADMAP_NOT_ASSIGNED(4037, "error.roadmap_not_assigned", HttpStatus.NOT_FOUND),
+    PARTICIPANT_NOT_FOUND(4038, "error.participant_not_found", HttpStatus.NOT_FOUND),
 
     // ===== 405 Method Not Allowed =====
     METHOD_NOT_ALLOWED(7000, "error.method_not_allowed", HttpStatus.METHOD_NOT_ALLOWED),

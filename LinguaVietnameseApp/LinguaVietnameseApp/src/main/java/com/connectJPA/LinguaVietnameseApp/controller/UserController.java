@@ -24,7 +24,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/users")
+@RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
 public class UserController {
     private final UserService userService;
@@ -256,7 +256,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PatchMapping("/{id}/country")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateCountry(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @Parameter(description = "Country") @RequestParam Country country,
@@ -305,25 +305,6 @@ public class UserController {
                 .code(200)
                 .message(messageSource.getMessage("user.streak.updated.success", null, locale))
                 .result(user)
-                .build();
-    }
-
-    @Operation(summary = "Get user level info", description = "Retrieve current level, exp, and exp required for next level")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Level info retrieved successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid user ID"),
-            @ApiResponse(responseCode = "404", description = "User not found"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
-    @GetMapping("/{id}/level-info")
-    public AppApiResponse<LevelInfoResponse> getLevelInfo(
-            @Parameter(description = "User ID") @PathVariable UUID id,
-            Locale locale) {
-        LevelInfoResponse levelInfo = userService.getLevelInfo(id);
-        return AppApiResponse.<LevelInfoResponse>builder()
-                .code(200)
-                .message(messageSource.getMessage("user.level_info.success", null, locale))
-                .result(levelInfo)
                 .build();
     }
 }

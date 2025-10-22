@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/course-lessons")
+@RequestMapping("/api/v1/course-lessons")
 @RequiredArgsConstructor
 public class CourseLessonController {
     private final CourseLessonService courseLessonService;

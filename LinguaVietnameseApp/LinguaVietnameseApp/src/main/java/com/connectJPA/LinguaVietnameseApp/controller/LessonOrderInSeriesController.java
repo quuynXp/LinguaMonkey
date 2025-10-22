@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/lesson-order-in-series")
+@RequestMapping("/api/v1/lesson-order-in-series")
 @RequiredArgsConstructor
 public class LessonOrderInSeriesController {
     private final LessonOrderInSeriesService lessonOrderInSeriesService;

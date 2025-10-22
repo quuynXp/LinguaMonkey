@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/group-answers")
+@RequestMapping("/api/v1/group-answers")
 @RequiredArgsConstructor
 public class GroupAnswerController {
     private final GroupAnswerService groupAnswerService;

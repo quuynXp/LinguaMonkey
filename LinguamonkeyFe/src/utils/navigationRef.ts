@@ -2,7 +2,6 @@ import { createNavigationContainerRef, CommonActions } from '@react-navigation/n
 
 export const RootNavigationRef = createNavigationContainerRef();
 
-// Reset về TabApp và mở đúng tab + (tuỳ chọn) màn hình trong stack của tab đó
 export function resetToTab(
   tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile' | 'Admin' | 'Teacher' | 'DailyWelcome',
   stackScreen?: string,

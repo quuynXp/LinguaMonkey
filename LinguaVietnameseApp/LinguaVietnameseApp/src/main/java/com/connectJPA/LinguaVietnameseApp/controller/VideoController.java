@@ -19,7 +19,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/videos")
+@RequestMapping("/api/v1/videos")
 @RequiredArgsConstructor
 public class VideoController {
     private final VideoService videoService;

@@ -23,7 +23,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/leaderboards")
+@RequestMapping("/api/v1/leaderboards")
 @RequiredArgsConstructor
 public class LeaderboardController {
     private final LeaderboardService leaderboardService;

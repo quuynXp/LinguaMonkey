@@ -134,7 +134,7 @@ public class UserServiceImpl implements UserService {
             }
 
             if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
-                throw new AppException(ErrorCode.EMAIL_EXISTED);
+                throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
             }
 
             User user = new User();

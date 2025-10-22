@@ -19,7 +19,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/certificates")
+@RequestMapping("/api/v1/certificates")
 @Tag(name = "Certification Management", description = "APIs for managing certificates")
 @RequiredArgsConstructor
 public class CertificateController {

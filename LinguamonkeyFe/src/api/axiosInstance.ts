@@ -1,6 +1,5 @@
 import { EXPO_PUBLIC_API_BASE_URL } from '@env';
 import axios, { AxiosRequestConfig } from 'axios';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
 import { showError } from '../utils/toastHelper';
@@ -37,16 +36,26 @@ const instance = axios.create({
   withCredentials: true,
 });
 
+instance.interceptors.request.use(cfg => {
+  console.log('[instance] request ->', cfg.method, cfg.url, 'dataType=', typeof cfg.data);
+  return cfg;
+});
+
 instance.interceptors.request.use(async (config: AxiosRequestConfig) => {
   await waitForTokenStoreInit(5000);
 
-  // nếu url chứa refresh-token -> bắt buộc body có refreshToken
   if (config.url?.toLowerCase().includes('/auth/refresh-token')) {
     const rawData = config.data;
     let dataObj: any = rawData;
 
     if (typeof rawData === 'string') {
-      try { dataObj = JSON.parse(rawData); } catch { dataObj = rawData; }
+      try { dataObj = JSON.parse(rawData); } catch {
+        try {
+          dataObj = Object.fromEntries(new URLSearchParams(rawData).entries());
+        } catch {
+          dataObj = rawData;
+        }
+      }
     }
 
     const bodyHasRefresh =
@@ -60,12 +69,11 @@ instance.interceptors.request.use(async (config: AxiosRequestConfig) => {
       url: config.url,
       bodyPresent: !!dataObj,
       bodyHasRefresh,
-      callerStack: new Error().stack?.split('\n').slice(2, 7) // short stack
+      callerStack: new Error().stack?.split('\n').slice(2, 7)
     });
 
     if (!bodyHasRefresh) {
-      // Throw so request doesn't go out with empty body; this surfaces where call originated
-      throw new Error('[instance.request] Blocked /auth/refresh-token call: missing refreshToken in body');
+      console.warn('[instance.request] Missing refreshToken in body. Allowing request to proceed — server may accept other formats.');
     }
   }
 

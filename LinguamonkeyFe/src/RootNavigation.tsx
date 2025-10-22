@@ -1,14 +1,15 @@
 import React, { useEffect, useState, useRef } from "react";
-import { ActivityIndicator, Platform, View } from "react-native";
+import { ActivityIndicator, Platform, View, Text } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
+import NetInfo from "@react-native-community/netinfo";
 import { RootNavigationRef, flushPendingActions, resetToTab } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
 import MainStack from "./navigation/stack/MainStack";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
-import * as Localization from 'expo-localization';
+import * as Localization from "expo-localization";
 import instance from "./api/axiosInstance";
 
 type InitialRoute =
@@ -22,12 +23,24 @@ type InitialRoute =
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [initialScreenName, setInitialScreenName] = useState<InitialRoute>("AppLaunchScreen");
+  const [initialScreenName, setInitialScreenName] =
+    useState<InitialRoute>("AppLaunchScreen");
+  const [isConnected, setIsConnected] = useState(true); 
 
   const initializeTokens = useTokenStore((s) => s.initializeTokens);
 
   const notificationListener = useRef<any>(null);
   const responseListener = useRef<any>(null);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsConnected(state.isConnected ?? false);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   useEffect(() => {
     let mounted = true;
@@ -36,10 +49,16 @@ const RootNavigation = () => {
       try {
         const hasValidToken = await initializeTokens();
 
-        const hasDonePlacementTest = (await AsyncStorage.getItem("hasDonePlacementTest")) === "true";
-        const hasLoggedIn = (await AsyncStorage.getItem("hasLoggedIn")) === "true";
+        const hasDonePlacementTest =
+          (await AsyncStorage.getItem("hasDonePlacementTest")) === "true";
+        const hasLoggedIn =
+          (await AsyncStorage.getItem("hasLoggedIn")) === "true";
 
-        console.log("Boot flags:", { hasValidToken, hasDonePlacementTest, hasLoggedIn });
+        console.log("Boot flags:", {
+          hasValidToken,
+          hasDonePlacementTest,
+          hasLoggedIn,
+        });
 
         if (!hasValidToken && hasLoggedIn) {
           console.log("Token invalid but hasLoggedIn=true, cleaning up");
@@ -52,7 +71,9 @@ const RootNavigation = () => {
         const userStore = useUserStore.getState();
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         if (!savedLanguage) {
-          savedLanguage = Localization.locale ? Localization.locale.split("-")[0] : "en";
+          savedLanguage = Localization.locale
+            ? Localization.locale.split("-")[0]
+            : "en";
           await AsyncStorage.setItem("userLanguage", savedLanguage);
           console.log("Saved default language:", savedLanguage);
         }
@@ -63,12 +84,15 @@ const RootNavigation = () => {
         const isFirstOpenToday = lastAppOpenDate !== currentDate;
 
         await AsyncStorage.setItem("lastAppOpenDate", currentDate);
-        console.log("Last app open date updated:", currentDate, "First open today:", isFirstOpenToday);
+        console.log(
+          "Last app open date updated:",
+          currentDate,
+          "First open today:",
+          isFirstOpenToday
+        );
 
         const state = useTokenStore.getState();
         const accessToken = state.accessToken;
-
-
 
         if (hasValidToken && accessToken) {
           try {
@@ -77,7 +101,12 @@ const RootNavigation = () => {
               userStore.setUserId(payload.userId);
               const userRes = await instance.get(`/users/${payload.userId}`);
               const rawUser = userRes.data.result || {};
-              const normalizedUser = { ...rawUser, userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id, roles: getRoleFromToken(accessToken) };
+              const normalizedUser = {
+                ...rawUser,
+                userId:
+                  rawUser.userId ?? rawUser.user_id ?? rawUser.id,
+                roles: getRoleFromToken(accessToken),
+              };
               userStore.setUser(normalizedUser);
               userStore.setAuthenticated(true);
               await AsyncStorage.setItem("hasLoggedIn", "true");
@@ -86,24 +115,24 @@ const RootNavigation = () => {
               console.log("User roles from token:", roles);
 
               if (roles.includes("ROLE_ADMIN")) {
-                console.log("Navigating to Admin");
                 setInitialScreenName("Admin");
               } else if (roles.includes("ROLE_TEACHER")) {
-                console.log("Navigating to Teacher");
                 setInitialScreenName("Teacher");
               } else {
-                setInitialScreenName(isFirstOpenToday ? "DailyWelcome" : "TabApp");
+                setInitialScreenName(
+                  isFirstOpenToday ? "DailyWelcome" : "TabApp"
+                );
                 if (!isFirstOpenToday) {
                   resetToTab("Home");
                 }
               }
             } else {
-              throw new Error('Invalid token payload: missing userId');
+              throw new Error("Invalid token payload: missing userId");
             }
           } catch (e) {
-            console.error('Boot fetch user failed:', e);
+            console.error("Boot fetch user failed:", e);
             await useTokenStore.getState().clearTokens();
-            setInitialScreenName('Auth');
+            setInitialScreenName("Auth");
             return false;
           }
         } else {
@@ -121,21 +150,19 @@ const RootNavigation = () => {
 
     boot();
 
-    notificationListener.current = Notifications.addNotificationReceivedListener(
-      (notification) => {
+    notificationListener.current =
+      Notifications.addNotificationReceivedListener((notification) => {
         console.log("Foreground Notification:", notification);
-      }
-    );
-    responseListener.current = Notifications.addNotificationResponseReceivedListener(
-      (response) => {
+      });
+    responseListener.current =
+      Notifications.addNotificationResponseReceivedListener((response) => {
         console.log("User tapped notification:", response);
-      }
-    );
+      });
 
     return () => {
       mounted = false;
-      Notifications.removeNotificationSubscription(notificationListener.current);
-      Notifications.removeNotificationSubscription(responseListener.current);
+      notificationListener.current && notificationListener.current.remove();
+      responseListener.current && responseListener.current.remove();
     };
   }, [initializeTokens]);
 
@@ -159,9 +186,35 @@ const RootNavigation = () => {
     requestNotificationPermission();
   }, []);
 
+  if (!isConnected) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          padding: 20,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 16,
+            color: "red",
+            textAlign: "center",
+          }}
+        >
+          🚫No internet connection. {"\n"}
+          Please check your network.
+        </Text>
+      </View>
+    );
+  }
+
   if (isLoading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <View
+        style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+      >
         <ActivityIndicator />
       </View>
     );

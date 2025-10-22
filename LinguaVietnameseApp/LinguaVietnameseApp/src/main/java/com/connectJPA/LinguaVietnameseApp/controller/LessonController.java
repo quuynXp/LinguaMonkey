@@ -23,7 +23,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/lessons")
+@RequestMapping("/api/v1/lessons")
 @Tag(name = "Lesson Management", description = "APIs for managing lessons categorized by lesson categories and subcategories")
 @RequiredArgsConstructor
 public class LessonController {

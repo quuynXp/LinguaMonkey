@@ -1,4 +1,3 @@
-// screens/auth/LoginScreen.tsx
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
 import { Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
@@ -6,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { showError, showSuccess } from "../../utils/toastHelper";
 import { loginWithEmail, loginWithGoogle, loginWithFacebook } from '../../services/authService';
 import { gotoTab } from '../../utils/navigationRef'; // Import RootNavigationRef
+import { Image } from 'react-native';
 
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -130,6 +130,7 @@ const LoginScreen = ({ navigation }) => {
 
           {/* Social Login Buttons */}
           <TouchableOpacity style={[styles.socialButton, isLoading && styles.loginButtonDisabled]} onPress={handleGoogleLogin} disabled={isLoading}>
+            <Image source={require('../../assets/icons/google-icon.png')} style={{ width: 20, height: 20 }} />
             <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
           </TouchableOpacity>
 

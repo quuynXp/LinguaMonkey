@@ -21,7 +21,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/course-reviews")
+@RequestMapping("/api/v1/course-reviews")
 @RequiredArgsConstructor
 public class CourseReviewController {
     private final CourseReviewService courseReviewService;

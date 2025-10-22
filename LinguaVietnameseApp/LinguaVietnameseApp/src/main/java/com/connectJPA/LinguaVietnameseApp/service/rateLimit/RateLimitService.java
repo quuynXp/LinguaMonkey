@@ -37,13 +37,12 @@ public class RateLimitService {
     private int getLimitByRole(String role) {
         return switch (role.toLowerCase()) {
             case "admin" -> 100;
-            case "staff" -> 50;
+            case "teacher" -> 50;
             default -> 20;
         };
     }
 
     private Duration getDurationByRole(String role) {
-        // Nếu muốn mỗi vai trò có thời gian reset khác nhau
         return Duration.ofMinutes(1);
     }
 }

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/daily-challenges")
+@RequestMapping("/api/v1/daily-challenges")
 @RequiredArgsConstructor
 public class DailyChallengeController {
 

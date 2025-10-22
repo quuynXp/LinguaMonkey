@@ -1,4 +1,3 @@
-// path: src/screens/VideoCallManagerScreen.js
 import React, { useState, useMemo } from "react";
 import {
     View,
@@ -13,8 +12,8 @@ import {
     Platform,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
-import { useVideoCalls } from "../../hooks/useVideos"; // đường dẫn theo project bạn
-import { v4 as uuidv4 } from "uuid"; // nếu bạn chưa có, dùng react-native-get-random-values + uuid
+import { useVideoCalls } from "../../hooks/useVideos";
+import { v4 as uuidv4 } from "uuid"; 
 import { gotoTab } from "../../utils/navigationRef";
 import { useChatStore } from "../../stores/ChatStore";
 
@@ -32,7 +31,7 @@ const Button = ({ title, onPress, disabled }) => (
 
 const VideoCallManagerScreen = ({ route }) => {
     const navigation = useNavigation();
-    const { userId: initialUserId = null } = route.params || {}; // optional
+    const { userId: initialUserId = null } = route.params || {}; 
     const {
         useCreateGroupCall,
         useCreateVideoCall,
@@ -66,7 +65,7 @@ const VideoCallManagerScreen = ({ route }) => {
 
     // helpers
     const isCreating =
-        createGroupCall.isLoading || createVideoCall.isLoading || addParticipant.isLoading;
+        createGroupCall.isPending || createVideoCall.isPending || addParticipant.isPending;
 
     const onCreateGroup = () => {
         if (!callerId) return Alert.alert("Vui lòng nhập callerId");
@@ -232,7 +231,8 @@ const VideoCallManagerScreen = ({ route }) => {
                         onChangeText={setVideoCallId}
                         style={[styles.input, { flex: 1 }]}
                     />
-                    <Button title="Load" onPress={() => { /* query auto triggers because videoCallId is state used in hook */ }} />
+                    {/* <Button title="Load" onPress={() => { 
+                         }} /> */}
                 </View>
 
                 <View style={styles.row}>
@@ -280,7 +280,7 @@ const VideoCallManagerScreen = ({ route }) => {
                         onChangeText={setHistoryUserId}
                         style={[styles.input, { flex: 1 }]}
                     />
-                    <Button title="Xem" onPress={() => { /* query uses historyUserId state */ }} />
+                    {/* <Button title="Xem" onPress={() => { /* query uses historyUserId state */}} /> */}
                 </View>
 
                 {historyQuery.isLoading ? (

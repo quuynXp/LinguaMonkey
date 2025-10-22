@@ -35,10 +35,8 @@ public class UserRequest {
 
     private String bio;
 
-    @Size(max = 20, message = "Phone must not exceed 20 characters")
     private String phone;
 
-    @Size(max = 255, message = "Avatar URL must not exceed 255 characters")
     private String avatarUrl;
 
     private UUID character3dId;

@@ -25,7 +25,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/lesson-sub-categories")
+@RequestMapping("/api/v1/lesson-sub-categories")
 @RequiredArgsConstructor
 public class LessonSubCategoryController {
     private final LessonSubCategoryService lessonSubCategoryService;

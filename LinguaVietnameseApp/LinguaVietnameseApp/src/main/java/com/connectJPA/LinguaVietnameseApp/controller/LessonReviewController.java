@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/lesson-reviews")
+@RequestMapping("/api/v1/lesson-reviews")
 @Tag(name = "Lesson Review Management", description = "APIs for managing lesson reviews")
 @RequiredArgsConstructor
 public class LessonReviewController {

@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LeaderboardMapper {
-    LeaderboardMapper INSTANCE = Mappers.getMapper(LeaderboardMapper.class);
 
     Leaderboard toEntity(LeaderboardRequest request);
     LeaderboardResponse toResponse(Leaderboard entity);

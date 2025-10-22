@@ -12,7 +12,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LanguageMapper {
-    LanguageMapper INSTANCE = Mappers.getMapper(LanguageMapper.class);
 
     Language toEntity(LanguageRequest request);
     LanguageResponse toResponse(Language language);

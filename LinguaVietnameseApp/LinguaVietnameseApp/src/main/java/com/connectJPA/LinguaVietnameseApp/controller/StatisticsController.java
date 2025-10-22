@@ -21,7 +21,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/statistics")
+@RequestMapping("/api/v1/statistics")
 @RequiredArgsConstructor
 public class StatisticsController {
     private final StatisticsService statisticsService;

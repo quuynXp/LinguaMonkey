@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LessonProgressMapper {
-    LessonProgressMapper INSTANCE = Mappers.getMapper(LessonProgressMapper.class);
 
     LessonProgress toEntity(LessonProgressRequest request);
     LessonProgressResponse toResponse(LessonProgress entity);

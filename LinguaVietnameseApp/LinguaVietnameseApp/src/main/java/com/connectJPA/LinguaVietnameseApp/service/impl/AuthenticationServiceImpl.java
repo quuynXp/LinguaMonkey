@@ -95,11 +95,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     public AuthenticationResponse loginWithFirebase(String firebaseIdToken) {
         try {
-            // 1. Verify token với Firebase
             FirebaseToken decodedToken = FirebaseAuth.getInstance().verifyIdToken(firebaseIdToken);
             String uid = decodedToken.getUid();
 
-            // 2. Lấy thông tin user từ Firebase
             UserRecord userRecord = FirebaseAuth.getInstance().getUser(uid);
             String email = userRecord.getEmail();
             String phone = userRecord.getPhoneNumber();
@@ -109,7 +107,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 throw new AppException(ErrorCode.INVALID_USER_INFO);
             }
 
-            // 3. Tìm user trong DB hoặc tạo mới
             User user = userRepository.findByEmailOrPhoneAndIsDeletedFalse(email, phone)
                     .orElseGet(() -> userRepository.save(
                             User.builder()
@@ -117,12 +114,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                                     .phone(phone)
                                     .fullname(fullName)
                                     .authProvider(AuthProvider.FIREBASE)
-                                    .password(null) // 🔹 Đảm bảo null cho login social
+                                    .password(null)
                                     .createdAt(OffsetDateTime.now())
                                     .build()
                     ));
 
-            // 4. Tạo JWT nội bộ + Refresh token
             String accessToken = generateToken(user);
             String refreshToken = generateRefreshToken(user, 30);
 
@@ -133,10 +129,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .isRevoked(false)
                     .build());
 
-            // 5. Trả response đầy đủ
             return AuthenticationResponse.builder()
                     .token(accessToken)
-                    .refreshToken(refreshToken) // 🔹 thêm refreshToken
+                    .refreshToken(refreshToken)
                     .authenticated(true)
                     .build();
 

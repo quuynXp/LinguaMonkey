@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Lingua Monkey",
-    "slug": "Lingua Monkey",
+    "name": "MonkeyLingua",
+    "slug": "MonkeyLingua",
     "jsEngine": "jsc",
     "platforms": [
       "ios",
@@ -11,13 +11,8 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./src/assets/images/icon.png",
-    "scheme": "Lingua Monkey",
+    "scheme": "monkeylingua",
     "userInterfaceStyle": "automatic",
-    "doctor": {
-      "reactNativeDirectoryCheck": {
-        "listUnknownPackages": false
-      }
-    },
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
@@ -27,7 +22,12 @@
         "foregroundImage": "./src/assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
+      "package": "com.quyen10924.MonkeyLingua"
     },
     "web": {
       "build": {
@@ -49,10 +49,18 @@
         }
       ],
       "expo-localization",
-      "expo-font"
+      "expo-font",
+      "expo-web-browser",
+      "expo-audio",
+      "expo-video"
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "ed8fe959-8841-4ea7-a53e-62273a0f3b13"
+      }
     }
   }
 }

@@ -1,5 +1,3 @@
-"use client"
-
 import * as Localization from "expo-localization"
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from "react-native"
@@ -296,7 +294,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }
 
 
-  // thay nguyên hàm createTempAccountAndSetup bằng đoạn này
   const createTempAccountAndSetup = async () => {
     try {
       // basic client-side validation
@@ -413,7 +410,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }
 
   const getFilteredCertifications = () => {
-    if (targetLanguages.length === 0) return []
+    if (targetLanguages.length === 0) return certifications
     return certifications.filter(cert => targetLanguages.includes(cert.languageCode))
   }
 
@@ -1114,7 +1111,8 @@ const styles = StyleSheet.create({
     position: "relative",
   },
   interestCardSelected: {
-    backgroundColor: "#4F46E5",
+    color: "#000000",
+    backgroundColor: "#e8e6d6",
   },
   interestText: {
     fontSize: 14,

@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LessonQuestionMapper {
-    LessonQuestionMapper INSTANCE = Mappers.getMapper(LessonQuestionMapper.class);
 
     LessonQuestion toEntity(LessonQuestionRequest request);
     LessonQuestionResponse toResponse(LessonQuestion entity);

@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface PermissionMapper {
-    PermissionMapper INSTANCE = Mappers.getMapper(PermissionMapper.class);
 
     Permission toEntity(PermissionRequest request);
     PermissionResponse toResponse(Permission entity);

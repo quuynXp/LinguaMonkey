@@ -114,7 +114,7 @@ const RegisterScreen = ({ navigation }) => {
         </View>
 
         {/* Register Animation */}
-        
+
 
         {/* Title */}
         <Text style={styles.title}>{t('createAccount')}</Text>
@@ -211,13 +211,8 @@ const RegisterScreen = ({ navigation }) => {
                 <Icon name="arrow-forward" size={20} color="#FFFFFF" />
               </>
             )}
-            ) : (
-              <>
-                <Text style={styles.registerButtonText}>{t('createAccount')}</Text>
-                <Icon name="arrow-forward" size={20} color="#FFFFFF" />
-              </>
-            )}
           </TouchableOpacity>
+
         </View>
 
         {/* Divider */}
@@ -299,7 +294,6 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: "row",
     gap: 12,
-    marginBottom: 16,
   },
   inputContainer: {
     flexDirection: "row",

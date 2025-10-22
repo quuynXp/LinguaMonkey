@@ -5,7 +5,7 @@ name: lingua-stack
 services:
   # ================== Database & Cache ==================
   postgres:
-    image: postgres:16-alpine
+    image: postgres:15-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -83,11 +83,11 @@ services:
       REDIS_URL: redis://${REDIS_HOST}:${REDIS_PORT}/0
       JWT_SIGNER_KEY: ${JWT_SIGNER_KEY}
     ports:
-      - "${FASTAPI_PORT}:${FASTAPI_PORT}"
+      - "${FASTAPI_PORT}:8000"
     networks:
       - app-net
 
-  # ================== Python gRPC Service ==================
+    # ================== Python gRPC Service ==================
   grpc-service:
     build:
       context: ./backend/grpc-service
@@ -129,3 +129,12 @@ volumes:
 networks:
   app-net:
     driver: bridge
+
+environment:
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
+  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+  SPRING_REDIS_HOST: ${REDIS_HOST}
+  SPRING_REDIS_PORT: ${REDIS_PORT}
+  JWT_SIGNER_KEY: ${JWT_SIGNER_KEY}
+

@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface NotificationMapper {
-    NotificationMapper INSTANCE = Mappers.getMapper(NotificationMapper.class);
 
     Notification toEntity(NotificationRequest request);
     NotificationResponse toResponse(Notification entity);
