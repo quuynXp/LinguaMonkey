@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/languages")
+@RequestMapping("/api/v1/languages")
 @RequiredArgsConstructor
 public class LanguageController {
     private final LanguageService languageService;

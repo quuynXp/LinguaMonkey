@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/roadmaps")
+@RequestMapping("/api/v1/roadmaps")
 @RequiredArgsConstructor
 @Tag(name = "Roadmaps", description = "CRUD + AI-generated Roadmaps")
 public class RoadmapController {

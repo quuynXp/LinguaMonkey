@@ -47,3 +47,4 @@ export { app, auth };
 
 // const app = initializeApp(firebaseConfig);
 // export const auth = getAuth(app);
+

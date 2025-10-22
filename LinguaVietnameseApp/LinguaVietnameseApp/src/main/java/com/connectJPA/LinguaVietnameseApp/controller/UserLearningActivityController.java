@@ -21,7 +21,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/user-learning-activities")
+@RequestMapping("/api/v1/user-learning-activities")
 @Tag(name = "User Learning Activity Management", description = "APIs for managing user learning activities")
 @RequiredArgsConstructor
 public class UserLearningActivityController {

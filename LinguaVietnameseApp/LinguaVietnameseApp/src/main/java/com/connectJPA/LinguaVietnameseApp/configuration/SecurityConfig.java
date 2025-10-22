@@ -62,12 +62,16 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity httpSecurity) throws Exception {
         httpSecurity
                 .authorizeHttpRequests(request -> request
-                        .requestMatchers("/api/auth/**", "/api/interests/**", "/api/languages/**", "/api/character3ds/**", "/api/users/**", "/api/users",
+                        .requestMatchers("/api//v1/auth/**",
                                 "/api/swagger",
                                 "/api/swagger/**",
                                 "/api/swagger-ui/**",
                                 "/api/api-docs/**",
                                 "/swagger-ui/**",
+                                "api/v1/users",
+                                "/api/v1/interests",
+                                "/api/v1/character3ds",
+                                "/api/v1/languages",
                                 "/v3/api-docs/**")
                         .permitAll()
                         .anyRequest().authenticated())

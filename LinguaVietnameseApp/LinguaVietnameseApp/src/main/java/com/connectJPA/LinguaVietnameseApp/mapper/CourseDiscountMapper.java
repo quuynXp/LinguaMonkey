@@ -5,9 +5,11 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.CourseDiscountResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseDiscount;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface CourseDiscountMapper {
+
     CourseDiscount toEntity(CourseDiscountRequest request);
     CourseDiscountResponse toResponse(CourseDiscount discount);
     void updateEntityFromRequest(CourseDiscountRequest request, @MappingTarget CourseDiscount discount);

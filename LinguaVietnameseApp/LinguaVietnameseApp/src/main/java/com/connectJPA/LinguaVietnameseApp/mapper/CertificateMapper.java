@@ -6,9 +6,11 @@ import com.connectJPA.LinguaVietnameseApp.entity.LessonCategory;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface CertificateMapper {
+
     @Mapping(target = "lessonCategoryName", constant = "CERTIFICATE")
     LessonCategory toEntity(CertificateRequest request);
 

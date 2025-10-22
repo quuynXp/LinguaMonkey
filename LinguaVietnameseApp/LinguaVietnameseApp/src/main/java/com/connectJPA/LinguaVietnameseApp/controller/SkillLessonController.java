@@ -28,7 +28,7 @@ import java.util.List;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/skill-lessons")
+@RequestMapping("/api/v1/skill-lessons")
 @RequiredArgsConstructor
 public class SkillLessonController {
     private final GrpcClientService grpcClientService;

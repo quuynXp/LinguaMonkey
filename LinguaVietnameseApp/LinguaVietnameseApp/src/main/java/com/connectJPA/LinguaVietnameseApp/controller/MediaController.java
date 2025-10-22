@@ -6,7 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
-@RequestMapping("/api/media")
+@RequestMapping("/api/v1/media")
 public class MediaController {
 
     private final CloudinaryService moveService;

@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LessonOrderInSeriesMapper {
-    LessonOrderInSeriesMapper INSTANCE = Mappers.getMapper(LessonOrderInSeriesMapper.class);
 
     LessonOrderInSeries toEntity(LessonOrderInSeriesRequest request);
     LessonOrderInSeriesResponse toResponse(LessonOrderInSeries entity);

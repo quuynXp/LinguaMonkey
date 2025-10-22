@@ -13,6 +13,7 @@ module.exports = (async () => {
   const svgTransformer = require.resolve("react-native-svg-transformer");
   config.transformer.babelTransformerPath = svgTransformer;
 
+
   config.watchFolders = [
     path.resolve(__dirname, 'node_modules/react-native')
   ];

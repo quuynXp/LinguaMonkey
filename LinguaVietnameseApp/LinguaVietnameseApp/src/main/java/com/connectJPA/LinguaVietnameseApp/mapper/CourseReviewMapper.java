@@ -8,6 +8,7 @@ import org.mapstruct.MappingTarget;
 
 @Mapper(componentModel = "spring")
 public interface CourseReviewMapper {
+
     CourseReview toEntity(CourseReviewRequest request);
     CourseReviewResponse toResponse(CourseReview review);
     void updateEntityFromRequest(CourseReviewRequest request, @MappingTarget CourseReview review);

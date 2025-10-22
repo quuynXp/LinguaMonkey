@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/character3ds")
+@RequestMapping("/api/v1/character3ds")
 @RequiredArgsConstructor
 public class Character3dController {
     private final Character3dService character3dService;

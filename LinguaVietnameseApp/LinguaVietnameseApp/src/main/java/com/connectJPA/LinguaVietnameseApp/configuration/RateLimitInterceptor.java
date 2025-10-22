@@ -7,6 +7,7 @@ import io.jsonwebtoken.Jwts;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
@@ -17,6 +18,8 @@ import java.nio.charset.StandardCharsets;
 @Component
 @RequiredArgsConstructor
 public class RateLimitInterceptor implements HandlerInterceptor {
+    @Value("${jwt.signer-key}")
+    private String secretKey;
 
     private final RateLimitService rateLimitService;
 
@@ -51,7 +54,7 @@ public class RateLimitInterceptor implements HandlerInterceptor {
     private String getClaim(String token, String key) {
         try {
             Claims claims = Jwts.parser()
-                .setSigningKey("yourSecretKey".getBytes(StandardCharsets.UTF_8))
+                .setSigningKey(secretKey.getBytes(StandardCharsets.UTF_8))
                 .parseClaimsJws(token)
                 .getBody();
             return (String) claims.get(key);

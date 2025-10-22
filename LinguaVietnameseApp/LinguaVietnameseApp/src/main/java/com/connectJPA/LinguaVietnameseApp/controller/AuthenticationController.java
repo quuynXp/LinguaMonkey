@@ -32,18 +32,18 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE, makeFinal = true)
-@Tag(name = "Authentication", description = "Quản lý xác thực người dùng")
+@Tag(name = "Authentication", description = "Manage user authentication")
 public class AuthenticationController {
     AuthenticationService authenticationService;
     UserService userService;
 
     @PostMapping("/firebase-login")
-    @Operation(summary = "Đăng nhập bằng Firebase", description = "Xác thực người dùng qua Firebase ID token")
-    @ApiResponse(responseCode = "200", description = "Đăng nhập Firebase thành công")
-    @ApiResponse(responseCode = "401", description = "Token Firebase không hợp lệ")
+    @Operation(summary = "Login with Firebase", description = "Authenticate user via Firebase ID token")
+    @ApiResponse(responseCode = "200", description = "Firebase login successful")
+    @ApiResponse(responseCode = "401", description = "Invalid Firebase token")
     public ResponseEntity<AppApiResponse<AuthenticationResponse>> firebaseLogin(
             @RequestHeader("Authorization") String authHeader) {
 
@@ -57,13 +57,10 @@ public class AuthenticationController {
                 .headers(headers)
                 .body(AppApiResponse.<AuthenticationResponse>builder()
                         .code(200)
-                        .message("Đăng nhập Firebase thành công")
+                        .message("Firebase login successful")
                         .result(authResponse)
                         .build());
     }
-
-
-
 
     // --- Controller method for logoutAll ---
     @PostMapping("/logout-all")
@@ -71,15 +68,15 @@ public class AuthenticationController {
         authenticationService.logoutAll(userId);
         return AppApiResponse.<Void>builder()
                 .code(200)
-                .message("Đăng xuất tất cả thiết bị thành công")
+                .message("Logged out from all devices successfully")
                 .build();
     }
 
 
     @PostMapping("/login")
-    @Operation(summary = "Đăng nhập", description = "Xác thực người dùng và trả về token")
-    @ApiResponse(responseCode = "200", description = "Đăng nhập thành công")
-    @ApiResponse(responseCode = "401", description = "Thông tin xác thực không hợp lệ")
+    @Operation(summary = "Login", description = "Authenticate user and return token")
+    @ApiResponse(responseCode = "200", description = "Login successful")
+    @ApiResponse(responseCode = "401", description = "Invalid authentication information")
     public ResponseEntity<AppApiResponse<AuthenticationResponse>> authenticate(
             @Valid @RequestBody AuthenticationRequest request,
             @RequestHeader(value = "Device-Id", required = false, defaultValue = "") String deviceId,
@@ -93,9 +90,9 @@ public class AuthenticationController {
 
         Cookie cookie = new Cookie("refreshToken", refreshToken);
         cookie.setHttpOnly(true);
-        cookie.setSecure(true); // nếu dùng HTTPS
+        cookie.setSecure(true); // if using HTTPS
         cookie.setPath("/");
-        cookie.setMaxAge(30 * 24 * 60 * 60); // 30 ngày
+        cookie.setMaxAge(30 * 24 * 60 * 60); // 30 days
         response.addCookie(cookie);
 
         HttpHeaders headers = new HttpHeaders();
@@ -105,31 +102,31 @@ public class AuthenticationController {
                 .headers(headers)
                 .body(AppApiResponse.<AuthenticationResponse>builder()
                         .code(200)
-                        .message("Đăng nhập thành công")
+                        .message("Login successful")
                         .result(result)
                         .build());
     }
 
 
     @PostMapping
-    @Operation(summary = "Đăng ký người dùng", description = "Tạo mới một người dùng")
-    @ApiResponse(responseCode = "200", description = "Người dùng được tạo thành công")
-    @ApiResponse(responseCode = "400", description = "Dữ liệu đầu vào không hợp lệ")
+    @Operation(summary = "Register user", description = "Create a new user")
+    @ApiResponse(responseCode = "200", description = "User created successfully")
+    @ApiResponse(responseCode = "400", description = "Invalid input data")
     public AppApiResponse<UserResponse> registerUser(@Valid @RequestBody UserRequest request) {
         UserResponse userResponse = userService.createUser(request);
 
         return AppApiResponse.<UserResponse>builder()
                 .code(200)
-                .message("Người dùng được tạo thành công")
+                .message("User created successfully")
                 .result(userResponse)
                 .build();
     }
 
 
     @PostMapping("/refresh-token")
-    @Operation(summary = "Làm mới token", description = "Làm mới access token từ refresh token, kiểm tra thiết bị để xử lý đúng luồng")
-    @ApiResponse(responseCode = "200", description = "Token được làm mới thành công")
-    @ApiResponse(responseCode = "400", description = "Refresh token không hợp lệ")
+    @Operation(summary = "Refresh token", description = "Refresh access token using refresh token, check device for proper flow")
+    @ApiResponse(responseCode = "200", description = "Token refreshed successfully")
+    @ApiResponse(responseCode = "400", description = "Invalid refresh token")
     public ResponseEntity<AppApiResponse<AuthenticationResponse>> refreshTokenHandler(
             @CookieValue(name = "refreshToken", required = false) String refreshTokenCookie,
             @RequestBody(required = false) Map<String, String> body,
@@ -171,94 +168,94 @@ public class AuthenticationController {
                 .headers(headers)
                 .body(AppApiResponse.<AuthenticationResponse>builder()
                         .code(200)
-                        .message("Token được làm mới thành công")
+                        .message("Token refreshed successfully")
                         .result(result)
                         .build());
     }
 
 
     @PostMapping("/logout")
-    @Operation(summary = "Đăng xuất", description = "Vô hiệu hóa token hiện tại")
-    @ApiResponse(responseCode = "200", description = "Đăng xuất thành công")
-    @ApiResponse(responseCode = "400", description = "Token không hợp lệ")
+    @Operation(summary = "Logout", description = "Invalidate current token")
+    @ApiResponse(responseCode = "200", description = "Logout successful")
+    @ApiResponse(responseCode = "400", description = "Invalid token")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Void> logout(@RequestHeader("Authorization") String authHeader) {
         String token = authHeader.replace("Bearer ", "");
         authenticationService.logout(token);
         return AppApiResponse.<Void>builder()
                 .code(200)
-                .message("Đăng xuất thành công")
+                .message("Logout successful")
                 .build();
     }
 
     @PostMapping("/introspect")
-    @Operation(summary = "Kiểm tra token", description = "Kiểm tra tính hợp lệ của token")
-    @ApiResponse(responseCode = "200", description = "Token được kiểm tra thành công")
-    @ApiResponse(responseCode = "400", description = "Token không hợp lệ")
+    @Operation(summary = "Introspect token", description = "Check validity of the token")
+    @ApiResponse(responseCode = "200", description = "Token introspected successfully")
+    @ApiResponse(responseCode = "400", description = "Invalid token")
     public AppApiResponse<IntrospectResponse> introspect(@RequestHeader("Authorization") String authorizationHeader) throws ParseException, JOSEException {
         String token = authorizationHeader.replace("Bearer ", "");
         var result = authenticationService.introspect(token);
         return AppApiResponse.<IntrospectResponse>builder()
                 .code(200)
-                .message("Token được kiểm tra thành công")
+                .message("Token introspected successfully")
                 .result(result)
                 .build();
     }
 
     @PostMapping("/register")
-    @Operation(summary = "Đăng ký tài khoản bằng email", description = "Tạo tài khoản mới bằng email và mật khẩu")
-    @ApiResponse(responseCode = "200", description = "Đăng ký thành công, vui lòng xác nhận email")
-    @ApiResponse(responseCode = "400", description = "Dữ liệu đầu vào không hợp lệ hoặc email đã tồn tại")
+    @Operation(summary = "Register account with email", description = "Create a new account with email and password")
+    @ApiResponse(responseCode = "200", description = "Registration successful, please verify your email")
+    @ApiResponse(responseCode = "400", description = "Invalid input data or email already exists")
     public AppApiResponse<UserResponse> registerWithEmail(@Valid @RequestBody UserRequest request) {
         UserResponse createdUser = userService.createUser(request);
         authenticationService.sendVerifyEmail(createdUser.getEmail(), createdUser.getUserId());
         return AppApiResponse.<UserResponse>builder()
                 .code(200)
-                .message("Đăng ký thành công, vui lòng kiểm tra email để xác minh tài khoản")
+                .message("Registration successful, please check your email to verify account")
                 .result(createdUser)
                 .build();
     }
 
 
     @PostMapping("/forgot-password")
-    @Operation(summary = "Quên mật khẩu", description = "Gửi email đặt lại mật khẩu")
-    @ApiResponse(responseCode = "200", description = "Đã gửi email đặt lại mật khẩu")
-    @ApiResponse(responseCode = "400", description = "Email không tồn tại")
+    @Operation(summary = "Forgot password", description = "Send reset password email")
+    @ApiResponse(responseCode = "200", description = "Password reset email sent")
+    @ApiResponse(responseCode = "400", description = "Email does not exist")
     public AppApiResponse<Void> forgotPassword(@RequestBody Map<String, String> body) {
         String email = body.get("email");
         authenticationService.sendPasswordResetCode(email);
         return AppApiResponse.<Void>builder()
                 .code(200)
-                .message("Mã đặt lại mật khẩu đã được gửi đến email")
+                .message("Password reset code has been sent to your email")
                 .build();
     }
 
     @PostMapping("/verify-code")
-    @Operation(summary = "Xác thực mã đặt lại mật khẩu", description = "Xác minh mã được gửi qua email để lấy reset token")
-    @ApiResponse(responseCode = "200", description = "Mã hợp lệ")
-    @ApiResponse(responseCode = "400", description = "Mã không hợp lệ hoặc hết hạn")
+    @Operation(summary = "Verify reset code", description = "Verify code sent via email to get reset token")
+    @ApiResponse(responseCode = "200", description = "Valid code")
+    @ApiResponse(responseCode = "400", description = "Invalid or expired code")
     public AppApiResponse<Map<String, String>> verifyResetCode(@RequestBody Map<String, String> body) {
         String email = body.get("email");
         String code = body.get("code");
         String resetToken = authenticationService.verifyResetCode(email, code);
         return AppApiResponse.<Map<String, String>>builder()
                 .code(200)
-                .message("Mã hợp lệ")
+                .message("Valid code")
                 .result(Map.of("resetToken", resetToken))
                 .build();
     }
 
     @PostMapping("/reset-password")
-    @Operation(summary = "Đặt lại mật khẩu", description = "Đổi mật khẩu mới bằng reset token")
-    @ApiResponse(responseCode = "200", description = "Đặt lại mật khẩu thành công")
-    @ApiResponse(responseCode = "400", description = "Token không hợp lệ hoặc mật khẩu không hợp lệ")
+    @Operation(summary = "Reset password", description = "Change new password using reset token")
+    @ApiResponse(responseCode = "200", description = "Password reset successful")
+    @ApiResponse(responseCode = "400", description = "Invalid token or invalid password")
     public AppApiResponse<Void> resetPassword(@RequestBody Map<String, String> body) {
         String token = body.get("token");
         String newPassword = body.get("password");
         authenticationService.resetPassword(token, newPassword);
         return AppApiResponse.<Void>builder()
                 .code(200)
-                .message("Đặt lại mật khẩu thành công")
+                .message("Password reset successful")
                 .build();
     }
 

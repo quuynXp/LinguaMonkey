@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface VideoCallMapper {
-    VideoCallMapper INSTANCE = Mappers.getMapper(VideoCallMapper.class);
 
     VideoCall toEntity(VideoCallRequest request);
     VideoCallResponse toResponse(VideoCall entity);

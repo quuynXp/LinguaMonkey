@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/group-sessions")
+@RequestMapping("/api/v1/group-sessions")
 @RequiredArgsConstructor
 public class GroupSessionController {
     private final GroupSessionService groupSessionService;

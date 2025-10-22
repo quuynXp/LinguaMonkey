@@ -8,9 +8,11 @@ import com.connectJPA.LinguaVietnameseApp.entity.Event;
 import com.connectJPA.LinguaVietnameseApp.entity.Language;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;
+import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface EventMapper {
+
     Event toEntity(EventRequest request);
     EventResponse toResponse(Event event);
     void updateEntityFromRequest(EventRequest request, @MappingTarget Event event);

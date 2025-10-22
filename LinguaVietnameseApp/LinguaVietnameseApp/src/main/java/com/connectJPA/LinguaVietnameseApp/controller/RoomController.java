@@ -24,7 +24,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/rooms")
+@RequestMapping("/api/v1/rooms")
 @RequiredArgsConstructor
 public class RoomController {
     private final RoomService roomService;

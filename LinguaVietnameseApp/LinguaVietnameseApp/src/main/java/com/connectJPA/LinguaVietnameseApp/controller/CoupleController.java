@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/couples")
+@RequestMapping("/api/v1/couples")
 @RequiredArgsConstructor
 public class CoupleController {
     private final CoupleService coupleService;

@@ -13,7 +13,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("/api/lessons/{lessonId}/flashcards")
+@RequestMapping("/api/v1/lessons/{lessonId}/flashcards")
 @RequiredArgsConstructor
 public class FlashcardController {
     private final FlashcardService flashcardService;

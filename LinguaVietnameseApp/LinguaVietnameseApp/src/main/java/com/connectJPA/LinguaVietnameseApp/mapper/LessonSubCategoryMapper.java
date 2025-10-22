@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LessonSubCategoryMapper {
-    LessonSubCategoryMapper INSTANCE = Mappers.getMapper(LessonSubCategoryMapper.class);
 
     LessonSubCategory toEntity(LessonSubCategoryRequest request);
     LessonSubCategoryResponse toResponse(LessonSubCategory entity);

@@ -20,7 +20,7 @@ import java.util.Locale;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/lesson-progress-wrong-items")
+@RequestMapping("/api/v1/lesson-progress-wrong-items")
 @RequiredArgsConstructor
 public class LessonProgressWrongItemController {
     private final LessonProgressWrongItemService lessonProgressWrongItemService;

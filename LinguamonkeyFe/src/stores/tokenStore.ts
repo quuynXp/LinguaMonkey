@@ -1,3 +1,4 @@
+import { refreshClient, refreshTokenApi } from './../services/authService';
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
@@ -72,6 +73,7 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     try {
       const storedAccess = await accessStorage.getItem('accessToken');
       const storedRefresh = await refreshStorage.getItem('refreshToken');
+      const refreshResult = await refreshTokenApi(storedRefresh);
 
       console.log('initializeTokens - storage:', {
         storedAccess: !!storedAccess,
@@ -139,10 +141,15 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
 
       // nếu tới đây, không thể xác thực -> false
       return false;
-    } catch (e) {
-      console.error('initializeTokens error:', e);
-      // đảm bảo store không bị treo
-      set({ accessToken: null, refreshToken: null, initialized: true });
+    } catch (refreshError: any) {
+      console.error('initializeTokens refresh failed:', refreshError);
+      const status = refreshError?.response?.status;
+      const errCode = refreshError?.response?.data?.code;
+      if (status === 401 || errCode === 'REFRESH_TOKEN_EXPIRED') {
+        await useTokenStore.getState().clearTokens();
+        return false;
+      }
+      // nếu là lỗi format/network -> don't clear, chỉ trả false để app ko treat as login lost
       return false;
     }
   },

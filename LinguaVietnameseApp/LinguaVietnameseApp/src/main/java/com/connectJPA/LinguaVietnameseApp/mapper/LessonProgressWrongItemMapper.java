@@ -9,7 +9,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface LessonProgressWrongItemMapper {
-    LessonProgressWrongItemMapper INSTANCE = Mappers.getMapper(LessonProgressWrongItemMapper.class);
 
     LessonProgressWrongItem toEntity(LessonProgressWrongItemRequest request);
     LessonProgressWrongItemResponse toResponse(LessonProgressWrongItem entity);
