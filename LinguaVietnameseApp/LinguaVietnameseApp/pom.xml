@@ -53,11 +53,11 @@
 			<artifactId>spring-aspects</artifactId>
 		</dependency>
 
-		<dependency>
-			<groupId>com.cloudinary</groupId>
-			<artifactId>cloudinary-http44</artifactId>
-			<version>1.38.0</version>
-		</dependency>
+        <dependency>
+            <groupId>com.cloudinary</groupId>
+            <artifactId>cloudinary-http45</artifactId>
+            <version>1.38.0</version>
+        </dependency>
 		<dependency>
 			<groupId>com.fasterxml.jackson.datatype</groupId>
 			<artifactId>jackson-datatype-jsr310</artifactId>
@@ -231,13 +231,6 @@
 			<groupId>commons-fileupload</groupId>
 			<artifactId>commons-fileupload</artifactId>
 			<version>1.5</version>
-		</dependency>
-
-		<!-- Whisper API -->
-		<dependency>
-			<groupId>org.apache.httpcomponents.client5</groupId>
-			<artifactId>httpclient5</artifactId>
-			<version>5.3</version>
 		</dependency>
 
 		<!-- DB -->
