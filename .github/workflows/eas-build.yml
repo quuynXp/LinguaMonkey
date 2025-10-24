@@ -1,0 +1,86 @@
+name: LinguamonkeyFe - Optimized Local Build on GHA
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'LinguamonkeyFe/**'
+  workflow_dispatch:
+
+jobs:
+  build-local-android:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./LinguamonkeyFe
+
+    steps:
+      - name: 🧱 Checkout repository (Full Monorepo)
+        uses: actions/checkout@v4
+
+      - name: 🧩 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: CACHE 📦 Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-npm-fe-${{ hashFiles('LinguamonkeyFe/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-fe-
+
+      - name: 📦 Install dependencies (in ./LinguamonkeyFe)
+        run: npm ci
+
+      # Cache và cài đặt Java
+      - name: ☕ Setup Java (JDK)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: CACHE 🐘 Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-fe-
+
+      - name: 🔑 Load .env file (from ./LinguamonkeyFe)
+        run: |
+          echo "Loading .env variables from ./LinguamonkeyFe/.env"
+          grep -v '^#' .env | grep -v '^\s*$' | while IFS= read -r line; do
+            echo "$line" >> $GITHUB_ENV
+          done
+
+      - name: ⚙️ Build Expo JS bundle (in ./LinguamonkeyFe)
+        run: npx expo export:embed --eager --platform android --dev false
+      
+      - name: 🔐 Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: 🔑 Authenticate with EAS
+        run: eas whoami || eas login --token ${{ secrets.EAS_TOKEN }}
+
+      - name: 🚀 Build Android APK via EAS (Local, in ./LinguamonkeyFe)
+        env:
+          EAS_NO_VCS: 1
+          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+        run: |
+          echo "🔧 Start EAS local build..."
+          eas build --platform android --profile production --non-interactive --local --output build.apk
+
+      # Upload APK
+      - name: 📤 Upload built APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          #Chỉ định đường dẫn đầy đủ từ root
+          path: LinguamonkeyFe/build.apk

@@ -12,7 +12,6 @@ import org.mapstruct.factory.Mappers;
 
 @Mapper(componentModel = "spring")
 public interface EventMapper {
-
     Event toEntity(EventRequest request);
     EventResponse toResponse(Event event);
     void updateEntityFromRequest(EventRequest request, @MappingTarget Event event);
