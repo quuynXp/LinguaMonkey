@@ -38,4 +38,5 @@ declare module "@env" {
   export const EXPO_PUBLIC_FIREBASE_CONFIG_EXPO_IOS: string;
   export const EXPO_PUBLIC_FIREBASE_CONFIG_EXPO_WEB: string;
   export const EXPO_PUBLIC_FIREBASE_CONFIG_EXPO_IOS_ANDROID: string;
+  export const EXPO_PUBLIC_FACEBOOK_APP_ID: string;
 }

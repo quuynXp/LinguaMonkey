@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useRef, useState } from "react"
 import {
     Alert,
@@ -156,7 +154,7 @@ const WritingScreen = ({ navigation }) => {
         explanation: "Consider using more specific vocabulary",
         severity: "low",
       },
-    ].filter((error) => error.start !== -1)
+    ].filter((error) => error.start !== -1) as []
 
     // Calculate scores
     const grammarScore = Math.max(0, 100 - grammarErrors.length * 10)

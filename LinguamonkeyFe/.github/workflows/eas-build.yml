@@ -1,0 +1,70 @@
+name: Build Expo Bundle & EAS Native Build
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build-expo-bundle:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🧱 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🧩 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: ⚙️ Build Expo JS bundle
+        run: |
+          npx expo export:embed --eager --platform android --dev false
+
+      - name: 📤 Upload JS bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: expo-bundle
+          path: dist
+
+  eas-native-build:
+    runs-on: ubuntu-latest
+    needs: build-expo-bundle
+    steps:
+      - name: 🧱 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 📥 Download JS bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: expo-bundle
+          path: dist
+
+      - name: ⚙️ Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: 🔐 Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: 🔑 Authenticate with EAS
+        run: eas whoami || eas login --token ${{ secrets.EAS_TOKEN }}
+
+      - name: ⚙️ Build Android APK via EAS
+        env:
+          EAS_NO_VCS: 1
+          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+        run: |
+          echo "🔧 Start EAS build..."
+          eas build --platform android --profile production --non-interactive --local --output build.apk
+
+      - name: 📤 Upload built APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build.apk

@@ -1,9 +1,7 @@
-"use client"
-
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
 import { useEffect, useRef, useState } from "react";
-import { Animated, Modal, ScrollView, Slider, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { Video } from 'expo-av';
+import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { VideoPlayer } from 'expo-video';
 
 interface Topic {
   id: string
@@ -210,7 +208,7 @@ const ListeningScreen = ({ navigation }) => {
               <Text style={styles.speedButton}>{playbackRate}x</Text>
             </TouchableOpacity>
           </View>
-
+{/* 
           <View style={styles.mediaContainer}>
             {selectedContent.type === "video" ? (
               <Video
@@ -229,20 +227,11 @@ const ListeningScreen = ({ navigation }) => {
                 <Text style={styles.audioTitle}>{selectedContent.title}</Text>
               </View>
             )}
-          </View>
+          </View> */}
 
           <View style={styles.playerControls}>
             <View style={styles.progressContainer}>
               <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-              <Slider
-                style={styles.progressSlider}
-                minimumValue={0}
-                maximumValue={duration}
-                value={currentTime}
-                minimumTrackTintColor="#4F46E5"
-                maximumTrackTintColor="#E5E7EB"
-                thumbStyle={styles.sliderThumb}
-              />
               <Text style={styles.timeText}>{formatTime(duration)}</Text>
             </View>
 

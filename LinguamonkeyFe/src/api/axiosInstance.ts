@@ -1,4 +1,3 @@
-import { EXPO_PUBLIC_API_BASE_URL } from '@env';
 import axios, { AxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
@@ -10,6 +9,7 @@ import * as Application from 'expo-application';
 import { resetToAuth } from '../utils/navigationRef';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 let isClearingTokens = false;
 
 function waitForTokenStoreInit(timeout = 5000) {

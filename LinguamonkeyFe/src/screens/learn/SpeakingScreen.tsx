@@ -1,8 +1,6 @@
-"use client"
-
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
-import { Audio } from 'expo-av'
-import { useEffect, useRef, useState } from "react"
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useAudioRecorder, RecordingPresets, requestRecordingPermissionsAsync, setAudioModeAsync, createAudioPlayer } from 'expo-audio';
+import { useEffect, useRef, useState } from "react";
 import {
     Alert,
     Animated,
@@ -14,58 +12,55 @@ import {
     Text,
     TouchableOpacity,
     View,
-} from "react-native"
+} from "react-native";
 
 interface Sentence {
-    id: string
-    text: string
-    phonetic: string
-    difficulty: "easy" | "medium" | "hard"
-    category: string
-    audioUrl: string
+    id: string;
+    text: string;
+    phonetic: string;
+    difficulty: "easy" | "medium" | "hard";
+    category: string;
+    audioUrl: string;
 }
 
 interface WordScore {
-    word: string
-    score: number
-    isCorrect: boolean
-    suggestion?: string
+    word: string;
+    score: number;
+    isCorrect: boolean;
+    suggestion?: string;
 }
 
 interface PronunciationResult {
-    overallScore: number
-    wordScores: WordScore[]
-    transcript: string
-    suggestions: string[]
+    overallScore: number;
+    wordScores: WordScore[];
+    transcript: string;
+    suggestions: string[];
 }
 
-
-
 const SpeakingScreen = ({ navigation }) => {
-    const [selectedSentence, setSelectedSentence] = useState<Sentence | null>(null)
-    const [isRecording, setIsRecording] = useState(false)
-    const [isPlaying, setIsPlaying] = useState(false)
-    const [recordedAudio, setRecordedAudio] = useState<string | null>(null)
-    const [pronunciationResult, setPronunciationResult] = useState<PronunciationResult | null>(null)
-    const [showResult, setShowResult] = useState(false)
-    const [practiceHistory, setPracticeHistory] = useState([])
-    const [currentCategory, setCurrentCategory] = useState("daily")
+    const [selectedSentence, setSelectedSentence] = useState<Sentence | null>(null);
+    const [isRecording, setIsRecording] = useState(false);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [recordedAudio, setRecordedAudio] = useState<string | null>(null);
+    const [pronunciationResult, setPronunciationResult] = useState<PronunciationResult | null>(null);
+    const [showResult, setShowResult] = useState(false);
+    const [practiceHistory, setPracticeHistory] = useState([]);
+    const [currentCategory, setCurrentCategory] = useState("daily");
 
-    const fadeAnim = useRef(new Animated.Value(0)).current
-    const pulseAnim = useRef(new Animated.Value(1)).current
-    const recordingRef = useRef<Audio.Recording | null>(null)
+    const fadeAnim = useRef(new Animated.Value(0)).current;
+    const pulseAnim = useRef(new Animated.Value(1)).current;
 
+    const recorder = useAudioRecorder(null);
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
             toValue: 1,
             duration: 600,
             useNativeDriver: true,
-        }).start()
+        }).start();
 
-        requestPermissions()
-    }, [])
-
+        requestPermissions();
+    }, []);
 
     const requestPermissions = async () => {
         if (Platform.OS === "android") {
@@ -74,12 +69,12 @@ const SpeakingScreen = ({ navigation }) => {
                     PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
                     PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
                     PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-                ])
+                ]);
             } catch (err) {
-                console.warn(err)
+                console.warn(err);
             }
         }
-    }
+    };
 
     const sentences: Sentence[] = [
         {
@@ -106,74 +101,73 @@ const SpeakingScreen = ({ navigation }) => {
             category: "technology",
             audioUrl: "sample_audio_3.mp3",
         },
-    ]
+    ];
 
     const categories = [
         { id: "daily", name: "Hàng ngày", icon: "chat", color: "#10B981" },
         { id: "business", name: "Kinh doanh", icon: "business", color: "#3B82F6" },
         { id: "restaurant", name: "Nhà hàng", icon: "restaurant", color: "#F59E0B" },
         { id: "technology", name: "Công nghệ", icon: "computer", color: "#8B5CF6" },
-    ]
-
-
+    ];
 
     const startRecording = async () => {
-        if (!selectedSentence) return
+        if (!selectedSentence) return;
 
         try {
-            setIsRecording(true)
-            startPulseAnimation()
+            setIsRecording(true);
+            startPulseAnimation();
 
-            await Audio.requestPermissionsAsync()
-            await Audio.setAudioModeAsync({
-                allowsRecordingIOS: true,
-                playsInSilentModeIOS: true,
-            })
+            const { status } = await requestRecordingPermissionsAsync();
+            if (status !== 'granted') {
+                throw new Error('Permission denied');
+            }
 
-            const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
-            )
-            recordingRef.current = recording
+            await setAudioModeAsync({
+                allowsRecording: true,
+                playsInSilentMode: true,
+            });
+
+            await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
+            await recorder.record();
         } catch (error) {
-            console.error("Recording error:", error)
-            setIsRecording(false)
-            Alert.alert("Lỗi", "Không thể bắt đầu ghi âm.")
+            console.error("Recording error:", error);
+            setIsRecording(false);
+            Alert.alert("Lỗi", "Không thể bắt đầu ghi âm.");
         }
-    }
+    };
 
     const stopRecording = async () => {
         try {
-            const recording = recordingRef.current
-            if (!recording) return
+            await recorder.stop();
+            const uri = recorder.uri;
 
-            await recording.stopAndUnloadAsync()
-            const uri = recording.getURI()
-            console.log("Audio file URI:", uri)
-
-            setRecordedAudio(uri)
-            setIsRecording(false)
-            stopPulseAnimation()
-
-            const result = await uploadAndAnalyzeAudio(uri!)
-            if (result) {
-                setPronunciationResult(result)
-                setShowResult(true)
-                savePracticeHistory(result)
+            if (uri) {
+                console.log("Audio file URI:", uri);
+                setRecordedAudio(uri);
+                const result = await uploadAndAnalyzeAudio(uri);
+                if (result) {
+                    setPronunciationResult(result);
+                    setShowResult(true);
+                    savePracticeHistory(result);
+                }
             }
+
+            setIsRecording(false);
+            stopPulseAnimation();
         } catch (error) {
-            console.error("Stop recording error:", error)
+            console.error("Stop recording error:", error);
         }
-    }
+    };
 
     const uploadAndAnalyzeAudio = async (filePath: string): Promise<PronunciationResult | null> => {
-        const fileUri = Platform.OS === 'ios' ? filePath : `file://${filePath}`
+        const fileUri = Platform.OS === 'ios' ? filePath : `file://${filePath}`;
 
-        const formData = new FormData()
+        const formData = new FormData();
         formData.append('file', {
             uri: fileUri,
             name: 'recording.m4a',
             type: 'audio/m4a',
-        } as any)
+        } as any);
 
         try {
             const response = await fetch("https://localhost:8080/api/speech-to-text", {
@@ -182,23 +176,21 @@ const SpeakingScreen = ({ navigation }) => {
                     "Content-Type": "multipart/form-data",
                 },
                 body: formData,
-            })
+            });
 
             if (!response.ok) {
-                console.error("Upload failed", await response.text())
-                return null
+                console.error("Upload failed", await response.text());
+                return null;
             }
 
-            const data = await response.json()
-            return data as PronunciationResult
+            const data = await response.json();
+            return data as PronunciationResult;
         } catch (err) {
-            console.error("Upload error:", err)
-            Alert.alert("Lỗi", "Không thể gửi file âm thanh để phân tích.")
-            return null
+            console.error("Upload error:", err);
+            Alert.alert("Lỗi", "Không thể gửi file âm thanh để phân tích.");
+            return null;
         }
-    }
-
-
+    };
 
     const startPulseAnimation = () => {
         const pulseAnimation = Animated.loop(
@@ -214,89 +206,88 @@ const SpeakingScreen = ({ navigation }) => {
                     useNativeDriver: true,
                 }),
             ]),
-        )
-        pulseAnimation.start()
-    }
+        );
+        pulseAnimation.start();
+    };
 
     const stopPulseAnimation = () => {
-        pulseAnim.stopAnimation()
+        pulseAnim.stopAnimation();
         Animated.timing(pulseAnim, {
             toValue: 1,
             duration: 200,
             useNativeDriver: true,
-        }).start()
-    }
+        }).start();
+    };
 
     const analyzePronunciation = (transcript: string) => {
-        if (!selectedSentence) return
+        if (!selectedSentence) return;
 
         // Simulate pronunciation analysis
-        const originalWords = selectedSentence.text.toLowerCase().split(" ")
-        const spokenWords = transcript.toLowerCase().split(" ")
+        const originalWords = selectedSentence.text.toLowerCase().split(" ");
+        const spokenWords = transcript.toLowerCase().split(" ");
 
         const wordScores: WordScore[] = originalWords.map((word, index) => {
-            const spokenWord = spokenWords[index] || ""
-            const similarity = calculateSimilarity(word, spokenWord)
-            const score = Math.round(similarity * 100)
+            const spokenWord = spokenWords[index] || "";
+            const similarity = calculateSimilarity(word, spokenWord);
+            const score = Math.round(similarity * 100);
 
             return {
                 word: word,
                 score: score,
                 isCorrect: score >= 70,
                 suggestion: score < 70 ? generateSuggestion(word, spokenWord) : undefined,
-            }
-        })
+            };
+        });
 
-        const overallScore = Math.round(wordScores.reduce((sum, ws) => sum + ws.score, 0) / wordScores.length)
+        const overallScore = Math.round(wordScores.reduce((sum, ws) => sum + ws.score, 0) / wordScores.length);
 
         const result: PronunciationResult = {
             overallScore,
             wordScores,
             transcript,
             suggestions: generateOverallSuggestions(wordScores),
-        }
+        };
 
-        setPronunciationResult(result)
-        setShowResult(true)
-        savePracticeHistory(result)
-    }
+        setPronunciationResult(result);
+        setShowResult(true);
+        savePracticeHistory(result);
+    };
 
     const calculateSimilarity = (word1: string, word2: string): number => {
-        // Simple similarity calculation (in real app, use more sophisticated algorithm)
-        if (word1 === word2) return 1
+        if (word1 === word2) return 1;
 
-        const longer = word1.length > word2.length ? word1 : word2
-        const shorter = word1.length > word2.length ? word2 : word1
+        const longer = word1.length > word2.length ? word1 : word2;
+        const shorter = word1.length > word2.length ? word2 : word1;
 
-        if (longer.length === 0) return 1
+        if (longer.length === 0) return 1;
 
-        const distance = levenshteinDistance(longer, shorter)
-        return (longer.length - distance) / longer.length
-    }
+        const distance = levenshteinDistance(longer, shorter);
+        return (longer.length - distance) / longer.length;
+    };
 
     const levenshteinDistance = (str1: string, str2: string): number => {
-        const matrix = []
+        const matrix = [];
 
         for (let i = 0; i <= str2.length; i++) {
-            matrix[i] = [i]
+            matrix[i] = [i];
         }
 
         for (let j = 0; j <= str1.length; j++) {
-            matrix[0][j] = j
+            matrix[0][j] = j;
         }
 
         for (let i = 1; i <= str2.length; i++) {
             for (let j = 1; j <= str1.length; j++) {
                 if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
-                    matrix[i][j] = matrix[i - 1][j - 1]
+                    matrix[i][j] = matrix[i - 1][j - 1];
                 } else {
-                    matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1)
+                    matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
                 }
             }
         }
 
-        return matrix[str2.length][str1.length]
-    }
+        return matrix[str2.length][str1.length];
+    };
 
     const generateSuggestion = (original: string, spoken: string): string => {
         const suggestions = [
@@ -304,22 +295,22 @@ const SpeakingScreen = ({ navigation }) => {
             `Chú ý âm cuối của "${original}"`,
             `Luyện tập âm đầu của "${original}"`,
             `Nghe lại cách phát âm "${original}"`,
-        ]
-        return suggestions[Math.floor(Math.random() * suggestions.length)]
-    }
+        ];
+        return suggestions[Math.floor(Math.random() * suggestions.length)];
+    };
 
     const generateOverallSuggestions = (wordScores: WordScore[]): string[] => {
-        const suggestions = []
-        const incorrectWords = wordScores.filter((ws) => !ws.isCorrect)
+        const suggestions = [];
+        const incorrectWords = wordScores.filter((ws) => !ws.isCorrect);
 
         if (incorrectWords.length > 0) {
-            suggestions.push("Luyện tập thêm các từ được đánh dấu đỏ")
-            suggestions.push("Nghe và lặp lại câu mẫu nhiều lần")
-            suggestions.push("Chú ý đến ngữ điệu và nhịp điệu")
+            suggestions.push("Luyện tập thêm các từ được đánh dấu đỏ");
+            suggestions.push("Nghe và lặp lại câu mẫu nhiều lần");
+            suggestions.push("Chú ý đến ngữ điệu và nhịp điệu");
         }
 
-        return suggestions
-    }
+        return suggestions;
+    };
 
     const savePracticeHistory = (result: PronunciationResult) => {
         const historyItem = {
@@ -328,54 +319,70 @@ const SpeakingScreen = ({ navigation }) => {
             score: result.overallScore,
             date: new Date(),
             wordScores: result.wordScores,
-        }
+        };
 
-        setPracticeHistory((prev) => [historyItem, ...prev.slice(0, 9)]) // Keep last 10
-    }
+        setPracticeHistory((prev) => [historyItem, ...prev.slice(0, 9)]);
+    };
 
     const playOriginalAudio = async () => {
-        if (!selectedSentence) return
+        if (!selectedSentence?.audioUrl) return;
 
         try {
-            setIsPlaying(true)
-            // In real app, play the actual audio file
-            setTimeout(() => setIsPlaying(false), 3000)
+            setIsPlaying(true);
+            const player = await createAudioPlayer(selectedSentence.audioUrl);
+            await player.play();
+
+            const interval = setInterval(async () => {
+                const status = player.currentStatus; 
+                if (status.didJustFinish) {
+                    clearInterval(interval);
+                    player.remove();
+                    setIsPlaying(false);
+                }
+            }, 500);
         } catch (error) {
-            console.error("Play audio error:", error)
-            setIsPlaying(false)
+            console.error("Play audio error:", error);
+            setIsPlaying(false);
         }
-    }
+    };
 
     const playRecordedAudio = async () => {
-        if (!recordedAudio) return
+        if (!recordedAudio) return;
 
         try {
-            const { sound } = await Audio.Sound.createAsync({ uri: recordedAudio })
-            await sound.playAsync()
-        } catch (error) {
-            console.error("Play recorded audio error:", error)
-        }
-    }
+            const player = await createAudioPlayer(recordedAudio);
+            await player.play();
 
+            const interval = setInterval(async () => {
+                const status = player.currentStatus; 
+                if (status.didJustFinish) {
+                    clearInterval(interval);
+                    player.remove();
+                }
+            }, 500);
+        } catch (error) {
+            console.error("Play recorded audio error:", error);
+        }
+    };
 
     const getDifficultyColor = (difficulty: string) => {
         switch (difficulty) {
             case "easy":
-                return "#10B981"
+                return "#10B981";
             case "medium":
-                return "#F59E0B"
+                return "#F59E0B";
             case "hard":
-                return "#EF4444"
+                return "#EF4444";
             default:
-                return "#6B7280"
+                return "#6B7280";
         }
-    }
+    };
 
     const getScoreColor = (score: number) => {
-        if (score >= 80) return "#10B981"
-        if (score >= 60) return "#F59E0B"
-        return "#EF4444"
-    }
+        if (score >= 80) return "#10B981";
+        if (score >= 60) return "#F59E0B";
+        return "#EF4444";
+    };
 
     const renderSentenceCard = (sentence: Sentence) => (
         <TouchableOpacity
@@ -397,7 +404,7 @@ const SpeakingScreen = ({ navigation }) => {
             <Text style={styles.sentenceText}>{sentence.text}</Text>
             <Text style={styles.phoneticText}>{sentence.phonetic}</Text>
         </TouchableOpacity>
-    )
+    );
 
     const renderResultModal = () => (
         <Modal visible={showResult} animationType="slide">
@@ -412,7 +419,6 @@ const SpeakingScreen = ({ navigation }) => {
                 <ScrollView style={styles.resultContent}>
                     {pronunciationResult && (
                         <>
-                            {/* Overall Score */}
                             <View style={styles.overallScoreCard}>
                                 <Text style={styles.overallScoreLabel}>Điểm tổng</Text>
                                 <Text style={[styles.overallScore, { color: getScoreColor(pronunciationResult.overallScore) }]}>
@@ -431,7 +437,6 @@ const SpeakingScreen = ({ navigation }) => {
                                 </View>
                             </View>
 
-                            {/* Word by Word Analysis */}
                             <View style={styles.wordAnalysisSection}>
                                 <Text style={styles.sectionTitle}>Phân tích từng từ</Text>
                                 <View style={styles.originalSentence}>
@@ -460,7 +465,6 @@ const SpeakingScreen = ({ navigation }) => {
                                 </View>
                             </View>
 
-                            {/* Suggestions */}
                             <View style={styles.suggestionsSection}>
                                 <Text style={styles.sectionTitle}>Gợi ý cải thiện</Text>
                                 {pronunciationResult.suggestions.map((suggestion, index) => (
@@ -471,7 +475,6 @@ const SpeakingScreen = ({ navigation }) => {
                                 ))}
                             </View>
 
-                            {/* Action Buttons */}
                             <View style={styles.resultActions}>
                                 <TouchableOpacity style={styles.actionButton} onPress={playOriginalAudio}>
                                     <Icon name="volume-up" size={20} color="#4F46E5" />
@@ -493,7 +496,7 @@ const SpeakingScreen = ({ navigation }) => {
                 </ScrollView>
             </View>
         </Modal>
-    )
+    );
 
     return (
         <View style={styles.container}>
@@ -509,7 +512,6 @@ const SpeakingScreen = ({ navigation }) => {
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                 <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
-                    {/* Welcome Section */}
                     <View style={styles.welcomeSection}>
                         <Icon name="mic" size={64} color="#4F46E5" />
                         
@@ -517,7 +519,6 @@ const SpeakingScreen = ({ navigation }) => {
                         <Text style={styles.welcomeText}>Chọn câu và luyện phát âm với AI đánh giá chính xác</Text>
                     </View>
 
-                    {/* Categories */}
                     <View style={styles.categoriesSection}>
                         <Text style={styles.sectionTitle}>Chủ đề</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -546,13 +547,11 @@ const SpeakingScreen = ({ navigation }) => {
                         </ScrollView>
                     </View>
 
-                    {/* Sentences */}
                     <View style={styles.sentencesSection}>
                         <Text style={styles.sectionTitle}>Chọn câu luyện tập</Text>
                         {sentences.filter((s) => s.category === currentCategory).map(renderSentenceCard)}
                     </View>
 
-                    {/* Recording Section */}
                     {selectedSentence && (
                         <View style={styles.recordingSection}>
                             <Text style={styles.recordingTitle}>Sẵn sàng luyện tập?</Text>
@@ -576,8 +575,8 @@ const SpeakingScreen = ({ navigation }) => {
 
             {renderResultModal()}
         </View>
-    )
-}
+    );
+};
 
 const styles = StyleSheet.create({
     container: {
@@ -609,11 +608,6 @@ const styles = StyleSheet.create({
     welcomeSection: {
         alignItems: "center",
         marginBottom: 30,
-    },
-    welcomeAnimation: {
-        width: 120,
-        height: 120,
-        marginBottom: 16,
     },
     welcomeTitle: {
         fontSize: 20,
@@ -911,6 +905,6 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: "#6B7280",
     },
-})
+});
 
-export default SpeakingScreen
+export default SpeakingScreen;
