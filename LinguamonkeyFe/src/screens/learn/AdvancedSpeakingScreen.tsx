@@ -1,5 +1,3 @@
-"use client"
-
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
@@ -206,7 +204,7 @@ const AdvancedSpeakingScreen = ({ navigation }: any) => {
     try {
       setIsRecording(true)
       startPulseAnimation()
-      await Voice.start("en-US")
+      // await Voice.start("en-US")
     } catch (error) {
       console.error("Recording error:", error)
       setIsRecording(false)
@@ -215,7 +213,7 @@ const AdvancedSpeakingScreen = ({ navigation }: any) => {
 
   const stopRecording = async () => {
     try {
-      await Voice.stop()
+      // await Voice.stop()
       setIsRecording(false)
       stopPulseAnimation()
     } catch (error) {

@@ -1,5 +1,3 @@
-"use client"
-
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
 import * as ImagePicker from 'expo-image-picker';
 import { useState } from "react";

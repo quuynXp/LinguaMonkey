@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useRef, useState } from "react"
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
@@ -204,7 +202,7 @@ const InteractiveQuizScreen = ({ navigation, route }) => {
   const calculateResult = (): QuizResult => {
     const correctAnswers = score / (questions.reduce((sum, q) => sum + q.points, 0) / questions.length)
     const experienceGained = Math.round(score * 1.5)
-    const skillsImproved = [...new Set(questions.map((q) => q.skill))]
+    const skillsImproved = [...new Set(questions.map((q) => q.skill))] as string[]
 
     return {
       score,

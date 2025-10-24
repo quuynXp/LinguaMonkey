@@ -1,10 +1,10 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Animated, Slider, TextInput } from "react-native"
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Animated, TextInput } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Video } from 'expo-av';
+import {VideoPlayer} from 'expo-video';
 
 interface ListeningContent {
   id: string
@@ -360,7 +360,7 @@ const AdvancedListeningScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          <View style={styles.mediaContainer}>
+          {/* <View style={styles.mediaContainer}>
             {currentContent.type === "video" ? (
               <Video
                 source={{ uri: currentContent.url }}
@@ -381,20 +381,12 @@ const AdvancedListeningScreen = ({ navigation }: any) => {
                 </Text>
               </View>
             )}
-          </View>
+          </View> */}
 
           <View style={styles.playerControls}>
             <View style={styles.progressContainer}>
               <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-              <Slider
-                style={styles.progressSlider}
-                minimumValue={0}
-                maximumValue={duration}
-                value={currentTime}
-                minimumTrackTintColor="#4ECDC4"
-                maximumTrackTintColor="#E5E7EB"
-                thumbStyle={styles.sliderThumb}
-              />
+      
               <Text style={styles.timeText}>{formatTime(duration)}</Text>
             </View>
 
@@ -414,16 +406,6 @@ const AdvancedListeningScreen = ({ navigation }: any) => {
 
             <View style={styles.speedControl}>
               <Text style={styles.speedLabel}>Speed: {playbackRate}x</Text>
-              <Slider
-                style={styles.speedSlider}
-                minimumValue={0.5}
-                maximumValue={2.0}
-                step={0.25}
-                value={playbackRate}
-                onValueChange={setPlaybackRate}
-                minimumTrackTintColor="#4ECDC4"
-                maximumTrackTintColor="#E5E7EB"
-              />
             </View>
           </View>
 

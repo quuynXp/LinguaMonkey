@@ -5,8 +5,9 @@ import { decodeToken, getRoleFromToken } from '../utils/decodeToken';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resetToTab, resetToAuth } from "../utils/navigationRef";
 import { loginWithGoogleFirebase, loginWithFacebookFirebase } from './firebaseService';
-import { EXPO_PUBLIC_API_BASE_URL } from '@env';
 import axios from 'axios';
+
+const EXPO_PUBLIC_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 export const refreshClient = axios.create({
   baseURL: EXPO_PUBLIC_API_BASE_URL,

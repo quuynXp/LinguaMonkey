@@ -1,8 +1,9 @@
-import { EXPO_PUBLIC_CLOUDINARY_PRESET, EXPO_PUBLIC_CLOUDINARY_API_UPLOAD } from '@env';
 import instance from '../api/axiosInstance';
 import { useUserStore } from '../stores/UserStore';
 
 
+const EXPO_PUBLIC_CLOUDINARY_API_UPLOAD = process.env.EXPO_PUBLIC_CLOUDINARY_API_UPLOAD;
+const EXPO_PUBLIC_CLOUDINARY_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_PRESET;
 
 export async function uploadAvatarToTemp(file: { uri: string; name: string; type: string }) {
   const form = new FormData();

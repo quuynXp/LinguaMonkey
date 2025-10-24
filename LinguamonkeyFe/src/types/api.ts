@@ -172,6 +172,9 @@ export interface BilingualVideo {
   languageCode?: string | null
   createdAt: string
   updatedAt: string
+  isLiked: boolean
+  duration: string
+  progress: number
 }
 
 export interface Subtitle {

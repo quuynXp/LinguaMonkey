@@ -1,8 +1,10 @@
-import { EXPO_PUBLIC_API_BASE_URL } from '@env';
 import axios, { AxiosRequestConfig } from 'axios';
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
 import * as Localization from 'expo-localization';
+
+
+const EXPO_PUBLIC_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
 export const refreshClient = axios.create({
   baseURL: EXPO_PUBLIC_API_BASE_URL,

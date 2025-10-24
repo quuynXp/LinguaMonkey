@@ -1,14 +1,14 @@
 import React, { useRef, useState } from 'react';
 import {
-    Alert,
-    Animated,
-    FlatList,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
@@ -103,7 +103,7 @@ const ChatRoomListScreen = ({ navigation }) => {
 
   const filteredRooms = rooms.filter(room => {
     const matchesSearch = room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         room.description.toLowerCase().includes(searchQuery.toLowerCase());
+      room.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesFilter = selectedFilter === 'all' || room.purpose === selectedFilter;
     return matchesSearch && matchesFilter;
   });
@@ -183,7 +183,7 @@ const ChatRoomListScreen = ({ navigation }) => {
             <Text style={styles.roomCreator}>{t('room.created.by')} {item.createdBy}</Text>
           </View>
         </View>
-        
+
         <View style={styles.roomBadges}>
           <View style={[styles.levelBadge, { backgroundColor: `${getLevelColor(item.level)}20` }]}>
             <Text style={[styles.levelText, { color: getLevelColor(item.level) }]}>
@@ -207,7 +207,7 @@ const ChatRoomListScreen = ({ navigation }) => {
             {item.memberCount}/{item.maxMembers} {t('members')}
           </Text>
         </View>
-        
+
         <View style={styles.roomActions}>
           <Text style={styles.roomTime}>
             {item.createdAt.toLocaleDateString('vi-VN')}
@@ -304,11 +304,11 @@ const ChatRoomListScreen = ({ navigation }) => {
                 <Icon name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            
+
             <Text style={styles.modalDescription}>
               {t('room.join.by.code.desc')}
             </Text>
-            
+
             <TextInput
               style={styles.codeInput}
               placeholder={t('room.code.placeholder')}
@@ -317,7 +317,7 @@ const ChatRoomListScreen = ({ navigation }) => {
               onChangeText={setRoomCode}
               autoCapitalize="none"
             />
-            
+
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelButton}
