@@ -3,7 +3,7 @@ name: LinguamonkeyFe - Optimized Local Build on GHA
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'LinguamonkeyFe/**'
   workflow_dispatch:
