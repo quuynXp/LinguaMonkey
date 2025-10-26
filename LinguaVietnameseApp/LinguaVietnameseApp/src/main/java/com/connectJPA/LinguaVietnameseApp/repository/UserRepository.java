@@ -28,6 +28,10 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
     Optional<User> findByPhoneAndIsDeletedFalse(String phone);
     List<User> findAllByIsDeletedFalse();
 
+    boolean existsByEmailIgnoreCaseAndIsDeletedFalse(String email);
+    Optional<User> findByEmailIgnoreCaseAndIsDeletedFalse(String email);
+
+
     boolean existsByEmailAndIsDeletedFalse(String email);
     boolean existsByPhoneAndIsDeletedFalse(String phone);
     boolean existsByUserIdAndIsDeletedFalse(UUID userId);

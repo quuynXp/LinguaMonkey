@@ -22,5 +22,10 @@ public interface VideoService {
     VideoSubtitleResponse addSubtitle(UUID videoId, VideoSubtitleRequest request);
     List<VideoSubtitleResponse> getSubtitles(UUID videoId);
     void deleteSubtitle(UUID subtitleId);
+    public void likeVideo(UUID videoId, UUID userId);
+    public void unlikeVideo(UUID videoId, UUID userId);
+    public void favoriteVideo(UUID videoId, UUID userId);
+    public void unfavoriteVideo(UUID videoId, UUID userId);
+    public void trackProgress(UUID videoId, VideoProgressRequest request);
     void recordProgress(UUID videoId, VideoProgressRequest progressRequest);
 }

@@ -51,6 +51,37 @@ public class VideoController {
         return AppApiResponse.<VideoResponse>builder().code(200).message("Video fetched").result(resp).build();
     }
 
+    @PostMapping("/{videoId}/like")
+    public AppApiResponse<Void> likeVideo(@PathVariable UUID videoId, @RequestParam UUID userId) {
+        videoService.likeVideo(videoId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Video liked").build();
+    }
+
+    @DeleteMapping("/{videoId}/like")
+    public AppApiResponse<Void> unlikeVideo(@PathVariable UUID videoId, @RequestParam UUID userId) {
+        videoService.unlikeVideo(videoId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Video unliked").build();
+    }
+
+    @PostMapping("/{videoId}/favorite")
+    public AppApiResponse<Void> favoriteVideo(@PathVariable UUID videoId, @RequestParam UUID userId) {
+        videoService.favoriteVideo(videoId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Video favorited").build();
+    }
+
+    @DeleteMapping("/{videoId}/favorite")
+    public AppApiResponse<Void> unfavoriteVideo(@PathVariable UUID videoId, @RequestParam UUID userId) {
+        videoService.unfavoriteVideo(videoId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Video unfavorited").build();
+    }
+
+    @PostMapping("/{videoId}/progress")
+    public AppApiResponse<Void> trackProgress(@PathVariable UUID videoId, @RequestBody VideoProgressRequest request) {
+        videoService.trackProgress(videoId, request);
+        return AppApiResponse.<Void>builder().code(200).message("Progress updated").build();
+    }
+
+
     @PostMapping
     public AppApiResponse<VideoResponse> createVideo(@RequestBody VideoRequest request) {
         VideoResponse r = videoService.createVideo(request);

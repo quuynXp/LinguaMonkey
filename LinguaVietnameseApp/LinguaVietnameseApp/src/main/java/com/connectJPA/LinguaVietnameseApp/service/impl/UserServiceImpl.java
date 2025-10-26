@@ -120,6 +120,12 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    @Override
+    public boolean emailExists(String email) {
+        if (email == null) return false;
+        return userRepository.existsByEmailIgnoreCaseAndIsDeletedFalse(email.trim());
+    }
+
 
     @Override
     @Transactional

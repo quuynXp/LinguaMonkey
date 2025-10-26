@@ -24,25 +24,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'yarn'
 
-      - name: CACHE 📦 Cache npm dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-npm-fe-${{ hashFiles('LinguamonkeyFe/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-npm-fe-
+      - name: 📦 Install dependencies (Yarn)
+        run: yarn install --frozen-lockfile
 
-      - name: 📦 Install dependencies (in ./LinguamonkeyFe)
-        run: npm ci
-
-      # Cache và cài đặt Java
+      # ☕ Setup Java (JDK)
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
+      # 🐘 Cache Gradle dependencies
       - name: CACHE 🐘 Cache Gradle dependencies
         uses: actions/cache@v4
         with:
@@ -77,10 +71,8 @@ jobs:
           echo "🔧 Start EAS local build..."
           eas build --platform android --profile production --non-interactive --local --output build.apk
 
-      # Upload APK
       - name: 📤 Upload built APK
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          #Chỉ định đường dẫn đầy đủ từ root
           path: LinguamonkeyFe/build.apk
