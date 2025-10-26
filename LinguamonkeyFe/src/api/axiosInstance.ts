@@ -8,6 +8,9 @@ import { t } from 'i18next';
 import * as Application from 'expo-application';
 import { resetToAuth } from '../utils/navigationRef';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { introspectToken } from '../services/authService';
+import { refreshTokenApi } from '../services/authService';
+
 
 const API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 let isClearingTokens = false;
@@ -145,7 +148,6 @@ instance.interceptors.response.use(
       // If there's an access token, introspect it **now**
       if (latestAccess) {
         try {
-          const { introspectToken } = await import('../services/authService');
           const tokenStillValid = await introspectToken(latestAccess);
           console.log('[axios response] introspectToken result:', tokenStillValid);
 
@@ -175,7 +177,6 @@ instance.interceptors.response.use(
           isRefreshing = true;
           refreshPromise = (async () => {
             try {
-              const { refreshTokenApi } = await import('../services/authService');
               const result = await refreshTokenApi(latestRefresh);
               if (!result?.token || !result?.refreshToken) {
                 throw new Error('Invalid refresh result');
