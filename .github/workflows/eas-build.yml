@@ -1,4 +1,4 @@
-name: LinguamonkeyFe - Optimized Local Build on GHA
+name: LinguamonkeyFe - Cloud EAS Build on GHA
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-local-android:
+  build-cloud-android:
     runs-on: ubuntu-latest
 
     defaults:
@@ -17,7 +17,7 @@ jobs:
         working-directory: ./LinguamonkeyFe
 
     steps:
-      - name: 🧱 Checkout repository (Full Monorepo)
+      - name: 🧱 Checkout repository
         uses: actions/checkout@v4
 
       - name: 🧩 Setup Node.js
@@ -27,7 +27,7 @@ jobs:
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
-      - name: 📦 Install dependencies (Yarn)
+      - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
       - name: ☕ Setup Java (JDK)
@@ -46,31 +46,39 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
 
-      - name: 🔑 Load .env file (from ./LinguamonkeyFe)
+      - name: 🔑 Load .env file
         run: |
-          echo "Loading .env variables from ./LinguamonkeyFe/.env"
+          echo "Loading .env variables..."
           grep -v '^#' .env | grep -v '^\s*$' | while IFS= read -r line; do
             echo "$line" >> $GITHUB_ENV
           done
 
       - name: ⚙️ Build Expo JS bundle
         run: npx expo export:embed --eager --platform android --dev false
-      
+
       - name: 🔐 Install EAS CLI
-        run: npm install -g eas-cli
+        run: npm install -g eas-cli jq
 
       - name: 🔑 Setup Expo authentication
         run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
 
       - name: 🚀 Build Android APK via EAS (Cloud)
         env:
-          EAS_NO_VCS: 1
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
         run: |
           echo "🔧 Start EAS build (cloud mode)..."
-          eas build --platform android --profile production --non-interactive --output build.apk
+          eas build --platform android --profile production --non-interactive --wait
 
-      - name: 📤 Upload built APK
+      - name: 📥 Download APK from EAS Cloud
+        env:
+          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+        run: |
+          echo "📦 Fetching latest finished EAS build..."
+          BUILD_URL=$(eas build:list --limit 1 --status finished --json | jq -r '.[0].artifacts.buildUrl')
+          echo "🔗 Found build: $BUILD_URL"
+          curl -L -o build.apk "$BUILD_URL"
+
+      - name: 📤 Upload built APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
