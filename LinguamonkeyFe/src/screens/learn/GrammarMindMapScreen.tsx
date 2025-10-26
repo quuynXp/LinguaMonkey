@@ -5,21 +5,11 @@ import { Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpa
 import { SafeAreaView } from "react-native-safe-area-context"
 import Svg, { Line } from "react-native-svg"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import { MindMapNode } from "../../types/api"
 
 const { width, height } = Dimensions.get("window")
 
-interface MindMapNode {
-  id: string
-  title: string
-  description: string
-  x: number
-  y: number
-  color: string
-  level: number
-  children: string[]
-  examples: string[]
-  rules: string[]
-}
+
 
 const GrammarMindMapScreen = ({ navigation }: any) => {
   const [selectedNode, setSelectedNode] = useState<MindMapNode | null>(null)

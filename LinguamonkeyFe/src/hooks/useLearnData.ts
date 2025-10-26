@@ -51,24 +51,24 @@ export const useLearnData = () => {
         // Transform languages data
         const languages: LearnLanguage[] =
           languagesResponse.data.result?.map((userLang, index) => ({
-            id: userLang.language_code,
-            name: userLang.language.language_name,
-            flag: getLanguageFlag(userLang.language_code),
+            id: userLang.languageCode,
+            name: userLang.languageCode,
+            flag: getLanguageFlag(userLang.languageCode),
             progress: Math.floor(Math.random() * 100), // This should come from actual progress data
             lessons: Math.floor(Math.random() * 50) + 10, // This should come from actual lesson count
             color: getLanguageColor(index),
-            language_code: userLang.language_code,
+            language_code: userLang.languageCode,
           })) || []
 
         // Transform categories data
         const categories: LearnCategory[] =
           categoriesResponse.data.result?.map((category) => ({
-            id: category.lesson_category_id,
-            name: category.lesson_category_name,
-            icon: getCategoryIcon(category.lesson_category_name),
-            screen: getCategoryScreen(category.lesson_category_name),
+            id: category.lessonCategoryId,
+            name: category.lessonCategoryName,
+            icon: getCategoryIcon(category.lessonCategoryName),
+            screen: getCategoryScreen(category.lessonCategoryName),
             lessons: Math.floor(Math.random() * 20) + 5, // This should come from actual lesson count
-            category_id: category.lesson_category_id,
+            category_id: category.lessonCategoryId,
           })) || []
 
         // Default categories if none from API

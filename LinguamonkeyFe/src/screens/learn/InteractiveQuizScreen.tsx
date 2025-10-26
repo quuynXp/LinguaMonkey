@@ -1,26 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
-
-interface QuizQuestion {
-  id: string
-  question: string
-  options: string[]
-  correctAnswer: number
-  explanation: string
-  difficulty: "easy" | "medium" | "hard"
-  skill: string
-  points: number
-}
-
-interface QuizResult {
-  score: number
-  totalQuestions: number
-  correctAnswers: number
-  timeSpent: number
-  experienceGained: number
-  skillsImproved: string[]
-}
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { QuizQuestion, QuizResult } from "../../types/api"
 
 const InteractiveQuizScreen = ({ navigation, route }) => {
   const { quizData } = route.params || {}
@@ -49,6 +30,9 @@ const InteractiveQuizScreen = ({ navigation, route }) => {
       difficulty: "easy",
       skill: "Grammar",
       points: 10,
+      type: "comprehension",
+      riddle: "",
+      category: ""
     },
     {
       id: "2",
@@ -59,6 +43,9 @@ const InteractiveQuizScreen = ({ navigation, route }) => {
       difficulty: "easy",
       skill: "Vocabulary",
       points: 10,
+      type: "comprehension",
+      riddle: "",
+      category: ""
     },
     {
       id: "3",
@@ -74,6 +61,9 @@ const InteractiveQuizScreen = ({ navigation, route }) => {
       difficulty: "medium",
       skill: "Grammar",
       points: 15,
+      type: "comprehension",
+      riddle: "",
+      category: ""
     },
   ]
 

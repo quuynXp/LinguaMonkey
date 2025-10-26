@@ -2,27 +2,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
 import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { VideoPlayer } from 'expo-video';
-
-interface Topic {
-  id: string
-  title: string
-  description: string
-  level: "beginner" | "intermediate" | "advanced"
-  icon: string
-  color: string
-  contentCount: number
-}
-
-interface Content {
-  id: string
-  title: string
-  type: "video" | "audio"
-  duration: number
-  level: string
-  transcript: string
-  url: string
-  thumbnail?: string
-}
+import { Topic, Content } from '../../types/api';
 
 const ListeningScreen = ({ navigation }) => {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)

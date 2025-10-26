@@ -1,32 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import {ReadingText, Translation, QuizQuestion} from "../../types/api"
 
-interface ReadingText {
-  id: string
-  title: string
-  content: string
-  level: "beginner" | "intermediate" | "advanced"
-  category: string
-  sentences: string[]
-  vocabulary: string[]
-}
-
-interface Translation {
-  original: string
-  translated: string
-  isCorrect: boolean
-  suggestion?: string
-}
-
-interface QuizQuestion {
-  id: string
-  question: string
-  options: string[]
-  correctAnswer: number
-  explanation: string
-  type: "vocabulary" | "grammar" | "comprehension"
-}
 
 const ReadingScreen = ({ navigation }) => {
   const [selectedText, setSelectedText] = useState<ReadingText | null>(null)
@@ -94,6 +70,11 @@ const ReadingScreen = ({ navigation }) => {
         correctAnswer: 1,
         explanation: 'The text states "She ordered her usual cappuccino"',
         type: "comprehension",
+        riddle: "",
+        category: "",
+        difficulty: "easy",
+        skill: "",
+        points: 0
       },
       {
         id: "2",
@@ -102,6 +83,11 @@ const ReadingScreen = ({ navigation }) => {
         correctAnswer: 1,
         explanation: "Aroma refers to a pleasant smell, especially from food or drink",
         type: "vocabulary",
+        riddle: "",
+        category: "",
+        difficulty: "easy",
+        skill: "",
+        points: 0
       },
       {
         id: "3",
@@ -110,6 +96,11 @@ const ReadingScreen = ({ navigation }) => {
         correctAnswer: 1,
         explanation: 'The verb "walked" is in the simple past tense',
         type: "grammar",
+        riddle: "",
+        category: "",
+        difficulty: "easy",
+        skill: "",
+        points: 0
       },
     ]
     return questions

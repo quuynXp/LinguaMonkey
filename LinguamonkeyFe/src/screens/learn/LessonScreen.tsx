@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
@@ -15,7 +13,7 @@ import {
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
-import { useLessons } from "../../hooks/useLessons"
+import { useLesson, useLessonQuestions, useLessonProgress, useSubmitLesson, useCompleteLesson } from "../../hooks/useLessons";
 import { useAppStore } from "../../stores/appStore"
 import type { LessonQuestion } from "../../types/api"
 
@@ -36,9 +34,6 @@ const LessonScreen = ({ navigation, route }: any) => {
     exp_gained: number
   } | null>(null)
 
-  // API hooks
-  const { useLesson, useLessonQuestions, useLessonProgress, useSubmitLesson, useCompleteLesson } = useLessons()
-
   const { data: lesson, isLoading: lessonLoading, error: lessonError } = useLesson(lessonId)
   const { data: questions = [], isLoading: questionsLoading } = useLessonQuestions(lessonId)
   const { data: progress } = useLessonProgress(lessonId)
@@ -47,10 +42,10 @@ const LessonScreen = ({ navigation, route }: any) => {
 
   const currentQuestion = questions[currentQuestionIndex]
   const isLastQuestion = currentQuestionIndex === questions.length - 1
-  const canProceed = currentQuestion && selectedAnswers[currentQuestion.lesson_question_id]
+  const canProceed = currentQuestion && selectedAnswers[currentQuestion.lessonQuestionId]
 
   useEffect(() => {
-    if (progress?.completed_at) {
+    if (progress?.completedAt) {
       // Lesson already completed, show results or navigate back
       Alert.alert(
         t("lessons.alreadyCompleted"),
@@ -91,13 +86,13 @@ const LessonScreen = ({ navigation, route }: any) => {
     }
 
     try {
-      const result = await submitLesson(lesson.lesson_id, selectedAnswers)
+      const result = await submitLesson(lesson.lessonId, selectedAnswers)
       setResults(result)
       setShowResults(true)
 
       // Complete the lesson if score is good enough
       if (result.score >= 70) {
-        await completeLesson(lesson.lesson_id, result.score)
+        await completeLesson(lesson.lessonId, result.score)
       }
     } catch (error: any) {
       Alert.alert(t("common.error"), error.message || t("errors.unknown"))
@@ -117,10 +112,10 @@ const LessonScreen = ({ navigation, route }: any) => {
 
   const renderQuestion = (question: LessonQuestion) => {
     const options = [
-      { key: 'A', value: question.optiona },
-      { key: 'B', value: question.optionb },
-      { key: 'C', value: question.optionc },
-      { key: 'D', value: question.optiond },
+      { key: 'A', value: question.optionA },
+      { key: 'B', value: question.optionB },
+      { key: 'C', value: question.optionB },
+      { key: 'D', value: question.optionD },
     ].filter(option => option.value)
 
     return (
@@ -129,7 +124,7 @@ const LessonScreen = ({ navigation, route }: any) => {
           <Text style={styles.questionNumber}>
             {t("lessons.questionNumber", { current: currentQuestionIndex + 1, total: questions.length })}
           </Text>
-          <Text style={styles.skillType}>{question.skill_type}</Text>
+          <Text style={styles.skillType}>{question.skillType}</Text>
         </View>
 
         <Text style={styles.questionText}>{question.question}</Text>
@@ -140,25 +135,25 @@ const LessonScreen = ({ navigation, route }: any) => {
               key={option.key}
               style={[
                 styles.optionButton,
-                selectedAnswers[question.lesson_question_id] === option.value && styles.selectedOption
+                selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedOption
               ]}
-              onPress={() => handleAnswerSelect(question.lesson_question_id, option.value)}
+              onPress={() => handleAnswerSelect(question.lessonQuestionId, option.value)}
             >
               <View style={styles.optionContent}>
                 <View style={[
                   styles.optionIndicator,
-                  selectedAnswers[question.lesson_question_id] === option.value && styles.selectedIndicator
+                  selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedIndicator
                 ]}>
                   <Text style={[
                     styles.optionKey,
-                    selectedAnswers[question.lesson_question_id] === option.value && styles.selectedOptionKey
+                    selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedOptionKey
                   ]}>
                     {option.key}
                   </Text>
                 </View>
                 <Text style={[
                   styles.optionText,
-                  selectedAnswers[question.lesson_question_id] === option.value && styles.selectedOptionText
+                  selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedOptionText
                 ]}>
                   {option.value}
                 </Text>
@@ -255,7 +250,7 @@ const LessonScreen = ({ navigation, route }: any) => {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{lesson.title}</Text>
         <View style={styles.headerRight}>
-          <Text style={styles.expReward}>+{lesson.exp_reward} XP</Text>
+          <Text style={styles.expReward}>+{lesson.expReward} XP</Text>
         </View>
       </View>
 

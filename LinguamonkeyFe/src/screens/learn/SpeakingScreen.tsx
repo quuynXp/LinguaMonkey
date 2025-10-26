@@ -13,29 +13,8 @@ import {
     TouchableOpacity,
     View,
 } from "react-native";
+import {PronunciationResult, Sentence, WordScore } from "../../types/api"
 
-interface Sentence {
-    id: string;
-    text: string;
-    phonetic: string;
-    difficulty: "easy" | "medium" | "hard";
-    category: string;
-    audioUrl: string;
-}
-
-interface WordScore {
-    word: string;
-    score: number;
-    isCorrect: boolean;
-    suggestion?: string;
-}
-
-interface PronunciationResult {
-    overallScore: number;
-    wordScores: WordScore[];
-    transcript: string;
-    suggestions: string[];
-}
 
 const SpeakingScreen = ({ navigation }) => {
     const [selectedSentence, setSelectedSentence] = useState<Sentence | null>(null);

@@ -1,8 +1,8 @@
-import { refreshClient, refreshTokenApi } from './../services/authService';
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { getStorage } from './tokenStoreInterface';
+import { refreshTokenPure } from '../services/authPure';
 
 interface TokenStore {
   accessToken: string | null;
@@ -25,17 +25,17 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
   setTokens: async (accessToken, refreshToken) => {
     try {
       if (accessToken) {
-        const trimmedAccessToken = accessToken.trim();
-        await accessStorage.setItem('accessToken', trimmedAccessToken);
-        console.log('Stored accessToken (len):', trimmedAccessToken.length);
+        const trimmedAccess = accessToken.trim();
+        await accessStorage.setItem('accessToken', trimmedAccess);
+        console.log('Stored accessToken length:', trimmedAccess.length);
       } else {
         await accessStorage.removeItem('accessToken');
       }
 
       if (refreshToken) {
-        const trimmedRefreshToken = refreshToken.trim();
-        await refreshStorage.setItem('refreshToken', trimmedRefreshToken);
-        console.log('Stored refreshToken (len):', trimmedRefreshToken.length);
+        const trimmedRefresh = refreshToken.trim();
+        await refreshStorage.setItem('refreshToken', trimmedRefresh);
+        console.log('Stored refreshToken length:', trimmedRefresh.length);
       } else {
         await refreshStorage.removeItem('refreshToken');
       }
@@ -45,8 +45,8 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
       }
 
       set({
-        accessToken: accessToken ? accessToken.trim() : null,
-        refreshToken: refreshToken ? refreshToken.trim() : null,
+        accessToken: accessToken?.trim() ?? null,
+        refreshToken: refreshToken?.trim() ?? null,
       });
     } catch (e) {
       console.error('setTokens error:', e);
@@ -63,8 +63,8 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
       console.error('clearTokens storage error:', e);
     } finally {
       set({ accessToken: null, refreshToken: null });
-      await AsyncStorage.setItem('hasLoggedIn', "false");
-      await AsyncStorage.setItem("hasDonePlacementTest", "false");
+      await AsyncStorage.setItem('hasLoggedIn', 'false');
+      await AsyncStorage.setItem('hasDonePlacementTest', 'false');
       console.log('Reset hasLoggedIn and hasDonePlacementTest');
     }
   },
@@ -73,89 +73,47 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
     try {
       const storedAccess = await accessStorage.getItem('accessToken');
       const storedRefresh = await refreshStorage.getItem('refreshToken');
-      const refreshResult = await refreshTokenApi(storedRefresh);
 
-      console.log('initializeTokens - storage:', {
-        storedAccess: !!storedAccess,
-        storedRefresh: !!storedRefresh,
-        refreshTokenValue: storedRefresh ? `${storedRefresh.substring(0, 10)}...` : null
+      console.log('[initializeTokens] found:', {
+        access: !!storedAccess,
+        refresh: !!storedRefresh,
       });
 
-      // 1) set token state ngay để các interceptor/request chờ không bị skip
-      set({
-        accessToken: storedAccess ?? null,
-        refreshToken: storedRefresh ?? null,
-        initialized: true, // <<--- important: mark initialized so interceptors can proceed/wait
-      });
-
-      // Nếu không có token nào thì return false
       if (!storedAccess && !storedRefresh) {
+        console.log('[initializeTokens] No tokens found → skip refresh');
+        set({ initialized: true });
         return false;
       }
 
-      // 2) Nếu có access, kiểm tra tính hợp lệ (non-blocking)
-      if (storedAccess) {
-        try {
-          const { introspectToken } = await import('../services/authService');
-          const valid = await introspectToken(storedAccess);
-          console.log('introspectTokenApi result:', valid);
-          if (valid) {
-            // already set above, chỉ return true
-            return true;
-          }
-        } catch (e) {
-          console.warn('introspectTokenApi failed:', e);
-          // tiếp tục sang refresh nếu có refresh token
-        }
-      }
+      set({
+        accessToken: storedAccess ?? null,
+        refreshToken: storedRefresh ?? null,
+        initialized: true,
+      });
 
-      // 3) Nếu access không valid nhưng có refresh -> try refresh
       if (storedRefresh) {
-        console.log('Attempting refresh with refreshToken');
         try {
-          const { refreshTokenApi } = await import('../services/authService');
-          // ensure refreshTokenApi accepts raw token and returns { token, refreshToken } OR tương tự
-          const refreshResult = await refreshTokenApi(storedRefresh);
-          console.log('Refresh result:', refreshResult);
+          console.log('[initializeTokens] Attempting refresh with refreshToken...');
+          const result = await refreshTokenPure(storedRefresh);
+          console.log('[initializeTokens] Refresh success ✅');
 
-          const newAccessToken = refreshResult?.token ?? refreshResult?.accessToken ?? refreshResult?.data?.accessToken;
-          const newRefreshToken = refreshResult?.refreshToken ?? refreshResult?.refresh_token ?? refreshResult?.data?.refreshToken;
-
-          if (!newAccessToken) {
-            console.error('initializeTokens: refresh returned invalid result', refreshResult);
-            // clear tokens in store and storage
-            await useTokenStore.getState().clearTokens();
-            return false;
-          }
-
-          // lưu token mới vào storage + store
-          await useTokenStore.getState().setTokens(newAccessToken, newRefreshToken ?? storedRefresh);
-          // ensure initialized remained true (we set it earlier)
+          await get().setTokens(result.token, result.refreshToken);
           return true;
-        } catch (refreshError) {
-          console.error('initializeTokens refresh failed:', refreshError);
-          await useTokenStore.getState().clearTokens();
+        } catch (e: any) {
+          console.error('[initializeTokens] Refresh failed ❌', e?.message);
+          await get().clearTokens();
           return false;
         }
       }
 
-      // nếu tới đây, không thể xác thực -> false
-      return false;
-    } catch (refreshError: any) {
-      console.error('initializeTokens refresh failed:', refreshError);
-      const status = refreshError?.response?.status;
-      const errCode = refreshError?.response?.data?.code;
-      if (status === 401 || errCode === 'REFRESH_TOKEN_EXPIRED') {
-        await useTokenStore.getState().clearTokens();
-        return false;
-      }
-      // nếu là lỗi format/network -> don't clear, chỉ trả false để app ko treat as login lost
+      console.log('[initializeTokens] Only accessToken found → use as is');
+      return true;
+    } catch (e: any) {
+      console.error('[initializeTokens] Unexpected error:', e);
+      await get().clearTokens();
       return false;
     }
   },
 
-
-  getAccessTokenSync: () => {
-    return get().accessToken;
-  },
+  getAccessTokenSync: () => get().accessToken,
 }));

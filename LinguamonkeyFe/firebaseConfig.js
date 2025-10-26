@@ -18,31 +18,11 @@ const firebaseConfig = {
   appId: EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Khởi tạo app chỉ 1 lần
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Khởi tạo auth với AsyncStorage persistence
 const auth = initializeAuth(app, {
   persistence: getReactNativePersistence(AsyncStorage),
 });
 
 export { app, auth };
-
-
-// firebaseConfig.ts
-// import { initializeApp } from "firebase/app";
-// import { getAuth } from "firebase/auth";
-
-// // Config của bạn từ Firebase Console
-// const firebaseConfig = {`1
-//   apiKey: "YOUR_API_KEY",
-//   authDomain: "your-app.firebaseapp.com",
-//   projectId: "your-app-id",
-//   storageBucket: "your-app.appspot.com",
-//   messagingSenderId: "xxxx",
-//   appId: "xxxx",
-// };
-
-// const app = initializeApp(firebaseConfig);
-// export const auth = getAuth(app);
 
