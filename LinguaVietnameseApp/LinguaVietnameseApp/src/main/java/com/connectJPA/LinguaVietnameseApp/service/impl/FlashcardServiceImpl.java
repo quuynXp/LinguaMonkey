@@ -12,6 +12,7 @@ import com.connectJPA.LinguaVietnameseApp.service.CloudinaryService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -47,15 +48,15 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         OffsetDateTime now = OffsetDateTime.now();
         List<Flashcard> list;
         if (lessonId != null) {
-            list = flashcardRepository.findByLessonIdAndIsDeletedFalseAndNextReviewAtBefore(lessonId, now);
+            list = flashcardRepository
+                    .findByUserIdAndLessonIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(userId, lessonId, now, PageRequest.of(0, limit));
         } else {
-            list = flashcardRepository.findByUserIdAndIsDeletedFalseAndNextReviewAtBefore(userId, now);
+            list = flashcardRepository
+                    .findByUserIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(userId, now, PageRequest.of(0, limit));
         }
-        return list.stream()
-                .limit(limit)
-                .map(flashcardMapper::toResponse)
-                .collect(Collectors.toList());
+        return list.stream().map(flashcardMapper::toResponse).collect(Collectors.toList());
     }
+
 
     @Transactional
     public FlashcardResponse reviewFlashcard(UUID flashcardId, int quality, UUID reviewerId) {

@@ -18,6 +18,7 @@ public interface UserService {
     UserResponse createUser(UserRequest request);
     UserResponse updateUser(UUID id, UserRequest request);
     void deleteUser(UUID id);
+    User getUserIfExists(UUID userId);
     String getUserEmailByUserId(UUID userId);
     User findByUserId(UUID userId);
     Character3dResponse getCharacter3dByUserId(UUID userId);

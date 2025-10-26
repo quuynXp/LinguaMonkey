@@ -34,7 +34,7 @@ interface AIResponse {
   }
 }
 
-const AdvancedSpeakingScreen = ({ navigation }: any) => {
+const IPAScreen = ({ navigation }: any) => {
   const [currentMode, setCurrentMode] = useState<"ipa" | "pronunciation" | "conversation">("ipa")
   const [selectedIPASound, setSelectedIPASound] = useState<IPASound | null>(null)
   const [isRecording, setIsRecording] = useState(false)
@@ -967,4 +967,4 @@ const styles = StyleSheet.create({
   },
 })
 
-export default AdvancedSpeakingScreen
+export default IPAScreen

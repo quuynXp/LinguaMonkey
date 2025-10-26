@@ -28,9 +28,11 @@ public class FlashcardController {
 
     @GetMapping("/due")
     public AppApiResponse<List<FlashcardResponse>> getDueFlashcards(
-            @PathVariable UUID lessonId,
-            @RequestParam UUID userId,
-            @RequestParam(defaultValue = "20") int limit) {
+            @RequestParam(required = false) UUID lessonId,
+            @RequestParam(defaultValue = "20") int limit,
+            @RequestHeader("Authorization") String authorization) {
+
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
         List<FlashcardResponse> list = flashcardService.getDueFlashcards(userId, lessonId, limit);
         return AppApiResponse.<List<FlashcardResponse>>builder()
                 .code(200)

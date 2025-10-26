@@ -301,6 +301,11 @@ public class UserServiceImpl implements UserService {
         }
     }
 
+    @Override
+    public User getUserIfExists(UUID userId) {
+        return userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+    }
 
 
     @Override

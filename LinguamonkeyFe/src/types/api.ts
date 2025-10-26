@@ -325,35 +325,45 @@ export interface Note {
   createdAt: string
   updatedAt: string
 }
-
-export interface Grammar {
-  grammarId: string
-  title: string
-  content: string
-  description?: string | null
-  examples?: string[] | null
-  languageCode?: string | null
-  createdAt: string
-  updatedAt: string
-}
-
 export interface GrammarTopic {
-  topicId: string
-  topicName: string
-  languageCode?: string | null
-  description?: string | null
-  createdAt: string
-  updatedAt: string
+  topicId: string;
+  topicName: string;
+  languageCode?: string | null;
+  description?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  rules?: GrammarRule[];
 }
 
 export interface GrammarRule {
-  ruleId: string
-  topicId: string
-  title: string
-  content: string
-  examples?: string[] | null
-  createdAt: string
-  updatedAt: string
+  ruleId: string;
+  topicId: string;
+  title: string;
+  explanation?: string | null;
+  examples?: string[] | null;
+  createdAt?: string;
+  updatedAt?: string;
+  exercises?: GrammarExercise[];
+  userScore?: number | null;
+}
+
+export interface GrammarExercise {
+  exerciseId: string;
+  ruleId: string;
+  type: "fill-blank" | "multiple-choice" | "transformation" | string;
+  question?: string | null;
+  options?: string[] | null;
+  correct?: string | null;
+  explanation?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SubmitExerciseResponse {
+  score: number;
+  total: number;
+  correct: number;
+  details: Record<string, boolean> | Record<string, boolean>;
 }
 
 export interface PaginatedResponse<T> {
