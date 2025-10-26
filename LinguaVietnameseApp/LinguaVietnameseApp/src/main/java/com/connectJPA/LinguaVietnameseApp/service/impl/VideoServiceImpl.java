@@ -133,6 +133,31 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
+    public void likeVideo(UUID videoId, UUID userId) {
+
+    }
+
+    @Override
+    public void unlikeVideo(UUID videoId, UUID userId) {
+
+    }
+
+    @Override
+    public void favoriteVideo(UUID videoId, UUID userId) {
+
+    }
+
+    @Override
+    public void unfavoriteVideo(UUID videoId, UUID userId) {
+
+    }
+
+    @Override
+    public void trackProgress(UUID videoId, VideoProgressRequest request) {
+
+    }
+
+    @Override
     public void recordProgress(UUID videoId, VideoProgressRequest progressRequest) {
         // minimal implementation: validate video exists, then persist or emit event.
         videoRepository.findById(videoId).orElseThrow(() -> new NoSuchElementException("Video not found: " + videoId));

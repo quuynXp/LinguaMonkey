@@ -62,13 +62,14 @@ public class SecurityConfig {
     public SecurityFilterChain filterChain(HttpSecurity httpSecurity) throws Exception {
         httpSecurity
                 .authorizeHttpRequests(request -> request
-                        .requestMatchers("/api//v1/auth/**",
+                        .requestMatchers("/api/v1/auth/**",
                                 "/api/swagger",
                                 "/api/swagger/**",
                                 "/api/swagger-ui/**",
                                 "/api/api-docs/**",
                                 "/swagger-ui/**",
-                                "api/v1/users",
+                                "/api/v1/users",
+                                "/api/v1/users/check-email",
                                 "/api/v1/interests",
                                 "/api/v1/character3ds",
                                 "/api/v1/languages",

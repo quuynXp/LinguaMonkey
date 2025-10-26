@@ -123,6 +123,19 @@ public class UserController {
                 .build();
     }
 
+    @GetMapping("/check-email")
+    public AppApiResponse<Boolean> checkEmail(@RequestParam String email, Locale locale) {
+        // trả về result = true nếu *available* (chưa tồn tại)
+        boolean exists = userService.emailExists(email);
+        boolean available = !exists;
+        String msgKey = available ? "user.email.available" : "user.email.exists";
+        return AppApiResponse.<Boolean>builder()
+                .code(200)
+                .message(messageSource.getMessage(msgKey, null, locale))
+                .result(available)
+                .build();
+    }
+
     @Operation(summary = "Delete a user", description = "Soft delete a user by their ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "User deleted successfully"),

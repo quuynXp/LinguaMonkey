@@ -27,6 +27,7 @@ public interface UserService {
     UserResponse updateExp(UUID id, int exp);
     UserStatsResponse getUserStats(UUID userId);
 
+    boolean emailExists(String email);
     void updateLastActive(UUID userId);
 
     UserResponse updateStreakOnActivity(UUID id);
