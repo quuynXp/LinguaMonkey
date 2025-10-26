@@ -8,15 +8,15 @@ export const useFlashcards = () => {
   const queryClient = useQueryClient();
   const BASE = "/lessons"; // then /{lessonId}/flashcards
 
-  const useGetDue = (lessonId: string | null, userId: string | null, limit = 20) => {
+  const useGetDue = (lessonId: string | null, limit = 20) => {
     return useQuery({
-      queryKey: ["dueFlashcards", lessonId, userId, limit],
+      queryKey: ["dueFlashcards", lessonId, limit],
       queryFn: async () => {
-        if (!lessonId || !userId) return [];
-        const res = await instance.get<ApiResponse<any[]>>(`${BASE}/${lessonId}/flashcards/due?userId=${userId}&limit=${limit}`);
+        const qp = lessonId ? `?lessonId=${lessonId}&limit=${limit}` : `?limit=${limit}`;
+        const res = await instance.get<ApiResponse<any[]>>(`/flashcards/due${qp}`);
         return res.data.result ?? [];
       },
-      enabled: !!lessonId && !!userId,
+      enabled: true,
       staleTime: 60_000,
     });
   };
@@ -34,17 +34,21 @@ export const useFlashcards = () => {
 
   const useReviewFlashcard = () => {
     const mutation = useMutation({
-      mutationFn: async ({ lessonId, flashcardId, quality }: { lessonId: string; flashcardId: string; quality: number }) => {
-        const res = await instance.post<ApiResponse<any>>(`${BASE}/${lessonId}/flashcards/${flashcardId}/review?quality=${quality}`);
+      mutationFn: async ({ flashcardId, quality }: { flashcardId: string; quality: number }) => {
+        const res = await instance.post<ApiResponse<any>>(`/flashcards/${flashcardId}/review?quality=${quality}`);
         return res.data.result!;
       },
-      onSuccess: () => {
-        queryClient.invalidateQueries({queryKey :  ["dueFlashcards"]});
-        queryClient.invalidateQueries({queryKey : ["currentUser"]});
+      onSuccess: (updatedCard) => {
+        // update cached dueFlashcards lists
+        queryClient.setQueryData(["dueFlashcards"], (old: any[] | undefined) =>
+          old ? old.filter((c) => c.id !== updatedCard.id) : old
+        );
+        queryClient.invalidateQueries({ queryKey: ["currentUser"] });
       },
     });
     return { reviewFlashcard: mutation.mutateAsync, isReviewing: mutation.isPending, error: mutation.error };
   };
+
 
   const useGenerateTts = () => {
     const mutation = useMutation({
@@ -52,7 +56,7 @@ export const useFlashcards = () => {
         const res = await instance.post<ApiResponse<any>>(`${BASE}/${lessonId}/flashcards/${flashcardId}/tts?languageCode=${languageCode}`);
         return res.data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({queryKey : ["dueFlashcards"]}),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ["dueFlashcards"] }),
     });
     return { generateTts: mutation.mutateAsync, isGenerating: mutation.isPending, error: mutation.error };
   };
@@ -101,7 +105,7 @@ export const useUserLearningActivities = () => {
         const res = await instance.post<ApiResponse<any>>(BASE, payload);
         return res.data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey : ["userLearningActivities"]}),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ["userLearningActivities"] }),
     });
     return { createActivity: mutation.mutateAsync, isCreating: mutation.isPending, error: mutation.error };
   };
@@ -112,7 +116,7 @@ export const useUserLearningActivities = () => {
         const res = await instance.put<ApiResponse<any>>(`${BASE}/${id}`, payload);
         return res.data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey :["userLearningActivities"] }),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ["userLearningActivities"] }),
     });
     return { updateActivity: mutation.mutateAsync, isUpdating: mutation.isPending, error: mutation.error };
   };
@@ -123,7 +127,7 @@ export const useUserLearningActivities = () => {
         const res = await instance.delete<ApiResponse<void>>(`${BASE}/${id}`);
         return res.data;
       },
-      onSuccess: () => queryClient.invalidateQueries({queryKey :["userLearningActivities"] }),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: ["userLearningActivities"] }),
     });
     return { deleteActivity: mutation.mutateAsync, isDeleting: mutation.isPending, error: mutation.error };
   };

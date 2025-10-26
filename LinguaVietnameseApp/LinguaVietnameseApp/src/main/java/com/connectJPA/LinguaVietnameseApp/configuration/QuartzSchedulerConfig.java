@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.configuration;
 
 import com.connectJPA.LinguaVietnameseApp.scheduler.ReminderJob;
 import org.quartz.*;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
@@ -31,7 +32,11 @@ public class QuartzSchedulerConfig {
     }
 
     @Bean
-    public SchedulerFactoryBean schedulerFactoryBean(JobDetail reminderJobDetail, Trigger reminderJobTrigger, SpringBeanJobFactory jobFactory) {
+    public SchedulerFactoryBean schedulerFactoryBean(
+            JobDetail reminderJobDetail,
+            Trigger reminderJobTrigger,
+            @Autowired SpringBeanJobFactory jobFactory
+    ) {
         SchedulerFactoryBean factory = new SchedulerFactoryBean();
         factory.setJobFactory(jobFactory);
         factory.setJobDetails(reminderJobDetail);

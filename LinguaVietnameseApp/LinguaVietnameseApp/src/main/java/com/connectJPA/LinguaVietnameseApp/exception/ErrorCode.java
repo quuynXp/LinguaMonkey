@@ -30,7 +30,9 @@ public enum ErrorCode {
     RESET_TOKEN_INVALID(1021, "error.reset_token_invalid", HttpStatus.BAD_REQUEST),
     INVALID_COURSE_TYPE(1022, "error.invalid_course_type", HttpStatus.BAD_REQUEST),
     INVALID_REQUEST(1023, "error.invalid_request", HttpStatus.BAD_REQUEST),
-
+    GRAMMAR_TOPIC_NOT_FOUND(1023, "error.invalid_request", HttpStatus.BAD_REQUEST),
+    GRAMMAR_RULE_NOT_FOUND(1023, "error.invalid_request", HttpStatus.BAD_REQUEST),
+    GRAMMAR_EXERCISES_NOT_FOUND(1023, "error.invalid_request", HttpStatus.BAD_REQUEST),
     // ===== 401 Unauthorized =====
     UNAUTHENTICATED(2000, "error.unauthenticated", HttpStatus.UNAUTHORIZED),
     TOKEN_EXPIRED(2001, "error.token_expired", HttpStatus.UNAUTHORIZED),
