@@ -1,4 +1,4 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
 import { showError } from '../utils/toastHelper';
@@ -25,14 +25,14 @@ function waitForTokenStoreInit(timeout = 5000) {
 }
 
 export const refreshClient = axios.create({
-  baseURL: EXPO_PUBLIC_API_BASE_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
 const userLocale = Localization.getLocales()[0]?.languageTag || 'en-US';
 
 const instance = axios.create({
-  baseURL: EXPO_PUBLIC_API_BASE_URL,
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
@@ -41,7 +41,7 @@ instance.interceptors.request.use(cfg => {
   return cfg;
 });
 
-instance.interceptors.request.use(async (config: AxiosRequestConfig) => {
+instance.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
   await waitForTokenStoreInit(5000);
 
   if (config.url?.toLowerCase().includes('/auth/refresh-token')) {
@@ -82,7 +82,7 @@ instance.interceptors.request.use(async (config: AxiosRequestConfig) => {
   let deviceId = 'unknown-device';
   try {
     if (Platform.OS === 'android') {
-      deviceId = Application.androidId || 'unknown-device';
+      deviceId = await Application.getAndroidId();
     } else if (Platform.OS === 'ios') {
       deviceId = await Application.getIosIdForVendorAsync();
     }
@@ -90,17 +90,14 @@ instance.interceptors.request.use(async (config: AxiosRequestConfig) => {
     console.warn('device id read error', e);
   }
 
-  const headers: Record<string, string> = {
-    'Accept-Language': userLocale,
-    'Device-Id': deviceId,
-    'X-Forwarded-For': 'unknown-ip',
-  };
+  config.headers['Accept-Language'] = userLocale;
+  config.headers['Device-Id'] = deviceId;
+  config.headers['X-Forwarded-For'] = 'unknown-ip';
 
   if (accessToken && accessToken.trim().length > 0) {
-    headers['Authorization'] = `Bearer ${accessToken.trim()}`;
+    config.headers['Authorization'] = `Bearer ${accessToken.trim()}`;
   }
 
-  config.headers = { ...config.headers, ...headers };
   return config;
 });
 

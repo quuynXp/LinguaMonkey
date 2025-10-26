@@ -5,8 +5,115 @@ export interface ApiResponse<T> {
 }
 
 
+export interface ReadingText {
+  id: string
+  title: string
+  content: string
+  level: "beginner" | "intermediate" | "advanced"
+  category: string
+  sentences: string[]
+  vocabulary: string[]
+}
+
+export interface Translation {
+  original: string
+  translated: string
+  isCorrect: boolean
+  suggestion?: string
+}
+
+export interface QuizQuestion {
+  id: string
+  question: string
+  options: string[]
+  correctAnswer: number
+  explanation: string
+  type: "vocabulary" | "grammar" | "comprehension"
+}
+
+export interface Sentence {
+  id: string;
+  text: string;
+  phonetic: string;
+  difficulty: "easy" | "medium" | "hard";
+  category: string;
+  audioUrl: string;
+}
+
+export interface WordScore {
+  word: string;
+  score: number;
+  isCorrect: boolean;
+  suggestion?: string;
+}
+
+
+export interface Topic {
+  id: string
+  title: string
+  description: string
+  level: "beginner" | "intermediate" | "advanced"
+  icon: string
+  color: string
+  contentCount: number
+}
+
+export interface Content {
+  id: string
+  title: string
+  type: "video" | "audio"
+  duration: number
+  level: string
+  transcript: string
+  url: string
+  thumbnail?: string
+}
+
+export interface PronunciationResult {
+  overallScore: number;
+  wordScores: WordScore[];
+  transcript: string;
+  suggestions: string[];
+}
+
+export interface QuizQuestion {
+  id: string
+  riddle: string
+  category: string
+  question: string
+  options: string[]
+  correctAnswer: number
+  explanation: string
+  difficulty: "easy" | "medium" | "hard"
+  skill: string
+  points: number
+}
+
+export interface QuizResult {
+  score: number
+  totalQuestions: number
+  correctAnswers: number
+  timeSpent: number
+  experienceGained: number
+  skillsImproved: string[]
+}
+
+export interface MindMapNode {
+  id: string
+  title: string
+  description: string
+  x: number
+  y: number
+  color: string
+  level: number
+  children: string[]
+  examples: string[]
+  rules: string[]
+}
+
+
 export interface DailyChallenge {
-  id: string; 
+  id: string;
   title?: string | null;
   description?: string | null;
   baseExp?: number;
@@ -29,7 +136,7 @@ export interface UserDailyChallenge {
   rewardCoins?: number;
   progress?: number;
   isCompleted?: boolean;
-  assignedAt?: string | null; 
+  assignedAt?: string | null;
   completedAt?: string | null;
   dailyChallenge?: DailyChallenge | null;
   createdAt?: string;
@@ -163,7 +270,7 @@ export interface UserInterest {
   deletedAt?: string | null
 }
 
-export interface BilingualVideo {
+export interface BVRaw {
   videoId: string
   title: string
   description?: string | null
@@ -177,13 +284,36 @@ export interface BilingualVideo {
   progress: number
 }
 
-export interface Subtitle {
+export interface SubtitleRaw {
   subtitleId: string
   videoId: string
   languageCode: string
   subtitleUrl: string
   createdAt: string
   updatedAt: string
+}
+
+export interface Subtitle extends SubtitleRaw {
+  startTime: number
+  endTime: number
+  originalText?: string
+  translatedText?: string
+}
+
+export interface VocabularyItem {
+  word: string
+  pronunciation?: string
+  meaning?: string
+  timestamp: number
+}
+
+export interface BilingualVideo extends BVRaw {
+  subtitles: Subtitle[]
+  vocabulary?: VocabularyItem[]
+  level?: string
+  category?: string
+  likesCount?: number
+  isFavorited?: boolean
 }
 
 export interface Note {
@@ -707,8 +837,8 @@ export interface Roadmap {
   languageCode: string
   title: string
   description?: string | null
-  completedItems : number
-  estimatedCompletionTime : number
+  completedItems: number
+  estimatedCompletionTime: number
   totalItems: number
   createdAt: string
   updatedAt: string

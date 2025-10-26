@@ -4,7 +4,7 @@ import { FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View, Activit
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
-import { useCertifications } from "../../hooks/useCertifications"
+import { CertificationTest, useCertifications } from "../../hooks/useCertifications"
 import { useUserStore } from "../../stores/UserStore"
 import { formatDateTime } from "../../utils/timeHelper"
 import Toast from "../../utils/toastConfig"
@@ -23,22 +23,18 @@ const CertificationLearningScreen = ({ navigation }: any) => {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [startTime, setStartTime] = useState<string | null>(null)
 
-  const { useAvailableCertifications, useTestQuestions, useSubmitTest, useStartTest } = useCertifications()
+  const { useAvailableCertifications, useTestQuestions, useSubmitTest, useStartTest } = useCertifications();
 
-  // Get user's learning languages
-  const userLanguages = user?.learningLanguages || []
+  const userLanguages = user?.languages || []
 
-  const {
-    data: certifications,
-    isLoading,
-    error,
-    refetch,
-  } = useAvailableCertifications(selectedLanguage === "All" ? userLanguages : [selectedLanguage])
+  const { data: certifications = [], isLoading, error, refetch } = useAvailableCertifications(
+    selectedLanguage === "All" ? userLanguages : [selectedLanguage]
+  );
 
-  const { data: testQuestions, isLoading: questionsLoading } = useTestQuestions(
+  const { data: testQuestions = [], isLoading: questionsLoading } = useTestQuestions(
     selectedTest?.id || null,
-    testMode as "practice" | "exam",
-  )
+    testMode === "practice" ? "practice" : "exam"
+  );
 
   const { submitTest, isSubmitting } = useSubmitTest()
   const { startTest, isStarting } = useStartTest()
@@ -47,20 +43,22 @@ const CertificationLearningScreen = ({ navigation }: any) => {
   const availableLanguages = ["All", ...new Set(certifications?.map((cert) => cert.language) || [])]
 
   useEffect(() => {
-    let interval: NodeJS.Timeout
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (testMode === "exam" && timeLeft > 0) {
       interval = setInterval(() => {
         setTimeLeft((prev) => {
           if (prev <= 1) {
-            handleTimeUp()
-            return 0
+            handleTimeUp();
+            return 0;
           }
-          return prev - 1
-        })
-      }, 1000)
+          return prev - 1;
+        });
+      }, 1000);
     }
-    return () => clearInterval(interval)
-  }, [testMode, timeLeft])
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [testMode, timeLeft]);
 
   const handleTimeUp = () => {
     Toast.show({
@@ -71,42 +69,34 @@ const CertificationLearningScreen = ({ navigation }: any) => {
     submitTestAnswers()
   }
 
-  const startPracticeTest = async (test: any) => {
-    try {
-      const result = await startTest({ testId: test.id, mode: "practice" })
-      setSelectedTest(test)
-      setCurrentQuestion(0)
-      setSelectedAnswers({})
-      setTestMode("practice")
-      setSessionId(result.sessionId)
-      setStartTime(result.startTime)
-    } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: t("common.error"),
-        text2: error.message || t("errors.unknown"),
-      })
-    }
+  const startPracticeTest = async (test: CertificationTest) => {
+  try {
+    const res = await startTest({ testId: test.id, mode: "practice" }); // returns { sessionId, startTime }
+    setSelectedTest(test);
+    setCurrentQuestion(0);
+    setSelectedAnswers({});
+    setTestMode("practice");
+    setSessionId(res.sessionId);
+    setStartTime(res.startTime);
+  } catch (err: any) {
+    Toast.show({ type: "error", text1: t("common.error"), text2: err.message || t("errors.unknown") });
   }
+};
 
-  const startFullExam = async (test: any) => {
-    try {
-      const result = await startTest({ testId: test.id, mode: "exam" })
-      setSelectedTest(test)
-      setCurrentQuestion(0)
-      setSelectedAnswers({})
-      setTimeLeft(test.duration * 60) // Convert minutes to seconds
-      setTestMode("exam")
-      setSessionId(result.sessionId)
-      setStartTime(result.startTime)
-    } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: t("common.error"),
-        text2: error.message || t("errors.unknown"),
-      })
-    }
+  const startFullExam = async (test: CertificationTest) => {
+  try {
+    const res = await startTest({ testId: test.id, mode: "exam" });
+    setSelectedTest(test);
+    setCurrentQuestion(0);
+    setSelectedAnswers({});
+    setTimeLeft(test.duration * 60); // minutes -> seconds
+    setTestMode("exam");
+    setSessionId(res.sessionId);
+    setStartTime(res.startTime);
+  } catch (err: any) {
+    Toast.show({ type: "error", text1: t("common.error"), text2: err.message || t("errors.unknown") });
   }
+};
 
   const handleAnswerSelect = (questionId: string, answerIndex: number) => {
     setSelectedAnswers((prev) => ({
@@ -128,42 +118,28 @@ const CertificationLearningScreen = ({ navigation }: any) => {
   }
 
   const submitTestAnswers = async () => {
-    if (!selectedTest || !testQuestions || !startTime) return
+  if (!selectedTest || !testQuestions || !startTime) return;
 
-    const timeSpent = Math.floor((Date.now() - new Date(startTime).getTime()) / 1000)
+  const timeSpent = Math.floor((Date.now() - new Date(startTime).getTime()) / 1000);
 
-    try {
-      const result = await submitTest({
-        testId: selectedTest.id,
-        answers: selectedAnswers,
-        mode: testMode as "practice" | "exam",
-        timeSpent,
-      })
-
-      setTestResult(result)
-      setTestMode("results")
-
-      if (result.passed) {
-        Toast.show({
-          type: "success",
-          text1: t("certifications.testPassed"),
-          text2: t("certifications.congratulations"),
-        })
-      } else {
-        Toast.show({
-          type: "error",
-          text1: t("certifications.testFailed"),
-          text2: t("certifications.tryAgain"),
-        })
-      }
-    } catch (error: any) {
-      Toast.show({
-        type: "error",
-        text1: t("common.error"),
-        text2: error.message || t("errors.unknown"),
-      })
+  try {
+    const result = await submitTest({
+      testId: selectedTest.id,
+      answers: selectedAnswers,
+      mode: testMode === "exam" ? "exam" : "practice",
+      timeSpent,
+    });
+    setTestResult(result);
+    setTestMode("results");
+    if (result.passed) {
+      Toast.show({ type: "success", text1: t("certifications.testPassed"), text2: t("certifications.congratulations") });
+    } else {
+      Toast.show({ type: "error", text1: t("certifications.testFailed"), text2: t("certifications.tryAgain") });
     }
+  } catch (err: any) {
+    Toast.show({ type: "error", text1: t("common.error"), text2: err.message || t("errors.unknown") });
   }
+};
 
   const formatTime = (seconds: number): string => {
     const hours = Math.floor(seconds / 3600)
@@ -702,11 +678,6 @@ const styles = StyleSheet.create({
     height: "100%",
     backgroundColor: "#4ECDC4",
     borderRadius: 3,
-  },
-  progressText: {
-    fontSize: 14,
-    color: "#666",
-    textAlign: "center",
   },
   questionContainer: {
     flex: 1,

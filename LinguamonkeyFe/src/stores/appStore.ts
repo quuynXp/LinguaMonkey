@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import type { UserProfile, GrammarTopic, BilingualVideo } from '../types/api'
+import type { UserProfile, GrammarTopic, BilingualVideo, Language } from '../types/api'
 
 interface CallPreferences {
   interests: string[]
@@ -61,6 +61,8 @@ interface AppState {
   selectedGrammarTopic: GrammarTopic | null
   selectedVideo: BilingualVideo | null
   currentLanguage: string
+  languages: string[]
+  nativeLanguage: string
   theme: 'light' | 'dark'
   selectedNoteTopic: string
   callPreferences: CallPreferences
@@ -74,6 +76,7 @@ interface AppState {
   setSelectedGrammarTopic: (topic: GrammarTopic | null) => void
   setSelectedVideo: (video: BilingualVideo | null) => void
   setCurrentLanguage: (language: string) => void
+  setLanguages: (languages: string[]) => void
   setTheme: (theme: 'light' | 'dark') => void
   setSelectedNoteTopic: (topicId: string) => void
   setCallPreferences: (preferences: CallPreferences) => void
@@ -91,13 +94,14 @@ interface AppState {
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // ==== state ====
       user: null,
       isAuthenticated: false,
       selectedChapter: null,
       selectedGrammarTopic: null,
       selectedVideo: null,
       currentLanguage: 'en',
+      nativeLanguage: "vi",
+      languages: ["en", "jp"],
       theme: 'light',
       selectedNoteTopic: 'all',
       callPreferences: {
@@ -151,6 +155,7 @@ export const useAppStore = create<AppState>()(
       setSelectedGrammarTopic: (topic) => set({ selectedGrammarTopic: topic }),
       setSelectedVideo: (video) => set({ selectedVideo: video }),
       setCurrentLanguage: (lang) => set({ currentLanguage: lang }),
+      setLanguages: (langs) => set({ languages: langs }),
       setTheme: (theme) => set({ theme }),
       setSelectedNoteTopic: (topicId) => set({ selectedNoteTopic: topicId }),
       setCallPreferences: (prefs) => set({ callPreferences: prefs }),
