@@ -62,13 +62,13 @@ jobs:
       - name: 🔑 Setup Expo authentication
         run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
 
-      - name: 🚀 Build Android APK via EAS (Local)
+      - name: 🚀 Build Android APK via EAS (Cloud)
         env:
           EAS_NO_VCS: 1
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
         run: |
-          echo "🔧 Start EAS local build..."
-          eas build --platform android --profile production --non-interactive --local --output build.apk
+          echo "🔧 Start EAS build (cloud mode)..."
+          eas build --platform android --profile production --non-interactive --output build.apk
 
       - name: 📤 Upload built APK
         uses: actions/upload-artifact@v4
