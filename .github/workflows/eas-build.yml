@@ -28,18 +28,15 @@ jobs:
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
       - name: 📦 Install dependencies (Yarn)
-        working-directory: LinguamonkeyFe
         run: yarn install --frozen-lockfile
 
-      # ☕ Setup Java (JDK)
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      # 🐘 Cache Gradle dependencies
-      - name: CACHE 🐘 Cache Gradle dependencies
+      - name: 🐘 Cache Gradle dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -62,13 +59,13 @@ jobs:
       - name: 🔐 Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: 🔑 Authenticate with EAS
-        run: eas whoami || eas login --token ${{ secrets.EAS_TOKEN }}
+      - name: 🔑 Set EAS auth token
+        run: echo "EAS_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
 
       - name: 🚀 Build Android APK via EAS (Local, in ./LinguamonkeyFe)
         env:
           EAS_NO_VCS: 1
-          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
         run: |
           echo "🔧 Start EAS local build..."
           eas build --platform android --profile production --non-interactive --local --output build.apk
