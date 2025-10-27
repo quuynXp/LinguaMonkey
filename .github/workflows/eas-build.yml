@@ -2,6 +2,8 @@ name: LinguamonkeyFe - Signed APK Build (Local EAS)
 
 on:
   push:
+    paths:
+      - "LinguamonkeyFe/**"
     branches:
       - master
   workflow_dispatch:
