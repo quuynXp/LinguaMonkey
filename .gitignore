@@ -52,3 +52,4 @@ Thumbs.db
 
 # Loại bỏ tệp cấu hình cá nhân
 *.env
+LinguamonkeyFe/service-account.json
