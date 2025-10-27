@@ -3,6 +3,8 @@ WORKDIR /app
 
 COPY LinguaVietnameseApp/ .
 
+RUN chmod +x mvnw
+
 RUN ./mvnw dependency:go-offline
 RUN ./mvnw clean package -DskipTests
 
