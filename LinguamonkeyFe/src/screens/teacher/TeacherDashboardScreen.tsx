@@ -23,7 +23,7 @@ const { width } = Dimensions.get("window")
 
 const TeacherDashboardScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
-  const teacherId = useUserStore.getState().user.user_id
+  const teacherId = useUserStore.getState().user.userId
 
   const [selectedPeriod, setSelectedPeriod] = useState<"week" | "month" | "year">("month")
 

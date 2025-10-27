@@ -33,6 +33,18 @@ const AdminUserManagementScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState<"anchor" | "start" | "end" | null>(null);
   const [showPeriodModal, setShowPeriodModal] = useState(false);
 
+  // --- HELPER FUNCTION FOR I18N ---
+  const getPeriodTranslation = (p: Period) => {
+    switch (p) {
+      case "week": return t("admin.analytics.periods.week");
+      case "month": return t("admin.analytics.periods.month");
+      case "year": return t("admin.analytics.periods.year");
+      case "custom": return t("admin.analytics.periods.custom");
+      default: return p;
+    }
+  };
+  // --- END HELPER ---
+
   const computedRange = useMemo(() => {
     if (selectedPeriod === "custom") {
       if (customDate.start && customDate.end && customDate.start <= customDate.end) return { start: customDate.start, end: customDate.end };
@@ -86,7 +98,14 @@ const AdminUserManagementScreen = () => {
     if (showDatePicker === "anchor") setAnchorDate(date);
     else if (showDatePicker === "start") { setCustomDate((p) => ({ ...p, start: date })); setTimeout(() => setShowDatePicker("end"), 100); return; }
     else if (showDatePicker === "end") {
-      if (customDate.start && date < customDate.start) { Alert.alert("Invalid range", "End date must be >= start date."); setShowDatePicker(null); return; }
+      if (customDate.start && date < customDate.start) {
+        Alert.alert(
+          t("admin.analytics.errors.invalidRangeTitle"),
+          t("admin.analytics.errors.invalidRangeMessage")
+        );
+        setShowDatePicker(null);
+        return;
+      }
       setCustomDate((p) => ({ ...p, end: date }));
     }
     setShowDatePicker(null);
@@ -99,13 +118,22 @@ const AdminUserManagementScreen = () => {
     <SafeAreaView style={styles.container}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View style={styles.headerArea}>
-          <Text style={styles.headerTitle}>User Management</Text>
+          <Text style={styles.headerTitle}>{t("admin.users.title")}</Text>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity style={styles.periodSelector} onPress={() => setShowPeriodModal(true)}>
               <Icon name="event" size={20} color="#4F46E5" />
-              <Text style={styles.periodSelectorText}>{selectedPeriod === "custom" ? "Custom range" : selectedPeriod.toUpperCase()}</Text>
+              <Text style={styles.periodSelectorText}>{getPeriodTranslation(selectedPeriod)}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={() => { Alert.alert("Đăng xuất", "Bạn có muốn đăng xuất?", [{ text: "Hủy" }, { text: "OK", onPress: () => resetToAuth() }]); }}>
+            <TouchableOpacity style={styles.logoutButton} onPress={() => {
+              Alert.alert(
+                t("admin.analytics.logout.title"),
+                t("admin.analytics.logout.message"),
+                [
+                  { text: t("common.cancel"), style: "cancel" },
+                  { text: t("common.ok"), onPress: () => resetToAuth() }
+                ]
+              );
+            }}>
               <Icon name="logout" size={22} color="#EF4444" />
             </TouchableOpacity>
           </View>
@@ -114,33 +142,33 @@ const AdminUserManagementScreen = () => {
         {showDatePicker && <DateTimePicker value={showDatePicker === "anchor" ? anchorDate || new Date() : showDatePicker === "start" ? customDate.start || new Date() : customDate.end || new Date()} mode="date" display="default" onChange={onDateChange} />}
 
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Overview</Text>
+          <Text style={styles.sectionTitle}>{t("admin.analytics.overview.title")}</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statsCard, { borderLeftColor: "#3B82F6" }]}>
               <View style={styles.statsCardHeader}><Icon name="people" size={20} color="#3B82F6" /></View>
               <Text style={styles.statsValue}>{overviewData?.users ?? 0}</Text>
-              <Text style={styles.statsTitle}>Total Users</Text>
+              <Text style={styles.statsTitle}>{t("admin.users.overview.totalUsers")}</Text>
             </View>
 
             <View style={[styles.statsCard, { borderLeftColor: "#10B981" }]}>
               <View style={styles.statsCardHeader}><Icon name="trending-up" size={20} color="#10B981" /></View>
               <Text style={styles.statsValue}>{growthData ?? 0}</Text>
-              <Text style={styles.statsTitle}>Growth</Text>
+              <Text style={styles.statsTitle}>{t("admin.users.overview.growth")}</Text>
             </View>
           </View>
         </View>
 
         <View style={{ padding: 16 }}>
-          <Text style={{ fontWeight: "700", marginBottom: 8 }}>Users</Text>
-          {Array.isArray(users) && users.length > 0 ? (
+          <Text style={{ fontWeight: "700", marginBottom: 8 }}>{t("admin.users.listTitle")}</Text>
+          {overviewLoading ? <ActivityIndicator size="small" /> : Array.isArray(users) && users.length > 0 ? (
             <FlatList data={users} keyExtractor={(u: any) => u.id?.toString() ?? Math.random().toString()} renderItem={({ item }: any) => (
-              <TouchableOpacity style={styles.userRow} onPress={() => gotoTab("AdminUserDetailScreen")}>
-                <Text style={{ fontWeight: "600" }}>{item.name ?? item.email ?? "User"}</Text>
+              <TouchableOpacity style={styles.userRow} onPress={() => gotoTab("Admin", "AdminUserDetailScreen")}>
+                <Text style={{ fontWeight: "600" }}>{item.name ?? item.email ?? t("admin.users.defaultUserName")}</Text>
                 <Text style={{ color: "#6B7280" }}>{item.email ?? ""}</Text>
               </TouchableOpacity>
             )} />
           ) : (
-            <Text style={{ color: "#6B7280" }}>No users to display</Text>
+            <Text style={{ color: "#6B7280" }}>{t("admin.users.noUsers")}</Text>
           )}
         </View>
       </ScrollView>
@@ -150,6 +178,7 @@ const AdminUserManagementScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
+  sectionTitle: {padding: 16},
   headerArea: { padding: 16, backgroundColor: "#fff", marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { fontSize: 20, fontWeight: "700" },
   periodSelector: { flexDirection: "row", alignItems: "center", padding: 8, backgroundColor: "#EEF2FF", borderRadius: 8, marginRight: 8 },

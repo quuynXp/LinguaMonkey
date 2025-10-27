@@ -46,7 +46,6 @@ const LessonScreen = ({ navigation, route }: any) => {
 
   useEffect(() => {
     if (progress?.completedAt) {
-      // Lesson already completed, show results or navigate back
       Alert.alert(
         t("lessons.alreadyCompleted"),
         t("lessons.alreadyCompletedMessage"),

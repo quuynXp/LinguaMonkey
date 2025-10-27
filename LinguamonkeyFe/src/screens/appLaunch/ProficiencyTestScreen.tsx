@@ -7,8 +7,9 @@ import instance from "../../api/axiosInstance"
 import { useUserStore } from "../../stores/UserStore"
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { gotoTab, resetToTab } from "../../utils/navigationRef"
-import {  LessonCategoryResponse,LessonResponse, LessonQuestionResponse, LessonProgressWrongItemRequest, UIQuestion } from "../../types/api"
-import { t } from "i18next"
+import { LessonCategoryResponse, LessonResponse, LessonQuestionResponse, LessonProgressWrongItemRequest, UIQuestion } from "../../types/api"
+// import { t } from "i18next" // <-- XÓA DÒNG NÀY
+import { useTranslation } from "react-i18next" // <-- THÊM DÒNG NÀY
 import { formatDateTime } from "../../utils/timeHelper"
 
 type RootStackParamList = {
@@ -24,6 +25,7 @@ type BackendApiResponse<T> = { code: number; result?: T; data?: T; message?: str
 
 
 const ProficiencyTestScreen = ({ navigation }: Props) => {
+  const { t } = useTranslation() // <-- THÊM DÒNG NÀY
   const user = useUserStore((s) => s.user)
   const [availableLanguages, setAvailableLanguages] = useState<string[]>([])
   const [selectedLangIndex, setSelectedLangIndex] = useState(0) // index in availableLanguages
@@ -41,7 +43,6 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
   const progressAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    // read languages from userStore: expect user.languages is array of codes (e.g. ["EN","FR"])
     const langs = (user?.languages ?? []).map((l: string) => String(l.toLowerCase()))
     setAvailableLanguages(langs.length ? langs : ["en"]) // fallback
   }, [user])
@@ -82,14 +83,16 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
     setTimeLeft(300)
 
     try {
-      // 1) get category initial WITH languageCode
       const catResp = await instance.get("/lesson-categories", {
         params: { lessonCategoryName: "initial", languageCode: code, page: 0, size: 1 },
       })
       const catPayload = catResp.data as BackendApiResponse<BackendPage<LessonCategoryResponse>>
       const categories = catPayload.result?.content ?? (catPayload.data as any)?.content ?? []
       if (!categories || categories.length === 0) {
-        Alert.alert("Lỗi", `Không tìm thấy category 'initial' cho ngôn ngữ ${code.toUpperCase()}`)
+        Alert.alert(
+          t("common.error"),
+          t("proficiencyTest.errors.noInitialCategory", { code: code.toUpperCase() })
+        )
         setQuestions([])
         setStage("choose-language")
         return
@@ -103,7 +106,10 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
       const lessonPayload = lessonResp.data as BackendApiResponse<BackendPage<LessonResponse>>
       const lessons = lessonPayload.result?.content ?? (lessonPayload.data as any)?.content ?? []
       if (!lessons || lessons.length === 0) {
-        Alert.alert("Lỗi", `Không tìm thấy bài cho category 'initial' và ngôn ngữ ${code.toUpperCase()}`)
+        Alert.alert(
+          t("common.error"),
+          t("proficiencyTest.errors.noLessonForInitial", { code: code.toUpperCase() })
+        )
         setQuestions([])
         setStage("choose-language")
         return
@@ -117,7 +123,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
       const qPayload = qResp.data as BackendApiResponse<BackendPage<LessonQuestionResponse>>
       const qList = qPayload.result?.content ?? (qPayload.data as any)?.content ?? []
       if (!qList || qList.length === 0) {
-        Alert.alert("Lỗi", "Bài kiểm tra hiện chưa có câu hỏi.")
+        Alert.alert(t("common.error"), t("proficiencyTest.errors.noQuestions"))
         setQuestions([])
         setStage("choose-language")
         return
@@ -139,7 +145,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
       setQuestions(uiQs)
     } catch (err) {
       console.error("startTestForSelectedLanguage error", err)
-      Alert.alert("Lỗi kết nối", "Không thể tải bài kiểm tra. Vui lòng thử lại.")
+      Alert.alert(t("common.networkError"), t("proficiencyTest.errors.loadFailed"))
       setStage("choose-language")
     } finally {
       setLoading(false)
@@ -221,11 +227,15 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
       const hasMore = nextIndex < langs.length
       if (hasMore) {
         Alert.alert(
-          "Hoàn tất bài kiểm tra",
-          `Bạn đạt ${testResults.percentage}%. Muốn làm bài kiểm tra cho ngôn ngữ tiếp theo (${langs[nextIndex]}) không?`,
+          t("proficiencyTest.alerts.testCompleteTitle"),
+          t("proficiencyTest.alerts.nextLanguagePrompt", {
+            percentage: testResults.percentage,
+            language: langs[nextIndex].toUpperCase()
+          }),
           [
             {
-              text: "Có", onPress: () => {
+              text: t("common.yes"),
+              onPress: () => {
                 setSelectedLangIndex(nextIndex)
                 // restart test for next language
                 setStage("testing")
@@ -233,7 +243,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
                 setTimeout(() => startTestForSelectedLanguage(), 300)
               }
             },
-            { text: "Không", onPress: () => finalizeAfterTests() },
+            { text: t("common.no"), onPress: () => finalizeAfterTests() },
           ],
           { cancelable: false }
         )
@@ -244,7 +254,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
     finalizeAfterTests()
   }
 
-  const finalizeAfterTests  = async () => {
+  const finalizeAfterTests = async () => {
 
     // you can update user profile with proficiency summary per language here if backend supports it
     // For now navigate to Dashboard (setup only created account; test handled here)
@@ -264,7 +274,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
         { user_id: useUserStore.getState().user.userId, proficiency: level, })
       navigation.navigate("Dashboard")
     } catch (error) {
-      Alert.alert(t("error.title"), t("error.classifyLevel"))
+      Alert.alert(t("common.error"), t("proficiencyTest.errors.classifyLevelFailed"))
     }
   }
 
@@ -278,12 +288,14 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
             <TouchableOpacity onPress={() => gotoTab("Home")}>
               <Icon name="arrow-back" size={24} color="#374151" />
             </TouchableOpacity>
-            <Text style={styles.headerTitle}>Proficiency Test</Text>
+            <Text style={styles.headerTitle}>{t("proficiencyTest.title")}</Text>
             <View style={{ width: 24 }} />
           </View>
 
           <View style={{ paddingHorizontal: 24 }}>
-            <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 12 }}>Chọn ngôn ngữ để làm bài</Text>
+            <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 12 }}>
+              {t("proficiencyTest.selectLanguage")}
+            </Text>
             {availableLanguages.map((lang, idx) => (
               <TouchableOpacity
                 key={lang + idx}
@@ -305,7 +317,9 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
               onPress={() => startTestForSelectedLanguage()}
               disabled={loading}
             >
-              <Text style={styles.nextButtonText}>{loading ? "Đang tải..." : "Bắt đầu bài kiểm tra"}</Text>
+              <Text style={styles.nextButtonText}>
+                {loading ? t("common.loading") : t("proficiencyTest.startTest")}
+              </Text>
               <Icon name="arrow-forward" size={18} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
@@ -318,7 +332,9 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
   if (questions.length === 0 && !loading) {
     return (
       <View style={styles.container}>
-        <Text style={{ marginTop: 60, textAlign: "center" }}>Không có câu hỏi để làm bài.</Text>
+        <Text style={{ marginTop: 60, textAlign: "center" }}>
+          {t("proficiencyTest.noQuestionsAvailable")}
+        </Text>
       </View>
     )
   }
@@ -328,11 +344,13 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
       <View style={styles.container}>
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
           <View style={styles.resultsCard}>
-            <Text style={styles.resultsTitle}>Test Complete!</Text>
-            <Text style={styles.resultsSubtitle}>Your score: {results.percentage}%</Text>
+            <Text style={styles.resultsTitle}>{t("proficiencyTest.results.title")}</Text>
+            <Text style={styles.resultsSubtitle}>
+              {t("proficiencyTest.results.subtitle", { score: results.percentage })}
+            </Text>
             <View style={styles.scoreContainer}>
               <Text style={styles.scoreText}>{results.percentage}%</Text>
-              <Text style={styles.scoreLabel}>Overall Score</Text>
+              <Text style={styles.scoreLabel}>{t("proficiencyTest.results.overallScore")}</Text>
             </View>
             <TouchableOpacity style={[styles.nextButton, { marginTop: 8 }]} onPress={() => {
               // if more languages left start next or finalize
@@ -346,7 +364,11 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
                 finalizeAfterTests()
               }
             }}>
-              <Text style={styles.nextButtonText}>{selectedLangIndex + 1 < availableLanguages.length ? "Làm tiếp" : "Hoàn tất"}</Text>
+              <Text style={styles.nextButtonText}>
+                {selectedLangIndex + 1 < availableLanguages.length
+                  ? t("proficiencyTest.continueNext")
+                  : t("common.finish")}
+              </Text>
             </TouchableOpacity>
           </View>
         </Animated.View>
@@ -360,8 +382,17 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
         {/* header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.headerTitle}>Proficiency Test ({availableLanguages[selectedLangIndex]?.toUpperCase()})</Text>
-            <Text style={styles.headerSubtitle}>Question {Math.min(currentQuestion + 1, questions.length)} of {questions.length}</Text>
+            <Text style={styles.headerTitle}>
+              {t("proficiencyTest.titleWithLanguage", {
+                language: availableLanguages[selectedLangIndex]?.toUpperCase()
+              })}
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              {t("proficiencyTest.questionProgress", {
+                current: Math.min(currentQuestion + 1, questions.length),
+                total: questions.length
+              })}
+            </Text>
           </View>
           <View style={styles.timerContainer}>
             <Icon name="timer" size={20} color="#F59E0B" />
@@ -396,7 +427,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
 
         <View style={styles.navigationContainer}>
           <TouchableOpacity style={styles.skipButton} onPress={() => handleCompleteTest()}>
-            <Text style={styles.skipButtonText}>Complete Test</Text>
+            <Text style={styles.skipButtonText}>{t("proficiencyTest.completeTest")}</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
@@ -404,7 +435,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
   )
 }
 
-// Reuse your styles (same as previously provided). For brevity paste the same style object or import shared styles.
+// ... styles ...
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   content: { flex: 1, paddingTop: 50 },

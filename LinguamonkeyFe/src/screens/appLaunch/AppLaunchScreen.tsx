@@ -14,22 +14,22 @@ type AppLaunchScreenProps = {
 const onboardingData = [
   {
     id: 1,
-    title: 'welcome.title',
-    subtitle: 'welcome.subtitle',
+    title: 'welcome.title', // Key này sẽ được dùng với t()
+    subtitle: 'welcome.subtitle', // Key này sẽ được dùng với t()
     icon: 'celebration',
     color: '#4F46E5',
   },
   {
     id: 2,
-    title: 'aiLearning.title',
-    subtitle: 'aiLearning.subtitle',
+    title: 'aiLearning.title', // Key này sẽ được dùng với t()
+    subtitle: 'aiLearning.subtitle', // Key này sẽ được dùng với t()
     icon: 'psychology',
     color: '#10B981',
   },
   {
     id: 3,
-    title: 'progress.title',
-    subtitle: 'progress.subtitle',
+    title: 'progress.title', // Key này sẽ được dùng với t()
+    subtitle: 'progress.subtitle', // Key này sẽ được dùng với t()
     icon: 'trending-up',
     color: '#F59E0B',
   },
@@ -92,12 +92,12 @@ const AppLaunchScreen = ({ navigation }: AppLaunchScreenProps) => {
     if (currentIndex < onboardingData.length - 1) {
       animateTransition(() => setCurrentIndex(currentIndex + 1));
     } else {
-      setCurrentIndex(onboardingData.length); // Move to account options
+      setCurrentIndex(onboardingData.length);
     }
   };
 
   const handleSkip = () => {
-    setCurrentIndex(onboardingData.length); // Skip to account options
+    setCurrentIndex(onboardingData.length);
   };
 
   const handleOptionSelect = async (option: "new" | "existing" | "quick") => {
@@ -183,7 +183,9 @@ const AppLaunchScreen = ({ navigation }: AppLaunchScreenProps) => {
           },
         ]}
       >
-        <Text style={styles.appTitle}>LinguaMonkey</Text>
+        {/* --- THAY ĐỔI Ở ĐÂY --- */}
+        <Text style={styles.appTitle}>{t('common.appName')}</Text>
+        {/* --- KẾT THÚC THAY ĐỔI --- */}
         <Text style={styles.appSubtitle}>{t('account.choose')}</Text>
 
         <View style={styles.optionsContainer}>

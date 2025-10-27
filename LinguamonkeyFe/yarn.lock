@@ -9484,6 +9484,11 @@ react-native-dotenv@^3.4.11:
   dependencies:
     dotenv "^16.4.5"
 
+react-native-floating-bubble@^1.0.12:
+  version "1.0.12"
+  resolved "https://registry.yarnpkg.com/react-native-floating-bubble/-/react-native-floating-bubble-1.0.12.tgz#e1506056371dd064f6d433b2ad025125bbf7aef0"
+  integrity sha512-TnWV85dYCUFlzHNy+l7YucRQcIu9C4XMMUOkPkFUjomuFWilAo3rk0Mpc4p6MdhT5Ycjx0rBPjv5YYO/IAgRXQ==
+
 react-native-gesture-handler@~2.28.0:
   version "2.28.0"
   resolved "https://registry.yarnpkg.com/react-native-gesture-handler/-/react-native-gesture-handler-2.28.0.tgz#07fb4f5eae72f810aac3019b060d26c1835bfd0c"

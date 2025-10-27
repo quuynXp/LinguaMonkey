@@ -68,3 +68,11 @@ jobs:
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
+          
+      - name: 🚀 Submit to Google Play
+        env:
+          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+        run: |
+          echo "📤 Submitting latest build to Google Play..."
+          eas submit -p android --latest --non-interactive

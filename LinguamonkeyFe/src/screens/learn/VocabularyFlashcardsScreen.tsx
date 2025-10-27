@@ -2,422 +2,406 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFlashcards } from "../../hooks/useFlashcard"; 
+import { useFlashcards } from "../../hooks/useFlashcard";
+import {Flashcard} from "../../types/api" 
+import { useTranslation } from 'react-i18next'; 
 
 const { width } = Dimensions.get("window")
 
-// API shape (mở rộng nếu cần)
-interface Flashcard {
-  id: string
-  lessonId?: string
-  word: string
-  definition: string
-  example?: string
-  image?: string
-  isPublic?: boolean
-  likes?: number
-  isFavorite?: boolean
-  isLiked?: boolean
-  author?: string
-  difficulty?: "beginner" | "intermediate" | "advanced"
-  category?: string
-  nextReviewAt?: string
-}
+const categories = ["All", "General", "Academic", "Business", "Travel", "Technology"];
 
 const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
-  const lessonIdFromRoute: string | null = route?.params?.lessonId ?? null;
-  const limit = 50;
+  const { t } = useTranslation(); 
+  const lessonIdFromRoute: string | null = route?.params?.lessonId ?? null;
+  const limit = 50;
 
-  const { useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
-  const dueQuery = useGetDue(lessonIdFromRoute, limit);
-  const { reviewFlashcard, isReviewing } = useReviewFlashcard();
-  const { createFlashcard } = useCreateFlashcard ? useCreateFlashcard() : { createFlashcard: undefined };
+  const { useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
+  const dueQuery = useGetDue(lessonIdFromRoute, limit);
+  const { reviewFlashcard, isReviewing } = useReviewFlashcard();
+  const { createFlashcard } = useCreateFlashcard ? useCreateFlashcard() : { createFlashcard: undefined };
 
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All")
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [studyMode, setStudyMode] = useState<"definition" | "image">("definition")
-  const [currentCardIndex, setCurrentCardIndex] = useState(0)
-  const [showAnswer, setShowAnswer] = useState(false)
-  const [isStudying, setIsStudying] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState("All")
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [studyMode, setStudyMode] = useState<"definition" | "image">("definition")
+  const [currentCardIndex, setCurrentCardIndex] = useState(0)
+  const [showAnswer, setShowAnswer] = useState(false)
+  const [isStudying, setIsStudying] = useState(false)
 
-  const [newCard, setNewCard] = useState({
-    word: "",
-    definition: "",
-    example: "",
-    image: "",
-    isPublic: true,
-    difficulty: "beginner" as "beginner" | "intermediate" | "advanced",
-    category: "General",
-  })
+  const [newCard, setNewCard] = useState({
+    word: "",
+    definition: "",
+    example: "",
+    image: "",
+    isPublic: true,
+    difficulty: "beginner" as "beginner" | "intermediate" | "advanced",
+    category: "General",
+  })
 
-  const apiFlashcards: Flashcard[] = dueQuery.data ?? [];
+  const apiFlashcards: Flashcard[] = dueQuery.data ?? [];
 
-  const filteredFlashcards = useMemo(() => {
-    return apiFlashcards.filter((card) => {
-      const matchesSearch =
-        card.word?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (card.definition ?? "").toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesCategory = selectedCategory === "All" || (card.category ?? "General") === selectedCategory
-      return matchesSearch && matchesCategory
-    })
-  }, [apiFlashcards, searchQuery, selectedCategory])
+  const filteredFlashcards = useMemo(() => {
+    return apiFlashcards.filter((card) => {
+      const matchesSearch =
+        card.word?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (card.definition ?? "").toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesCategory = selectedCategory === "All" || (card.category ?? "General") === selectedCategory
+      return matchesSearch && matchesCategory
+    })
+  }, [apiFlashcards, searchQuery, selectedCategory])
 
-  useEffect(() => {
-    if (currentCardIndex >= filteredFlashcards.length && filteredFlashcards.length > 0) {
-      setCurrentCardIndex(0)
-    }
-  }, [filteredFlashcards.length])
+  useEffect(() => {
+    if (currentCardIndex >= filteredFlashcards.length && filteredFlashcards.length > 0) {
+      setCurrentCardIndex(0)
+    }
+  }, [filteredFlashcards.length])
 
-  const startStudySession = (mode: "definition" | "image") => {
-    if (filteredFlashcards.length === 0) {
-      Alert.alert("No Cards", "No flashcards available for study")
-      return
-    }
-    setStudyMode(mode)
-    setCurrentCardIndex(0)
-    setShowAnswer(false)
-    setIsStudying(true)
-  }
+  const startStudySession = (mode: "definition" | "image") => {
+    if (filteredFlashcards.length === 0) {
+      Alert.alert(t("flashcards.noCardsTitle"), t("flashcards.noCardsMessage")) // <-- DỊCH
+      return
+    }
+    setStudyMode(mode)
+    setCurrentCardIndex(0)
+    setShowAnswer(false)
+    setIsStudying(true)
+  }
 
-  const nextCard = () => {
-    if (currentCardIndex < filteredFlashcards.length - 1) {
-      setCurrentCardIndex((prev) => prev + 1)
-      setShowAnswer(false)
-    } else {
-      setIsStudying(false)
-      Alert.alert("Study Complete", "You've reviewed all flashcards!")
-    }
-  }
+  const nextCard = () => {
+    if (currentCardIndex < filteredFlashcards.length - 1) {
+      setCurrentCardIndex((prev) => prev + 1)
+      setShowAnswer(false)
+    } else {
+      setIsStudying(false)
+      Alert.alert(t("flashcards.studyCompleteTitle"), t("flashcards.studyCompleteMessage")) // <-- DỊCH
+    }
+  }
 
-  const handleCreateCardLocal = () => {
-    if (!newCard.word || !newCard.definition) {
-      Alert.alert("Error", "Please fill in word and definition")
-      return
-    }
-    Alert.alert("Success", "Flashcard created locally. Implement server create if needed.")
-    setShowCreateModal(false)
-  }
+  const handleCreateCardLocal = () => {
+    if (!newCard.word || !newCard.definition) {
+      Alert.alert(t("common.error"), t("flashcards.fillWordAndDefinition")) // <-- DỊCH
+      return
+    }
+    Alert.alert(t("common.success"), t("flashcards.createLocalSuccess")) // <-- DỊCH
+    setShowCreateModal(false)
+  }
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission denied');
-      return;
-    }
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t("flashcards.permissionDenied")); 
+      return;
+    }
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-    });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+    });
 
-    if (!result.canceled) {
-      setNewCard((prev) => ({ ...prev, image: result.assets[0].uri }));
-    }
-  };
+    if (!result.canceled) {
+      setNewCard((prev) => ({ ...prev, image: result.assets[0].uri }));
+    }
+  };
 
-  const onPressQuality = async (flashcard: Flashcard, q: number) => {
-    try {
-      await reviewFlashcard({ flashcardId: flashcard.id, quality: q });
-      await dueQuery.refetch();
-      if (isStudying) {
-        if (currentCardIndex < filteredFlashcards.length - 1) {
-          setCurrentCardIndex((prev) => prev + 1);
-          setShowAnswer(false);
-        } else {
-          setIsStudying(false);
-          Alert.alert("Done", "Finished reviewing available cards.");
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      Alert.alert("Error", "Review failed. Try again.");
-    }
-  }
+  const onPressQuality = async (flashcard: Flashcard, q: number) => {
+    try {
+      await reviewFlashcard({ flashcardId: flashcard.id, quality: q });
+      await dueQuery.refetch();
+      if (isStudying) {
+        if (currentCardIndex < filteredFlashcards.length - 1) {
+          setCurrentCardIndex((prev) => prev + 1);
+          setShowAnswer(false);
+        } else {
+          setIsStudying(false);
+          Alert.alert(t("flashcards.reviewDoneTitle"), t("flashcards.reviewDoneMessage")); // <-- DỊCH
+        }
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert(t("common.error"), t("flashcards.reviewFailed")); // <-- DỊCH
+    }
+  }
 
-  const renderFlashcard = ({ item }: { item: Flashcard }) => (
-    <View style={styles.flashcardItem}>
-      <View style={styles.cardHeader}>
-        <View>
-          <Text style={styles.cardWord}>{item.word}</Text>
-          <Text style={styles.cardAuthor}>by {item.author ?? "Unknown"}</Text>
-        </View>
-        <View style={styles.cardActions}>
-          <TouchableOpacity onPress={() => Alert.alert("Favorite", "Implement favorite API if needed")}>
-            <Icon
-              name={item.isFavorite ? "favorite" : "favorite-border"}
-              size={24}
-              color={item.isFavorite ? "#FF6B6B" : "#666"}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => Alert.alert("Like", "Implement like API if needed")} style={styles.likeButton}>
-            <Icon
-              name={item.isLiked ? "thumb-up" : "thumb-up-off-alt"}
-              size={20}
-              color={item.isLiked ? "#4ECDC4" : "#666"}
-            />
-            <Text style={styles.likeCount}>{item.likes ?? 0}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+  const renderFlashcard = ({ item }: { item: Flashcard }) => (
+    <View style={styles.flashcardItem}>
+      <View style={styles.cardHeader}>
+        <View>
+          <Text style={styles.cardWord}>{item.word}</Text>
+          <Text style={styles.cardAuthor}>by {item.author ?? t("common.unknown")}</Text> 
+        </View>
+        <View style={styles.cardActions}>
+          <TouchableOpacity onPress={() => Alert.alert(t("flashcards.favorite"), t("flashcards.implementFavorite"))}> 
+            <Icon
+              name={item.isFavorite ? "favorite" : "favorite-border"}
+              size={24}
+              color={item.isFavorite ? "#FF6B6B" : "#666"}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => Alert.alert(t("flashcards.like"), t("flashcards.implementLike"))} style={styles.likeButton}> 
+            <Icon
+              name={item.isLiked ? "thumb-up" : "thumb-up-off-alt"}
+              size={20}
+              color={item.isLiked ? "#4ECDC4" : "#666"}
+            />
+            <Text style={styles.likeCount}>{item.likes ?? 0}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
-      {item.image && <Image source={{ uri: item.image }} style={styles.cardImage} />}
+      {item.image && <Image source={{ uri: item.image }} style={styles.cardImage} />}
 
-      <Text style={styles.cardDefinition}>{item.definition}</Text>
-      {item.example && <Text style={styles.cardExample}>Example: {item.example}</Text>}
+      <Text style={styles.cardDefinition}>{item.definition}</Text>
+      {item.example && <Text style={styles.cardExample}>{t("flashcards.exampleLabel")} {item.example}</Text>} 
 
-      <View style={styles.cardFooter}>
-        <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(item.difficulty ?? "beginner") }]}>
-          <Text style={styles.difficultyText}>{item.difficulty ?? "beginner"}</Text>
-        </View>
-        <Text style={styles.categoryText}>{item.category ?? "General"}</Text>
-      </View>
-    </View>
-  )
+      <View style={styles.cardFooter}>
+        <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(item.difficulty ?? "beginner") }]}>
+          <Text style={styles.difficultyText}>{item.difficulty ?? "beginner"}</Text> 
+        </View>
+        <Text style={styles.categoryText}>{item.category ?? "General"}</Text> 
+      </View>
+    </View>
+  )
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "beginner":
-        return "#4CAF50"
-      case "intermediate":
-        return "#FF9800"
-      case "advanced":
-        return "#F44336"
-      default:
-        return "#9E9E9E"
-    }
-  }
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty) {
+      case "beginner":
+        return "#4CAF50"
+      case "intermediate":
+        return "#FF9800"
+      case "advanced":
+        return "#F44336"
+      default:
+        return "#9E9E9E"
+    }
+  }
 
-  if (isStudying) {
-    if (dueQuery.isLoading) {
-      return (
-        <SafeAreaView style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-          <ActivityIndicator size="large" />
-        </SafeAreaView>
-      );
-    }
+  if (isStudying) {
+    if (dueQuery.isLoading) {
+      return (
+        <SafeAreaView style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+          <ActivityIndicator size="large" />
+        </SafeAreaView>
+      );
+    }
 
-    const currentCard = filteredFlashcards[currentCardIndex];
-    if (!currentCard) {
-      return (
-        <SafeAreaView style={styles.container}>
-          <View style={styles.studyHeader}>
-            <TouchableOpacity onPress={() => setIsStudying(false)}>
-              <Icon name="close" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.studyProgress}>0 / 0</Text>
-            <View />
-          </View>
-          <View style={styles.studyCard}>
-            <Text>No cards available</Text>
-          </View>
-        </SafeAreaView>
-      );
-    }
+    const currentCard = filteredFlashcards[currentCardIndex];
+    if (!currentCard) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <View style={styles.studyHeader}>
+            <TouchableOpacity onPress={() => setIsStudying(false)}>
+              <Icon name="close" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.studyProgress}>0 / 0</Text> 
+            <View />
+          </View>
+          <View style={styles.studyCard}>
+            <Text>{t("flashcards.noCardsAvailable")}</Text> 
+          </View>
+        </SafeAreaView>
+      );
+    }
 
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.studyHeader}>
-          <TouchableOpacity onPress={() => setIsStudying(false)}>
-            <Icon name="close" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.studyProgress}>
-            {currentCardIndex + 1} / {filteredFlashcards.length}
-          </Text>
-          <View />
-        </View>
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.studyHeader}>
+          <TouchableOpacity onPress={() => setIsStudying(false)}>
+            <Icon name="close" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.studyProgress}>
+            {t("flashcards.proprogress_flashcardgress", { current: currentCardIndex + 1, total: filteredFlashcards.length })} 
+          </Text>
+          <View />
+        </View>
 
-        <View style={styles.studyCard}>
-          {studyMode === "image" && currentCard.image ? (
-            <View>
-              <Image source={{ uri: currentCard.image }} style={styles.studyImage} />
-              <Text style={styles.studyPrompt}>What word does this image represent?</Text>
-            </View>
-          ) : (
-            <View>
-              <Text style={styles.studyWord}>{currentCard.word}</Text>
-              <Text style={styles.studyPrompt}>What does this word mean?</Text>
-            </View>
-          )}
+        <View style={styles.studyCard}>
+          {studyMode === "image" && currentCard.image ? (
+            <View>
+              <Image source={{ uri: currentCard.image }} style={styles.studyImage} />
+              <Text style={styles.studyPrompt}>{t("flashcards.imagePrompt")}</Text> 
+            </View>
+          ) : (
+            <View>
+              <Text style={styles.studyWord}>{currentCard.word}</Text>
+              <Text style={styles.studyPrompt}>{t("flashcards.definitionPrompt")}</Text> 
+            </View>
+          )}
 
-          {showAnswer && (
-            <View style={styles.answerSection}>
-              <Text style={styles.answerLabel}>Answer:</Text>
-              {studyMode === "image" ? (
-                <Text style={styles.answerText}>{currentCard.word}</Text>
-              ) : (
-                <Text style={styles.answerText}>{currentCard.definition}</Text>
-              )}
-              {currentCard.example && <Text style={styles.exampleText}>Example: {currentCard.example}</Text>}
-            </View>
-          )}
-        </View>
+          {showAnswer && (
+            <View style={styles.answerSection}>
+              <Text style={styles.answerLabel}>{t("flashcards.answerLabel")}</Text> 
+              {studyMode === "image" ? (
+                <Text style={styles.answerText}>{currentCard.word}</Text>
+              ) : (
+                <Text style={styles.answerText}>{currentCard.definition}</Text>
+              )}
+              {currentCard.example && <Text style={styles.exampleText}>{t("flashcards.exampleLabel")} {currentCard.example}</Text>} 
+            </View>
+          )}
+        </View>
 
-        <View style={styles.studyActions}>
-          {!showAnswer ? (
-            <TouchableOpacity style={styles.showAnswerButton} onPress={() => setShowAnswer(true)}>
-              <Text style={styles.showAnswerText}>Show Answer</Text>
-            </TouchableOpacity>
-          ) : (
-            <>
-              <View style={styles.qualityButtonsRow}>
-                {[0, 1, 2, 3, 4, 5].map(q => (
-                  <TouchableOpacity
-                    key={q}
-                    style={styles.qualityButton}
-                    disabled={isReviewing}
-                    onPress={() => onPressQuality(currentCard, q)}
-                  >
-                    <Text style={styles.qualityText}>{q}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TouchableOpacity style={styles.nextButton} onPress={nextCard}>
-                <Text style={styles.nextButtonText}>Skip</Text>
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </SafeAreaView>
-    )
-  }
+        <View style={styles.studyActions}>
+          {!showAnswer ? (
+            <TouchableOpacity style={styles.showAnswerButton} onPress={() => setShowAnswer(true)}>
+              <Text style={styles.showAnswerText}>{t("flashcards.showAnswer")}</Text> 
+            </TouchableOpacity>
+          ) : (
+            <>
+              <View style={styles.qualityButtonsRow}>
+                {[0, 1, 2, 3, 4, 5].map(q => (
+                  <TouchableOpacity
+                    key={q}
+                    style={styles.qualityButton}
+                    disabled={isReviewing}
+                    onPress={() => onPressQuality(currentCard, q)}
+                  >
+                    <Text style={styles.qualityText}>{q}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity style={styles.nextButton} onPress={nextCard}>
+                <Text style={styles.nextButtonText}>{t("common.skip")}</Text> 
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </SafeAreaView>
+    )
+  }
 
-  // MAIN LIST VIEW
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.title}>Vocabulary Flashcards</Text>
-        <TouchableOpacity onPress={() => setShowCreateModal(true)}>
-          <Icon name="add" size={24} color="#4ECDC4" />
-        </TouchableOpacity>
-      </View>
+  // MAIN LIST VIEW
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.title}>{t("flashcards.title")}</Text> 
+        <TouchableOpacity onPress={() => setShowCreateModal(true)}>
+          <Icon name="add" size={24} color="#4ECDC4" />
+        </TouchableOpacity>
+      </View>
 
-      <View style={styles.searchSection}>
-        <View style={styles.searchBar}>
-          <Icon name="search" size={20} color="#666" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search flashcards..."
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
+      <View style={styles.searchSection}>
+        <View style={styles.searchBar}>
+          <Icon name="search" size={20} color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t("flashcards.searchPlaceholder")} 
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+      </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-        {["All", "General", "Academic", "Business", "Travel", "Technology"].map((category) => (
-          <TouchableOpacity
-            key={category}
-            style={[styles.categoryChip, selectedCategory === category && styles.selectedCategoryChip]}
-            onPress={() => setSelectedCategory(category)}
-          >
-            <Text style={[styles.categoryChipText, selectedCategory === category && styles.selectedCategoryChipText]}>
-              {category}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+        {categories.map((category) => ( 
+          <TouchableOpacity
+            key={category}
+            style={[styles.categoryChip, selectedCategory === category && styles.selectedCategoryChip]}
+            onPress={() => setSelectedCategory(category)}
+          >
+            <Text style={[styles.categoryChipText, selectedCategory === category && styles.selectedCategoryChipText]}>
+              {t(`flashcards.categories.${category.toLowerCase()}`)} 
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
-      <View style={styles.studyModeSection}>
-        <Text style={styles.sectionTitle}>Study Modes</Text>
-        <View style={styles.studyModeButtons}>
-          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("definition")}>
-            <Icon name="quiz" size={24} color="#4ECDC4" />
-            <Text style={styles.studyModeText}>Definition Study</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("image")}>
-            <Icon name="image" size={24} color="#FF6B6B" />
-            <Text style={styles.studyModeText}>Image Study</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <View style={styles.studyModeSection}>
+        <Text style={styles.sectionTitle}>{t("flashcards.studyModes")}</Text> 
+        <View style={styles.studyModeButtons}>
+          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("definition")}>
+            <Icon name="quiz" size={24} color="#4ECDC4" />
+            <Text style={styles.studyModeText}>{t("flashcards.definitionStudy")}</Text> 
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("image")}>
+            <Icon name="image" size={24} color="#FF6B6B" />
+            <Text style={styles.studyModeText}>{t("flashcards.imageStudy")}</Text> 
+          </TouchableOpacity>
+        </View>
+      </View>
 
-      {dueQuery.isLoading ? (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="large" />
-        </View>
-      ) : dueQuery.isError ? (
-        <View style={{ padding: 20 }}>
-          <Text>Error loading flashcards</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredFlashcards}
-          renderItem={renderFlashcard}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.flashcardsList}
-        />
-      )}
+      {dueQuery.isLoading ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" />
+        </View>
+      ) : dueQuery.isError ? (
+        <View style={{ padding: 20 }}>
+          <Text>{t("flashcards.loadError")}</Text> 
+        </View>
+      ) : (
+        <FlatList
+          data={filteredFlashcards}
+          renderItem={renderFlashcard}
+          keyExtractor={(item) => item.id}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.flashcardsList}
+        />
+      )}
 
-      <Modal visible={showCreateModal} animationType="slide">
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <Icon name="close" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>Create Flashcard</Text>
-            <TouchableOpacity onPress={handleCreateCardLocal}>
-              <Text style={styles.saveButton}>Save</Text>
-            </TouchableOpacity>
-          </View>
+      <Modal visible={showCreateModal} animationType="slide">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+              <Icon name="close" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>{t("flashcards.createTitle")}</Text> 
+            <TouchableOpacity onPress={handleCreateCardLocal}>
+              <Text style={styles.saveButton}>{t("common.save")}</Text> 
+            </TouchableOpacity>
+          </View>
 
-          <ScrollView style={styles.modalContent}>
-            {/* ... same inputs as before ... */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Word *</Text>
-              <TextInput
-                style={styles.textInput}
-                value={newCard.word}
-                onChangeText={(text) => setNewCard((prev) => ({ ...prev, word: text }))}
-                placeholder="Enter word"
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Definition *</Text>
-              <TextInput
-                style={[styles.textInput, styles.multilineInput]}
-                value={newCard.definition}
-                onChangeText={(text) => setNewCard((prev) => ({ ...prev, definition: text }))}
-                placeholder="Enter definition"
-                multiline
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Image (Optional)</Text>
-              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                <Icon name="add-a-photo" size={24} color="#666" />
-                <Text style={styles.imageButtonText}>Add Image</Text>
-              </TouchableOpacity>
-              {newCard.image && <Image source={{ uri: newCard.image }} style={styles.previewImage} />}
-            </View>
-
-            {/* rest of inputs omitted for brevity; keep from your original file */}
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
-  )
+          <ScrollView style={styles.modalContent}>
+            {/* ... same inputs as before ... */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t("flashcards.form.word")} *</Text> 
+              <TextInput
+                style={styles.textInput}
+                value={newCard.word}
+                onChangeText={(text) => setNewCard((prev) => ({ ...prev, word: text }))}
+                placeholder={t("flashcards.form.wordPlaceholder")} 
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t("flashcards.form.definition")} *</Text> 
+              <TextInput
+                style={[styles.textInput, styles.multilineInput]}
+                value={newCard.definition}
+                onChangeText={(text) => setNewCard((prev) => ({ ...prev, definition: text }))}
+                placeholder={t("flashcards.form.definitionPlaceholder")} 
+                multiline
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t("flashcards.form.image")} ({t("common.optional")})</Text> 
+              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                <Icon name="add-a-photo" size={24} color="#666" />
+                <Text style={styles.imageButtonText}>{t("flashcards.form.addImage")}</Text> 
+              </TouchableOpacity>
+              {newCard.image && <Image source={{ uri: newCard.image }} style={styles.previewImage} />}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
+  )
 }
-
 
 
 const styles = StyleSheet.create({

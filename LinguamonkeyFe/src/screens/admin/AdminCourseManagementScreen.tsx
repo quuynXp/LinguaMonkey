@@ -33,12 +33,23 @@ const AdminCourseManagementScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState<"anchor" | "start" | "end" | null>(null);
   const [showPeriodModal, setShowPeriodModal] = useState(false);
 
+  const getPeriodTranslation = (p: Period) => {
+    switch (p) {
+      case "week": return t("admin.analytics.periods.week");
+      case "month": return t("admin.analytics.periods.month");
+      case "year": return t("admin.analytics.periods.year");
+      case "custom": return t("admin.analytics.periods.custom");
+      default: return p;
+    }
+  };
+
   const computedRange = useMemo(() => {
     if (selectedPeriod === "custom") {
       if (customDate.start && customDate.end && customDate.start <= customDate.end) return { start: customDate.start, end: customDate.end };
       return null;
     }
     if (!anchorDate) return null;
+ 
     return { start: anchorDate, end: new Date(anchorDate.getTime() + 24 * 3600 * 1000) };
   }, [selectedPeriod, anchorDate, customDate]);
 
@@ -86,7 +97,14 @@ const AdminCourseManagementScreen = () => {
     if (showDatePicker === "anchor") setAnchorDate(date);
     else if (showDatePicker === "start") { setCustomDate((p) => ({ ...p, start: date })); setTimeout(() => setShowDatePicker("end"), 100); return; }
     else if (showDatePicker === "end") {
-      if (customDate.start && date < customDate.start) { Alert.alert("Invalid range", "End date must be >= start date."); setShowDatePicker(null); return; }
+      if (customDate.start && date < customDate.start) {
+        Alert.alert(
+          t("admin.analytics.errors.invalidRangeTitle"),
+          t("admin.analytics.errors.invalidRangeMessage")
+        );
+        setShowDatePicker(null);
+        return;
+      }
       setCustomDate((p) => ({ ...p, end: date }));
     }
     setShowDatePicker(null);
@@ -98,13 +116,22 @@ const AdminCourseManagementScreen = () => {
     <SafeAreaView style={styles.container}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View style={styles.headerArea}>
-          <Text style={styles.headerTitle}>Course Management</Text>
+          <Text style={styles.headerTitle}>{t("admin.courses.title")}</Text>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity style={styles.periodSelector} onPress={() => setShowPeriodModal(true)}>
               <Icon name="event" size={20} color="#4F46E5" />
-              <Text style={styles.periodSelectorText}>{selectedPeriod === "custom" ? "Custom range" : selectedPeriod.toUpperCase()}</Text>
+              <Text style={styles.periodSelectorText}>{getPeriodTranslation(selectedPeriod)}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={() => { Alert.alert("Đăng xuất", "Bạn có muốn đăng xuất?", [{ text: "Hủy" }, { text: "OK", onPress: () => resetToAuth() }]); }}>
+            <TouchableOpacity style={styles.logoutButton} onPress={() => {
+              Alert.alert(
+                t("admin.analytics.logout.title"),
+                t("admin.analytics.logout.message"),
+                [
+                  { text: t("common.cancel"), style: "cancel" },
+                  { text: t("common.ok"), onPress: () => resetToAuth() }
+                ]
+              );
+            }}>
               <Icon name="logout" size={22} color="#EF4444" />
             </TouchableOpacity>
           </View>
@@ -113,26 +140,28 @@ const AdminCourseManagementScreen = () => {
         {showDatePicker && <DateTimePicker value={showDatePicker === "anchor" ? anchorDate || new Date() : showDatePicker === "start" ? customDate.start || new Date() : customDate.end || new Date()} mode="date" display="default" onChange={onDateChange} />}
 
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Overview</Text>
+          <Text style={styles.sectionTitle}>{t("admin.analytics.overview.title")}</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statsCard, { borderLeftColor: "#10B981" }]}>
               <View style={styles.statsCardHeader}><Icon name="school" size={20} color="#10B981" /></View>
               <Text style={styles.statsValue}>{overviewData?.courses ?? 0}</Text>
-              <Text style={styles.statsTitle}>Total Courses</Text>
+              <Text style={styles.statsTitle}>{t("admin.courses.overview.totalCourses")}</Text>
             </View>
             <View style={[styles.statsCard, { borderLeftColor: "#F59E0B" }]}>
               <View style={styles.statsCardHeader}><Icon name="book" size={20} color="#F59E0B" /></View>
               <Text style={styles.statsValue}>{overviewData?.lessons ?? 0}</Text>
-              <Text style={styles.statsTitle}>Lessons</Text>
+              <Text style={styles.statsTitle}>{t("admin.courses.overview.lessons")}</Text>
             </View>
           </View>
         </View>
 
         <View style={{ padding: 16 }}>
-          <Text style={{ fontWeight: "700", marginBottom: 8 }}>Courses</Text>
-          {courses.length === 0 ? <Text style={{ color: "#6B7280" }}>No courses</Text> : (
+          <Text style={{ fontWeight: "700", marginBottom: 8 }}>{t("admin.courses.listTitle")}</Text>
+          {coursesLoading ? <ActivityIndicator size="small" /> : courses.length === 0 ? (
+            <Text style={{ color: "#6B7280" }}>{t("admin.courses.noCourses")}</Text>
+          ) : (
             <FlatList data={courses} keyExtractor={(c: any) => c.id?.toString() ?? Math.random().toString()} renderItem={({ item }: any) => (
-              <TouchableOpacity style={styles.courseRow} onPress={() => gotoTab("AdminCourseDetailScreen")}>
+              <TouchableOpacity style={styles.courseRow} onPress={() => gotoTab("Admin", "AdminCourseDetailScreen", { courseId: item.id })}>
                 <Text style={{ fontWeight: "600" }}>{item.title ?? item.name}</Text>
                 <Text style={{ color: "#6B7280", fontSize: 13 }}>{item.meta ?? item.description ?? ""}</Text>
               </TouchableOpacity>
@@ -146,6 +175,7 @@ const AdminCourseManagementScreen = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
+  sectionTitle: { padding: 16, backgroundColor: "#fff" }, // Gộp style này nếu nó giống hệt nhau
   headerArea: { padding: 16, backgroundColor: "#fff", marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { fontSize: 20, fontWeight: "700" },
   periodSelector: { flexDirection: "row", alignItems: "center", padding: 8, backgroundColor: "#EEF2FF", borderRadius: 8, marginRight: 8 },

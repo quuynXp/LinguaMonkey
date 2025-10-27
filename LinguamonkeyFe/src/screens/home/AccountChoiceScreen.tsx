@@ -1,9 +1,10 @@
-"use client"
-
 import { useEffect, useRef } from "react"
 import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useTranslation, Trans } from "react-i18next"; // <-- 1. IMPORT
+
 const AccountChoiceScreen = ({ navigation }) => {
+  const { t } = useTranslation(); // <-- 2. KHỞI TẠO HOOK
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(50)).current
 
@@ -33,12 +34,9 @@ const AccountChoiceScreen = ({ navigation }) => {
           },
         ]}
       >
-        {/* Welcome Animation */}
-        
-
         {/* App Title */}
-        <Text style={styles.appTitle}>LinguaLearn</Text>
-        <Text style={styles.appSubtitle}>Choose how you'd like to get started</Text>
+        <Text style={styles.appTitle}>{t('common.appName')}</Text>
+        <Text style={styles.appSubtitle}>{t('auth.choice.subtitle')}</Text>
 
         {/* Account Options */}
         <View style={styles.optionsContainer}>
@@ -51,8 +49,8 @@ const AccountChoiceScreen = ({ navigation }) => {
               <Icon name="login" size={32} color="#FFFFFF" />
             </View>
             <View style={styles.optionContent}>
-              <Text style={styles.optionTitle}>Sign In</Text>
-              <Text style={styles.optionDescription}>Already have an account? Welcome back!</Text>
+              <Text style={styles.optionTitle}>{t('auth.choice.signInTitle')}</Text>
+              <Text style={styles.optionDescription}>{t('auth.choice.signInDescription')}</Text>
             </View>
             <Icon name="arrow-forward" size={24} color="#FFFFFF" />
           </TouchableOpacity>
@@ -66,9 +64,9 @@ const AccountChoiceScreen = ({ navigation }) => {
               <Icon name="person-add" size={32} color="#10B981" />
             </View>
             <View style={styles.optionContent}>
-              <Text style={[styles.optionTitle, styles.registerTitle]}>Create Account</Text>
+              <Text style={[styles.optionTitle, styles.registerTitle]}>{t('auth.choice.createAccountTitle')}</Text>
               <Text style={[styles.optionDescription, styles.registerDescription]}>
-                Set up your personalized learning profile
+                {t('auth.choice.createAccountDescription')}
               </Text>
             </View>
             <Icon name="arrow-forward" size={24} color="#10B981" />
@@ -83,9 +81,9 @@ const AccountChoiceScreen = ({ navigation }) => {
               <Icon name="flash-on" size={32} color="#F59E0B" />
             </View>
             <View style={styles.optionContent}>
-              <Text style={[styles.optionTitle, styles.quickStartTitle]}>Start Now</Text>
+              <Text style={[styles.optionTitle, styles.quickStartTitle]}>{t('auth.choice.startNowTitle')}</Text>
               <Text style={[styles.optionDescription, styles.quickStartDescription]}>
-                Jump right in with a temporary account
+                {t('auth.choice.startNowDescription')}
               </Text>
             </View>
             <Icon name="arrow-forward" size={24} color="#F59E0B" />
@@ -93,10 +91,19 @@ const AccountChoiceScreen = ({ navigation }) => {
         </View>
 
         {/* Terms and Privacy */}
-        <Text style={styles.termsText}>
-          By continuing, you agree to our <Text style={styles.linkText}>Terms of Service</Text> and{" "}
-          <Text style={styles.linkText}>Privacy Policy</Text>
-        </Text>
+        {/*           3. SỬ DỤNG COMPONENT `Trans`
+          Giả sử key trong file JSON của bạn là:
+          "auth.choice.termsAndPolicy": "By continuing, you agree to our <1>Terms of Service</1> and <3>Privacy Policy</3>"
+        */}
+        <Trans
+          i18nKey="auth.choice.termsAndPolicy"
+          parent={Text} // Bọc toàn bộ bằng component <Text>
+          style={styles.termsText} // Áp dụng style cho <Text> cha
+          components={{
+            1: <Text style={styles.linkText} />, // Ánh xạ <1>...<1/>
+            3: <Text style={styles.linkText} />, // Ánh xạ <3>...<3/>
+          }}
+        />
       </Animated.View>
     </View>
   )
@@ -216,4 +223,3 @@ const styles = StyleSheet.create({
 })
 
 export default AccountChoiceScreen
-

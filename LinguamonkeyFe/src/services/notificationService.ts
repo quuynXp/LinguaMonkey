@@ -7,8 +7,8 @@ import { useAppStore } from '../stores/appStore';
 
 export interface NotificationPreferences {
   enablePush: boolean;
-  enableSound: boolean;
-  enableVibration: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
   scheduled: boolean;
   studyReminders: boolean;
   streakReminders: boolean;
@@ -27,17 +27,16 @@ export interface NotificationPreferences {
 }
 
 const STORAGE_KEY = 'notification-preferences';
-const EXPO_PROJECT_ID = '<YOUR_EXPO_PROJECT_ID>'; // Replace with projectId from app.json/app.config.js
+const EXPO_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID; // Replace with projectId from app.json/app.config.js
 
 class NotificationService {
   private preferences: NotificationPreferences;
 
   constructor() {
-    // Initialize with default values, to be overwritten by AsyncStorage
     this.preferences = {
       enablePush: true,
-      enableSound: true,
-      enableVibration: true,
+      soundEnabled: true,
+      vibrationEnabled: true,
       scheduled: false,
       studyReminders: true,
       streakReminders: true,
@@ -54,7 +53,6 @@ class NotificationService {
         end: '07:00',
       },
     };
-    // Load preferences immediately upon instantiation
     this.loadPreferences();
   }
 
@@ -123,8 +121,8 @@ class NotificationService {
         title,
         body,
         data: chatId ? { chatId } : undefined,
-        sound: this.preferences.enableSound ? 'default' : undefined,
-        vibrate: this.preferences.enableVibration ? [0, 250, 250, 250] : undefined,
+        sound: "../assets/sounds/notification.mp3",
+        vibrate: this.preferences.vibrationEnabled ? [0, 250, 250, 250] : undefined,
       },
       trigger: null,
     });
@@ -163,10 +161,10 @@ class NotificationService {
       content: {
         title,
         body,
-        sound: this.preferences.enableSound ? 'default' : undefined,
-        vibrate: this.preferences.enableVibration ? [0, 250, 250, 250] : undefined,
+        sound: "../assets/sounds/notification.mp3",
+        vibrate: this.preferences.vibrationEnabled ? [0, 250, 250, 250] : undefined,
       },
-      trigger: { seconds },
+      trigger: { seconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL },
     });
 
     return id;

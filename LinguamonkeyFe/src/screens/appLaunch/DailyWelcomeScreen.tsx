@@ -74,7 +74,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         if (userId) {
           const response = await axiosInstance.get<{ data: UserBadge[] }>(`/badge/${userId}`);
           const badgesData = response.data.data;
-          setAchievements(badgesData.filter((badge) => badge.badgeId.earned));
+          setAchievements(badgesData.filter((badge) => badge.badgeId));
           badgesData.forEach((badge) => addBadge(badge.badgeId));
         }
       } catch (error) {

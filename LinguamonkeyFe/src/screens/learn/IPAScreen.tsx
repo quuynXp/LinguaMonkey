@@ -2,37 +2,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
+import {IPASound, ConversationTopic , AIResponse } from "../../types/api"
 
 const { width } = Dimensions.get("window")
 
-interface IPASound {
-  symbol: string
-  example: string
-  audioUrl: string
-  type: "vowel" | "consonant"
-  description: string
-}
-
-interface ConversationTopic {
-  id: string
-  title: string
-  description: string
-  level: "basic" | "intermediate" | "advanced"
-  icon: string
-  color: string
-  scenarios: string[]
-}
-
-interface AIResponse {
-  text: string
-  audioUrl: string
-  feedback?: {
-    pronunciation: number
-    fluency: number
-    grammar: number
-    suggestions: string[]
-  }
-}
 
 const IPAScreen = ({ navigation }: any) => {
   const [currentMode, setCurrentMode] = useState<"ipa" | "pronunciation" | "conversation">("ipa")
@@ -55,8 +28,6 @@ const IPAScreen = ({ navigation }: any) => {
       useNativeDriver: true,
     }).start()
   }, [])
-
-  
 
   const ipaVowels: IPASound[] = [
     {
