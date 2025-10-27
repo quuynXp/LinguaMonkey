@@ -56,14 +56,12 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     ? languages[0]
     : currentLanguage;
 
-    // playback speed and quality
     const [playbackSpeed, setPlaybackSpeed] = useState<number>(1.0);
     const [quality, setQuality] = useState<"auto" | "low" | "medium" | "high">(
         "auto"
     );
     const [networkType, setNetworkType] = useState<string>("unknown");
 
-    // UI states
     const [showVocabulary, setShowVocabulary] = useState(false);
     const [selectedCategory, setSelectedCategory] = useState<string>("All");
     const [selectedLevel, setSelectedLevel] = useState<string>("");

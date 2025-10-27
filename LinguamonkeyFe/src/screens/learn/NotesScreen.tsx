@@ -31,7 +31,6 @@ const NotesScreen = ({ navigation }: any) => {
 
   const fadeAnim = useRef(new Animated.Value(0)).current
 
-  // API hooks
   const {
     useUserMemorizations,
     useCreateMemorization,

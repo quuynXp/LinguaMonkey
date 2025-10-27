@@ -37,6 +37,18 @@ const AdminLessonManagementScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState<"anchor" | "start" | "end" | null>(null);
   const [showPeriodModal, setShowPeriodModal] = useState(false);
 
+  // --- HELPER FUNCTION FOR I18N ---
+  const getPeriodTranslation = (p: Period) => {
+    switch (p) {
+      case "week": return t("admin.analytics.periods.week");
+      case "month": return t("admin.analytics.periods.month");
+      case "year": return t("admin.analytics.periods.year");
+      case "custom": return t("admin.analytics.periods.custom");
+      default: return p;
+    }
+  };
+  // --- END HELPER ---
+
   const computedRange = useMemo(() => {
     if (selectedPeriod === "custom") {
       if (customDate.start && customDate.end && customDate.start <= customDate.end) return { start: customDate.start, end: customDate.end };
@@ -90,7 +102,14 @@ const AdminLessonManagementScreen = () => {
     if (showDatePicker === "anchor") setAnchorDate(date);
     else if (showDatePicker === "start") { setCustomDate((p) => ({ ...p, start: date })); setTimeout(() => setShowDatePicker("end"), 100); return; }
     else if (showDatePicker === "end") {
-      if (customDate.start && date < customDate.start) { Alert.alert("Invalid range", "End date must be >= start date."); setShowDatePicker(null); return; }
+      if (customDate.start && date < customDate.start) {
+        Alert.alert(
+          t("admin.analytics.errors.invalidRangeTitle"),
+          t("admin.analytics.errors.invalidRangeMessage")
+        );
+        setShowDatePicker(null);
+        return;
+      }
       setCustomDate((p) => ({ ...p, end: date }));
     }
     setShowDatePicker(null);
@@ -100,7 +119,7 @@ const AdminLessonManagementScreen = () => {
 
   // simple completion chart
   const completionChart = {
-    labels: (activitiesData?.timeSeries || []).map((p: any) => p.label) || ["n/a"],
+    labels: (activitiesData?.timeSeries || []).map((p: any) => p.label) || [t("admin.analytics.charts.notAvailable")],
     values: (activitiesData?.timeSeries || []).map((p: any) => Number(p.completions ?? 0)) || [0],
   };
 
@@ -108,14 +127,21 @@ const AdminLessonManagementScreen = () => {
     <SafeAreaView style={styles.container}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View style={styles.headerArea}>
-          <Text style={styles.headerTitle}>Lesson Management</Text>
+          <Text style={styles.headerTitle}>{t("admin.lessons.title")}</Text>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity style={styles.periodSelector} onPress={() => setShowPeriodModal(true)}>
               <Icon name="event" size={20} color="#4F46E5" />
-              <Text style={styles.periodSelectorText}>{selectedPeriod === "custom" ? "Custom range" : selectedPeriod.toUpperCase()}</Text>
-            </TouchableOpacity>
+              <Text style={styles.periodSelectorText}>{getPeriodTranslation(selectedPeriod)}</Text>
+              i           </TouchableOpacity>
             <TouchableOpacity style={styles.logoutButton} onPress={() => {
-              Alert.alert("Đăng xuất", "Bạn có chắc chắn?", [{ text: "Hủy" }, { text: "OK", onPress: () => resetToAuth() }]);
+              Alert.alert(
+                t("admin.analytics.logout.title"),
+                t("admin.analytics.logout.message"),
+                [
+                  { text: t("common.cancel"), style: "cancel" },
+                  { text: t("common.ok"), onPress: () => resetToAuth() }
+                ]
+              );
             }}>
               <Icon name="logout" size={22} color="#EF4444" />
             </TouchableOpacity>
@@ -127,7 +153,7 @@ const AdminLessonManagementScreen = () => {
         )}
 
         <View style={styles.chartsContainer}>
-          <Text style={styles.sectionTitle}>Lesson Completions</Text>
+          <Text style={styles.sectionTitle}>{t("admin.lessons.completions")}</Text>
           {activitiesLoading ? <ActivityIndicator /> : (
             <BarChart
               data={{ labels: completionChart.labels, datasets: [{ data: completionChart.values }] }}
@@ -147,8 +173,10 @@ const AdminLessonManagementScreen = () => {
         </View>
 
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Lessons</Text>
-          {lessonsList.length === 0 ? <Text style={{ color: "#6B7280", padding: 12 }}>No lessons</Text> : (
+          <Text style={styles.sectionTitle}>{t("admin.lessons.listTitle")}</Text>
+          {activitiesLoading ? <ActivityIndicator size="small" /> : lessonsList.length === 0 ? (
+            <Text style={{ color: "#6B7280", padding: 12 }}>{t("admin.lessons.noLessons")}</Text>
+          ) : (
             <FlatList
               data={lessonsList}
               keyExtractor={(item: any) => item.id?.toString() ?? Math.random().toString()}

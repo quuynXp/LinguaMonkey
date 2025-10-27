@@ -9,8 +9,6 @@ import { MindMapNode } from "../../types/api"
 
 const { width, height } = Dimensions.get("window")
 
-
-
 const GrammarMindMapScreen = ({ navigation }: any) => {
   const [selectedNode, setSelectedNode] = useState<MindMapNode | null>(null)
   const [showDetails, setShowDetails] = useState(false)

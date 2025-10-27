@@ -1,4 +1,3 @@
-// AdminDashboardScreen.tsx
 import { useEffect, useMemo, useState } from "react";
 import {
   View,
@@ -108,7 +107,6 @@ const AdminDashboardScreen = ({ navigation }: any) => {
     ]
     : ["statisticsOverview", "period", selectedPeriod];
 
-  // fetch overview (send aggregate + dates when possible)
   const { data, isLoading, refetch } = useQuery({
     queryKey,
     queryFn: () => {

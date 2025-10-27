@@ -42,7 +42,6 @@ export function gotoTab(
   let action;
 
   if (['Home', 'Learn', 'Progress', 'Chat', 'Profile', 'Admin', 'Teacher'].includes(tab)) {
-    // TabApp case
     action = CommonActions.navigate({
       name: 'TabApp',
       params: {
@@ -53,7 +52,6 @@ export function gotoTab(
       },
     });
   } else {
-    // Root-level stack (Auth, Main, …)
     action = CommonActions.navigate({
       name: tab,
       params: stackScreen
@@ -71,13 +69,26 @@ export function gotoTab(
   else queuePending(run);
 }
 
+export function goBack() {
+  const run = () => {
+    if (RootNavigationRef.canGoBack()) {
+      RootNavigationRef.goBack();
+      console.log('[navigationRef] goBack');
+    } else {
+      console.log('[navigationRef] cant goBack (đang ở màn hình root)');
+    }
+  };
+
+  if (RootNavigationRef.isReady()) run();
+  else queuePending(run);
+}
 
 export function resetToAuth(screen: "Login" | "Register" = "Login") {
   const action = CommonActions.reset({
     index: 0,
     routes: [
       {
-        name: "Auth",   // route cấp root (đã khai báo trong MainStack)
+        name: "Auth",  // route cấp root (đã khai báo trong MainStack)
         state: {
           index: 0,
           routes: [{ name: screen }], // màn hình con trong AuthStack
@@ -95,7 +106,6 @@ export function resetToAuth(screen: "Login" | "Register" = "Login") {
   }
 }
 
-// ---- pending queue (giữ nguyên) ----
 let pendingActions: (() => void)[] = [];
 function queuePending(fn: () => void) {
   pendingActions.push(fn);

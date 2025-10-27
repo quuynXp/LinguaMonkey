@@ -1,0 +1,48 @@
+name: Restore PostgreSQL Backup to Render
+
+on:
+  workflow_dispatch: 
+  push:
+    paths:
+      - "db/backupFull.backup" 
+    branches:
+      - master                   
+
+jobs:
+  restore-db:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Verify backup file exists
+        run: |
+          if [ ! -f "db/backupFull.backup" ]; then
+            echo "❌ File db/backupFull.backup not found!"
+            exit 1
+          else
+            echo "✅ Found db/backupFull.backup"
+          fi
+
+      - name: Test PostgreSQL connection
+        env:
+          PG_URL: ${{ secrets.PG_CONNECTION_URL }}
+        run: |
+          echo "🔍 Checking database connectivity..."
+          psql "$PG_URL" -c "\conninfo"
+
+      - name: Restore database from backup
+        env:
+          PG_URL: ${{ secrets.PG_CONNECTION_URL }}
+        run: |
+          echo "🚀 Starting database restore from db/backupFull.backup..."
+          pg_restore --verbose --clean --no-acl --no-owner \
+            --dbname="$PG_URL" \
+            "db/backupFull.backup"
+          echo "✅ Restore completed successfully!"

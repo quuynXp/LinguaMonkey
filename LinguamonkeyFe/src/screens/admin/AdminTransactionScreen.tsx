@@ -36,6 +36,18 @@ const AdminTransactionScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState<"anchor" | "start" | "end" | null>(null);
   const [showPeriodModal, setShowPeriodModal] = useState(false);
 
+  // --- HELPER FUNCTION FOR I18N ---
+  const getPeriodTranslation = (p: Period) => {
+    switch (p) {
+      case "week": return t("admin.analytics.periods.week");
+      case "month": return t("admin.analytics.periods.month");
+      case "year": return t("admin.analytics.periods.year");
+      case "custom": return t("admin.analytics.periods.custom");
+      default: return p;
+    }
+  };
+  // --- END HELPER ---
+
   const computedRange = useMemo(() => {
     if (selectedPeriod === "custom") {
       if (customDate.start && customDate.end && customDate.start <= customDate.end) return { start: customDate.start, end: customDate.end };
@@ -93,7 +105,14 @@ const AdminTransactionScreen = () => {
     if (showDatePicker === "anchor") setAnchorDate(date);
     else if (showDatePicker === "start") { setCustomDate((p) => ({ ...p, start: date })); setTimeout(() => setShowDatePicker("end"), 100); return; }
     else if (showDatePicker === "end") {
-      if (customDate.start && date < customDate.start) { Alert.alert("Invalid range", "End date must be >= start date."); setShowDatePicker(null); return; }
+      if (customDate.start && date < customDate.start) {
+        Alert.alert(
+          t("admin.analytics.errors.invalidRangeTitle"),
+          t("admin.analytics.errors.invalidRangeMessage")
+        );
+        setShowDatePicker(null);
+        return;
+      }
       setCustomDate((p) => ({ ...p, end: date }));
     }
     setShowDatePicker(null);
@@ -103,13 +122,22 @@ const AdminTransactionScreen = () => {
     <SafeAreaView style={styles.container}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View style={styles.headerArea}>
-          <Text style={styles.headerTitle}>Transactions</Text>
+          <Text style={styles.headerTitle}>{t("admin.transactions.title")}</Text>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity style={styles.periodSelector} onPress={() => setShowPeriodModal(true)}>
               <Icon name="event" size={20} color="#4F46E5" />
-              <Text style={styles.periodSelectorText}>{selectedPeriod === "custom" ? "Custom range" : selectedPeriod.toUpperCase()}</Text>
+              <Text style={styles.periodSelectorText}>{getPeriodTranslation(selectedPeriod)}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={() => { Alert.alert("Đăng xuất", "Bạn có muốn đăng xuất?", [{ text: "Hủy" }, { text: "OK", onPress: () => resetToAuth() }]); }}>
+            <TouchableOpacity style={styles.logoutButton} onPress={() => {
+              Alert.alert(
+                t("admin.analytics.logout.title"),
+                t("admin.analytics.logout.message"),
+                [
+                  { text: t("common.cancel"), style: "cancel" },
+                  { text: t("common.ok"), onPress: () => resetToAuth() }
+                ]
+              );
+            }}>
               <Icon name="logout" size={22} color="#EF4444" />
             </TouchableOpacity>
           </View>
@@ -134,7 +162,7 @@ const AdminTransactionScreen = () => {
                   renderItem={({ item }: any) => (
                     <View style={styles.txRow}>
                       <View>
-                        <Text style={styles.txTitle}>{item.title ?? item.type ?? item.provider ?? "Transaction"}</Text>
+                        <Text style={styles.txTitle}>{item.title ?? item.type ?? item.provider ?? t("admin.transactions.defaultTitle")}</Text>
                         <Text style={styles.txMeta}>{item.date ?? item.createdAt ?? ""}</Text>
                       </View>
                       <Text style={styles.txAmount}>${Number(item.amount ?? 0).toLocaleString()}</Text>
@@ -142,7 +170,7 @@ const AdminTransactionScreen = () => {
                   )}
                 />
               ) : (
-                <Text style={{ color: "#6B7280", padding: 16 }}>No transactions</Text>
+                <Text style={{ color: "#6B7280", padding: 16 }}>{t("admin.transactions.noTransactions")}</Text>
               )}
             </>
           )}

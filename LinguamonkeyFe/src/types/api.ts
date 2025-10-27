@@ -5,6 +5,54 @@ export interface ApiResponse<T> {
 }
 
 
+
+export interface IPASound {
+  symbol: string
+  example: string
+  audioUrl: string
+  type: "vowel" | "consonant"
+  description: string
+}
+
+export interface ConversationTopic {
+  id: string
+  title: string
+  description: string
+  level: "basic" | "intermediate" | "advanced"
+  icon: string
+  color: string
+  scenarios: string[]
+}
+
+export interface AIResponse {
+  text: string
+  audioUrl: string
+  feedback?: {
+    pronunciation: number
+    fluency: number
+    grammar: number
+    suggestions: string[]
+  }
+}
+
+
+export interface Flashcard {
+  id: string
+  lessonId?: string
+  word: string
+  definition: string
+  example?: string
+  image?: string
+  isPublic?: boolean
+  likes?: number
+  isFavorite?: boolean
+  isLiked?: boolean
+  author?: string
+  difficulty?: "beginner" | "intermediate" | "advanced"
+  category?: string
+  nextReviewAt?: string
+}
+
 export interface ReadingText {
   id: string
   title: string

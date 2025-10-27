@@ -71,7 +71,7 @@ const CertificationLearningScreen = ({ navigation }: any) => {
 
   const startPracticeTest = async (test: CertificationTest) => {
   try {
-    const res = await startTest({ testId: test.id, mode: "practice" }); // returns { sessionId, startTime }
+    const res = await startTest({ testId: test.id, mode: "practice" }); 
     setSelectedTest(test);
     setCurrentQuestion(0);
     setSelectedAnswers({});
@@ -89,7 +89,7 @@ const CertificationLearningScreen = ({ navigation }: any) => {
     setSelectedTest(test);
     setCurrentQuestion(0);
     setSelectedAnswers({});
-    setTimeLeft(test.duration * 60); // minutes -> seconds
+    setTimeLeft(test.duration * 60); 
     setTestMode("exam");
     setSessionId(res.sessionId);
     setStartTime(res.startTime);

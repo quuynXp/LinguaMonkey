@@ -14,7 +14,7 @@ const VerifyCodeScreen = ({ navigation, route }) => {
   const [code, setCode] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const [timeLeft, setTimeLeft] = useState(300); // 5 phút = 300s
+  const [timeLeft, setTimeLeft] = useState(300); 
   const [canResend, setCanResend] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current
@@ -35,7 +35,6 @@ const VerifyCodeScreen = ({ navigation, route }) => {
     ]).start()
   }, [])
 
-  // Countdown logic
   useEffect(() => {
     if (timeLeft <= 0) {
       setCanResend(true);

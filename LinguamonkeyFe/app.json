@@ -15,9 +15,16 @@
         "userInterfaceStyle": "automatic",
         "newArchEnabled": true,
         "ios": {
-            "supportsTablet": true
+            "supportsTablet": true,
+            "bundleIdentifier": "com.quyen10924.MonkeyLingua",
+            "infoPlist": {
+                "UIBackgroundModes": [
+                    "remote-notification"
+                ]
+            }
         },
         "android": {
+            "icon": "./src/assets/images/icon.png",
             "adaptiveIcon": {
                 "foregroundImage": "./src/assets/images/icon.png",
                 "backgroundColor": "#ffffff"

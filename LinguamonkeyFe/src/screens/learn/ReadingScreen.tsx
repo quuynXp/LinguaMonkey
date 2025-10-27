@@ -61,7 +61,6 @@ const ReadingScreen = ({ navigation }) => {
   ]
 
   const generateQuiz = (text: ReadingText): QuizQuestion[] => {
-    // Mock quiz generation based on the text
     const questions: QuizQuestion[] = [
       {
         id: "1",

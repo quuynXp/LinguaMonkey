@@ -4,7 +4,7 @@ import { Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "r
 import { useTranslation } from 'react-i18next';
 import { showError, showSuccess } from "../../utils/toastHelper";
 import { loginWithEmail, loginWithGoogle, loginWithFacebook } from '../../services/authService';
-import { gotoTab } from '../../utils/navigationRef'; // Import RootNavigationRef
+import { gotoTab } from '../../utils/navigationRef';
 import { Image } from 'react-native';
 
 const LoginScreen = ({ navigation }) => {
@@ -33,7 +33,7 @@ const LoginScreen = ({ navigation }) => {
     setIsLoading(true);
     try {
       const result = await loginWithEmail(email, password);
-      console.log("Login result:", result); // Debug
+      console.log("Login result:", result); 
       if (result) {
         showSuccess(t("loginSuccess"));
       }

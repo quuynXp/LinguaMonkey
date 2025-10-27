@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "449142747528",
+    "project_id": "web-app-love",
+    "storage_bucket": "web-app-love.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:449142747528:android:6f12c4d1e8e8f211e90a3d",
+        "android_client_info": {
+          "package_name": "com.lingua.monkey"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "449142747528-7548sj3800qgcs7ktemnn0ponc1a29ci.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDN7aR_X6NP2dr5NXH2ItTTU9NgxkIfJDw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "449142747528-7548sj3800qgcs7ktemnn0ponc1a29ci.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "449142747528-rk2d0d4hbvcduc6uf7135khn1j96mer5.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.lingua.monkey"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -61,6 +61,18 @@ const AdminRevenueAnalyticsScreen = () => {
   const [showDatePicker, setShowDatePicker] = useState<"anchor" | "start" | "end" | null>(null);
   const [showPeriodModal, setShowPeriodModal] = useState(false);
 
+  // --- HELPER FUNCTION FOR I18N ---
+  const getPeriodTranslation = (p: Period) => {
+    switch (p) {
+      case "week": return t("admin.analytics.periods.week");
+      case "month": return t("admin.analytics.periods.month");
+      case "year": return t("admin.analytics.periods.year");
+      case "custom": return t("admin.analytics.periods.custom");
+      default: return p;
+    }
+  };
+  // --- END HELPER ---
+
   const computedRange = useMemo(() => {
     if (selectedPeriod === "custom") {
       if (customDate.start && customDate.end && customDate.start <= customDate.end) {
@@ -87,12 +99,12 @@ const AdminRevenueAnalyticsScreen = () => {
 
   const queryKey = computedRange
     ? [
-        "revenueOverview",
-        "range",
-        formatISODate(computedRange.start),
-        formatISODate(new Date(computedRange.end.getTime() - 1)),
-        computeAggregate(),
-      ]
+      "revenueOverview",
+      "range",
+      formatISODate(computedRange.start),
+      formatISODate(new Date(computedRange.end.getTime() - 1)),
+      computeAggregate(),
+    ]
     : ["revenueOverview", "period", selectedPeriod];
 
   const { data: overviewData, isLoading: overviewLoading, refetch: overviewRefetch } = useQuery({
@@ -171,7 +183,10 @@ const AdminRevenueAnalyticsScreen = () => {
       return;
     } else if (showDatePicker === "end") {
       if (customDate.start && date < customDate.start) {
-        Alert.alert("Invalid range", "End date must be >= start date.");
+        Alert.alert(
+          t("admin.analytics.errors.invalidRangeTitle"),
+          t("admin.analytics.errors.invalidRangeMessage")
+        );
         setShowDatePicker(null);
         return;
       }
@@ -182,29 +197,31 @@ const AdminRevenueAnalyticsScreen = () => {
 
   // Prepare chart data (use overviewData.raw.timeSeries if present)
   const revenueChart = useMemo(() => {
-    if (!overviewData) return { labels: ["n/a"], values: [0] };
+    const fallbackLabel = t("admin.analytics.charts.notAvailable");
+    if (!overviewData) return { labels: [fallbackLabel], values: [0] };
     if (Array.isArray(overviewData.raw?.timeSeries) && overviewData.raw.timeSeries.length) {
       return {
         labels: overviewData.raw.timeSeries.map((p: any) => p.label),
         values: overviewData.raw.timeSeries.map((p: any) => Number(p.revenue ?? 0)),
       };
     }
-    return { labels: ["n/a"], values: [Number(overviewData.revenue ?? 0)] };
-  }, [overviewData]);
+    return { labels: [fallbackLabel], values: [Number(overviewData.revenue ?? 0)] };
+  }, [overviewData, t]);
 
   const transactionsChart = useMemo(() => {
-    if (!transactionsData) return { labels: ["n/a"], values: [0] };
+    const fallbackLabel = t("admin.analytics.charts.notAvailable");
+    if (!transactionsData) return { labels: [fallbackLabel], values: [0] };
     if (Array.isArray(transactionsData.timeSeries) && transactionsData.timeSeries.length) {
       return {
         labels: transactionsData.timeSeries.map((p: any) => p.label),
         values: transactionsData.timeSeries.map((p: any) => Number(p.transactions ?? 0)),
       };
     }
-    return { labels: ["n/a"], values: [0] };
-  }, [transactionsData]);
+    return { labels: [fallbackLabel], values: [0] };
+  }, [transactionsData, t]);
 
   const breakdownPie = (transactionsData?.breakdown || []).map((b: any, idx: number) => ({
-    name: b.label || b.type || `item ${idx + 1}`,
+    name: b.label || b.type || t("admin.analytics.charts.itemLabel", { index: idx + 1 }),
     population: Number(b.amount ?? 0),
     color: b.color || ["#F97316", "#60A5FA", "#34D399", "#F87171"][idx % 4],
     legendFontColor: "#6B7280",
@@ -218,18 +235,21 @@ const AdminRevenueAnalyticsScreen = () => {
       >
         {/* HEADER */}
         <View style={styles.headerArea}>
-          <Text style={styles.headerTitle}>Revenue Analytics</Text>
+          <Text style={styles.headerTitle}>{t("admin.analytics.title")}</Text>
           <View style={{ flexDirection: "row", alignItems: "center" }}>
             <TouchableOpacity style={styles.periodSelector} onPress={() => setShowPeriodModal(true)}>
               <Icon name="event" size={20} color="#4F46E5" />
-              <Text style={styles.periodSelectorText}>{selectedPeriod === "custom" ? "Custom range" : selectedPeriod.toUpperCase()}</Text>
+              <Text style={styles.periodSelectorText}>{getPeriodTranslation(selectedPeriod)}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.logoutButton} onPress={() => {
-              Alert.alert("Đăng xuất", "Bạn có chắc chắn muốn đăng xuất?", [
-                { text: "Hủy", style: "cancel" },
-                { text: "Đăng xuất", style: "destructive", onPress: () => resetToAuth() },
-              ]);
+              Alert.alert(
+                t("admin.analytics.logout.title"),
+                t("admin.analytics.logout.message"),
+                [
+                  { text: t("common.cancel"), style: "cancel" },
+                  { text: t("common.logout"), style: "destructive", onPress: () => resetToAuth() },
+                ]);
             }}>
               <Icon name="logout" size={22} color="#EF4444" />
             </TouchableOpacity>
@@ -254,7 +274,7 @@ const AdminRevenueAnalyticsScreen = () => {
                     }
                   }}
                 >
-                  <Text style={styles.modalOptionText}>{p === "custom" ? "Custom range" : p.charAt(0).toUpperCase() + p.slice(1)}</Text>
+                  <Text style={styles.modalOptionText}>{getPeriodTranslation(p)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -273,7 +293,7 @@ const AdminRevenueAnalyticsScreen = () => {
 
         {/* Charts */}
         <View style={styles.chartsContainer}>
-          <Text style={styles.sectionTitle}>Revenue</Text>
+          <Text style={styles.sectionTitle}>{t("admin.analytics.charts.revenue")}</Text>
           {overviewLoading ? <ActivityIndicator size="small" color="#3B82F6" /> : (
             <LineChart
               data={{ labels: revenueChart.labels, datasets: [{ data: revenueChart.values }] }}
@@ -293,7 +313,7 @@ const AdminRevenueAnalyticsScreen = () => {
             />
           )}
 
-          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>Transactions</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>{t("admin.analytics.charts.transactions")}</Text>
           {transactionsLoading ? <ActivityIndicator size="small" color="#3B82F6" /> : (
             <BarChart
               data={{ labels: transactionsChart.labels, datasets: [{ data: transactionsChart.values }] }}
@@ -312,7 +332,7 @@ const AdminRevenueAnalyticsScreen = () => {
             />
           )}
 
-          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>Breakdown</Text>
+          <Text style={[styles.sectionTitle, { marginTop: 18 }]}>{t("admin.analytics.charts.breakdown")}</Text>
           {!transactionsLoading && breakdownPie.length > 0 ? (
             // PieChart from react-native-chart-kit expects differently; using BarChart fallback if Pie not working in your set up
             <BarChart
@@ -330,13 +350,13 @@ const AdminRevenueAnalyticsScreen = () => {
               style={{ borderRadius: 12 }}
             />
           ) : (
-            <Text style={{ color: "#6B7280" }}>No breakdown data</Text>
+            <Text style={{ color: "#6B7280" }}>{t("admin.analytics.charts.noBreakdown")}</Text>
           )}
         </View>
 
         {/* Key stats */}
         <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>Overview</Text>
+          <Text style={styles.sectionTitle}>{t("admin.analytics.overview.title")}</Text>
           <View style={styles.statsGrid}>
             <View style={[styles.statsCard, { borderLeftColor: "#3B82F6" }]}>
               <View style={styles.statsCardHeader}>
@@ -345,7 +365,7 @@ const AdminRevenueAnalyticsScreen = () => {
                 </View>
               </View>
               <Text style={styles.statsValue}>{overviewData?.users ?? 0}</Text>
-              <Text style={styles.statsTitle}>Users</Text>
+              <Text style={styles.statsTitle}>{t("admin.analytics.overview.users")}</Text>
             </View>
 
             <View style={[styles.statsCard, { borderLeftColor: "#EF4444" }]}>
@@ -355,7 +375,7 @@ const AdminRevenueAnalyticsScreen = () => {
                 </View>
               </View>
               <Text style={styles.statsValue}>{overviewData?.revenue != null ? `$${Number(overviewData.revenue).toLocaleString()}` : "$0"}</Text>
-              <Text style={styles.statsTitle}>Revenue</Text>
+              <Text style={styles.statsTitle}>{t("admin.analytics.overview.revenue")}</Text>
             </View>
           </View>
         </View>
