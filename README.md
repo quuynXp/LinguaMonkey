@@ -1,164 +1,184 @@
-🐵 **LinguaMonkey** – Learn Smarter, Speak Better
+# 🐵 MonkeyLingua – Learn Smarter, Speak Better
 
-**LinguaMonkey** is a comprehensive language-learning app built with a Spring Boot monolith backend and a React Native Expo frontend. It integrates AI-powered speech and text analysis via a Python FastAPI service (using OpenAI & Whisper Transformer) and communicates asynchronously over gRPC. All sensitive configuration comes from environment variables, Redis handles caching, and authorization is enforced via JWT and a token-bucket rate limiter.
-
----
-
-## 📌 Key Features
-
-### Authentication & Authorization
-
-* JWT-based Access & Refresh Tokens
-* Token revocation (blacklist) table
-* Roles & permissions managed through `roles`, `permissions`, `user_roles`, `role_permissions`
-* Rate limiting with Uber’s Token Bucket algorithm
-
-### Caching & Performance
-
-* Redis for caching frequently accessed data (users, lessons, leaderboards…)
-* All secrets and connection strings injected from environment variables
-
-### AI & gRPC Integration
-
-* FastAPI Python service exposes gRPC endpoints
-* Whisper Transformer transcribes and analyzes audio
-* OpenAI API for language feedback and content generation
-* Async communication between Spring Boot and Python service
-
-### Learning Platform
-
-* Courses, series, categories, subcategories, lessons
-* Question banks, progress tracking, wrong-answer logs
-* Reviews, ratings, and user goals
-
-### Real-Time Interaction
-
-* WebSocket chat with message history & reactions
-* Group video calls via embedded Jitsi Meet
-* Study reminders, events, and shared goals
-* Gamification: badges, EXP, streaks, leaderboard
-
-### Frontend Stack
-
-* **React Native Expo** (Android & iOS)
-* **Zustand** for state management
-* **useSWR** for data fetching & cache invalidation
-* Direct media uploads to Cloudinary
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE) 
+[![Platform](https://img.shields.io/badge/Platform-React%20Native%20%7C%20SpringBoot-blue)](https://reactnative.dev/)
+[![Python Service](https://img.shields.io/badge/AI-Service-FastAPI-orange)](https://fastapi.tiangolo.com/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-blueviolet)](https://www.docker.com/)
 
 ---
 
-## 🗄 Database Overview
+## 🎯 Overview
 
-The PostgreSQL schema contains roughly **50 tables**, including but not limited to:
+**MonkeyLingua** is a **comprehensive English-learning platform** integrating **AI-powered assistance** and **real-time interaction**. It combines:
 
-* **User & Security**: `users`, `refreshtokens`, `invalidated_tokens`, `user_roles`, `roles`, `permissions`, `role_permissions`
-* **Learning Content**: `courses`, `lessons`, `lesson_questions`, `lesson_progress`, `lesson_progress_wrong_items`, `lesson_series`, `lesson_categories`, `lesson_sub_categories`
-* **Social & Communication**: `chat_messages`, `message_reactions`, `rooms`, `room_members`, `video_calls`, `video_call_participants`
-* **Group Study**: `group_sessions`, `group_answers`
-* **Gamification**: `badges`, `user_badges`, `leaderboards`, `leaderboard_entries`
-* **Transactions & Events**: `transactions`, `events`, `user_events`
-* **Supporting Tables**: `languages`, `notifications`, `course_enrollments`, `course_reviews`, `user_goals`, `user_reminders`, etc.
+- Structured learning with gamification  
+- Intelligent feedback for pronunciation & grammar  
+- Global peer-to-peer communication  
+
+<p align="center">
+  <img src="docs/assets/icon.png" alt="MonkeyLingua Overview" width="600"/>
+</p>
+
+> “Learning by connection, powered by AI.”
 
 ---
 
-## ⚙️ Environment Setup
+## 📚 Key Features
 
-1. Create a `.env` file at the project root (not committed to VCS), defining at minimum:
+### 🏫 Learning Platform
+- **Dynamic Roadmaps** – Adaptive learning paths based on personal goals (certifications, career, daily practice)  
+- **Courses & Flashcards** – Vocabulary & grammar practice with **Anki-like spaced repetition**  
+- **Video Learning**:  
+  - Bilingual videos with **context-aware subtitles**  
+  - Video call integration with AI-assisted real-time translation  
 
-   ```env
-   SPRING_DATASOURCE_URL=...
-   SPRING_DATASOURCE_USERNAME=...
-   SPRING_DATASOURCE_PASSWORD=...
-   REDIS_HOST=...
-   REDIS_PORT=...
-   JWT_SECRET=...
-   PYTHON_SERVICE_HOST=...
-   PYTHON_SERVICE_PORT=...
-   CLOUDINARY_CLOUD_NAME=...
-   CLOUDINARY_API_KEY=...
-   CLOUDINARY_API_SECRET=...
-   FIREBASE_API_KEY=...
-   FIREBASE_PROJECT_ID=...
-   ```
+<p align="center">
+  <img src="docs/assets/learning_flow.png" alt="Learning Flow" width="600"/>
+</p>
 
-2. Spring Boot will load these via `spring.config.import=optional:env[.env]`.
+### 🤖 AI-Powered Assistance
+- **Real-Time Voice Feedback** – Pronunciation analysis & IPA scoring  
+- **Storytelling & Conversation Generation** – AI generates quizzes, dialogues, and interactive exercises  
+- **Smart Chat** –  
+  - Real-time messaging with AI translation  
+  - Vocabulary & grammar correction during chat  
+  - Peer-to-peer interaction matched by language & learning goals  
+
+<p align="center">
+  <img src="docs/assets/ai_features.png" alt="AI Features" width="600"/>
+</p>
+
+### 💬 Social & Communication
+- WebSocket-based **real-time chat** with reactions & message history  
+- Group & 1:1 **video calls** via embedded **Jitsi Meet**  
+- Gamification: badges, EXP, streaks, leaderboards  
+
+<p align="center">
+  <img src="docs/assets/social.png" alt="Social Features" width="600"/>
+</p>
+
+---
+
+## ⚙️ Architecture & Technology Stack
+
+<p align="center">
+  <img src="docs/assets/architecture.png" alt="Architecture Diagram" width="600"/>
+</p>
+
+### Backend
+- **Spring Boot Monolith** – Core services  
+- **Python FastAPI** – AI & speech processing (Whisper + OpenAI)  
+- **gRPC** – Async communication between services  
+- **Redis** – Caching frequently accessed data  
+- **JWT & Token Bucket** – Authentication & rate limiting  
+
+### Frontend
+- **React Native Expo** – Android & iOS  
+- **Zustand** – State management  
+- **useSWR** – Data fetching & caching  
+- Direct media uploads to Cloudinary  
+
+### Database
+- **PostgreSQL** – ~50 tables  
+  - Users, Roles, Permissions  
+  - Courses, Lessons, Flashcards, Question Banks  
+  - Chat Messages, Rooms, Video Calls  
+  - Gamification: Leaderboards, Badges  
+  - Tracking & Analytics  
 
 ---
 
 ## 🐳 Docker Deployment
 
-All components can run in Docker containers and orchestrated with Docker Compose.
-
-**docker-compose.yml** (example):
-
-```yaml
-version: '3.8'
-services:
-  backend:
-    build: ./backend
-    env_file:
-      - .env
-    ports:
-      - "8080:8080"
-    depends_on:
-      - db
-      - redis
-      - ai-service
-
-  ai-service:
-    build: ./ai-service
-    env_file:
-      - .env
-    ports:
-      - "50051:50051"
-
-  frontend:
-    build: ./mobile-app
-    env_file:
-      - .env
-    ports:
-      - "19000:19000"
-      - "19001:19001"
-      - "19002:19002"
-
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: linguamonkey
-      POSTGRES_USER: ${SPRING_DATASOURCE_USERNAME}
-      POSTGRES_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
-    volumes:
-      - db-data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7
-    ports:
-      - "6379:6379"
-
-volumes:
-  db-data:
-```
-
-### Build & Run
-
 ```bash
 docker-compose up --build
 ```
 
-* **backend**: Spring Boot app on port 8080
-* **ai-service**: FastAPI gRPC service on port 50051
-* **frontend**: Expo development server
+- **backend**: Spring Boot (port 8080)  
+- **ai-service**: FastAPI gRPC service (port 50051)  
+- **frontend**: Expo dev server  
+- **PostgreSQL & Redis**: persistent data & caching  
+
+<p align="center">
+  <img src="docs/assets/docker_compose_diagram.png" alt="Docker Compose Diagram" width="600"/>
+</p>
+
+---
+
+## 🛠 Environment Variables
+
+Create `.env` at project root:
+
+```env
+SPRING_DATASOURCE_URL=...
+SPRING_DATASOURCE_USERNAME=...
+SPRING_DATASOURCE_PASSWORD=...
+REDIS_HOST=...
+REDIS_PORT=...
+JWT_SECRET=...
+PYTHON_SERVICE_HOST=...
+PYTHON_SERVICE_PORT=...
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
+FIREBASE_API_KEY=...
+FIREBASE_PROJECT_ID=...
+```
 
 ---
 
 ## 🚀 Roadmap
 
-* ✅ Core learning modules & progress tracking
-* ✅ AI transcription & analysis
-* ✅ Real-time chat & video call
-* ⬜ AI-driven personalized recommendations
-* ⬜ Admin dashboard & analytics
+| Status | Feature |
+|--------|---------|
+| ✅ | Core learning modules & progress tracking |
+| ✅ | AI transcription & analysis |
+| ✅ | Real-time chat & video call |
+| ⬜ | AI-driven personalized recommendations |
+| ⬜ | Admin dashboard & analytics |
+
+<p align="center">
+  <img src="docs/assets/roadmap.png" alt="Roadmap" width="600"/>
+</p>
 
 ---
 
-**License**: MIT © 2025 LinguaMonkey Team
+## 🌍 Vision & Global Impact
+
+- **Global Learning Community** – Connect learners worldwide  
+- **Real-Time AI Feedback** – Instant pronunciation & grammar corrections  
+- **Adaptive Learning** – AI-powered personalized learning paths  
+- **Future Expansion** – AR/VR classrooms, emotion-aware AI coaches, multi-language support  
+
+<p align="center">
+  <img src="docs/assets/future.png" alt="Future Vision" width="600"/>
+</p>
+
+---
+
+## 🔒 Security & Performance
+
+- **JWT & OAuth2** for secure authentication  
+- **Token Bucket** algorithm for rate limiting  
+- Encrypted sensitive data  
+- Low-latency real-time interactions (<300ms for voice feedback)  
+
+---
+
+## 📸 Screenshots & Assets
+
+Include screenshots for:  
+- Learning dashboard  
+- Chat & video call  
+- Flashcards & quizzes  
+- Leaderboards & progress charts  
+
+<p align="center">
+  <img src="docs/assets/screenshots.png" alt="App Screenshots" width="600"/>
+</p>
+
+---
+
+## 📜 License
+
+MIT © 2025 MonkeyLingua Team
