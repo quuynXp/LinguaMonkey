@@ -26,7 +26,7 @@ jobs:
 
       # ---- BUILD JAVA IMAGE ----
       - name: Build Java backend image
-        working-directory: be-java
+        working-directory: LinguaVietnameseApp/LinguaVietnameseApp
         run: docker build -t $DOCKERHUB_USERNAME/$IMAGE_JAVA:latest .
 
       - name: Push Java image
@@ -34,7 +34,7 @@ jobs:
 
       # ---- BUILD PYTHON IMAGE ----
       - name: Build Python backend image
-        working-directory: be-python
+        working-directory: PythonService
         run: docker build -t $DOCKERHUB_USERNAME/$IMAGE_PYTHON:latest .
 
       - name: Push Python image
