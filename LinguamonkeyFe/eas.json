@@ -7,7 +7,7 @@
     "development": {
       "android": {
         "image": "latest",
-        "ndk": "25.1.8937393"
+        "ndk": "27.1.12297006"
       },
       "developmentClient": true,
       "distribution": "internal",
@@ -18,7 +18,7 @@
     "preview": {
       "android": {
         "image": "latest",
-        "ndk": "25.1.8937393"
+        "ndk": "27.1.12297006"
       },
       "distribution": "internal",
       "env": {

@@ -35,7 +35,7 @@ jobs:
           
           echo "--- Verifying pg_restore version ---"
           pg_restore --version
-          
+
       - name: Verify backup file exists
         run: |
           if [ ! -f "db/backupFull.backup" ]; then
@@ -50,7 +50,11 @@ jobs:
           PG_URL: ${{ secrets.PG_CONNECTION_URL }}
         run: |
           echo "🔍 Checking database connectivity..."
-          psql "$PG_URL" -c "\conninfo"
+
+          /usr/lib/postgresql/17/bin/pg_restore --verbose --clean --no-acl --no-owner \
+            --dbname="$PG_URL" \
+            "db/backupFull.backup"
+          echo "✅ Restore completed successfully!"
 
       - name: Restore database from backup
         env:
