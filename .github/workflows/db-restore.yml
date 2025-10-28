@@ -56,6 +56,17 @@ jobs:
             "db/backupFull.backup"
           echo "✅ Restore completed successfully!"
 
+      - name: Clean public schema before restore
+        env:
+          PG_URL: ${{ secrets.PG_CONNECTION_URL }}
+        run: |
+          echo "🧹 Cleaning public schema (DROP/CREATE)..."
+          
+          /usr/lib/postgresql/17/bin/psql "$PG_URL" -c "DROP SCHEMA public CASCADE;"
+
+          /usr/lib/postgresql/17/bin/psql "$PG_URL" -c "CREATE SCHEMA public;"
+          echo "✅ Schema cleaned."
+
       - name: Restore database from backup
         env:
           PG_URL: ${{ secrets.PG_CONNECTION_URL }}

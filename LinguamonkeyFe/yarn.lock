@@ -9508,6 +9508,11 @@ react-native-localize@^3.5.1:
   resolved "https://registry.yarnpkg.com/react-native-localize/-/react-native-localize-3.5.4.tgz#ebf605d292eb3cfc45c731b2582226525271dfcd"
   integrity sha512-Sr0XMSh76vFxZtRznD5FE8ZZtA4Srr7+Ix4WePhoQdeiJzuJEFbiQ2Lk3JJhsTMZdsZKn3j1KUwpV3hhnm2BqA==
 
+react-native-nitro-modules@^0.31.2:
+  version "0.31.2"
+  resolved "https://registry.yarnpkg.com/react-native-nitro-modules/-/react-native-nitro-modules-0.31.2.tgz#2070a4e52abbbcb334d385a90a7154e502e5101e"
+  integrity sha512-UTG1kfLq5XDlR1OkhrNLNMbU6EvxIdLp4RUWT4PY8eBKyykOq8/kjc3fYMYxVEUZG+mrujRSMNXKeqHfiMUhOQ==
+
 react-native-reanimated@~4.1.1:
   version "4.1.3"
   resolved "https://registry.yarnpkg.com/react-native-reanimated/-/react-native-reanimated-4.1.3.tgz#de29587b8ff7febada32497793803215faeac636"
