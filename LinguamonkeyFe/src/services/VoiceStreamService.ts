@@ -1,49 +1,66 @@
-// VoiceStreamService.ts
-import { Audio } from "expo-audio";
-import { encode } from "base64-arraybuffer";
-import WebSocketService from "./WebSocketService";
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import { Platform } from 'react-native';
+import { WebSocketService } from './WebSocketService';
+import { SessionStore } from './SessionStore';
 
-class VoiceStreamService {
-  private recording: Audio.Recording | null = null;
-  private streamInterval: NodeJS.Timeout | null = null;
+export class VoiceStreamService {
+  private recorder = new (AudioRecorderPlayer as any);
+  private ws: WebSocketService;
+  private isRecording = false;
+  private seq = 0;
+  private sessionId: string;
+
+  constructor(ws: WebSocketService, sessionId: string) {
+    this.ws = ws;
+    this.sessionId = sessionId;
+    SessionStore.setSession(sessionId);
+  }
 
   async startRecording() {
-    const { status } = await Audio.requestPermissionsAsync();
-    if (status !== "granted") throw new Error("Microphone permission denied");
-
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: true,
-      playsInSilentModeIOS: true,
+    if (this.isRecording) return;
+    this.isRecording = true;
+    const path = Platform.select({
+      ios: 'voice.m4a',
+      android: '/sdcard/voice.mp4',
     });
 
-    console.log("🎤 Start recording...");
-    this.recording = new Audio.Recording();
-    await this.recording.prepareToRecordAsync(
-      Audio.RecordingOptionsPresets.HIGH_QUALITY
-    );
-    await this.recording.startAsync();
+    await this.recorder.startRecorder(path);
+    console.log("Start recording...")
 
-    this.streamInterval = setInterval(async () => {
-      if (!this.recording) return;
-      const uri = this.recording.getURI();
-      if (!uri) return;
+    this.recorder.addRecordBackListener((e) => {
+      if (!this.isRecording) return;
 
-      const response = await fetch(uri);
-      const buffer = await response.arrayBuffer();
-      const base64Chunk = encode(buffer.slice(-10000)); // gửi phần mới
-      WebSocketService.sendChunk(base64Chunk);
-    }, 1000);
+      const amplitude = e.currentMetering || 0;
+      const chunk = this.floatToBase64(e.currentMetering || 0);
+      this.ws.send({
+        type: 'voice_chunk',
+        session_id: this.sessionId,
+        seq: this.seq++,
+        data: chunk,
+        timestamp: Date.now(),
+      });
+    });
   }
 
   async stopRecording() {
-    if (!this.recording) return;
+    if (!this.isRecording) return;
+    this.isRecording = false;
+    await this.recorder.stopRecorder();
+    this.recorder.removeRecordBackListener();
+    this.ws.send({
+      type: 'voice_chunk',
+      session_id: this.sessionId,
+      seq: this.seq,
+      is_last: true,
+      timestamp: Date.now(),
+    });
 
-    console.log("🛑 Stop recording...");
-    await this.recording.stopAndUnloadAsync();
+    console.log("Stop recording")
+  }
 
-    if (this.streamInterval) clearInterval(this.streamInterval);
-    WebSocketService.sendChunk("", true);
+  private floatToBase64(value: number): string {
+    const buffer = new ArrayBuffer(4);
+    new Float32Array(buffer)[0] = value;
+    return Buffer.from(buffer).toString('base64');
   }
 }
-
-export default new VoiceStreamService();

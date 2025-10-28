@@ -60,7 +60,7 @@ interface AppState {
   isAuthenticated: boolean
   selectedGrammarTopic: GrammarTopic | null
   selectedVideo: BilingualVideo | null
-  currentLanguage: string
+  supportLanguage: string[]
   languages: string[]
   nativeLanguage: string
   theme: 'light' | 'dark'
@@ -75,7 +75,8 @@ interface AppState {
   setAuthenticated: (authenticated: boolean) => void
   setSelectedGrammarTopic: (topic: GrammarTopic | null) => void
   setSelectedVideo: (video: BilingualVideo | null) => void
-  setCurrentLanguage: (language: string) => void
+  setSupportLanguage: (Language: string[]) => void
+  setNativeLanguage: (language: string) => void
   setLanguages: (languages: string[]) => void
   setTheme: (theme: 'light' | 'dark') => void
   setSelectedNoteTopic: (topicId: string) => void
@@ -99,7 +100,7 @@ export const useAppStore = create<AppState>()(
       selectedChapter: null,
       selectedGrammarTopic: null,
       selectedVideo: null,
-      currentLanguage: 'en',
+      supportLanguage: ["en", "vi", "jp", "ko", "fr", "de"],
       nativeLanguage: "vi",
       languages: ["en", "jp"],
       theme: 'light',
@@ -153,8 +154,9 @@ export const useAppStore = create<AppState>()(
       setUser: (user) => set({ user }),
       setAuthenticated: (auth) => set({ isAuthenticated: auth }),
       setSelectedGrammarTopic: (topic) => set({ selectedGrammarTopic: topic }),
+      setSupportLanguage: (langs) => set({languages: langs}),
       setSelectedVideo: (video) => set({ selectedVideo: video }),
-      setCurrentLanguage: (lang) => set({ currentLanguage: lang }),
+      setNativeLanguage: (lang) => set({ nativeLanguage: lang }),
       setLanguages: (langs) => set({ languages: langs }),
       setTheme: (theme) => set({ theme }),
       setSelectedNoteTopic: (topicId) => set({ selectedNoteTopic: topicId }),

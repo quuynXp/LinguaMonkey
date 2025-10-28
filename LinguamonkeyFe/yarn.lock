@@ -9463,6 +9463,11 @@ react-is@^19.1.0:
   resolved "https://registry.yarnpkg.com/react-is/-/react-is-19.2.0.tgz#ddc3b4a4e0f3336c3847f18b806506388d7b9973"
   integrity sha512-x3Ax3kNSMIIkyVYhWPyO09bu0uttcAIoecO/um/rKGQ4EltYWVYtyiGkS/3xMynrbVQdS69Jhlv8FXUEZehlzA==
 
+react-native-audio-recorder-player@^4.5.0:
+  version "4.5.0"
+  resolved "https://registry.yarnpkg.com/react-native-audio-recorder-player/-/react-native-audio-recorder-player-4.5.0.tgz#ac54bbf56bfcaa2a7df7e5dfa2091408778f5d4c"
+  integrity sha512-+XhF/vTcp/Igzulhk+aL/XPGDjTkZPHKcjMQP9KGFXBVRvYYYoMQxwqqNCAVN0IK7FyTK+jYS9Ouy6kngQLgeQ==
+
 react-native-chart-kit@^6.12.0:
   version "6.12.0"
   resolved "https://registry.yarnpkg.com/react-native-chart-kit/-/react-native-chart-kit-6.12.0.tgz#187a4987a668a85b7e93588c248ed2c33b3a06f6"
