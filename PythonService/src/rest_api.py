@@ -1,5 +1,6 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
+import base64, json
 from src.api.translation import translate_text
 import logging
 
@@ -9,6 +10,21 @@ class TranslationRequest(BaseModel):
     text: str
     source_lang: str
     target_lang: str
+
+@app.websocket("/ws/voice")
+async def voice_stream(websocket: WebSocket, token: str):
+    await websocket.accept()
+    print("Client connected")
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+            audio_chunk = base64.b64decode(msg["audio_chunk"]) if msg["audio_chunk"] else b""
+            # TODO: xử lý Whisper stream, gửi kết quả về:
+            await websocket.send_text(json.dumps({"seq": msg["seq"], "text": "partial transcript"}))
+    except WebSocketDisconnect:
+        print("Client disconnected")
 
 @app.post("/translate")
 async def translate(request: TranslationRequest):
