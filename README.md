@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE) 
 [![Platform](https://img.shields.io/badge/Platform-React%20Native%20%7C%20SpringBoot-blue)](https://reactnative.dev/)
-[![Python Service](https://img.shields.io/badge/AI-Service-FastAPI-orange)](https://fastapi.tiangolo.com/)
+[![Python Service](https://badgen.net/badge/AI-Service/FastAPI/orange)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-blueviolet)](https://www.docker.com/)
 
 ---

@@ -15,6 +15,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./db/backupFull.backup:/docker-entrypoint-initdb.d/backupFull.backup
+      - ./db/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     networks:
       - app-net
     healthcheck:
@@ -42,7 +44,7 @@ services:
   # ================== Java Spring Boot ==================
   spring-api:
     build:
-      context: ./backend/spring-api
+      context: ./LinguaVietnameseApp
       dockerfile: Dockerfile
     container_name: spring-api
     depends_on:
@@ -65,10 +67,10 @@ services:
     networks:
       - app-net
 
-  # ================== Python FastAPI ==================
+  # # ================== Python FastAPI ==================
   fastapi-service:
     build:
-      context: ./backend/py-fastapi
+      context: ./backend/py-fastapi 
       dockerfile: Dockerfile
     container_name: fastapi-service
     depends_on:
@@ -87,10 +89,10 @@ services:
     networks:
       - app-net
 
-    # ================== Python gRPC Service ==================
+  # ================== Python gRPC Service ==================
   grpc-service:
     build:
-      context: ./backend/grpc-service
+      context: ./PythonService
       dockerfile: Dockerfile
     container_name: grpc-service
     environment:
@@ -105,7 +107,7 @@ services:
   # ================== Frontend Expo (React Native) ==================
   expo:
     build:
-      context: ./frontend/expo
+      context: ./LinguamonkeyFe
       dockerfile: Dockerfile
     container_name: expo
     environment:
@@ -114,14 +116,13 @@ services:
       EXPO_PUBLIC_FASTAPI_URL: ${EXPO_PUBLIC_FASTAPI_URL}
     command: ["npx", "expo", "start", "--tunnel"]
     ports:
-      - "${EXPO_DEV_SERVER_PORT}:${EXPO_DEV_SERVER_PORT}"   # Metro bundler
-      - "19000:19000" # Expo Go HTTP
-      - "19001:19001" # WebSocket
-      - "19002:19002" # DevTools
+      - "${EXPO_DEV_SERVER_PORT}:${EXPO_DEV_SERVER_PORT}" # Metro bundler
+      - "19000:19000" 
+      - "19001:19001" 
+      - "19002:19002"
     networks:
       - app-net
 
-# ================== Volumes & Network ==================
 volumes:
   pgdata:
   redisdata:
@@ -129,12 +130,3 @@ volumes:
 networks:
   app-net:
     driver: bridge
-
-environment:
-  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB}
-  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
-  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
-  SPRING_REDIS_HOST: ${REDIS_HOST}
-  SPRING_REDIS_PORT: ${REDIS_PORT}
-  JWT_SIGNER_KEY: ${JWT_SIGNER_KEY}
-

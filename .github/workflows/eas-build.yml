@@ -58,6 +58,7 @@ jobs:
       - name: ⚙️ Build signed APK locally
         env:
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+          ANDROID_KEYSTORE_PATH: ./my-release-key.keystore
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
@@ -71,10 +72,10 @@ jobs:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
           
-      - name: 🚀 Submit to Google Play
-        env:
-          EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
-          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-        run: |
-          echo "📤 Submitting latest build to Google Play..."
-          eas submit -p android --latest --non-interactive
+      # - name: 🚀 Submit to Google Play
+      #   env:
+      #     EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+      #     GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+      #   run: |
+      #     echo "📤 Submitting local APK to Google Play..."
+      #     eas submit -p android --path ./app-release.apk --non-interactive
