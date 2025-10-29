@@ -6,6 +6,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useUserStore } from "../../stores/UserStore"
 import { useAppStore } from "../../stores/appStore"
 import { formatDateTime } from "../../utils/timeHelper"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 interface User3DCharacter {
   id: string
@@ -506,7 +507,7 @@ const EnhancedUserManagementScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

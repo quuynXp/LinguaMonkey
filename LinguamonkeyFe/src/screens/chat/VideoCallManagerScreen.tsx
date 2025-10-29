@@ -16,6 +16,7 @@ import { useVideoCalls } from "../../hooks/useVideos";
 import { v4 as uuidv4 } from "uuid"; 
 import { gotoTab } from "../../utils/navigationRef";
 import { useChatStore } from "../../stores/ChatStore";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const STATUS_OPTIONS = ["CONNECTED", "MUTED", "LEFT"];
 
@@ -307,7 +308,7 @@ const VideoCallManagerScreen = ({ route }) => {
 
 export default VideoCallManagerScreen;
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: { flex: 1 },
     inner: { padding: 12, flex: 1 },
     title: { fontSize: 18, fontWeight: "700", marginBottom: 8 },

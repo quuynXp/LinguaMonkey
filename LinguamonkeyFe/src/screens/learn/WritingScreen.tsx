@@ -12,6 +12,7 @@ import {
     View,
 } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 interface WritingPrompt {
   id: string
@@ -609,7 +610,7 @@ const WritingScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

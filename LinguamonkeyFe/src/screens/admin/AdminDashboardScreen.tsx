@@ -20,6 +20,7 @@ import { getStatisticsOverview } from "../../services/statisticsApi";
 import { LineChart, BarChart } from "react-native-chart-kit";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { gotoTab, resetToAuth } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 type Period = "week" | "month" | "year" | "custom";
@@ -497,7 +498,7 @@ const AdminDashboardScreen = ({ navigation }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   content: { flex: 1 },
   headerArea: {

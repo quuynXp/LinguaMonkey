@@ -16,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useLesson, useLessonQuestions, useLessonProgress, useSubmitLesson, useCompleteLesson } from "../../hooks/useLessons";
 import { useAppStore } from "../../stores/appStore"
 import type { LessonQuestion } from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window")
 
@@ -313,7 +314,7 @@ const LessonScreen = ({ navigation, route }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",

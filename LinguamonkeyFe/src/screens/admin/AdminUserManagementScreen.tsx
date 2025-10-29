@@ -18,6 +18,7 @@ import Toast from "../../components/Toast";
 import { getStatisticsOverview, getUserGrowth } from "../../services/statisticsApi";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { resetToAuth, gotoTab } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const formatISODate = (d: Date) => d.toISOString().split("T")[0];
 
@@ -176,7 +177,7 @@ const AdminUserManagementScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   sectionTitle: {padding: 16},
   headerArea: { padding: 16, backgroundColor: "#fff", marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

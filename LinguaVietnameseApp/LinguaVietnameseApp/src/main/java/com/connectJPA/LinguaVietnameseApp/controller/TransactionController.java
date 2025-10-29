@@ -31,7 +31,7 @@ public class TransactionController {
     private final TransactionService transactionService;
     private final MessageSource messageSource;
 
-    @Operation(summary = "Create a payment URL", description = "Generate a payment URL for VNPAY, MoMo, or Stripe")
+    @Operation(summary = "Create a payment URL", description = "Generate a payment URL for VNPAY, or Stripe")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Payment URL generated successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid payment request")
@@ -48,7 +48,7 @@ public class TransactionController {
                 .build());
     }
 
-    @Operation(summary = "Handle payment webhook", description = "Process webhook notifications from VNPAY, MoMo, or Stripe")
+    @Operation(summary = "Handle payment webhook", description = "Process webhook notifications from VNPAY, or Stripe")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Webhook processed successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid webhook data")

@@ -8,6 +8,7 @@ import { CertificationTest, useCertifications } from "../../hooks/useCertificati
 import { useUserStore } from "../../stores/UserStore"
 import { formatDateTime } from "../../utils/timeHelper"
 import Toast from "../../utils/toastConfig"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const CertificationLearningScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
@@ -483,7 +484,7 @@ const CertificationLearningScreen = ({ navigation }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",

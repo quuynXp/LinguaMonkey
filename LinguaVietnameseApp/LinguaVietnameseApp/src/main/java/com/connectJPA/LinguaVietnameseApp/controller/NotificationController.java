@@ -55,7 +55,6 @@ public class NotificationController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/{userId}")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Page<NotificationResponse>> getAllNotificationByUserId(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
@@ -93,7 +92,6 @@ public class NotificationController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<NotificationResponse> createNotification(
             @Valid @RequestBody NotificationRequest request,
             Locale locale) {
@@ -113,7 +111,6 @@ public class NotificationController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public AppApiResponse<NotificationResponse> updateNotification(
             @Parameter(description = "Notification ID") @PathVariable UUID id,
             @Valid @RequestBody NotificationRequest request,
@@ -133,7 +130,6 @@ public class NotificationController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public AppApiResponse<Void> deleteNotification(
             @Parameter(description = "Notification ID") @PathVariable UUID id,
             Locale locale) {
@@ -223,7 +219,6 @@ public class NotificationController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PostMapping("/email/password-reset")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Void> sendPasswordResetEmail(
             @Parameter(description = "User ID") @RequestParam UUID userId,
             @Parameter(description = "Reset link") @RequestParam String resetLink,
@@ -242,7 +237,6 @@ public class NotificationController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PostMapping("/email/verify-account")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Void> sendVerifyAccountEmail(
             @Parameter(description = "User ID") @RequestParam UUID userId,
             @Parameter(description = "Verify link") @RequestParam String verifyLink,
@@ -261,7 +255,6 @@ public class NotificationController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PostMapping("/email/inactivity-warning")
-    @PreAuthorize("hasRole('ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#id)")
     public AppApiResponse<Void> sendInactivityWarning(
             @Parameter(description = "User ID") @RequestParam UUID userId,
             @Parameter(description = "Number of inactive days") @RequestParam int days,

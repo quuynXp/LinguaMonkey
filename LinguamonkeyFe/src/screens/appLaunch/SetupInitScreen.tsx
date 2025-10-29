@@ -14,6 +14,7 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useUserStore } from "../../stores/UserStore";
 import { t } from "i18next"
 import { useTokenStore } from "../../stores/tokenStore";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 
 type SetupInitScreenProps = {
@@ -864,7 +865,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

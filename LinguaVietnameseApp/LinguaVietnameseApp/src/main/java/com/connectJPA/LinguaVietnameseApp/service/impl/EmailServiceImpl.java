@@ -172,5 +172,20 @@ public class EmailServiceImpl implements EmailService {
         }
     }
 
-
+    @Override
+    public void sendOtpEmail(String email, String code, Locale locale) {
+        try {
+            if (email == null || code == null || email.isBlank()) {
+                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+            }
+            String subject = messageSource.getMessage("email.otp.subject", new Object[]{code}, locale != null ? locale : Locale.getDefault());
+            String content = messageSource.getMessage("email.otp.body", new Object[]{code}, locale != null ? locale : Locale.getDefault());
+            sendEmail(email, subject, content);
+            log.info("Sent OTP email to {}", email);
+        } catch (MessagingException e) {
+            throw new SystemException(ErrorCode.EMAIL_SENDING_FAILED);
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
 }

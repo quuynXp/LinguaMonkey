@@ -19,6 +19,7 @@ import { useUserStore } from '../../stores/UserStore';
 import { gotoTab, resetToAuth } from '../../utils/navigationRef';
 import ModelViewer from '../../components/ModelViewer';
 import instance from '../../api/axiosInstance';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 // ===== Helpers =====
 const ccToFlag = (code?: string | null) => {
@@ -526,7 +527,7 @@ const ProfileScreen: React.FC = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { padding: 20 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 40, marginBottom: 30 },

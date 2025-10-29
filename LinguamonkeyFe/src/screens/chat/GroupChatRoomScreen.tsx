@@ -21,6 +21,7 @@ import { useTranslation } from "react-i18next"
 import { useChatStore } from "../../stores/ChatStore"
 import { translateText } from "../../services/pythonService" // assuming path
 import { } from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const GroupChatRoomScreen = () => {
   const { t } = useTranslation()
@@ -386,7 +387,7 @@ const GroupChatRoomScreen = () => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   header: {
     flexDirection: "row",
     alignItems: "center",

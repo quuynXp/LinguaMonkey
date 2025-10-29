@@ -14,6 +14,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import type { QuizQuestion } from "../../types/api";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const questions: QuizQuestion[] = [
   {
@@ -374,7 +375,7 @@ const QuizLearningScreen = ({ navigation }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",

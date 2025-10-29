@@ -19,6 +19,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useRoadmap } from "../../hooks/useRoadmap"
 import { useUsers } from "../../hooks/useUsers"
 import type { RoadmapItem, RoadmapMilestone } from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const { width } = Dimensions.get("window")
 
@@ -432,7 +433,7 @@ const RoadmapScreen = ({ navigation, route }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

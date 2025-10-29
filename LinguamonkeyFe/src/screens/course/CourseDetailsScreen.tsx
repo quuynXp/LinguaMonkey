@@ -13,6 +13,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const CourseDetailsScreen = ({ navigation, route }) => {
   const { t } = useTranslation()
@@ -390,7 +391,7 @@ const CourseDetailsScreen = ({ navigation, route }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

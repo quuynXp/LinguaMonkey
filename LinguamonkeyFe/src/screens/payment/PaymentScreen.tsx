@@ -4,6 +4,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useUserStore } from "../../stores/UserStore"
 import * as WebBrowser from "expo-web-browser"
 import { useCreatePayment } from "../../hooks/useTransaction" 
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const PaymentScreen = ({ navigation, route }) => {
   const { course } = route.params
@@ -178,7 +179,7 @@ const PaymentScreen = ({ navigation, route }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingTop: 60, paddingBottom: 20, backgroundColor: "#FFFFFF" },
   headerTitle: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },

@@ -6,6 +6,7 @@ import { VoiceStreamService } from '../../services/VoiceStreamService';
 import { useAppStore } from '../../stores/appStore';
 import { useTokenStore } from '../../stores/tokenStore';
 import Constants from 'expo-constants';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const apiUrl = Constants.expoConfig.extra.apiUrl;
 const LANGUAGES = ['English', 'Vietnamese', 'Japanese', 'Korean', 'Chinese'];
@@ -81,7 +82,7 @@ const JitsiWebView = ({ route }: any) => {
 
 export default JitsiWebView;
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
   webview: { flex: 1 },
   subtitleContainer: {

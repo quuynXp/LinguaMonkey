@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface FAQItem {
   id: string;
@@ -256,7 +257,7 @@ const HelpSupportScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   header: {
     flexDirection: 'row',

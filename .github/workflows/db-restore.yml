@@ -1,12 +1,12 @@
 name: Restore PostgreSQL Backup to Render
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
   push:
     paths:
-      - "db/**" 
+      - "db/**"
     branches:
-      - master                   
+      - master
 
 jobs:
   restore-db:
@@ -20,21 +20,23 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y lsb-release wget ca-certificates
-
+          
           wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --dearmor -o /usr/share/keyrings/postgresql.gpg
           echo "deb [signed-by=/usr/share/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt/ $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
-
+          
           sudo apt-get update
           echo "Installing postgresql-client-17..."
           sudo apt-get install -y postgresql-client-17
 
-      - name: Verify pg_restore version
+      - name: Verify pg_restore version (for debugging)
         run: |
-          echo "--- Verifying pg_restore path ---"
+          echo "--- Default (v16) pg_restore path ---"
           which pg_restore
-          
-          echo "--- Verifying pg_restore version ---"
           pg_restore --version
+          
+          echo "--- Explicit (v17) pg_restore path ---"
+          ls -l /usr/lib/postgresql/17/bin/pg_restore
+          /usr/lib/postgresql/17/bin/pg_restore --version
 
       - name: Verify backup file exists
         run: |
@@ -45,34 +47,31 @@ jobs:
             echo "✅ Found db/backupFull.backup"
           fi
 
-      - name: Test PostgreSQL connection
+      - name: Test PostgreSQL connection (using v17)
         env:
           PG_URL: ${{ secrets.PG_CONNECTION_URL }}
         run: |
-          echo "🔍 Checking database connectivity..."
+          echo "🔍 Checking database connectivity using pg-17..."
+          # Lệnh này CHỈ test kết nối
+          /usr/lib/postgresql/17/bin/psql "$PG_URL" -c "\conninfo"
+          echo "✅ Connection successful."
 
-          /usr/lib/postgresql/17/bin/pg_restore --verbose --clean --no-acl --no-owner \
-            --dbname="$PG_URL" \
-            "db/backupFull.backup"
-          echo "✅ Restore completed successfully!"
-
-      - name: Clean public schema before restore
+      - name: Clean public schema before restore (using v17)
         env:
           PG_URL: ${{ secrets.PG_CONNECTION_URL }}
         run: |
-          echo "🧹 Cleaning public schema (DROP/CREATE)..."
-          
+          echo "🧹 Cleaning public schema (DROP/CREATE) using pg-17..."
           /usr/lib/postgresql/17/bin/psql "$PG_URL" -c "DROP SCHEMA public CASCADE;"
-
           /usr/lib/postgresql/17/bin/psql "$PG_URL" -c "CREATE SCHEMA public;"
           echo "✅ Schema cleaned."
 
-      - name: Restore database from backup
+      - name: Restore database from backup (using v17 explicitly)
         env:
           PG_URL: ${{ secrets.PG_CONNECTION_URL }}
         run: |
-          echo "🚀 Starting database restore from db/backupFull.backup..."
-          pg_restore --verbose --clean --no-acl --no-owner \
+          echo "🚀 Starting database restore using pg-17..."
+          # Lỗi của bạn ở đây: Thiếu đường dẫn v17
+          /usr/lib/postgresql/17/bin/pg_restore --verbose --clean --no-acl --no-owner \
             --dbname="$PG_URL" \
             "db/backupFull.backup"
           echo "✅ Restore completed successfully!"

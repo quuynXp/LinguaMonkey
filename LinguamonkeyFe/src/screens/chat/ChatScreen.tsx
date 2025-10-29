@@ -6,6 +6,7 @@ import { useUserStore } from "../../stores/UserStore"
 import { gotoTab } from "../../utils/navigationRef"
 import { useChatStore } from "../../stores/ChatStore"
 import { useTokenStore } from "../../stores/tokenStore"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const ChatScreen = ({ navigation }) => {
   const { t } = useTranslation()
@@ -227,7 +228,7 @@ const ChatScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

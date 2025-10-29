@@ -14,4 +14,5 @@ public interface EmailService {
     void sendVerifyAccountEmail(String email, String verifyLink, Locale locale) throws MessagingException;
     void sendInactivityWarning(String email, int days, Locale locale) throws MessagingException;
     void sendStreakRewardEmail(String email, int streakDays, Locale locale) throws MessagingException;
+    void sendOtpEmail(String email, String code, Locale locale);
 }

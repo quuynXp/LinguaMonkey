@@ -4,46 +4,32 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.messaging.FirebaseMessaging;
-import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-
-import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.io.InputStream;
 
 @Configuration
 public class FirebaseConfig {
 
-    @Value("${firebase.config.json}")
-    private String firebaseConfigJson;
+    @Value("${google.credentials.file.url}")
+    private String credentialsPath;
 
     @Bean
     public FirebaseMessaging firebaseMessaging() throws IOException {
-        GoogleCredentials credentials = GoogleCredentials.fromStream(
-                new FileInputStream("C:\\Users\\quyen\\Downloads\\LinguaApp\\LinguaVietnameseApp\\LinguaVietnameseApp\\src\\main\\resources\\firebase\\web-app-love-firebase-adminsdk-fbsvc-9bafbc5626.json"));
+        InputStream serviceAccount = getClass()
+                .getClassLoader()
+                .getResourceAsStream("firebase/web-app-love-firebase-adminsdk-fbsvc-9bafbc5626.json");
+
         FirebaseOptions options = FirebaseOptions.builder()
-                .setCredentials(credentials)
+                .setCredentials(GoogleCredentials.fromStream(serviceAccount))
                 .build();
-        FirebaseApp.initializeApp(options);
-        return FirebaseMessaging.getInstance();
-    }
 
-    @PostConstruct
-    public void init() {
-        try {
-            ByteArrayInputStream credentialsStream = new ByteArrayInputStream(firebaseConfigJson.getBytes(StandardCharsets.UTF_8));
-            FirebaseOptions options = FirebaseOptions.builder()
-                    .setCredentials(GoogleCredentials.fromStream(credentialsStream))
-                    .build();
-
-            if (FirebaseApp.getApps().isEmpty()) {
-                FirebaseApp.initializeApp(options);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
+        if (FirebaseApp.getApps().isEmpty()) {
+            FirebaseApp.initializeApp(options);
         }
+
+        return FirebaseMessaging.getInstance();
     }
 }

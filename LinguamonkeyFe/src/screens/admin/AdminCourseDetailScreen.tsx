@@ -19,6 +19,7 @@ import Toast from "../../components/Toast";
 import { useCourses } from "../../hooks/useCourses";
 import type { Course } from "../../hooks/useCourses";
 import { goBack } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const AdminCourseDetailScreen = () => {
     const { t } = useTranslation();
@@ -200,7 +201,7 @@ const AdminCourseDetailScreen = () => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: "#F8FAFC" },
     loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F8FAFC" },
     headerArea: {

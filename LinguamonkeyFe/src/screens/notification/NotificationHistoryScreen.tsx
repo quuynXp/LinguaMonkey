@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react"
 
 import Icon from "react-native-vector-icons/MaterialIcons"
 import NotificationService from "../../services/notificationService"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 interface NotificationHistoryItem {
   id: string
@@ -272,7 +273,7 @@ const NotificationHistoryScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

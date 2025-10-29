@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
 import {ReadingText, Translation, QuizQuestion} from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 
 const ReadingScreen = ({ navigation }) => {
@@ -482,7 +483,7 @@ const ReadingScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

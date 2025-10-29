@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { createScaledSheet } from "../../utils/scaledStyles";
 interface Character3D {
   id: string
   name: string
@@ -637,7 +638,7 @@ const EnhancedAccountCreationScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

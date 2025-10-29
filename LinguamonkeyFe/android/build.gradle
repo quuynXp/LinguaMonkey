@@ -6,19 +6,29 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-    classpath('com.android.tools.build:gradle')
-    classpath('com.facebook.react:react-native-gradle-plugin')
-    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
+    classpath("com.android.tools.build:gradle:8.7.1")
+    classpath("com.facebook.react:react-native-gradle-plugin")
+    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.24")
   }
+}
+
+ext {
+  buildToolsVersion = "36.1.0"
+  minSdkVersion = 24
+  compileSdkVersion = 35
+  targetSdkVersion = 35
+  kotlinVersion = "2.2.20"
+  ndkVersion = "27.1.12297006"
 }
 
 allprojects {
   repositories {
     google()
     mavenCentral()
-    maven { url 'https://www.jitpack.io' }
+    maven { url "$rootDir/../node_modules/react-native/ReactAndroid/src/main/jni/third-party/boost_1_76_0" }
+    maven { url "https://www.jitpack.io" }
   }
 }
 
-apply plugin: "expo-root-project"
-apply plugin: "com.facebook.react.rootproject"
+// ⚙️ Chỉ dùng 1 dòng phù hợp
+apply plugin: "expo-root-project" // nếu là Expo prebuild

@@ -21,6 +21,7 @@ import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
 import instance from "../../api/axiosInstance"
 import { useChatStore } from "../../stores/ChatStore"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const UserChatScreen = () => {
   const { t } = useTranslation()
@@ -360,7 +361,7 @@ const UserChatScreen = () => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   header: {
     flexDirection: "row",
     alignItems: "center",

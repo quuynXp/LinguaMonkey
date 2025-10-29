@@ -4,6 +4,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { gotoTab } from "../../utils/navigationRef";
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width, height } = Dimensions.get('window');
 
@@ -250,7 +251,7 @@ const AppLaunchScreen = ({ navigation }: AppLaunchScreenProps) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

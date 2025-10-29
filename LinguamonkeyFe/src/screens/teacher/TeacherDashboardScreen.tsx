@@ -18,6 +18,7 @@ import { useUserStore } from "../../stores/UserStore"
 import { gotoTab, resetToAuth } from "../../utils/navigationRef"
 import Toast from "../../components/Toast"
 import { LineChart } from "react-native-chart-kit"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const { width } = Dimensions.get("window")
 
@@ -177,7 +178,7 @@ const TeacherDashboardScreen = ({ navigation }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { marginTop: 16, fontSize: 16, color: "#6B7280" },

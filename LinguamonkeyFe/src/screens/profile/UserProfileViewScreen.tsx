@@ -23,6 +23,7 @@ import {
   useFriendRequestStatus,
   useCheckIfFriends,
 } from "../../hooks/useUsers";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 
@@ -334,7 +335,7 @@ const UserProfileViewScreen = ({ route }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#f5f5f5" },
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 15, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e0e0e0" },
   headerTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },

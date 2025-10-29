@@ -6,6 +6,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import Svg, { Line } from "react-native-svg"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
 import { MindMapNode } from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const { width, height } = Dimensions.get("window")
 
@@ -333,7 +334,7 @@ const GrammarMindMapScreen = ({ navigation }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

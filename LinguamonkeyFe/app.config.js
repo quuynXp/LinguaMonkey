@@ -29,6 +29,7 @@ export default {
         foregroundImage: "./src/assets/images/icon.png",
         backgroundColor: "#ffffff"
       },
+      package: "com.quyen10924.MonkeyLingua",
       edgeToEdgeEnabled: true,
       permissions: [
         "android.permission.RECORD_AUDIO",

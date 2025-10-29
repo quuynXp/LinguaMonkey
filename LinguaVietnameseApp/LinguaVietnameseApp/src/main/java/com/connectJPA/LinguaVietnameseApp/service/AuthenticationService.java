@@ -13,6 +13,15 @@ import java.util.UUID;
 public interface AuthenticationService {
     AuthenticationResponse authenticate(AuthenticationRequest request, String deviceId, String ip, String userAgent);
 
+
+    AuthenticationResponse loginWithGoogle(String idToken, String deviceId, String ip, String userAgent);
+
+    AuthenticationResponse loginWithFacebook(String accessToken, String deviceId, String ip, String userAgent);
+
+    boolean requestOtp(String emailOrPhone);
+
+    AuthenticationResponse verifyOtpAndLogin(String emailOrPhone, String code, String deviceId, String ip, String userAgent);
+
     AuthenticationResponse handleRefreshToken(String refreshToken, String deviceId, String ip, String userAgent);
 
     AuthenticationResponse loginWithFirebase(String firebaseIdToken);

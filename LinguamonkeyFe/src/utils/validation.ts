@@ -52,3 +52,18 @@ export const validateData = async <T>(schema: Yup.Schema<T>, data: any): Promise
     throw error
   }
 }
+
+export const isValidEmail = (email: string): boolean => {
+  if (!email) return false;
+  const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return regex.test(String(email).toLowerCase());
+};
+
+// export const isValidPhoneNumber = (phone: string): boolean => {
+//   // Logic kiểm tra SĐT phức tạp hơn và thường được xử lý bởi
+//   // thư viện 'react-native-phone-number-input'
+//   // Bạn có thể thêm logic đơn giản ở đây nếu muốn, ví dụ:
+//   if (!phone) return false;
+//   // SĐT quốc tế (với dấu +) thường có ít nhất 10-15 ký tự
+//   return phone.length > 9;
+// };

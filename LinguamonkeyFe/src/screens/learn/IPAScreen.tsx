@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import {IPASound, ConversationTopic , AIResponse } from "../../types/api"
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const { width } = Dimensions.get("window")
 
@@ -525,7 +526,7 @@ const IPAScreen = ({ navigation }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",

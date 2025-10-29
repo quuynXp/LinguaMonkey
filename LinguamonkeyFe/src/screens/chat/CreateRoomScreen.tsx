@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useChatStore } from '../../stores/ChatStore';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const CreateRoomScreen = ({ navigation }) => {
   const [roomName, setRoomName] = useState('');
@@ -349,7 +350,7 @@ const CreateRoomScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

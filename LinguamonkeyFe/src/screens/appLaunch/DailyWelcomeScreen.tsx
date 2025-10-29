@@ -19,6 +19,7 @@ import { User, UserGoalResponse, UserBadge } from "../../types/api";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { MaterialIcons } from '@expo/vector-icons';
 import { resetToTab, resetToAuth } from "../../utils/navigationRef";
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 type RootStackParamList = {
   DailyWelcome: undefined;
@@ -241,7 +242,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     paddingHorizontal: 16,
     paddingVertical: 20,

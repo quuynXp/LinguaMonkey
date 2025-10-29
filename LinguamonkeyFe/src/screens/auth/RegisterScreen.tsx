@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { registerWithEmail, loginWithGoogle, loginWithFacebook } from '../../services/authService';
 import { resetToTab } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const RegisterScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -255,7 +256,7 @@ const RegisterScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

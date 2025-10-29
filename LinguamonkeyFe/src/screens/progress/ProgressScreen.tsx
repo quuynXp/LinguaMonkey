@@ -17,6 +17,7 @@ import { useAppStore } from "../../stores/appStore";
 import { useUserLearningActivities } from "../../hooks/useUserActivity";
 import { gotoTab } from "../../utils/navigationRef";
 import { useUserStore } from "../../stores/UserStore";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 
@@ -266,7 +267,7 @@ function formatDayLabel(dateStr: string) {
   }
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

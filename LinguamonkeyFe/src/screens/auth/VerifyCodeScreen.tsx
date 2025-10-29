@@ -6,6 +6,7 @@ import { Alert, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } 
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { verifyResetCode } from '../../services/authService'
 import { gotoTab, resetToTab } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 
 const VerifyCodeScreen = ({ navigation, route }) => {
@@ -150,7 +151,7 @@ const VerifyCodeScreen = ({ navigation, route }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

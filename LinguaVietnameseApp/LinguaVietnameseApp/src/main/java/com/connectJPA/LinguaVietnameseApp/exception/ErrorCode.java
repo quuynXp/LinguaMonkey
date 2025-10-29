@@ -45,6 +45,15 @@ public enum ErrorCode {
     FIREBASE_TOKEN_VERIFICATION_FAILED(2008, "error.firebase_token_verification_failed", HttpStatus.UNAUTHORIZED),
     REFRESH_TOKEN_NOT_FOUND(2009, "error.refresh_token_not_found", HttpStatus.UNAUTHORIZED),
     INVALID_PASSWORD(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    OTP_INVALID(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    OTP_EXPIRED(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    SOCIAL_USER_INFO_INVALID(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    GOOGLE_TOKEN_INVALID(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    FACEBOOK_TOKEN_INVALID(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    SMS_SERVICE_NOT_CONFIGURED(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    SMS_SEND_FAILED(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+
+
 
     // ===== 403 Forbidden =====
     UNAUTHORIZED(3000, "error.unauthorized", HttpStatus.FORBIDDEN),

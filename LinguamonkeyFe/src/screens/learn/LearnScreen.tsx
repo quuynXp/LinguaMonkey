@@ -14,6 +14,7 @@ import { useTranslation } from "react-i18next"
 import { useUserStore } from "../../stores/UserStore"
 import { useCourses } from "../../hooks/useCourses"
 import { useCertifications } from "../../hooks/useCertifications"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const LearnScreen = ({ navigation }) => {
   const { t } = useTranslation()
@@ -410,7 +411,7 @@ const freeCourses = useMemo(
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

@@ -15,6 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useRoadmap } from "../../hooks/useRoadmap";
 import type { RoadmapGuidance, RoadmapResource } from "../../types/api";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 
@@ -489,7 +490,7 @@ const RoadmapItemDetailScreen = ({ navigation, route }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

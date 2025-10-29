@@ -19,6 +19,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useFlashcards } from "../../hooks/useFlashcard";
 import {Flashcard} from "../../types/api" 
 import { useTranslation } from 'react-i18next'; 
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const { width } = Dimensions.get("window")
 
@@ -404,7 +405,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 }
 
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",

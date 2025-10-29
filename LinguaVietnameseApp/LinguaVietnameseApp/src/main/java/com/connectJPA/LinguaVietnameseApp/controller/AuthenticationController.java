@@ -1,8 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
-import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
-import com.connectJPA.LinguaVietnameseApp.dto.request.AuthenticationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -40,27 +39,46 @@ public class AuthenticationController {
     AuthenticationService authenticationService;
     UserService userService;
 
-    @PostMapping("/firebase-login")
-    @Operation(summary = "Login with Firebase", description = "Authenticate user via Firebase ID token")
-    @ApiResponse(responseCode = "200", description = "Firebase login successful")
-    @ApiResponse(responseCode = "401", description = "Invalid Firebase token")
-    public ResponseEntity<AppApiResponse<AuthenticationResponse>> firebaseLogin(
-            @RequestHeader("Authorization") String authHeader) {
+    @PostMapping("/google-login")
+    @Operation(summary = "Login with Google", description = "Authenticate user via Google ID token from request body")
+    @ApiResponse(responseCode = "200", description = "Google login successful")
+    @ApiResponse(responseCode = "401", description = "Invalid Google token")
+    public ResponseEntity<AppApiResponse<AuthenticationResponse>> googleLogin(
+            @Valid @RequestBody SocialLoginRequest request,
+            @RequestHeader(value = "Device-Id", required = false, defaultValue = "") String deviceId,
+            @RequestHeader(value = "X-Forwarded-For", required = false, defaultValue = "") String ip,
+            @RequestHeader(value = "User-Agent", required = false, defaultValue = "") String userAgent,
+            HttpServletResponse response) {
 
-        String firebaseIdToken = authHeader.replace("Bearer ", "").trim();
-        AuthenticationResponse authResponse = authenticationService.loginWithFirebase(firebaseIdToken);
+        // Bạn cần thêm logic này vào AuthenticationService
+        AuthenticationResponse authResponse = authenticationService.loginWithGoogle(
+                request.idToken(), deviceId, ip, userAgent
+        );
 
-        HttpHeaders headers = new HttpHeaders();
-        headers.set("Authorization", "Bearer " + authResponse.getToken());
-
-        return ResponseEntity.ok()
-                .headers(headers)
-                .body(AppApiResponse.<AuthenticationResponse>builder()
-                        .code(200)
-                        .message("Firebase login successful")
-                        .result(authResponse)
-                        .build());
+        // Chuẩn hóa hàm trả về response
+        return createAuthResponseEntity(authResponse, response, "Google login successful");
     }
+
+    @PostMapping("/facebook-login")
+    @Operation(summary = "Login with Facebook", description = "Authenticate user via Facebook Access Token from request body")
+    @ApiResponse(responseCode = "200", description = "Facebook login successful")
+    @ApiResponse(responseCode = "401", description = "Invalid Facebook token")
+    public ResponseEntity<AppApiResponse<AuthenticationResponse>> facebookLogin(
+            @Valid @RequestBody SocialLoginRequest request,
+            @RequestHeader(value = "Device-Id", required = false, defaultValue = "") String deviceId,
+            @RequestHeader(value = "X-Forwarded-For", required = false, defaultValue = "") String ip,
+            @RequestHeader(value = "User-Agent", required = false, defaultValue = "") String userAgent,
+            HttpServletResponse response) {
+
+        // Bạn cần thêm logic này vào AuthenticationService
+        AuthenticationResponse authResponse = authenticationService.loginWithFacebook(
+                request.accessToken(), deviceId, ip, userAgent
+        );
+
+        // Chuẩn hóa hàm trả về response
+        return createAuthResponseEntity(authResponse, response, "Facebook login successful");
+    }
+
 
     // --- Controller method for logoutAll ---
     @PostMapping("/logout-all")
@@ -257,6 +275,69 @@ public class AuthenticationController {
                 .code(200)
                 .message("Password reset successful")
                 .build();
+    }
+
+    @PostMapping("/request-otp")
+    @Operation(summary = "Request OTP", description = "Send OTP to user's email or phone")
+    @ApiResponse(responseCode = "200", description = "OTP sent successfully")
+    @ApiResponse(responseCode = "400", description = "Invalid email or phone number")
+    public AppApiResponse<Map<String, Boolean>> requestOtp(@Valid @RequestBody OtpRequest request) {
+        boolean success = authenticationService.requestOtp(request.emailOrPhone());
+
+        return AppApiResponse.<Map<String, Boolean>>builder()
+                .code(200)
+                .message("OTP sent successfully")
+                .result(Map.of("success", success))
+                .build();
+    }
+
+    @PostMapping("/verify-otp")
+    @Operation(summary = "Verify OTP and Login", description = "Verify OTP and return auth tokens if valid")
+    @ApiResponse(responseCode = "200", description = "OTP verification successful, user logged in")
+    @ApiResponse(responseCode = "400", description = "Invalid or expired OTP")
+    public ResponseEntity<AppApiResponse<AuthenticationResponse>> verifyOtp(
+            @Valid @RequestBody VerifyOtpRequest request,
+            @RequestHeader(value = "Device-Id", required = false, defaultValue = "") String deviceId,
+            @RequestHeader(value = "X-Forwarded-For", required = false, defaultValue = "") String ip,
+            @RequestHeader(value = "User-Agent", required = false, defaultValue = "") String userAgent,
+            HttpServletResponse response) {
+
+        AuthenticationResponse authResponse = authenticationService.verifyOtpAndLogin(
+                request.emailOrPhone(), request.code(), deviceId, ip, userAgent
+        );
+
+        return createAuthResponseEntity(authResponse, response, "OTP verification successful");
+    }
+
+
+    /**
+     * Hàm tiện ích private để tạo ResponseEntity chuẩn cho các phương thức login/refresh.
+     * Nó sẽ set cookie refreshToken và header Authorization.
+     */
+    private ResponseEntity<AppApiResponse<AuthenticationResponse>> createAuthResponseEntity(
+            AuthenticationResponse authResponse,
+            HttpServletResponse response,
+            String message) {
+
+        String refreshToken = authResponse.getRefreshToken();
+
+        Cookie cookie = new Cookie("refreshToken", refreshToken);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true); // if using HTTPS
+        cookie.setPath("/");
+        cookie.setMaxAge(30 * 24 * 60 * 60); // 30 days
+        response.addCookie(cookie);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + authResponse.getToken());
+
+        return ResponseEntity.ok()
+                .headers(headers)
+                .body(AppApiResponse.<AuthenticationResponse>builder()
+                        .code(200)
+                        .message(message)
+                        .result(authResponse)
+                        .build());
     }
 
 }

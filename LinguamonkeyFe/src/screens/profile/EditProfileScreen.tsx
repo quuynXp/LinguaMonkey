@@ -19,6 +19,7 @@ import { useUserStore } from '../../stores/UserStore';
 import instance from '../../api/axiosInstance';
 import { gotoTab } from '../../utils/navigationRef';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 
 
@@ -262,7 +263,7 @@ const EditProfileScreen: React.FC = () => {
 
 export default EditProfileScreen;
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 12 },
   title: { fontSize: 18, fontWeight: '700', marginBottom: 12 },
@@ -276,7 +277,7 @@ const styles = StyleSheet.create({
   cancelBtn: { padding: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#E5E7EB', marginLeft: 8 },
 });
 
-const localStyles = StyleSheet.create({
+const localStyles = createScaledSheet({
   fieldRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   fieldLabel: { color: '#6B7280' },
   selectBox: { flexDirection: 'row', alignItems: 'center', gap: 8 },

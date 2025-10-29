@@ -4,6 +4,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import instance from '../api/axiosInstance';
 import { useAppStore } from '../stores/appStore';
+import * as navigationService from './navigationService';
 
 export interface NotificationPreferences {
   enablePush: boolean;
@@ -27,7 +28,7 @@ export interface NotificationPreferences {
 }
 
 const STORAGE_KEY = 'notification-preferences';
-const EXPO_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID; // Replace with projectId from app.json/app.config.js
+const EXPO_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID; 
 
 class NotificationService {
   private preferences: NotificationPreferences;

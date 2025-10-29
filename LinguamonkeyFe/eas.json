@@ -7,7 +7,7 @@
     "development": {
       "android": {
         "image": "latest",
-        "ndk": "27.1.12297006"
+        "ndk": "25.2.9519653"
       },
       "developmentClient": true,
       "distribution": "internal",
@@ -18,7 +18,7 @@
     "preview": {
       "android": {
         "image": "latest",
-        "ndk": "27.1.12297006"
+        "ndk": "25.2.9519653"
       },
       "distribution": "internal",
       "env": {
@@ -28,7 +28,9 @@
     "production": {
       "autoIncrement": true,
       "android": {
-        "buildType": "apk"
+        "buildType": "apk",
+        "image": "latest",
+        "ndk": "25.2.9519653"
       },
       "env": {
         "API_URL": "https://api.yourdomain.com/api/v1"

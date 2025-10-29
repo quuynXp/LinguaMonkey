@@ -2,14 +2,21 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.AuthenticationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.FacebookUserResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.IntrospectResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.AuthProvider;
+import com.connectJPA.LinguaVietnameseApp.enums.RoleName;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.repository.*;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.EmailService;
+import com.connectJPA.LinguaVietnameseApp.service.SmsService;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
+import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
+import com.google.api.client.http.javanet.NetHttpTransport;
+import com.google.api.client.json.gson.GsonFactory;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseAuthException;
 import com.google.firebase.auth.FirebaseToken;
@@ -29,9 +36,12 @@ import org.springframework.core.io.Resource;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.RestTemplate;
 
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -60,15 +70,23 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Value("classpath:public_key.pem")
     Resource publicKeyResource;
 
+    @Value("${google.client.id}")
+    String googleClientId;
+
     final Map<String, String> verifyEmailCodes = new HashMap<>();
     final Map<String, String> resetPasswordCodes = new HashMap<>();
+    final Map<String, String> otpLoginCodes = new HashMap<>();
+    final Map<String, Instant> otpLoginExpiry = new HashMap<>();
 
+    final SmsService smsService;
     final EmailService emailService;
     final PasswordEncoder passwordEncoder;
     final UserRepository userRepository;
     final InvalidatedTokenRepository invalidatedTokenRepository;
     final RefreshTokenRepository refreshTokenRepository;
     final UserRoleRepository userRoleRepository;
+    final RoleRepository roleRepository;
+    final RestTemplate restTemplate;
 
     private RSAPrivateKey getPrivateKey() throws Exception {
         String key = new String(Files.readAllBytes(privateKeyResource.getFile().toPath()), StandardCharsets.UTF_8);
@@ -362,6 +380,143 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .build();
     }
 
+    @Override
+    @Transactional
+    public AuthenticationResponse loginWithGoogle(String idToken, String deviceId, String ip, String userAgent) {
+        try {
+            // 1. Khởi tạo Verifier
+            GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
+                    .setAudience(Collections.singletonList(googleClientId))
+                    .build();
+
+            // 2. Xác thực token
+            GoogleIdToken googleIdToken = verifier.verify(idToken);
+            if (googleIdToken == null) {
+                throw new AppException(ErrorCode.GOOGLE_TOKEN_INVALID);
+            }
+
+            // 3. Lấy thông tin người dùng từ token
+            GoogleIdToken.Payload payload = googleIdToken.getPayload();
+            String email = payload.getEmail();
+            if (email == null || email.isBlank()) {
+                throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
+            }
+            String fullName = (String) payload.get("name");
+
+            // 4. Tìm hoặc tạo người dùng
+            User user = findOrCreateUser(email, fullName, null, AuthProvider.GOOGLE);
+
+            // 5. Tạo và lưu tokens
+            return createAndSaveTokens(user, deviceId, ip, userAgent);
+
+        } catch (GeneralSecurityException | IOException e) {
+            log.error("Google token verification failed", e);
+            throw new AppException(ErrorCode.GOOGLE_TOKEN_INVALID);
+        } catch (Exception e) {
+            log.error("Google login failed", e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional
+    public AuthenticationResponse loginWithFacebook(String accessToken, String deviceId, String ip, String userAgent) {
+        try {
+            // 1. Xây dựng URL cho Graph API
+            String graphApiUrl = "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name&access_token=" + accessToken;
+
+            // 2. Gọi API (Yêu cầu @Bean RestTemplate)
+            FacebookUserResponse fbResponse = restTemplate.getForObject(graphApiUrl, FacebookUserResponse.class);
+
+            if (fbResponse == null || fbResponse.email() == null) {
+                throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
+            }
+
+            // 3. Tìm hoặc tạo người dùng
+            User user = findOrCreateUser(fbResponse.email(), fbResponse.name(), null, AuthProvider.FACEBOOK);
+
+            // 4. Tạo và lưu tokens
+            return createAndSaveTokens(user, deviceId, ip, userAgent);
+
+        } catch (Exception e) {
+            log.error("Facebook token verification failed", e);
+            throw new AppException(ErrorCode.FACEBOOK_TOKEN_INVALID);
+        }
+    }
+
+    @Override
+    @Transactional
+    public boolean requestOtp(String emailOrPhone) {
+        // Xác định là email hay SĐT
+        // (Regex đơn giản, bạn có thể dùng thư viện libphonenumber nếu cần)
+        boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
+        String email = isPhone ? null : emailOrPhone;
+        String phone = isPhone ? emailOrPhone : null;
+
+        // 1. Kiểm tra xem user có tồn tại không (vì đây là flow ĐĂNG NHẬP)
+        User user = userRepository.findByEmailOrPhoneAndIsDeletedFalse(email, phone)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // 2. Tạo mã OTP
+        String code = String.format("%06d", new Random().nextInt(999999)); // 6 số
+        log.info("Generated OTP: {} for user: {}", code, emailOrPhone); // Log cho debug
+
+        // 3. Lưu OTP và thời gian hết hạn (10 phút)
+        otpLoginCodes.put(emailOrPhone, code);
+        otpLoginExpiry.put(emailOrPhone, Instant.now().plus(10, ChronoUnit.MINUTES));
+
+        // 4. Gửi OTP
+        try {
+            if (isPhone) {
+                smsService.sendSms(phone, code);
+                log.warn("SMS service not configured. OTP for {} is {}", phone, code);
+                return true;
+            } else {
+                // Gửi qua email
+                // (Giả sử bạn có hàm này trong EmailService)
+                emailService.sendOtpEmail(user.getEmail(), code, Locale.getDefault());
+            }
+        } catch (Exception e) {
+            log.error("Failed to send OTP for {}", emailOrPhone, e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+
+        return true;
+    }
+
+    @Override
+    @Transactional
+    public AuthenticationResponse verifyOtpAndLogin(String emailOrPhone, String code, String deviceId, String ip, String userAgent) {
+        // 1. Lấy mã đã lưu
+        String storedCode = otpLoginCodes.get(emailOrPhone);
+        Instant expiry = otpLoginExpiry.get(emailOrPhone);
+
+        // 2. Kiểm tra mã
+        if (storedCode == null || !storedCode.equals(code)) {
+            throw new AppException(ErrorCode.OTP_INVALID);
+        }
+
+        // 3. Kiểm tra hết hạn
+        if (expiry == null || expiry.isBefore(Instant.now())) {
+            // Xóa mã hết hạn
+            otpLoginCodes.remove(emailOrPhone);
+            otpLoginExpiry.remove(emailOrPhone);
+            throw new AppException(ErrorCode.OTP_EXPIRED);
+        }
+
+        // 4. Xác thực thành công -> Xóa mã đã dùng
+        otpLoginCodes.remove(emailOrPhone);
+        otpLoginExpiry.remove(emailOrPhone);
+
+        // 5. Tìm người dùng (chắc chắn tồn tại vì đã check ở requestOtp)
+        boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
+        User user = userRepository.findByEmailOrPhoneAndIsDeletedFalse(isPhone ? null : emailOrPhone, isPhone ? emailOrPhone : null)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)); // Check lại cho chắc
+
+        // 6. Tạo và lưu tokens
+        return createAndSaveTokens(user, deviceId, ip, userAgent);
+    }
+
     @Transactional
     public AuthenticationResponse handleRefreshToken(String refreshToken, String deviceId, String ip, String userAgent) {
         if (deviceId != null && ip != null && userAgent != null) {
@@ -535,5 +690,82 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         userRepository.save(user);
 
         resetPasswordCodes.remove(email);
+    }
+
+//    Helper
+    private User findOrCreateUser(String email, String fullName, String phone, AuthProvider provider) {
+        // 1. Ưu tiên tìm bằng email nếu có
+        Optional<User> userOptional;
+        if (email != null && !email.isBlank()) {
+            userOptional = userRepository.findByEmailAndIsDeletedFalse(email);
+        } else if (phone != null && !phone.isBlank()) {
+            userOptional = userRepository.findByPhoneAndIsDeletedFalse(phone);
+        } else {
+            // Không có email hoặc phone, không thể tạo/tìm user
+            throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
+        }
+
+        // 2. Nếu tìm thấy User
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            // User đã tồn tại.
+            // Cập nhật thông tin nếu cần (ví dụ: provider, fullname)
+            if (user.getAuthProvider() == null || user.getAuthProvider() == AuthProvider.EMAIL) {
+                user.setAuthProvider(provider);
+                if (user.getFullname() == null || user.getFullname().isBlank()) {
+                    user.setFullname(fullName);
+                }
+                userRepository.save(user);
+            }
+            return user;
+        }
+
+        // 3. Nếu không tìm thấy -> Tạo User mới
+        Role defaultRole = roleRepository.findByRoleNameAndIsDeletedFalse(RoleName.STUDENT)
+                .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND)); // Đảm bảo bạn có RoleName.USER
+
+        User newUser = User.builder()
+                .email(email)
+                .phone(phone)
+                .fullname(fullName)
+                .authProvider(provider)
+                .password(null) // Social login không có password
+                .createdAt(OffsetDateTime.now())
+                .isDeleted(false)
+                .build();
+
+        User savedUser = userRepository.save(newUser);
+
+        // Gán Role mặc định
+        UserRole userRole = new UserRole();
+        userRole.setUser(savedUser);
+        userRole.setRole(defaultRole);
+        userRoleRepository.save(userRole);
+
+        log.info("Created new user via {}: {}", provider, email);
+        return savedUser;
+    }
+
+    private AuthenticationResponse createAndSaveTokens(User user, String deviceId, String ip, String userAgent) {
+        String accessToken = generateToken(user);
+        String refreshToken = generateRefreshToken(user, 30);
+
+        RefreshToken refreshTokenEntity = RefreshToken.builder()
+                .token(refreshToken)
+                .userId(user.getUserId())
+                .deviceId(deviceId)
+                .ip(ip)
+                .userAgent(userAgent)
+                .expiresAt(OffsetDateTime.now().plusDays(30))
+                .isRevoked(false)
+                .build();
+
+        refreshTokenRepository.save(refreshTokenEntity);
+
+        return AuthenticationResponse.builder()
+                .token(accessToken)
+                .refreshToken(refreshToken)
+                .authenticated(true)
+                .build();
     }
 }

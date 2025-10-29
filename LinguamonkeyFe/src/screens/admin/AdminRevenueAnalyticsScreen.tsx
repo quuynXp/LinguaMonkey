@@ -20,6 +20,7 @@ import { getStatisticsOverview, getTransactions } from "../../services/statistic
 import { LineChart, BarChart, PieChart } from "react-native-chart-kit";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { resetToAuth } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 type Period = "week" | "month" | "year" | "custom";
@@ -384,7 +385,7 @@ const AdminRevenueAnalyticsScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   content: { flex: 1 },
   headerArea: {

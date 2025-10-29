@@ -17,10 +17,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations"
 import { useAppStore } from "../../stores/appStore"
 import type { UserMemorization } from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const NotesScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
-  const { currentLanguage } = useAppStore()
 
   const [selectedContentType, setSelectedContentType] = useState<string>("all")
   const [showAddModal, setShowAddModal] = useState(false)
@@ -308,7 +308,7 @@ const NotesScreen = ({ navigation }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

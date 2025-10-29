@@ -15,6 +15,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useToast } from "../../hooks/useToast"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const { width } = Dimensions.get("window")
 
@@ -714,7 +715,7 @@ const EnhancedOnboardingScreen = ({ navigation }: any) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

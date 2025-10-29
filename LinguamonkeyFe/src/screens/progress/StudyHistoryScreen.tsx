@@ -5,6 +5,7 @@ import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useStudyHistory } from "../../hooks/useStudyHistory"
 import { formatDuration } from "../../utils/timeHelper"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 interface StudySession {
   id: string
@@ -308,7 +309,7 @@ const StudyHistoryScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

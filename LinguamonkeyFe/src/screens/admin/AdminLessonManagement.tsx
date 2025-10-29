@@ -20,6 +20,7 @@ import { getStatisticsOverview, getActivities } from "../../services/statisticsA
 import { LineChart, BarChart } from "react-native-chart-kit";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { gotoTab, resetToAuth } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 type Period = "week" | "month" | "year" | "custom";
@@ -194,7 +195,7 @@ const AdminLessonManagementScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   headerArea: { padding: 16, backgroundColor: "#fff", marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { fontSize: 20, fontWeight: "700" },

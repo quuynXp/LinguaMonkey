@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { VideoPlayer } from 'expo-video';
 import { Topic, Content } from '../../types/api';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const ListeningScreen = ({ navigation }) => {
   const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
@@ -350,7 +351,7 @@ const ListeningScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

@@ -10,6 +10,7 @@ import { useToast } from "../../hooks/useToast"
 import { formatDateTime } from "../../utils/timeHelper"
 import instance from "../../api/axiosInstance"
 import {} from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 interface StudyRoom {
   id: string
@@ -757,7 +758,7 @@ const GroupStudyScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

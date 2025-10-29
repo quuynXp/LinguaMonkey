@@ -14,6 +14,7 @@ import {
     View,
 } from "react-native";
 import {PronunciationResult, Sentence, WordScore } from "../../types/api"
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 
 const SpeakingScreen = ({ navigation }) => {
@@ -557,7 +558,7 @@ const SpeakingScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: {
         flex: 1,
         backgroundColor: "#F8FAFC",

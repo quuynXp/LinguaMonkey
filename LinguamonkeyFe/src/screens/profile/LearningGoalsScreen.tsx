@@ -5,6 +5,7 @@ import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View }
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 interface Goal {
   id: string
@@ -291,7 +292,7 @@ const LearningGoalsScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

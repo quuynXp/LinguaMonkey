@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Alert, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { resetPassword } from '../../services/authService'
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const ResetPasswordScreen = ({ navigation, route }) => {
   const { t } = useTranslation();
@@ -145,7 +146,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

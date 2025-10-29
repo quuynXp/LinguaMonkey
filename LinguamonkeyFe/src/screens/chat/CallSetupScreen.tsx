@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
 import instance from "../../api/axiosInstance"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 interface CallPreferences {
   interests: string[]
@@ -352,7 +353,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

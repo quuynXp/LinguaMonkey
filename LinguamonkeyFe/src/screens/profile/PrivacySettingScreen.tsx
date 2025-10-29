@@ -3,6 +3,7 @@ import { Alert, Animated, ScrollView, StyleSheet, Switch, Text, TouchableOpacity
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface PrivacySetting {
   id: string;
@@ -265,7 +266,7 @@ const PrivacySettingsScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

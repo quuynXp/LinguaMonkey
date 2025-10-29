@@ -18,6 +18,7 @@ import Toast from "../../components/Toast";
 import { getStatisticsOverview, getActivities } from "../../services/statisticsApi";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { gotoTab, resetToAuth } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const formatISODate = (d: Date) => d.toISOString().split("T")[0];
 
@@ -173,7 +174,7 @@ const AdminCourseManagementScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   sectionTitle: { padding: 16, backgroundColor: "#fff" }, // Gộp style này nếu nó giống hệt nhau
   headerArea: { padding: 16, backgroundColor: "#fff", marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

@@ -15,12 +15,11 @@ const LANGUAGE_DETECTOR = {
       if (savedLanguage) {
         callback(savedLanguage);
       } else {
-        // Lấy ngôn ngữ mặc định từ hệ thống nếu không có trong AsyncStorage
         const systemLanguage = (await AsyncStorage.getItem("system-language")) || "en";
         callback(systemLanguage);
       }
     } catch (error) {
-      callback("en"); // Fallback nếu có lỗi
+      callback("en"); 
     }
   },
   init: () => {},

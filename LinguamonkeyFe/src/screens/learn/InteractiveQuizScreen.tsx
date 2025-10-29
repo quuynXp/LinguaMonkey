@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Animated, Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { QuizQuestion, QuizResult } from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const InteractiveQuizScreen = ({ navigation, route }) => {
   const { quizData } = route.params || {}
@@ -403,7 +404,7 @@ const InteractiveQuizScreen = ({ navigation, route }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

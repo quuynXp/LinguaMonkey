@@ -27,6 +27,7 @@ import {
     useFavoriteVideo,
 } from "../../hooks/useBilinguaVideo"; 
 import type { BilingualVideo, Subtitle, VocabularyItem } from "../../types/api";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 
@@ -677,7 +678,7 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: "#fff" },
     header: {
         flexDirection: "row",

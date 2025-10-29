@@ -11,6 +11,7 @@ import { LessonCategoryResponse, LessonResponse, LessonQuestionResponse, LessonP
 // import { t } from "i18next" // <-- XÓA DÒNG NÀY
 import { useTranslation } from "react-i18next" // <-- THÊM DÒNG NÀY
 import { formatDateTime } from "../../utils/timeHelper"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 type RootStackParamList = {
   ProficiencyTest: undefined
@@ -436,7 +437,7 @@ const ProficiencyTestScreen = ({ navigation }: Props) => {
 }
 
 // ... styles ...
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   content: { flex: 1, paddingTop: 50 },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingBottom: 20 },

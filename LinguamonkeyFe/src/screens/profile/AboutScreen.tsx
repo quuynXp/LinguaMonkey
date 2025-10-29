@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const AboutScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -206,7 +207,7 @@ const AboutScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

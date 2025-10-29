@@ -13,6 +13,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useChatStore } from "../../stores/ChatStore";
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface Room {
   id: string;
@@ -342,7 +343,7 @@ const ChatRoomListScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

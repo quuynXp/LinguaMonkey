@@ -5,6 +5,7 @@ import Icon from '@expo/vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';
 import NotificationService, { type NotificationPreferences } from "../../services/notificationService"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const NotificationSettingsScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -492,7 +493,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

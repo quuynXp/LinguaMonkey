@@ -24,35 +24,39 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
 
   setTokens: async (accessToken, refreshToken) => {
     try {
-      if (accessToken) {
-        const trimmedAccess = accessToken.trim();
+      const trimmedAccess =
+        typeof accessToken === 'string' ? accessToken.trim() : null;
+      const trimmedRefresh =
+        typeof refreshToken === 'string' ? refreshToken.trim() : null;
+
+      if (trimmedAccess) {
         await accessStorage.setItem('accessToken', trimmedAccess);
         console.log('Stored accessToken length:', trimmedAccess.length);
       } else {
         await accessStorage.removeItem('accessToken');
       }
 
-      if (refreshToken) {
-        const trimmedRefresh = refreshToken.trim();
+      if (trimmedRefresh) {
         await refreshStorage.setItem('refreshToken', trimmedRefresh);
         console.log('Stored refreshToken length:', trimmedRefresh.length);
       } else {
         await refreshStorage.removeItem('refreshToken');
       }
 
-      if (accessToken || refreshToken) {
+      if (trimmedAccess || trimmedRefresh) {
         await AsyncStorage.setItem('hasLoggedIn', 'true');
       }
 
       set({
-        accessToken: accessToken?.trim() ?? null,
-        refreshToken: refreshToken?.trim() ?? null,
+        accessToken: trimmedAccess,
+        refreshToken: trimmedRefresh,
       });
     } catch (e) {
       console.error('setTokens error:', e);
       throw e;
     }
   },
+
 
   clearTokens: async () => {
     try {
@@ -74,29 +78,26 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
       const storedAccess = await accessStorage.getItem('accessToken');
       const storedRefresh = await refreshStorage.getItem('refreshToken');
 
-      console.log('[initializeTokens] found:', {
-        access: !!storedAccess,
-        refresh: !!storedRefresh,
-      });
+      const accessToken = typeof storedAccess === 'string' ? storedAccess.trim() : null;
+      const refreshToken = typeof storedRefresh === 'string' ? storedRefresh.trim() : null;
 
-      if (!storedAccess && !storedRefresh) {
+      if (!accessToken && !refreshToken) {
         console.log('[initializeTokens] No tokens found → skip refresh');
         set({ initialized: true });
         return false;
       }
 
       set({
-        accessToken: storedAccess ?? null,
-        refreshToken: storedRefresh ?? null,
+        accessToken,
+        refreshToken,
         initialized: true,
       });
 
-      if (storedRefresh) {
+      if (refreshToken) {
+        console.log('[initializeTokens] Attempting refresh with refreshToken...');
         try {
-          console.log('[initializeTokens] Attempting refresh with refreshToken...');
-          const result = await refreshTokenPure(storedRefresh);
+          const result = await refreshTokenPure(refreshToken);
           console.log('[initializeTokens] Refresh success ✅');
-
           await get().setTokens(result.token, result.refreshToken);
           return true;
         } catch (e: any) {

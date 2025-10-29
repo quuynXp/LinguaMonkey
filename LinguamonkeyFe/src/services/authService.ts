@@ -1,11 +1,12 @@
-// authService.ts
 import { useTokenStore } from '../stores/tokenStore';
 import { useUserStore } from '../stores/UserStore';
 import { decodeToken, getRoleFromToken } from '../utils/decodeToken';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resetToTab, resetToAuth } from "../utils/navigationRef";
-import { loginWithGoogleFirebase, loginWithFacebookFirebase } from './firebaseService';
 import axios from 'axios';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
 
 const EXPO_PUBLIC_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
 
@@ -24,35 +25,30 @@ export const loginWithEmail = async (email: string, password: string) => {
     }
   } catch (error) {
     console.error('Email login error:', error);
+    throw error;
   }
   return false;
 };
 
-export async function loginWithGoogle() {
+export const handleGoogleLogin = async (idToken: string) => {
   try {
-    const idToken = await loginWithGoogleFirebase();
-    const res = await refreshClient.post('/auth/firebase-login', {}, {
-      headers: { Authorization: `Bearer ${idToken}` }
-    });
+    const res = await refreshClient.post('/auth/google-login', { idToken });
     await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
     return true;
   } catch (error) {
     console.error('Google login error:', error);
-    return false;
+    throw error;
   }
 }
 
-export async function loginWithFacebook() {
+export const handleFacebookLogin = async (accessToken: string) => {
   try {
-    const idToken = await loginWithFacebookFirebase();
-    const res = await refreshClient.post('/auth/firebase-login', {}, {
-      headers: { Authorization: `Bearer ${idToken}` }
-    });
+    const res = await refreshClient.post('/auth/facebook-login', { accessToken });
     await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
     return true;
   } catch (error) {
     console.error('Facebook login error:', error);
-    return false;
+    throw error;
   }
 }
 
@@ -127,6 +123,31 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
     resetToAuth('Login');
   }
 }
+
+// --- OTP login ---
+export const requestOtp = async (emailOrPhone: string) => {
+  try {
+    const res = await refreshClient.post('/auth/request-otp', { emailOrPhone });
+    return res.data.result?.success || false;
+  } catch (error: any) {
+    console.error('Request OTP error:', error);
+    throw error;
+  }
+};
+
+export const verifyOtpLogin = async (emailOrPhone: string, otpCode: string) => {
+  try {
+    const res = await refreshClient.post('/auth/verify-otp', { emailOrPhone, code: otpCode });
+    if (res.data.result?.token && res.data.result?.refreshToken) {
+      await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
+      return true;
+    }
+  } catch (error) {
+    console.error('OTP login error:', error);
+  }
+  return false;
+};
+
 
 export const registerWithEmail = async (firstName: string, lastName: string, email: string, password: string) => {
   const fullname = `${firstName} ${lastName}`;

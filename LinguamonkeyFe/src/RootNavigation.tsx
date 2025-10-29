@@ -5,6 +5,7 @@ import * as Notifications from "expo-notifications";
 import NetInfo from "@react-native-community/netinfo";
 import { RootNavigationRef, flushPendingActions, resetToTab } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
+import notificationService from './services/notificationService';
 import MainStack from "./navigation/stack/MainStack";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
@@ -25,7 +26,7 @@ const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [initialScreenName, setInitialScreenName] =
     useState<InitialRoute>("AppLaunchScreen");
-  const [isConnected, setIsConnected] = useState(true); 
+  const [isConnected, setIsConnected] = useState(true);
 
   const initializeTokens = useTokenStore((s) => s.initializeTokens);
 
@@ -40,6 +41,10 @@ const RootNavigation = () => {
     return () => {
       unsubscribe();
     };
+  }, []);
+
+  useEffect(() => {
+    notificationService.init();
   }, []);
 
   useEffect(() => {
@@ -70,10 +75,9 @@ const RootNavigation = () => {
 
         const userStore = useUserStore.getState();
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
+        const locales = Localization.getLocales();
         if (!savedLanguage) {
-          savedLanguage = Localization.locale
-            ? Localization.locale.split("-")[0]
-            : "en";
+          savedLanguage = locales[0].languageCode || 'en';
           await AsyncStorage.setItem("userLanguage", savedLanguage);
           console.log("Saved default language:", savedLanguage);
         }

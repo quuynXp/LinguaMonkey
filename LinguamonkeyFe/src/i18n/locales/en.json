@@ -307,7 +307,7 @@
   },
   "common": {
     "loading": "Loading...",
-    "appName": "LinguaLearn",
+    "appName": "MonkeyLingua",
     "error": "Error",
     "success": "Success",
     "cancel": "Cancel",
@@ -1397,7 +1397,7 @@
     "termsOfUse": "Terms of Use",
     "cookiePolicy": "Cookie Policy",
     "contactSection": "Need Help?",
-    "contactText": "If you have questions about privacy, contact us at: privacy@linguaviet.com"
+    "contactText": "If you have questions about privacy, contact us at: privacy@MonkeyLingua.com"
   },
   "leaderboard": {
     "level": "Level",
@@ -1475,10 +1475,10 @@
       "title": "Legal & Contact",
       "terms": "Terms of Use",
       "privacy": "Privacy Policy",
-      "contact": "Contact: info@linguaviet.com"
+      "contact": "Contact: info@MonkeyLingua.com"
     },
-    "copyright": "© 2024 LinguaViet. All rights reserved.",
-    "madeWithLove": "Made with ❤️ in Vietnam"
+    "copyright": "© 2025 MonkeyLingua. All rights reserved.",
+    "madeWithLove": "Made with ❤️ in Vietnam by NgocQuyen"
   },
   "helpSupport": {
     "title": "Help & Support",
@@ -1515,7 +1515,7 @@
       "4q": "Does the app work offline?",
       "4a": "Some features are offline, but best experience requires internet.",
       "5q": "How to contact support?",
-      "5a": "You can email support@linguaviet.com or use chat."
+      "5a": "You can email support@MonkeyLingua.com or use chat."
     },
     "supportOptions": {
       "email": {
@@ -1554,7 +1554,7 @@
     "legend": "Legendary streak!"
   },
   "welcome": {
-    "title": "Welcome to Linguamonkey",
+    "title": "Welcome to MonkeyLingua",
     "subtitle": "Your AI-powered English learning companion"
   },
   "confirmPassword": "Confirm Password"

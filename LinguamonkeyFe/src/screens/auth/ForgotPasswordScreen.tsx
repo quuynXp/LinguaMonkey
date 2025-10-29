@@ -3,6 +3,7 @@ import { Alert, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } 
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { sendPasswordReset } from '../../services/authService';
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -202,7 +203,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

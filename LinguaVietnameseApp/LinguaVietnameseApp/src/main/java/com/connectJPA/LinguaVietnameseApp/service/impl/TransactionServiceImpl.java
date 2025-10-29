@@ -47,20 +47,16 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Value("${vnpay.tmnCode}")
     private String vnpTmnCode;
+
     @Value("${vnpay.hashSecret}")
     private String vnpHashSecret;
+
     @Value("${vnpay.url}")
     private String vnpUrl;
-    @Value("${momo.partnerCode}")
-    private String momoPartnerCode;
-    @Value("${momo.accessKey}")
-    private String momoAccessKey;
-    @Value("${momo.secretKey}")
-    private String momoSecretKey;
-    @Value("${momo.url}")
-    private String momoUrl;
+
     @Value("${stripe.apiKey}")
     private String stripeApiKey;
+
     @Value("${stripe.webhookSecret}")
     private String stripeWebhookSecret;
 
@@ -161,8 +157,6 @@ public class TransactionServiceImpl implements TransactionService {
             switch (request.getProvider()) {
                 case VNPAY:
                     return createVnpayPaymentUrl(transaction, request);
-                case MOMO:
-                    return createMomoPaymentUrl(transaction, request);
                 case STRIPE:
                     return createStripeCheckoutSession(transaction, request);
                 default:
@@ -180,8 +174,6 @@ public class TransactionServiceImpl implements TransactionService {
             switch (request.getProvider()) {
                 case "VNPAY":
                     return handleVnpayWebhook(request.getPayload());
-                case "MOMO":
-                    return handleMomoWebhook(request.getPayload());
                 case "STRIPE":
                     return handleStripeWebhook(request.getPayload());
                 default:
@@ -213,25 +205,25 @@ public class TransactionServiceImpl implements TransactionService {
         return vnpUrl + "?" + queryString + "&vnp_SecureHash=" + secureHash;
     }
 
-    private String createMomoPaymentUrl(Transaction transaction, PaymentRequest request) {
-        Map<String, String> momoParams = new HashMap<>();
-        momoParams.put("partnerCode", momoPartnerCode);
-        momoParams.put("accessKey", momoAccessKey);
-        momoParams.put("requestId", UUID.randomUUID().toString());
-        momoParams.put("amount", request.getAmount().toString());
-        momoParams.put("orderId", transaction.getTransactionId().toString());
-        momoParams.put("orderInfo", request.getDescription() != null ? request.getDescription() : "Payment for LinguaVietnamese");
-        momoParams.put("returnUrl", request.getReturnUrl());
-        momoParams.put("notifyUrl", "https://yourapp.com/api/transactions/momo-notify");
-        momoParams.put("requestType", "captureMoMoWallet");
-
-        String signature = MomoUtils.generateSignature(momoParams, momoSecretKey);
-        momoParams.put("signature", signature);
-
-        // Simulate HTTP POST to MoMo API
-        // In practice, use RestTemplate or WebClient to call MoMo API
-        return momoUrl + "?data=" + MomoUtils.toJson(momoParams);
-    }
+//    private String createMomoPaymentUrl(Transaction transaction, PaymentRequest request) {
+//        Map<String, String> momoParams = new HashMap<>();
+//        momoParams.put("partnerCode", momoPartnerCode);
+//        momoParams.put("accessKey", momoAccessKey);
+//        momoParams.put("requestId", UUID.randomUUID().toString());
+//        momoParams.put("amount", request.getAmount().toString());
+//        momoParams.put("orderId", transaction.getTransactionId().toString());
+//        momoParams.put("orderInfo", request.getDescription() != null ? request.getDescription() : "Payment for LinguaVietnamese");
+//        momoParams.put("returnUrl", request.getReturnUrl());
+//        momoParams.put("notifyUrl", "https://yourapp.com/api/transactions/momo-notify");
+//        momoParams.put("requestType", "captureMoMoWallet");
+//
+//        String signature = MomoUtils.generateSignature(momoParams, momoSecretKey);
+//        momoParams.put("signature", signature);
+//
+//        // Simulate HTTP POST to MoMo API
+//        // In practice, use RestTemplate or WebClient to call MoMo API
+//        return momoUrl + "?data=" + MomoUtils.toJson(momoParams);
+//    }
 
     private String createStripeCheckoutSession(Transaction transaction, PaymentRequest request) {
         Stripe.apiKey = stripeApiKey;
@@ -288,28 +280,28 @@ public class TransactionServiceImpl implements TransactionService {
         return "Webhook processed successfully";
     }
 
-    private String handleMomoWebhook(Map<String, String> params) {
-        String requestId = params.get("requestId");
-        String orderId = params.get("orderId");
-        String resultCode = params.get("resultCode");
-
-        Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(UUID.fromString(orderId))
-                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-
-        String computedSignature = MomoUtils.generateSignature(params, momoSecretKey);
-        if (!computedSignature.equals(params.get("signature"))) {
-            log.error("Invalid MoMo webhook signature for transaction ID: {}", orderId);
-            throw new AppException(ErrorCode.INVALID_SIGNATURE);
-        }
-
-        if ("0".equals(resultCode)) {
-            transaction.setStatus(TransactionStatus.SUCCESS);
-        } else {
-            transaction.setStatus(TransactionStatus.FAILED);
-        }
-        transactionRepository.save(transaction);
-        return "Webhook processed successfully";
-    }
+//    private String handleMomoWebhook(Map<String, String> params) {
+//        String requestId = params.get("requestId");
+//        String orderId = params.get("orderId");
+//        String resultCode = params.get("resultCode");
+//
+//        Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(UUID.fromString(orderId))
+//                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+//
+//        String computedSignature = MomoUtils.generateSignature(params, momoSecretKey);
+//        if (!computedSignature.equals(params.get("signature"))) {
+//            log.error("Invalid MoMo webhook signature for transaction ID: {}", orderId);
+//            throw new AppException(ErrorCode.INVALID_SIGNATURE);
+//        }
+//
+//        if ("0".equals(resultCode)) {
+//            transaction.setStatus(TransactionStatus.SUCCESS);
+//        } else {
+//            transaction.setStatus(TransactionStatus.FAILED);
+//        }
+//        transactionRepository.save(transaction);
+//        return "Webhook processed successfully";
+//    }
 
     private String handleStripeWebhook(Map<String, String> params) {
         String payload = params.get("payload");

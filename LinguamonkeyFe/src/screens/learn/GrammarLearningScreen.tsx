@@ -17,6 +17,7 @@ import { useGrammar } from "../../hooks/useGrammar";
 import { useAppStore } from "../../stores/appStore";
 import type { GrammarExercise, GrammarRule, GrammarTopic, SubmitExerciseResponse } from "../../types/api";
 import { grammarExerciseSchema, validateData } from "../../utils/validation";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const GrammarLearningScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -410,7 +411,7 @@ const GrammarLearningScreen = ({ navigation }: any) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#f5f5f5",

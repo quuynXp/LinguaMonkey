@@ -12,6 +12,7 @@ import { languageToCountry } from "../../types/api"
 import { queryClient } from "../../services/queryClient"
 import { useTranslation } from "react-i18next"
 import { gotoTab } from "../../utils/navigationRef"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const HomeScreen = ({ navigation }) => {
   const { t } = useTranslation()
@@ -279,7 +280,7 @@ const HomeScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

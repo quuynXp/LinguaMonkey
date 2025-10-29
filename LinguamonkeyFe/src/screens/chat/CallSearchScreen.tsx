@@ -2,6 +2,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
 import { Alert, Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useChatStore } from '../../stores/ChatStore';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const CallSearchScreen = ({ navigation, route }) => {
   const { preferences } = route.params
@@ -335,7 +336,7 @@ const CallSearchScreen = ({ navigation, route }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

@@ -64,6 +64,9 @@
 <p align="center">
   <img src="docs/assets/architecture.png" alt="Architecture Diagram" width="600"/>
 </p>
+<p align="center">
+  <img src="docs/assets/architecture_full.png" alt="Architecture Diagram" width="600"/>
+</p>
 
 ### Backend
 - **Spring Boot Monolith** – Core services  

@@ -7,6 +7,7 @@ import {create} from "zustand"
 import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../api/axiosInstance"
 import { User, UserGoal, UserLanguage } from "../../types/api"
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 
 
@@ -619,7 +620,7 @@ const AccountSetupScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",

@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface Language {
   id: string;
@@ -276,7 +277,7 @@ const LanguageManagementScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
