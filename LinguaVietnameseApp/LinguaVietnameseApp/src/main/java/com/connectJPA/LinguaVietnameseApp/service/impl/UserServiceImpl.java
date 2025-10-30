@@ -13,6 +13,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
+import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.*;
@@ -60,6 +61,9 @@ public class UserServiceImpl implements UserService {
     private final PasswordEncoder  passwordEncoder;
     private final ChatMessageRepository chatMessageRepository;
     private final VideoCallRepository videoCallRepository;
+    private final AuthenticationServiceImpl authenticationService;
+    private final UserRoleRepository userRoleRepository;
+    private final GrpcClientService grpcClientService;
 
 
     @Override
@@ -160,7 +164,7 @@ public class UserServiceImpl implements UserService {
             if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
             if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
 
-            user.setAuthProvider(AuthProvider.QUICK_START);
+            authenticationService.findOrCreateUserAccount(request.getEmail(), request.getFullname(), null, AuthProvider.QUICK_START, request.getEmail());
 
             user = userRepository.saveAndFlush(user);
 

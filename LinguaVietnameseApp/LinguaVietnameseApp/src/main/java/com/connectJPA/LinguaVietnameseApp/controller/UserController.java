@@ -59,12 +59,12 @@ public class UserController {
             @ApiResponse(responseCode = "404", description = "User not found"),
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
-    @GetMapping("/{id}")
+    @GetMapping("/{userId}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> getUserById(
-            @Parameter(description = "User ID") @PathVariable UUID id,
+            @Parameter(description = "User ID") @PathVariable UUID userId,
             Locale locale) {
-        UserResponse user = userService.getUserById(id);
+        UserResponse user = userService.getUserById(userId);
         return AppApiResponse.<UserResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("user.get.success", null, locale))
@@ -320,4 +320,6 @@ public class UserController {
                 .result(user)
                 .build();
     }
+
+
 }

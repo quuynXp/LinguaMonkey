@@ -73,7 +73,6 @@ public class ApplicationInitConfig {
             if (userRepository.findByEmailAndIsDeletedFalse(adminEmail).isEmpty()) {
                 User adminUser = User.builder()
                         .email(adminEmail)
-                        .authProvider(AuthProvider.EMAIL)
                         .password(passwordEncoder.encode("admin"))
                         .phone("0373730397")
                         .build();

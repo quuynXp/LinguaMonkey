@@ -87,6 +87,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     final UserRoleRepository userRoleRepository;
     final RoleRepository roleRepository;
     final RestTemplate restTemplate;
+    final UserAuthAccountRepository userAuthAccountRepository;
 
     private RSAPrivateKey getPrivateKey() throws Exception {
         String key = new String(Files.readAllBytes(privateKeyResource.getFile().toPath()), StandardCharsets.UTF_8);
@@ -110,53 +111,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         return (RSAPublicKey) kf.generatePublic(spec);
     }
 
-    @Override
-    public AuthenticationResponse loginWithFirebase(String firebaseIdToken) {
-        try {
-            FirebaseToken decodedToken = FirebaseAuth.getInstance().verifyIdToken(firebaseIdToken);
-            String uid = decodedToken.getUid();
-
-            UserRecord userRecord = FirebaseAuth.getInstance().getUser(uid);
-            String email = userRecord.getEmail();
-            String phone = userRecord.getPhoneNumber();
-            String fullName = userRecord.getDisplayName();
-
-            if (email == null && phone == null) {
-                throw new AppException(ErrorCode.INVALID_USER_INFO);
-            }
-
-            User user = userRepository.findByEmailOrPhoneAndIsDeletedFalse(email, phone)
-                    .orElseGet(() -> userRepository.save(
-                            User.builder()
-                                    .email(email)
-                                    .phone(phone)
-                                    .fullname(fullName)
-                                    .authProvider(AuthProvider.FIREBASE)
-                                    .password(null)
-                                    .createdAt(OffsetDateTime.now())
-                                    .build()
-                    ));
-
-            String accessToken = generateToken(user);
-            String refreshToken = generateRefreshToken(user, 30);
-
-            refreshTokenRepository.save(RefreshToken.builder()
-                    .token(refreshToken)
-                    .userId(user.getUserId())
-                    .expiresAt(OffsetDateTime.now().plusDays(30))
-                    .isRevoked(false)
-                    .build());
-
-            return AuthenticationResponse.builder()
-                    .token(accessToken)
-                    .refreshToken(refreshToken)
-                    .authenticated(true)
-                    .build();
-
-        } catch (FirebaseAuthException e) {
-            throw new AppException(ErrorCode.FIREBASE_TOKEN_VERIFICATION_FAILED);
-        }
-    }
 
     @Transactional
     public void logoutAll(UUID userId) {
@@ -347,7 +301,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Override
     @Transactional
-    public AuthenticationResponse authenticate(AuthenticationRequest request, String deviceId, String ip, String userAgent) {
+    public AuthenticationResponse authenticate(AuthenticationRequest request,
+                                               String deviceId, String ip, String userAgent) {
         User user = userRepository.findByEmailAndIsDeletedFalse(request.getEmail())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -355,94 +310,73 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
 
-        List<RefreshToken> tokens = refreshTokenRepository.findAllByUserId(user.getUserId());
-        // optional: if (tokens.size() >= 5) throw new AppException(ErrorCode.MAX_SESSIONS_EXCEEDED);
+        userAuthAccountRepository.findByUser_UserIdAndProvider(user.getUserId(), AuthProvider.EMAIL)
+                .or(() -> Optional.of(userAuthAccountRepository.save(UserAuthAccount.builder()
+                        .user(user)
+                        .provider(AuthProvider.EMAIL)
+                        .providerUserId(user.getEmail())
+                        .verified(true)
+                        .primaryAccount(true)
+                        .linkedAt(OffsetDateTime.now())
+                        .build())));
 
-        String accessToken = generateToken(user);
-        String refreshToken = generateRefreshToken(user, 30);
-
-        RefreshToken refreshTokenEntity = RefreshToken.builder()
-                .token(refreshToken)
-                .userId(user.getUserId())
-                .deviceId(deviceId)
-                .ip(ip)
-                .userAgent(userAgent)
-                .expiresAt(OffsetDateTime.now().plusDays(30))
-                .isRevoked(false)
-                .build();
-
-        refreshTokenRepository.save(refreshTokenEntity);
-
-        return AuthenticationResponse.builder()
-                .token(accessToken)
-                .refreshToken(refreshToken)
-                .authenticated(true)
-                .build();
+        return createAndSaveTokens(user, deviceId, ip, userAgent);
     }
+
 
     @Override
     @Transactional
     public AuthenticationResponse loginWithGoogle(String idToken, String deviceId, String ip, String userAgent) {
         try {
-            // 1. Khởi tạo Verifier
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
                     .setAudience(Collections.singletonList(googleClientId))
                     .build();
 
-            // 2. Xác thực token
             GoogleIdToken googleIdToken = verifier.verify(idToken);
             if (googleIdToken == null) {
                 throw new AppException(ErrorCode.GOOGLE_TOKEN_INVALID);
             }
 
-            // 3. Lấy thông tin người dùng từ token
             GoogleIdToken.Payload payload = googleIdToken.getPayload();
             String email = payload.getEmail();
-            if (email == null || email.isBlank()) {
+            String fullName = (String) payload.get("name");
+            String googleUserId = payload.getSubject();
+
+            if (email == null || googleUserId == null) {
                 throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
             }
-            String fullName = (String) payload.get("name");
 
-            // 4. Tìm hoặc tạo người dùng
-            User user = findOrCreateUser(email, fullName, null, AuthProvider.GOOGLE);
-
-            // 5. Tạo và lưu tokens
+            User user = findOrCreateUserAccount(email, fullName, null, AuthProvider.GOOGLE, googleUserId);
             return createAndSaveTokens(user, deviceId, ip, userAgent);
 
-        } catch (GeneralSecurityException | IOException e) {
-            log.error("Google token verification failed", e);
-            throw new AppException(ErrorCode.GOOGLE_TOKEN_INVALID);
         } catch (Exception e) {
             log.error("Google login failed", e);
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+            throw new AppException(ErrorCode.GOOGLE_TOKEN_INVALID);
         }
     }
+
 
     @Override
     @Transactional
     public AuthenticationResponse loginWithFacebook(String accessToken, String deviceId, String ip, String userAgent) {
         try {
-            // 1. Xây dựng URL cho Graph API
-            String graphApiUrl = "https://graph.facebook.com/me?fields=id,name,email,first_name,last_name&access_token=" + accessToken;
-
-            // 2. Gọi API (Yêu cầu @Bean RestTemplate)
-            FacebookUserResponse fbResponse = restTemplate.getForObject(graphApiUrl, FacebookUserResponse.class);
-
-            if (fbResponse == null || fbResponse.email() == null) {
+            String url = "https://graph.facebook.com/me?fields=id,name,email&access_token=" + accessToken;
+            FacebookUserResponse fb = restTemplate.getForObject(url, FacebookUserResponse.class);
+            if (fb == null || fb.email() == null) {
                 throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
             }
 
-            // 3. Tìm hoặc tạo người dùng
-            User user = findOrCreateUser(fbResponse.email(), fbResponse.name(), null, AuthProvider.FACEBOOK);
+            User user = findOrCreateUserAccount(fb.email(), fb.name(), null,
+                    AuthProvider.FACEBOOK, fb.id());
 
-            // 4. Tạo và lưu tokens
             return createAndSaveTokens(user, deviceId, ip, userAgent);
 
         } catch (Exception e) {
-            log.error("Facebook token verification failed", e);
+            log.error("Facebook login failed", e);
             throw new AppException(ErrorCode.FACEBOOK_TOKEN_INVALID);
         }
     }
+
 
     @Override
     @Transactional
@@ -487,35 +421,31 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public AuthenticationResponse verifyOtpAndLogin(String emailOrPhone, String code, String deviceId, String ip, String userAgent) {
-        // 1. Lấy mã đã lưu
         String storedCode = otpLoginCodes.get(emailOrPhone);
         Instant expiry = otpLoginExpiry.get(emailOrPhone);
 
-        // 2. Kiểm tra mã
-        if (storedCode == null || !storedCode.equals(code)) {
+        if (storedCode == null || !storedCode.equals(code))
             throw new AppException(ErrorCode.OTP_INVALID);
-        }
-
-        // 3. Kiểm tra hết hạn
-        if (expiry == null || expiry.isBefore(Instant.now())) {
-            // Xóa mã hết hạn
-            otpLoginCodes.remove(emailOrPhone);
-            otpLoginExpiry.remove(emailOrPhone);
+        if (expiry == null || expiry.isBefore(Instant.now()))
             throw new AppException(ErrorCode.OTP_EXPIRED);
-        }
 
-        // 4. Xác thực thành công -> Xóa mã đã dùng
         otpLoginCodes.remove(emailOrPhone);
         otpLoginExpiry.remove(emailOrPhone);
 
-        // 5. Tìm người dùng (chắc chắn tồn tại vì đã check ở requestOtp)
         boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
-        User user = userRepository.findByEmailOrPhoneAndIsDeletedFalse(isPhone ? null : emailOrPhone, isPhone ? emailOrPhone : null)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)); // Check lại cho chắc
+        String providerUserId = emailOrPhone;
 
-        // 6. Tạo và lưu tokens
+        User user = findOrCreateUserAccount(
+                isPhone ? null : emailOrPhone,
+                null,
+                isPhone ? emailOrPhone : null,
+                isPhone ? AuthProvider.PHONE : AuthProvider.EMAIL,
+                providerUserId
+        );
+
         return createAndSaveTokens(user, deviceId, ip, userAgent);
     }
+
 
     @Transactional
     public AuthenticationResponse handleRefreshToken(String refreshToken, String deviceId, String ip, String userAgent) {
@@ -693,58 +623,47 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
 //    Helper
-    private User findOrCreateUser(String email, String fullName, String phone, AuthProvider provider) {
-        // 1. Ưu tiên tìm bằng email nếu có
-        Optional<User> userOptional;
+    public User findOrCreateUserAccount(String email, String fullName, String phone,
+                                         AuthProvider provider, String providerUserId) {
+
+        // Tìm tài khoản xác thực theo provider_user_id
+        Optional<UserAuthAccount> existingAuth =
+                userAuthAccountRepository.findByProviderAndProviderUserId(provider, providerUserId);
+
+        if (existingAuth.isPresent()) {
+            return existingAuth.get().getUser();
+        }
+
+        // Nếu chưa có, tìm xem User có tồn tại theo email/phone không
+        Optional<User> existingUser = Optional.empty();
         if (email != null && !email.isBlank()) {
-            userOptional = userRepository.findByEmailAndIsDeletedFalse(email);
+            existingUser = userRepository.findByEmailAndIsDeletedFalse(email);
         } else if (phone != null && !phone.isBlank()) {
-            userOptional = userRepository.findByPhoneAndIsDeletedFalse(phone);
-        } else {
-            // Không có email hoặc phone, không thể tạo/tìm user
-            throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
+            existingUser = userRepository.findByPhoneAndIsDeletedFalse(phone);
         }
 
-        // 2. Nếu tìm thấy User
-        if (userOptional.isPresent()) {
-            User user = userOptional.get();
-            // User đã tồn tại.
-            // Cập nhật thông tin nếu cần (ví dụ: provider, fullname)
-            if (user.getAuthProvider() == null || user.getAuthProvider() == AuthProvider.EMAIL) {
-                user.setAuthProvider(provider);
-                if (user.getFullname() == null || user.getFullname().isBlank()) {
-                    user.setFullname(fullName);
-                }
-                userRepository.save(user);
-            }
-            return user;
-        }
+        User user = existingUser.orElseGet(() ->
+                userRepository.save(User.builder()
+                        .email(email)
+                        .phone(phone)
+                        .fullname(fullName)
+                        .createdAt(OffsetDateTime.now())
+                        .build())
+        );
 
-        // 3. Nếu không tìm thấy -> Tạo User mới
-        Role defaultRole = roleRepository.findByRoleNameAndIsDeletedFalse(RoleName.STUDENT)
-                .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND)); // Đảm bảo bạn có RoleName.USER
-
-        User newUser = User.builder()
-                .email(email)
-                .phone(phone)
-                .fullname(fullName)
-                .authProvider(provider)
-                .password(null) // Social login không có password
-                .createdAt(OffsetDateTime.now())
-                .isDeleted(false)
+        UserAuthAccount authAccount = UserAuthAccount.builder()
+                .user(user)
+                .provider(provider)
+                .providerUserId(providerUserId)
+                .verified(true)
+                .primaryAccount(existingUser.isEmpty()) // nếu là user mới → account này là primary
+                .linkedAt(OffsetDateTime.now())
                 .build();
 
-        User savedUser = userRepository.save(newUser);
-
-        // Gán Role mặc định
-        UserRole userRole = new UserRole();
-        userRole.setUser(savedUser);
-        userRole.setRole(defaultRole);
-        userRoleRepository.save(userRole);
-
-        log.info("Created new user via {}: {}", provider, email);
-        return savedUser;
+        userAuthAccountRepository.save(authAccount);
+        return user;
     }
+
 
     private AuthenticationResponse createAndSaveTokens(User user, String deviceId, String ip, String userAgent) {
         String accessToken = generateToken(user);

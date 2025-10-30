@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.repository;
 
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import org.springframework.data.domain.Page;
@@ -34,6 +35,12 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
             @Param("languageCode") String languageCode,
             @Param("excluded") List<UUID> excluded,
             @Param("limit") int limit);
+
+
+    Page<Course> findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
+            String title, String languageCode, CourseApprovalStatus approvalStatus, Pageable pageable);
+
+    Page<Course> findByTypeAndApprovalStatusAndIsDeletedFalse(CourseType type, CourseApprovalStatus approvalStatus, Pageable pageable);
 
 
 

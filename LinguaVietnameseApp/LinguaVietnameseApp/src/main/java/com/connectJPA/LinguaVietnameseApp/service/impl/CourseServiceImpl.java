@@ -2,16 +2,15 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CourseRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
-import com.connectJPA.LinguaVietnameseApp.entity.Course;
-import com.connectJPA.LinguaVietnameseApp.entity.CourseEnrollment;
-import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.entity.*;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
+import com.connectJPA.LinguaVietnameseApp.enums.RoleName;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
+import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.CourseEnrollmentRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.CourseRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.*;
 import com.connectJPA.LinguaVietnameseApp.service.CourseDiscountService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
@@ -25,7 +24,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 
 import static com.nimbusds.jose.Requirement.RECOMMENDED;
@@ -40,17 +42,22 @@ public class CourseServiceImpl implements CourseService {
     private final CourseEnrollmentService courseEnrollmentService;
     private final CourseEnrollmentRepository courseEnrollmentRepository;
     private final UserRepository userRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final LessonRepository lessonRepository;
+    private final GrpcClientService grpcClientService;
+    private final RoleRepository roleRepository;
 
     @Cacheable(value = "courses", key = "#title + ':' + #languageCode + ':' + #pageable")
     @Override
     public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Pageable pageable) {
         Page<Course> courses;
         if (type == null) {
-            courses = courseRepository.findByTitleContainingIgnoreCaseAndLanguageCodeAndIsDeletedFalse(
-                    title, languageCode, pageable);
+            courses = courseRepository.findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
+                    title, languageCode, CourseApprovalStatus.APPROVED, pageable);
         } else {
-            courses = courseRepository.findByTypeAndIsDeletedFalse(type, pageable);
+            courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
         }
+
         return courses.map(courseMapper::toResponse);
     }
 
@@ -73,6 +80,25 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    @Transactional
+    public CourseResponse approveCourse(UUID id) {
+        Course c = courseRepository.findByCourseIdAndIsDeletedFalse(id).orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
+        c.setApprovalStatus(CourseApprovalStatus.APPROVED);
+        courseRepository.save(c);
+        return courseMapper.toResponse(c);
+    }
+
+    @Override
+    @Transactional
+    public CourseResponse rejectCourse(UUID id, String reason) {
+        Course c = courseRepository.findByCourseIdAndIsDeletedFalse(id).orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
+        c.setApprovalStatus(CourseApprovalStatus.REJECTED);
+        courseRepository.save(c);
+        return courseMapper.toResponse(c);
+    }
+
+
+    @Override
     public Page<CourseResponse> getDiscountedCourses(Pageable pageable) {
         Page<Course> discounted = courseRepository.findDiscountedCourses(pageable);
         return discounted.map(courseMapper::toResponse);
@@ -92,10 +118,102 @@ public class CourseServiceImpl implements CourseService {
     @Transactional
     @CacheEvict(value = {"courses"}, allEntries = true)
     public CourseResponse createCourse(CourseRequest request) {
+        UUID creatorId = request.getCreatorId();
+        User teacher = userRepository.findById(creatorId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        Optional<Role> role = roleRepository.findByRoleNameAndIsDeletedFalse(RoleName.TEACHER);
+
+
+        // ensure user has teacher role
+        if (role.isPresent() && !userRoleRepository.findRolesByUserId(creatorId).contains(role))
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+
+        List<UUID> lessonIds = request.getLessonIds();
+        if (lessonIds == null || lessonIds.isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        final int MIN_LESSONS = 5; // BẮT BUỘC 5 bài trước khi tạo course
+        if (lessonIds.size() < MIN_LESSONS) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        // validate lessons exist and belong to creator
+        List<Lesson> lessons = lessonRepository.findByCreatorIdAndLessonIdIn(creatorId, lessonIds);
+        if (lessons.size() != lessonIds.size()) {
+            throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
+        if (request.getPrice() != null && request.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
         Course course = courseMapper.toEntity(request);
+        course.setCreatorId(creatorId);
+        course.setApprovalStatus(CourseApprovalStatus.PENDING);
+        course = courseRepository.save(course);
+
+        // link lessons to course and set first 5 lessons as free
+        // ensure deterministic order: use orderIndex if present, else the order of lessonIds provided
+        List<Lesson> orderedLessons = lessons.stream()
+                .sorted((a, b) -> {
+                    Integer ai = (a.getOrderIndex() == null) ? 0 : a.getOrderIndex();
+                    Integer bi = b.getOrderIndex() == null ? 0 : b.getOrderIndex();
+                    return ai.compareTo(bi);
+                }).toList();
+
+        // If teacher provided a specific order via lessonIds, better respect that:
+        // Reorder by index in lessonIds list if orderIndex all zero/duplicate
+        // (optional) -- for deterministic behavior, you can use lessonIds order:
+        if (orderedLessons.stream().allMatch(l -> l.getOrderIndex() == null || l.getOrderIndex() == 0)) {
+            List<Lesson> finalOrderedLessons = orderedLessons;
+            orderedLessons = lessonIds.stream()
+                    .map(id -> finalOrderedLessons.stream().filter(l -> l.getLessonId().equals(id)).findFirst().orElse(null))
+                    .filter(Objects::nonNull)
+                    .toList();
+        }
+
+        // set courseId and isFree
+        for (int i = 0; i < orderedLessons.size(); i++) {
+            Lesson l = orderedLessons.get(i);
+            l.setCourseId(course.getCourseId());
+            // set isFree = true only for the first MIN_LESSONS
+            l.setFree(i < MIN_LESSONS);
+        }
+        lessonRepository.saveAll(orderedLessons);
+
+        // Prepare prompt for AI moderation
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("Please evaluate this course for policy/quality. Title: ").append(course.getTitle())
+                .append("\nDescription: ").append(course.getDescription()).append("\nLessons:\n");
+        for (Lesson l : orderedLessons) {
+            prompt.append("- ").append(l.getTitle()).append(": ").append(
+                    l.getDescription() == null ? "" : l.getDescription().substring(0, Math.min(200, l.getDescription().length()))
+            ).append("\n");
+        }
+        try {
+            String aiResult = grpcClientService.callModerateCourseContentAsync("", creatorId.toString(), prompt.toString()).get();
+            if (aiResult == null) {
+                course.setApprovalStatus(CourseApprovalStatus.PENDING);
+            } else {
+                String normalized = aiResult.toUpperCase();
+                if (normalized.contains("APPROVE") || normalized.contains("APPROVED") || normalized.contains("OK")) {
+                    course.setApprovalStatus(CourseApprovalStatus.APPROVED);
+                } else if (normalized.contains("REJECT") || normalized.contains("DECLINE") || normalized.contains("NO")) {
+                    course.setApprovalStatus(CourseApprovalStatus.REJECTED);
+                } else {
+                    course.setApprovalStatus(CourseApprovalStatus.PENDING);
+                }
+            }
+        } catch (Exception e) {
+            course.setApprovalStatus(CourseApprovalStatus.PENDING);
+        }
         course = courseRepository.save(course);
         return courseMapper.toResponse(course);
     }
+
+
 
     @Override
     @Transactional

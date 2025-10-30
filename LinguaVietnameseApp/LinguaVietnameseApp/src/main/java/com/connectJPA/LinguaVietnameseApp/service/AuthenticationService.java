@@ -24,8 +24,6 @@ public interface AuthenticationService {
 
     AuthenticationResponse handleRefreshToken(String refreshToken, String deviceId, String ip, String userAgent);
 
-    AuthenticationResponse loginWithFirebase(String firebaseIdToken);
-
     void logout(String token);
 
     void logoutAll(UUID userId);

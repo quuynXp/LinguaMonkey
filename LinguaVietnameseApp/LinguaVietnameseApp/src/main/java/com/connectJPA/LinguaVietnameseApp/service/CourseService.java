@@ -14,6 +14,8 @@ public interface CourseService {
 
     List<CourseResponse> getRecommendedCourses(UUID userId, int limit);
 
+    CourseResponse approveCourse(UUID id);
+    CourseResponse rejectCourse(UUID id, String reason);
     Page<CourseResponse> getDiscountedCourses(Pageable pageable);    CourseResponse getCourseById(UUID id);
     CourseResponse createCourse(CourseRequest request);
     CourseResponse updateCourse(UUID id, CourseRequest request);

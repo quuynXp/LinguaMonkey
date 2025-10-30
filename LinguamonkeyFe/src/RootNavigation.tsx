@@ -5,13 +5,18 @@ import * as Notifications from "expo-notifications";
 import NetInfo from "@react-native-community/netinfo";
 import { RootNavigationRef, flushPendingActions, resetToTab } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
-import notificationService from './services/notificationService';
+import notificationService  from './services/notificationService';
 import MainStack from "./navigation/stack/MainStack";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
 import * as Localization from "expo-localization";
 import instance from "./api/axiosInstance";
+import { EXPO_PUBLIC_API_BASE_URL } from "react-native-dotenv";
+
+
+const API_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
+console.log("API_URL", API_URL);
 
 type InitialRoute =
   | "Auth"
@@ -44,7 +49,8 @@ const RootNavigation = () => {
   }, []);
 
   useEffect(() => {
-    notificationService.init();
+    notificationService.loadPreferences();
+    notificationService.requestPermissions();
   }, []);
 
   useEffect(() => {

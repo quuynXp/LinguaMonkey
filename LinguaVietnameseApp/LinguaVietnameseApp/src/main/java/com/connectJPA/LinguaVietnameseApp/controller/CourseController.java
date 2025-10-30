@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -131,6 +132,21 @@ public class CourseController {
                 .code(200)
                 .message(messageSource.getMessage("course.deleted.success", null, locale))
                 .build();
+    }
+
+
+    @PostMapping("/{id}/approve")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public AppApiResponse<CourseResponse> approveCourse(@PathVariable UUID id, Locale locale) {
+        CourseResponse res = courseService.approveCourse(id);
+        return AppApiResponse.<CourseResponse>builder().code(200).message("Course approved").result(res).build();
+    }
+
+    @PostMapping("/{id}/reject")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public AppApiResponse<CourseResponse> rejectCourse(@PathVariable UUID id, @RequestParam(required=false) String reason, Locale locale) {
+        CourseResponse res = courseService.rejectCourse(id, reason);
+        return AppApiResponse.<CourseResponse>builder().code(200).message("Course rejected").result(res).build();
     }
 
     @GetMapping("/creator/{creatorId}")

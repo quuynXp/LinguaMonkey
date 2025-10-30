@@ -1,4 +1,3 @@
-// services/WebSocketService.ts
 import { AppState } from 'react-native';
 
 interface WSMessage {

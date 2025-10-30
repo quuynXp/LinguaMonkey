@@ -1,5 +1,3 @@
-"use client"
-
 import { useNavigation } from "@react-navigation/native"
 import { useEffect, useRef, useState } from "react"
 import {

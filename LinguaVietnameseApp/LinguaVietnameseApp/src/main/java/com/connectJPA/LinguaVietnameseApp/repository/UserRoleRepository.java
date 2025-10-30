@@ -27,9 +27,10 @@ WHERE ur.user_id = :userId
 
      boolean existsByIdUserIdAndIdRoleId(UUID userId, UUID roleId);
 
-    @Query("SELECT r FROM Role r JOIN UserRole ur ON r.roleId = ur.id.roleId " +
-            "WHERE ur.id.userId = :userId AND r.isDeleted = false")
+    @Query("SELECT ur.role FROM UserRole ur " +
+            "WHERE ur.id.userId = :userId")
     List<Role> findRolesByUserId(@Param("userId") UUID userId);
+
 
 
 

@@ -12,7 +12,6 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
-//@SuperBuilder
 @Data
 @Entity
 @Table(name = "course_reviews")

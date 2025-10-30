@@ -18,16 +18,22 @@ import learning.LearningServiceOuterClass.RoadmapDetailedResponse;
 import learning.LearningServiceOuterClass.RoadmapRequest;
 import learning.LearningServiceOuterClass.RoadmapResponse;
 
+import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
+@RequiredArgsConstructor
 public class GrpcClientService {
 
-    private final String grpcServerAddress = "192.168.1.46";
+    @Value("${grpc.server.address}")
+    private String grpcServerAddress;
+
     private final int grpcServerPort = 50051;
 
     private ManagedChannel createChannelWithToken(String token) {
@@ -86,6 +92,17 @@ public class GrpcClientService {
             }
         });
     }
+
+    public CompletableFuture<String> callModerateCourseContentAsync(String token, String userId, String content) {
+        // reuse chatWithAI - return raw response string
+        return callChatWithAIAsync(token, userId, content, Collections.emptyList());
+    }
+
+    public CompletableFuture<String> callAnalyzeIdentityAsync(String token, String userId, String docText) {
+        // also reuse chatWithAIAsync to get result
+        return callChatWithAIAsync(token, userId, docText, Collections.emptyList());
+    }
+
 
     public CompletableFuture<String> callChatWithAIAsync(String token, String userId, String message, List<ChatMessageBody> history) {
         ManagedChannel channel = createChannelWithToken(token);

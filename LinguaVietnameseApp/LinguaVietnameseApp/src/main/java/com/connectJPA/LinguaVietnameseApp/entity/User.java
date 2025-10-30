@@ -52,10 +52,6 @@ public class User extends BaseEntity {
     private String nativeLanguageCode;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "auth_provider")
-    private AuthProvider authProvider;
-
-    @Enumerated(EnumType.STRING)
     @Column(name = "country")
     private Country country;
 

@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
@@ -110,6 +111,12 @@ public class LessonController {
                     .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
                     .build();
         }
+    }
+
+    @GetMapping("/creator/{creatorId}")
+    public AppApiResponse<Page<Lesson>> getByCreator(@PathVariable UUID creatorId, Pageable pageable) {
+        Page<Lesson> page = lessonService.getLessonsByCreator(creatorId, pageable);
+        return AppApiResponse.<Page<Lesson>>builder().code(200).message("OK").result(page).build();
     }
 
     @Operation(summary = "Update a lesson", description = "Update an existing lesson by its ID, including category and subcategory")

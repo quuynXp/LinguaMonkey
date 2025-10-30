@@ -1,9 +1,10 @@
 import instance from '../api/axiosInstance';
 import { useUserStore } from '../stores/UserStore';
+import {EXPO_PUBLIC_CLOUDINARY_API_UPLOAD, EXPO_PUBLIC_CLOUDINARY_PRESET } from "react-native-dotenv"
 
 
-const EXPO_PUBLIC_CLOUDINARY_API_UPLOAD = process.env.EXPO_PUBLIC_CLOUDINARY_API_UPLOAD;
-const EXPO_PUBLIC_CLOUDINARY_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_PRESET;
+const CLOUDINARY_API_UPLOAD = EXPO_PUBLIC_CLOUDINARY_API_UPLOAD || process.env.EXPO_PUBLIC_CLOUDINARY_API_UPLOAD;
+const CLOUDINARY_PRESET = EXPO_PUBLIC_CLOUDINARY_PRESET || process.env.EXPO_PUBLIC_CLOUDINARY_PRESET;
 
 export async function uploadAvatarToTemp(file: { uri: string; name: string; type: string }) {
   const form = new FormData();
@@ -12,11 +13,11 @@ export async function uploadAvatarToTemp(file: { uri: string; name: string; type
     type: file.type,
     name: file.name,
   } as any);
-  form.append("upload_preset", EXPO_PUBLIC_CLOUDINARY_PRESET!);
+  form.append("upload_preset", CLOUDINARY_PRESET!);
   form.append("folder", "my-folder");
 
   try {
-    const res = await fetch(EXPO_PUBLIC_CLOUDINARY_API_UPLOAD, {
+    const res = await fetch(CLOUDINARY_API_UPLOAD, {
       method: "POST",
       body: form,
       headers: {

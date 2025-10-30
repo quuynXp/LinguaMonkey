@@ -1,10 +1,10 @@
 import { createNavigationContainerRef, NavigationAction } from '@react-navigation/native';
-
+import { RootNavigationRef } from '../utils/navigationRef';
 /**
  * Tham chiếu (ref) đến navigation container.
  * Cần được gán vào <NavigationContainer ref={navigationRef}> trong App.tsx.
  */
-export const navigationRef = createNavigationContainerRef();
+export const navigationRef = createNavigationContainerRef<any>();
 
 /**
  * Điều hướng đến một màn hình cụ thể.
@@ -13,12 +13,9 @@ export const navigationRef = createNavigationContainerRef();
  * @param params - Tham số truyền cho màn hình.
  */
 export function navigate(name: string, params?: object) {
-  if (navigationRef.isReady()) {
-    // Thực hiện điều hướng
-    navigationRef.navigate(name as never, params as never);
+  if (RootNavigationRef.isReady()) {
+    (RootNavigationRef.navigate as any)(name, params);
   } else {
-    // Xử lý trường hợp navigation chưa sẵn sàng
-    // Có thể implement một hàng đợi (queue) ở đây nếu cần
     console.warn('[navigationService] Navigation container chưa sẵn sàng.');
   }
 }

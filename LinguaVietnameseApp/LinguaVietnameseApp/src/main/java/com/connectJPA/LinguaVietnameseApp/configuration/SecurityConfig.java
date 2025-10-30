@@ -73,6 +73,8 @@ public class SecurityConfig {
                                 "/api/v1/interests",
                                 "/api/v1/character3ds",
                                 "/api/v1/languages",
+                                "/api/v1/badge",
+                                "/api/v1/certificates",
                                 "/v3/api-docs/**")
                         .permitAll()
                         .anyRequest().authenticated())

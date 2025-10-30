@@ -29,5 +29,8 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
 
     SkillType findSkillTypeByLessonIdAndIsDeletedFalse(UUID lessonId);
 
+    List<Lesson> findByLessonIdIn(List<UUID> ids);
+    List<Lesson> findByCreatorIdAndLessonIdIn(UUID creatorId, List<UUID> ids);
+    Page<Lesson> findByCreatorId(UUID creatorId, Pageable pageable);
     Page<Lesson> findAll(Specification<com.connectJPA.LinguaVietnameseApp.entity.Lesson> spec, Pageable pageable);
 }

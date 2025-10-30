@@ -23,6 +23,8 @@ public class LessonRequest {
     private int expReward;
 
 
+    private UUID creatorId;
+
     private SkillType skillType;
 
     private UUID courseId;

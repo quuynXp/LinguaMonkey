@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import jakarta.persistence.*;
@@ -47,5 +48,8 @@ public class Course extends BaseEntity {
 
     private UUID creatorId;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", nullable = false)
+    private CourseApprovalStatus approvalStatus = CourseApprovalStatus.PENDING;
 }
 

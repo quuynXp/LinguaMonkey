@@ -3,8 +3,10 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
+import com.connectJPA.LinguaVietnameseApp.entity.id.CourseLessonId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressId;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
+import com.connectJPA.LinguaVietnameseApp.enums.RoleName;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -27,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import java.util.stream.Collectors;
@@ -44,6 +47,9 @@ public class LessonServiceImpl implements LessonService {
     private final LessonSubCategoryRepository lessonSubCategoryRepository;
     private final LessonMapper lessonMapper;
     private final UserLearningActivityRepository userLearningActivityRepository;
+    private final CourseLessonRepository courseLessonRepository;
+    private final UserRoleRepository userRoleRepository;
+    private final RoleRepository roleRepository;
 
     @Override
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
@@ -130,8 +136,17 @@ public class LessonServiceImpl implements LessonService {
             if (request.getLessonSubCategoryId() != null && !lessonSubCategoryRepository.existsById(request.getLessonSubCategoryId())) {
                 throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
             }
+            User user = userRepository.findById(request.getCreatorId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
             Lesson lesson = lessonMapper.toEntity(request);
-            lesson.setCreatedAt(OffsetDateTime.now());
+            if (request.getCourseId() != null) {
+                CourseLesson courseLesson = CourseLesson.builder()
+                        .id(new CourseLessonId(request.getCourseId(), lesson.getLessonId()))
+                        .orderIndex(lesson.getOrderIndex())
+                        .build();
+                courseLessonRepository.save(courseLesson);
+            }
             lesson = lessonRepository.save(lesson);
             return toLessonResponse(lesson);
         } catch (AppException e) {
@@ -139,6 +154,16 @@ public class LessonServiceImpl implements LessonService {
         } catch (Exception e) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Override
+    public List<Lesson> getLessonsByIds(List<UUID> ids) {
+        return lessonRepository.findByLessonIdIn(ids);
+    }
+
+    @Override
+    public Page<Lesson> getLessonsByCreator(UUID creatorId, Pageable pageable) {
+        return lessonRepository.findByCreatorId(creatorId, pageable);
     }
 
     @Override

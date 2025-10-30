@@ -35,6 +35,16 @@ public class Lesson extends BaseEntity {
     @Column(name = "course_id", nullable = false)
     private UUID courseId;
 
+    @Column(name = "creator_id", nullable = false)
+    private UUID creatorId;
+
+    private Integer orderIndex;
+
+    private String description;
+
+    @Column(name = "is_free", nullable = false)
+    private boolean isFree = true;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "lesson_type")
     private LessonType lessonType;

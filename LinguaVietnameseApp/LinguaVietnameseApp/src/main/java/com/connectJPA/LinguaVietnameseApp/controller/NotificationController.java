@@ -25,7 +25,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class NotificationController {
     private final NotificationService notificationService;
-    private final EmailService emailService;
     private final MessageSource messageSource;
 
     @Operation(summary = "Get all notifications", description = "Retrieve a paginated list of notifications with optional filtering by userId, title, or type")

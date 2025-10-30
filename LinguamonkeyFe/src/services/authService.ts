@@ -5,15 +5,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { resetToTab, resetToAuth } from "../utils/navigationRef";
 import axios from 'axios';
 import * as WebBrowser from 'expo-web-browser';
+import {EXPO_PUBLIC_API_BASE_URL} from "react-native-dotenv"
 
 WebBrowser.maybeCompleteAuthSession();
 
-const EXPO_PUBLIC_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+const API_BASE_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
 
 export const refreshClient = axios.create({
-  baseURL: EXPO_PUBLIC_API_BASE_URL,
-  withCredentials: true, // giữ nếu server dựa trên cookie; nhưng we rely on body refreshToken
-  // không throw trong interceptor ở đây
+  baseURL: API_BASE_URL,
+  withCredentials: true, 
 });
 
 export const loginWithEmail = async (email: string, password: string) => {
@@ -119,7 +119,6 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
     resetToTab(targetRoute);
   } catch (e) {
     console.error('handleLoginSuccess error:', e);
-    await useTokenStore.getState().clearTokens();
     resetToAuth('Login');
   }
 }

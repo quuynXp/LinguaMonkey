@@ -3,9 +3,10 @@ import * as Facebook from 'expo-auth-session/providers/facebook';
 import instance from '../api/axiosInstance';
 import { useTokenStore } from '../stores/tokenStore';
 import { useUserStore } from '../stores/UserStore';
+import {EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, EXPO_PUBLIC_FACEBOOK_APP_ID } from "react-native-dotenv"
 
-const EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
-const EXPO_PUBLIC_FACEBOOK_APP_ID = process.env.EXPO_PUBLIC_FACEBOOK_APP_ID;
+const GOOGLE_ANDROID_CLIENT_ID = EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
+const FACEBOOK_APP_ID = EXPO_PUBLIC_FACEBOOK_APP_ID || process.env.EXPO_PUBLIC_FACEBOOK_APP_ID;
 
 /**
  * --- GOOGLE LOGIN + SET USER ---
@@ -14,7 +15,7 @@ export async function loginWithGoogle(): Promise<void> {
   return new Promise(async (resolve, reject) => {
     try {
       const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-        clientId: EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+        clientId: GOOGLE_ANDROID_CLIENT_ID,
       });
 
       const result = await promptAsync();
@@ -48,7 +49,7 @@ export async function loginWithFacebook(): Promise<void> {
   return new Promise(async (resolve, reject) => {
     try {
       const [request, response, promptAsync] = Facebook.useAuthRequest({
-        clientId: EXPO_PUBLIC_FACEBOOK_APP_ID,
+        clientId: FACEBOOK_APP_ID,
       });
 
       const result = await promptAsync();
