@@ -1,6 +1,7 @@
 import language_tool_python
 import logging
 
+
 def check_spelling(text, language):
     try:
         tool = language_tool_python.LanguageTool(language)

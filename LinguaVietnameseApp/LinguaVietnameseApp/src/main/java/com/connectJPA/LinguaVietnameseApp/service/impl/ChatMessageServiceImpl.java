@@ -4,17 +4,14 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
-import com.connectJPA.LinguaVietnameseApp.entity.ChatMessage;
-import com.connectJPA.LinguaVietnameseApp.entity.MessageReaction;
-import com.connectJPA.LinguaVietnameseApp.entity.Room;
-import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +34,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final RoomMemberRepository roomMemberRepository;
     private final ChatMessageMapper chatMessageMapper;
     private final UserRepository userRepository;
+    private final MessageTranslationRepository messageTranslationRepository;
 
     @Override
     public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
@@ -210,5 +208,33 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 .exp(user.getExp())
                 .streak(user.getStreak())
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse saveTranslation(UUID messageId, String targetLang, String translatedText) {
+        try {
+            ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
+                    .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
+
+            MessageTranslation mt = MessageTranslation.builder()
+                    .chatMessageId(messageId)
+                    .targetLang(targetLang)
+                    .translatedText(translatedText)
+                    .build();
+            // inject repository via constructor
+            messageTranslationRepository.save(mt);
+
+            // optionally attach the translation to response DTO for immediate publish
+            ChatMessageResponse response = chatMessageMapper.toResponse(message);
+            response.setPurpose(roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId()).orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND)).getPurpose());
+            // add translatedText to a field in response (you may need to extend ChatMessageResponse DTO)
+            response.setTranslatedText(translatedText);
+            response.setTranslatedLang(targetLang);
+            return response;
+        } catch (Exception e) {
+            log.error("Error saving translation for message {}", messageId, e);
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
     }
 }

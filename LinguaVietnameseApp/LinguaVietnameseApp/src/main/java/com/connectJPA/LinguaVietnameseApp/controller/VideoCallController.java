@@ -37,7 +37,6 @@ public class VideoCallController {
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Page<VideoCallResponse>> getAllVideoCalls(
             @Parameter(description = "Caller ID filter") @RequestParam(required = false) String callerId,
             @Parameter(description = "Status filter") @RequestParam(required = false) String status,
@@ -178,7 +177,6 @@ public class VideoCallController {
             @ApiResponse(responseCode = "404", description = "Video call not found")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Void> deleteVideoCall(
             @Parameter(description = "Video call ID") @PathVariable UUID id,
             Locale locale) {

@@ -13,9 +13,9 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.RoomMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.RoomMemberRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.RoomRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +23,7 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -202,5 +203,69 @@ public class RoomServiceImpl implements RoomService {
             log.error("Error while removing members from room ID {}: {}", roomId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Transactional
+    @Override
+    public RoomResponse findOrCreateQuizRoom(UUID userId) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+        // Kiểm tra user tồn tại
+        userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // 1. Tìm một phòng QUIZ_TEAM public còn chỗ (maxMembers được set trong DB)
+        Page<Room> availableRooms = roomRepository.findAvailableRoomsByPurposeAndType(
+                RoomPurpose.QUIZ_TEAM,
+                RoomType.PUBLIC,
+                PageRequest.of(0, 1)
+        );
+
+        Room roomToJoin;
+        if (availableRooms.hasContent()) {
+            // 2a. Tìm thấy phòng -> tham gia
+            roomToJoin = availableRooms.getContent().get(0);
+            log.info("Found available quiz room: {}", roomToJoin.getRoomId());
+        } else {
+            // 2b. Không tìm thấy -> tạo phòng mới
+            log.info("No available quiz rooms found. Creating a new one for user {}", userId);
+            RoomRequest newRoomRequest = RoomRequest.builder()
+                    .roomName("Team Quiz Room") // Tên có thể tạo ngẫu nhiên
+                    .creatorId(userId) // Người tìm phòng sẽ là người tạo
+                    .purpose(RoomPurpose.QUIZ_TEAM)
+                    .roomType(RoomType.PUBLIC)
+                    .maxMembers(10) // Theo yêu cầu
+                    .build();
+
+            // Hàm createRoom đã tự động thêm creator làm ADMIN
+            return this.createRoom(newRoomRequest);
+        }
+
+        // 3. Thêm user vào phòng đã tìm thấy (nếu user chưa ở trong đó)
+        RoomMemberId memberId = new RoomMemberId(roomToJoin.getRoomId(), userId);
+        if (!roomMemberRepository.existsById(memberId)) {
+            // Kiểm tra số lượng thành viên trước khi thêm
+            long currentMembers = roomMemberRepository.countByIdRoomIdAndIsDeletedFalse(roomToJoin.getRoomId());
+            if (currentMembers >= roomToJoin.getMaxMembers()) {
+                log.warn("Room {} is full. Recursively finding another room.", roomToJoin.getRoomId());
+                // Nếu phòng này bị đầy trong lúc check, tìm phòng khác
+                return findOrCreateQuizRoom(userId);
+            }
+
+            log.info("Adding user {} to room {}", userId, roomToJoin.getRoomId());
+            RoomMember member = RoomMember.builder()
+                    .id(memberId)
+                    .room(roomToJoin)
+                    .user(userRepository.getReferenceById(userId)) // Lấy reference
+                    .role(RoomRole.MEMBER)
+                    .joinedAt(OffsetDateTime.now())
+                    .build();
+            roomMemberRepository.save(member);
+        } else {
+            log.info("User {} is already in room {}", userId, roomToJoin.getRoomId());
+        }
+
+        return roomMapper.toResponse(roomToJoin);
     }
 }

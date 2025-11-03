@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.RoadmapType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -25,5 +26,8 @@ public class Roadmap extends BaseEntity {
     private String title;
     private String description;
     private Integer totalItems;
+
+    @Enumerated(EnumType.STRING)
+    private RoadmapType type;
 }
 

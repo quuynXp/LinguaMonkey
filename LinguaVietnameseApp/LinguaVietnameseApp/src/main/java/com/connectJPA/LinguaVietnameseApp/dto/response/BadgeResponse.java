@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
 import lombok.*;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -24,4 +23,11 @@ public class BadgeResponse {
     private boolean isDeleted;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime deletedAt;
+
+    public BadgeResponse(UUID badgeId, String badgeName, String description, String imageUrl) {
+        this.badgeId = badgeId;
+        this.badgeName = badgeName;
+        this.description = description;
+        this.imageUrl = imageUrl;
+    }
 }

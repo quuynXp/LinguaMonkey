@@ -9,17 +9,12 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.LeaderboardEntryMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.LeaderboardEntryRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.LeaderboardRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LeaderboardEntryRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LeaderboardRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.LeaderboardEntryService;
-import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.hibernate.validator.internal.util.stereotypes.Lazy;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -198,5 +193,10 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             log.error("Error while fetching top 3 global leaderboard entries: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Override
+    public Integer getRankForUserByTab(String tab, String type, UUID userId) {
+        return leaderboardEntryRepository.findRankByUserAndTab(userId, tab, type);
     }
 }

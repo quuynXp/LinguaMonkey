@@ -25,11 +25,9 @@ const ChatScreen = ({ navigation }) => {
     if (!user) return
     const token = useTokenStore.getState().accessToken
     connect(token)
-
     const iv = setInterval(() => {
       sendLastActive(user.userId)
     }, 60 * 1000)
-
     return () => {
       clearInterval(iv)
       disconnect()
@@ -89,9 +87,32 @@ const ChatScreen = ({ navigation }) => {
       id: "create-room",
       title: t("chat.createRoom"),
       icon: "add-circle",
-      color: "#EF4444",
+      color: "#4F46E5", // Thay đổi màu cho đa dạng
       onPress: () => gotoTab("Chat", "CreateRoom"),
     },
+    // --- MỚI THÊM ---
+    {
+      id: "group-study",
+      title: t("chat.groupStudy"), // Cần thêm key translation này
+      icon: "group-work",
+      color: "#10B981",
+      onPress: () => gotoTab("Chat", "GroupStudy"),
+    },
+    {
+      id: "call-search",
+      title: t("chat.callSearch"), // Cần thêm key translation này
+      icon: "search",
+      color: "#6B7280",
+      onPress: () => gotoTab("Chat", "CallSearch"),
+    },
+    {
+      id: "call-setup",
+      title: t("chat.callSetup"), // Cần thêm key translation này
+      icon: "settings-phone",
+      color: "#3B82F6",
+      onPress: () => gotoTab("Chat", "CallSetup"),
+    },
+    // --- KẾT THÚC THÊM MỚI ---
   ]
 
   const renderChatOption = (option) => (

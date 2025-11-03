@@ -105,7 +105,7 @@ public class CourseEnrollmentController {
             @ApiResponse(responseCode = "200", description = "Course enrollment deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Course enrollment not found")
     })
-    @PreAuthorize("hasAuthority('COURSE_ENROLLMENT_DELETE')")
+//    @PreAuthorize("hasAuthority('COURSE_ENROLLMENT_DELETE')")
     @DeleteMapping("/{courseId}/{userId}")
     public AppApiResponse<Void> deleteCourseEnrollment(
             @Parameter(description = "Course ID") @PathVariable UUID courseId,

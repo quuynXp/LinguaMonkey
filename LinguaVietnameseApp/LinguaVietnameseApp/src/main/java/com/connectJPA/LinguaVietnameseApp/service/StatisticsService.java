@@ -25,5 +25,5 @@ public interface StatisticsService {
     List<CoursePerformanceResponse> getTeacherCoursesPerformance(UUID teacherId, LocalDate startDate, LocalDate endDate, String aggregate);
     List<LessonStatsResponse> getTeacherCourseLessonStats(UUID teacherId, UUID courseId, LocalDate startDate, LocalDate endDate);
     List<TimeSeriesPoint> getTeacherCourseRevenue(UUID teacherId, UUID courseId, LocalDate startDate, LocalDate endDate, String aggregate);
-
+    DashboardStatisticsResponse getDashboardStatistics(UUID userId, LocalDate startDate, LocalDate endDate);
 }

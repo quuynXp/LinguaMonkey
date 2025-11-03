@@ -79,6 +79,55 @@ public class AuthenticationController {
         return createAuthResponseEntity(authResponse, response, "Facebook login successful");
     }
 
+    // ENDPOINT MỚI 1: Check Reset Methods
+    @PostMapping("/check-reset-methods")
+    @Operation(summary = "Check available password reset methods (Email/Phone)")
+    public AppApiResponse<Map<String, Object>> checkResetMethods(@RequestBody Map<String, String> body) {
+        String identifier = body.get("identifier");
+        if (identifier == null || identifier.isBlank()) {
+            throw new AppException(ErrorCode.INVALID_INPUT_DATA);
+        }
+        Map<String, Object> methods = authenticationService.checkResetMethods(identifier);
+        return AppApiResponse.<Map<String, Object>>builder()
+                .code(200)
+                .message("Reset methods retrieved")
+                .result(methods)
+                .build();
+    }
+
+    // ENDPOINT MỚI 2: Request Password Reset OTP
+    @PostMapping("/request-password-reset-otp")
+    @Operation(summary = "Request OTP for password reset via Email or Phone")
+    public AppApiResponse<Void> requestPasswordResetOtp(@RequestBody Map<String, String> body) {
+        String identifier = body.get("identifier");
+        String method = body.get("method"); // "EMAIL" or "PHONE"
+
+        if (identifier == null || method == null) {
+            throw new AppException(ErrorCode.INVALID_INPUT_DATA);
+        }
+
+        authenticationService.requestPasswordResetOtp(identifier, method);
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message("Password reset OTP sent successfully")
+                .build();
+    }
+
+    // ENDPOINT MỚI 3: Verify Password Reset OTP
+    @PostMapping("/verify-password-reset-otp")
+    @Operation(summary = "Verify reset OTP and get a secure reset token")
+    public AppApiResponse<Map<String, String>> verifyPasswordResetOtp(@RequestBody Map<String, String> body) {
+        String identifier = body.get("identifier");
+        String code = body.get("code");
+
+        String secureToken = authenticationService.verifyPasswordResetOtp(identifier, code);
+
+        return AppApiResponse.<Map<String, String>>builder()
+                .code(200)
+                .message("OTP verified. Use this token to reset password.")
+                .result(Map.of("resetToken", secureToken))
+                .build();
+    }
 
     // --- Controller method for logoutAll ---
     @PostMapping("/logout-all")

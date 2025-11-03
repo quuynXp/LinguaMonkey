@@ -89,7 +89,6 @@ public class RoomController {
 
     @Operation(summary = "Delete a room", description = "Soft delete a room by its ID")
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
     public AppApiResponse<Void> deleteRoom(
             @PathVariable UUID id,
             Locale locale) {
@@ -125,4 +124,6 @@ public class RoomController {
                 .message(messageSource.getMessage("room.members.removed.success", null, locale))
                 .build();
     }
+
+
 }

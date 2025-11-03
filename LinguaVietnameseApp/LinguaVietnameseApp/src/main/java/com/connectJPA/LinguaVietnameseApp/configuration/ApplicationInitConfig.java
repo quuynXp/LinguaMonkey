@@ -2,10 +2,12 @@ package com.connectJPA.LinguaVietnameseApp.configuration;
 
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserRoleId;
-import com.connectJPA.LinguaVietnameseApp.enums.AuthProvider;
 import com.connectJPA.LinguaVietnameseApp.enums.PermissionName;
 import com.connectJPA.LinguaVietnameseApp.enums.RoleName;
-import com.connectJPA.LinguaVietnameseApp.repository.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.PermissionRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoleRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRoleRepository;
 import jakarta.transaction.Transactional;
 import lombok.AccessLevel;
 import lombok.RequiredArgsConstructor;

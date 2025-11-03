@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.enums.RoadmapType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -15,6 +16,7 @@ public class RoadmapUserResponse {
     private String description;
     private String language;
     private int progressPercentage;
+    private RoadmapType type;
 
     private int totalItems;
     private int completedItems;

@@ -1,5 +1,6 @@
 import logging
 
+
 def check_pronunciation(audio_data, language):
     try:
         # Placeholder: Free pronunciation models are limited

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
-import type { GrammarRule, GrammarTopic, SubmitExerciseResponse } from "../types/api";
+import type { GrammarRule, GrammarTopic, SubmitExerciseResponse, MindMapNode } from "../types/api";
 
 export const useGrammar = () => {
   const queryClient = useQueryClient();
@@ -39,7 +39,17 @@ export const useGrammar = () => {
       staleTime: 60_000,
     });
 
-  // submit exercise: expects body { ruleId, userId, answers }
+  // New: Fetch grammar mindmap (hierarchical structure like roadmap)
+  const useGrammarMindmap = () =>
+    useQuery<MindMapNode[]>({
+      queryKey: ["grammarMindmap"],
+      queryFn: async () => {
+        const res = await instance.get("/grammar/mindmap");
+        return res.data?.result ?? [];
+      },
+      staleTime: 300_000, // Longer stale time for static-like structure
+    });
+
   const useSubmitGrammarExercise = () =>
     useMutation({
       mutationFn: async (payload: { ruleId: string; userId: string; answers: Record<string, string> }) => {
@@ -69,6 +79,7 @@ export const useGrammar = () => {
     useGrammarTopics,
     useGrammarTopic,
     useGrammarRule,
+    useGrammarMindmap, 
     useSubmitGrammarExercise,
     useUpdateGrammarProgress,
   };

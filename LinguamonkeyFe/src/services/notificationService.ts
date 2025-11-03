@@ -81,10 +81,6 @@ class NotificationService {
   }
 
   async requestPermissions(): Promise<boolean> {
-    if (!Device.isDevice) {
-      console.warn('Must run on a physical device to receive push notifications');
-      return false;
-    }
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
@@ -107,6 +103,7 @@ class NotificationService {
           projectId: EXPO_PROJECT_ID,
         })
       ).data;
+      console.log('Expo push token:', token);
       return token;
     } catch (error) {
       console.error('Error getting Expo push token:', error);

@@ -3,6 +3,7 @@ from PIL import Image
 import io
 import logging
 
+
 def analyze_image_with_text(text, image_data):
     try:
         model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")

@@ -1,8 +1,7 @@
-import React, { useState, useMemo } from "react";
+import React, { useState } from "react";
 import {
     View,
     Text,
-    StyleSheet,
     TextInput,
     TouchableOpacity,
     FlatList,
@@ -13,10 +12,10 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useVideoCalls } from "../../hooks/useVideos";
-import { v4 as uuidv4 } from "uuid"; 
+import { v4 as uuidv4 } from "uuid";
 import { gotoTab } from "../../utils/navigationRef";
-import { useChatStore } from "../../stores/ChatStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useTranslation } from "react-i18next";
 
 const STATUS_OPTIONS = ["CONNECTED", "MUTED", "LEFT"];
 
@@ -31,12 +30,14 @@ const Button = ({ title, onPress, disabled }) => (
 );
 
 const VideoCallManagerScreen = ({ route }) => {
+    const { t } = useTranslation();
     const navigation = useNavigation();
-    const { userId: initialUserId = null } = route.params || {}; 
+    const { userId: initialUserId = null } = route.params || {};
     const {
+        useVideoCallsList,
+        useVideoCall,
         useCreateGroupCall,
         useCreateVideoCall,
-        useVideoCall,
         useGetParticipants,
         useAddParticipant,
         useRemoveParticipant,
@@ -44,116 +45,95 @@ const VideoCallManagerScreen = ({ route }) => {
         useVideoCallHistory,
     } = useVideoCalls();
 
-    // hook instances
+    const STATUS_OPTIONS = ["CONNECTED", "MUTED", "LEFT"];
+
     const createGroupCall = useCreateGroupCall();
     const createVideoCall = useCreateVideoCall();
     const addParticipant = useAddParticipant();
     const removeParticipant = useRemoveParticipant();
     const updateParticipantStatus = useUpdateParticipantStatus();
 
-    // local states
     const [callerId, setCallerId] = useState(initialUserId || "");
-    const [videoCallId, setVideoCallId] = useState(null);
+    const [videoCallId, setVideoCallId] = useState("");
     const [roomId, setRoomId] = useState("");
     const [newParticipantId, setNewParticipantId] = useState("");
-    const [videoCallType, setVideoCallType] = useState("GROUP"); // or "ONE_TO_ONE"
+    const [videoCallType, setVideoCallType] = useState("GROUP");
     const [historyUserId, setHistoryUserId] = useState(initialUserId || "");
+    const [filterCallerId, setFilterCallerId] = useState("");
+    const [filterStatus, setFilterStatus] = useState("");
 
-    // queries (dynamic)
     const videoCallQuery = useVideoCall(videoCallId);
     const participantsQuery = useGetParticipants(videoCallId);
     const historyQuery = useVideoCallHistory(historyUserId);
+    const filteredCallsQuery = useVideoCallsList({
+        callerId: filterCallerId || undefined,
+        status: filterStatus || undefined,
+        page: 0,
+        limit: 20,
+    });
 
-    // helpers
     const isCreating =
-        createGroupCall.isPending || createVideoCall.isPending || addParticipant.isPending;
+        createGroupCall.isPending ||
+        createVideoCall.isPending ||
+        addParticipant.isPending;
 
     const onCreateGroup = () => {
-        if (!callerId) return Alert.alert("Vui lòng nhập callerId");
+        if (!callerId) return Alert.alert(t("enterCallerId"));
         const participantIds = newParticipantId ? [newParticipantId] : [];
         createGroupCall.mutate(
-            {
-                callerId,
-                participantIds,
-                videoCallType,
-            },
+            { callerId, participantIds, videoCallType },
             {
                 onSuccess: (res) => {
-                    // backend trả VideoCallResponse
-                    const returnedId = res?.videoCallId;
-                    const returnedRoom = res?.roomId;
-                    setVideoCallId(returnedId);
-                    if (returnedRoom) setRoomId(returnedRoom);
-                    Alert.alert("Tạo group call thành công");
+                    setVideoCallId(res.videoCallId);
+                    setRoomId(res.roomId || "");
+                    Alert.alert(t("groupCallCreated"));
                 },
-                onError: (err) => {
-                    console.warn(err);
-                    Alert.alert("Tạo group call lỗi");
-                },
+                onError: () => Alert.alert(t("groupCallError")),
             }
         );
     };
 
     const onCreateOneToOne = () => {
-        if (!callerId) return Alert.alert("Vui lòng nhập callerId");
+        if (!callerId) return Alert.alert(t("enterCallerId"));
         const payload = {
-            caller_id: callerId, // backend mapper có thể khác; nếu backend dùng camelCase thay snake_case, sửa payload
-            callee_id: newParticipantId || null,
-            video_call_type: "ONE_TO_ONE",
+            callerId,
+            calleeId: newParticipantId || null,
+            videoCallType: "ONE_TO_ONE",
         };
         createVideoCall.mutate(payload, {
             onSuccess: (res) => {
-                const returnedId = res?.videoCallId;
-                const returnedRoom = res?.roomId;
-                setVideoCallId(returnedId);
-                if (returnedRoom) setRoomId(returnedRoom);
-                Alert.alert("Tạo cuộc gọi thành công");
+                setVideoCallId(res.videoCallId);
+                setRoomId(res.roomId || "");
+                Alert.alert(t("oneToOneCallCreated"));
             },
-            onError: () => Alert.alert("Tạo cuộc gọi lỗi"),
+            onError: () => Alert.alert(t("oneToOneCallError")),
         });
     };
 
     const onAddParticipant = () => {
-        if (!videoCallId) return Alert.alert("Chọn videoCall trước (tạo hoặc nhập id)");
-        if (!newParticipantId) return Alert.alert("Nhập participant userId");
+        if (!videoCallId) return Alert.alert(t("selectCallFirst"));
+        if (!newParticipantId) return Alert.alert(t("enterParticipantId"));
         addParticipant.mutate(
             { videoCallId, userId: newParticipantId },
-            {
-                onSuccess: () => {
-                    setNewParticipantId("");
-                },
-                onError: () => Alert.alert("Không thêm được participant"),
-            }
+            { onSuccess: () => setNewParticipantId("") }
         );
     };
 
     const onRemoveParticipant = (userId) => {
         if (!videoCallId) return;
-        Alert.alert("Xác nhận", `Xóa user ${userId} khỏi cuộc gọi?`, [
-            { text: "Hủy" },
+        Alert.alert(t("confirm"), `${t("removeUser")} ${userId}?`, [
+            { text: t("cancel") },
             {
-                text: "OK",
+                text: t("ok"),
                 onPress: () =>
-                    removeParticipant.mutate(
-                        { videoCallId, userId },
-                        {
-                            onSuccess: () => { },
-                            onError: () => Alert.alert("Xóa thất bại"),
-                        }
-                    ),
+                    removeParticipant.mutate({ videoCallId, userId }),
             },
         ]);
     };
 
     const onUpdateParticipantStatus = (userId, status) => {
         if (!videoCallId) return;
-        updateParticipantStatus.mutate(
-            { videoCallId, userId, status },
-            {
-                onSuccess: () => { },
-                onError: () => Alert.alert("Cập nhật trạng thái thất bại"),
-            }
-        );
+        updateParticipantStatus.mutate({ videoCallId, userId, status });
     };
 
     const onJoinJitsi = () => {
@@ -162,35 +142,37 @@ const VideoCallManagerScreen = ({ route }) => {
     };
 
     const renderParticipant = ({ item }) => {
-        const userId = item.user_id || item.userId || item.userId;
-        const status =
-            item.status?.toUpperCase?.() ||
-            item.status ||
-            (item.status === undefined ? "UNKNOWN" : item.status);
+        const { t } = useTranslation();
+        const getStatusLabel = (status) => {
+            switch (status) {
+                case "CONNECTED": return t("statusConnected");
+                case "MUTED": return t("statusMuted");
+                case "LEFT": return t("statusLeft");
+                default: return status;
+            }
+        };
 
         return (
             <View style={styles.partRow}>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.partText}>ID: {userId}</Text>
-                    <Text style={styles.partSmall}>Role: {item.role || item.role}</Text>
-                    <Text style={styles.partSmall}>Status: {status}</Text>
+                    <Text style={styles.partText}>{t("id")}: {item.userId}</Text>
+                    <Text style={styles.partSmall}>{t("role")}: {item.role || "GUEST"}</Text>
+                    <Text style={styles.partSmall}>{t("status")}: {getStatusLabel(item.status)}</Text>
                 </View>
-
                 <View style={styles.partActions}>
                     <TouchableOpacity
-                        onPress={() => onRemoveParticipant(userId)}
                         style={styles.iconButton}
+                        onPress={() => onRemoveParticipant(item.userId)}
                     >
-                        <Text style={styles.iconText}>Xóa</Text>
+                        <Text style={styles.iconText}>{t("remove")}</Text>
                     </TouchableOpacity>
-
                     {STATUS_OPTIONS.map((s) => (
                         <TouchableOpacity
                             key={s}
-                            onPress={() => onUpdateParticipantStatus(userId, s)}
                             style={styles.iconButtonSmall}
+                            onPress={() => onUpdateParticipantStatus(item.userId, s)}
                         >
-                            <Text style={styles.iconTextSmall}>{s}</Text>
+                            <Text style={styles.iconTextSmall}>{getStatusLabel(s)}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
@@ -204,101 +186,124 @@ const VideoCallManagerScreen = ({ route }) => {
             style={styles.container}
         >
             <View style={styles.inner}>
-                <Text style={styles.title}>Video Call Manager</Text>
+                <Text style={styles.title}>{t("videoCallManager")}</Text>
 
                 <TextInput
-                    placeholder="callerId (your user id)"
+                    placeholder={t("filterCallerId")}
+                    value={filterCallerId}
+                    onChangeText={setFilterCallerId}
+                    style={styles.input}
+                />
+                <TextInput
+                    placeholder={t("filterStatus")}
+                    value={filterStatus}
+                    onChangeText={setFilterStatus}
+                    style={styles.input}
+                />
+
+                {filteredCallsQuery.isLoading ? (
+                    <ActivityIndicator />
+                ) : (
+                    <FlatList
+                        data={filteredCallsQuery.data?.content || []}
+                        keyExtractor={(item) => item.videoCallId}
+                        renderItem={({ item }) => (
+                            <TouchableOpacity
+                                onPress={() => {
+                                    setVideoCallId(item.videoCallId);
+                                    setRoomId(item.roomId || "");
+                                }}
+                            >
+                                <Text>
+                                    {item.videoCallType} - {item.videoCallId} [{item.status}]
+                                </Text>
+                            </TouchableOpacity>
+                        )}
+                    />
+                )}
+
+                <TextInput
+                    placeholder={t("callerId")}
                     value={callerId}
                     onChangeText={setCallerId}
                     style={styles.input}
                 />
-
                 <TextInput
-                    placeholder="Participant id (new participant)"
+                    placeholder={t("participantId")}
                     value={newParticipantId}
                     onChangeText={setNewParticipantId}
                     style={styles.input}
                 />
 
                 <View style={styles.row}>
-                    <Button title="Tạo Group Call" onPress={onCreateGroup} disabled={isCreating} />
-                    <Button title="Tạo 1-1" onPress={onCreateOneToOne} disabled={isCreating} />
+                    <Button title={t("createGroupCall")} onPress={onCreateGroup} disabled={isCreating} />
+                    <Button title={t("createOneToOne")} onPress={onCreateOneToOne} disabled={isCreating} />
                 </View>
 
                 <View style={styles.row}>
-                    <TextInput
-                        placeholder="Hoặc nhập videoCallId để load"
-                        value={videoCallId || ""}
-                        onChangeText={setVideoCallId}
-                        style={[styles.input, { flex: 1 }]}
-                    />
-                    {/* <Button title="Load" onPress={() => { 
-                         }} /> */}
+                    <Button title={t("addParticipant")} onPress={onAddParticipant} disabled={!videoCallId} />
+                    <Button title={t("joinJitsi")} onPress={onJoinJitsi} disabled={!videoCallId && !roomId} />
                 </View>
 
-                <View style={styles.row}>
-                    <Button title="Thêm participant vào call" onPress={onAddParticipant} disabled={!videoCallId} />
-                    <Button title="Join Jitsi" onPress={onJoinJitsi} disabled={!videoCallId && !roomId} />
-                </View>
-
-                <Text style={styles.sectionTitle}>Participants</Text>
+                <Text style={styles.sectionTitle}>{t("participants")}</Text>
                 {participantsQuery.isLoading ? (
                     <ActivityIndicator />
                 ) : participantsQuery.isError ? (
-                    <Text style={styles.errorText}>Không lấy được participants</Text>
+                    <Text style={styles.errorText}>{t("participantsError")}</Text>
                 ) : (
                     <FlatList
                         data={participantsQuery.data || []}
-                        keyExtractor={(item, idx) =>
-                            (item.user_id || item.userId || idx.toString()) + "-" + (item.video_call_id || item.videoCallId || "")
-                        }
+                        keyExtractor={(item) => item.userId}
                         renderItem={renderParticipant}
-                        ListEmptyComponent={<Text style={styles.small}>Chưa có participant</Text>}
+                        ListEmptyComponent={<Text style={styles.small}>{t("noParticipants")}</Text>}
                     />
                 )}
 
-                <Text style={styles.sectionTitle}>Call Info</Text>
+                <Text style={styles.sectionTitle}>{t("callInfo")}</Text>
                 {videoCallQuery.isLoading ? (
                     <ActivityIndicator />
                 ) : videoCallQuery.isError ? (
-                    <Text style={styles.errorText}>Không lấy được call</Text>
+                    <Text style={styles.errorText}>{t("callError")}</Text>
                 ) : videoCallQuery.data ? (
                     <View style={styles.infoBox}>
-                        <Text>ID: {videoCallQuery.data.videoCallId}</Text>
-                        <Text>Room: {videoCallQuery.data.roomId || " — "}</Text>
-                        <Text>Type: {videoCallQuery.data.videoCallType || " — "}</Text>
-                        <Text>Status: {videoCallQuery.data.status || " — "}</Text>
+                        <Text>{t("id")}: {videoCallQuery.data.videoCallId}</Text>
+                        <Text>{t("room")}: {videoCallQuery.data.roomId || " — "}</Text>
+                        <Text>{t("type")}: {videoCallQuery.data.videoCallType || " — "}</Text>
+                        <Text>{t("status")}: {videoCallQuery.data.status || " — "}</Text>
                     </View>
                 ) : (
-                    <Text style={styles.small}>Chưa có call được chọn</Text>
+                    <Text style={styles.small}>{t("noCallSelected")}</Text>
                 )}
 
-                <Text style={styles.sectionTitle}>History (user)</Text>
+                <Text style={styles.sectionTitle}>{t("historyUser")}</Text>
                 <View style={styles.row}>
                     <TextInput
-                        placeholder="userId để xem history"
+                        placeholder={t("enterUserIdHistory")}
                         value={historyUserId}
                         onChangeText={setHistoryUserId}
                         style={[styles.input, { flex: 1 }]}
                     />
-                    {/* <Button title="Xem" onPress={() => { /* query uses historyUserId state */}} /> */}
+                    <Button title={t("view")} onPress={() => historyQuery.refetch()} disabled={undefined} />
                 </View>
-
                 {historyQuery.isLoading ? (
                     <ActivityIndicator />
                 ) : historyQuery.isError ? (
-                    <Text style={styles.errorText}>Không lấy được lịch sử</Text>
+                    <Text style={styles.errorText}>{t("historyError")}</Text>
                 ) : (
                     <FlatList
                         data={historyQuery.data || []}
-                        keyExtractor={(item) => item.videoCallId || item.video_call_id}
+                        keyExtractor={(item) => item.videoCallId}
                         renderItem={({ item }) => (
                             <View style={styles.historyRow}>
-                                <Text style={styles.smallBold}>{item.videoCallType} - {item.videoCallId}</Text>
-                                <Text style={styles.small}>{item.startTime} → {item.endTime}</Text>
+                                <Text style={styles.smallBold}>
+                                    {item.videoCallType} - {item.videoCallId}
+                                </Text>
+                                <Text style={styles.small}>
+                                    {item.startTime} → {item.endTime}
+                                </Text>
                             </View>
                         )}
-                        ListEmptyComponent={<Text style={styles.small}>Không có lịch sử</Text>}
+                        ListEmptyComponent={<Text style={styles.small}>{t("noHistory")}</Text>}
                     />
                 )}
             </View>

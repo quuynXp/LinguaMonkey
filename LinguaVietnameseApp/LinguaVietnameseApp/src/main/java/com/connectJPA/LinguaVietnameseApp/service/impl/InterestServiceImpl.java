@@ -3,13 +3,12 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.InterestRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.InterestResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Interest;
-import com.connectJPA.LinguaVietnameseApp.repository.InterestRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.InterestRepository;
 import com.connectJPA.LinguaVietnameseApp.service.InterestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;

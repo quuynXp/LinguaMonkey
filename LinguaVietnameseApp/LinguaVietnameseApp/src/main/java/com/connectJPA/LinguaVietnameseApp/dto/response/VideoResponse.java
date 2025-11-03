@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -16,7 +17,7 @@ public class VideoResponse {
     private String videoUrl;
     private String title;
     private String type;
-    private String level;
+    private DifficultyLevel level;
     private String originalSubtitleUrl;
     private UUID lessonId;
     private OffsetDateTime createdAt;

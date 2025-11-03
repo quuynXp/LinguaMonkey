@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CourseRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CourseSummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
@@ -10,16 +11,16 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.CourseDiscountService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
+import learning.CourseQualityResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,8 +30,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-
-import static com.nimbusds.jose.Requirement.RECOMMENDED;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -77,6 +77,15 @@ public class CourseServiceImpl implements CourseService {
         );
 
         return recommended.stream().map(courseMapper::toResponse).toList();
+    }
+
+
+    @Override
+    public List<CourseSummaryResponse> getCourseSummariesByTeacher(UUID teacherId, int limit) {
+        List<Course> courses = courseRepository.findByCreatorIdAndIsDeletedFalse(teacherId);
+        return courses.stream()
+                .map(c -> new CourseSummaryResponse(c.getCourseId(), c.getTitle(), c.getThumbnailUrl()))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -193,22 +202,40 @@ public class CourseServiceImpl implements CourseService {
             ).append("\n");
         }
         try {
-            String aiResult = grpcClientService.callModerateCourseContentAsync("", creatorId.toString(), prompt.toString()).get();
-            if (aiResult == null) {
+            // Gọi AI để phân tích chất lượng khóa học thay cho moderation
+            List<String> lessonIdStrings = orderedLessons.stream()
+                    .map(l -> l.getLessonId().toString())
+                    .toList();
+
+            CourseQualityResponse aiResponse = grpcClientService
+                    .callAnalyzeCourseQualityAsync("", course.getCourseId().toString(), lessonIdStrings)
+                    .get();
+
+            if (aiResponse == null || !aiResponse.getError().isEmpty()) {
                 course.setApprovalStatus(CourseApprovalStatus.PENDING);
             } else {
-                String normalized = aiResult.toUpperCase();
-                if (normalized.contains("APPROVE") || normalized.contains("APPROVED") || normalized.contains("OK")) {
+                aiResponse.getVerdict();
+                String verdict = aiResponse.getVerdict().toUpperCase();
+                float score = aiResponse.getQualityScore();
+
+                // Phán quyết dựa vào verdict + điểm chất lượng
+                if (verdict.contains("APPROVE") || verdict.contains("GOOD") || score >= 0.8) {
                     course.setApprovalStatus(CourseApprovalStatus.APPROVED);
-                } else if (normalized.contains("REJECT") || normalized.contains("DECLINE") || normalized.contains("NO")) {
+                } else if (verdict.contains("REJECT") || verdict.contains("BAD") || score < 0.4) {
                     course.setApprovalStatus(CourseApprovalStatus.REJECTED);
                 } else {
                     course.setApprovalStatus(CourseApprovalStatus.PENDING);
+                }
+
+                // Ghi log hoặc cảnh báo nếu có
+                if (!aiResponse.getWarningsList().isEmpty()) {
+                    System.out.println("⚠️ AI warnings: " + aiResponse.getWarningsList());
                 }
             }
         } catch (Exception e) {
             course.setApprovalStatus(CourseApprovalStatus.PENDING);
         }
+
         course = courseRepository.save(course);
         return courseMapper.toResponse(course);
     }
@@ -243,8 +270,8 @@ public class CourseServiceImpl implements CourseService {
         courseEnrollmentService.deleteCourseEnrollmentsByCourseId(id);
     }
 
-    @Override
     @Cacheable(value = "enrolledCoursesByUser", key = "#userId + ':' + #pageable")
+    @Override
     public Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable) {
         Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId, pageable);
         return enrollments.map(enrollment -> {
@@ -254,8 +281,8 @@ public class CourseServiceImpl implements CourseService {
         });
     }
 
-    @Override
     @Cacheable(value = "coursesByCreator", key = "#creatorId + ':' + #pageable")
+    @Override
     public Page<CourseResponse> getCoursesByCreator(UUID creatorId, Pageable pageable) {
         Page<Course> courses = courseRepository.findByCreatorIdAndIsDeletedFalse(creatorId, pageable);
         return courses.map(courseMapper::toResponse);

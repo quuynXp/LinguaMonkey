@@ -6,6 +6,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface LeaderboardEntryService {
@@ -16,4 +17,5 @@ public interface LeaderboardEntryService {
     void deleteLeaderboardEntry(UUID leaderboardId, UUID userId);
     List<LeaderboardEntryResponse> getTop3LeaderboardEntries(UUID leaderboardId);
     List<LeaderboardEntryResponse> getTop3GlobalLeaderboardEntries();
+    Integer getRankForUserByTab(String tab, String type, UUID userId);
 }

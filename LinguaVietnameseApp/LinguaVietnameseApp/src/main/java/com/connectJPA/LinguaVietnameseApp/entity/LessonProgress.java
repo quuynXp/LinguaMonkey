@@ -26,4 +26,17 @@ public class LessonProgress extends BaseEntity {
 
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;
+
+    @Column(name = "max_score")
+    private Integer maxScore;
+
+    @Column(name = "attempt_number")
+    private Integer attemptNumber;
+
+    @Column(name = "needs_review")
+    private Boolean needsReview = false;
+
+    @Column(name = "answers_json", columnDefinition = "text")
+    private String answersJson;
+
 }

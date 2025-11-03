@@ -1,108 +1,117 @@
-import { create } from 'zustand'
-import { persist, createJSONStorage } from 'zustand/middleware'
-import AsyncStorage from '@react-native-async-storage/async-storage'
-import type { UserProfile, GrammarTopic, BilingualVideo, Language } from '../types/api'
+// stores/AppStore.ts
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { GrammarTopic, BilingualVideo, Language } from '../types/api';
 
 interface CallPreferences {
-  interests: string[]
-  gender: 'any' | 'male' | 'female'
-  nativeLanguage: string
-  learningLanguage: string
-  ageRange: string
-  callDuration: string
+  interests: string[];
+  gender: 'any' | 'male' | 'female';
+  nativeLanguage: string;
+  learningLanguage: string;
+  ageRange: string;
+  callDuration: string;
 }
 
 interface ChatSettings {
-  autoTranslate: boolean
-  showOriginalButton: boolean
-  translateToVietnamese: boolean
-  soundNotifications: boolean
-  vibrationNotifications: boolean
-  showTypingIndicator: boolean
-  autoCorrect: boolean
-  wordSuggestions: boolean
-  saveTranslationHistory: boolean
-  offlineTranslation: boolean
+  autoTranslate: boolean;
+  showOriginalButton: boolean;
+  translateToVietnamese: boolean;
+  soundNotifications: boolean;
+  vibrationNotifications: boolean;
+  showTypingIndicator: boolean;
+  autoCorrect: boolean;
+  wordSuggestions: boolean;
+  saveTranslationHistory: boolean;
+  offlineTranslation: boolean;
 }
 
 interface NotificationPreferences {
-  studyReminders: boolean
-  streakReminders: boolean
-  messageNotifications: boolean
-  coupleNotifications: boolean
-  groupInvitations: boolean
-  achievementNotifications: boolean
-  soundEnabled: boolean
-  vibrationEnabled: boolean
-  reminderFrequency: 'daily' | 'weekdays' | 'custom'
-  customDays: number[]
-  studyTime: string
+  studyReminders: boolean;
+  streakReminders: boolean;
+  messageNotifications: boolean;
+  coupleNotifications: boolean;
+  groupInvitations: boolean;
+  achievementNotifications: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+  reminderFrequency: 'daily' | 'weekdays' | 'custom';
+  customDays: number[];
+  studyTime: string;
   quietHours: {
-    enabled: boolean
-    start: string
-    end: string
-  }
+    enabled: boolean;
+    start: string;
+    end: string;
+  };
 }
 
 interface PrivacySettings {
-  profileVisibility: boolean
-  progressSharing: boolean
-  dataCollection: boolean
-  personalization: boolean
-  analytics: boolean
-  crashReports: boolean
-  locationTracking: boolean
-  contactSync: boolean
+  profileVisibility: boolean;
+  progressSharing: boolean;
+  dataCollection: boolean;
+  personalization: boolean;
+  analytics: boolean;
+  crashReports: boolean;
+  locationTracking: boolean;
+  contactSync: boolean;
 }
+// (Hết các interface)
+
 
 interface AppState {
-  user: UserProfile | null
-  isAuthenticated: boolean
-  selectedGrammarTopic: GrammarTopic | null
-  selectedVideo: BilingualVideo | null
-  supportLanguage: string[]
-  languages: string[]
-  nativeLanguage: string
-  theme: 'light' | 'dark'
-  selectedNoteTopic: string
-  callPreferences: CallPreferences
-  chatSettings: ChatSettings
-  notificationPreferences: NotificationPreferences | null
-  privacySettings: PrivacySettings
+  // XÓA: user: UserProfile | null
+  // XÓA: isAuthenticated: boolean
+
+  // State điều hướng
+  selectedGrammarTopic: GrammarTopic | null;
+  selectedVideo: BilingualVideo | null;
+  selectedNoteTopic: string;
+
+  // Cấu hình ngôn ngữ (của app, không phải của user)
+  supportLanguage: string[];
+  languages: string[]; // Ngôn ngữ user đang học (có thể đồng bộ từ UserStore nếu cần)
+  nativeLanguage: string; // Ngôn ngữ mẹ đẻ (có thể đồng bộ từ UserStore nếu cần)
+  
+  // Cài đặt app
+  theme: 'light' | 'dark';
+  callPreferences: CallPreferences;
+  chatSettings: ChatSettings;
+  notificationPreferences: NotificationPreferences | null;
+  privacySettings: PrivacySettings;
 
   // Actions
-  setUser: (user: UserProfile | null) => void
-  setAuthenticated: (authenticated: boolean) => void
-  setSelectedGrammarTopic: (topic: GrammarTopic | null) => void
-  setSelectedVideo: (video: BilingualVideo | null) => void
-  setSupportLanguage: (Language: string[]) => void
-  setNativeLanguage: (language: string) => void
-  setLanguages: (languages: string[]) => void
-  setTheme: (theme: 'light' | 'dark') => void
-  setSelectedNoteTopic: (topicId: string) => void
-  setCallPreferences: (preferences: CallPreferences) => void
-  setChatSettings: (settings: Partial<ChatSettings>) => void
-  setNotificationPreferences: (preferences: NotificationPreferences) => void
-  updateNotificationPreferences: (prefs: Partial<NotificationPreferences>) => void
-  toggleNotification: (field: keyof NotificationPreferences, value?: boolean) => void
-  togglePrivacy: (field: keyof PrivacySettings, value?: boolean) => void
-  setPrivacySettings: (settings: Partial<PrivacySettings>) => void
-  resetChatSettings: () => void
-  resetPrivacySettings: () => void
-  logout: () => void
+  // XÓA: setUser: (user: UserProfile | null) => void
+  // XÓA: setAuthenticated: (authenticated: boolean) => void
+  setSelectedGrammarTopic: (topic: GrammarTopic | null) => void;
+  setSelectedVideo: (video: BilingualVideo | null) => void;
+  setSupportLanguage: (Language: string[]) => void;
+  setNativeLanguage: (language: string) => void;
+  setLanguages: (languages: string[]) => void;
+  setTheme: (theme: 'light' | 'dark') => void;
+  setSelectedNoteTopic: (topicId: string) => void;
+  setCallPreferences: (preferences: CallPreferences) => void;
+  setChatSettings: (settings: Partial<ChatSettings>) => void;
+  setNotificationPreferences: (preferences: NotificationPreferences) => void;
+  updateNotificationPreferences: (prefs: Partial<NotificationPreferences>) => void;
+  toggleNotification: (field: keyof NotificationPreferences, value?: boolean) => void;
+  togglePrivacy: (field: keyof PrivacySettings, value?: boolean) => void;
+  setPrivacySettings: (settings: Partial<PrivacySettings>) => void;
+  resetChatSettings: () => void;
+  resetPrivacySettings: () => void;
+  logout: () => void; // Chỉ logout state của AppStore
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      user: null,
-      isAuthenticated: false,
+      // XÓA: user: null,
+      // XÓA: isAuthenticated: false,
       selectedChapter: null,
       selectedGrammarTopic: null,
       selectedVideo: null,
-      supportLanguage: ["en", "vi", "jp", "ko", "fr", "de"],
-      nativeLanguage: "vi",
-      languages: ["en", "jp"],
+      supportLanguage: ['en', 'vi', 'jp', 'ko', 'fr', 'de'],
+      nativeLanguage: 'vi',
+      languages: ['en', 'jp'],
       theme: 'light',
       selectedNoteTopic: 'all',
       callPreferences: {
@@ -136,8 +145,8 @@ export const useAppStore = create<AppState>()(
         vibrationEnabled: true,
         reminderFrequency: 'daily',
         customDays: [],
-        studyTime: "20:00",
-        quietHours: { enabled: false, start: "22:00", end: "07:00" },
+        studyTime: '20:00',
+        quietHours: { enabled: false, start: '22:00', end: '07:00' },
       },
       privacySettings: {
         profileVisibility: true,
@@ -151,10 +160,13 @@ export const useAppStore = create<AppState>()(
       },
 
       // ==== actions ====
-      setUser: (user) => set({ user }),
-      setAuthenticated: (auth) => set({ isAuthenticated: auth }),
+      // XÓA: setUser: (user) => set({ user }),
+      // XÓA: setAuthenticated: (auth) => set({ isAuthenticated: auth }),
       setSelectedGrammarTopic: (topic) => set({ selectedGrammarTopic: topic }),
-      setSupportLanguage: (langs) => set({languages: langs}),
+      
+      // SỬA LỖI: Cập nhật đúng 'supportLanguage'
+      setSupportLanguage: (langs) => set({ supportLanguage: langs }), 
+      
       setSelectedVideo: (video) => set({ selectedVideo: video }),
       setNativeLanguage: (lang) => set({ nativeLanguage: lang }),
       setLanguages: (langs) => set({ languages: langs }),
@@ -164,7 +176,7 @@ export const useAppStore = create<AppState>()(
       setChatSettings: (settings) =>
         set((state) => ({ chatSettings: { ...state.chatSettings, ...settings } })),
 
-      // notification
+      // notification (giữ nguyên)
       setNotificationPreferences: (prefs) => set({ notificationPreferences: prefs }),
       updateNotificationPreferences: (prefs) =>
         set((state) => ({
@@ -182,7 +194,7 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      // privacy
+      // privacy (giữ nguyên)
       setPrivacySettings: (settings) =>
         set((state) => ({
           privacySettings: { ...state.privacySettings, ...settings },
@@ -198,6 +210,7 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
+      // reset (giữ nguyên)
       resetChatSettings: () =>
         set({
           chatSettings: {
@@ -213,7 +226,6 @@ export const useAppStore = create<AppState>()(
             offlineTranslation: false,
           },
         }),
-
       resetPrivacySettings: () =>
         set({
           privacySettings: {
@@ -228,16 +240,37 @@ export const useAppStore = create<AppState>()(
           },
         }),
 
+      /**
+       * SỬA: Chỉ reset state của AppStore
+       */
       logout: () =>
         set({
-          user: null,
-          isAuthenticated: false,
+          // XÓA: user: null,
+          // XÓA: isAuthenticated: false,
           notificationPreferences: null,
+          selectedGrammarTopic: null,
+          selectedVideo: null,
+          selectedNoteTopic: 'all',
+          // (Tùy chọn reset các settings khác về default nếu muốn)
+          // chatSettings: { ... } 
         }),
     }),
     {
       name: 'app-storage',
       storage: createJSONStorage(() => AsyncStorage),
-    }
-  )
+      // Cân nhắc dùng partialize để loại trừ các state tạm thời
+      // (như selectedGrammarTopic, selectedVideo) khỏi persist
+      partialize: (state) => ({
+        supportLanguage: state.supportLanguage,
+        nativeLanguage: state.nativeLanguage,
+        languages: state.languages,
+        theme: state.theme,
+        callPreferences: state.callPreferences,
+        chatSettings: state.chatSettings,
+        notificationPreferences: state.notificationPreferences,
+        privacySettings: state.privacySettings,
+        selectedNoteTopic: state.selectedNoteTopic,
+      }),
+    },
+  ),
 );

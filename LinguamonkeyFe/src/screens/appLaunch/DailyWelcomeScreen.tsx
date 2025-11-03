@@ -20,6 +20,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import { MaterialIcons } from '@expo/vector-icons';
 import { resetToTab, resetToAuth } from "../../utils/navigationRef";
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { useBadge } from '../../hooks/useBadge';
 
 type RootStackParamList = {
   DailyWelcome: undefined;
@@ -212,27 +213,28 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         </View>
 
         {/* Achievements */}
-        <View style={styles.achievementsSection}>
-          <Text style={styles.sectionTitle}>{t("achievementsSection")} 🏆</Text>
-          <View style={styles.achievementsList}>
-            {achievements.map((ach) => (
+        <View style={styles.achievementsList}>
+          {achievements.map((ach) => {
+            const { badge, loading } = useBadge(ach.badgeId);
+
+            if (loading || !badge) return null;
+
+            return (
               <View key={ach.badgeId} style={styles.achievementCard}>
                 <Icon name="emoji-events" size={20} color="#F59E0B" />
                 <View style={styles.achievementInfo}>
-                  <Text style={styles.achievementTitle}>{ach.badge.badge_name}</Text>
-                  <Text style={styles.achievementDescription}>
-                    {ach.badge.description}
-                  </Text>
+                  <Text style={styles.achievementTitle}>{badge.badgeName}</Text>
+                  <Text style={styles.achievementDescription}>{badge.description}</Text>
                 </View>
               </View>
-            ))}
-          </View>
+            );
+          })}
         </View>
 
         {/* Continue Learning */}
         <TouchableOpacity
           style={styles.continueButton}
-          onPress={() => resetToTab('Learn', 'LearnMain')}
+          onPress={() => resetToTab('Home', 'HomeMain')}
         >
           <Text style={styles.continueButtonText}>{t("continueButton")}</Text>
           <Icon name="arrow-forward" size={20} color="#FFFFFF" />

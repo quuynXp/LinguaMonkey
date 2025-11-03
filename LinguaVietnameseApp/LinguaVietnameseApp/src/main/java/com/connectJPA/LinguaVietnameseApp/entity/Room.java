@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.RoomTopic;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -36,6 +37,9 @@ public class Room extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "purpose")
     private RoomPurpose purpose;
+
+    @Enumerated(EnumType.STRING)
+    private RoomTopic topic;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "room_type", nullable = false)

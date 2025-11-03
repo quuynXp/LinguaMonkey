@@ -5,11 +5,13 @@ import { useTranslation } from 'react-i18next';
 import { gotoTab } from "../../utils/navigationRef";
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { createScaledSheet } from "../../utils/scaledStyles";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width, height } = Dimensions.get('window');
 
 type AppLaunchScreenProps = {
   navigation: NativeStackNavigationProp<any>;
+  route: any
 };
 
 const onboardingData = [
@@ -36,13 +38,32 @@ const onboardingData = [
   },
 ];
 
-const AppLaunchScreen = ({ navigation }: AppLaunchScreenProps) => {
+const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
   const { t } = useTranslation();
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const setFinishedOnboarding = async () => {
+    try {
+      await AsyncStorage.setItem("hasFinishedOnboarding", "true");
+      console.log("Onboarding flag set to true");
+    } catch (e) {
+      console.error("Failed to set onboarding flag", e);
+    }
+  };
+
+  const skipToAuth = route?.params?.skipToAuth === true;
+  
+  const [currentIndex, setCurrentIndex] = useState(
+    skipToAuth ? onboardingData.length : 0 
+  );
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedOption, setSelectedOption] = useState<"new" | "existing" | "quick" | null>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (skipToAuth) {
+      setFinishedOnboarding();
+    }
+  }, [skipToAuth]);
 
   useEffect(() => {
     Animated.parallel([
@@ -93,11 +114,13 @@ const AppLaunchScreen = ({ navigation }: AppLaunchScreenProps) => {
     if (currentIndex < onboardingData.length - 1) {
       animateTransition(() => setCurrentIndex(currentIndex + 1));
     } else {
+      setFinishedOnboarding();
       setCurrentIndex(onboardingData.length);
     }
   };
 
   const handleSkip = () => {
+    setFinishedOnboarding();
     setCurrentIndex(onboardingData.length);
   };
 

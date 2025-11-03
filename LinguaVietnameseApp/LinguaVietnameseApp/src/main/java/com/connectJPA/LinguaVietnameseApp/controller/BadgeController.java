@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.BadgeRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeProgressResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeResponse;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -16,6 +17,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -41,6 +43,24 @@ public class BadgeController {
                 .code(200)
                 .message(messageSource.getMessage("badge.list.success", null, locale))
                 .result(badges)
+                .build();
+    }
+
+    @Operation(summary = "Get user's badge progress", description = "Retrieve progress for all badges for a specific user")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved badge progress"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    @GetMapping("/user/{userId}/progress")
+    @PreAuthorize("#userId.toString() == authentication.name or hasAuthority('ROLE_ADMIN')") // Bảo mật: Chỉ user đó hoặc admin mới được xem
+    public AppApiResponse<List<BadgeProgressResponse>> getBadgeProgressForUser(
+            @Parameter(description = "User ID") @PathVariable UUID userId,
+            Locale locale) {
+        List<BadgeProgressResponse> progress = badgeService.getBadgeProgressForUser(userId);
+        return AppApiResponse.<List<BadgeProgressResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("badge.progress.success", null, locale))
+                .result(progress)
                 .build();
     }
 

@@ -13,7 +13,7 @@ const Stack = createNativeStackNavigator();
 export default function HomeStack() {
   console.log("HomeStack rendered");
   return (
-    <Stack.Navigator initialRouteName="HomeMain" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName="HomeMain" screenOptions={{ headerShown: false }} id={undefined}>
       <Stack.Screen name="HomeMain" component={HomeScreen} />
       <Stack.Screen name="EnhancedAccountCreation" component={EnhancedAccountCreationScreen} />
       <Stack.Screen name="EnhancedLeaderboard" component={EnhancedLeaderboardScreen} />

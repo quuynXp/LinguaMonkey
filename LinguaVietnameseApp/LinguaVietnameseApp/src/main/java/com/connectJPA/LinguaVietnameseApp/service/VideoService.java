@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.VideoSubtitleRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.BilingualVideoResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoSubtitleResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.VideoReview;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -28,4 +29,8 @@ public interface VideoService {
     public void unfavoriteVideo(UUID videoId, UUID userId);
     public void trackProgress(UUID videoId, VideoProgressRequest request);
     void recordProgress(UUID videoId, VideoProgressRequest progressRequest);
+    VideoReview createReview(UUID videoId, UUID userId, Integer rating, String content);
+    void reactReview(UUID reviewId, UUID userId, Short reaction);
+
+    Page<BilingualVideoResponse> searchVideos(Pageable pageable, String q, String language, String category, String sort);
 }

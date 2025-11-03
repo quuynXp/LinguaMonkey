@@ -9,13 +9,10 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.FriendshipMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.FriendshipRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.FriendshipRepository;
 import com.connectJPA.LinguaVietnameseApp.service.FriendshipService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -65,6 +62,12 @@ public class FriendshipServiceImpl implements FriendshipService {
             log.error("Error checking friend request status between {} and {}: {}", currentUserId, otherUserId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Override
+    public Page<FriendshipResponse> getPendingRequestsForUser(UUID userId, Pageable pageable) {
+        Page<Friendship> requests = friendshipRepository.findPendingRequests(userId, pageable);
+        return requests.map(f -> new FriendshipResponse(f.getId().getUser1Id(), f.getId().getUser2Id(), f.getStatus(), f.getCreatedAt()));
     }
 
     @Override

@@ -1,10 +1,9 @@
-"use client"
-
 import { useEffect, useRef, useState } from "react"
-import { Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Svg, { Line } from "react-native-svg"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import { useGrammar } from "../../hooks/useGrammar";
 import { MindMapNode } from "../../types/api"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
@@ -16,128 +15,8 @@ const GrammarMindMapScreen = ({ navigation }: any) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
   const scaleAnim = useRef(new Animated.Value(1)).current
 
-  const mindMapData: MindMapNode[] = [
-    {
-      id: "root",
-      title: "English Grammar",
-      description: "Complete English Grammar System",
-      x: width / 2,
-      y: height / 3,
-      color: "#3B82F6",
-      level: 0,
-      children: ["tenses", "parts-of-speech", "sentence-structure", "punctuation"],
-      examples: [],
-      rules: [],
-    },
-    {
-      id: "tenses",
-      title: "Tenses",
-      description: "Past, Present, Future",
-      x: width / 4,
-      y: height / 5,
-      color: "#10B981",
-      level: 1,
-      children: ["present", "past", "future"],
-      examples: ["I eat", "I ate", "I will eat"],
-      rules: ["Express time relationships", "Show when actions occur"],
-    },
-    {
-      id: "present",
-      title: "Present Tense",
-      description: "Simple, Continuous, Perfect",
-      x: width / 6,
-      y: height / 8,
-      color: "#10B981",
-      level: 2,
-      children: [],
-      examples: ["I work", "I am working", "I have worked"],
-      rules: ["Current actions", "Ongoing actions", "Completed actions affecting now"],
-    },
-    {
-      id: "past",
-      title: "Past Tense",
-      description: "Simple, Continuous, Perfect",
-      x: width / 4,
-      y: height / 12,
-      color: "#10B981",
-      level: 2,
-      children: [],
-      examples: ["I worked", "I was working", "I had worked"],
-      rules: ["Completed actions", "Ongoing past actions", "Actions before other past actions"],
-    },
-    {
-      id: "future",
-      title: "Future Tense",
-      description: "Simple, Continuous, Perfect",
-      x: width / 3,
-      y: height / 8,
-      color: "#10B981",
-      level: 2,
-      children: [],
-      examples: ["I will work", "I will be working", "I will have worked"],
-      rules: ["Future actions", "Ongoing future actions", "Actions completed by future time"],
-    },
-    {
-      id: "parts-of-speech",
-      title: "Parts of Speech",
-      description: "8 Main Categories",
-      x: (3 * width) / 4,
-      y: height / 5,
-      color: "#F59E0B",
-      level: 1,
-      children: ["nouns", "verbs", "adjectives", "adverbs"],
-      examples: ["cat (noun)", "run (verb)", "beautiful (adjective)", "quickly (adverb)"],
-      rules: ["Words categorized by function", "Each has specific roles in sentences"],
-    },
-    {
-      id: "nouns",
-      title: "Nouns",
-      description: "Person, Place, Thing, Idea",
-      x: (2 * width) / 3,
-      y: height / 8,
-      color: "#F59E0B",
-      level: 2,
-      children: [],
-      examples: ["teacher", "school", "book", "happiness"],
-      rules: ["Can be singular or plural", "Can be concrete or abstract", "Subject or object of sentence"],
-    },
-    {
-      id: "verbs",
-      title: "Verbs",
-      description: "Action or State Words",
-      x: (5 * width) / 6,
-      y: height / 8,
-      color: "#F59E0B",
-      level: 2,
-      children: [],
-      examples: ["run", "think", "is", "become"],
-      rules: ["Express actions or states", "Change form with tense", "Agree with subject"],
-    },
-    {
-      id: "sentence-structure",
-      title: "Sentence Structure",
-      description: "How sentences are built",
-      x: width / 2,
-      y: (2 * height) / 3,
-      color: "#EF4444",
-      level: 1,
-      children: ["simple", "compound", "complex"],
-      examples: ["I eat.", "I eat and drink.", "I eat because I'm hungry."],
-      rules: ["Must have subject and predicate", "Can be combined in various ways"],
-    },
-    {
-      id: "punctuation",
-      title: "Punctuation",
-      description: "Marks that clarify meaning",
-      x: width / 2,
-      y: (4 * height) / 5,
-      color: "#8B5CF6",
-      level: 1,
-      children: ["periods", "commas", "questions"],
-      examples: [".", ",", "?", "!", ";", ":"],
-      rules: ["End sentences", "Separate ideas", "Show emotion or questions"],
-    },
-  ]
+  const { useGrammarMindmap } = useGrammar();
+  const { data: mindMapData = [], isLoading, error } = useGrammarMindmap();
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -163,6 +42,10 @@ const GrammarMindMapScreen = ({ navigation }: any) => {
         useNativeDriver: true,
       }),
     ]).start()
+    // Optional: Navigate to detailed grammar learning if node is a rule
+    if (node.type === 'rule') {
+      navigation.navigate('GrammarLearningScreen', { ruleId: node.id });
+    }
   }
 
   const renderConnections = () => {
@@ -207,6 +90,28 @@ const GrammarMindMapScreen = ({ navigation }: any) => {
     ))
   }
 
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
+          <ActivityIndicator size="large" color="#3B82F6" />
+          <Text style={styles.exampleText}>Loading Grammar Mindmap...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.container}>
+          <Icon name="error" size={48} color="#EF4444" />
+          <Text style={styles.exampleText}>Failed to load mindmap. Please try again.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -227,6 +132,7 @@ const GrammarMindMapScreen = ({ navigation }: any) => {
           showsHorizontalScrollIndicator={false}
           maximumZoomScale={2}
           minimumZoomScale={0.5}
+          pinchGestureEnabled={true} // Enable pinch-to-zoom
         >
           <Svg height={height * 1.2} width={width * 1.2}>
             {renderConnections()}
@@ -243,18 +149,7 @@ const GrammarMindMapScreen = ({ navigation }: any) => {
               <View style={[styles.legendColor, { backgroundColor: "#10B981" }]} />
               <Text style={styles.legendText}>Tenses</Text>
             </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: "#F59E0B" }]} />
-              <Text style={styles.legendText}>Parts of Speech</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: "#EF4444" }]} />
-              <Text style={styles.legendText}>Sentence Structure</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendColor, { backgroundColor: "#8B5CF6" }]} />
-              <Text style={styles.legendText}>Punctuation</Text>
-            </View>
+            {/* Additional legend items as needed */}
           </View>
         </View>
       </Animated.View>

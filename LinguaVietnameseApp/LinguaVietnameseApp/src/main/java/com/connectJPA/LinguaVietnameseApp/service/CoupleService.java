@@ -2,9 +2,12 @@ package com.connectJPA.LinguaVietnameseApp.service;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CoupleRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CoupleResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.Couple;
+import com.connectJPA.LinguaVietnameseApp.entity.CoupleProfileSummary;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Optional;
 import java.util.UUID;
 
 public interface CoupleService {
@@ -13,4 +16,6 @@ public interface CoupleService {
     CoupleResponse createCouple(CoupleRequest request);
     CoupleResponse updateCouple(UUID user1Id, UUID user2Id, CoupleRequest request);
     void deleteCouple(UUID user1Id, UUID user2Id);
+    CoupleProfileSummary getCoupleProfileSummaryByUser(UUID userId, UUID viewerId);
+    Couple findById(UUID coupleId);
 }

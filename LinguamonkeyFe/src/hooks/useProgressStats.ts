@@ -1,4 +1,3 @@
-// hooks/useProgressStats.ts
 import { useEffect, useState } from "react";
 import axiosInstance from "../api/axiosInstance";
 import { LessonProgressResponse, LessonResponse, PaginatedResponse } from "../types/api";

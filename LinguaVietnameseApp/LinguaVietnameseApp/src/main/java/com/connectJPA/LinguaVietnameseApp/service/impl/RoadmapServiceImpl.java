@@ -8,7 +8,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.id.UserRoadmapId;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
-import com.connectJPA.LinguaVietnameseApp.repository.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.RoadmapService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -35,6 +35,7 @@ public class RoadmapServiceImpl implements RoadmapService {
     private final UserInterestRepository userInterestRepository;
     private final GrpcClientService grpcClientService;
     private final InterestRepository interestRepository;
+    private final RoadmapSuggestionRepository roadmapSuggestionRepository;
 
     @Override
     public List<RoadmapResponse> getAllRoadmaps(String language) {
@@ -190,6 +191,69 @@ public class RoadmapServiceImpl implements RoadmapService {
         return mapToResponse(roadmap);
     }
 
+    @Override
+    public List<RoadmapSuggestion> getSuggestions(UUID roadmapId) {
+        return roadmapSuggestionRepository.findByRoadmapRoadmapId(roadmapId);
+    }
+
+    @Override
+    public List<RoadmapResponse> getPublicRoadmaps(String language) {
+        return userRoadmapRepository.findByIsPublicTrueAndLanguage(language).stream()
+                .map(ur -> mapToResponse(ur.getRoadmap()))
+                .collect(Collectors.toList());
+    }
+
+
+    @Transactional
+    @Override
+    public void setPublic(UUID userId, UUID roadmapId, boolean isPublic) {
+        UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, roadmapId))
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+        if (!ur.getUserRoadmapId().getUserId().equals(userId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED); // Chỉ owner mới set public
+        }
+        ur.setPublic(isPublic); // Giả định thêm trường isPublic
+        userRoadmapRepository.save(ur);
+    }
+
+    @Transactional
+    @Override
+    public RoadmapSuggestion addSuggestion(UUID userId, UUID roadmapId, UUID itemId, Integer suggestedOrderIndex, String reason) {
+        UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, roadmapId))
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+        if (!ur.isPublic()) {
+            throw new AppException(ErrorCode.ROADMAP_NOT_PUBLIC);
+        }
+        RoadmapSuggestion suggestion = new RoadmapSuggestion();
+        suggestion.setUser(userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
+        suggestion.setRoadmap(roadmapRepository.findById(roadmapId).orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND)));
+        suggestion.setItemId(itemId);
+        suggestion.setSuggestedOrderIndex(suggestedOrderIndex);
+        suggestion.setReason(reason);
+        return roadmapSuggestionRepository.save(suggestion);
+    }
+
+    @Transactional
+    @Override
+    public void applySuggestion(UUID userId, UUID suggestionId) {
+        RoadmapSuggestion suggestion = roadmapSuggestionRepository.findById(suggestionId)
+                .orElseThrow(() -> new AppException(ErrorCode.SUGGESTION_NOT_FOUND));
+        UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, suggestion.getRoadmap().getRoadmapId()))
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+        if (!ur.getUserRoadmapId().getUserId().equals(userId)) {
+            throw new AppException(ErrorCode.UNAUTHORIZED); // Chỉ owner áp dụng
+        }
+        if (suggestion.getItemId() != null && suggestion.getSuggestedOrderIndex() != null) {
+            RoadmapItem item = roadmapItemRepository.findById(suggestion.getItemId())
+                    .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
+            item.setOrderIndex(suggestion.getSuggestedOrderIndex());
+            roadmapItemRepository.save(item);
+            // Có thể thêm logic điều chỉnh orderIndex của các item khác để tránh xung đột
+        }
+        suggestion.setApplied(true);
+        roadmapSuggestionRepository.save(suggestion);
+    }
+
     @Transactional
     @Override
     public RoadmapResponse update(UUID id, CreateRoadmapRequest request) {
@@ -215,30 +279,30 @@ public class RoadmapServiceImpl implements RoadmapService {
     @Override
     public RoadmapResponse generateFromAI(String token, GenerateRoadmapRequest req) {
         try {
-            StringBuilder prompt = new StringBuilder("Generate roadmap for language " + req.getLanguageCode() + ". Target proficiency: " + req.getTargetProficiency() + ". Focus areas: " + String.join(", ", req.getFocusAreas()) + ". Study time per day: " + req.getStudyTimePerDay() + ". Target date: " + req.getTargetDate() + ". " + req.getAdditionalPrompt());
+            StringBuilder prompt = new StringBuilder("Generate roadmap for language " + req.getLanguageCode()
+                    + ". Target proficiency: " + req.getTargetProficiency()
+                    + ". Focus areas: " + String.join(", ", req.getFocusAreas())
+                    + ". Study time per day: " + req.getStudyTimePerDay()
+                    + ". Target date: " + req.getTargetDate() + ". " + req.getAdditionalPrompt());
 
             if (req.isCustom()) {
                 User user = userRepository.findById(UUID.fromString(req.getUserId()))
                         .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-                // goals → convert enum thành String
                 String goalsStr = userGoalRepository.findByUserIdAndIsDeletedFalse(user.getUserId()).stream()
-                        .map(goal -> goal.getGoalType().name()) // Enum -> String
+                        .map(goal -> goal.getGoalType().name())
                         .collect(Collectors.joining(", "));
 
-                // interests → lấy trực tiếp từ quan hệ ManyToOne Interest
                 String interestsStr = userInterestRepository.findByIdUserIdAndIsDeletedFalse(user.getUserId()).stream()
                         .map(ui -> ui.getInterest().getInterestName())
                         .collect(Collectors.joining(", "));
 
-                // build prompt
                 prompt.append(" User age range: ").append(user.getAgeRange())
                         .append(". Learning pace: ").append(user.getLearningPace())
                         .append(". Proficiency: ").append(user.getProficiency())
                         .append(". Goals: ").append(goalsStr.isEmpty() ? "None" : goalsStr)
                         .append(". Interests: ").append(interestsStr.isEmpty() ? "None" : interestsStr);
             }
-
 
             var future = grpcClientService.callCreateOrUpdateRoadmapDetailedAsync(
                     token,
@@ -251,6 +315,10 @@ public class RoadmapServiceImpl implements RoadmapService {
 
             var protoResp = future.get();
 
+            if (protoResp == null || protoResp.getError() != null && !protoResp.getError().isEmpty()) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            }
+
             UUID roadmapId = protoResp.getRoadmapId().isEmpty() ? UUID.randomUUID() : UUID.fromString(protoResp.getRoadmapId());
 
             Roadmap roadmap = new Roadmap();
@@ -258,14 +326,16 @@ public class RoadmapServiceImpl implements RoadmapService {
             roadmap.setTitle(protoResp.getTitle());
             roadmap.setDescription(protoResp.getDescription());
             roadmap.setLanguageCode(protoResp.getLanguage());
-            roadmap.setTotalItems(protoResp.getItemsList().size());
+            roadmap.setTotalItems(protoResp.getItemsList() == null ? 0 : protoResp.getItemsList().size());
             roadmapRepository.save(roadmap);
 
+            // cleanup existing
             roadmapItemRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
             roadmapMilestoneRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
             roadmapGuidanceRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
             roadmapResourceRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
 
+            // save items
             for (var itemProto : protoResp.getItemsList()) {
                 UUID itemId = itemProto.getItemId().isEmpty() ? UUID.randomUUID() : UUID.fromString(itemProto.getItemId());
                 RoadmapItem item = new RoadmapItem();
@@ -284,10 +354,14 @@ public class RoadmapServiceImpl implements RoadmapService {
                     item.setContentId(UUID.fromString(itemProto.getContentId()));
                 }
                 roadmapItemRepository.save(item);
+            }
 
+            // save resources (if any)
+            if (protoResp.getResourcesList() != null) {
                 for (var resProto : protoResp.getResourcesList()) {
-                    if (resProto.getItemId().equals(itemProto.getItemId())) {
+                    try {
                         UUID resId = resProto.getResourceId().isEmpty() ? UUID.randomUUID() : UUID.fromString(resProto.getResourceId());
+                        UUID itemId = resProto.getItemId().isEmpty() ? null : UUID.fromString(resProto.getItemId());
                         RoadmapResource res = new RoadmapResource();
                         res.setResourceId(resId);
                         res.setItemId(itemId);
@@ -300,47 +374,64 @@ public class RoadmapServiceImpl implements RoadmapService {
                         }
                         res.setDuration(resProto.getDuration());
                         roadmapResourceRepository.save(res);
+                    } catch (Exception ex) {
+                        // log and continue
+                        System.err.println("Failed to save resource proto: " + ex.getMessage());
                     }
                 }
+            }
 
+            // save guidances
+            if (protoResp.getGuidancesList() != null) {
                 for (var gProto : protoResp.getGuidancesList()) {
-                    if (gProto.getItemId().equals(itemProto.getItemId())) {
+                    try {
                         UUID gId = gProto.getGuidanceId().isEmpty() ? UUID.randomUUID() : UUID.fromString(gProto.getGuidanceId());
+                        UUID itemId = gProto.getItemId().isEmpty() ? null : UUID.fromString(gProto.getItemId());
                         RoadmapGuidance guidance = new RoadmapGuidance();
                         guidance.setGuidanceId(gId);
                         guidance.setItemId(itemId);
-                        guidance.setStage(gProto.getStage());
+                        guidance.setStage(String.valueOf(gProto.getStage()));
                         guidance.setTitle(gProto.getTitle());
                         guidance.setDescription(gProto.getDescription());
                         guidance.setTips(gProto.getTipsList().toArray(new String[0]));
                         guidance.setEstimatedTime(gProto.getEstimatedTime());
                         guidance.setOrderIndex(gProto.getOrderIndex());
                         roadmapGuidanceRepository.save(guidance);
+                    } catch (Exception ex) {
+                        System.err.println("Failed to save guidance proto: " + ex.getMessage());
                     }
                 }
             }
 
-            for (var mProto : protoResp.getMilestonesList()) {
-                UUID mId = mProto.getMilestoneId().isEmpty() ? UUID.randomUUID() : UUID.fromString(mProto.getMilestoneId());
-                RoadmapMilestone m = new RoadmapMilestone();
-                m.setMilestoneId(mId);
-                m.setRoadmapId(roadmapId);
-                m.setTitle(mProto.getTitle());
-                m.setDescription(mProto.getDescription());
-                m.setLevel(mProto.getLevel());
-                m.setRequirements(mProto.getRequirementsList().toArray(new String[0]));
-                m.setRewards(mProto.getRewardsList().toArray(new String[0]));
-                m.setOrderIndex(mProto.getOrderIndex());
-                roadmapMilestoneRepository.save(m);
+            // save milestones
+            if (protoResp.getMilestonesList() != null) {
+                for (var mProto : protoResp.getMilestonesList()) {
+                    try {
+                        UUID mId = mProto.getMilestoneId().isEmpty() ? UUID.randomUUID() : UUID.fromString(mProto.getMilestoneId());
+                        RoadmapMilestone m = new RoadmapMilestone();
+                        m.setMilestoneId(mId);
+                        m.setRoadmapId(roadmapId);
+                        m.setTitle(mProto.getTitle());
+                        m.setDescription(mProto.getDescription());
+                        m.setLevel(mProto.getLevel());
+                        m.setRequirements(mProto.getRequirementsList().toArray(new String[0]));
+                        m.setRewards(mProto.getRewardsList().toArray(new String[0]));
+                        m.setOrderIndex(mProto.getOrderIndex());
+                        roadmapMilestoneRepository.save(m);
+                    } catch (Exception ex) {
+                        System.err.println("Failed to save milestone proto: " + ex.getMessage());
+                    }
+                }
             }
 
-            if (!req.getUserId().isEmpty()) {
+            // link user-roadmap
+            if (req.getUserId() != null && !req.getUserId().isEmpty()) {
                 UserRoadmap ur = new UserRoadmap();
                 ur.setUserRoadmapId(new UserRoadmapId(UUID.fromString(req.getUserId()), roadmapId));
                 ur.setCurrentLevel(0);
-                ur.setTargetLevel(10); // default or from req
+                ur.setTargetLevel(10);
                 ur.setTargetProficiency(req.getTargetProficiency());
-                ur.setEstimatedCompletionTime(req.getStudyTimePerDay() > 0 ? (roadmap.getTotalItems() * 60 / req.getStudyTimePerDay()) : 0); // days estimate
+                ur.setEstimatedCompletionTime(req.getStudyTimePerDay() > 0 ? (roadmap.getTotalItems() * 60 / req.getStudyTimePerDay()) : 0);
                 ur.setCompletedItems(0);
                 ur.setStatus("active");
                 userRoadmapRepository.save(ur);

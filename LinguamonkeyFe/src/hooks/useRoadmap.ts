@@ -1,4 +1,3 @@
-// hooks/useRoadmap.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
 import type {
@@ -13,8 +12,9 @@ export const useRoadmap = () => {
   const queryClient = useQueryClient();
   const user = useUserStore((state) => state.user);
 
-  const useUserRoadmap = (languageCode?: string) => {
-    return useQuery({
+  // === USER ROADMAP ===
+  const useUserRoadmap = (languageCode?: string) =>
+    useQuery({
       queryKey: ["userRoadmap", languageCode, user?.userId],
       queryFn: async () => {
         if (!user?.userId) throw new Error("User not logged in");
@@ -22,14 +22,14 @@ export const useRoadmap = () => {
         if (languageCode) endpoint += `?language=${languageCode}`;
         const res = await instance.get<ApiResponse<LearningRoadmap[]>>(endpoint);
         const list = res.data.result || [];
-        return list.length > 0 ? list[0] : null; // return first assigned roadmap or null
+        return list.length > 0 ? list[0] : null;
       },
       enabled: !!user?.userId,
     });
-  };
 
-  const useDefaultRoadmaps = (languageCode?: string) => {
-    return useQuery({
+  // === DEFAULT ROADMAPS ===
+  const useDefaultRoadmaps = (languageCode?: string) =>
+    useQuery({
       queryKey: ["defaultRoadmaps", languageCode],
       queryFn: async () => {
         let endpoint = `/roadmaps`;
@@ -38,10 +38,10 @@ export const useRoadmap = () => {
         return res.data.result;
       },
     });
-  };
 
-  const useRoadmapItemDetail = (itemId: string | null) => {
-    return useQuery({
+  // === ROADMAP ITEM DETAIL ===
+  const useRoadmapItemDetail = (itemId: string | null) =>
+    useQuery({
       queryKey: ["roadmapItem", itemId],
       queryFn: async () => {
         if (!itemId) throw new Error("Item id missing");
@@ -50,20 +50,20 @@ export const useRoadmap = () => {
       },
       enabled: !!itemId,
     });
-  };
 
-  const useUserGoals = () => {
-    return useQuery({
+  // === USER GOALS ===
+  const useUserGoals = () =>
+    useQuery({
       queryKey: ["userGoals"],
       queryFn: async () => {
         const res = await instance.get<ApiResponse<UserGoal[]>>("/user-goals");
         return res.data.result;
       },
     });
-  };
 
-  const useCreateGoal = () => {
-    return useMutation({
+  // === CREATE GOAL ===
+  const useCreateGoal = () =>
+    useMutation({
       mutationFn: async (goalData: Partial<UserGoal>) => {
         const res = await instance.post<ApiResponse<UserGoal>>("/user-goals", goalData);
         return res.data.result;
@@ -73,10 +73,22 @@ export const useRoadmap = () => {
         queryClient.invalidateQueries({ queryKey: ["userRoadmap"] });
       },
     });
-  };
 
-  const useUpdateGoal = () => {
-    return useMutation({
+
+  const useRoadmapDetail = (roadmapId: string, userId?: string) =>
+    useQuery({
+      queryKey: ["roadmapDetail", roadmapId],
+      queryFn: async () => {
+        if (!roadmapId) throw new Error("Missing roadmapId");
+        const res = await instance.get<ApiResponse<LearningRoadmap>>(`/roadmaps/${roadmapId}${userId ? `?userId=${userId}` : ""}`);
+        return res.data.result;
+      },
+      enabled: !!roadmapId,
+    });
+
+  // === UPDATE GOAL ===
+  const useUpdateGoal = () =>
+    useMutation({
       mutationFn: async ({ goalId, goalData }: { goalId: string; goalData: Partial<UserGoal> }) => {
         const res = await instance.put<ApiResponse<UserGoal>>(`/user-goals/${goalId}`, goalData);
         return res.data.result;
@@ -86,10 +98,10 @@ export const useRoadmap = () => {
         queryClient.invalidateQueries({ queryKey: ["userRoadmap"] });
       },
     });
-  };
 
-  const useStartRoadmapItem = () => {
-    return useMutation({
+  // === START ITEM ===
+  const useStartRoadmapItem = () =>
+    useMutation({
       mutationFn: async (itemId: string) => {
         if (!user?.userId) throw new Error("User not logged in");
         const res = await instance.post<ApiResponse<{ success: boolean }>>("/roadmaps/items/start", {
@@ -103,10 +115,10 @@ export const useRoadmap = () => {
         queryClient.invalidateQueries({ queryKey: ["roadmapItem", itemId] });
       },
     });
-  };
 
-  const useCompleteRoadmapItem = () => {
-    return useMutation({
+  // === COMPLETE ITEM ===
+  const useCompleteRoadmapItem = () =>
+    useMutation({
       mutationFn: async ({ itemId, score }: { itemId: string; score?: number }) => {
         if (!user?.userId) throw new Error("User not logged in");
         const res = await instance.post<ApiResponse<{ success: boolean }>>("/roadmaps/items/complete", {
@@ -121,10 +133,10 @@ export const useRoadmap = () => {
         queryClient.invalidateQueries({ queryKey: ["roadmapItem", itemId] });
       },
     });
-  };
 
-  const useGenerateRoadmap = () => {
-    return useMutation({
+  // === GENERATE ROADMAP ===
+  const useGenerateRoadmap = () =>
+    useMutation({
       mutationFn: async (preferences: {
         language_code: string;
         target_proficiency: string;
@@ -137,7 +149,7 @@ export const useRoadmap = () => {
         if (!user?.userId) throw new Error("User not logged in");
         const payload = {
           userId: user.userId,
-          languageCode: preferences.language_code.toLowerCase(), // <- fixed
+          languageCode: preferences.language_code.toLowerCase(),
           targetProficiency: preferences.target_proficiency,
           targetDate: preferences.target_date,
           focusAreas: preferences.focus_areas,
@@ -152,34 +164,127 @@ export const useRoadmap = () => {
         queryClient.invalidateQueries({ queryKey: ["userRoadmap"] });
       },
     });
-  };
 
-  const useAssignDefaultRoadmap = () => { // FE action to assign default roadmap to user
-    return useMutation({
+  // === ASSIGN DEFAULT ROADMAP ===
+  const useAssignDefaultRoadmap = () =>
+    useMutation({
       mutationFn: async ({ roadmapId }: { roadmapId: string }) => {
         if (!user?.userId) throw new Error("User not logged in");
         const res = await instance.post<ApiResponse<void>>("/roadmaps/assign", {
           userId: user.userId,
           roadmapId,
         });
-        return res.data;
+        return res.data.result;
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: ["userRoadmap"] });
       },
     });
-  };
+
+  // === EDIT ROADMAP ===
+  const useEditRoadmap = () =>
+    useMutation({
+      mutationFn: async ({
+        roadmapId,
+        title,
+        description,
+      }: {
+        roadmapId: string;
+        title: string;
+        description: string;
+      }) => {
+        const res = await instance.put<ApiResponse<LearningRoadmap>>(`/roadmaps/${roadmapId}`, {
+          title,
+          description,
+        });
+        return res.data.result;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["roadmapDetail"] });
+      },
+    });
+
+  // === PUBLIC ROADMAPS ===
+  const usePublicRoadmaps = () =>
+    useQuery({
+      queryKey: ["publicRoadmaps"],
+      queryFn: async () => {
+        const res = await instance.get<ApiResponse<LearningRoadmap[]>>("/roadmaps/public");
+        return res.data.result;
+      },
+    });
+
+  // === SUGGESTIONS ===
+  const useSuggestions = (roadmapId: string) =>
+    useQuery({
+      queryKey: ["suggestions", roadmapId],
+      queryFn: async () => {
+        const res = await instance.get<ApiResponse<any>>(`/roadmaps/${roadmapId}/suggestions`);
+        return res.data.result;
+      },
+    });
+
+  const useAddSuggestion = () =>
+    useMutation({
+      mutationFn: async ({
+        roadmapId,
+        itemId,
+        suggestedOrderIndex,
+        reason,
+      }: {
+        roadmapId: string;
+        itemId: string;
+        suggestedOrderIndex: number;
+        reason: string;
+      }) => {
+        if (!user?.userId) throw new Error("User not logged in");
+        const res = await instance.post<ApiResponse<any>>(
+          `/roadmaps/${roadmapId}/suggestions`,
+          { itemId, suggestedOrderIndex, reason, userId: user.userId }
+        );
+        return res.data.result;
+      },
+      onSuccess: (_data, { roadmapId }) => {
+        queryClient.invalidateQueries({ queryKey: ["suggestions", roadmapId] });
+      },
+    });
+
+  const useApplySuggestion = () =>
+    useMutation({
+      mutationFn: async ({
+        suggestionId,
+        userId,
+      }: {
+        suggestionId: string;
+        userId: string;
+      }) => {
+        const res = await instance.put<ApiResponse<any>>(
+          `/roadmaps/suggestions/${suggestionId}/apply?userId=${userId}`
+        );
+        return res.data.result;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["suggestions"] });
+        queryClient.invalidateQueries({ queryKey: ["roadmapDetail"] });
+      },
+    });
 
   return {
     useUserRoadmap,
     useDefaultRoadmaps,
     useRoadmapItemDetail,
     useUserGoals,
+    useRoadmapDetail,
     useCreateGoal,
     useUpdateGoal,
     useStartRoadmapItem,
     useCompleteRoadmapItem,
     useGenerateRoadmap,
     useAssignDefaultRoadmap,
+    useEditRoadmap,
+    usePublicRoadmaps,
+    useSuggestions,
+    useAddSuggestion,
+    useApplySuggestion,
   };
 };

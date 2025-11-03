@@ -2,8 +2,8 @@ package com.connectJPA.LinguaVietnameseApp.scheduler;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
-import com.connectJPA.LinguaVietnameseApp.repository.UserLearningActivityRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserLearningActivityRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;

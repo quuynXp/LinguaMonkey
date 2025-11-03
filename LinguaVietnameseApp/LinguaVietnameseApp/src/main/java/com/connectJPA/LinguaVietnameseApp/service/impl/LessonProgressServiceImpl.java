@@ -3,22 +3,27 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonProgressRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonProgressResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.LessonProgress;
+import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressId;
+import com.connectJPA.LinguaVietnameseApp.event.LessonCompletedEvent;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.LessonProgressMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.LessonProgressRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonProgressRepository;
 import com.connectJPA.LinguaVietnameseApp.service.LessonProgressService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Service
@@ -27,6 +32,7 @@ import java.util.UUID;
 public class LessonProgressServiceImpl implements LessonProgressService {
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonProgressMapper lessonProgressMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Cacheable(value = "lessonProgress", key = "#lessonId + ':' + #userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
@@ -43,6 +49,22 @@ public class LessonProgressServiceImpl implements LessonProgressService {
             log.error("Error while fetching all lesson progress: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Transactional
+    @Override
+    public void completeLesson(UUID userId, UUID lessonId, int score, int maxScore) {
+        // 1. Tạo và lưu nghiệp vụ chính
+        LessonProgress progress = new LessonProgress();
+        progress.setId(new LessonProgressId(lessonId, userId));
+        progress.setScore(score);
+        progress.setMaxScore(maxScore);
+        progress.setCompletedAt(OffsetDateTime.from(Instant.now()));
+
+        lessonProgressRepository.save(progress);
+
+        LessonCompletedEvent event = new LessonCompletedEvent(progress);
+        eventPublisher.publishEvent(event);
     }
 
     @Override

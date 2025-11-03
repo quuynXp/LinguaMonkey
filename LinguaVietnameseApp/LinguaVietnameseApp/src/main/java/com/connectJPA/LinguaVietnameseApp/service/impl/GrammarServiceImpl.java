@@ -7,7 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.GrammarProgressId;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
-import com.connectJPA.LinguaVietnameseApp.repository.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.GrammarService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +42,104 @@ public class GrammarServiceImpl implements GrammarService {
             // don't include rules by default (client will fetch topic by id)
             return r;
         }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional
+    public List<MindMapNode> getMindMap() {
+        List<GrammarTopic> topics = topicRepo.findByIsDeletedFalseOrderByCreatedAtAsc();
+        List<MindMapNode> nodes = new ArrayList<>();
+
+        // Root node
+        MindMapNode root = new MindMapNode();
+        root.setId("root");
+        root.setTitle("Vietnamese Grammar");
+        root.setDescription("Complete Vietnamese Grammar System");
+        root.setChildren(topics.stream().map(t -> t.getTopicId().toString()).collect(Collectors.toList()));
+        root.setExamples(new ArrayList<>());
+        root.setRules(new ArrayList<>());
+        root.setType("root");
+        nodes.add(root);
+
+        // Topic nodes
+        for (GrammarTopic topic : topics) {
+            List<GrammarRule> rules = ruleRepo.findByTopicIdAndIsDeletedFalseOrderByCreatedAtAsc(topic.getTopicId());
+            MindMapNode topicNode = new MindMapNode();
+            topicNode.setId(topic.getTopicId().toString());
+            topicNode.setTitle(topic.getTopicName());
+            topicNode.setDescription(topic.getDescription());
+            topicNode.setChildren(rules.stream().map(r -> r.getRuleId().toString()).collect(Collectors.toList()));
+            topicNode.setExamples(new ArrayList<>()); // Can populate if needed
+            topicNode.setRules(new ArrayList<>()); // Can populate if needed
+            topicNode.setType("topic");
+            nodes.add(topicNode);
+
+            // Rule nodes
+            for (GrammarRule rule : rules) {
+                MindMapNode ruleNode = new MindMapNode();
+                ruleNode.setId(rule.getRuleId().toString());
+                ruleNode.setTitle(rule.getTitle());
+                ruleNode.setDescription(rule.getExplanation());
+                ruleNode.setChildren(new ArrayList<>()); // No further children
+                ruleNode.setExamples(rule.getExamples());
+                ruleNode.setRules(new ArrayList<>()); // Add specific rules if applicable
+                ruleNode.setType("rule");
+                nodes.add(ruleNode);
+            }
+        }
+
+        // Calculate positions
+        assignPositions(nodes, "root", 800, 600); // Assume fixed canvas size; frontend can scale
+
+        return nodes;
+    }
+
+    private void assignPositions(List<MindMapNode> nodes, String rootId, int width, int height) {
+        Map<String, MindMapNode> nodeMap = nodes.stream().collect(Collectors.toMap(MindMapNode::getId, n -> n));
+        Queue<PositionQueueItem> queue = new LinkedList<>();
+        queue.add(new PositionQueueItem(rootId, 0, 0, 0)); // id, level, angleStart, childCount (placeholder)
+
+        String[] colors = {"#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"};
+        int index = 0;
+
+        while (!queue.isEmpty()) {
+            PositionQueueItem item = queue.poll();
+            MindMapNode node = nodeMap.get(item.id);
+            if (node == null) continue;
+
+            double radius = 150 * item.level;
+            double angle = item.angleStart;
+            double x = width / 2.0 + radius * Math.cos(angle);
+            double y = height / 3.0 + radius * Math.sin(angle);
+
+            node.setX(x);
+            node.setY(y);
+            node.setColor(colors[item.level % colors.length]);
+            node.setLevel(item.level);
+
+            List<String> children = node.getChildren();
+            if (!children.isEmpty()) {
+                double childAngleStep = Math.PI / children.size();
+                for (int i = 0; i < children.size(); i++) {
+                    double childAngle = item.angleStart + i * childAngleStep - (Math.PI / 2);
+                    queue.add(new PositionQueueItem(children.get(i), item.level + 1, childAngle, index++));
+                }
+            }
+        }
+    }
+
+    private static class PositionQueueItem {
+        String id;
+        int level;
+        double angleStart;
+        int parentIndex;
+
+        PositionQueueItem(String id, int level, double angleStart, int parentIndex) {
+            this.id = id;
+            this.level = level;
+            this.angleStart = angleStart;
+            this.parentIndex = parentIndex;
+        }
     }
 
     @Override

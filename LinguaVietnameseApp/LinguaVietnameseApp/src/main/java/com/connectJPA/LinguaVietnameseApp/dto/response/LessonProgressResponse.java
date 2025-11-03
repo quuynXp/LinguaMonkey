@@ -20,4 +20,8 @@ public class LessonProgressResponse {
     private OffsetDateTime createdAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime updatedAt;
+
+    public boolean isCompleted() {
+        return completedAt != null;
+    }
 }

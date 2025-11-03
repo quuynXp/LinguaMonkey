@@ -7,6 +7,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
 
 @Entity
 @Table(name = "couples")
@@ -30,13 +31,18 @@ public class Couple extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
-    private CoupleStatus status = CoupleStatus.PENDING;
+    private CoupleStatus status = CoupleStatus.EXPLORING;
 
     @Column(name = "start_date")
     private LocalDate startDate;   // ngày quen nhau
 
     @Column(name = "anniversary")
     private LocalDate anniversary; // ngày kỷ niệm (có thể khác ngày quen)
+
+    private OffsetDateTime exploringStart;
+    private OffsetDateTime exploringExpiresAt;
+    private OffsetDateTime  coupleStartDate;
+    private int couple_score = 0;
 
     @Column(name = "shared_avatar_url")
     private String sharedAvatarUrl; // ảnh chung (URL Cloudinary/Firebase)

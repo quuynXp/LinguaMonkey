@@ -1,5 +1,5 @@
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useEffect, useMemo } from "react"
+import { useEffect, useMemo, useRef } from "react"
 import {
   ScrollView,
   StyleSheet,
@@ -14,7 +14,10 @@ import { useTranslation } from "react-i18next"
 import { useUserStore } from "../../stores/UserStore"
 import { useCourses } from "../../hooks/useCourses"
 import { useCertifications } from "../../hooks/useCertifications"
+import useLesson, { useGetLessonsBySkillType }  from "../../hooks/useLessons"  // Assuming default export
 import { createScaledSheet } from "../../utils/scaledStyles"
+import { UserLearningActivity } from "../../types/api"
+
 
 const LearnScreen = ({ navigation }) => {
   const { t } = useTranslation()
@@ -66,9 +69,21 @@ const freeCourses = useMemo(
 )
 
 
-  const isLoading = purchasedLoading || freeLoading || recommendedLoading || videosLoading || certificationsLoading
-  const isRefreshing = false
+  const { data: listeningLessonsData, isLoading: listeningLessonsLoading } = useGetLessonsBySkillType("LISTENING", { page: 0, size: 3 })
+  const { data: speakingLessonsData, isLoading: speakingLessonsLoading } = useGetLessonsBySkillType("SPEAKING", { page: 0, size: 3 })
+  const { data: readingLessonsData, isLoading: readingLessonsLoading } = useGetLessonsBySkillType("READING", { page: 0, size: 3 })
+  const { data: writingLessonsData, isLoading: writingLessonsLoading } = useGetLessonsBySkillType("WRITING", { page: 0, size: 3 })
 
+  const listeningLessons = useMemo(() => listeningLessonsData?.data || [], [listeningLessonsData])
+  const speakingLessons = useMemo(() => speakingLessonsData?.data || [], [speakingLessonsData])
+  const readingLessons = useMemo(() => readingLessonsData?.data || [], [readingLessonsData])
+  const writingLessons = useMemo(() => writingLessonsData?.data || [], [writingLessonsData])
+
+  
+  const isLoading = purchasedLoading || freeLoading || recommendedLoading || videosLoading || certificationsLoading ||
+    listeningLessonsLoading || speakingLessonsLoading || readingLessonsLoading || writingLessonsLoading
+  const isRefreshing = false
+  
   useEffect(() => {
     console.log("LearnScreen - User:", user)
   }, [user, purchasedCourses, freeCourses, recommendedCourses, certifications])
@@ -86,17 +101,40 @@ const freeCourses = useMemo(
       ...course,
       courseId: course.courseId || course.id,
     }
-    navigation.navigate("CourseDetails", { course: safeCourse, isPurchased })
+    navigation.navigate("CourseDetailsScreen", { course: safeCourse, isPurchased })
   }
 
   // video navigation: provide mode 'original' or 'bilingual'
   const handleVideoPress = (video, mode = "bilingual") => {
-    navigation.navigate("BilingualVideo", { selectedVideo: video, mode })
+    navigation.navigate("BilingualVideoScreen", { selectedVideo: video, mode })
   }
 
-  const handleViewAllCourses = () => navigation.navigate("StudentCourses")
-  const handleViewAllVideos = () => navigation.navigate("BilingualVideo")
+  const handleViewAllCourses = () => navigation.navigate("StudentCoursesScreen")
+  const handleViewAllVideos = () => navigation.navigate("BilingualVideoScreen")
   const handleViewAllCertifications = () => navigation.navigate("CertificationLearning")
+
+  const handleViewAllLessons = (skillType) => {
+    switch (skillType) {
+      case "LISTENING":
+        navigation.navigate("ListeningScreen")
+        break
+      case "SPEAKING":
+        navigation.navigate("SpeakingScreen")
+        break
+      case "READING":
+        navigation.navigate("ReadingScreen")
+        break
+      case "WRITING":
+        navigation.navigate("WritingScreen")
+        break
+      default:
+        break
+    }
+  }
+
+  const handleNavigation = (screenName) => {
+    navigation.navigate(screenName)
+  }
 
   // helper to map fields safely
   const mapCourseFields = (course) => ({
@@ -277,6 +315,50 @@ const freeCourses = useMemo(
     }
   }
 
+  const renderLessonCard = (lesson) => {
+    return (
+      <TouchableOpacity
+        key={lesson.lessonId}
+        style={styles.lessonCard}
+        onPress={() => navigation.navigate("Lesson", { lesson })}
+      >
+        <View style={styles.lessonImagePlaceholder}>
+          <Icon name="book" size={40} color="#9CA3AF" />
+        </View>
+        <View style={styles.lessonContent}>
+          <Text style={styles.lessonTitle}>{lesson.title || lesson.lessonName}</Text>
+          <View style={styles.lessonStats}>
+            <View style={styles.expContainer}>
+              <Icon name="star" size={14} color="#F59E0B" />
+              <Text style={styles.expText}>{lesson.expReward} EXP</Text>
+            </View>
+            <Text style={styles.skillText}>{lesson.skillType}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    )
+  }
+
+  const learningTools = [
+    { name: t('learn.interactiveQuiz'), icon: 'quiz', screen: 'InteractiveQuiz' },
+    { name: t('learn.vocabularyFlashcards'), icon: 'style', screen: 'VocabularyFlashcards' },
+    { name: t('learn.ipaPronunciation'), icon: 'record-voice-over', screen: 'IPAScreen' },
+    { name: t('learn.quizLearning'), icon: 'question-answer', screen: 'QuizLearning' },
+    { name: t('learn.notes'), icon: 'notes', screen: 'NotesScreen' },
+  ]
+
+  const renderLearningToolCard = (tool) => (
+    <TouchableOpacity
+      style={styles.toolCard}
+      onPress={() => handleNavigation(tool.screen)}
+    >
+      <View style={styles.toolIconContainer}>
+        <Icon name={tool.icon} size={24} color="#4F46E5" />
+      </View>
+      <Text style={styles.toolName}>{tool.name}</Text>
+    </TouchableOpacity>
+  )
+
   if (isLoading && !purchasedCourses.length && !freeCourses.length) {
     return (
       <View style={styles.loadingContainer}>
@@ -351,6 +433,65 @@ const freeCourses = useMemo(
           </ScrollView>
         </View>
       )}
+
+      {/* New Skills Sections */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("learn.listeningLessons")}</Text>
+          <TouchableOpacity onPress={() => handleViewAllLessons("LISTENING")}>
+            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          {listeningLessons.map(renderLessonCard)}
+        </ScrollView>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("learn.speakingLessons")}</Text>
+          <TouchableOpacity onPress={() => handleViewAllLessons("SPEAKING")}>
+            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          {speakingLessons.map(renderLessonCard)}
+        </ScrollView>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("learn.readingLessons")}</Text>
+          <TouchableOpacity onPress={() => handleViewAllLessons("READING")}>
+            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          {readingLessons.map(renderLessonCard)}
+        </ScrollView>
+      </View>
+
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("learn.writingLessons")}</Text>
+          <TouchableOpacity onPress={() => handleViewAllLessons("WRITING")}>
+            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          {writingLessons.map(renderLessonCard)}
+        </ScrollView>
+      </View>
+
+      {/* New Learning Tools Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
+        </View>
+        <View style={styles.toolGrid}>
+          {learningTools.map(renderLearningToolCard)}
+        </View>
+      </View>
 
       {purchasedCourses.length > 0 && (
         <View style={styles.section}>
@@ -846,6 +987,86 @@ const styles = createScaledSheet({
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
+  },
+  lessonCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    marginRight: 16,
+    width: 220,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: "hidden",
+  },
+  lessonImagePlaceholder: {
+    width: "100%",
+    height: 100,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  lessonContent: {
+    padding: 12,
+  },
+  lessonTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  lessonStats: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  expContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  expText: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  skillText: {
+    fontSize: 12,
+    color: "#4F46E5",
+    fontWeight: "500",
+  },
+  toolGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  toolCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    width: "48%",
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toolIconContainer: {
+    width: 48,
+    height: 48,
+    backgroundColor: "#EEF2FF",
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  toolName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1F2937",
+    textAlign: "center",
   },
 })
 

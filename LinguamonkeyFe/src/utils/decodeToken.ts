@@ -5,7 +5,7 @@ interface TokenPayload {
   sub: string;
   userId: string;
   exp: number;
-  scope?: string; // "ROLE_ADMIN ROLE_TEACHER"
+  scope?: string;
 }
 
 // --- Decode helpers ---

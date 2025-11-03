@@ -1,0 +1,118 @@
+server:
+  port: ${SERVER_PORT:8080}
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT}
+      password: ${REDIS_PASSWORD}
+      ssl:
+        enabled: false  # Trong Docker network, không cần SSL
+
+  cache:
+    type: redis
+
+  elasticsearch:
+    uris: http://${ELASTICSEARCH_HOST}:${ELASTICSEARCH_PORT}
+
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  quartz:
+    job-store-type: memory
+    scheduler-name: reminder-scheduler
+
+# JWT
+jwt:
+  signer-key: ${JWT_SIGNER_KEY}
+  expirationTime: 3600  # 1 giờ
+  header: Authorization
+  key-id: ${JWT_KEY_ID}
+
+# MinIO (Local S3)
+minio:
+  url: ${MINIO_URL}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
+  bucket-name: ${MINIO_BUCKET_NAME}
+
+# Kafka
+kafka:
+  bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+  consumer:
+    group-id: linguaviet-group
+    auto-offset-reset: earliest
+  producer:
+    retries: 3
+  user:
+    profile:
+      topic: USER_PROFILE_UPDATES
+
+# External Services
+vnpay:
+  tmn-code: ${VNPAY_TMNCODE}
+  hash-secret: ${VNPAY_HASHSECRET}
+  url: ${VNPAY_URL}
+
+stripe:
+  api-key: ${STRIPE_API_KEY}
+  webhook-secret: ${STRIPE_WEBHOOK_SECRET}
+
+twilio:
+  account-sid: ${TWILIO_ACCOUNT_SID}
+  auth-token: ${TWILIO_AUTH_TOKEN}
+  from-phone-number: ${TWILIO_FROM_PHONE_NUMBER}
+
+google:
+  client-id: ${GOOGLE_CLIENT_ID}
+  credentials-file-url: ${GOOGLE_CREDENTIALS_FILE_URL}
+
+grpc:
+  server:
+    host: ${GRPC_SERVER_HOST}
+    port: ${GRPC_SERVER_PORT}
+
+# Reminder
+exam:
+  reminder:
+    hours-before: ${EXAM_REMINDER_HOURS_BEFORE}
+    repeat-days: ${EXAM_REMINDER_REPEAT_DAYS}
+
+cloudinary:
+  cloud_name: ${PROD_CLOUDINARY_CLOUD_NAME}
+  api_key: ${PROD_CLOUDINARY_API_KEY]
+  api_secret: ${PROD_CLOUDINARY_API_SECRET}
+# Logging
+logging:
+  level:
+    root: INFO
+    org.springframework: WARN
+    com.connectJPA.LinguaVietnameseApp: DEBUG
+    org.hibernate.SQL: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

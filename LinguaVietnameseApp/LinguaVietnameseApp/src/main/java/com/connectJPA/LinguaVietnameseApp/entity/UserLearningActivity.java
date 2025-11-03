@@ -27,4 +27,14 @@ public class UserLearningActivity extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     private ActivityType activityType;
+
+    @Column(name = "duration_in_seconds")
+    private Integer durationInSeconds;
+
+    @Column(name = "details")
+    private String details;
+
+    @Column(name = "related_entity_id")
+    private UUID relatedEntityId;
+
 }

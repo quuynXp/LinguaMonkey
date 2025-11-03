@@ -6,7 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.CourseEnrollment;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseEnrollmentMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.CourseEnrollmentRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;

@@ -5,7 +5,7 @@ import * as Notifications from "expo-notifications";
 import NetInfo from "@react-native-community/netinfo";
 import { RootNavigationRef, flushPendingActions, resetToTab } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
-import notificationService  from './services/notificationService';
+import notificationService from './services/notificationService';
 import MainStack from "./navigation/stack/MainStack";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
@@ -24,6 +24,7 @@ type InitialRoute =
   | "TabApp"
   | "AppLaunchScreen"
   | "ProficiencyTestScreen"
+  | "SetupInitScreen"
   | "Admin"
   | "Teacher";
 
@@ -31,6 +32,10 @@ const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [initialScreenName, setInitialScreenName] =
     useState<InitialRoute>("AppLaunchScreen");
+
+    const { user, setUser } = useUserStore.getState();
+
+  const [initialRouteParams, setInitialRouteParams] = useState<object | undefined>(undefined);
   const [isConnected, setIsConnected] = useState(true);
 
   const initializeTokens = useTokenStore((s) => s.initializeTokens);
@@ -65,17 +70,27 @@ const RootNavigation = () => {
         const hasLoggedIn =
           (await AsyncStorage.getItem("hasLoggedIn")) === "true";
 
+        const hasFinishedOnboarding =
+          (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
+
+        const hasFinishedSetup =
+          (await AsyncStorage.getItem("hasFinishedSetup")) === "true";
+
         console.log("Boot flags:", {
           hasValidToken,
           hasDonePlacementTest,
           hasLoggedIn,
+          hasFinishedOnboarding,
+          hasFinishedSetup,
         });
 
+        // TRƯỜNG HỢP 1: Token hết hạn (đã từng đăng nhập)
         if (!hasValidToken && hasLoggedIn) {
           console.log("Token invalid but hasLoggedIn=true, cleaning up");
           await useTokenStore.getState().clearTokens();
           await AsyncStorage.setItem("hasLoggedIn", "false");
           setInitialScreenName("AppLaunchScreen");
+          setInitialRouteParams({ skipToAuth: true });
           return;
         }
 
@@ -104,11 +119,12 @@ const RootNavigation = () => {
         const state = useTokenStore.getState();
         const accessToken = state.accessToken;
 
+        // TRƯỜNG HỢP 2: Đã đăng nhập và token CÒN HẠN
         if (hasValidToken && accessToken) {
           try {
             const payload = decodeToken(accessToken);
             if (payload?.userId) {
-              userStore.setUserId(payload.userId);
+              setUser({ ...user, userId: payload.userId });
               const userRes = await instance.get(`/users/${payload.userId}`);
               const rawUser = userRes.data.result || {};
               const normalizedUser = {
@@ -121,37 +137,61 @@ const RootNavigation = () => {
               userStore.setAuthenticated(true);
               await AsyncStorage.setItem("hasLoggedIn", "true");
 
+              if (!hasFinishedSetup) {
+                console.log("User logged in but has NOT finished setup. Forcing SetupInitScreen.");
+                setInitialScreenName("SetupInitScreen");
+                setInitialRouteParams(undefined);
+                return; // Dừng tại đây, buộc user vào Setup
+              }
+
               const roles = getRoleFromToken(accessToken);
               console.log("User roles from token:", roles);
 
+
               if (roles.includes("ROLE_ADMIN")) {
                 setInitialScreenName("Admin");
+                setInitialRouteParams(undefined);
               } else if (roles.includes("ROLE_TEACHER")) {
                 setInitialScreenName("Teacher");
+                setInitialRouteParams(undefined);
               } else {
-                setInitialScreenName(
-                  isFirstOpenToday ? "DailyWelcome" : "TabApp"
-                );
-                if (!isFirstOpenToday) {
-                  resetToTab("Home");
+                if (!hasDonePlacementTest) {
+                  setInitialScreenName("ProficiencyTestScreen");
+                } else {
+                  setInitialScreenName(
+                    isFirstOpenToday ? "DailyWelcome" : "TabApp"
+                  );
+                  setInitialRouteParams(undefined);
+                  if (!isFirstOpenToday) {
+                    resetToTab("Home");
+                  }
                 }
               }
-            } else {
-              throw new Error("Invalid token payload: missing userId");
             }
           } catch (e) {
             console.error("Boot fetch user failed:", e);
             await useTokenStore.getState().clearTokens();
-            setInitialScreenName("Auth");
+            setInitialScreenName("AppLaunchScreen");
+            setInitialRouteParams({ skipToAuth: true });
             return false;
           }
+          // TRƯỜNG HỢP 3: Chưa bao giờ đăng nhập (không có token)
         } else {
-          setInitialScreenName("AppLaunchScreen");
+          if (hasFinishedOnboarding) {
+            // Đã xem slide rồi -> Về AppLaunchScreen, skip đến Quick Start
+            setInitialScreenName("AppLaunchScreen");
+            setInitialRouteParams({ skipToAuth: true });
+          } else {
+            // Lần đầu mở app -> Về AppLaunchScreen, không skip
+            setInitialScreenName("AppLaunchScreen");
+            setInitialRouteParams(undefined);
+          }
         }
         return false;
       } catch (e) {
         console.error("RootNavigation boot error:", e);
         setInitialScreenName("AppLaunchScreen");
+        setInitialRouteParams({ skipToAuth: true });
         return false;
       } finally {
         if (mounted) setIsLoading(false);
@@ -238,7 +278,10 @@ const RootNavigation = () => {
         flushPendingActions();
       }}
     >
-      <MainStack initialRouteName={initialScreenName} />
+      <MainStack
+        initialRouteName={initialScreenName}
+        initialParams={initialRouteParams}
+      />
     </NavigationContainer>
   );
 };

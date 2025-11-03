@@ -7,7 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.FlashcardMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.FlashcardRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.FlashcardRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CloudinaryService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import jakarta.transaction.Transactional;

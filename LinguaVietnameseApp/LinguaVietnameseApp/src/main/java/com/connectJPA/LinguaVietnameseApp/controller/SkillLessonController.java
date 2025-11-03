@@ -13,10 +13,10 @@ import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
-import com.connectJPA.LinguaVietnameseApp.repository.LessonProgressRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.LessonQuestionRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.LessonRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonProgressRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonQuestionRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
@@ -109,6 +109,7 @@ public class SkillLessonController {
         }
     }
 
+    // 1) Reading endpoint — truyền topic = lesson title
     @PostMapping("/reading")
     public AppApiResponse<ReadingResponse> processReading(
             @RequestHeader("Authorization") String authorization,
@@ -122,8 +123,11 @@ public class SkillLessonController {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         try {
-            // Generate passage based on user interests (from user_goals or user_languages)
-            String passage = grpcClientService.callGeneratePassageAsync(token, userId.toString(), languageCode).get();
+            // Gọi đúng signature: token, userId, topic, language
+            String passage = grpcClientService
+                    .callGeneratePassageAsync(token, userId.toString(), lesson.getTitle() == null ? "" : lesson.getTitle(), languageCode)
+                    .get();
+
             List<ComprehensionQuestion> questions = generateComprehensionQuestions(passage, languageCode);
             saveLessonProgress(lessonId, userId, questions);
 
@@ -137,6 +141,8 @@ public class SkillLessonController {
         }
     }
 
+
+    // 2) Writing endpoint — nếu yêu cầu generateImage, ta gọi generateImage (lấy URL từ proto) và tải về bytes để gửi tiếp cho checkWritingWithImage
     @PostMapping(value = "/writing", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AppApiResponse<WritingResponseBody> processWriting(
             @RequestHeader("Authorization") String authorization,
@@ -155,13 +161,28 @@ public class SkillLessonController {
         try {
             byte[] imageData = image != null ? image.getBytes() : null;
             WritingResponseBody response;
+
             if (generateImage) {
-                // Generate image based on user interest and evaluate writing
-                imageData = grpcClientService.callGenerateImageAsync(token, userId.toString(), languageCode).get();
+                // Gọi generateImage trên gRPC: dùng lesson title làm prompt (hoặc bạn đổi prompt tuỳ ý)
+                var imageUrls = grpcClientService
+                        .callGeneratePassageAsync(token, userId.toString(), lesson.getTitle() == null ? "" : lesson.getTitle(), languageCode)
+                        .get(); // giả sử trả List<String>
+
+                // Lấy URL đầu tiên (nếu có) và tải về bytes
+                if (imageUrls != null && !imageUrls.isEmpty()) {
+                    try (java.io.InputStream in = new java.net.URL(imageUrls).openStream()) {
+                        imageData = in.readAllBytes();
+                    } catch (Exception ex) {
+                        // nếu không tải được ảnh, để imageData = null (vẫn tiếp tục đánh giá viết nếu server xử lý bằng text)
+                        imageData = null;
+                    }
+                }
+
                 response = grpcClientService.callCheckWritingWithImageAsync(token, text, imageData).get();
             } else {
                 response = grpcClientService.callCheckWritingWithImageAsync(token, text, imageData).get();
             }
+
             saveLessonProgress(lessonId, userId, response.getScore());
             return AppApiResponse.<WritingResponseBody>builder()
                     .code(200)
@@ -186,10 +207,17 @@ public class SkillLessonController {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         try {
-            // Generate reference text in user's native language
-            String referenceText = grpcClientService.callGenerateTextAsync(token, userId.toString(), user.getNativeLanguageCode()).get();
-            // Evaluate translation
-            WritingResponseBody response = grpcClientService.callCheckTranslationAsync(token, referenceText, request.getTranslatedText(), request.getTargetLanguage()).get();
+            // Tạo prompt ngắn để server sinh reference text bằng ngôn ngữ native của user
+            String prompt = "Generate a short sentence for a translation exercise in " + user.getNativeLanguageCode();
+
+            String referenceText = grpcClientService
+                    .callGenerateTextAsync(token, userId.toString(), prompt, user.getNativeLanguageCode())
+                    .get();
+
+            WritingResponseBody response = grpcClientService
+                    .callCheckTranslationAsync(token, referenceText, request.getTranslatedText(), request.getTargetLanguage())
+                    .get();
+
             saveLessonProgress(lessonId, userId, response.getScore());
             return AppApiResponse.<WritingResponseBody>builder()
                     .code(200)

@@ -3,6 +3,16 @@
 BEGIN;
 
 
+CREATE TABLE IF NOT EXISTS public.admirations
+(
+    admiration_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    sender_id uuid NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT admirations_pkey PRIMARY KEY (admiration_id),
+    CONSTRAINT uq_admiration_user_sender UNIQUE (user_id, sender_id)
+);
+
 CREATE TABLE IF NOT EXISTS public.badges
 (
     badge_id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -51,7 +61,8 @@ CREATE TABLE IF NOT EXISTS public.chat_messages
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
     receiver_id uuid,
-    CONSTRAINT unique_chat_message_id_sent_at PRIMARY KEY (chat_message_id, sent_at)
+    CONSTRAINT unique_chat_message_id_sent_at PRIMARY KEY (chat_message_id, sent_at),
+    CONSTRAINT uk_chat_message_id UNIQUE (chat_message_id)
 );
 
 COMMENT ON TABLE public.chat_messages
@@ -67,6 +78,10 @@ CREATE TABLE IF NOT EXISTS public.couples
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
     id uuid NOT NULL DEFAULT gen_random_uuid(),
+    exploring_start timestamp with time zone,
+    exploring_expires_at timestamp with time zone,
+    couple_start_date timestamp with time zone,
+    couple_score integer DEFAULT 0,
     CONSTRAINT couples_pkey PRIMARY KEY (id)
 );
 
@@ -141,6 +156,8 @@ CREATE TABLE IF NOT EXISTS public.courses
     deleted_at timestamp with time zone,
     creator_id uuid,
     difficulty_level character varying(50) COLLATE pg_catalog."default",
+    approval_status character varying COLLATE pg_catalog."default",
+    price numeric NOT NULL DEFAULT 0,
     CONSTRAINT courses_pkey PRIMARY KEY (course_id)
 );
 
@@ -160,6 +177,17 @@ CREATE TABLE IF NOT EXISTS public.daily_challenges
     is_deleted boolean DEFAULT false,
     reward_coins integer DEFAULT 0,
     CONSTRAINT daily_challenges_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.dating_invites
+(
+    invite_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    sender_id uuid NOT NULL,
+    target_id uuid NOT NULL,
+    status character varying(20) COLLATE pg_catalog."default" NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    expires_at timestamp with time zone NOT NULL,
+    CONSTRAINT dating_invites_pkey PRIMARY KEY (invite_id)
 );
 
 CREATE TABLE IF NOT EXISTS public.events
@@ -218,6 +246,46 @@ CREATE TABLE IF NOT EXISTS public.friendships
 
 COMMENT ON TABLE public.friendships
     IS 'Lưu trữ các mối quan hệ bạn bè và yêu cầu kết bạn';
+
+CREATE TABLE IF NOT EXISTS public.grammar_examples
+(
+    id serial NOT NULL,
+    lesson_id integer NOT NULL,
+    sentence_en text COLLATE pg_catalog."default" NOT NULL,
+    sentence_vi text COLLATE pg_catalog."default" NOT NULL,
+    note text COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    deleted_at timestamp with time zone,
+    is_deleted boolean DEFAULT false,
+    CONSTRAINT grammar_examples_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.grammar_lessons
+(
+    id serial NOT NULL,
+    topic_id integer NOT NULL,
+    title character varying(255) COLLATE pg_catalog."default" NOT NULL,
+    content text COLLATE pg_catalog."default" NOT NULL,
+    level character varying(50) COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    deleted_at timestamp with time zone,
+    is_deleted boolean DEFAULT false,
+    CONSTRAINT grammar_lessons_pkey PRIMARY KEY (id)
+);
+
+CREATE TABLE IF NOT EXISTS public.grammar_topics
+(
+    id serial NOT NULL,
+    title character varying(255) COLLATE pg_catalog."default" NOT NULL,
+    description text COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
+    deleted_at timestamp with time zone,
+    is_deleted boolean DEFAULT false,
+    CONSTRAINT grammar_topics_pkey PRIMARY KEY (id)
+);
 
 CREATE TABLE IF NOT EXISTS public.group_answers
 (
@@ -287,6 +355,23 @@ CREATE TABLE IF NOT EXISTS public.invalidated_tokens
 
 COMMENT ON TABLE public.invalidated_tokens
     IS 'Lưu trữ các token xác thực đã bị vô hiệu hóa';
+
+CREATE TABLE IF NOT EXISTS public.language_symbols
+(
+    id bigserial NOT NULL,
+    language character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    type character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    symbol character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    pronunciation character varying(255) COLLATE pg_catalog."default",
+    audio_url text COLLATE pg_catalog."default",
+    video_url text COLLATE pg_catalog."default",
+    image_url text COLLATE pg_catalog."default",
+    examples jsonb,
+    lesson_id bigint,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT language_symbols_pkey PRIMARY KEY (id)
+);
 
 CREATE TABLE IF NOT EXISTS public.languages
 (
@@ -373,6 +458,10 @@ CREATE TABLE IF NOT EXISTS public.lesson_progress
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
+    max_score bigint,
+    attempt_number bigint,
+    needs_review boolean NOT NULL DEFAULT false,
+    answers_json character varying(255) COLLATE pg_catalog."default",
     CONSTRAINT lesson_progress_pkey PRIMARY KEY (lesson_id, user_id)
 );
 
@@ -389,7 +478,8 @@ CREATE TABLE IF NOT EXISTS public.lesson_progress_wrong_items
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
-    CONSTRAINT lesson_progress_wrong_items_pkey PRIMARY KEY (lesson_id, user_id, lesson_question_id)
+    attempt_number integer NOT NULL DEFAULT 1,
+    CONSTRAINT lesson_progress_wrong_items_pkey PRIMARY KEY (lesson_id, user_id, lesson_question_id, attempt_number)
 );
 
 COMMENT ON TABLE public.lesson_progress_wrong_items
@@ -411,6 +501,12 @@ CREATE TABLE IF NOT EXISTS public.lesson_questions
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
+    question_type character varying(255) COLLATE pg_catalog."default",
+    options_json character varying(255) COLLATE pg_catalog."default",
+    media_url character varying(255) COLLATE pg_catalog."default",
+    weight bigint NOT NULL DEFAULT 1,
+    order_index bigint,
+    explain_answer character varying(255) COLLATE pg_catalog."default",
     CONSTRAINT lesson_questions_pkey PRIMARY KEY (lesson_question_id)
 );
 
@@ -488,6 +584,15 @@ CREATE TABLE IF NOT EXISTS public.lessons
     course_id uuid,
     lesson_type character varying(50) COLLATE pg_catalog."default",
     skill_types text COLLATE pg_catalog."default",
+    is_free boolean NOT NULL DEFAULT false,
+    "creator_id " uuid,
+    description character varying(255) COLLATE pg_catalog."default",
+    "difficulty_level " character varying COLLATE pg_catalog."default",
+    duration_seconds bigint,
+    pass_score_percent bigint,
+    certificate_code character varying(255) COLLATE pg_catalog."default",
+    allowed_retake_count bigint NOT NULL DEFAULT 0,
+    shuffle_questions boolean NOT NULL DEFAULT false,
     CONSTRAINT lessons_pkey PRIMARY KEY (lesson_id),
     CONSTRAINT lessons_lesson_name_key UNIQUE (lesson_name)
 );
@@ -511,6 +616,17 @@ CREATE TABLE IF NOT EXISTS public.message_reactions
 
 COMMENT ON TABLE public.message_reactions
     IS 'Lưu trữ phản ứng với tin nhắn';
+
+CREATE TABLE IF NOT EXISTS public.message_translations
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    chat_message_id uuid NOT NULL,
+    target_lang character varying(8) COLLATE pg_catalog."default",
+    translated_text text COLLATE pg_catalog."default",
+    provider character varying(100) COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT message_translations_pkey PRIMARY KEY (id)
+);
 
 CREATE TABLE IF NOT EXISTS public.notifications
 (
@@ -565,6 +681,17 @@ CREATE TABLE IF NOT EXISTS public.refresh_tokens
 
 COMMENT ON TABLE public.refresh_tokens
     IS 'Lưu trữ các refresh token của người dùng';
+
+CREATE TABLE IF NOT EXISTS public.review_reactions
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    review_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    reaction smallint NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT review_reactions_pkey PRIMARY KEY (id),
+    CONSTRAINT review_reactions_review_id_user_id_key UNIQUE (review_id, user_id)
+);
 
 CREATE TABLE IF NOT EXISTS public.roadmap_guidance
 (
@@ -638,6 +765,19 @@ CREATE TABLE IF NOT EXISTS public.roadmap_resources
     CONSTRAINT roadmap_resources_pkey PRIMARY KEY (resource_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.roadmap_suggestions
+(
+    suggestion_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    roadmap_id uuid NOT NULL,
+    item_id uuid,
+    suggested_order_index integer,
+    reason text COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT now(),
+    applied boolean DEFAULT false,
+    CONSTRAINT roadmap_suggestions_pkey PRIMARY KEY (suggestion_id)
+);
+
 CREATE TABLE IF NOT EXISTS public.roadmaps
 (
     roadmap_id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -649,6 +789,7 @@ CREATE TABLE IF NOT EXISTS public.roadmaps
     updated_at timestamp without time zone DEFAULT now(),
     deleted_at timestamp without time zone,
     is_deleted boolean DEFAULT false,
+    type character varying(255) COLLATE pg_catalog."default",
     CONSTRAINT roadmaps_pkey PRIMARY KEY (roadmap_id)
 );
 
@@ -712,6 +853,8 @@ CREATE TABLE IF NOT EXISTS public.rooms
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
+    topic character varying(255) COLLATE pg_catalog."default",
+    nick_name_in_rom character varying(255) COLLATE pg_catalog."default",
     CONSTRAINT rooms_pkey PRIMARY KEY (room_id)
 );
 
@@ -731,11 +874,32 @@ CREATE TABLE IF NOT EXISTS public.transactions
     status character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'PENDING'::character varying,
     provider character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'VNPAY'::character varying,
     currency character varying(10) COLLATE pg_catalog."default" NOT NULL DEFAULT 'USD'::character varying,
-    CONSTRAINT transactions_pkey PRIMARY KEY (transaction_id)
+    wallet_id uuid,
+    sender_id uuid,
+    receiver_id uuid,
+    original_transaction_id uuid,
+    type character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'DEFAULT_TYPE'::character varying,
+    payment_gateway_transaction_id character varying(255) COLLATE pg_catalog."default",
+    idempotency_key character varying(255) COLLATE pg_catalog."default",
+    CONSTRAINT transactions_pkey PRIMARY KEY (transaction_id),
+    CONSTRAINT transactions_idempotency_key_key UNIQUE (idempotency_key)
 );
 
 COMMENT ON TABLE public.transactions
     IS 'Lưu trữ các giao dịch của người dùng';
+
+CREATE TABLE IF NOT EXISTS public.user_auth_accounts
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    provider character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    provider_user_id character varying(255) COLLATE pg_catalog."default",
+    verified boolean NOT NULL DEFAULT false,
+    is_primary boolean NOT NULL DEFAULT false,
+    linked_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT user_auth_accounts_pkey PRIMARY KEY (id),
+    CONSTRAINT uq_provider_user UNIQUE (provider, provider_user_id)
+);
 
 CREATE TABLE IF NOT EXISTS public.user_badges
 (
@@ -873,11 +1037,26 @@ CREATE TABLE IF NOT EXISTS public.user_learning_activities
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
     target_id uuid,
+    duration_in_seconds integer,
+    details text COLLATE pg_catalog."default",
+    related_entity_id uuid,
     CONSTRAINT user_learning_activities_pkey PRIMARY KEY (activity_id)
 );
 
 COMMENT ON TABLE public.user_learning_activities
     IS 'Lưu trữ hoạt động học tập để đánh giá mức độ siêng năng';
+
+CREATE TABLE IF NOT EXISTS public.user_media
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    media_type character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    file_name character varying(255) COLLATE pg_catalog."default",
+    file_path text COLLATE pg_catalog."default",
+    file_url text COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT user_media_pkey PRIMARY KEY (id)
+);
 
 CREATE TABLE IF NOT EXISTS public.user_memorizations
 (
@@ -975,7 +1154,6 @@ CREATE TABLE IF NOT EXISTS public.users
     avatar_url character varying(255) COLLATE pg_catalog."default",
     character3d_id uuid,
     native_language_code character varying(2) COLLATE pg_catalog."default",
-    auth_provider character varying(50) COLLATE pg_catalog."default",
     country character varying(50) COLLATE pg_catalog."default",
     level integer NOT NULL DEFAULT 1,
     exp integer NOT NULL DEFAULT 0,
@@ -1033,6 +1211,29 @@ CREATE TABLE IF NOT EXISTS public.video_calls
 COMMENT ON TABLE public.video_calls
     IS 'Lưu trữ các cuộc gọi video';
 
+CREATE TABLE IF NOT EXISTS public.video_reactions
+(
+    id uuid NOT NULL DEFAULT gen_random_uuid(),
+    video_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    reaction smallint NOT NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT video_reactions_pkey PRIMARY KEY (id),
+    CONSTRAINT video_reactions_video_id_user_id_key UNIQUE (video_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.video_reviews
+(
+    review_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    video_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    rating integer,
+    content text COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone,
+    CONSTRAINT video_reviews_pkey PRIMARY KEY (review_id)
+);
+
 CREATE TABLE IF NOT EXISTS public.video_subtitles
 (
     video_subtitle_id uuid NOT NULL DEFAULT uuid_generate_v4(),
@@ -1064,6 +1265,19 @@ CREATE TABLE IF NOT EXISTS public.videos
 
 COMMENT ON TABLE public.videos
     IS 'Lưu trữ thông tin video cho các bài học';
+
+CREATE TABLE IF NOT EXISTS public.wallets
+(
+    wallet_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    balance numeric(19, 4) NOT NULL,
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    is_deleted boolean NOT NULL DEFAULT false,
+    deleted_at timestamp with time zone,
+    CONSTRAINT wallets_pkey PRIMARY KEY (wallet_id),
+    CONSTRAINT wallets_user_id_key UNIQUE (user_id)
+);
 
 ALTER TABLE IF EXISTS public.chat_messages
     ADD CONSTRAINT fk_chat_messages_room FOREIGN KEY (room_id)
@@ -1159,6 +1373,20 @@ ALTER TABLE IF EXISTS public.friendships
 ALTER TABLE IF EXISTS public.friendships
     ADD CONSTRAINT fk_friendships_user2 FOREIGN KEY (user2_id)
     REFERENCES public.users (user_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.grammar_examples
+    ADD CONSTRAINT grammar_examples_lesson_id_fkey FOREIGN KEY (lesson_id)
+    REFERENCES public.grammar_lessons (id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.grammar_lessons
+    ADD CONSTRAINT grammar_lessons_topic_id_fkey FOREIGN KEY (topic_id)
+    REFERENCES public.grammar_topics (id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;
 
@@ -1380,6 +1608,13 @@ ALTER TABLE IF EXISTS public.message_reactions
     ON DELETE CASCADE;
 
 
+ALTER TABLE IF EXISTS public.message_translations
+    ADD CONSTRAINT message_translations_chat_message_id_fkey FOREIGN KEY (chat_message_id)
+    REFERENCES public.chat_messages (chat_message_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
+
+
 ALTER TABLE IF EXISTS public.notifications
     ADD CONSTRAINT fk_notifications_language FOREIGN KEY (language_code)
     REFERENCES public.languages (language_code) MATCH SIMPLE
@@ -1399,6 +1634,13 @@ ALTER TABLE IF EXISTS public.refresh_tokens
     REFERENCES public.users (user_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.review_reactions
+    ADD CONSTRAINT review_reactions_review_id_fkey FOREIGN KEY (review_id)
+    REFERENCES public.video_reviews (review_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
 
 
 ALTER TABLE IF EXISTS public.roadmap_guidance
@@ -1427,6 +1669,24 @@ ALTER TABLE IF EXISTS public.roadmap_resources
     REFERENCES public.roadmap_items (item_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE NO ACTION;
+
+
+ALTER TABLE IF EXISTS public.roadmap_suggestions
+    ADD CONSTRAINT fk_roadmap_suggestions_roadmap FOREIGN KEY (roadmap_id)
+    REFERENCES public.roadmaps (roadmap_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_roadmap_suggestions_roadmap_id
+    ON public.roadmap_suggestions(roadmap_id);
+
+
+ALTER TABLE IF EXISTS public.roadmap_suggestions
+    ADD CONSTRAINT fk_roadmap_suggestions_user FOREIGN KEY (user_id)
+    REFERENCES public.users (user_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+CREATE INDEX IF NOT EXISTS idx_roadmap_suggestions_user_id
+    ON public.roadmap_suggestions(user_id);
 
 
 ALTER TABLE IF EXISTS public.role_permissions
@@ -1465,7 +1725,42 @@ ALTER TABLE IF EXISTS public.rooms
 
 
 ALTER TABLE IF EXISTS public.transactions
+    ADD CONSTRAINT fk_transactions_original FOREIGN KEY (original_transaction_id)
+    REFERENCES public.transactions (transaction_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
+
+
+ALTER TABLE IF EXISTS public.transactions
+    ADD CONSTRAINT fk_transactions_receiver FOREIGN KEY (receiver_id)
+    REFERENCES public.users (user_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
+
+
+ALTER TABLE IF EXISTS public.transactions
+    ADD CONSTRAINT fk_transactions_sender FOREIGN KEY (sender_id)
+    REFERENCES public.users (user_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
+
+
+ALTER TABLE IF EXISTS public.transactions
     ADD CONSTRAINT fk_transactions_user FOREIGN KEY (user_id)
+    REFERENCES public.users (user_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.transactions
+    ADD CONSTRAINT fk_transactions_wallet FOREIGN KEY (wallet_id)
+    REFERENCES public.wallets (wallet_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
+
+
+ALTER TABLE IF EXISTS public.user_auth_accounts
+    ADD CONSTRAINT fk_user_auth_accounts_user FOREIGN KEY (user_id)
     REFERENCES public.users (user_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;
@@ -1705,6 +2000,20 @@ ALTER TABLE IF EXISTS public.video_calls
     REFERENCES public.rooms (room_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.video_reactions
+    ADD CONSTRAINT video_reactions_video_id_fkey FOREIGN KEY (video_id)
+    REFERENCES public.videos (video_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
+
+
+ALTER TABLE IF EXISTS public.video_reviews
+    ADD CONSTRAINT video_reviews_video_id_fkey FOREIGN KEY (video_id)
+    REFERENCES public.videos (video_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE NO ACTION;
 
 
 ALTER TABLE IF EXISTS public.video_subtitles

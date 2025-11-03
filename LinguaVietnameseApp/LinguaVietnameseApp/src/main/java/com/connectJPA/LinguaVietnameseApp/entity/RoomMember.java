@@ -24,9 +24,19 @@ public class RoomMember extends BaseEntity {
     @Column(name = "role")
     private RoomRole role;
 
+    @ManyToOne
+    private Room room;
+
+    @ManyToOne
+    private User user;
+
     @Column(name = "joined_at", nullable = false)
     private OffsetDateTime joinedAt;
 
     @Column(name = "end_at")
     private OffsetDateTime endAt;
+
+    private boolean isAdmin;
+
+    private String nickNameInRom;
 }

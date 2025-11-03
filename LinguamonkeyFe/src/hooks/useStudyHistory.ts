@@ -1,49 +1,36 @@
 import { useQuery } from "@tanstack/react-query"
 import instance from "../api/axiosInstance"
-import type { ApiResponse } from "../types/api"
+// Import các types từ file trung tâm (Giả định bạn đã tạo file này)
+import type { ApiResponse, StudyHistoryResponse } from "../types/api"
 
-interface StudySession {
-  id: string
-  type: "toeic" | "ielts" | "daily" | "lesson" | "quiz"
-  title: string
-  date: Date
-  duration: number
-  score?: number
-  maxScore?: number
-  experience: number
-  skills: string[]
-  completed: boolean
-}
+/**
+ * Hook để lấy Lịch sử học tập đã được tổng hợp từ backend.
+ * @param userId ID của người dùng
+ * @param timeFilter "week", "month", hoặc "year"
+ */
+export const useStudyHistory = (userId?: string, timeFilter?: string) => {
+  // Sắp xếp key để đảm bảo ổn định
+  const queryKey = ["studyHistory", { userId, timeFilter }]
 
-interface TestResult {
-  id: string
-  testType: "toeic" | "ielts"
-  date: Date
-  overallScore: number
-  sections: {
-    listening?: number
-    reading?: number
-    writing?: number
-    speaking?: number
-  }
-  targetScore: number
-  improvement: number
-}
-
-interface StudyHistory {
-  sessions: StudySession[]
-  tests: TestResult[]
-}
-
-export const useStudyHistory = (timeFilter: string) => {
-  const queryKey = ["studyHistory", timeFilter]
   const queryFn = async () => {
-    const response = await instance.get<ApiResponse<StudyHistory>>(`/study-history?timeFilter=${timeFilter}`)
+    // Nếu không có userId hoặc filter, không gọi API
+    if (!userId || !timeFilter) {
+      return null
+    }
+
+    // Gọi đúng endpoint controller mới với cả 2 params
+    // Backend dùng "period", không phải "timeFilter"
+    const response = await instance.get<ApiResponse<StudyHistoryResponse>>(
+      `/user-learning-activities/history?userId=${userId}&period=${timeFilter}`
+    )
+
     return response.data.result!
   }
 
-  return useQuery<StudyHistory>({
+  return useQuery<StudyHistoryResponse | null>({
     queryKey,
     queryFn,
+    enabled: !!userId && !!timeFilter, // Chỉ chạy query khi có đủ params
+    staleTime: 60_000, // Cache trong 1 phút
   })
 }

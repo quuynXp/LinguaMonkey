@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
 import {
   ActivityIndicator,
@@ -15,7 +15,7 @@ import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
 import { useLesson, useLessonQuestions, useLessonProgress, useSubmitLesson, useCompleteLesson } from "../../hooks/useLessons";
 import { useAppStore } from "../../stores/appStore"
-import type { LessonQuestion } from "../../types/api"
+import type { LessonQuestion, UserLearningActivity } from "../../types/api";
 import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window")
@@ -45,6 +45,46 @@ const LessonScreen = ({ navigation, route }: any) => {
   const isLastQuestion = currentQuestionIndex === questions.length - 1
   const canProceed = currentQuestion && selectedAnswers[currentQuestion.lessonQuestionId]
 
+  
+  const startTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // === BẮT ĐẦU ===
+    // Ghi lại thời điểm bắt đầu
+    startTimeRef.current = Date.now();
+    
+    // Gọi API /start
+    UserLearningActivity.logStart({
+      userId: user.userId,
+      activityType: 'LESSON_START', // Lấy từ Enum ở BE
+      relatedEntityId: lessonId,
+    }).catch(err => console.error("Failed to log start:", err));
+
+    // === KẾT THÚC ===
+    // Trả về một cleanup function, được gọi khi component unmount
+    return () => {
+      if (startTimeRef.current) {
+        // Tính thời gian
+        const endTime = Date.now();
+        const durationMs = endTime - startTimeRef.current;
+        const durationSeconds = Math.round(durationMs / 1000);
+
+        // Chỉ log nếu thời gian > 5 giây (tránh spam)
+        if (durationSeconds > 5) {
+          // Gọi API /end
+          UserLearningActivity.logEnd({
+            userId: user.userId,
+            activityType: 'LESSON_END',
+            relatedEntityId: lessonId,
+            durationInSeconds: durationSeconds,
+          }).catch(err => console.error("Failed to log end:", err));
+        }
+      }
+    };
+    
+    // Dependencies: chỉ chạy 1 lần khi vào màn hình
+  }, [lessonId, user.userId]);
+  
   useEffect(() => {
     if (progress?.completedAt) {
       Alert.alert(

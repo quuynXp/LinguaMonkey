@@ -2,12 +2,13 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.EventRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.EventResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.MemorySummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Event;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.EventMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.EventRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.EventRepository;
 import com.connectJPA.LinguaVietnameseApp.service.EventService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,6 +20,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -110,5 +112,10 @@ public class EventServiceImpl implements EventService {
             log.error("Error while deleting event ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Override
+    public List<MemorySummaryResponse> findMutualMemories(UUID userA, UUID userB) {
+        return List.of();
     }
 }

@@ -15,7 +15,7 @@ import VideoCallManagerScreen from '../../screens/chat/VideoCallManagerScreen';
 const Stack = createNativeStackNavigator();
 
 const ChatStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }}>
+  <Stack.Navigator screenOptions={{ headerShown: false }} id={undefined}>
     <Stack.Screen name="ChatMain" component={ChatScreen} />
     <Stack.Screen name="ChatAI" component={ChatAIScreen} />
     <Stack.Screen name="UserChat" component={UserChatScreen} />

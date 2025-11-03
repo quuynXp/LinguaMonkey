@@ -4,15 +4,14 @@ import com.connectJPA.LinguaVietnameseApp.entity.DailyChallenge;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserDailyChallenge;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserDailyChallengeId;
-import com.connectJPA.LinguaVietnameseApp.repository.DailyChallengeRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserDailyChallengeRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.DailyChallengeRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserDailyChallengeRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.*;
 

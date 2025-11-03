@@ -70,7 +70,6 @@ public class UserGoalController {
             @ApiResponse(responseCode = "400", description = "Invalid user goal data")
     })
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserGoalResponse> createUserGoal(
             @Valid @RequestBody UserGoalRequest request,
             Locale locale) {
@@ -89,7 +88,6 @@ public class UserGoalController {
             @ApiResponse(responseCode = "400", description = "Invalid user goal data")
     })
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserGoalResponse> updateUserGoal(
             @Parameter(description = "User goal ID") @PathVariable UUID id,
             @Valid @RequestBody UserGoalRequest request,
@@ -108,7 +106,6 @@ public class UserGoalController {
             @ApiResponse(responseCode = "404", description = "User goal not found")
     })
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Void> deleteUserGoal(
             @Parameter(description = "User goal ID") @PathVariable UUID id,
             Locale locale) {

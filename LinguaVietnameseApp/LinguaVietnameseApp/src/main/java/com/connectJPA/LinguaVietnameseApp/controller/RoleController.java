@@ -32,7 +32,6 @@ public class RoleController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved roles"),
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
-    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping
     public AppApiResponse<Page<RoleResponse>> getAllRoles(
             @Parameter(description = "Role name filter") @RequestParam(required = false) RoleName roleName,
@@ -51,7 +50,6 @@ public class RoleController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved role"),
             @ApiResponse(responseCode = "404", description = "Role not found")
     })
-    @PreAuthorize("hasRole('ADMIN')")
     @GetMapping("/{id}")
     public AppApiResponse<RoleResponse> getRoleById(
             @Parameter(description = "Role ID") @PathVariable UUID id,
@@ -69,7 +67,6 @@ public class RoleController {
             @ApiResponse(responseCode = "201", description = "Role created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid role data")
     })
-    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping
     public AppApiResponse<RoleResponse> createRole(
             @Valid @RequestBody RoleRequest request,
@@ -88,7 +85,6 @@ public class RoleController {
             @ApiResponse(responseCode = "404", description = "Role not found"),
             @ApiResponse(responseCode = "400", description = "Invalid role data")
     })
-    @PreAuthorize("hasRole('ADMIN')")
     @PutMapping("/{id}")
     public AppApiResponse<RoleResponse> updateRole(
             @Parameter(description = "Role ID") @PathVariable UUID id,
@@ -107,7 +103,6 @@ public class RoleController {
             @ApiResponse(responseCode = "200", description = "Role deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Role not found")
     })
-    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteRole(
             @Parameter(description = "Role ID") @PathVariable UUID id,
@@ -120,7 +115,6 @@ public class RoleController {
     }
 
     @Operation(summary = "Assign default student role to a user")
-    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/assign-default/{userId}")
     public AppApiResponse<Void> assignDefaultStudentRole(
             @PathVariable UUID userId,
@@ -133,7 +127,6 @@ public class RoleController {
     }
 
     @Operation(summary = "Assign a role to a user")
-    @PreAuthorize("hasRole('ADMIN')")
     @PostMapping("/assign/{userId}")
     public AppApiResponse<Void> assignRoleToUser(
             @PathVariable UUID userId,
@@ -147,7 +140,6 @@ public class RoleController {
     }
 
     @Operation(summary = "Remove a role from a user")
-    @PreAuthorize("hasRole('ADMIN')")
     @DeleteMapping("/remove/{userId}")
     public AppApiResponse<Void> removeRoleFromUser(
             @PathVariable UUID userId,

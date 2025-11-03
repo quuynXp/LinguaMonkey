@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.VideoType;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
@@ -32,7 +33,13 @@ public class Video extends BaseEntity {
 
     private UUID lessonId;
 
-    private String level;
+    private String language;
 
+    private double averageRating;
+
+    private long totalViews;
+
+    @Enumerated(EnumType.STRING)
+    private DifficultyLevel level;
 
 }

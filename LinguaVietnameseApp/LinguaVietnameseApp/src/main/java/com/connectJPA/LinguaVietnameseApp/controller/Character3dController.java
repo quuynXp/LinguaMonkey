@@ -66,7 +66,7 @@ public class Character3dController {
             @ApiResponse(responseCode = "201", description = "3D character created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid 3D character data")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+//    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PostMapping
     public AppApiResponse<Character3dResponse> createCharacter3d(
             @Valid @RequestBody Character3dRequest request,
@@ -85,7 +85,7 @@ public class Character3dController {
             @ApiResponse(responseCode = "404", description = "3D character not found"),
             @ApiResponse(responseCode = "400", description = "Invalid 3D character data")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+//    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PutMapping("/{id}")
     public AppApiResponse<Character3dResponse> updateCharacter3d(
             @Parameter(description = "Character3d ID") @PathVariable UUID id,
@@ -104,7 +104,7 @@ public class Character3dController {
             @ApiResponse(responseCode = "200", description = "3D character deleted successfully"),
             @ApiResponse(responseCode = "404", description = "3D character not found")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+//    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteCharacter3d(
             @Parameter(description = "Character3d ID") @PathVariable UUID id,

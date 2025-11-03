@@ -1058,7 +1058,13 @@
     "lesson": "Lesson",
     "continue": "Continue Learning",
     "noData": "No progress available",
-    "percentage": "{{value}}% Completed"
+    "percentage": "{{value}}% Completed",
+    "lessons": "Lessons",
+    "courses": "Courses",
+    "quizzes": "Quizzes",
+    "achievements": "Badges",
+    "weeklyActivity": "Weekly Activity",
+    "badgesTitle": "Your Badges"
   },
   "onboarding": {
     "skip": "Skip",
@@ -1572,5 +1578,153 @@
     "title": "Welcome to MonkeyLingua",
     "subtitle": "Your AI-powered English learning companion"
   },
-  "confirmPassword": "Confirm Password"
+  "statusConnected": "Connected",
+  "statusMuted": "Muted",
+  "statusLeft": "Left",
+  "confirmPassword": "Confirm Password",
+  "videoCallManager": "Video Call Manager",
+  "enterCallerId": "Please enter callerId",
+  "groupCallCreated": "Group call created successfully",
+  "groupCallError": "Error creating group call",
+  "oneToOneCallCreated": "1-1 call created successfully",
+  "oneToOneCallError": "Error creating 1-1 call",
+  "selectCallFirst": "Please select a video call first",
+  "enterParticipantId": "Please enter participant userId",
+  "confirm": "Confirm",
+  "removeUser": "Remove user",
+  "cancel": "Cancel",
+  "ok": "OK",
+  "filterCallerId": "Filter by callerId",
+  "filterStatus": "Filter by status",
+  "callerId": "Caller Id",
+  "participantId": "Participant Id",
+  "createGroupCall": "Create Group Call",
+  "createOneToOne": "Create 1-1 Call",
+  "addParticipant": "Add Participant",
+  "joinJitsi": "Join Jitsi",
+  "participants": "Participants",
+  "participantsError": "Cannot fetch participants",
+  "noParticipants": "No participants",
+  "callInfo": "Call Info",
+  "callError": "Cannot fetch call info",
+  "noCallSelected": "No call selected",
+  "id": "ID",
+  "role": "Role",
+  "status": "Status",
+  "type": "Type",
+  "historyUser": "History (User)",
+  "enterUserIdHistory": "Enter userId to view history",
+  "view": "View",
+  "historyError": "Cannot fetch history",
+  "noHistory": "No history",
+  "translation": {
+    "quiz": {
+      "solo": "Solo Quiz",
+      "loading": "Loading Quiz...",
+      "error": {
+        "load": "Failed to load quiz. Please try again.",
+        "startTeam": "Failed to start team quiz. Please check your connection."
+      },
+      "questionCounter": "Question {{current}} of {{total}}",
+      "points": "{{count}} pts",
+      "pause": "Pause",
+      "resume": "Resume",
+      "correct": "Correct!",
+      "explanation": "Explanation",
+      "nextQuestion": "Next Question",
+      "finishQuiz": "Finish Quiz",
+      "timeUp": "Time's Up!",
+      "team": {
+        "waitingForHost": "Waiting for host to start the game...",
+        "startGame": "Start Game",
+        "chat": "Chat",
+        "players": "Players ({{count}}/10)",
+        "chatPlaceholder": "Send a message...",
+        "playerJoined": "{{name}} has joined the room!",
+        "playerLeft": "{{name}} has left the room."
+      },
+      "results": {
+        "title": "Quiz Complete!",
+        "score": "Your Score",
+        "correct": "{{correct}} / {{total}} Correct",
+        "points": "Points",
+        "xp": "XP",
+        "bestStreak": "Best Streak",
+        "time": "Time",
+        "skills": "Skills Practiced",
+        "home": "Home",
+        "retry": "Retry",
+        "share": "Share"
+      }
+    }
+  },
+  "permissions": {
+    "settingsTitle": "Permission Required",
+    "settingsMessage": "This feature requires permission, but it has been permanently denied. Please go to app settings to enable it.",
+    "goToSettings": "Go to Settings",
+    "cancel": "Cancel",
+    "overlay": {
+      "title": "Overlay Permission",
+      "message": "This app needs permission to display over other apps (e.g., for chat bubbles or incoming call alerts)."
+    },
+    "notifications": {
+      "title": "Notification Permission",
+      "message": "Allow this app to send you notifications for updates and alerts."
+    },
+    "camera": {
+      "title": "Camera Permission",
+      "message": "This app needs access to your camera to take photos or scan QR codes."
+    },
+    "storage": {
+      "title": "Storage Permission",
+      "message": "This app needs access to your storage to read/save photos and videos."
+    },
+    "location": {
+      "title": "Location Permission",
+      "message": "This app needs access to your location to provide location-based services."
+    }
+  },
+  "days": {
+    "mon": "Mon",
+    "tue": "Tue",
+    "wed": "Wed",
+    "thu": "Thu",
+    "fri": "Fri",
+    "sat": "Sat",
+    "sun": "Sun"
+  },
+  "history": {
+    "title": "Study History",
+    "export": "Export",
+    "tabs": {
+      "sessions": "Sessions",
+      "tests": "Tests",
+      "stats": "Statistics"
+    },
+    "filters": {
+      "week": "This Week",
+      "month": "This Month",
+      "year": "This Year"
+    },
+    "stats": {
+      "sessions": "Sessions",
+      "studyTime": "Study Time",
+      "experience": "Experience",
+      "avgScore": "Avg. Score",
+      "progressChart": "Progress Chart"
+    },
+    "session": {
+      "score": "{{score}}/{{maxScore}}",
+      "exp": "+{{experience}} XP"
+    },
+    "types": {
+      "LESSON_COMPLETED": "Lesson",
+      "COURSE_COMPLETED": "Course",
+      "DAILY_CHALLENGE_COMPLETED": "Daily Challenge",
+      "FLASHCARD_REVIEWED": "Flashcard",
+      "EVENT_COMPLETED": "Event",
+      "QUIZ_COMPLETED": "Quiz",
+      "DEFAULT": "Activity"
+    }
+  }
 }

@@ -6,10 +6,9 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.FacebookUserResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.IntrospectResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.AuthProvider;
-import com.connectJPA.LinguaVietnameseApp.enums.RoleName;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
-import com.connectJPA.LinguaVietnameseApp.repository.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.EmailService;
 import com.connectJPA.LinguaVietnameseApp.service.SmsService;
@@ -17,10 +16,6 @@ import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
 import com.google.api.client.http.javanet.NetHttpTransport;
 import com.google.api.client.json.gson.GsonFactory;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.auth.FirebaseAuthException;
-import com.google.firebase.auth.FirebaseToken;
-import com.google.firebase.auth.UserRecord;
 import com.nimbusds.jose.*;
 import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
@@ -37,11 +32,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.client.RestTemplate;
-
-import java.io.IOException;
+import com.google.i18n.phonenumbers.PhoneNumberUtil;
+import com.google.i18n.phonenumbers.Phonenumber;
+import com.google.i18n.phonenumbers.NumberParseException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
@@ -70,13 +65,19 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Value("classpath:public_key.pem")
     Resource publicKeyResource;
 
-    @Value("${google.client.id}")
+    @Value("${google.client-id}")
     String googleClientId;
+
+    @Value("${jwt.key-id}")
+    private String jwtKeyId;
 
     final Map<String, String> verifyEmailCodes = new HashMap<>();
     final Map<String, String> resetPasswordCodes = new HashMap<>();
     final Map<String, String> otpLoginCodes = new HashMap<>();
     final Map<String, Instant> otpLoginExpiry = new HashMap<>();
+    final Map<String, String> resetOtpCodes = new HashMap<>();
+    final Map<String, Instant> resetOtpExpiry = new HashMap<>();
+    final Map<String, String> secureResetTokens = new HashMap<>();
 
     final SmsService smsService;
     final EmailService emailService;
@@ -131,7 +132,16 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .claim("userId", user.getUserId())
                     .build();
 
-            SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), claims);
+            // === SỬA ĐỔI Ở ĐÂY ===
+            // Code cũ: new JWSHeader(JWSAlgorithm.RS256)
+            // Code mới:
+            JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
+                    .keyID(jwtKeyId) // Thêm Key ID
+                    .build();
+
+            SignedJWT signedJWT = new SignedJWT(header, claims); // Dùng header mới
+            // === KẾT THÚC SỬA ĐỔI ===
+
             signedJWT.sign(new RSASSASigner(getPrivateKey()));
             return signedJWT.serialize();
         } catch (Exception e) {
@@ -381,34 +391,26 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public boolean requestOtp(String emailOrPhone) {
-        // Xác định là email hay SĐT
-        // (Regex đơn giản, bạn có thể dùng thư viện libphonenumber nếu cần)
         boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
-        String email = isPhone ? null : emailOrPhone;
-        String phone = isPhone ? emailOrPhone : null;
+        String phone = isPhone ? normalizePhone(emailOrPhone) : null;
 
-        // 1. Kiểm tra xem user có tồn tại không (vì đây là flow ĐĂNG NHẬP)
-        User user = userRepository.findByEmailOrPhoneAndIsDeletedFalse(email, phone)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        // 1. Tạo mã OTP
+        String code = String.format("%06d", new Random().nextInt(999999));
+        log.info("Generated OTP: {} for user: {}", code, emailOrPhone);
 
-        // 2. Tạo mã OTP
-        String code = String.format("%06d", new Random().nextInt(999999)); // 6 số
-        log.info("Generated OTP: {} for user: {}", code, emailOrPhone); // Log cho debug
-
-        // 3. Lưu OTP và thời gian hết hạn (10 phút)
+        // 2. Lưu OTP và thời gian hết hạn (10 phút)
         otpLoginCodes.put(emailOrPhone, code);
         otpLoginExpiry.put(emailOrPhone, Instant.now().plus(10, ChronoUnit.MINUTES));
 
-        // 4. Gửi OTP
+        // 3. Gửi OTP
         try {
             if (isPhone) {
                 smsService.sendSms(phone, code);
                 log.warn("SMS service not configured. OTP for {} is {}", phone, code);
                 return true;
             } else {
-                // Gửi qua email
-                // (Giả sử bạn có hàm này trong EmailService)
-                emailService.sendOtpEmail(user.getEmail(), code, Locale.getDefault());
+                // Gửi qua email (dùng emailOrPhone trực tiếp)
+                emailService.sendOtpEmail(emailOrPhone, code, Locale.getDefault());
             }
         } catch (Exception e) {
             log.error("Failed to send OTP for {}", emailOrPhone, e);
@@ -421,8 +423,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public AuthenticationResponse verifyOtpAndLogin(String emailOrPhone, String code, String deviceId, String ip, String userAgent) {
-        String storedCode = otpLoginCodes.get(emailOrPhone);
-        Instant expiry = otpLoginExpiry.get(emailOrPhone);
+        boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
+        String key = isPhone ? normalizePhone(emailOrPhone) : emailOrPhone.toLowerCase().trim();
+
+        String storedCode = otpLoginCodes.get(key);
+        Instant expiry = otpLoginExpiry.get(key);
 
         if (storedCode == null || !storedCode.equals(code))
             throw new AppException(ErrorCode.OTP_INVALID);
@@ -432,13 +437,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         otpLoginCodes.remove(emailOrPhone);
         otpLoginExpiry.remove(emailOrPhone);
 
-        boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
-        String providerUserId = emailOrPhone;
+        String providerUserId = key;
 
         User user = findOrCreateUserAccount(
                 isPhone ? null : emailOrPhone,
                 null,
-                isPhone ? emailOrPhone : null,
+                isPhone ? key : null,
                 isPhone ? AuthProvider.PHONE : AuthProvider.EMAIL,
                 providerUserId
         );
@@ -607,62 +611,66 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public void resetPassword(String resetToken, String newPassword) {
-        String email = resetPasswordCodes.entrySet().stream()
-                .filter(e -> e.getValue().equals(resetToken))
-                .map(Map.Entry::getKey)
-                .findFirst()
-                .orElseThrow(() -> new AppException(ErrorCode.RESET_TOKEN_INVALID));
+        // Tìm identifier (email/phone) bằng token an toàn
+        String identifier = secureResetTokens.get(resetToken);
 
-        User user = userRepository.findByEmailAndIsDeletedFalse(email)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        if (identifier == null) {
+            throw new AppException(ErrorCode.RESET_TOKEN_INVALID);
+        }
+
+        User user = findByIdentifier(identifier);
 
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
 
-        resetPasswordCodes.remove(email);
+        // Xoá token sau khi đã dùng
+        secureResetTokens.remove(resetToken);
     }
 
 //    Helper
-    public User findOrCreateUserAccount(String email, String fullName, String phone,
-                                         AuthProvider provider, String providerUserId) {
+public User findOrCreateUserAccount(String email, String fullName, String phone, AuthProvider provider, String providerUserId) {
 
-        // Tìm tài khoản xác thực theo provider_user_id
-        Optional<UserAuthAccount> existingAuth =
-                userAuthAccountRepository.findByProviderAndProviderUserId(provider, providerUserId);
+    // chuẩn hoá phone trước khi tìm
+    String normalizedPhone = phone == null ? null : normalizePhone(phone);
 
-        if (existingAuth.isPresent()) {
-            return existingAuth.get().getUser();
-        }
+    Optional<UserAuthAccount> existingAuth =
+            userAuthAccountRepository.findByProviderAndProviderUserId(provider, providerUserId);
 
-        // Nếu chưa có, tìm xem User có tồn tại theo email/phone không
-        Optional<User> existingUser = Optional.empty();
-        if (email != null && !email.isBlank()) {
-            existingUser = userRepository.findByEmailAndIsDeletedFalse(email);
-        } else if (phone != null && !phone.isBlank()) {
-            existingUser = userRepository.findByPhoneAndIsDeletedFalse(phone);
-        }
-
-        User user = existingUser.orElseGet(() ->
-                userRepository.save(User.builder()
-                        .email(email)
-                        .phone(phone)
-                        .fullname(fullName)
-                        .createdAt(OffsetDateTime.now())
-                        .build())
-        );
-
-        UserAuthAccount authAccount = UserAuthAccount.builder()
-                .user(user)
-                .provider(provider)
-                .providerUserId(providerUserId)
-                .verified(true)
-                .primaryAccount(existingUser.isEmpty()) // nếu là user mới → account này là primary
-                .linkedAt(OffsetDateTime.now())
-                .build();
-
-        userAuthAccountRepository.save(authAccount);
-        return user;
+    if (existingAuth.isPresent()) {
+        return existingAuth.get().getUser();
     }
+
+    Optional<User> existingUser = Optional.empty();
+    if (email != null && !email.isBlank()) {
+        existingUser = userRepository.findByEmailAndIsDeletedFalse(email);
+    } else if (normalizedPhone != null && !normalizedPhone.isBlank()) {
+        existingUser = userRepository.findByPhoneAndIsDeletedFalse(normalizedPhone);
+    }
+
+    User user = existingUser.orElseGet(() -> {
+        User u = User.builder()
+                .email(email)
+                .phone(normalizedPhone)
+                .fullname(fullName)
+                .createdAt(OffsetDateTime.now())
+                .build();
+        // nếu bạn thêm trường phone_e164, set vào đó luôn
+        // u.setPhoneE164(normalizedPhone);
+        return userRepository.save(u);
+    });
+
+    UserAuthAccount authAccount = UserAuthAccount.builder()
+            .user(user)
+            .provider(provider)
+            .providerUserId(providerUserId)
+            .verified(true)
+            .primaryAccount(existingUser.isEmpty())
+            .linkedAt(OffsetDateTime.now())
+            .build();
+
+    userAuthAccountRepository.save(authAccount);
+    return user;
+}
 
 
     private AuthenticationResponse createAndSaveTokens(User user, String deviceId, String ip, String userAgent) {
@@ -686,5 +694,132 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .refreshToken(refreshToken)
                 .authenticated(true)
                 .build();
+    }
+
+    private String normalizePhone(String rawPhone) {
+        if (rawPhone == null) return null;
+        String p = rawPhone.trim();
+        // nhanh: nếu chỉ digits và +, else remove non-digit/+ chars
+        try {
+            PhoneNumberUtil phoneUtil = PhoneNumberUtil.getInstance();
+            // "VN" làm mặc định nếu không có mã quốc gia
+            Phonenumber.PhoneNumber number = phoneUtil.parse(p, "VN");
+            if (!phoneUtil.isValidNumber(number)) {
+                // fallback: remove non-digits
+                String digits = p.replaceAll("\\D+", "");
+                if (digits.startsWith("0")) digits = "84" + digits.substring(1);
+                if (!digits.startsWith("84")) digits = "84" + digits;
+                return "+" + digits;
+            }
+            return phoneUtil.format(number, PhoneNumberUtil.PhoneNumberFormat.E164); // +849xxxxxxxx
+        } catch (NumberParseException ex) {
+            // fallback thủ công
+            String digits = p.replaceAll("\\D+", "");
+            if (digits.isEmpty()) return p;
+            if (digits.startsWith("0")) digits = "84" + digits.substring(1);
+            if (!digits.startsWith("84")) digits = "84" + digits;
+            return "+" + digits;
+        } catch (NoClassDefFoundError e) {
+            // nếu lib không có trong classpath, xử lý fallback
+            String digits = p.replaceAll("\\D+", "");
+            if (digits.startsWith("0")) digits = "84" + digits.substring(1);
+            if (!digits.startsWith("84")) digits = "84" + digits;
+            return "+" + digits;
+        }
+    }
+
+    @Transactional
+    @Override
+    public void requestPasswordResetOtp(String identifier, String method) {
+        User user = findByIdentifier(identifier);
+        String code = String.format("%06d", new Random().nextInt(999999));
+
+        // Dùng identifier (email hoặc SĐT chuẩn hoá) làm key
+        String key = (method.equalsIgnoreCase("EMAIL")) ? user.getEmail() : user.getPhone();
+        if (key == null) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+
+        resetOtpCodes.put(key, code);
+        resetOtpExpiry.put(key, Instant.now().plus(10, ChronoUnit.MINUTES));
+
+        log.info("Generated Password Reset OTP: {} for user: {}", code, key);
+
+        try {
+            if (method.equalsIgnoreCase("PHONE")) {
+                smsService.sendSms(user.getPhone(), code);
+                log.warn("SMS service not configured. OTP for {} is {}", user.getPhone(), code);
+            } else {
+                emailService.sendOtpEmail(user.getEmail(), code, Locale.getDefault()); // Bạn có thể tạo template email mới
+            }
+        } catch (Exception e) {
+            log.error("Failed to send password reset OTP for {}", key, e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    // ENDPOINT MỚI 3: Verify Password Reset OTP
+    @Transactional
+    @Override
+    public String verifyPasswordResetOtp(String identifier, String code) {
+        // Chuẩn hoá key
+        String key = identifier.contains("@") ? identifier : normalizePhone(identifier);
+
+        String storedCode = resetOtpCodes.get(key);
+        Instant expiry = resetOtpExpiry.get(key);
+
+        if (storedCode == null || !storedCode.equals(code))
+            throw new AppException(ErrorCode.OTP_INVALID);
+        if (expiry == null || expiry.isBefore(Instant.now()))
+            throw new AppException(ErrorCode.OTP_EXPIRED);
+
+        resetOtpCodes.remove(key);
+        resetOtpExpiry.remove(key);
+
+        // Tạo token reset AN TOÀN
+        String secureToken = UUID.randomUUID().toString();
+        // Lưu token an toàn, map nó với user's identifier
+        secureResetTokens.put(secureToken, key);
+
+        return secureToken;
+    }
+
+    @Transactional
+    @Override
+    public Map<String, Object> checkResetMethods(String identifier) {
+        User user = findByIdentifier(identifier);
+
+        List<UserAuthAccount> accounts = userAuthAccountRepository.findByUser_UserIdAndVerifiedTrue(user.getUserId());
+
+        boolean hasEmail = accounts.stream()
+                .anyMatch(a -> a.getProvider() == AuthProvider.EMAIL);
+        boolean hasPhone = accounts.stream()
+                .anyMatch(a -> a.getProvider() == AuthProvider.PHONE);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("hasEmail", hasEmail);
+        response.put("hasPhone", hasPhone);
+        // Trả về SĐT/Email đã chuẩn hoá/che mờ nếu cần
+        response.put("email", user.getEmail());
+        response.put("phone", user.getPhone());
+
+        return response;
+    }
+
+    private User findByIdentifier(String identifier) {
+        // Bạn cần thêm phương thức này vào UserRepository:
+        // @Query("SELECT u FROM User u WHERE (u.email = :identifier OR u.phone = :identifier) AND u.isDeleted = false")
+        // Optional<User> findByIdentifier(@Param("identifier") String identifier);
+        //
+        // Tạm thời giả định bạn đã có
+        if (identifier.contains("@")) {
+            return userRepository.findByEmailAndIsDeletedFalse(identifier)
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        } else {
+            // Nên chuẩn hoá SĐT trước khi tìm
+            String normalizedPhone = normalizePhone(identifier);
+            return userRepository.findByPhoneAndIsDeletedFalse(normalizedPhone)
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        }
     }
 }

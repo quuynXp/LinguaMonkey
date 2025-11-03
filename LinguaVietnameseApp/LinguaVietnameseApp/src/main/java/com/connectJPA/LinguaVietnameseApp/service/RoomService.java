@@ -7,6 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
@@ -21,4 +22,6 @@ public interface RoomService {
 
     void addRoomMembers(UUID roomId, List<RoomMemberRequest> memberRequests);
     void removeRoomMembers(UUID roomId, List<UUID> userIds);
+
+    RoomResponse findOrCreateQuizRoom(UUID userId);
 }

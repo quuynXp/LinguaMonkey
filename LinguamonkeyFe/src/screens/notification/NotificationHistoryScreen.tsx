@@ -1,5 +1,3 @@
-"use client"
-
 import { Alert , Animated, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 
 import { useEffect, useRef, useState } from "react"

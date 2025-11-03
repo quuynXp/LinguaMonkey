@@ -15,6 +15,7 @@ import { useUserStore } from "../../stores/UserStore";
 import { t } from "i18next"
 import { useTokenStore } from "../../stores/tokenStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
 type SetupInitScreenProps = {
@@ -42,6 +43,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const [selectedCharacter, setSelectedCharacter] = useState<Character3D | null>(null)
   const [accountName, setAccountName] = useState("")
   const [email, setEmail] = useState("")
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [country, setCountry] = useState<string | null>(null) // store country CODE (e.g. "VN", "US")
   const [ageRange, setAgeRange] = useState("")
   const [nativeLanguage, setNativeLanguage] = useState<string | null>(null) // store language CODE uppercase (e.g. "VI", "EN")
@@ -158,6 +160,23 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     if (!display) return undefined;
     return AGE_ENUM_MAP[display] ?? undefined; // undefined nếu không tìm thấy
   };
+
+  useEffect(() => {
+    const prefillData = () => {
+      const user = useUserStore.getState().user;
+      if (user) {
+        if (user.fullname) {
+          setAccountName(user.fullname);
+        }
+        if (user.email) {
+          setEmail(user.email);
+        }
+        if (user.phone)
+          setPhoneNumber(user.phone)
+      }
+    };
+    prefillData();
+  }, []);
 
 
   useEffect(() => {
@@ -308,6 +327,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         email: email.toLowerCase(),
         fullname: accountName || undefined,
         nickname: accountName || undefined,
+        phone: phoneNumber || undefined,
       }
 
       // character3dId: only set if value exists and is a proper UUID-like string
@@ -353,8 +373,12 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const response = await instance.post('/users', payload)
       console.log("Account created, response:", response.data)
       useUserStore.getState().setUser(response.data.result.user)
-      useTokenStore.getState().setTokens(response.data.result.accessToken, response.data.result.refreshToken)
+      if (response.data.result.accessToken) {
+         useTokenStore.getState().setTokens(response.data.result.accessToken, response.data.result.refreshToken)
+      }
+      // useTokenStore.getState().setTokens(response.data.result.accessToken, response.data.result.refreshToken)
 
+      await AsyncStorage.setItem("hasFinishedSetup", "true");
 
       gotoTab("ProficiencyTestScreen")
     } catch (error) {
@@ -502,10 +526,50 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         <Text style={styles.inputLabel}>{t("auth.fullName")} *</Text>
         <TextInput
           style={styles.textInput}
-          value={accountName}
+          value={accountName} // Sẽ được điền sẵn từ UserStore
           onChangeText={setAccountName}
           placeholder={t("auth.enterName")}
         />
+      </View>
+
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>{t("auth.email")} *</Text>
+        <TextInput
+          style={styles.textInput}
+          value={email} // Sẽ được điền sẵn từ UserStore
+          onChangeText={setEmail}
+          placeholder={t("auth.enterEmail")}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          // Cân nhắc thêm: editable={false} nếu user đăng ký bằng email
+        />
+      </View>
+
+      {/* --- INPUT SĐT MỚI --- */}
+      <View style={styles.inputContainer}>
+        <Text style={styles.inputLabel}>{t("auth.phoneNumber")}</Text>
+        {/* GỢI Ý: Đây là nơi tốt nhất để dùng thư viện 'react-native-phone-number-input'
+          <PhoneInput
+            defaultValue={phoneNumber}
+            defaultCode={country || "VN"}
+            onChangeFormattedText={(text) => {
+              setPhoneNumber(text);
+            }}
+            containerStyle={styles.phoneInputContainer}
+            textContainerStyle={styles.phoneInputTextContainer}
+          />
+        */}
+        {/* Fallback dùng TextInput đơn giản */}
+        <TextInput
+          style={styles.textInput}
+          value={phoneNumber}
+          onChangeText={setPhoneNumber}
+          placeholder={t("auth.enterPhoneNumber")}
+          keyboardType="phone-pad"
+        />
+        <Text style={styles.inputHint}>
+          {t("auth.phoneHint")}
+        </Text>
       </View>
 
       <View style={styles.inputContainer}>
@@ -873,6 +937,12 @@ const styles = createScaledSheet({
   content: {
     flex: 1,
     paddingTop: 50,
+  },
+  inputHint: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 4,
+    paddingLeft: 8,
   },
   header: {
     flexDirection: "row",

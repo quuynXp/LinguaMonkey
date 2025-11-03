@@ -103,7 +103,6 @@ public class LessonCategoryController {
             @ApiResponse(responseCode = "200", description = "Lesson category deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Lesson category not found")
     })
-    @PreAuthorize("hasAuthority('LESSON_CATEGORY_DELETE')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteLessonCategory(
             @Parameter(description = "Lesson category ID") @PathVariable UUID id,

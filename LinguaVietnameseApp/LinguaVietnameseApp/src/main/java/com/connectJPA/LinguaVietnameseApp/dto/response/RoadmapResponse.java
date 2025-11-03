@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.entity.Roadmap;
+import com.connectJPA.LinguaVietnameseApp.enums.RoadmapType;
 import lombok.Builder;
 import lombok.Data;
 
@@ -17,4 +18,5 @@ public class RoadmapResponse {
     private List<RoadmapItemResponse> items;
     private List<MilestoneResponse> milestones;
     private List<ResourceResponse> resources;
+    private RoadmapType type;
 }

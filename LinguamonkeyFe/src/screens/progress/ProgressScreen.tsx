@@ -1,418 +1,523 @@
-import React, { useEffect, useRef, useMemo } from "react";
-import { useNavigation } from "@react-navigation/native";
-import {
-  Animated,
-  Dimensions,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-} from "react-native";
-import Icon from "react-native-vector-icons/MaterialIcons";
-import { useQuery } from "@tanstack/react-query";
-import instance from "../../api/axiosInstance";
-import { useAppStore } from "../../stores/appStore";
-import { useUserLearningActivities } from "../../hooks/useUserActivity";
-import { gotoTab } from "../../utils/navigationRef";
-import { useUserStore } from "../../stores/UserStore";
-import { createScaledSheet } from "../../utils/scaledStyles";
+import React, { useEffect, useRef, useState } from "react"
+import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useNavigation } from "@react-navigation/native"
+import { useTranslation } from "react-i18next"
+import { useStudyHistory } from "../../hooks/useStudyHistory"
+import { formatDuration } from "../../utils/timeHelper"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
-const { width } = Dimensions.get("window");
+// Các type này nên được import từ file types, định nghĩa dựa trên DTOs của backend
+interface StudySession {
+  id: string
+  type: string // e.g., "LESSON_COMPLETED", "DAILY_CHALLENGE_COMPLETED"
+  title: string
+  date: string // ISO string from backend
+  duration: number // in seconds
+  score?: number
+  maxScore?: number
+  experience: number
+  skills: string[]
+  completed: boolean
+}
 
-type ProgressData = {
-  day: string;
-  value: number;
-};
+// interface TestResult { ... } // (Tương tự nếu có)
 
-type Achievement = {
-  id: string;
-  title: string;
-  unlocked: boolean;
-  progress?: number;
-  maxProgress?: number;
-};
+interface StudyStats {
+  totalSessions: number
+  totalTime: number // in seconds
+  totalExperience: number
+  averageScore: number // percentage
+}
 
-// --- Hook fetch statistics ---
-const useUserStatistics = (
-  userId?: string | null,
-  period: "week" | "month" | "year" = "week"
-) => {
-  return useQuery({
-    queryKey: ["userStatistics", userId, period],
-    queryFn: async () => {
-      if (!userId) throw new Error("userId required");
-      const res = await instance.get(
-        `/statistics/user/${userId}?period=${period}&aggregate=day`
-      );
-      return res.data?.result ?? res.data;
-    },
-    enabled: !!userId,
-    staleTime: 60_000,
-  });
-};
+const StudyHistoryScreen = () => {
+  const navigation = useNavigation()
+  const { t } = useTranslation()
+  const [currentTab, setCurrentTab] = useState<"sessions" | "tests" | "stats">("sessions")
+  const [timeFilter, setTimeFilter] = useState<"week" | "month" | "year">("month")
+  const fadeAnim = useRef(new Animated.Value(0)).current
 
-const ProgressScreen: React.FC = () => {
-  const navigation = useNavigation();
-  const userId = useUserStore.getState().user?.userId
+  // Giả định useStudyHistory trả về cấu trúc mới
+  const { data: studyHistory, isLoading, error } = useStudyHistory(timeFilter)
+  const studySessions: StudySession[] = studyHistory?.sessions || []
+  const testResults: any[] = studyHistory?.tests || [] // Tạm thời
+  const stats: StudyStats | null = studyHistory?.stats || null
 
-  const {
-    data: statsData,
-    isLoading: statsLoading,
-    isError: statsError,
-  } = useUserStatistics(userId, "week");
+  useEffect(() => {
+    fadeAnim.setValue(0) // Reset
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start()
+  }, [currentTab, timeFilter])
 
-  const { useAllActivities } = useUserLearningActivities();
-  const { data: activities, isLoading: activitiesLoading } = useAllActivities({
-    userId: String(userId),
-    size: 50,
-  });
+  const getActivityTypeTranslation = (type: string) => {
+    const key = `history.types.${type}`
+    const translated = t(key)
+    // Fallback nếu không có key
+    return translated === key ? t("history.types.DEFAULT") : translated
+  }
 
-  // Chart data from backend timeSeries
-  const weeklyData: ProgressData[] = useMemo(() => {
-    if (statsData && Array.isArray(statsData.timeSeries)) {
-      return statsData.timeSeries.map((p: any) => ({
-        day: formatDayLabel(p.date),
-        value: Number(p.value ?? 0),
-      }));
-    }
-    return [
-      { day: "T2", value: 0 },
-      { day: "T3", value: 0 },
-      { day: "T4", value: 0 },
-      { day: "T5", value: 0 },
-      { day: "T6", value: 0 },
-      { day: "T7", value: 0 },
-      { day: "CN", value: 0 },
-    ];
-  }, [statsData]);
+  const getTypeIcon = (type: string) => {
+    // Dựa trên schema.sql và logic nghiệp vụ
+    if (type.includes("COURSE")) return "school"
+    if (type.includes("LESSON")) return "menu-book"
+    if (type.includes("QUIZ")) return "quiz"
+    if (type.includes("DAILY_CHALLENGE")) return "today"
+    if (type.includes("EVENT")) return "emoji-events"
+    if (type.includes("FLASHCARD")) return "style"
+    return "book"
+  }
 
-  // Achievements demo based on backend fields
-  const achievements: Achievement[] = useMemo(() => {
-    return [
-      {
-        id: "lesson10",
-        title: "Hoàn thành 10 bài học",
-        unlocked: (statsData?.totalLessonsCompleted ?? 0) >= 10,
-        progress: statsData?.totalLessonsCompleted ?? 0,
-        maxProgress: 10,
-      },
-      {
-        id: "quiz5",
-        title: "Làm 5 quiz",
-        unlocked: (statsData?.totalQuizzesCompleted ?? 0) >= 5,
-        progress: statsData?.totalQuizzesCompleted ?? 0,
-        maxProgress: 5,
-      },
-    ];
-  }, [statsData]);
+  const getTypeColor = (type: string) => {
+    if (type.includes("COURSE")) return "#10B981"
+    if (type.includes("LESSON")) return "#8B5CF6"
+    if (type.includes("QUIZ")) return "#EF4444"
+    if (type.includes("DAILY_CHALLENGE")) return "#F59E0B"
+    if (type.includes("EVENT")) return "#3B82F6"
+    if (type.includes("FLASHCARD")) return "#6366F1"
+    return "#6B7280"
+  }
 
-  const animatedValuesRef = useRef<Animated.Value[]>([]);
-  useEffect(() => {
-    animatedValuesRef.current = weeklyData.map(() => new Animated.Value(0));
+  const renderSessionCard = (session: StudySession) => (
+    <TouchableOpacity key={session.id} style={styles.sessionCard}>
+      <View style={styles.sessionHeader}>
+        <View style={[styles.typeIcon, { backgroundColor: `${getTypeColor(session.type)}20` }]}>
+          <Icon name={getTypeIcon(session.type)} size={20} color={getTypeColor(session.type)} />
+        </View>
+        <View style={styles.sessionInfo}>
+          <Text style={styles.sessionTitle}>{session.title}</Text>
+          <Text style={styles.sessionDate}>
+            {new Date(session.date).toLocaleDateString()} • {formatDuration(session.duration)}
+          </Text>
+          <Text style={styles.sessionType}>{getActivityTypeTranslation(session.type)}</Text>
+        </View>
+        <View style={styles.sessionStats}>
+          {session.score != null && session.maxScore != null && (
+            <Text style={styles.sessionScore}>
+              {t("history.session.score", { score: session.score, maxScore: session.maxScore })}
+            </Text>
+          )}
+          <View style={styles.experienceTag}>
+            <Icon name="stars" size={12} color="#F59E0B" />
+            <Text style={styles.experienceText}>
+              {t("history.session.exp", { experience: session.experience })}
+            </Text>
+          </View>
+        </View>
+      </View>
 
-    Animated.stagger(
-      80,
-      animatedValuesRef.current.map((anim) =>
-        Animated.timing(anim, {
-          toValue: 1,
-          duration: 600,
-          useNativeDriver: false,
-        })
-      )
-    ).start();
-  }, [weeklyData]);
+      {session.skills && session.skills.length > 0 && (
+        <View style={styles.skillsRow}>
+          {session.skills.map((skill, index) => (
+            <View key={index} style={styles.skillTag}>
+              <Text style={styles.skillText}>{skill}</Text>
+            </View>
+          ))}
+        </View>
+      )}
 
-  const maxValue = Math.max(1, ...weeklyData.map((d) => d.value));
+      {session.score != null && session.maxScore != null && session.maxScore > 0 && (
+        <View style={styles.progressBar}>
+          <View
+            style={[
+              styles.progressFill,
+              {
+                width: `${(session.score / session.maxScore) * 100}%`,
+                backgroundColor: getTypeColor(session.type),
+              },
+            ]}
+          />
+        </View>
+      )}
+    </TouchableOpacity>
+  )
 
-  const renderChart = () => (
-    <TouchableOpacity onPress={() => gotoTab("Profile", "StudyHistory") as any}>
-      <View style={styles.chartContainer}>
-        <Text style={styles.chartTitle}>Hoạt động trong tuần</Text>
-        <View style={styles.chart}>
-          {weeklyData.map((data, index) => (
-            <View key={`${data.day}-${index}`} style={styles.chartBar}>
-              <View style={styles.barContainer}>
-                <Animated.View
-                  style={[
-                    styles.bar,
-                    {
-                      height: animatedValuesRef.current[index]?.interpolate
-                        ? animatedValuesRef.current[index].interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [0, (data.value / maxValue) * 120],
-                          })
-                        : (data.value / maxValue) * 120,
-                    },
-                  ]}
-                />
-              </View>
-              <Text style={styles.barLabel}>{data.day}</Text>
-              <Text style={styles.barValue}>{data.value}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </TouchableOpacity>
-  );
+  // const renderTestCard = (test: TestResult) => ( ... )
+  // Giữ nguyên logic renderTestCard của bạn, chỉ cần thay text cứng bằng i18n
+  // ví dụ: <Text style={styles.scoreLabel}>Overall</Text> -> <Text style={styles.scoreLabel}>{t('history.stats.overall')}</Text>
 
-  const renderStats = () => (
-    <View style={styles.statsContainer}>
-      <View style={styles.statCard}>
-        <Icon name="school" size={24} color="#10B981" />
-        <Text style={styles.statValue}>{statsData?.totalLessonsCompleted ?? 0}</Text>
-        <Text style={styles.statLabel}>Bài học</Text>
-      </View>
-      <View style={styles.statCard}>
-        <Icon name="menu-book" size={24} color="#4F46E5" />
-        <Text style={styles.statValue}>{statsData?.totalCoursesEnrolled ?? 0}</Text>
-        <Text style={styles.statLabel}>Khoá học</Text>
-      </View>
-      <View style={styles.statCard}>
-        <Icon name="quiz" size={24} color="#F59E0B" />
-        <Text style={styles.statValue}>{statsData?.totalQuizzesCompleted ?? 0}</Text>
-        <Text style={styles.statLabel}>Quiz</Text>
-      </View>
-      <View style={styles.statCard}>
-        <Icon name="emoji-events" size={24} color="#EF4444" />
-        <Text style={styles.statValue}>{achievements.filter((a) => a.unlocked).length}</Text>
-        <Text style={styles.statLabel}>Thành tích</Text>
-      </View>
-    </View>
-  );
+  const renderStatsTab = () => {
+    if (!stats) return null
+    
+    return (
+      <View style={styles.statsContainer}>
+        <View style={styles.statsGrid}>
+          <View style={styles.statCard}>
+            <Icon name="assignment" size={32} color="#4F46E5" />
+            <Text style={styles.statValue}>{stats.totalSessions}</Text>
+            <Text style={styles.statLabel}>{t("history.stats.sessions")}</Text>
+          </View>
 
-  const renderAchievements = () => (
-    <View style={styles.achievementsSection}>
-      <Text style={styles.sectionTitle}>Thành tích</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        <View style={styles.achievementsList}>
-          {achievements.map((a) => (
-            <View
-              key={a.id}
-              style={[
-                styles.achievementCard,
-                a.unlocked ? styles.unlockedAchievement : styles.lockedAchievement,
-              ]}
-            >
-              <Icon
-                name="emoji-events"
-                size={24}
-                color={a.unlocked ? "#F59E0B" : "#9CA3AF"}
-              />
-              <Text style={styles.achievementTitle}>{a.title}</Text>
-              {!a.unlocked && (
-                <View style={styles.achievementProgress}>
-                  <View style={styles.achievementProgressBar}>
-                    <View
-                      style={[
-                        styles.achievementProgressFill,
-                        {
-                          width: `${((a.progress ?? 0) / (a.maxProgress ?? 1)) * 100}%`,
-                        },
-                      ]}
-                    />
-                  </View>
-                  <Text style={styles.achievementProgressText}>
-                    {a.progress ?? 0}/{a.maxProgress}
-                  </Text>
-                </View>
-              )}
-            </View>
-          ))}
-        </View>
-      </ScrollView>
-    </View>
-  );
+          <View style={styles.statCard}>
+            <Icon name="schedule" size={32} color="#10B981" />
+            <Text style={styles.statValue}>{formatDuration(stats.totalTime)}</Text>
+            <Text style={styles.statLabel}>{t("history.stats.studyTime")}</Text>
+          </View>
 
-  if (statsLoading || activitiesLoading) {
-    return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-        <ActivityIndicator size="large" />
-      </View>
-    );
-  }
+          <View style={styles.statCard}>
+            <Icon name="stars" size={32} color="#F59E0B" />
+            <Text style={styles.statValue}>{stats.totalExperience}</Text>
+            <Text style={styles.statLabel}>{t("history.stats.experience")}</Text>
+          </View>
 
-  if (statsError) {
-    return (
-      <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-        <Text style={{ color: "#6B7280" }}>Không thể tải dữ liệu tiến độ.</Text>
-      </View>
-    );
-  }
+          <View style={styles.statCard}>
+            <Icon name="trending-up" size={32} color="#EF4444" />
+            <Text style={styles.statValue}>{Math.round(stats.averageScore)}%</Text>
+            <Text style={styles.statLabel}>{t("history.stats.avgScore")}</Text>
+          </View>
+        </View>
 
-  return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <Animated.View style={[styles.content, { opacity: new Animated.Value(1) }]}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Tiến độ</Text>
-        </View>
+        <View style={styles.chartSection}>
+          <Text style={styles.chartTitle}>{t("history.stats.progressChart")}</Text>
+          {/* Bạn có thể thêm component biểu đồ ở đây */}
+          <Text style={styles.skillText}>(Chart component goes here)</Text>
+        </View>
+      </View>
+    )
+  }
 
-        {renderStats()}
-        {renderChart()}
-        {renderAchievements()}
-      </Animated.View>
-    </ScrollView>
-  );
-};
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <View style={styles.centerScreen}>
+          <ActivityIndicator size="large" />
+          <Text style={styles.loadingText}>{t("common.loading")}</Text>
+        </View>
+      )
+    }
 
-// --- helpers ---
-function formatDayLabel(dateStr: string) {
-  try {
-    const d = new Date(dateStr);
-    const day = d.getDay();
-    return day === 0 ? "CN" : `T${day + 1}`;
-  } catch (e) {
-    return String(dateStr).slice(5);
-  }
+    if (error) {
+      return (
+        <View style={styles.centerScreen}>
+          <Icon name="error-outline" size={48} color="#EF4444" />
+          <Text style={styles.errorText}>{t("common.error")}</Text>
+        </View>
+      )
+    }
+
+    return (
+      <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
+        {currentTab === "sessions" && (
+          <View style={styles.sessionsList}>{studySessions.map(renderSessionCard)}</View>
+        )}
+        {currentTab === "tests" && (
+          <View>
+            <Text>Test results UI (Not implemented in this refactor)</Text>
+          </View>
+          // <View style={styles.testsList}>{testResults.map(renderTestCard)}</View>
+        )}
+        {currentTab === "stats" && renderStatsTab()}
+      </Animated.View>
+    )
+  }
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color="#374151" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t("history.title")}</Text>
+        <TouchableOpacity>
+          <Icon name="file-download" size={24} color="#6B7280" />
+          <Text style={{ fontSize: 10, color: "#6B7280" }}>{t("history.export")}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Tab Navigation */}
+      <View style={styles.tabContainer}>
+        {[
+          { key: "sessions", label: t("history.tabs.sessions"), icon: "history" },
+          { key: "tests", label: t("history.tabs.tests"), icon: "assignment" },
+          { key: "stats", label: t("history.tabs.stats"), icon: "analytics" },
+        ].map((tab) => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tab, currentTab === tab.key && styles.activeTab]}
+            onPress={() => setCurrentTab(tab.key as any)}
+          >
+            <Icon name={tab.icon} size={18} color={currentTab === tab.key ? "#FFFFFF" : "#6B7280"} />
+            <Text style={[styles.tabText, currentTab === tab.key && styles.activeTabText]}>{tab.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Time Filter */}
+      {currentTab !== "stats" && (
+        <View style={styles.filterContainer}>
+          {[
+            { key: "week", label: t("history.filters.week") },
+            { key: "month", label: t("history.filters.month") },
+            { key: "year", label: t("history.filters.year") },
+          ].map((filter) => (
+            <TouchableOpacity
+              key={filter.key}
+              style={[styles.filterButton, timeFilter === filter.key && styles.activeFilter]}
+              onPress={() => setTimeFilter(filter.key as any)}
+            >
+              <Text style={[styles.filterText, timeFilter === filter.key && styles.activeFilterText]}>
+                {filter.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {renderContent()}
+      </ScrollView>
+    </View>
+  )
 }
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
+  container: {
+    flex: 1,
+    backgroundColor: "#F8FAFC",
+  },
+  centerScreen: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingTop: 100,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: "#6B7280",
+  },
+  errorText: {
+    marginTop: 10,
+    color: "#EF4444",
+    fontSize: 16,
+    textAlign: "center",
+    paddingHorizontal: 20,
+  },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: "#FFFFFF",
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  tabContainer: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  tab: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  activeTab: {
+    backgroundColor: "#4F46E5",
+  },
+  tabText: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  activeTabText: {
+    color: "#FFFFFF",
+  },
+  filterContainer: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    gap: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  filterButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    backgroundColor: "#F3F4F6",
+  },
+  activeFilter: {
+    backgroundColor: "#EEF2FF",
+  },
+  filterText: {
+    fontSize: 12,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  activeFilterText: {
+    color: "#4F46E5",
+  },
+  content: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 20,
+  },
+  sessionsList: {
+    gap: 12,
+  },
+  sessionCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  sessionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  typeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  progressFill: {
+    padding: 10
   },
-  content: {
-    padding: 20,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 40,
-    marginBottom: 30,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  statsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-    marginBottom: 30,
-  },
-  statCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    width: (width - 56) / 2,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statValue: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginTop: 8,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 4,
-  },
-  chartContainer: {
-    backgroundColor: "#FFFFFF",
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 30,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  chartTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 20,
-  },
-  chart: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    justifyContent: "space-between",
-    height: 160,
-  },
-  chartBar: {
-    alignItems: "center",
-    flex: 1,
-  },
-  barContainer: {
-    height: 120,
-    justifyContent: "flex-end",
-    marginBottom: 8,
-  },
-  bar: {
-    backgroundColor: "#4F46E5",
-    width: 20,
-    borderRadius: 10,
-  },
-  barLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 4,
-  },
-  barValue: {
-    fontSize: 10,
-    color: "#9CA3AF",
-  },
-  achievementsSection: {
-    marginBottom: 20,
-  },
-  achievementsList: {
-    flexDirection: "row",
-    gap: 16,
-    paddingRight: 20,
-  },
-  achievementCard: {
-    width: 160,
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  unlockedAchievement: {
-    backgroundColor: "#FFFBEB",
-    borderWidth: 1,
-    borderColor: "#F59E0B",
-  },
-  lockedAchievement: {
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  achievementTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1F2937",
-    textAlign: "center",
-    marginBottom: 4,
-  },
-  achievementProgress: {
-    width: "100%",
-    alignItems: "center",
-  },
-  achievementProgressBar: {
-    width: "100%",
-    height: 4,
-    backgroundColor: "#E5E7EB",
-    borderRadius: 2,
-    marginBottom: 4,
-  },
-  achievementProgressFill: {
-    height: "100%",
-    backgroundColor: "#4F46E5",
-    borderRadius: 2,
-  },
-  achievementProgressText: {
-    fontSize: 10,
-    color: "#6B7280",
-  },
-});
+  sessionInfo: {
+    flex: 1,
+  },
+  sessionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 2,
+  },
+  sessionDate: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  sessionType: {
+    fontSize: 12,
+    color: "#4F46E5",
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  sessionStats: {
+    alignItems: "flex-end",
+  },
+  sessionScore: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  experienceTag: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEF3C7",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 2,
+  },
+  experienceText: {
+    fontSize: 10,
+    color: "#D97706", // Đổi màu cho dễ đọc hơn
+    fontWeight: "600",
+  },
+  skillsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap", // Cho phép xuống dòng
+    gap: 6,
+    marginBottom: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+    paddingTop: 12,
+    marginLeft: 52, // Căn lề với title
+  },
+  skillTag: {
+    backgroundColor: "#F3F4F6",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+  },
+  skillText: {
+    fontSize: 10,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: "#E5E7EB",
+    borderRadius: 2,
+    overflow: "hidden",
+    marginLeft: 52, // Căn lề
+  },
+// ... (giữ các style cũ của test và stats) ...
+  statsContainer: {
+    gap: 24,
+  },
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 12,
+  },
+  statCard: {
+    flex: 1,
+    minWidth: "45%",
+    backgroundColor: "#FFFFFF",
+    padding: 20,
+    borderRadius: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  statValue: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginVertical: 8,
+  },
+  statLabel: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  chartSection: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  chartTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 16,
+  },
+})
 
-export default ProgressScreen;
+export default StudyHistoryScreen

@@ -144,12 +144,11 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
   const onPressUser = (entry: any) => {
     const targetUserId = entry?.leaderboardEntryId?.userId ?? entry?.userId ?? entry?.id;
     if (!targetUserId) return;
-    navigation.navigate("UserProfile", { userId: String(targetUserId) });
+    navigation.navigate("UserProfileView", { userId: String(targetUserId) });
   };
 
   // ---------- renderItem (clean fields from BE) ----------
   const renderItem = ({ item, index }: { item: any; index: number }) => {
-    // skip if item undefined
     if (!item) return null;
 
     const uid = item?.leaderboardEntryId?.userId ?? item.userId ?? item.id;

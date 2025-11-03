@@ -66,7 +66,6 @@ public class EventController {
             @ApiResponse(responseCode = "201", description = "Event created successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid event data")
     })
-    @PreAuthorize("hasAuthority('CREATE_EVENT')")
     @PostMapping
     public AppApiResponse<EventResponse> createEvent(
             @Valid @RequestBody EventRequest request,
@@ -85,7 +84,6 @@ public class EventController {
             @ApiResponse(responseCode = "404", description = "Event not found"),
             @ApiResponse(responseCode = "400", description = "Invalid event data")
     })
-    @PreAuthorize("hasAuthority('UPDATE_EVENT')")
     @PutMapping("/{id}")
     public AppApiResponse<EventResponse> updateEvent(
             @Parameter(description = "Event ID") @PathVariable UUID id,
@@ -104,7 +102,6 @@ public class EventController {
             @ApiResponse(responseCode = "200", description = "Event deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Event not found")
     })
-    @PreAuthorize("hasAuthority('DELETE_EVENT')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteEvent(
             @Parameter(description = "Event ID") @PathVariable UUID id,

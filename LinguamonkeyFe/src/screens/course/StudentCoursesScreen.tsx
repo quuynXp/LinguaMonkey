@@ -14,23 +14,73 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import { useUserStore } from "../../stores/UserStore"// Assuming you have an AuthContext
 
 const StudentCoursesScreen = ({ navigation }) => {
   const { t } = useTranslation()
   const [searchQuery, setSearchQuery] = useState("")
+  const debouncedSearchQuery = searchQuery
   const [selectedCategory, setSelectedCategory] = useState("All")
   const [selectedLevel, setSelectedLevel] = useState("")
   const [sortBy, setSortBy] = useState("popular")
 
-  const { usePurchasedCourses, useRecommendedCourses, useAllCourses } = useCourses()
+  const { user } = useUserStore() // Get current user
+  const {
+    useEnrolledCourses, // <-- Correct hook for user's purchased courses
+    useRecommendedCourses,
+    useAllCourses,
+    useSearchCourses, // <-- Hook for Elasticsearch
+    useOnSaleCourses, // <-- Hook for discounted courses
+    useTeacherCourses, // <-- Hook for P2P courses
+    useCourseCategories, // <-- Hook for dynamic categories
+    useCourseLevels, // <-- Hook for dynamic levels
+  } = useCourses()
 
-  const { data: purchasedData, isLoading: purchasedLoading, refetch: refetchPurchased } = usePurchasedCourses(0, 20)
+  // 1. Fetch user's enrolled courses (My Purchased Courses)
+  const {
+    data: enrolledData,
+    isLoading: enrolledLoading,
+    refetch: refetchEnrolled,
+  } = useEnrolledCourses({ userId: user?.userId, page: 0, size: 20 })
+
+  // 2. Fetch recommended courses
   const {
     data: recommendedCourses,
     isLoading: recommendedLoading,
     refetch: refetchRecommended,
-  } = useRecommendedCourses("", 10) 
+  } = useRecommendedCourses(user?.userId, 10)
 
+  // 3. Fetch courses on sale
+  const {
+    data: onSaleData,
+    isLoading: onSaleLoading,
+    refetch: refetchOnSale,
+  } = useOnSaleCourses(0, 10)
+
+  // 4. Fetch P2P courses (courses this user is selling)
+  const {
+    data: myP2PCoursesData,
+    isLoading: myP2PLoading,
+    refetch: refetchMyP2P,
+  } = useTeacherCourses(user?.userId, 0, 10)
+
+  // 5. Fetch dynamic filters
+  const { data: categoriesData } = useCourseCategories()
+  const { data: levelsData } = useCourseLevels()
+
+  // --- Search Logic ---
+  const isSearching = debouncedSearchQuery.length > 2
+
+  // 6. Fetch search results (if user is searching)
+  const {
+    data: searchResultsData,
+    isLoading: searchLoading,
+    refetch: refetchSearch,
+  } = useSearchCourses(debouncedSearchQuery, 0, 20, {
+    enabled: isSearching,
+  })
+
+  // 7. Fetch all other courses (if not searching)
   const sortField = useMemo(() => {
     switch (sortBy) {
       case "newest":
@@ -41,38 +91,49 @@ const StudentCoursesScreen = ({ navigation }) => {
       case "rating":
         return "rating"
       default:
-        return "popularity"
+        return "popularity" // You might need a "popularity" field in BE
     }
   }, [sortBy])
 
   const sortOrder = useMemo(() => {
-    if (sortBy === "price_high") return "desc"
-    if (sortBy === "newest") return "desc"
+    if (sortBy === "price_high" || sortBy === "newest") return "desc"
     return "asc"
   }, [sortBy])
 
-  const { data: allCoursesData, isLoading: allLoading, refetch: refetchAll } = useAllCourses({
+  const {
+    data: allCoursesData,
+    isLoading: allLoading,
+    refetch: refetchAll,
+  } = useAllCourses({
     page: 0,
     size: 20,
-    title: searchQuery || undefined,
+    // title: isSearching ? undefined : searchQuery, // <-- Removed, handled by useSearchCourses
     sortBy: sortField,
     sortOrder,
+    // Add category/level filters if backend supports them
+    // category: selectedCategory === "All" ? undefined : selectedCategory,
+    // level: selectedLevel === "" ? undefined : selectedLevel,
   })
+  
+  // --- Processed Data Lists ---
+  const enrolledCourses = enrolledData?.data || [] // These are CourseEnrollment objects
+  const onSaleCourses = onSaleData?.data || [] // These are CourseDiscount objects
+  const myP2PCourses = myP2PCoursesData?.data || [] // These are Course objects
+  
+  // Use search results if available, otherwise use all courses
+  const allCourses = (isSearching ? searchResultsData?.data : allCoursesData?.data) || []
 
-  const purchasedCourses = purchasedData?.data || []
-  const allCourses = allCoursesData?.data || []
-
-  // Client-side filtering for category/level because backend hook signature differs
+  // Client-side filtering (if BE doesn't support it on /api/courses)
+  // This is less efficient but matches your old code logic
   const filteredCourses = allCourses.filter((c) => {
-    const categoryMatches = selectedCategory === "All" || (c.category || c.tags || "").toString().includes(selectedCategory)
-    const levelMatches =
-      !selectedLevel ||
-      (c.difficultyLevel || c.level || "").toString().toLowerCase().includes(selectedLevel.toLowerCase())
+    const categoryMatches = selectedCategory === "All" || (c.category || "").includes(selectedCategory)
+    const levelMatches = !selectedLevel || (c.difficultyLevel || "").toLowerCase() === selectedLevel.toLowerCase()
     return categoryMatches && levelMatches
   })
 
-  const categories = ["All", "Business", "Conversation", "Grammar", "Vocabulary", "Pronunciation", "Technology"]
-  const levels = ["", "Beginner", "Intermediate", "Advanced"]
+  // --- Dynamic Filter Options ---
+  const categories = useMemo(() => ["All", ...(categoriesData || [])], [categoriesData])
+  const levels = useMemo(() => ["", ...(levelsData || [])], [levelsData]) // "" for "All Levels"
   const sortOptions = [
     { value: "popular", label: t("courses.sortBy.popular") },
     { value: "newest", label: t("courses.sortBy.newest") },
@@ -81,13 +142,19 @@ const StudentCoursesScreen = ({ navigation }) => {
     { value: "rating", label: t("courses.sortBy.rating") },
   ]
 
-  const isLoading = purchasedLoading || recommendedLoading || allLoading
-  const isRefreshing = false
+  const isLoading = enrolledLoading || recommendedLoading || allLoading || onSaleLoading || myP2PLoading || (isSearching && searchLoading)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
-  const handleRefresh = () => {
-    refetchPurchased()
-    refetchRecommended()
-    refetchAll()
+  const handleRefresh = async () => {
+    setIsRefreshing(true)
+    await Promise.all([
+      refetchEnrolled(),
+      refetchRecommended(),
+      refetchOnSale(),
+      refetchMyP2P(),
+      isSearching ? refetchSearch() : refetchAll(),
+    ])
+    setIsRefreshing(false)
   }
 
   const handleCoursePress = (course, isPurchased = false) => {
@@ -95,26 +162,40 @@ const StudentCoursesScreen = ({ navigation }) => {
     navigation.navigate("CourseDetails", { course: safeCourse, isPurchased })
   }
 
+  // This function is now more of a safety/normalization layer
   const mapCourseFields = (course) => ({
-    id: course.courseId || course.id,
-    title: course.title || course.name,
-    image: course.thumbnailUrl || course.image || null,
-    instructor: course.creatorName || course.instructor || "",
-    isFree: course.type === "FREE" || course.isFree || false,
+    id: course.courseId,
+    title: course.title,
+    image: course.thumbnailUrl,
+    instructor: course.creatorName || "N/A",
+    isFree: course.type === "FREE",
     price: course.price,
     originalPrice: course.originalPrice,
     rating: course.rating ?? 0,
     students: course.students ?? 0,
-    level: course.difficultyLevel || course.level || "",
+    level: course.difficultyLevel || "",
     duration: course.duration || "",
-    progress: course.progress ?? 0,
+    progress: course.progress ?? 0, // This data would come from the enrollment object
     completedLessons: course.completedLessons ?? 0,
     totalLessons: course.totalLessons ?? 0,
     discount: course.discount,
   })
-
+  
+  // --- Render Function ---
   const renderCourseCard = (rawCourse, isPurchased = false, isRecommended = false) => {
+    // Normalize data
     const course = mapCourseFields(rawCourse)
+
+    // Get progress if it's an enrolled course
+    let progress = 0
+    let completedLessons = 0
+    let totalLessons = course.totalLessons || 0
+    if (isPurchased && rawCourse.status) { // rawCourse is an Enrollment object
+      // Assuming enrollment DTO has progress fields
+      progress = rawCourse.progressPercent || 0 
+      completedLessons = rawCourse.completedLessons || 0
+    }
+    
     return (
       <TouchableOpacity
         key={course.id}
@@ -136,31 +217,30 @@ const StudentCoursesScreen = ({ navigation }) => {
           </View>
         )}
 
-        {isRecommended && course.discount && (
+        {course.discount && (
           <View style={styles.discountBadge}>
             <Text style={styles.discountText}>{course.discount}% OFF</Text>
           </View>
         )}
 
-        {course.isFree && (
+        {course.isFree && !course.discount && (
           <View style={styles.freeBadge}>
             <Text style={styles.freeText}>{t("courses.free")}</Text>
           </View>
         )}
 
         <View style={styles.courseContent}>
-          <Text style={styles.courseTitle}>{course.title}</Text>
+          <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
           <Text style={styles.courseInstructor}>by {course.instructor}</Text>
 
           <View style={styles.courseStats}>
             <View style={styles.ratingContainer}>
               <Icon name="star" size={14} color="#F59E0B" />
-              <Text style={styles.ratingText}>{course.rating}</Text>
+              <Text style={styles.ratingText}>{course.rating.toFixed(1)}</Text>
               <Text style={styles.studentsText}>({(course.students || 0).toLocaleString()})</Text>
             </View>
             <View style={styles.courseMeta}>
               <Text style={styles.levelText}>{course.level}</Text>
-              <Text style={styles.durationText}>{course.duration}</Text>
             </View>
           </View>
 
@@ -168,14 +248,14 @@ const StudentCoursesScreen = ({ navigation }) => {
             <View style={styles.progressSection}>
               <View style={styles.progressInfo}>
                 <Text style={styles.progressText}>
-                  {t("courses.progress")}: {course.progress || 0}%
+                  {t("courses.progress")}: {progress}%
                 </Text>
                 <Text style={styles.lessonsText}>
-                  {course.completedLessons || 0}/{course.totalLessons || 0} {t("courses.lessons")}
+                  {completedLessons}/{totalLessons} {t("courses.lessons")}
                 </Text>
               </View>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${course.progress || 0}%` }]} />
+                <View style={[styles.progressFill, { width: `${progress}%` }]} />
               </View>
               <TouchableOpacity style={styles.continueButton}>
                 <Text style={styles.continueButtonText}>{t("courses.continueLearning")}</Text>
@@ -206,7 +286,7 @@ const StudentCoursesScreen = ({ navigation }) => {
     )
   }
 
-  if (isLoading && !purchasedCourses.length && !filteredCourses.length) {
+  if (isLoading && !enrolledCourses.length && !filteredCourses.length) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#4F46E5" />
@@ -251,17 +331,8 @@ const StudentCoursesScreen = ({ navigation }) => {
         ))}
       </ScrollView>
 
-      <View style={styles.filtersRow}>
-        <TouchableOpacity style={styles.filterButton}>
-          <Icon name="sort" size={16} color="#6B7280" />
-          <Text style={styles.filterButtonText}>{t("courses.sortBy.title")}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.filterButton} onPress={() => {}}>
-          <Icon name="school" size={16} color="#6B7280" />
-          <Text style={styles.filterButtonText}>{t("courses.level")}</Text>
-        </TouchableOpacity>
-      </View>
-
+      {/* TODO: Add components for selecting Level and SortBy */}
+      
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -269,13 +340,33 @@ const StudentCoursesScreen = ({ navigation }) => {
           <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={["#4F46E5"]} tintColor="#4F46E5" />
         }
       >
-        {purchasedCourses.length > 0 && (
+        {/* 1. My Purchased Courses */}
+        {enrolledCourses.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("courses.myPurchasedCourses")}</Text>
-            {purchasedCourses.map((course) => renderCourseCard(course, true))}
+            {/* Note: We map enrollment.course */}
+            {enrolledCourses.map((enrollment) => renderCourseCard(enrollment.course, true))}
           </View>
         )}
 
+        {/* 2. My P2P Courses for Sale */}
+        {myP2PCourses.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("courses.myP2PCourses")}</Text>
+            {myP2PCourses.map((course) => renderCourseCard(course, false))}
+          </View>
+        )}
+
+        {/* 3. Courses on Sale */}
+        {onSaleCourses.length > 0 && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("courses.onSale")}</Text>
+            {/* Note: We map discount.course */}
+            {onSaleCourses.map((discount) => renderCourseCard(discount.course, false, true))}
+          </View>
+        )}
+
+        {/* 4. Recommended Courses */}
         {recommendedCourses && recommendedCourses.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("courses.recommendedForYou")}</Text>
@@ -283,8 +374,9 @@ const StudentCoursesScreen = ({ navigation }) => {
           </View>
         )}
 
+        {/* 5. All Courses / Search Results */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("courses.allCourses")}</Text>
+          <Text style={styles.sectionTitle}>{isSearching ? t("courses.searchResults") : t("courses.allCourses")}</Text>
           {filteredCourses.map((course) => renderCourseCard(course))}
         </View>
 
@@ -300,6 +392,7 @@ const StudentCoursesScreen = ({ navigation }) => {
   )
 }
 
+// Styles (unchanged from your provided file)
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -517,6 +610,7 @@ const styles = createScaledSheet({
     fontSize: 12,
     color: "#4F46E5",
     fontWeight: "600",
+    textTransform: "capitalize", // Added
   },
   durationText: {
     fontSize: 12,
@@ -608,3 +702,7 @@ const styles = createScaledSheet({
 })
 
 export default StudentCoursesScreen
+
+function useDebounce(searchQuery: string, arg1: number) {
+  throw new Error("Function not implemented.")
+}

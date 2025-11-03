@@ -4,6 +4,7 @@ import librosa
 import logging
 from transformers import pipeline
 
+
 def speech_to_text(audio_data, language):
     try:
         audio, sample_rate = sf.read(io.BytesIO(audio_data))

@@ -3,10 +3,15 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
+import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
+import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -17,10 +22,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -30,6 +36,8 @@ import java.util.UUID;
 public class LessonController {
     private final LessonService lessonService;
     private final MessageSource messageSource;
+    private final RoomService roomService;
+    private final RoomMemberRepository roomMemberRepository;
 
     @Operation(summary = "Get all lessons", description = "Retrieve a paginated list of lessons with optional filtering by name, language, EXP reward, category, subcategory, course, or series")
     @ApiResponses({
@@ -63,6 +71,36 @@ public class LessonController {
                     .build();
         }
     }
+
+    @PostMapping("/{lessonId}/start-test")
+    public AppApiResponse<?> startTest(
+            @PathVariable UUID lessonId,
+            @RequestParam(required = false) UUID userId,
+            Locale locale) {
+        try {
+            Map<String, Object> payload = lessonService.startTest(lessonId, userId);
+            return AppApiResponse.builder().code(200).message("Started").result(payload).build();
+        } catch (AppException e) {
+            return AppApiResponse.<Object>builder().code(e.getErrorCode().getStatusCode().value())
+                    .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale)).build();
+        }
+    }
+
+    @PostMapping("/{lessonId}/submit-test")
+    public AppApiResponse<?> submitTest(
+            @PathVariable UUID lessonId,
+            @RequestParam(required = false) UUID userId,
+            @RequestBody Map<String, Object> body, // { answers: {questionId: answer} }
+            Locale locale) {
+        try {
+            Map<String, Object> result = lessonService.submitTest(lessonId, userId, body);
+            return AppApiResponse.builder().code(200).message("Submitted").result(result).build();
+        } catch (AppException e) {
+            return AppApiResponse.<Object>builder().code(e.getErrorCode().getStatusCode().value())
+                    .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale)).build();
+        }
+    }
+
 
     @Operation(summary = "Get lesson by ID", description = "Retrieve a lesson by its ID, including associated videos and questions")
     @ApiResponses({
@@ -239,6 +277,87 @@ public class LessonController {
                     .build();
         } catch (AppException e) {
             return AppApiResponse.<Page<LessonResponse>>builder()
+                    .code(e.getErrorCode().getStatusCode().value())
+                    .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
+                    .build();
+        }
+    }
+    @Operation(summary = "Generate a personalized solo quiz", description = "Generates 15 AI questions based on user profile")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully generated quiz"),
+            @ApiResponse(responseCode = "404", description = "User not found")
+    })
+    @GetMapping("/quiz/generate-solo")
+    public AppApiResponse<QuizResponse> generateSoloQuiz(
+            @Parameter(description = "User ID") @RequestParam UUID userId,
+            @RequestHeader("Authorization") String authorizationHeader, // ✅ Lấy token
+            Locale locale) {
+        try {
+            String token = authorizationHeader.replace("Bearer ", ""); // Tách token
+            QuizResponse quiz = lessonService.generateSoloQuiz(token, userId); // ✅ Truyền token
+            return AppApiResponse.<QuizResponse>builder()
+                    .code(200)
+                    .message(messageSource.getMessage("quiz.generated.solo.success", null, locale))
+                    .result(quiz)
+                    .build();
+        } catch (AppException e) {
+            return AppApiResponse.<QuizResponse>builder()
+                    .code(e.getErrorCode().getStatusCode().value())
+                    .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
+                    .build();
+        }
+    }
+
+    @Operation(summary = "Generate a team quiz", description = "Generates 30 general knowledge language questions for a team")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully generated quiz")
+    })
+    @GetMapping("/quiz/generate-team")
+    public AppApiResponse<QuizResponse> generateTeamQuiz(
+            @Parameter(description = "Room ID") @RequestParam UUID roomId,
+            @Parameter(description = "User ID (for validation)") @RequestParam UUID userId,
+            @RequestHeader("Authorization") String authorizationHeader,
+            @Parameter(description = "Optional topic") @RequestParam(required = false) String topic,
+            Locale locale) {
+        try {
+            if (!roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(roomId, userId)) {
+                throw new AppException(ErrorCode.NOT_ROOM_MEMBER);
+            }
+
+            String token = authorizationHeader.replace("Bearer ", ""); // Tách token
+            QuizResponse quiz = lessonService.generateTeamQuiz(token, topic);
+            return AppApiResponse.<QuizResponse>builder()
+                    .code(200)
+                    .message(messageSource.getMessage("quiz.generated.team.success", null, locale))
+                    .result(quiz)
+                    .build();
+        } catch (AppException e) {
+            return AppApiResponse.<QuizResponse>builder()
+                    .code(e.getErrorCode().getStatusCode().value())
+                    .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
+                    .build();
+        }
+    }
+
+    @Operation(summary = "Find or create a quiz room", description = "Finds an available team quiz room or creates a new one")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Found or created room successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
+    })
+    @PostMapping("/quiz/find-or-create-room")
+    public AppApiResponse<RoomResponse> findOrCreateQuizRoom(
+            @Parameter(description = "User ID joining") @RequestParam UUID userId,
+            Locale locale) {
+        try {
+            RoomResponse room = roomService.findOrCreateQuizRoom(userId); // Cần tạo hàm này
+
+            return AppApiResponse.<RoomResponse>builder()
+                    .code(200)
+                    .message(messageSource.getMessage("quiz.room.joined.success", null, locale))
+                    .result(room)
+                    .build();
+        } catch (AppException e) {
+            return AppApiResponse.<RoomResponse>builder()
                     .code(e.getErrorCode().getStatusCode().value())
                     .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
                     .build();

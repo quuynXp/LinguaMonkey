@@ -18,6 +18,7 @@ public interface ChatMessageService {
     ChatMessageResponse generateAIResponse(ChatMessageResponse userMessage);
     void handleTypingStatus(UUID roomId, TypingStatusRequest request);
     ChatStatsResponse getStatsByUser(UUID userId);
+    ChatMessageResponse saveTranslation(UUID messageId, String targetLang, String translatedText);
 
 
 }

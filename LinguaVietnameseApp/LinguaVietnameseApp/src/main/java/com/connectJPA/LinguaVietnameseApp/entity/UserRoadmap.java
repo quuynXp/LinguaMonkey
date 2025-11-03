@@ -23,6 +23,12 @@ public class UserRoadmap extends BaseEntity {
     @EmbeddedId
     private UserRoadmapId userRoadmapId;
 
+    @ManyToOne
+    private Roadmap roadmap;
+
+    @ManyToOne
+    private User user;
+
     private Integer currentLevel;
     private Integer targetLevel;
     private String targetProficiency;
@@ -30,5 +36,6 @@ public class UserRoadmap extends BaseEntity {
     private String language;
     private Integer completedItems;
     private String status;
+    private boolean isPublic;
 }
 

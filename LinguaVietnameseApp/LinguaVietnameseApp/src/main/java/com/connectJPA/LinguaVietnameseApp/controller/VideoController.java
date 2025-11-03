@@ -1,12 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.CreateReviewRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoProgressRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoSubtitleRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.BilingualVideoResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.VideoResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.VideoSubtitleResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.*;
+import com.connectJPA.LinguaVietnameseApp.entity.VideoReview;
 import com.connectJPA.LinguaVietnameseApp.service.VideoService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
@@ -57,11 +56,36 @@ public class VideoController {
         return AppApiResponse.<Void>builder().code(200).message("Video liked").build();
     }
 
+    @GetMapping("/search")
+    public AppApiResponse<Page<BilingualVideoResponse>> searchVideos(
+            Pageable pageable,
+            @RequestParam(required=false) String q,
+            @RequestParam(required=false) String language,
+            @RequestParam(required=false) String category,
+            @RequestParam(required=false) String sort // e.g. "popular", "rating", "recent"
+    ) {
+        Page<BilingualVideoResponse> page = videoService.searchVideos(pageable, q, language, category, sort);
+        return AppApiResponse.<Page<BilingualVideoResponse>>builder().code(200).message("Search results").result(page).build();
+    }
+
     @DeleteMapping("/{videoId}/like")
     public AppApiResponse<Void> unlikeVideo(@PathVariable UUID videoId, @RequestParam UUID userId) {
         videoService.unlikeVideo(videoId, userId);
         return AppApiResponse.<Void>builder().code(200).message("Video unliked").build();
     }
+
+    @PostMapping("/{videoId}/reviews")
+    public AppApiResponse<VideoReviewResponse> addReview(@PathVariable UUID videoId, @RequestBody CreateReviewRequest req) {
+        VideoReview r = videoService.createReview(videoId, req.getUserId(), req.getRating(), req.getContent());
+        return AppApiResponse.<VideoReviewResponse>builder().code(201).message("Review created").result(map(r)).build();
+    }
+
+    @PostMapping("/reviews/{reviewId}/react")
+    public AppApiResponse<Void> reactReview(@PathVariable UUID reviewId, @RequestParam UUID userId, @RequestParam int reaction) {
+        videoService.reactReview(reviewId, userId, (short)reaction);
+        return AppApiResponse.<Void>builder().code(200).message("Reacted").build();
+    }
+
 
     @PostMapping("/{videoId}/favorite")
     public AppApiResponse<Void> favoriteVideo(@PathVariable UUID videoId, @RequestParam UUID userId) {
@@ -117,4 +141,19 @@ public class VideoController {
         videoService.deleteSubtitle(subtitleId);
         return AppApiResponse.<Void>builder().code(200).message("Subtitle deleted").build();
     }
+
+    private VideoReviewResponse map(VideoReview r) {
+        VideoReviewResponse resp = new VideoReviewResponse();
+        resp.setReviewId(r.getReviewId());
+        resp.setVideoId(r.getVideoId());
+        resp.setUserId(r.getUserId());
+        resp.setRating(r.getRating());
+        resp.setContent(r.getContent());
+        resp.setCreatedAt(r.getCreatedAt());
+        resp.setUpdatedAt(r.getUpdatedAt());
+        resp.setLikeCount(0);
+        resp.setDislikeCount(0);
+        return resp;
+    }
+
 }

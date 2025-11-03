@@ -22,4 +22,6 @@ public class LessonProgressWrongItemsId implements Serializable {
 
     @Column(name = "lesson_question_id", nullable = false)
     private UUID lessonQuestionId;
+
+    private Integer attemptNumber;
 }

@@ -12,27 +12,41 @@ import TransactionHistoryScreen from '../../screens/payment/TransactionHistorySc
 import PaymentScreen from '../../screens/payment/PaymentScreen';
 import AppLaunchScreen from '../../screens/appLaunch/AppLaunchScreen';
 
-const Stack = createNativeStackNavigator();
+export type RootStackParamList = {
+  Auth: undefined;
+  DailyWelcome: undefined;
+  ProficiencyTestScreen: undefined;
+  SetupInitScreen: undefined;
+  AppLaunchScreen: { initialParams?: any } | undefined;
+  TabApp: undefined;
+  PaymentScreen: undefined;
+  Admin: undefined;
+  Teacher: undefined;
+};
 
-const MainStack = ({ initialRouteName }) => (
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const MainStack = ({ initialRouteName, initialParams }: any) => (
   <Stack.Navigator
-    screenOptions={{ headerShown: false }}
-    initialRouteName={initialRouteName}
+    {...({
+      screenOptions: { headerShown: false },
+      initialRouteName,
+    } as any)}
   >
     <Stack.Screen name="Auth" component={AuthStack} />
     <Stack.Screen name="DailyWelcome" component={DailyWelcomeScreen} />
     <Stack.Screen name="ProficiencyTestScreen" component={ProficiencyTestScreen} />
     <Stack.Screen name="SetupInitScreen" component={SetupInitScreen} />
-    <Stack.Screen name="AppLaunchScreen" component={AppLaunchScreen} />
+    <Stack.Screen name="AppLaunchScreen" component={AppLaunchScreen} initialParams={initialParams} />
     <Stack.Screen name="TabApp" component={TabNavigator} />
     <Stack.Screen name="PaymentScreen" component={PaymentScreen} />
     <Stack.Screen
       name="Admin"
-      component={withRoleGuard(AdminStack, ["ROLE_ADMIN"])}
+      component={AdminStack}
     />
     <Stack.Screen
       name="Teacher"
-      component={withRoleGuard(TeacherStack, ["ROLE_TEACHER"])}
+      component={TeacherStack}
     />
 
   </Stack.Navigator>

@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useRef } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -8,8 +6,6 @@ import { useQuery } from "@tanstack/react-query";
 import axiosInstance from "../../api/axiosInstance"
 import { User, UserGoal, UserLanguage } from "../../types/api"
 import { createScaledSheet } from "../../utils/scaledStyles";
-
-
 
 // Types
 interface SetupData {

@@ -5625,7 +5625,7 @@ expo-dev-menu@7.0.15:
   dependencies:
     expo-dev-menu-interface "2.0.0"
 
-expo-device@~8.0.9:
+expo-device@^8.0.9:
   version "8.0.9"
   resolved "https://registry.yarnpkg.com/expo-device/-/expo-device-8.0.9.tgz#def4fcc2f2bd99c2f009424610c298acc1c01eb6"
   integrity sha512-XqRpaljDNAYZGZzMpC+b9KZfzfydtkwx3pJAp6ODDH+O/5wjAw+mLc5wQMGJCx8/aqVmMsAokec7iebxDPFZDA==

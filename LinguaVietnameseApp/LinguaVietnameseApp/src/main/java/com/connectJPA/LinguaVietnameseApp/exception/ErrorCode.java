@@ -52,6 +52,16 @@ public enum ErrorCode {
     FACEBOOK_TOKEN_INVALID(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
     SMS_SERVICE_NOT_CONFIGURED(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
     SMS_SEND_FAILED(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    ALREADY_EXISTS(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    ROADMAP_NOT_PUBLIC(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    SUGGESTION_NOT_FOUND(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    INVALID_AMOUNT(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    INSUFFICIENT_FUNDS(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    WALLET_NOT_FOUND(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    TRANSACTION_NOT_REFUNDABLE(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    GRPC_SERVICE_ERROR(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+    INVALID_INPUT_DATA(2010, "error.invalid_password", HttpStatus.UNAUTHORIZED),
+
 
 
 

@@ -8,6 +8,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
+import java.util.UUID;
 
 @Entity
 @Table(name = "friendships")
@@ -22,5 +23,9 @@ public class Friendship extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private FriendshipStatus status = FriendshipStatus.ACCEPTED;
+
+    public UUID getSenderId() {
+        return this.id.getUser1Id();
+    }
 
 }

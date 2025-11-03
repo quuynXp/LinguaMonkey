@@ -3,12 +3,13 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CoupleRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CoupleResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Couple;
+import com.connectJPA.LinguaVietnameseApp.entity.CoupleProfileSummary;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.CoupleMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.CoupleRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CoupleRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CoupleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
@@ -89,5 +90,21 @@ public class CoupleServiceImpl implements CoupleService {
                 .orElseThrow(() -> new AppException(ErrorCode.COUPLE_NOT_FOUND));
         couple.setDeleted(true);
         coupleRepository.save(couple);
+    }
+
+    @Override
+    public CoupleProfileSummary getCoupleProfileSummaryByUser(UUID userId, UUID viewerId) {
+        return coupleRepository.findByUserId(userId)
+                .map(c -> CoupleProfileSummary.builder()
+                        .coupleId(c.getId())
+                        .partnerId(c.getUser2().getUserId())
+                        .status(c.getStatus())
+                        .build())
+                .orElse(null);
+    }
+
+    @Override
+    public Couple findById(UUID coupleId) {
+        return coupleRepository.findById(coupleId).orElse(null);
     }
 }

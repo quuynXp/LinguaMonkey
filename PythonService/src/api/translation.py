@@ -1,6 +1,7 @@
 from transformers import pipeline
 import logging
 
+
 def translate_text(text, source_lang, target_lang):
     try:
         translator = pipeline("translation", model="facebook/m2m100_418M")

@@ -2,10 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.SubmitExerciseRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateGrammarProgressRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.GrammarRuleResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.GrammarTopicResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.SubmitExerciseResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.service.GrammarService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,6 +33,24 @@ public class GrammarController {
                     .build();
         } catch (AppException e) {
             return AppApiResponse.<List<GrammarTopicResponse>>builder()
+                    .code(e.getErrorCode().getStatusCode().value())
+                    .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
+                    .build();
+        }
+    }
+
+    @Operation(summary = "Get grammar mindmap (hierarchical structure)")
+    @GetMapping("/mindmap")
+    public AppApiResponse<List<MindMapNode>> getMindMap(Locale locale) {
+        try {
+            List<MindMapNode> mindmap = grammarService.getMindMap(); // New service method
+            return AppApiResponse.<List<MindMapNode>>builder()
+                    .code(200)
+                    .message(messageSource.getMessage("grammar.mindmap.get.success", null, locale))
+                    .result(mindmap)
+                    .build();
+        } catch (AppException e) {
+            return AppApiResponse.<List<MindMapNode>>builder()
                     .code(e.getErrorCode().getStatusCode().value())
                     .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
                     .build();

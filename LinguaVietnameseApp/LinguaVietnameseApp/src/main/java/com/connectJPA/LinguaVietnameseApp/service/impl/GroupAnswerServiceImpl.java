@@ -7,7 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.GroupAnswerMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.GroupAnswerRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.GroupAnswerRepository;
 import com.connectJPA.LinguaVietnameseApp.service.GroupAnswerService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

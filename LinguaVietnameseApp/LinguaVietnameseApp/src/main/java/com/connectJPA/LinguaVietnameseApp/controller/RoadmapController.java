@@ -1,13 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
-import com.connectJPA.LinguaVietnameseApp.dto.request.AssignRoadmapRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.CreateRoadmapRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.GenerateRoadmapRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.StartCompleteRoadmapItemRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapUserResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.RoadmapItem;
+import com.connectJPA.LinguaVietnameseApp.entity.RoadmapSuggestion;
 import com.connectJPA.LinguaVietnameseApp.service.RoadmapService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -43,6 +41,15 @@ public class RoadmapController {
             Locale locale) {
         RoadmapResponse roadmap = roadmapService.getRoadmapWithDetails(roadmapId);
         return buildResponse(200, "roadmap.get", locale, roadmap);
+    }
+
+    @Operation(summary = "Get all public roadmaps")
+    @GetMapping("/public")
+    public AppApiResponse<List<RoadmapResponse>> getPublicRoadmaps(
+            @RequestParam(required = false) String language,
+            Locale locale) {
+        List<RoadmapResponse> roadmaps = roadmapService.getPublicRoadmaps(language);
+        return buildResponse(200, "roadmap.public.list", locale, roadmaps);
     }
 
     @Operation(summary = "Get roadmap details for a user")
@@ -147,6 +154,46 @@ public class RoadmapController {
     ) {
         roadmapService.completeItem(req.getUserId(), req.getItemId());
         return buildResponse(200, "roadmap.item.complete", locale, null);
+    }
+
+    @Operation(summary = "Set roadmap public/private")
+    @PutMapping("/{roadmapId}/public")
+    public AppApiResponse<Void> setPublic(
+            @PathVariable UUID roadmapId,
+            @RequestParam UUID userId,
+            @RequestParam boolean isPublic,
+            Locale locale) {
+        roadmapService.setPublic(userId, roadmapId, isPublic);
+        return buildResponse(200, "roadmap.public.update", locale, null);
+    }
+
+    @Operation(summary = "Add suggestion to public roadmap")
+    @PostMapping("/{roadmapId}/suggestions")
+    public AppApiResponse<RoadmapSuggestion> addSuggestion(
+            @PathVariable UUID roadmapId,
+            @RequestBody AddSuggestionRequest req, // DTO với userId, itemId, suggestedOrderIndex, reason
+            Locale locale) {
+        RoadmapSuggestion suggestion = roadmapService.addSuggestion(req.getUserId(), roadmapId, req.getItemId(), req.getSuggestedOrderIndex(), req.getReason());
+        return buildResponse(201, "roadmap.suggestion.add", locale, suggestion);
+    }
+
+    @Operation(summary = "Apply suggestion (owner only)")
+    @PutMapping("/suggestions/{suggestionId}/apply")
+    public AppApiResponse<Void> applySuggestion(
+            @PathVariable UUID suggestionId,
+            @RequestParam UUID userId,
+            Locale locale) {
+        roadmapService.applySuggestion(userId, suggestionId);
+        return buildResponse(200, "roadmap.suggestion.apply", locale, null);
+    }
+
+    @Operation(summary = "Get suggestions for roadmap")
+    @GetMapping("/{roadmapId}/suggestions")
+    public AppApiResponse<List<RoadmapSuggestion>> getSuggestions(
+            @PathVariable UUID roadmapId,
+            Locale locale) {
+        List<RoadmapSuggestion> suggestions = roadmapService.getSuggestions(roadmapId); // Thêm method trong service
+        return buildResponse(200, "roadmap.suggestion.list", locale, suggestions);
     }
 
 }

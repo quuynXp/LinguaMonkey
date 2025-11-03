@@ -1,11 +1,37 @@
-
 import { useState, useRef, useEffect } from "react"
-import { View, Text, StyleSheet, TouchableOpacity, Animated, TextInput, Alert, ScrollView } from "react-native"
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  Animated, 
+  TextInput, 
+  Alert, 
+  ScrollView, 
+  ActivityIndicator
+} from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
-import { registerWithEmail, loginWithGoogle, loginWithFacebook } from '../../services/authService';
-import { resetToTab } from "../../utils/navigationRef";
+import { 
+  registerWithEmail,
+  handleGoogleLogin as serviceHandleGoogle,
+  handleFacebookLogin as serviceHandleFacebook
+} from '../../services/authService';
+import { showError, showSuccess } from "../../utils/toastHelper";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import * as Google from 'expo-auth-session/providers/google';
+import * as Facebook from 'expo-auth-session/providers/facebook';
+import * as WebBrowser from 'expo-web-browser';
+import { useUserStore } from '../../stores/UserStore';
+
+// --- CẤU HÌNH AUTH ---
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_CLIENT_ID_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID;
+const GOOGLE_CLIENT_ID_IOS = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS;
+const GOOGLE_CLIENT_ID_WEB = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
+const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
+// --- KẾT THÚC CẤU HÌNH ---
+
 
 const RegisterScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -18,11 +44,26 @@ const RegisterScreen = ({ navigation }) => {
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(false) // Loading cho form email
+  const [isSocialLoading, setIsSocialLoading] = useState(false); // Loading riêng cho social
   const [acceptTerms, setAcceptTerms] = useState(false)
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
+
+  // --- AUTH HOOKS ---
+  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
+    androidClientId: GOOGLE_CLIENT_ID_ANDROID,
+    iosClientId: GOOGLE_CLIENT_ID_IOS,
+    webClientId: GOOGLE_CLIENT_ID_WEB,
+    scopes: ['profile', 'email'],
+  });
+
+  const [fbRequest, fbResponse, fbPromptAsync] = Facebook.useAuthRequest({
+    clientId: FACEBOOK_CLIENT_ID as string,
+    scopes: ['public_profile', 'email'],
+  });
+  // --- KẾT THÚC AUTH HOOKS ---
 
   useEffect(() => {
     Animated.parallel([
@@ -38,6 +79,61 @@ const RegisterScreen = ({ navigation }) => {
       }),
     ]).start()
   }, [])
+
+  // --- XỬ LÝ GOOGLE RESPONSE ---
+  useEffect(() => {
+    if (googleResponse?.type === 'success') {
+      const { id_token } = googleResponse.params;
+      if (id_token) {
+        setIsSocialLoading(true); // Bật loading
+        serviceHandleGoogle(id_token)
+          .then((result) => {
+            if (result) {
+              showSuccess(t("registerSuccess"));
+              // Đi thẳng đến SetupInitScreen
+              navigation.navigate('SetupInitScreen');
+            } else {
+              showError(t("loginFailed"));
+            }
+          })
+          .catch((err) => showError(err.message || t("loginFailed")))
+          .finally(() => setIsSocialLoading(false)); // Tắt loading
+      } else {
+        showError(t("loginFailed"));
+      }
+    } else if (googleResponse?.type === 'error') {
+      console.error("Google Auth Error:", googleResponse.error);
+      showError(t("loginFailed") + (googleResponse.error?.message ? `: ${googleResponse.error.message}` : ''));
+    }
+  }, [googleResponse, navigation]);
+
+  // --- XỬ LÝ FACEBOOK RESPONSE ---
+  useEffect(() => {
+    if (fbResponse?.type === 'success') {
+      const { access_token } = fbResponse.params;
+      if (access_token) {
+        setIsSocialLoading(true); // Bật loading
+        serviceHandleFacebook(access_token)
+          .then((result) => {
+            if (result) {
+              showSuccess(t("registerSuccess"));
+              // Đi thẳng đến SetupInitScreen
+              navigation.navigate('SetupInitScreen');
+            } else {
+              showError(t("loginFailed"));
+            }
+          })
+          .catch((err) => showError(err.message || t("loginFailed")))
+          .finally(() => setIsSocialLoading(false)); // Tắt loading
+      } else {
+        showError(t("loginFailed"));
+      }
+    } else if (fbResponse?.type === 'error') {
+      console.error("Facebook Auth Error:", fbResponse.error);
+      showError(t("loginFailed") + (fbResponse.error?.message ? `: ${fbResponse.error.message}` : ''));
+    }
+  }, [fbResponse, navigation]);
+
 
   const validateForm = () => {
     if (!formData.firstName.trim()) {
@@ -72,8 +168,21 @@ const RegisterScreen = ({ navigation }) => {
 
     setIsLoading(true)
     try {
-      await registerWithEmail(formData.firstName, formData.lastName, formData.email, formData.password);
-      resetToTab('Home')
+      await registerWithEmail(
+        formData.firstName, 
+        formData.lastName, 
+        formData.email, 
+        formData.password
+      );
+
+      const userStore = useUserStore.getState();
+      userStore.setUser({
+        ...userStore.user, 
+        email: formData.email.toLowerCase(),
+        fullname: `${formData.firstName} ${formData.lastName}`
+      });
+      
+      navigation.navigate('SetupInitScreen');
     } catch (error: any) {
       Alert.alert(t('error'), error.message || t('registerFailed'));
     } finally {
@@ -81,18 +190,25 @@ const RegisterScreen = ({ navigation }) => {
     }
   }
 
-  const handleSocialRegister = async (provider: string) => {
-    setIsLoading(true)
+  const handleSocialRegister = (provider: string) => {
+    if (isLoading || isSocialLoading) return; // Kiểm tra cả hai
+    
     try {
       if (provider === 'Google') {
-        await loginWithGoogle();
+        if (googleRequest) {
+          googlePromptAsync();
+        } else {
+          showError("Google login is not ready.");
+        }
       } else if (provider === 'Facebook') {
-        await loginWithFacebook();
+        if (fbRequest) {
+          fbPromptAsync();
+        } else {
+          showError("Facebook login is not ready.");
+        }
       }
     } catch (error: any) {
       Alert.alert(t('error'), error.message || t('registerFailedWith', { provider }));
-    } finally {
-      setIsLoading(false)
     }
   }
 
@@ -113,9 +229,6 @@ const RegisterScreen = ({ navigation }) => {
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
         </View>
-
-        {/* Register Animation */}
-
 
         {/* Title */}
         <Text style={styles.title}>{t('createAccount')}</Text>
@@ -200,12 +313,12 @@ const RegisterScreen = ({ navigation }) => {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.registerButton, isLoading && styles.buttonDisabled]}
+            style={[styles.registerButton, (isLoading || isSocialLoading) && styles.buttonDisabled]}
             onPress={handleRegister}
-            disabled={isLoading}
+            disabled={isLoading || isSocialLoading}
           >
             {isLoading ? (
-              <Icon name="hourglass-top" size={20} color="#FFFFFF" />
+              <ActivityIndicator size="small" color="#FFFFFF" />
             ) : (
               <>
                 <Text style={styles.registerButtonText}>{t('createAccount')}</Text>
@@ -226,21 +339,33 @@ const RegisterScreen = ({ navigation }) => {
         {/* Social Registration */}
         <View style={styles.socialContainer}>
           <TouchableOpacity
-            style={styles.socialButton}
+            style={[styles.socialButton, (isLoading || isSocialLoading) && styles.buttonDisabled]}
             onPress={() => handleSocialRegister("Google")}
-            disabled={isLoading}
+            disabled={isLoading || isSocialLoading || !googleRequest}
           >
-            <Icon name="g-translate" size={24} color="#DB4437" />
-            <Text style={styles.socialButtonText}>{t('google')}</Text>
+            {isSocialLoading ? (
+              <ActivityIndicator size="small" color="#DB4437" />
+            ) : (
+              <>
+                <Icon name="g-translate" size={24} color="#DB4437" />
+                <Text style={styles.socialButtonText}>{t('google')}</Text>
+              </>
+            )}
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={styles.socialButton}
+            style={[styles.socialButton, (isLoading || isSocialLoading) && styles.buttonDisabled]}
             onPress={() => handleSocialRegister("Facebook")}
-            disabled={isLoading}
+            disabled={isLoading || isSocialLoading || !fbRequest}
           >
-            <Icon name="facebook" size={24} color="#4267B2" />
-            <Text style={styles.socialButtonText}>{t('facebook')}</Text>
+             {isSocialLoading ? (
+              <ActivityIndicator size="small" color="#4267B2" />
+            ) : (
+              <>
+                <Icon name="facebook" size={24} color="#4267B2" />
+                <Text style={styles.socialButtonText}>{t('facebook')}</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 

@@ -2,22 +2,27 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.ContentType;
+import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.GenericGenerator;
+import org.springframework.data.elasticsearch.annotations.Document;
 
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "user_memorizations")
+@Document(indexName = "user_memorizations")
 @Getter
 @Setter
+@EntityListeners(ElasticsearchEntityListener.class)
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
 public class UserMemorization extends BaseEntity {
+    @org.springframework.data.annotation.Id
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "memorization_id", updatable = false, nullable = false)

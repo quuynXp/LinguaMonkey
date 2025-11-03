@@ -1,11 +1,27 @@
-import axios, { AxiosRequestConfig } from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
 import * as Localization from 'expo-localization';
 import {EXPO_PUBLIC_API_BASE_URL} from "react-native-dotenv"
 import { showError, showSuccess } from '../utils/toastHelper';
+import * as Device from 'expo-device';
 
 const API_BASE_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
+
+async function getDeviceIdSafe() {
+  try {
+    const deviceId =
+      Device.osInternalBuildId ||
+      Device.modelId ||
+      Device.modelName ||
+      Device.deviceName ||
+      'unknown-device';
+    return deviceId;
+  } catch (err) {
+    console.warn('[device id read error]', err);
+    return 'unknown-device';
+  }
+}
 
 export const refreshClient = axios.create({
   baseURL: API_BASE_URL,
@@ -26,18 +42,14 @@ async function getDeviceId(): Promise<string> {
 }
 
 refreshClient.interceptors.request.use(
-  async (config: AxiosRequestConfig) => {
-    const deviceId = await getDeviceId();
+  async (config: InternalAxiosRequestConfig) => {
+    const deviceId = await getDeviceIdSafe();
     const userLocale = Localization.getLocales()[0]?.languageTag || 'en-US';
 
-    config.headers = {
-      ...(config.headers || {}),
-      'Device-Id': deviceId,
-      'Accept-Language': userLocale,
-    };
+    config.headers.set('Device-Id', deviceId);
+    config.headers.set('Accept-Language', userLocale);
 
     console.log('[refreshClient] config', { url: config.url, data: config.data });
-    
     return config;
   },
   (err) => Promise.reject(err)

@@ -5,9 +5,11 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.IntrospectResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.nimbusds.jose.JOSEException;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.text.ParseException;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public interface AuthenticationService {
@@ -43,4 +45,13 @@ public interface AuthenticationService {
     String generateRefreshToken(User user, int days);
     String generateToken(User user);
 
+    @Transactional
+    void requestPasswordResetOtp(String identifier, String method);
+
+    // ENDPOINT MỚI 3: Verify Password Reset OTP
+    @Transactional
+    String verifyPasswordResetOtp(String identifier, String code);
+
+    @Transactional
+    Map<String, Object> checkResetMethods(String identifier);
 }

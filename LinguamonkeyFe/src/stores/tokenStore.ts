@@ -3,6 +3,23 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { getStorage } from './tokenStoreInterface';
 import { refreshTokenPure } from '../services/authPure';
+import { decodeToken } from '../utils/decodeToken';
+
+const isTokenValid = (token: string | null): boolean => {
+  if (!token) return false;
+  try {
+    const payload = decodeToken(token); // Dùng hàm decode bạn có
+    if (payload && payload.exp) {
+      // payload.exp là (seconds), Date.now() là (milliseconds)
+      const isExpired = Date.now() >= payload.exp * 1000;
+      return !isExpired;
+    }
+    return false;
+  } catch (e) {
+    console.warn('isTokenValid check failed', e);
+    return false;
+  }
+};
 
 interface TokenStore {
   accessToken: string | null;
@@ -81,37 +98,45 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
       const accessToken = typeof storedAccess === 'string' ? storedAccess.trim() : null;
       const refreshToken = typeof storedRefresh === 'string' ? storedRefresh.trim() : null;
 
-      if (!accessToken && !refreshToken) {
-        console.log('[initializeTokens] No tokens found → skip refresh');
-        set({ initialized: true });
-        return false;
+      // BƯỚC 1: Kiểm tra accessToken trước tiên
+      if (isTokenValid(accessToken)) {
+        console.log('[initializeTokens] AccessToken is valid ✅ Using existing tokens.');
+        set({
+          accessToken,
+          refreshToken,
+          initialized: true,
+        });
+        return true; // Token hợp lệ, không cần refresh
       }
 
-      set({
-        accessToken,
-        refreshToken,
-        initialized: true,
-      });
-
+      // BƯỚC 2: AccessToken hết hạn (hoặc không có). Thử refresh nếu có refreshToken.
       if (refreshToken) {
-        console.log('[initializeTokens] Attempting refresh with refreshToken...');
+        console.log('[initializeTokens] AccessToken invalid/expired. Attempting refresh...');
         try {
           const result = await refreshTokenPure(refreshToken);
           console.log('[initializeTokens] Refresh success ✅');
-          await get().setTokens(result.token, result.refreshToken);
+          await get().setTokens(result.token, result.refreshToken); // setTokens sẽ set state và initialized
+          set({ initialized: true });
           return true;
         } catch (e: any) {
+          // BƯỚC 3: Refresh thất bại. Đây là lúc cần dọn dẹp.
           console.error('[initializeTokens] Refresh failed ❌', e?.message);
-          await get().clearTokens();
+          await get().clearTokens(); // Chỉ xóa khi refresh thất bại
+          set({ initialized: true });
           return false;
         }
       }
 
-      console.log('[initializeTokens] Only accessToken found → use as is');
-      return true;
+      // BƯỚC 4: Không có accessToken hợp lệ VÀ cũng không có refreshToken.
+      console.log('[initializeTokens] No valid tokens found.');
+      set({ initialized: true });
+      return false;
+
     } catch (e: any) {
+      // Lỗi không mong muốn
       console.error('[initializeTokens] Unexpected error:', e);
-      await get().clearTokens();
+      await get().clearTokens(); // Dọn dẹp nếu có lỗi nghiêm trọng
+      set({ initialized: true });
       return false;
     }
   },

@@ -7,7 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.CertificateMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.LessonCategoryRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonCategoryRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CertificateService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

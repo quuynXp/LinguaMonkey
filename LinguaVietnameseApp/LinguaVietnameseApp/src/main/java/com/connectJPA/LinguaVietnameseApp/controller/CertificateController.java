@@ -80,7 +80,7 @@ public class CertificateController {
             @ApiResponse(responseCode = "404", description = "Certification not found"),
             @ApiResponse(responseCode = "400", description = "Invalid certificate data")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+//    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @PutMapping("/{id}")
     public AppApiResponse<CertificateResponse> updateCertificate(
             @Parameter(description = "Certification ID") @PathVariable UUID id,
@@ -98,7 +98,7 @@ public class CertificateController {
             @ApiResponse(responseCode = "200", description = "Certification deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Certification not found")
     })
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+//    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteCertificate(
             @Parameter(description = "Certification ID") @PathVariable UUID id) {

@@ -4,7 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.LessonReviewRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonReviewResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.LessonReview;
 import com.connectJPA.LinguaVietnameseApp.mapper.LessonReviewMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.LessonReviewRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonReviewRepository;
 import com.connectJPA.LinguaVietnameseApp.service.LessonReviewService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -13,7 +13,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor

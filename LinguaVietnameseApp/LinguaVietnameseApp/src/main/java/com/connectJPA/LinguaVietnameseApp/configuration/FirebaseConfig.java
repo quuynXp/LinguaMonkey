@@ -13,7 +13,7 @@ import java.io.InputStream;
 @Configuration
 public class FirebaseConfig {
 
-    @Value("${google.credentials.file.url}")
+    @Value("${google.credentials-file-url}")
     private String credentialsPath;
 
     @Bean

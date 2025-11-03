@@ -42,7 +42,6 @@ public class ChatMessage{
     @Column(name = "receiver_id")
     private UUID receiverId;
 
-
     private boolean isDeleted;
     private OffsetDateTime updatedAt;
     private OffsetDateTime deletedAt;

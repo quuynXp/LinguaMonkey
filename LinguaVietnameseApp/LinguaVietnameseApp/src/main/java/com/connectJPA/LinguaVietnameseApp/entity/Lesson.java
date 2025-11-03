@@ -1,20 +1,26 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.LessonType;
+import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.springframework.data.elasticsearch.annotations.Document;
 
 import java.util.UUID;
 
 @Entity
 @Data
+@Document(indexName = "lessons")
+@EntityListeners(ElasticsearchEntityListener.class)
 @Table(name = "lessons")
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
 public class Lesson extends BaseEntity {
+    @org.springframework.data.annotation.Id
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "lesson_id")
@@ -60,4 +66,22 @@ public class Lesson extends BaseEntity {
 
     @Column(name = "lesson_sub_category_id")
     private UUID lessonSubCategoryId;
+
+    @Enumerated(EnumType.STRING)
+    private DifficultyLevel difficultyLevel;
+
+    @Column(name = "duration_seconds")
+    private Integer durationSeconds;
+
+    @Column(name = "certificate_code")
+    private String certificateCode;
+
+    @Column(name = "pass_score_percent")
+    private Integer passScorePercent;
+
+    @Column(name = "shuffle_questions")
+    private Boolean shuffleQuestions = false;
+
+    @Column(name = "allowed_retake_count")
+    private Integer allowedRetakeCount = 0;
 }

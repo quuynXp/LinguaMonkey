@@ -2,18 +2,19 @@ import { useTokenStore } from '../stores/tokenStore';
 import { useUserStore } from '../stores/UserStore';
 import { decodeToken, getRoleFromToken } from '../utils/decodeToken';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { resetToTab, resetToAuth } from "../utils/navigationRef";
+import { resetToTab, resetToAuth, gotoTab } from "../utils/navigationRef";
 import axios from 'axios';
 import * as WebBrowser from 'expo-web-browser';
-import {EXPO_PUBLIC_API_BASE_URL} from "react-native-dotenv"
+import { EXPO_PUBLIC_API_BASE_URL } from "react-native-dotenv"
 
 WebBrowser.maybeCompleteAuthSession();
 
 const API_BASE_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
 
+const { user, setUser } = useUserStore();
 export const refreshClient = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true, 
+  withCredentials: true,
 });
 
 export const loginWithEmail = async (email: string, password: string) => {
@@ -61,7 +62,7 @@ export const logout = async () => {
     await useTokenStore.getState().clearTokens();
     useUserStore.getState().setUser(null);
     useUserStore.getState().setAuthenticated(false);
-    resetToAuth('Login');
+    resetToAuth('Login'); // Hoặc 'AppLaunchScreen' tùy logic của bạn
   }
 };
 
@@ -72,7 +73,7 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
     }
 
     await useTokenStore.getState().setTokens(token, refreshToken);
-    console.log('Login response:', { token, refreshToken });
+    console.log('Login response:', { token: '...', refreshToken: '...' });
     refreshClient.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
     const payload = decodeToken(token);
@@ -80,7 +81,7 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
       throw new Error('Invalid token payload: missing userId');
     }
 
-    useUserStore.getState().setUserId(payload.userId);
+    setUser({ ...user, userId: payload.userId });
     const userRes = await refreshClient.get(`/users/${payload.userId}`);
     const rawUser = userRes.data.result || {};
     const normalizedUser = {
@@ -94,6 +95,18 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
     await AsyncStorage.setItem("hasLoggedIn", "true");
 
     console.log('User roles:', normalizedUser.roles);
+
+    // KIỂM TRA LOGIC SETUP TRƯỚC KHI ĐIỀU HƯỚNG
+    // (Giả sử bạn đã thêm cờ 'hasFinishedSetup' như chúng ta đã thảo luận)
+    const hasFinishedSetup =
+      (await AsyncStorage.getItem("hasFinishedSetup")) === "true";
+
+    // Nếu user đã đăng nhập nhưng chưa setup, buộc họ vào SetupInitScreen
+    if (!hasFinishedSetup && !normalizedUser.roles.includes('ROLE_ADMIN')) {
+      console.log('Login success, but user has not finished setup. Navigating to SetupInitScreen.');
+      gotoTab('SetupInitScreen'); // Đảm bảo bạn có 'SetupInitScreen' trong AuthStack hoặc MainStack
+      return;
+    }
 
     let targetRoute: 'Admin' | 'Teacher' | 'DailyWelcome' | 'Home' = 'Home';
 
@@ -123,19 +136,23 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
   }
 }
 
-// --- OTP login ---
+// --- OTP login (sẽ hoạt động sau khi sửa backend) ---
 export const requestOtp = async (emailOrPhone: string) => {
   try {
+    // Hàm này sẽ ném lỗi 'USER_NOT_FOUND' nếu bạn chưa sửa backend.
+    // Sau khi sửa backend, nó sẽ luôn thành công.
     const res = await refreshClient.post('/auth/request-otp', { emailOrPhone });
     return res.data.result?.success || false;
   } catch (error: any) {
-    console.error('Request OTP error:', error);
-    throw error;
+    console.error('Request OTP error:', error.response?.data || error.message);
+    // Nếu backend ném lỗi, chúng ta ném lại để UI xử lý
+    throw new Error(error.response?.data?.message || 'Failed to request OTP');
   }
 };
 
 export const verifyOtpLogin = async (emailOrPhone: string, otpCode: string) => {
   try {
+    // Hàm này gọi '/auth/verify-otp', vốn đã hỗ trợ 'findOrCreateUserAccount'
     const res = await refreshClient.post('/auth/verify-otp', { emailOrPhone, code: otpCode });
     if (res.data.result?.token && res.data.result?.refreshToken) {
       await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
@@ -147,28 +164,97 @@ export const verifyOtpLogin = async (emailOrPhone: string, otpCode: string) => {
   return false;
 };
 
-
+// --- SỬA LOGIC ĐĂNG KÝ EMAIL ---
 export const registerWithEmail = async (firstName: string, lastName: string, email: string, password: string) => {
-  const fullname = `${firstName} ${lastName}`;
-  await refreshClient.post('/users', { fullname, email, password });
+  try {
+    const fullname = `${firstName} ${lastName}`;
+
+    // Bước 1: Gọi endpoint đăng ký (sử dụng /auth/register từ Controller)
+    // Giả sử UserRequest trên backend chấp nhận { fullname, email, password }
+    await refreshClient.post('/auth/register', {
+      fullname,
+      email: email.toLowerCase(),
+      password
+    });
+
+    // Bước 2: Nếu đăng ký thành công, gọi hàm login để lấy token
+    console.log('Registration successful, attempting login...');
+    return await loginWithEmail(email, password);
+
+  } catch (error: any) {
+    console.error('Register with email error:', error.response?.data || error.message);
+    // Ném lỗi để UI (RegisterScreen) có thể bắt và hiển thị
+    throw new Error(error.response?.data?.message || 'Registration failed');
+  }
+};
+// --- KẾT THÚC SỬA ---
+
+
+// --- BẮT ĐẦU FLOW RESET PASSWORD MỚI ---
+
+/**
+ * Bước 1: Kiểm tra user (bằng email/SĐT) có những phương thức nào để reset.
+ * @param identifier (email hoặc SĐT)
+ * @returns {Promise<{ hasEmail: boolean; hasPhone: boolean; email?: string; phone?: string; }>}
+ */
+export const checkResetMethods = async (identifier: string) => {
+  try {
+    const res = await refreshClient.post('/auth/check-reset-methods', { identifier });
+    return res.data.result as { hasEmail: boolean; hasPhone: boolean; email?: string; phone?: string; };
+  } catch (error: any) {
+    console.error('Check reset methods error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to check account');
+  }
 };
 
-export const sendPasswordReset = async (email: string) => {
-  await refreshClient.post('/auth/forgot-password', { email });
+/**
+ * Bước 2: Yêu cầu gửi OTP đến phương thức đã chọn (EMAIL hoặc PHONE).
+ * @param identifier (email hoặc SĐT)
+ * @param method ('EMAIL' hoặc 'PHONE')
+ */
+export const requestPasswordResetOtp = async (identifier: string, method: 'EMAIL' | 'PHONE') => {
+  try {
+    await refreshClient.post('/auth/request-password-reset-otp', { identifier, method });
+    return true;
+  } catch (error: any) {
+    console.error('Request password reset OTP error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Failed to send OTP');
+  }
 };
 
-export const verifyResetCode = async (email: string, code: string) => {
-  const res = await refreshClient.post('/auth/verify-code', { email, code });
-  return res.data.result.resetToken;
+/**
+ * Bước 3: Xác thực OTP và lấy về token an toàn (secure reset token).
+ * @param identifier (email hoặc SĐT)
+ * @param code (OTP 6 số)
+ * @returns {Promise<string>} Trả về secureToken (ví dụ: "a-long-uuid-string")
+ */
+export const verifyPasswordResetOtp = async (identifier: string, code: string) => {
+  try {
+    const res = await refreshClient.post('/auth/verify-password-reset-otp', { identifier, code });
+    if (!res.data.result?.resetToken) {
+      throw new Error('Invalid response from server: missing resetToken');
+    }
+    return res.data.result.resetToken as string;
+  } catch (error: any) {
+    console.error('Verify password reset OTP error:', error.response?.data || error.message);
+    throw new Error(error.response?.data?.message || 'Invalid or expired OTP');
+  }
 };
 
+/**
+ * Bước 4: (Hàm này giữ nguyên) Gửi token an toàn và mật khẩu mới lên.
+ * Hàm này được gọi bởi ResetPasswordScreen.
+ */
 export const resetPassword = async (resetToken: string, newPassword: string) => {
   await refreshClient.post('/auth/reset-password', { token: resetToken, password: newPassword });
 };
 
+// --- KẾT THÚC FLOW RESET PASSWORD MỚI ---
+
+
 export const refreshTokenApi = async (refreshToken: string, deviceId?: string, ip?: string, userAgent?: string) => {
-  
-  
+
+
   if (!refreshToken || !refreshToken.trim()) {
     console.error('[refreshTokenApi] called with EMPTY refreshToken -> throw and trace', { stack: new Error().stack });
     throw new Error('Missing refreshToken');

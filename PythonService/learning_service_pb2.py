@@ -7,74 +7,75 @@ from google.protobuf import descriptor as _descriptor
 from google.protobuf import descriptor_pool as _descriptor_pool
 from google.protobuf import symbol_database as _symbol_database
 from google.protobuf.internal import builder as _builder
+
 # @@protoc_insertion_point(imports)
 
 _sym_db = _symbol_database.Default()
 
 
-
-
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x16learning_service.proto\x12\x08learning\"k\n\x0eRoadmapRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x12\n\nroadmap_id\x18\x02 \x01(\t\x12\r\n\x05title\x18\x03 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x04 \x01(\t\x12\x10\n\x08language\x18\x05 \x01(\t\"j\n\x0fRoadmapResponse\x12\x12\n\nroadmap_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x10\n\x08language\x18\x04 \x01(\t\x12\r\n\x05\x65rror\x18\x05 \x01(\t\"\xdf\x01\n\x10RoadmapItemProto\x12\x0f\n\x07item_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x0c\n\x04type\x18\x04 \x01(\t\x12\r\n\x05level\x18\x05 \x01(\x05\x12\x16\n\x0e\x65stimated_time\x18\x06 \x01(\x05\x12\x13\n\x0border_index\x18\x07 \x01(\x05\x12\x10\n\x08\x63\x61tegory\x18\x08 \x01(\t\x12\x12\n\ndifficulty\x18\t \x01(\t\x12\x12\n\nexp_reward\x18\n \x01(\x05\x12\x12\n\ncontent_id\x18\x0b \x01(\t\"\xa3\x01\n\rGuidanceProto\x12\x13\n\x0bguidance_id\x18\x01 \x01(\t\x12\x0f\n\x07item_id\x18\x02 \x01(\t\x12\r\n\x05stage\x18\x03 \x01(\t\x12\r\n\x05title\x18\x04 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x05 \x01(\t\x12\x0c\n\x04tips\x18\x06 \x03(\t\x12\x16\n\x0e\x65stimated_time\x18\x07 \x01(\x05\x12\x13\n\x0border_index\x18\x08 \x01(\x05\"\x9a\x01\n\rResourceProto\x12\x13\n\x0bresource_id\x18\x01 \x01(\t\x12\x0f\n\x07item_id\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\t\x12\r\n\x05title\x18\x04 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x05 \x01(\t\x12\x0b\n\x03url\x18\x06 \x01(\t\x12\x12\n\ncontent_id\x18\x07 \x01(\t\x12\x10\n\x08\x64uration\x18\x08 \x01(\x05\"\x95\x01\n\x0eMilestoneProto\x12\x14\n\x0cmilestone_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\r\n\x05level\x18\x04 \x01(\x05\x12\x14\n\x0crequirements\x18\x05 \x03(\t\x12\x0f\n\x07rewards\x18\x06 \x03(\t\x12\x13\n\x0border_index\x18\x07 \x01(\x05\"y\n\x16RoadmapDetailedRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x12\n\nroadmap_id\x18\x02 \x01(\t\x12\x10\n\x08language\x18\x03 \x01(\t\x12\x0e\n\x06prompt\x18\x04 \x01(\t\x12\x18\n\x10\x61s_user_specific\x18\x05 \x01(\x08\"\xa3\x02\n\x17RoadmapDetailedResponse\x12\x12\n\nroadmap_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x10\n\x08language\x18\x04 \x01(\t\x12)\n\x05items\x18\n \x03(\x0b\x32\x1a.learning.RoadmapItemProto\x12,\n\nmilestones\x18\x0b \x03(\x0b\x32\x18.learning.MilestoneProto\x12*\n\tguidances\x18\x0c \x03(\x0b\x32\x17.learning.GuidanceProto\x12*\n\tresources\x18\r \x03(\x0b\x32\x17.learning.ResourceProto\x12\r\n\x05\x65rror\x18\x63 \x01(\t\"5\n\rSpeechRequest\x12\x12\n\naudio_data\x18\x01 \x01(\x0c\x12\x10\n\x08language\x18\x02 \x01(\t\"-\n\x0eSpeechResponse\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\",\n\x0b\x43hatMessage\x12\x0c\n\x04role\x18\x01 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\t\"W\n\x0b\x43hatRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\x12&\n\x07history\x18\x03 \x03(\x0b\x32\x15.learning.ChatMessage\"/\n\x0c\x43hatResponse\x12\x10\n\x08response\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"1\n\x0fSpellingRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t\"6\n\x10SpellingResponse\x12\x13\n\x0b\x63orrections\x18\x01 \x03(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"<\n\x14PronunciationRequest\x12\x12\n\naudio_data\x18\x01 \x01(\x0c\x12\x10\n\x08language\x18\x02 \x01(\t\"G\n\x15PronunciationResponse\x12\x10\n\x08\x66\x65\x65\x64\x62\x61\x63k\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\r\n\x05\x65rror\x18\x03 \x01(\t\"7\n\x13WritingImageRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x12\n\nimage_data\x18\x02 \x01(\x0c\"F\n\x14WritingImageResponse\x12\x10\n\x08\x66\x65\x65\x64\x62\x61\x63k\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\r\n\x05\x65rror\x18\x03 \x01(\t\";\n\x16GeneratePassageRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t\"9\n\x17GeneratePassageResponse\x12\x0f\n\x07passage\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"9\n\x14GenerateImageRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t\":\n\x15GenerateImageResponse\x12\x12\n\nimage_data\x18\x01 \x01(\x0c\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"8\n\x13GenerateTextRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t\"3\n\x14GenerateTextResponse\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t\"c\n\x17\x43heckTranslationRequest\x12\x16\n\x0ereference_text\x18\x01 \x01(\t\x12\x17\n\x0ftranslated_text\x18\x02 \x01(\t\x12\x17\n\x0ftarget_language\x18\x03 \x01(\t\"J\n\x18\x43heckTranslationResponse\x12\x10\n\x08\x66\x65\x65\x64\x62\x61\x63k\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\r\n\x05\x65rror\x18\x03 \x01(\t2\x90\x07\n\x0fLearningService\x12\x41\n\x0cSpeechToText\x12\x17.learning.SpeechRequest\x1a\x18.learning.SpeechResponse\x12;\n\nChatWithAI\x12\x15.learning.ChatRequest\x1a\x16.learning.ChatResponse\x12\x46\n\rCheckSpelling\x12\x19.learning.SpellingRequest\x1a\x1a.learning.SpellingResponse\x12U\n\x12\x43heckPronunciation\x12\x1e.learning.PronunciationRequest\x1a\x1f.learning.PronunciationResponse\x12V\n\x15\x43heckWritingWithImage\x12\x1d.learning.WritingImageRequest\x1a\x1e.learning.WritingImageResponse\x12V\n\x0fGeneratePassage\x12 .learning.GeneratePassageRequest\x1a!.learning.GeneratePassageResponse\x12P\n\rGenerateImage\x12\x1e.learning.GenerateImageRequest\x1a\x1f.learning.GenerateImageResponse\x12M\n\x0cGenerateText\x12\x1d.learning.GenerateTextRequest\x1a\x1e.learning.GenerateTextResponse\x12Y\n\x10\x43heckTranslation\x12!.learning.CheckTranslationRequest\x1a\".learning.CheckTranslationResponse\x12\x64\n\x1d\x43reateOrUpdateRoadmapDetailed\x12 .learning.RoadmapDetailedRequest\x1a!.learning.RoadmapDetailedResponse\x12L\n\x15\x43reateOrUpdateRoadmap\x12\x18.learning.RoadmapRequest\x1a\x19.learning.RoadmapResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(
+    b'\n\x16learning_service.proto\x12\x08learning"k\n\x0eRoadmapRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x12\n\nroadmap_id\x18\x02 \x01(\t\x12\r\n\x05title\x18\x03 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x04 \x01(\t\x12\x10\n\x08language\x18\x05 \x01(\t"j\n\x0fRoadmapResponse\x12\x12\n\nroadmap_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x10\n\x08language\x18\x04 \x01(\t\x12\r\n\x05\x65rror\x18\x05 \x01(\t"\xdf\x01\n\x10RoadmapItemProto\x12\x0f\n\x07item_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x0c\n\x04type\x18\x04 \x01(\t\x12\r\n\x05level\x18\x05 \x01(\x05\x12\x16\n\x0e\x65stimated_time\x18\x06 \x01(\x05\x12\x13\n\x0border_index\x18\x07 \x01(\x05\x12\x10\n\x08\x63\x61tegory\x18\x08 \x01(\t\x12\x12\n\ndifficulty\x18\t \x01(\t\x12\x12\n\nexp_reward\x18\n \x01(\x05\x12\x12\n\ncontent_id\x18\x0b \x01(\t"\xa3\x01\n\rGuidanceProto\x12\x13\n\x0bguidance_id\x18\x01 \x01(\t\x12\x0f\n\x07item_id\x18\x02 \x01(\t\x12\r\n\x05stage\x18\x03 \x01(\t\x12\r\n\x05title\x18\x04 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x05 \x01(\t\x12\x0c\n\x04tips\x18\x06 \x03(\t\x12\x16\n\x0e\x65stimated_time\x18\x07 \x01(\x05\x12\x13\n\x0border_index\x18\x08 \x01(\x05"\x9a\x01\n\rResourceProto\x12\x13\n\x0bresource_id\x18\x01 \x01(\t\x12\x0f\n\x07item_id\x18\x02 \x01(\t\x12\x0c\n\x04type\x18\x03 \x01(\t\x12\r\n\x05title\x18\x04 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x05 \x01(\t\x12\x0b\n\x03url\x18\x06 \x01(\t\x12\x12\n\ncontent_id\x18\x07 \x01(\t\x12\x10\n\x08\x64uration\x18\x08 \x01(\x05"\x95\x01\n\x0eMilestoneProto\x12\x14\n\x0cmilestone_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\r\n\x05level\x18\x04 \x01(\x05\x12\x14\n\x0crequirements\x18\x05 \x03(\t\x12\x0f\n\x07rewards\x18\x06 \x03(\t\x12\x13\n\x0border_index\x18\x07 \x01(\x05"y\n\x16RoadmapDetailedRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x12\n\nroadmap_id\x18\x02 \x01(\t\x12\x10\n\x08language\x18\x03 \x01(\t\x12\x0e\n\x06prompt\x18\x04 \x01(\t\x12\x18\n\x10\x61s_user_specific\x18\x05 \x01(\x08"\xa3\x02\n\x17RoadmapDetailedResponse\x12\x12\n\nroadmap_id\x18\x01 \x01(\t\x12\r\n\x05title\x18\x02 \x01(\t\x12\x13\n\x0b\x64\x65scription\x18\x03 \x01(\t\x12\x10\n\x08language\x18\x04 \x01(\t\x12)\n\x05items\x18\n \x03(\x0b\x32\x1a.learning.RoadmapItemProto\x12,\n\nmilestones\x18\x0b \x03(\x0b\x32\x18.learning.MilestoneProto\x12*\n\tguidances\x18\x0c \x03(\x0b\x32\x17.learning.GuidanceProto\x12*\n\tresources\x18\r \x03(\x0b\x32\x17.learning.ResourceProto\x12\r\n\x05\x65rror\x18\x63 \x01(\t"5\n\rSpeechRequest\x12\x12\n\naudio_data\x18\x01 \x01(\x0c\x12\x10\n\x08language\x18\x02 \x01(\t"-\n\x0eSpeechResponse\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t",\n\x0b\x43hatMessage\x12\x0c\n\x04role\x18\x01 \x01(\t\x12\x0f\n\x07\x63ontent\x18\x02 \x01(\t"W\n\x0b\x43hatRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x0f\n\x07message\x18\x02 \x01(\t\x12&\n\x07history\x18\x03 \x03(\x0b\x32\x15.learning.ChatMessage"/\n\x0c\x43hatResponse\x12\x10\n\x08response\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t"1\n\x0fSpellingRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t"6\n\x10SpellingResponse\x12\x13\n\x0b\x63orrections\x18\x01 \x03(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t"<\n\x14PronunciationRequest\x12\x12\n\naudio_data\x18\x01 \x01(\x0c\x12\x10\n\x08language\x18\x02 \x01(\t"G\n\x15PronunciationResponse\x12\x10\n\x08\x66\x65\x65\x64\x62\x61\x63k\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\r\n\x05\x65rror\x18\x03 \x01(\t"7\n\x13WritingImageRequest\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\x12\n\nimage_data\x18\x02 \x01(\x0c"F\n\x14WritingImageResponse\x12\x10\n\x08\x66\x65\x65\x64\x62\x61\x63k\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\r\n\x05\x65rror\x18\x03 \x01(\t";\n\x16GeneratePassageRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t"9\n\x17GeneratePassageResponse\x12\x0f\n\x07passage\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t"9\n\x14GenerateImageRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t":\n\x15GenerateImageResponse\x12\x12\n\nimage_data\x18\x01 \x01(\x0c\x12\r\n\x05\x65rror\x18\x02 \x01(\t"8\n\x13GenerateTextRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\t\x12\x10\n\x08language\x18\x02 \x01(\t"3\n\x14GenerateTextResponse\x12\x0c\n\x04text\x18\x01 \x01(\t\x12\r\n\x05\x65rror\x18\x02 \x01(\t"c\n\x17\x43heckTranslationRequest\x12\x16\n\x0ereference_text\x18\x01 \x01(\t\x12\x17\n\x0ftranslated_text\x18\x02 \x01(\t\x12\x17\n\x0ftarget_language\x18\x03 \x01(\t"J\n\x18\x43heckTranslationResponse\x12\x10\n\x08\x66\x65\x65\x64\x62\x61\x63k\x18\x01 \x01(\t\x12\r\n\x05score\x18\x02 \x01(\x02\x12\r\n\x05\x65rror\x18\x03 \x01(\t2\x90\x07\n\x0fLearningService\x12\x41\n\x0cSpeechToText\x12\x17.learning.SpeechRequest\x1a\x18.learning.SpeechResponse\x12;\n\nChatWithAI\x12\x15.learning.ChatRequest\x1a\x16.learning.ChatResponse\x12\x46\n\rCheckSpelling\x12\x19.learning.SpellingRequest\x1a\x1a.learning.SpellingResponse\x12U\n\x12\x43heckPronunciation\x12\x1e.learning.PronunciationRequest\x1a\x1f.learning.PronunciationResponse\x12V\n\x15\x43heckWritingWithImage\x12\x1d.learning.WritingImageRequest\x1a\x1e.learning.WritingImageResponse\x12V\n\x0fGeneratePassage\x12 .learning.GeneratePassageRequest\x1a!.learning.GeneratePassageResponse\x12P\n\rGenerateImage\x12\x1e.learning.GenerateImageRequest\x1a\x1f.learning.GenerateImageResponse\x12M\n\x0cGenerateText\x12\x1d.learning.GenerateTextRequest\x1a\x1e.learning.GenerateTextResponse\x12Y\n\x10\x43heckTranslation\x12!.learning.CheckTranslationRequest\x1a".learning.CheckTranslationResponse\x12\x64\n\x1d\x43reateOrUpdateRoadmapDetailed\x12 .learning.RoadmapDetailedRequest\x1a!.learning.RoadmapDetailedResponse\x12L\n\x15\x43reateOrUpdateRoadmap\x12\x18.learning.RoadmapRequest\x1a\x19.learning.RoadmapResponseb\x06proto3'
+)
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
-_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'learning_service_pb2', _globals)
+_builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, "learning_service_pb2", _globals)
 if _descriptor._USE_C_DESCRIPTORS == False:
-  DESCRIPTOR._options = None
-  _globals['_ROADMAPREQUEST']._serialized_start=36
-  _globals['_ROADMAPREQUEST']._serialized_end=143
-  _globals['_ROADMAPRESPONSE']._serialized_start=145
-  _globals['_ROADMAPRESPONSE']._serialized_end=251
-  _globals['_ROADMAPITEMPROTO']._serialized_start=254
-  _globals['_ROADMAPITEMPROTO']._serialized_end=477
-  _globals['_GUIDANCEPROTO']._serialized_start=480
-  _globals['_GUIDANCEPROTO']._serialized_end=643
-  _globals['_RESOURCEPROTO']._serialized_start=646
-  _globals['_RESOURCEPROTO']._serialized_end=800
-  _globals['_MILESTONEPROTO']._serialized_start=803
-  _globals['_MILESTONEPROTO']._serialized_end=952
-  _globals['_ROADMAPDETAILEDREQUEST']._serialized_start=954
-  _globals['_ROADMAPDETAILEDREQUEST']._serialized_end=1075
-  _globals['_ROADMAPDETAILEDRESPONSE']._serialized_start=1078
-  _globals['_ROADMAPDETAILEDRESPONSE']._serialized_end=1369
-  _globals['_SPEECHREQUEST']._serialized_start=1371
-  _globals['_SPEECHREQUEST']._serialized_end=1424
-  _globals['_SPEECHRESPONSE']._serialized_start=1426
-  _globals['_SPEECHRESPONSE']._serialized_end=1471
-  _globals['_CHATMESSAGE']._serialized_start=1473
-  _globals['_CHATMESSAGE']._serialized_end=1517
-  _globals['_CHATREQUEST']._serialized_start=1519
-  _globals['_CHATREQUEST']._serialized_end=1606
-  _globals['_CHATRESPONSE']._serialized_start=1608
-  _globals['_CHATRESPONSE']._serialized_end=1655
-  _globals['_SPELLINGREQUEST']._serialized_start=1657
-  _globals['_SPELLINGREQUEST']._serialized_end=1706
-  _globals['_SPELLINGRESPONSE']._serialized_start=1708
-  _globals['_SPELLINGRESPONSE']._serialized_end=1762
-  _globals['_PRONUNCIATIONREQUEST']._serialized_start=1764
-  _globals['_PRONUNCIATIONREQUEST']._serialized_end=1824
-  _globals['_PRONUNCIATIONRESPONSE']._serialized_start=1826
-  _globals['_PRONUNCIATIONRESPONSE']._serialized_end=1897
-  _globals['_WRITINGIMAGEREQUEST']._serialized_start=1899
-  _globals['_WRITINGIMAGEREQUEST']._serialized_end=1954
-  _globals['_WRITINGIMAGERESPONSE']._serialized_start=1956
-  _globals['_WRITINGIMAGERESPONSE']._serialized_end=2026
-  _globals['_GENERATEPASSAGEREQUEST']._serialized_start=2028
-  _globals['_GENERATEPASSAGEREQUEST']._serialized_end=2087
-  _globals['_GENERATEPASSAGERESPONSE']._serialized_start=2089
-  _globals['_GENERATEPASSAGERESPONSE']._serialized_end=2146
-  _globals['_GENERATEIMAGEREQUEST']._serialized_start=2148
-  _globals['_GENERATEIMAGEREQUEST']._serialized_end=2205
-  _globals['_GENERATEIMAGERESPONSE']._serialized_start=2207
-  _globals['_GENERATEIMAGERESPONSE']._serialized_end=2265
-  _globals['_GENERATETEXTREQUEST']._serialized_start=2267
-  _globals['_GENERATETEXTREQUEST']._serialized_end=2323
-  _globals['_GENERATETEXTRESPONSE']._serialized_start=2325
-  _globals['_GENERATETEXTRESPONSE']._serialized_end=2376
-  _globals['_CHECKTRANSLATIONREQUEST']._serialized_start=2378
-  _globals['_CHECKTRANSLATIONREQUEST']._serialized_end=2477
-  _globals['_CHECKTRANSLATIONRESPONSE']._serialized_start=2479
-  _globals['_CHECKTRANSLATIONRESPONSE']._serialized_end=2553
-  _globals['_LEARNINGSERVICE']._serialized_start=2556
-  _globals['_LEARNINGSERVICE']._serialized_end=3468
+    DESCRIPTOR._options = None
+    _globals["_ROADMAPREQUEST"]._serialized_start = 36
+    _globals["_ROADMAPREQUEST"]._serialized_end = 143
+    _globals["_ROADMAPRESPONSE"]._serialized_start = 145
+    _globals["_ROADMAPRESPONSE"]._serialized_end = 251
+    _globals["_ROADMAPITEMPROTO"]._serialized_start = 254
+    _globals["_ROADMAPITEMPROTO"]._serialized_end = 477
+    _globals["_GUIDANCEPROTO"]._serialized_start = 480
+    _globals["_GUIDANCEPROTO"]._serialized_end = 643
+    _globals["_RESOURCEPROTO"]._serialized_start = 646
+    _globals["_RESOURCEPROTO"]._serialized_end = 800
+    _globals["_MILESTONEPROTO"]._serialized_start = 803
+    _globals["_MILESTONEPROTO"]._serialized_end = 952
+    _globals["_ROADMAPDETAILEDREQUEST"]._serialized_start = 954
+    _globals["_ROADMAPDETAILEDREQUEST"]._serialized_end = 1075
+    _globals["_ROADMAPDETAILEDRESPONSE"]._serialized_start = 1078
+    _globals["_ROADMAPDETAILEDRESPONSE"]._serialized_end = 1369
+    _globals["_SPEECHREQUEST"]._serialized_start = 1371
+    _globals["_SPEECHREQUEST"]._serialized_end = 1424
+    _globals["_SPEECHRESPONSE"]._serialized_start = 1426
+    _globals["_SPEECHRESPONSE"]._serialized_end = 1471
+    _globals["_CHATMESSAGE"]._serialized_start = 1473
+    _globals["_CHATMESSAGE"]._serialized_end = 1517
+    _globals["_CHATREQUEST"]._serialized_start = 1519
+    _globals["_CHATREQUEST"]._serialized_end = 1606
+    _globals["_CHATRESPONSE"]._serialized_start = 1608
+    _globals["_CHATRESPONSE"]._serialized_end = 1655
+    _globals["_SPELLINGREQUEST"]._serialized_start = 1657
+    _globals["_SPELLINGREQUEST"]._serialized_end = 1706
+    _globals["_SPELLINGRESPONSE"]._serialized_start = 1708
+    _globals["_SPELLINGRESPONSE"]._serialized_end = 1762
+    _globals["_PRONUNCIATIONREQUEST"]._serialized_start = 1764
+    _globals["_PRONUNCIATIONREQUEST"]._serialized_end = 1824
+    _globals["_PRONUNCIATIONRESPONSE"]._serialized_start = 1826
+    _globals["_PRONUNCIATIONRESPONSE"]._serialized_end = 1897
+    _globals["_WRITINGIMAGEREQUEST"]._serialized_start = 1899
+    _globals["_WRITINGIMAGEREQUEST"]._serialized_end = 1954
+    _globals["_WRITINGIMAGERESPONSE"]._serialized_start = 1956
+    _globals["_WRITINGIMAGERESPONSE"]._serialized_end = 2026
+    _globals["_GENERATEPASSAGEREQUEST"]._serialized_start = 2028
+    _globals["_GENERATEPASSAGEREQUEST"]._serialized_end = 2087
+    _globals["_GENERATEPASSAGERESPONSE"]._serialized_start = 2089
+    _globals["_GENERATEPASSAGERESPONSE"]._serialized_end = 2146
+    _globals["_GENERATEIMAGEREQUEST"]._serialized_start = 2148
+    _globals["_GENERATEIMAGEREQUEST"]._serialized_end = 2205
+    _globals["_GENERATEIMAGERESPONSE"]._serialized_start = 2207
+    _globals["_GENERATEIMAGERESPONSE"]._serialized_end = 2265
+    _globals["_GENERATETEXTREQUEST"]._serialized_start = 2267
+    _globals["_GENERATETEXTREQUEST"]._serialized_end = 2323
+    _globals["_GENERATETEXTRESPONSE"]._serialized_start = 2325
+    _globals["_GENERATETEXTRESPONSE"]._serialized_end = 2376
+    _globals["_CHECKTRANSLATIONREQUEST"]._serialized_start = 2378
+    _globals["_CHECKTRANSLATIONREQUEST"]._serialized_end = 2477
+    _globals["_CHECKTRANSLATIONRESPONSE"]._serialized_start = 2479
+    _globals["_CHECKTRANSLATIONRESPONSE"]._serialized_end = 2553
+    _globals["_LEARNINGSERVICE"]._serialized_start = 2556
+    _globals["_LEARNINGSERVICE"]._serialized_end = 3468
 # @@protoc_insertion_point(module_scope)

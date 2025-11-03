@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
+import jakarta.persistence.Column;
 import lombok.*;
 
 import java.time.Duration;
@@ -14,4 +15,7 @@ import java.util.UUID;
 public class UserLearningActivityRequest {
     private UUID userId;
     private ActivityType activityType;
+    private Integer durationInSeconds;
+    private String details;
+    private UUID relatedEntityId;
 }

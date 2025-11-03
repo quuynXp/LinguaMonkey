@@ -2,11 +2,11 @@ import IPAScreen from '../../screens/learn/IPAScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import CertificationLearningScreen from '../../screens/learn/CertificationLearningScreen';
-import InteractiveQuizScreen from '../../screens/learn/InteractiveQuizScreen';
+import SoloQuizScreen from '../../screens/learn/SoloQuizScreen';
 import LearnScreen from '../../screens/learn/LearnScreen';
 import LessonScreen from '../../screens/learn/LessonScreen';
 import ListeningScreen from '../../screens/learn/ListeningScreen';
-import QuizLearningScreen from '../../screens/learn/QuizLearningScreen';
+import TeamQuizRoom from '../../screens/learn/TeamQuizRoom';
 import ReadingScreen from '../../screens/learn/ReadingScreen';
 import SpeakingScreen from '../../screens/learn/SpeakingScreen';
 import VocabularyFlashcardsScreen from '../../screens/learn/VocabularyFlashcardsScreen';
@@ -19,11 +19,11 @@ import BilingualVideoScreen from '../../screens/learn/BilingualVideoScreen';
 type SkillsLearnStackParamList = {
   LearnMain: undefined;
   CertificationLearning: undefined;
-  InteractiveQuiz: undefined;
+  SoloQuizScreen: undefined;
   Lesson: undefined;
   VocabularyFlashcards: undefined;
   IPAScreen: undefined;
-  QuizLearning: undefined;
+  TeamQuizRoom: undefined;
   ListeningScreen: undefined;
   CourseDetailsScreen: undefined;
   StudentCoursesScreen: undefined;
@@ -43,9 +43,9 @@ const SkillsLearnStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }} id={undefined}>
     <Stack.Screen name="LearnMain" component={LearnScreen} />
     <Stack.Screen name="CertificationLearning" component={CertificationLearningScreen} />
-    <Stack.Screen name="InteractiveQuiz" component={InteractiveQuizScreen} />
+    <Stack.Screen name="SoloQuizScreen" component={SoloQuizScreen} />
     <Stack.Screen name="Lesson" component={LessonScreen} />
-    <Stack.Screen name="QuizLearning" component={QuizLearningScreen} />
+    <Stack.Screen name="TeamQuizRoom" component={TeamQuizRoom} />
     <Stack.Screen name="VocabularyFlashcards" component={VocabularyFlashcardsScreen} />
     <Stack.Screen name="IPAScreen" component={IPAScreen} />
     <Stack.Screen name="ListeningScreen" component={ListeningScreen} />

@@ -1,10 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
-import com.connectJPA.LinguaVietnameseApp.dto.response.Character3dResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.LevelInfoResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserStatsResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserCertificateId;
@@ -16,13 +13,13 @@ import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.*;
 import com.connectJPA.LinguaVietnameseApp.utils.CloudinaryHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.dao.DataAccessException;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -30,8 +27,11 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -64,7 +64,14 @@ public class UserServiceImpl implements UserService {
     private final AuthenticationServiceImpl authenticationService;
     private final UserRoleRepository userRoleRepository;
     private final GrpcClientService grpcClientService;
-
+    private final AdmirationRepository admirationRepository;
+    private final BadgeService badgeService;
+    private final FriendshipService friendshipService;
+    private final CourseService courseService;
+    private final CoupleService coupleService;
+    private final EventService eventService;
+    private final DatingInviteRepository datingInviteRepository;
+    private final MinioService minioService;
 
     @Override
     public String getUserEmailByUserId(UUID userId) {
@@ -74,6 +81,44 @@ public class UserServiceImpl implements UserService {
             return user.getEmail();
         } catch (Exception e) {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
+        }
+    }
+
+
+    @Transactional
+    @Override
+    public void admire(UUID senderId, UUID targetId) {
+        if (senderId == null || targetId == null) {
+            throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+        }
+        if (admirationRepository.existsByUserIdAndSenderId(targetId, senderId)) {
+            throw new AppException(ErrorCode.ALREADY_EXISTS);
+        }
+
+        Admiration a = Admiration.builder()
+                .userId(targetId)
+                .senderId(senderId)
+                .createdAt(OffsetDateTime.now())
+                .build();
+        admirationRepository.save(a);
+
+        // Create notification record
+        NotificationRequest notificationRequest = NotificationRequest.builder()
+                .userId(targetId)
+                .title("Bạn vừa được ngưỡng mộ")
+                .content("Bạn vừa nhận được một lượt ngưỡng mộ từ người dùng " + senderId)
+                .type("ADMIRE")
+                .build();
+
+        // persist notification (DB)
+        notificationService.createNotification(notificationRequest);
+
+        // push notification (FCM / websocket etc)
+        try {
+            notificationService.createPushNotification(notificationRequest);
+        } catch (Exception ex) {
+            // push failing không làm hỏng luồng admire; log để debug
+            log.warn("Push notification failed for admire: sender={}, target={}, error={}", senderId, targetId, ex.getMessage());
         }
     }
 
@@ -286,6 +331,223 @@ public class UserServiceImpl implements UserService {
             log.error("Error while updating user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+
+    @Transactional(readOnly = true)
+    @Override
+    public UserProfileResponse getUserProfile(UUID viewerId, UUID targetId) {
+        if (targetId == null) throw new AppException(ErrorCode.INVALID_KEY);
+
+        // 1) load user
+        User target = userRepository.findByUserIdAndIsDeletedFalse(targetId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // basic info
+        UserProfileResponse.UserProfileResponseBuilder respB = UserProfileResponse.builder()
+                .userId(target.getUserId())
+                .fullname(target.getFullname())
+                .nickname(target.getNickname())
+                .avatarUrl(target.getAvatarUrl())
+                .country(target.getCountry())
+                .level(target.getLevel())
+                .exp(target.getExp())
+                .bio(target.getBio());
+
+        // flag (you can customize how you return a flag; using country name/code for now)
+        if (target.getCountry() != null) {
+            respB.flag(target.getCountry().name());
+        }
+
+        // character3d
+        try {
+            if (target.getCharacter3dId() != null) {
+                Character3dResponse ch = character3dMapper.toResponse(
+                        character3dRepository.findByCharacter3dIdAndIsDeletedFalse(target.getCharacter3dId())
+                                .orElse(null));
+                respB.character3d(ch);
+            }
+        } catch (Exception e) {
+            log.debug("character3d mapping failed for user {}: {}", targetId, e.getMessage());
+        }
+
+        // stats
+        try {
+            respB.stats(this.getUserStats(targetId));
+        } catch (Exception e) {
+            log.debug("getUserStats failed for {}: {}", targetId, e.getMessage());
+        }
+
+        // badges (assume badgeService.getBadgesForUser)
+        try {
+            if (badgeService != null) {
+                respB.badges(badgeService.getBadgesForUser(targetId));
+            }
+        } catch (Exception e) {
+            log.debug("getBadgesForUser failed: {}", e.getMessage());
+        }
+
+        // friend & request status relative to viewer
+        boolean isFriend = false;
+        FriendRequestStatusResponse friendReqStatus = FriendRequestStatusResponse.builder().status("NONE").build();
+        boolean canSendFriendRequest = true;
+        boolean canUnfriend = false;
+        boolean canBlock = false;
+
+        if (viewerId != null) {
+            try {
+                isFriend = friendshipService.isFriends(viewerId, targetId);
+                friendReqStatus = friendshipService.getFriendRequestStatus(viewerId, targetId);
+                canUnfriend = isFriend;
+                // assume friendshipService has checks for blocked; else use friendReqStatus
+                canBlock = true;
+                canSendFriendRequest = !isFriend && (friendReqStatus == null || !"SENT".equals(friendReqStatus.getStatus()));
+            } catch (Exception e) {
+                log.debug("friendship check failed: {}", e.getMessage());
+            }
+        } else {
+            canSendFriendRequest = false;
+        }
+
+        respB.isFriend(isFriend)
+                .friendRequestStatus(friendReqStatus)
+                .canSendFriendRequest(canSendFriendRequest)
+                .canUnfriend(canUnfriend)
+                .canBlock(canBlock);
+
+        // admiration
+        long admirationCount = admirationRepository.countByUserId(targetId);
+        boolean hasAdmired = false;
+        if (viewerId != null) {
+            hasAdmired = admirationRepository.existsByUserIdAndSenderId(targetId, viewerId);
+        }
+        respB.admirationCount(admirationCount).hasAdmired(hasAdmired);
+
+        // teacher info: try to detect teacher role and load top courses
+        boolean isTeacher = false;
+        List<CourseSummaryResponse> teacherCourses = Collections.emptyList();
+        try {
+            isTeacher = roleService.userHasRole(targetId, RoleName.TEACHER); // adjust if your roleService method name differs
+            if (isTeacher && courseService != null) {
+                teacherCourses = courseService.getCourseSummariesByTeacher(targetId, 5); // implement service to return CourseSummaryResponse
+            }
+        } catch (Exception e) {
+            log.debug("teacher check or courses load failed: {}", e.getMessage());
+        }
+        respB.isTeacher(isTeacher).teacherCourses(teacherCourses);
+
+        // leaderboard ranks - try to get from leaderboard snapshot via leaderboardEntryService
+        Map<String, Integer> leaderboardRanks = new HashMap<>();
+        try {
+            // global student
+            Integer globalRank = leaderboardEntryService.getRankForUserByTab("global", "student", targetId);
+            if (globalRank != null) leaderboardRanks.put("global_student", globalRank);
+
+            // country student
+            if (target.getCountry() != null) {
+                Integer countryRank = leaderboardEntryService.getRankForUserByTab(target.getCountry().name(), "student", targetId);
+                if (countryRank != null) leaderboardRanks.put("country_student", countryRank);
+            }
+
+            // teacher rank - optional (depends on implementation)
+            Integer teacherRank = leaderboardEntryService.getRankForUserByTab("global", "teacher", targetId);
+            if (teacherRank != null) leaderboardRanks.put("teacher", teacherRank);
+        } catch (Exception e) {
+            log.debug("leaderboard rank fetch failed: {}", e.getMessage());
+        }
+        respB.leaderboardRanks(leaderboardRanks);
+
+        // couple info (if belongs to couple)
+        try {
+            CoupleProfileSummary cps = null;
+            if (coupleService != null) {
+                cps = coupleService.getCoupleProfileSummaryByUser(targetId, viewerId); // implement service method to return CoupleProfileSummary
+            }
+            respB.coupleProfile(cps);
+
+            // exploring expiring soon flag
+            boolean exploringExpiringSoon = false;
+            String exploringExpiresInHuman = null;
+            if (cps != null && cps.getStatus() != null && cps.getStatus().name().equals("EXPLORING") && cps.getCoupleId() != null) {
+                // find couple entity to compute remaining time
+                Couple couple = coupleService.findById(cps.getCoupleId());
+                if (couple != null && couple.getExploringExpiresAt() != null) {
+                    Duration rem = Duration.between(OffsetDateTime.now(), couple.getExploringExpiresAt());
+                    long seconds = Math.max(0, rem.getSeconds());
+                    long days = seconds / (24*3600);
+                    long hours = (seconds % (24*3600)) / 3600;
+                    exploringExpiresInHuman = days + " ngày " + hours + " giờ";
+                    exploringExpiringSoon = seconds > 0 && seconds <= (2 * 24 * 3600); // < 2 days
+                }
+            }
+            respB.exploringExpiringSoon(exploringExpiringSoon);
+            respB.exploringExpiresInHuman(exploringExpiresInHuman);
+        } catch (Exception e) {
+            log.debug("couple info fetch failed: {}", e.getMessage());
+        }
+
+        // dating invite summary between viewer and target (if viewer present)
+        try {
+            DatingInviteSummary inviteSummary = null;
+            if (viewerId != null && datingInviteRepository != null) {
+                // check viewer->target
+                Optional<DatingInvite> sent = datingInviteRepository.findTopBySenderIdAndTargetIdAndStatus(viewerId, targetId, DatingInviteStatus.PENDING);
+                Optional<DatingInvite> received = datingInviteRepository.findTopBySenderIdAndTargetIdAndStatus(targetId, viewerId, DatingInviteStatus.PENDING);
+
+                DatingInvite di = sent.orElseGet(() -> received.orElse(null));
+                if (di != null) {
+                    long secondsToExpire = di.getExpiresAt() != null ? Math.max(0, Duration.between(OffsetDateTime.now(), di.getExpiresAt()).getSeconds()) : 0;
+                    inviteSummary = DatingInviteSummary.builder()
+                            .inviteId(di.getInviteId())
+                            .senderId(di.getSenderId())
+                            .targetId(di.getTargetId())
+                            .status(di.getStatus())
+                            .createdAt(di.getCreatedAt())
+                            .expiresAt(di.getExpiresAt())
+                            .viewerIsSender(sent.isPresent())
+                            .secondsToExpire(secondsToExpire)
+                            .build();
+                }
+            }
+            respB.datingInviteSummary(inviteSummary);
+        } catch (Exception e) {
+            log.debug("dating invite check failed: {}", e.getMessage());
+        }
+
+        // mutual memories (events) between viewer and target
+        try {
+            List<MemorySummaryResponse> mutualMemories = Collections.emptyList();
+            if (viewerId != null && eventService != null) {
+                mutualMemories = eventService.findMutualMemories(viewerId, targetId); // implement to return MemorySummaryResponse list
+            }
+            respB.mutualMemories(mutualMemories);
+        } catch (Exception e) {
+            log.debug("mutual memories fetch failed: {}", e.getMessage());
+        }
+
+        // if viewer == target add private info (inbox invites etc)
+        if (viewerId != null && viewerId.equals(targetId)) {
+            try {
+                // pending friend requests / invites / inbox summaries
+                List<FriendshipResponse> pending = friendshipService.getPendingRequestsForUser(targetId, PageRequest.of(0,10)).getContent();
+                respB.privateFriendRequests(pending);
+                List<DatingInvite> pendingInvites = datingInviteRepository.findByTargetIdAndStatus(targetId, DatingInviteStatus.PENDING);
+                respB.privateDatingInvites(pendingInvites.stream().map(di -> DatingInviteSummary.builder()
+                        .inviteId(di.getInviteId())
+                        .senderId(di.getSenderId())
+                        .targetId(di.getTargetId())
+                        .status(di.getStatus())
+                        .createdAt(di.getCreatedAt())
+                        .expiresAt(di.getExpiresAt())
+                        .viewerIsSender(false)
+                        .secondsToExpire(di.getExpiresAt() != null ? Math.max(0, Duration.between(OffsetDateTime.now(), di.getExpiresAt()).getSeconds()) : 0)
+                        .build()).toList());
+            } catch (Exception e) {
+                log.debug("private inbox fetch failed: {}", e.getMessage());
+            }
+        }
+
+        return respB.build();
     }
 
 
@@ -512,6 +774,63 @@ public class UserServiceImpl implements UserService {
                 .exp(user.getExp())
                 .streak(user.getStreak())
                 .build();
+    }
+
+    /**
+     * Phương thức MỚI: Chỉ nhận URL cuối cùng (từ MinIO) và cập nhật
+     */
+    @Override
+    @Transactional
+    public UserResponse updateUserAvatar(UUID userId, String tempPath) {
+        try {
+            if (tempPath == null || tempPath.isBlank()) {
+                throw new AppException(ErrorCode.INVALID_REQUEST);
+            }
+
+            User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+            // (Tùy chọn: Bạn có thể thêm logic xóa avatar cũ khỏi MinIO ở đây)
+            // String oldAvatarUrl = user.getAvatarUrl();
+            // if (oldAvatarUrl != null) { ... }
+
+            // 1. Tạo đường dẫn vĩnh viễn mới
+            String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
+            // Lấy tên file gốc từ path (bỏ 'temp/' và timestamp)
+            String originalFilename = tempPath.substring(tempPath.indexOf("_") + 1);
+            String newPath = String.format("users/%s/avatars/%s_%s",
+                    userId,
+                    timestamp,
+                    originalFilename);
+
+            // 2. Gọi MinioService.commit
+            // Hàm này sẽ: Di chuyển file (temp -> newPath), Xóa temp, Lưu UserMedia
+            UserMedia committedMedia = minioService.commit(
+                    tempPath,
+                    newPath,
+                    userId,
+                    MediaType.IMAGE
+            );
+
+            // 3. Cập nhật user
+            // committedMedia.getFileUrl() đã được set trong MinioServiceImpl
+            user.setAvatarUrl(committedMedia.getFileUrl());
+            User savedUser = userRepository.save(user);
+
+            // Notification
+            NotificationRequest notificationRequest = NotificationRequest.builder()
+                    .userId(userId)
+                    .title("Avatar Updated")
+                    .content("Your profile avatar has been updated successfully.")
+                    .type("AVATAR_UPDATE")
+                    .build();
+            notificationService.createNotification(notificationRequest);
+
+            return userMapper.toResponse(user);
+        } catch (Exception e) {
+            log.error("Error while updating avatar (MinIO flow) for user ID {}: {}", userId, e.getMessage(), e);
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
     }
 
     @Override

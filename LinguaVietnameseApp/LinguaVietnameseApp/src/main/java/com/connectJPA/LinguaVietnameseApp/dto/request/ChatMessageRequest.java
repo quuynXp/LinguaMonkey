@@ -23,11 +23,11 @@ public class ChatMessageRequest {
     @Size(max = 2083, message = "Media URL must not exceed 2083 characters")
     private String mediaUrl;
 
-    @NotNull
     private MessageType messageType;
-    @NotNull
     private RoomPurpose purpose;
     private UUID receiverId;
+
+    private boolean roomAutoTranslate;
 
 
     private boolean isRead = false;

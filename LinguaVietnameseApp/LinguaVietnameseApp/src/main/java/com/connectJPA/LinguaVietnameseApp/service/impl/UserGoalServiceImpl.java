@@ -4,7 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.UserGoalRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserGoalResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.UserGoal;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserGoalMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.UserGoalRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserGoalRepository;
 import com.connectJPA.LinguaVietnameseApp.service.UserGoalService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
