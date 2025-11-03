@@ -10,7 +10,9 @@ import type {
   ApiResponse,
 } from '../types/api';
 import instance from '../api/axiosInstance';
-import { UserResponse } from '../types/api'; // Giả sử bạn định nghĩa UserResponse từ DTO
+// Giả định 'UserResponse' trong 'types/api.ts' ĐÃ ĐƯỢC CẬP NHẬT
+// để bao gồm: languages: string[]
+import { UserResponse } from '../types/api';
 
 // ===== HELPER TYPES =====
 interface DailyGoal {
@@ -43,15 +45,15 @@ interface UserState {
   bio?: string;
   phone?: string;
   country?: string;
-  progress?: number;
-  nativeLanguageId?: string; // (UUID)
-  badgeId?: string; // (UUID)
-  character3dId?: string; // (UUID)
-  authProvider?: string;
+  progress?: number; // (Từ backend, % tổng thể)
+  nativeLanguageId?: string; // (Mã ngôn ngữ)
+  badgeId?: string; // (UUID badge)
+  character3dId?: string; // (UUID 3D)
+  authProvider?: string; // (VD: 'google', 'facebook', 'email')
   // --- HẾT ---
 
   // State gốc của UserStore (không có trong DTO)
-  languages: string[]; // (Cảnh báo: Thuộc tính 'languages' có trong logic cũ nhưng không có trong UserResponse DTO)
+  languages: string[]; // (Danh sách mã ngôn ngữ user học)
   dailyGoal: DailyGoal;
   recentLessons: Lesson[];
   statusMessage: string; // (Logic cũ dùng 'bio' làm 'statusMessage')
@@ -150,7 +152,7 @@ export const useUserStore = create<UserState>()(
           bio: user.bio,
           phone: user.phone,
           country: user.country,
-          // DTO trả về BigDecimal, chuyển sang number
+          // DTO trả về BigDecimal/Double, chuyển sang number
           progress: user.progress ? Number(user.progress) : undefined,
           nativeLanguageId: user.nativeLanguageId,
           badgeId: user.badgeId,
@@ -160,8 +162,14 @@ export const useUserStore = create<UserState>()(
 
           // Logic cũ
           statusMessage: user.bio ?? '',
-          languages: (user as any).languages ?? [], // (Vẫn giữ logic cũ, dù 'languages' không có trong DTO)
-          hasDonePlacementTest: (user as any).hasDonePlacementTest, // (Giả sử DTO có thể có)
+
+          // ===== SỬA ĐỔI QUAN TRỌNG =====
+          // Lấy 'languages' trực tiếp từ UserResponse DTO đã được cập nhật
+          languages: user.languages ?? [],
+          // ===============================
+
+          // (Giữ 'as any' nếu trường này không có trong UserResponse đã định nghĩa)
+          hasDonePlacementTest: (user as any).hasDonePlacementTest,
         });
       },
 
@@ -184,6 +192,11 @@ export const useUserStore = create<UserState>()(
             })
             .then(res => {
               console.log('Native language updated');
+              // (Lưu ý: Backend trả về UserResponse mới, ta nên setUser
+              // nếu muốn đồng bộ ngay)
+              // if (res.data?.result) {
+              //   get().setUser(res.data.result);
+              // }
             })
             .catch(err => {
               console.error('Failed to update native language:', err);

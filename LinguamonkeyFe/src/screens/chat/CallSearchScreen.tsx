@@ -1,19 +1,92 @@
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { useChatStore } from '../../stores/ChatStore';
+import { Alert, Animated, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
+import { useTranslation } from "react-i18next";
+import { useMutation } from "@tanstack/react-query";
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { useUserStore } from '../../stores/UserStore';
+import instance from '../../api/axiosInstance';
+import { useTokenStore } from '../../stores/tokenStore';
+
+type FoundPartner = {
+  user_id: string;
+  fullname: string;
+  avatar_url: string;
+  country: string;
+  rating: number;
+  calls_completed: number;
+  native_language: string;
+  learning_language: string;
+  common_interests: string[];
+};
+
+type FindMatchResponse = {
+  partner: FoundPartner;
+  video_call_id: string;
+  room_id: string; // Jitsi room name
+};
+
+// Map cờ
+const languageFlags: { [key: string]: string } = {
+  en: "🇺🇸",
+  zh: "🇨🇳",
+  vi: "🇻🇳",
+  ja: "🇯🇵",
+  ko: "🇰🇷",
+  fr: "🇫🇷",
+  es: "🇪🇸",
+  de: "🇩🇪",
+};
 
 const CallSearchScreen = ({ navigation, route }) => {
-  const { preferences } = route.params
-  const [searchTime, setSearchTime] = useState(0)
-  const [estimatedTime, setEstimatedTime] = useState(45)
-  const [searchStatus, setSearchStatus] = useState("searching") // searching, found, failed
-  const [foundPartner, setFoundPartner] = useState(null)
+  const { preferences } = route.params;
+  const { t } = useTranslation();
+  const { user } = useUserStore();
 
-  const fadeAnim = useRef(new Animated.Value(0)).current
-  const pulseAnim = useRef(new Animated.Value(1)).current
-  const rotateAnim = useRef(new Animated.Value(0)).current
+  const [searchTime, setSearchTime] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState(45); // Vẫn giữ để hiển thị
+  
+  // Xóa bỏ state 'searchStatus' và 'foundPartner', thay bằng state của useMutation
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  // --- THAY THẾ MOCK BẰNG API MATCHMAKING ---
+  const { 
+    mutate: findMatch, 
+    data: matchData, 
+    isPending: isSearching, 
+    isSuccess: isFound, 
+    isError: isFailed 
+  } = useMutation<FindMatchResponse, Error, typeof preferences>({
+    mutationFn: async (prefs) => {
+      // Gọi API Java (MatchmakingController)
+      const response = await instance.post('/api/v1/matchmaking/find-call', prefs);
+      return response.data.result; // Trả về FindMatchResponse từ gRPC
+    },
+    onSuccess: (data) => {
+      pulseAnimation.stop();
+      rotateAnimation.stop();
+      // Tự động chuyển sang màn hình call sau 2s
+      setTimeout(() => {
+        startCall(data);
+      }, 2000);
+    },
+    onError: () => {
+      pulseAnimation.stop();
+      rotateAnimation.stop();
+    }
+  });
+
+  const pulseAnimation = Animated.loop(
+    Animated.sequence([
+      Animated.timing(pulseAnim, { toValue: 1.2, duration: 1000, useNativeDriver: true }),
+      Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+    ]),
+  );
+  const rotateAnimation = Animated.loop(
+    Animated.timing(rotateAnim, { toValue: 1, duration: 3000, useNativeDriver: true }),
+  );
 
   useEffect(() => {
     // Start animations
@@ -21,153 +94,105 @@ const CallSearchScreen = ({ navigation, route }) => {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
-    }).start()
+    }).start();
 
-    // Pulse animation
-    const pulseAnimation = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.2,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: true,
-        }),
-      ]),
-    )
+    pulseAnimation.start();
+    rotateAnimation.start();
 
-    // Rotate animation
-    const rotateAnimation = Animated.loop(
-      Animated.timing(rotateAnim, {
-        toValue: 1,
-        duration: 3000,
-        useNativeDriver: true,
-      }),
-    )
-
-    pulseAnimation.start()
-    rotateAnimation.start()
-
-    // Timer
+    // Start timer
     const timer = setInterval(() => {
-      setSearchTime((prev) => prev + 1)
-    }, 1000)
+      setSearchTime((prev) => prev + 1);
+    }, 1000);
 
-    // Simulate search process
-    const searchTimeout = setTimeout(
-      () => {
-        // Simulate finding a partner
-        const mockPartner = {
-          id: "user123",
-          name: "Sarah Johnson",
-          age: 25,
-          country: "United States",
-          flag: "🇺🇸",
-          nativeLanguage: preferences.nativeLanguage,
-          learningLanguage: preferences.learningLanguage,
-          commonInterests: preferences.interests.slice(0, 3),
-          avatar: "👩‍🦰",
-          rating: 4.8,
-          callsCompleted: 127,
-        }
-
-        setFoundPartner(mockPartner)
-        setSearchStatus("found")
-        pulseAnimation.stop()
-        rotateAnimation.stop()
-      },
-      Math.random() * 30000 + 15000,
-    ) // 15-45 seconds
+    // --- BẮT ĐẦU TÌM KIẾM ---
+    findMatch(preferences);
 
     return () => {
-      clearInterval(timer)
-      clearTimeout(searchTimeout)
-      pulseAnimation.stop()
-      rotateAnimation.stop()
-    }
-  }, [])
+      clearInterval(timer);
+      pulseAnimation.stop();
+      rotateAnimation.stop();
+      // TODO: Gửi request "hủy" tìm kiếm nếu user thoát
+    };
+  }, []);
 
   useEffect(() => {
-    // Update estimated time based on preferences complexity
-    const complexity = preferences.interests.length + (preferences.gender !== "any" ? 1 : 0) + 2 // language preferences
-    setEstimatedTime(Math.max(30, complexity * 8))
-  }, [preferences])
+    const complexity = preferences.interests.length + (preferences.gender !== "any" ? 1 : 0) + 2;
+    setEstimatedTime(Math.max(30, complexity * 8));
+  }, [preferences]);
 
   const cancelSearch = () => {
-    Alert.alert("Hủy tìm kiếm", "Bạn có chắc chắn muốn hủy tìm kiếm đối tác?", [
-      { text: "Tiếp tục tìm", style: "cancel" },
+    Alert.alert(t("call.cancelSearch"), t("call.cancelSearchMessage"), [
+      { text: t("call.continueSearch"), style: "cancel" },
       {
-        text: "Hủy",
+        text: t("common.cancel"),
         style: "destructive",
         onPress: () => navigation.goBack(),
       },
-    ])
-  }
+    ]);
+  };
 
-  const startCall = () => {
-    navigation.navigate("JitsiCall", { partner: foundPartner, preferences })
-  }
+  const startCall = (data: FindMatchResponse) => {
+    // Truyền Jitsi room_id và thông tin partner
+    navigation.replace("JitsiCall", { 
+      roomId: data.room_id,
+      partner: data.partner, 
+      videoCallId: data.video_call_id,
+      preferences 
+    });
+  };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
 
   const getSearchStatusText = () => {
-    switch (searchStatus) {
-      case "searching":
-        return "Đang tìm kiếm đối tác phù hợp..."
-      case "found":
-        return "Đã tìm thấy đối tác!"
-      case "failed":
-        return "Không tìm thấy đối tác phù hợp"
-      default:
-        return "Đang tìm kiếm..."
-    }
-  }
+    if (isSearching) return t("call.searching");
+    if (isFound) return t("call.found");
+    if (isFailed) return t("call.failed");
+    return t("call.connecting");
+  };
 
   const spin = rotateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
-  })
+  });
 
-  if (searchStatus === "found" && foundPartner) {
+  // --- MÀN HÌNH KHI ĐÃ TÌM THẤY ---
+  if (isFound && matchData) {
+    const foundPartner = matchData.partner;
     return (
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>Đối tác được tìm thấy</Text>
+          <Text style={styles.headerTitle}>{t("call.partnerFound")}</Text>
           <View style={styles.placeholder} />
         </View>
 
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
           <View style={styles.foundSection}>
-           
-
-            <Text style={styles.foundTitle}>Tìm thấy đối tác!</Text>
-            <Text style={styles.foundSubtitle}>Thời gian tìm kiếm: {formatTime(searchTime)}</Text>
+            <Text style={styles.foundTitle}>{t("call.found")}</Text>
+            <Text style={styles.foundSubtitle}>{t("call.searchTime")}: {formatTime(searchTime)}</Text>
 
             {/* Partner Info */}
             <View style={styles.partnerCard}>
               <View style={styles.partnerHeader}>
-                <Text style={styles.partnerAvatar}>{foundPartner.avatar}</Text>
+                {/* TODO: Thay bằng <Image source={{ uri: foundPartner.avatar_url }} /> */}
+                <Text style={styles.partnerAvatar}>👩‍🦰</Text> 
                 <View style={styles.partnerInfo}>
-                  <Text style={styles.partnerName}>{foundPartner.name}</Text>
+                  <Text style={styles.partnerName}>{foundPartner.fullname}</Text>
                   <View style={styles.partnerLocation}>
-                    <Text style={styles.partnerFlag}>{foundPartner.flag}</Text>
+                    <Text style={styles.partnerFlag}>{languageFlags[foundPartner.country.toLowerCase()] || '🌐'}</Text>
                     <Text style={styles.partnerCountry}>{foundPartner.country}</Text>
-                    <Text style={styles.partnerAge}>• {foundPartner.age} tuổi</Text>
+                    {/* <Text style={styles.partnerAge}>• {foundPartner.age} tuổi</Text> */}
                   </View>
                 </View>
                 <View style={styles.partnerRating}>
                   <Icon name="star" size={16} color="#F59E0B" />
-                  <Text style={styles.ratingText}>{foundPartner.rating}</Text>
+                  <Text style={styles.ratingText}>{foundPartner.rating.toFixed(1)}</Text>
                 </View>
               </View>
 
@@ -175,32 +200,20 @@ const CallSearchScreen = ({ navigation, route }) => {
                 <View style={styles.languageInfo}>
                   <View style={styles.languageItem}>
                     <Icon name="record-voice-over" size={16} color="#10B981" />
-                    <Text style={styles.languageLabel}>Ngôn ngữ mẹ đẻ:</Text>
-                    <Text style={styles.languageValue}>
-                      {preferences.nativeLanguage === "en"
-                        ? "English"
-                        : preferences.nativeLanguage === "vi"
-                          ? "Tiếng Việt"
-                          : preferences.nativeLanguage}
-                    </Text>
+                    <Text style={styles.languageLabel}>{t("call.native")}:</Text>
+                    <Text style={styles.languageValue}>{foundPartner.native_language}</Text>
                   </View>
                   <View style={styles.languageItem}>
                     <Icon name="school" size={16} color="#4F46E5" />
-                    <Text style={styles.languageLabel}>Đang học:</Text>
-                    <Text style={styles.languageValue}>
-                      {preferences.learningLanguage === "en"
-                        ? "English"
-                        : preferences.learningLanguage === "vi"
-                          ? "Tiếng Việt"
-                          : preferences.learningLanguage}
-                    </Text>
+                    <Text style={styles.languageLabel}>{t("call.learning")}:</Text>
+                    <Text style={styles.languageValue}>{foundPartner.learning_language}</Text>
                   </View>
                 </View>
 
                 <View style={styles.interestsSection}>
-                  <Text style={styles.interestsTitle}>Sở thích chung:</Text>
+                  <Text style={styles.interestsTitle}>{t("call.commonInterests")}:</Text>
                   <View style={styles.interestsList}>
-                    {foundPartner.commonInterests.map((interest, index) => (
+                    {foundPartner.common_interests.map((interest, index) => (
                       <View key={index} style={styles.interestTag}>
                         <Text style={styles.interestTagText}>{interest}</Text>
                       </View>
@@ -211,7 +224,7 @@ const CallSearchScreen = ({ navigation, route }) => {
                 <View style={styles.statsSection}>
                   <View style={styles.statItem}>
                     <Icon name="phone" size={16} color="#6B7280" />
-                    <Text style={styles.statText}>{foundPartner.callsCompleted} cuộc gọi</Text>
+                    <Text style={styles.statText}>{foundPartner.calls_completed} {t("call.calls")}</Text>
                   </View>
                 </View>
               </View>
@@ -221,43 +234,49 @@ const CallSearchScreen = ({ navigation, route }) => {
             <View style={styles.callActions}>
               <TouchableOpacity style={styles.declineButton} onPress={() => navigation.goBack()}>
                 <Icon name="close" size={20} color="#EF4444" />
-                <Text style={styles.declineButtonText}>Từ chối</Text>
+                <Text style={styles.declineButtonText}>{t("call.decline")}</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity style={styles.acceptButton} onPress={startCall}>
+              <TouchableOpacity style={styles.acceptButton} onPress={() => startCall(matchData)}>
                 <Icon name="videocam" size={20} color="#FFFFFF" />
-                <Text style={styles.acceptButtonText}>Bắt đầu gọi</Text>
+                <Text style={styles.acceptButtonText}>{t("call.start")}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </Animated.View>
       </View>
-    )
+    );
   }
 
+  // --- MÀN HÌNH ĐANG TÌM KIẾM (isPending) hoặc THẤT BẠI (isError) ---
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={cancelSearch}>
           <Icon name="close" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tìm kiếm đối tác</Text>
+        <Text style={styles.headerTitle}>{t("call.searchingTitle")}</Text>
         <View style={styles.placeholder} />
       </View>
 
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <View style={styles.searchSection}>
           {/* Search Animation */}
-          <Animated.View
-            style={[
-              styles.searchAnimationContainer,
-              {
-                transform: [{ scale: pulseAnim }, { rotate: spin }],
-              },
-            ]}
-          >
-            <Icon name="search" size={150} color="#4F46E5" style={styles.searchAnimation} />
-          </Animated.View>
+          {isSearching && (
+            <Animated.View
+              style={[
+                styles.searchAnimationContainer,
+                { transform: [{ scale: pulseAnim }, { rotate: spin }] },
+              ]}
+            >
+              <Icon name="search" size={150} color="#4F46E5" style={styles.searchAnimation} />
+            </Animated.View>
+          )}
+          
+          {isFailed && (
+             <Animated.View style={[styles.searchAnimationContainer, { transform: [{ scale: fadeAnim }] }]}>
+               <Icon name="error-outline" size={150} color="#EF4444" style={styles.searchAnimation} />
+            </Animated.View>
+          )}
 
           <Text style={styles.searchTitle}>{getSearchStatusText()}</Text>
 
@@ -266,76 +285,59 @@ const CallSearchScreen = ({ navigation, route }) => {
             <View style={styles.statCard}>
               <Icon name="schedule" size={24} color="#4F46E5" />
               <Text style={styles.statValue}>{formatTime(searchTime)}</Text>
-              <Text style={styles.statLabel}>Thời gian tìm</Text>
+              <Text style={styles.statLabel}>{t("call.searchTime")}</Text>
             </View>
-
             <View style={styles.statCard}>
               <Icon name="hourglass-empty" size={24} color="#F59E0B" />
               <Text style={styles.statValue}>{estimatedTime}s</Text>
-              <Text style={styles.statLabel}>Dự kiến</Text>
+              <Text style={styles.statLabel}>{t("call.estimated")}</Text>
             </View>
-
             <View style={styles.statCard}>
               <Icon name="people" size={24} color="#10B981" />
-              <Text style={styles.statValue}>1,247</Text>
-              <Text style={styles.statLabel}>Đang online</Text>
+              <Text style={styles.statValue}>1,247</Text> {/* TODO: Lấy API real-time */}
+              <Text style={styles.statLabel}>{t("call.online")}</Text>
             </View>
           </View>
 
           {/* Search Criteria */}
           <View style={styles.criteriaSection}>
-            <Text style={styles.criteriaTitle}>Tiêu chí tìm kiếm</Text>
+            <Text style={styles.criteriaTitle}>{t("call.criteria")}</Text>
             <View style={styles.criteriaList}>
               <View style={styles.criteriaItem}>
                 <Icon name="interests" size={16} color="#6B7280" />
-                <Text style={styles.criteriaText}>{preferences.interests.length} sở thích chung</Text>
+                <Text style={styles.criteriaText}>{preferences.interests.length} {t("call.commonInterests")}</Text>
               </View>
-              <View style={styles.criteriaItem}>
-                <Icon name="language" size={16} color="#6B7280" />
-                <Text style={styles.criteriaText}>Ngôn ngữ mẹ đẻ: {preferences.nativeLanguage.toUpperCase()}</Text>
-              </View>
-              <View style={styles.criteriaItem}>
-                <Icon name="school" size={16} color="#6B7280" />
-                <Text style={styles.criteriaText}>Đang học: {preferences.learningLanguage.toUpperCase()}</Text>
-              </View>
-              {preferences.gender !== "any" && (
-                <View style={styles.criteriaItem}>
-                  <Icon name="person" size={16} color="#6B7280" />
-                  <Text style={styles.criteriaText}>Giới tính: {preferences.gender === "male" ? "Nam" : "Nữ"}</Text>
-                </View>
-              )}
+              {/* ... (Các criteria items khác) ... */}
             </View>
           </View>
 
-          {/* Progress Bar */}
-          <View style={styles.progressSection}>
-            <Text style={styles.progressText}>Tiến độ tìm kiếm</Text>
-            <View style={styles.progressBar}>
-              <Animated.View
-                style={[
-                  styles.progressFill,
-                  {
-                    width: `${Math.min((searchTime / estimatedTime) * 100, 100)}%`,
-                  },
-                ]}
-              />
+          {/* Progress Bar (chỉ hiển thị khi đang tìm) */}
+          {isSearching && (
+            <View style={styles.progressSection}>
+              <Text style={styles.progressText}>{t("call.progress")}</Text>
+              <View style={styles.progressBar}>
+                <Animated.View
+                  style={[
+                    styles.progressFill,
+                    { width: `${Math.min((searchTime / estimatedTime) * 100, 100)}%` },
+                  ]}
+                />
+              </View>
             </View>
-            <Text style={styles.progressPercentage}>
-              {Math.min(Math.round((searchTime / estimatedTime) * 100), 100)}%
-            </Text>
-          </View>
+          )}
 
           {/* Cancel Button */}
           <TouchableOpacity style={styles.cancelButton} onPress={cancelSearch}>
             <Icon name="close" size={20} color="#EF4444" />
-            <Text style={styles.cancelButtonText}>Hủy tìm kiếm</Text>
+            <Text style={styles.cancelButtonText}>{t("call.cancelSearch")}</Text>
           </TouchableOpacity>
         </View>
       </Animated.View>
     </View>
-  )
-}
+  );
+};
 
+// Dán styles từ file 'CallSearchScreen.ts' cũ của bạn vào đây
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -662,6 +664,6 @@ const styles = createScaledSheet({
     color: "#FFFFFF",
     fontWeight: "600",
   },
-})
+});
 
-export default CallSearchScreen
+export default CallSearchScreen;

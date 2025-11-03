@@ -13,13 +13,13 @@ import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
+// Thêm các import cho Repository mới
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.*;
 import com.connectJPA.LinguaVietnameseApp.utils.CloudinaryHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -39,6 +39,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class UserServiceImpl implements UserService {
+
+    // --- Các Dependencies Gốc ---
     private final LeaderboardEntryRepository leaderboardEntryRepository;
     private final LeaderboardRepository leaderboardRepository;
     private final InterestRepository interestRepository;
@@ -72,6 +74,86 @@ public class UserServiceImpl implements UserService {
     private final EventService eventService;
     private final DatingInviteRepository datingInviteRepository;
     private final MinioService minioService;
+
+    // --- CÁC DEPENDENCIES MỚI ĐỂ LẤY FULL RESPONSE ---
+    private final UserLanguageRepository userLanguageRepository;
+    private final UserBadgeRepository userBadgeRepository;
+    private final UserAuthAccountRepository userAuthAccountRepository;
+    private final LessonProgressRepository lessonProgressRepository;
+    private final LessonRepository lessonRepository;
+
+    /**
+     * =================================================================
+     * HÀM HELPER TRUNG TÂM (MỚI)
+     * Ánh xạ User entity sang UserResponse DTO, bao gồm tất cả
+     * logic tính toán (expToNextLevel) và truy vấn (languages, progress, v.v.).
+     * =================================================================
+     */
+    private UserResponse mapUserToResponseWithAllDetails(User user) {
+        if (user == null) {
+            return null;
+        }
+
+        // 1. Ánh xạ cơ bản (từ UserMapper)
+        UserResponse response = userMapper.toResponse(user);
+
+        // 2. Tính toán expToNextLevel
+        int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
+        response.setExpToNextLevel(nextLevelExp);
+
+        // 3. Lấy và thêm danh sách languages (từ user_languages)
+        try {
+            List<String> languages = userLanguageRepository.findLanguageCodesByUserId(user.getUserId());
+            response.setLanguages(languages);
+        } catch (Exception e) {
+            log.warn("Failed to fetch languages for user {}: {}", user.getUserId(), e.getMessage());
+            response.setLanguages(Collections.emptyList());
+        }
+
+        // 4. Lấy badgeId (ví dụ: lấy badge mới nhất)
+        try {
+            Optional<UserBadge> latestBadge = userBadgeRepository.findFirstByIdUserIdAndIsDeletedFalseOrderByCreatedAtDesc(user.getUserId());
+            latestBadge.ifPresent(userBadge -> response.setBadgeId(userBadge.getId().getBadgeId()));
+        } catch (Exception e) {
+            log.warn("Failed to fetch badgeId for user {}: {}", user.getUserId(), e.getMessage());
+        }
+
+        // 5. Lấy authProvider (ví dụ: lấy provider "primary" hoặc đầu tiên)
+        try {
+            // Ưu tiên tìm provider 'primary'
+            Optional<UserAuthAccount> primaryAuth = userAuthAccountRepository.findByUserUserIdAndIsPrimaryTrue(user.getUserId());
+            if (primaryAuth.isPresent()) {
+                response.setAuthProvider(String.valueOf(primaryAuth.get().getProvider()));
+            } else {
+                // Nếu không có, lấy bất kỳ provider nào (ví dụ: provider đầu tiên)
+                Optional<UserAuthAccount> anyAuth = userAuthAccountRepository.findFirstByUserUserIdOrderByLinkedAtAsc(user.getUserId());
+                anyAuth.ifPresent(auth -> response.setAuthProvider(String.valueOf(auth.getProvider())));
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch authProvider for user {}: {}", user.getUserId(), e.getMessage());
+        }
+
+        // 6. Tính toán progress (ví dụ: % bài học đã hoàn thành)
+        try {
+            // Đếm số bài học user đã hoàn thành (completedAt != null)
+            long completedLessons = lessonProgressRepository.countByIdUserIdAndCompletedAtIsNotNullAndIsDeletedFalse(user.getUserId());
+            // Đếm tổng số bài học
+            long totalLessons = lessonRepository.countByIsDeletedFalse(); // (Bạn có thể cần lọc theo ngôn ngữ hoặc khóa học)
+
+            if (totalLessons > 0) {
+                double progressCalc = ((double) completedLessons / totalLessons) * 100.0;
+                // Làm tròn đến 2 chữ số thập phân nếu cần
+                response.setProgress(Math.round(progressCalc * 100.0) / 100.0);
+            } else {
+                response.setProgress(0.0);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to calculate progress for user {}: {}", user.getUserId(), e.getMessage());
+            response.setProgress(0.0);
+        }
+
+        return response;
+    }
 
     @Override
     public String getUserEmailByUserId(UUID userId) {
@@ -136,12 +218,8 @@ public class UserServiceImpl implements UserService {
             }
             Page<User> users = userRepository.findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(email, fullname, nickname, pageable);
 
-            return users.map(user -> {
-                UserResponse response = userMapper.toResponse(user);
-                int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
-                response.setExpToNextLevel(nextLevelExp);
-                return response;
-            });
+            // SỬA: Dùng hàm helper mới
+            return users.map(this::mapUserToResponseWithAllDetails);
         } catch (Exception e) {
             log.error("Error while fetching all users: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -158,11 +236,8 @@ public class UserServiceImpl implements UserService {
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            UserResponse response = userMapper.toResponse(user);
-            int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
-            response.setExpToNextLevel(nextLevelExp);
-
-            return response;
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while fetching user by ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -198,9 +273,11 @@ public class UserServiceImpl implements UserService {
             if (request.getPassword() != null && !request.getPassword().isBlank()) {
                 user.setPassword(passwordEncoder.encode(request.getPassword()));
             } else {
-                user.setPassword(RandomStringUtils.randomAlphanumeric(12));
+                // Nếu không có password, tạo một password ngẫu nhiên (cho các luồng social login)
+                user.setPassword(passwordEncoder.encode(RandomStringUtils.randomAlphanumeric(16)));
             }
 
+            if (request.getFullname() != null) user.setFullname(request.getFullname());
             if (request.getNickname() != null) user.setNickname(request.getNickname());
             if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
             if (request.getNativeLanguageCode() != null)
@@ -209,7 +286,21 @@ public class UserServiceImpl implements UserService {
             if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
             if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
 
-            authenticationService.findOrCreateUserAccount(request.getEmail(), request.getFullname(), null, AuthProvider.QUICK_START, request.getEmail());
+            // (Giả sử logic auth-account đã được xử lý ở service/controller khác,
+            // hoặc nếu tạo user từ đây thì phải tạo UserAuthAccount)
+
+            // Ví dụ: Tạo UserAuthAccount nếu đây là đăng ký 'email'
+            if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
+                authenticationService.findOrCreateUserAccount(
+                        request.getEmail(),
+                        request.getFullname(),
+                        null,
+                        AuthProvider.EMAIL, // Giả định là EMAIL
+                        request.getEmail() // providerUserId là email
+                );
+            }
+            // (Bạn cần điều chỉnh logic này cho phù hợp với luồng đăng ký)
+
 
             user = userRepository.saveAndFlush(user);
 
@@ -285,7 +376,8 @@ public class UserServiceImpl implements UserService {
                 if (!interests.isEmpty()) userInterestRepository.saveAll(interests);
             }
 
-            return userMapper.toResponse(user);
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(savedUser);
 
         } catch (AppException ae) {
             throw ae;
@@ -326,7 +418,9 @@ public class UserServiceImpl implements UserService {
             if (request.getStreak() != null) user.setStreak(request.getStreak());
 
             user = userRepository.save(user);
-            return userMapper.toResponse(user);
+
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -630,7 +724,8 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            return userMapper.toResponse(user);
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating avatar URL for user ID {}: {}", id, e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -662,7 +757,8 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            return userMapper.toResponse(user);
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating native language for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -690,7 +786,8 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            return userMapper.toResponse(user);
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating country for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -735,7 +832,9 @@ public class UserServiceImpl implements UserService {
                 notificationService.createNotification(notificationRequest);
             }
             user = userRepository.save(user);
-            return userMapper.toResponse(user);
+
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating exp for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -755,8 +854,7 @@ public class UserServiceImpl implements UserService {
         long translationsUsed = chatMessageRepository.countTranslationsForUser(userId);
         long videoCalls = videoCallRepository.countCompletedCallsForUser(userId);
 
-        OffsetDateTime lastActive = user.getUpdatedAt();
-        // If you store last_active_at as OffsetDateTime in user entity, use that field.
+        OffsetDateTime lastActive = user.getLastActiveAt(); // Sử dụng trường lastActiveAt
 
         boolean online = false;
         if (lastActive != null) {
@@ -826,7 +924,8 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            return userMapper.toResponse(user);
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(savedUser);
         } catch (Exception e) {
             log.error("Error while updating avatar (MinIO flow) for user ID {}: {}", userId, e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -869,7 +968,9 @@ public class UserServiceImpl implements UserService {
                 notificationService.createNotification(notificationRequest);
                 notificationService.sendStreakRewardNotification(id, currentStreak + 1);
             }
-            return userMapper.toResponse(user);
+
+            // SỬA: Dùng hàm helper mới
+            return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating streak for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);

@@ -58,7 +58,7 @@ export const useProfile = (userId?: string) => {
   const query = useQuery<UserProfile>({
     queryKey: ["profile", userId],
     queryFn: async () => {
-      const response = await instance.get<ApiResponse<UserProfile>>(`/users/${userId}/profile`)
+      const response = await instance.get<ApiResponse<UserProfile>>(`/api/v1/users/${userId}/profile`)
       return response.data.result!
     },
     enabled: !!userId,
@@ -66,7 +66,7 @@ export const useProfile = (userId?: string) => {
 
   const updateProfileMutation = useMutation({
     mutationFn: async (profileData: Partial<UserProfile>) => {
-      const response = await instance.put<ApiResponse<UserProfile>>(`/users/${userId}/profile`, profileData)
+      const response = await instance.put<ApiResponse<UserProfile>>(`/api/v1/users/${userId}/profile`, profileData)
       return response.data.result!
     },
     onSuccess: () => {

@@ -38,7 +38,7 @@ export const useWallet = () => {
       queryKey: ["walletBalance", userId],
       queryFn: async () => {
         if (!userId) throw new Error("User ID is required")
-        const response = await instance.get<ApiResponse<Wallet>>(`/wallet/balance?userId=${userId}`)
+        const response = await instance.get<ApiResponse<Wallet>>(`/api/v1/wallet/balance?userId=${userId}`)
         return response.data.result!
       },
       enabled: !!userId,
@@ -55,7 +55,7 @@ export const useWallet = () => {
         qp.append("page", page.toString())
         qp.append("size", size.toString())
         
-        const response = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/wallet/history?${qp.toString()}`)
+        const response = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/api/v1/wallet/history?${qp.toString()}`)
         return response.data.result || { data: [], pagination: { page, limit: size, total: 0, totalPages: 0 } }
       },
       enabled: !!userId,

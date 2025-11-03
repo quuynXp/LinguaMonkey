@@ -21,21 +21,21 @@ public class UserAuthAccount {
     private UUID id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false)
+    @JoinColumn(name = "user_user_id", nullable = false)
     private User user;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "provider", nullable = false)
     private AuthProvider provider;
 
+    @Column(name = "is_primary", nullable = false)
+    private boolean isPrimary = false;
+
     @Column(name = "provider_user_id")
     private String providerUserId;
 
     @Column(name = "verified", nullable = false)
     private boolean verified = false;
-
-    @Column(name = "is_primary", nullable = false)
-    private boolean primaryAccount = false;
 
     @Column(name = "linked_at")
     private OffsetDateTime linkedAt = OffsetDateTime.now();

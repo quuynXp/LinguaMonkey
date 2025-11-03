@@ -1,4 +1,9 @@
 import { AppState } from 'react-native';
+import { useTokenStore } from '../stores/tokenStore';
+
+const API_URL = process.env.EXPO_PUBLIC_API_BASE_URL
+const JWT_TOKEN = useTokenStore().accessToken;
+const KONG_SECURE_WSS_URL = `wss://${API_URL}:8443`;
 
 interface WSMessage {
   type: string;
@@ -24,6 +29,7 @@ export class WebSocketService {
   }
 
   private connect() {
+    const wsUrl = `${KONG_SECURE_WSS_URL}/ws/py/voice/`;
     this.ws = new WebSocket(`${this.url}?token=${encodeURIComponent(this.token)}`);
 
     this.ws.onopen = () => console.log('✅ WS connected');

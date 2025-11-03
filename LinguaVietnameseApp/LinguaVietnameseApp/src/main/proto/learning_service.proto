@@ -5,6 +5,24 @@ package learning;
 option java_package = "learning";
 option java_multiple_files = true;
 
+
+message ReviewQualityRequest {
+  string user_id = 1;
+  string content_id = 2;   // ID cho course, lesson, hoặc video
+  string review_text = 3;  // Nội dung text của review
+  float rating = 4;        // Điểm sao (ví dụ: 1.0 đến 5.0)
+  string content_type = 5; // "COURSE", "LESSON", hoặc "VIDEO"
+  Metadata metadata = 6;
+}
+
+message ReviewQualityResponse {
+  bool is_valid = 1;         // Review có hợp lệ (true) hay là spam/lăng mạ (false)?
+  string sentiment = 2;      // "POSITIVE", "NEUTRAL", "NEGATIVE"
+  repeated string topics = 3;  // Các chủ đề được phát hiện: "sound_quality", "instructor", "content_difficulty"
+  string suggested_action = 4; // Gợi ý hành động: "FLAG_FOR_MODERATION" (gắn cờ), "AUTO_APPROVE" (tự động duyệt)
+  string error = 5;
+}
+
 // =====================
 // Common / Base Messages
 // =====================
@@ -25,39 +43,73 @@ message Metadata {
 // Core LearningService
 // =====================
 service LearningService {
+    // --- Speech & Audio ---
+      rpc SpeechToText (SpeechRequest) returns (SpeechResponse);
+      rpc GenerateTts (TtsRequest) returns (TtsResponse);
+      rpc CheckPronunciation (PronunciationRequest) returns (PronunciationResponse);
 
-  // --- Speech & Audio ---
-  rpc SpeechToText (SpeechRequest) returns (SpeechResponse);
-  rpc GenerateTts (TtsRequest) returns (TtsResponse);
-  rpc CheckPronunciation (PronunciationRequest) returns (PronunciationResponse);
+      rpc StreamPronunciation (stream PronunciationChunk) returns (stream PronunciationChunkResponse);
 
-  rpc StreamPronunciation (stream PronunciationChunk) returns (stream PronunciationChunkResponse);
+      // --- Text-based ---
+      rpc CheckSpelling (SpellingRequest) returns (SpellingResponse);
+      rpc CheckTranslation (CheckTranslationRequest) returns (CheckTranslationResponse);
+      rpc CheckWritingWithImage (WritingImageRequest) returns (WritingImageResponse);
+      rpc ChatWithAI (ChatRequest) returns (ChatResponse);
 
-  // --- Text-based ---
-  rpc CheckSpelling (SpellingRequest) returns (SpellingResponse);
-  rpc CheckTranslation (CheckTranslationRequest) returns (CheckTranslationResponse);
-  rpc CheckWritingWithImage (WritingImageRequest) returns (WritingImageResponse);
-  rpc ChatWithAI (ChatRequest) returns (ChatResponse);
+      // ✅ New rpc for translation (used by Java client)
+      rpc Translate (TranslateRequest) returns (TranslateResponse);
 
-  // ✅ New rpc for translation (used by Java client)
-  rpc Translate (TranslateRequest) returns (TranslateResponse);
+      // --- Content Generation ---
+      rpc GenerateImage (GenerateImageRequest) returns (GenerateImageResponse);
+      rpc GenerateText (GenerateTextRequest) returns (GenerateTextResponse);
+      rpc GeneratePassage (GeneratePassageRequest) returns (GeneratePassageResponse);
 
-  // --- Content Generation ---
-  rpc GenerateImage (GenerateImageRequest) returns (GenerateImageResponse);
-  rpc GenerateText (GenerateTextRequest) returns (GenerateTextResponse);
-  rpc GeneratePassage (GeneratePassageRequest) returns (GeneratePassageResponse);
+      // --- Personalized Learning ---
+      rpc CreateOrUpdateRoadmap (RoadmapRequest) returns (RoadmapResponse);
+      rpc CreateOrUpdateRoadmapDetailed (RoadmapDetailedRequest) returns (RoadmapDetailedResponse);
 
-  // --- Personalized Learning ---
-  rpc CreateOrUpdateRoadmap (RoadmapRequest) returns (RoadmapResponse);
-  rpc CreateOrUpdateRoadmapDetailed (RoadmapDetailedRequest) returns (RoadmapDetailedResponse);
-
-  // --- System-level / analytics ---
-  rpc AnalyzeCourseQuality (CourseQualityRequest) returns (CourseQualityResponse);
-  rpc RefundDecision (RefundDecisionRequest) returns (RefundDecisionResponse);
-
+    // --- System-level / analytics ---
+    rpc AnalyzeCourseQuality (CourseQualityRequest) returns (CourseQualityResponse);
+    rpc RefundDecision (RefundDecisionRequest) returns (RefundDecisionResponse);
+    rpc FindMatch (FindMatchRequest) returns (FindMatchResponse);
+    rpc AnalyzeReviewQuality (ReviewQualityRequest) returns (ReviewQualityResponse);
     rpc GenerateLanguageQuiz (QuizGenerationRequest) returns (QuizGenerationResponse);
 }
 
+
+message CallPreferences {
+  repeated string interests = 1;
+  string gender = 2; // "any", "male", "female"
+  string native_language = 3; // "en"
+  string learning_language = 4; // "vi"
+  string age_range = 5; // "18-25"
+  string call_duration = 6; // "15"
+}
+
+message FindMatchRequest {
+  string user_id = 1;
+  CallPreferences preferences = 2;
+  Metadata metadata = 3;
+}
+
+message FoundPartner {
+  string user_id = 1;
+  string fullname = 2;
+  string avatar_url = 3;
+  string country = 4;
+  float rating = 5;
+  int32 calls_completed = 6;
+  string native_language = 7;
+  string learning_language = 8;
+  repeated string common_interests = 9;
+}
+
+message FindMatchResponse {
+  FoundPartner partner = 1;
+  string video_call_id = 2; // ID của video_calls table
+  string room_id = 3; // Jitsi room name
+  string error = 4;
+}
 
 // Định nghĩa một câu hỏi quiz
 message QuizQuestionProto {

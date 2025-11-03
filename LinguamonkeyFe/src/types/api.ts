@@ -4,6 +4,67 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+// Cấu hình một bài test (Lấy từ /api/v1/tests/available)
+export interface TestConfig {
+  testConfigId: string;
+  testType: string; // "PLACEMENT_TEST", "SKILL_TEST", "GRAMMAR", "VOCABULARY"
+  title: string;
+  description: string;
+  numQuestions: number;
+}
+
+// Câu hỏi được trả về khi bắt đầu test
+export interface TestQuestion {
+  questionId: string;
+  questionText: string;
+  options: string[];
+  skillType: string;
+  orderIndex: number;
+}
+
+// Dữ liệu trả về khi bắt đầu test (từ /api/v1/tests/start)
+export interface TestSessionStartData {
+  sessionId: string;
+  questions: TestQuestion[];
+}
+
+// Câu hỏi chi tiết có trong kết quả
+export interface TestResultQuestion extends TestQuestion {
+  userAnswerIndex: number | null;
+  correctAnswerIndex: number;
+  isCorrect: boolean;
+  explanation: string;
+}
+
+// Kết quả trả về khi nộp bài (từ /api/v1/tests/sessions/{id}/submit)
+export interface TestResult {
+  sessionId: string;
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  proficiencyEstimate: string; // "A1", "B2", v.v.
+  questions: TestResultQuestion[];
+}
+
+
+// src/types/api.ts
+export interface BasicLessonResponse {
+  id: string;
+  languageCode: 'en' | 'zh' | 'vi';
+  lessonType: string; // e.g., 'ALPHABET', 'IPA', 'HANZI', 'VIET_PHONETIC'
+  symbol: string; // Ký tự chính (A, 我, a, etc.)
+  romanization?: string; // Phiên âm (IPA / Pinyin / Latin)
+  meaning?: string; // Nghĩa của ký tự
+  pronunciationAudioUrl?: string; // Link âm thanh phát âm
+  videoUrl?: string; // Video hướng dẫn
+  imageUrl?: string; // Ảnh minh họa
+  exampleSentence?: string; // Ví dụ
+  exampleTranslation?: string; // Dịch nghĩa
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+
 export interface QuizApiResponse {
   quizId: string;
   questions: QuizQuestion[];
@@ -89,17 +150,18 @@ export interface UserResponse {
   avatarUrl: string;
   character3dId: string | null;
   badgeId: string | null;
-  nativeLanguageId: string | null;
+  nativeLanguageId: string | null; // (Đây là nativeLanguageCode)
   authProvider: string;
-  country: string;
+  country: string; // (Backend gửi Enum, FE nhận string, OK)
   level: number;
   exp: number;
   expToNextLevel: number;
-  progress: number;
+  progress: number; // (Backend gửi Double/BigDecimal, FE nhận number)
   streak: number;
   isDeleted: boolean;
   createdAt: string;
   updatedAt: string;
+  languages: string[]; // <===== TRƯỜNG MỚI ĐƯỢC THÊM
 }
 
 

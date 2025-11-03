@@ -12,4 +12,8 @@ public interface UserAuthAccountRepository extends JpaRepository<UserAuthAccount
     Optional<UserAuthAccount> findByProviderAndProviderUserId(AuthProvider provider, String providerUserId);
     Optional<UserAuthAccount> findByUser_UserIdAndProvider(UUID userId, AuthProvider provider);
     List<UserAuthAccount> findByUser_UserIdAndVerifiedTrue(UUID userId);
+
+    Optional<UserAuthAccount> findByUserUserIdAndIsPrimaryTrue(UUID userId);
+    Optional<UserAuthAccount> findFirstByUserUserIdOrderByLinkedAtAsc(UUID userId);
+    Optional<UserAuthAccount> findFirstByUserUserId(UUID userId);
 }

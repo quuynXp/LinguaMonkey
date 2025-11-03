@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomMemberRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
@@ -44,6 +45,22 @@ public class RoomController {
                 .code(200)
                 .message(messageSource.getMessage("room.list.success", null, locale))
                 .result(rooms)
+                .build();
+    }
+
+    @Operation(summary = "Get room members", description = "Retrieve a list of members for a specific room")
+    @GetMapping("/{id}/members")
+    public AppApiResponse<List<MemberResponse>> getRoomMembers(
+            @PathVariable UUID id,
+            Locale locale) {
+        // Bạn cần tạo phương thức `getRoomMembers` trong RoomService
+        // trả về List<MemberResponse> (gồm userId, username, avatarUrl, role, isOnline)
+        List<MemberResponse> members = roomService.getRoomMembers(id);
+
+        return AppApiResponse.<List<MemberResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("room.members.list.success", null, locale))
+                .result(members)
                 .build();
     }
 

@@ -45,8 +45,8 @@ export const useLearnData = () => {
     queryFn: async () => {
       try {
         // Fetch user languages with progress
-        const languagesResponse = await instance.get<ApiResponse<UserLanguage[]>>("/user/languages")
-        const categoriesResponse = await instance.get<ApiResponse<LessonCategory[]>>("/lesson-categories")
+        const languagesResponse = await instance.get<ApiResponse<UserLanguage[]>>("/api/v1/user/languages")
+        const categoriesResponse = await instance.get<ApiResponse<LessonCategory[]>>("/api/v1/lesson-categories")
 
         // Transform languages data
         const languages: LearnLanguage[] =

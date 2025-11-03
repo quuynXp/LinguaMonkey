@@ -12,14 +12,9 @@ import java.util.List;
 @Mapper(componentModel = "spring")
 public interface QuizQuestionMapper {
 
-    @Mapping(source = "questionText", target = "questionText")
-    @Mapping(source = "correctAnswerIndex", target = "correctAnswerIndex")
-    @Mapping(source = "skillType", target = "skillType")
     QuizQuestionDto toDTO(QuizQuestionProto proto);
 
     List<QuizQuestionDto> toDTOList(List<QuizQuestionProto> protos);
 
-    @Mapping(source = "quizId", target = "quizId")
-    @Mapping(source = "questionsList", target = "questions")
     QuizResponse toResponse(QuizGenerationResponse protoResponse);
 }

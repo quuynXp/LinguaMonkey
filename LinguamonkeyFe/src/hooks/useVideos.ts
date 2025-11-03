@@ -72,7 +72,7 @@ export const useVideoCalls = () => {
         if (params?.page != null) q.append("page", String(params.page));
         if (params?.limit != null) q.append("limit", String(params.limit));
 
-        const url = `/video-calls${q.toString() ? `?${q.toString()}` : ""}`;
+        const url = `/api/v1/video-calls${q.toString() ? `?${q.toString()}` : ""}`;
         const res = await instance.get<ApiResponse<any>>(url);
         // backend wraps result in AppApiResponse -> return result directly
         return res.data.result;
@@ -86,7 +86,7 @@ export const useVideoCalls = () => {
       queryKey: ["videoCall", videoCallId],
       queryFn: async () => {
         const res = await instance.get<ApiResponse<VideoCallResponse>>(
-          `/video-calls/${videoCallId}`
+          `/api/v1/video-calls/${videoCallId}`
         );
         return res.data.result;
       },
@@ -98,7 +98,7 @@ export const useVideoCalls = () => {
     useMutation({
       mutationFn: async (data: CreateGroupCallRequest) => {
         const res = await instance.post<ApiResponse<VideoCallResponse>>(
-          `/video-calls/group`,
+          `/api/v1/video-calls/group`,
           data
         );
         return res.data.result;
@@ -117,7 +117,7 @@ export const useVideoCalls = () => {
     useMutation({
       mutationFn: async (payload: Partial<VideoCallApiType>) => {
         const res = await instance.post<ApiResponse<VideoCallResponse>>(
-          `/video-calls`,
+          `/api/v1/video-calls`,
           payload
         );
         return res.data.result;
@@ -134,7 +134,7 @@ export const useVideoCalls = () => {
       queryKey: ["videoCallParticipants", videoCallId],
       queryFn: async () => {
         const res = await instance.get<ApiResponse<VideoCallParticipantApiType[]>>(
-          `/video-calls/${videoCallId}/participants`
+          `/api/v1/video-calls/${videoCallId}/participants`
         );
         return res.data.result;
       },
@@ -147,7 +147,7 @@ export const useVideoCalls = () => {
       mutationFn: async (data: { videoCallId: string; userId: string }) => {
         // Backend expects @RequestParam userId and POST with no body (we send null body)
         const res = await instance.post<ApiResponse<void>>(
-          `/video-calls/${data.videoCallId}/participants`,
+          `/api/v1/video-calls/${data.videoCallId}/participants`,
           null,
           { params: { userId: data.userId } }
         );
@@ -164,7 +164,7 @@ export const useVideoCalls = () => {
     useMutation({
       mutationFn: async (data: { videoCallId: string; userId: string }) => {
         const res = await instance.delete<ApiResponse<void>>(
-          `/video-calls/${data.videoCallId}/participants/${data.userId}`
+          `/api/v1/video-calls/${data.videoCallId}/participants/${data.userId}`
         );
         return res.data;
       },
@@ -184,7 +184,7 @@ export const useVideoCalls = () => {
       }) => {
         const payload: UpdateParticipantStatusRequest = { status: data.status };
         const res = await instance.put<ApiResponse<void>>(
-          `/video-calls/${data.videoCallId}/participants/${data.userId}`,
+          `/api/v1/video-calls/${data.videoCallId}/participants/${data.userId}`,
           payload
         );
         return res.data;
@@ -201,7 +201,7 @@ export const useVideoCalls = () => {
       queryKey: ["videoCallHistory", userId],
       queryFn: async () => {
         const res = await instance.get<ApiResponse<VideoCallResponse[]>>(
-          `/video-calls/history/${userId}`
+          `/api/v1/video-calls/history/${userId}`
         );
         return res.data.result;
       },
@@ -212,7 +212,7 @@ export const useVideoCalls = () => {
   const useDeleteVideoCall = () =>
     useMutation({
       mutationFn: async (videoCallId: string) => {
-        const res = await instance.delete<ApiResponse<void>>(`/video-calls/${videoCallId}`);
+        const res = await instance.delete<ApiResponse<void>>(`/api/v1/video-calls/${videoCallId}`);
         return res.data;
       },
       onSuccess: (_res, videoCallId) => {
@@ -226,7 +226,7 @@ export const useVideoCalls = () => {
     useMutation({
       mutationFn: async (data: { id: string; payload: Partial<VideoCallApiType> }) => {
         const res = await instance.put<ApiResponse<VideoCallResponse>>(
-          `/video-calls/${data.id}`,
+          `/api/v1/video-calls/${data.id}`,
           data.payload
         );
         return res.data.result;

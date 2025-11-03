@@ -25,6 +25,10 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, RoomMemb
     @Query("SELECT rm FROM RoomMember rm WHERE rm.id.roomId = :roomId AND rm.id.userId = :userId AND rm.isDeleted = false")
     Optional<RoomMember> findByIdRoomIdAndIdUserIdAndIsDeletedFalse(@Param("roomId") UUID roomId, @Param("userId") UUID userId);
 
+    List<RoomMember> findAllByRoom_RoomId(UUID roomId);
+
+    List<RoomMember> findAllById_RoomIdAndIsDeletedFalse(UUID roomId);
+
     List<RoomMember> findAllByIdRoomIdAndIsDeletedFalse(UUID roomId);
 }
 

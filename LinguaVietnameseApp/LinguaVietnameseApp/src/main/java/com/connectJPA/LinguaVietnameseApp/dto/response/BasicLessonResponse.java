@@ -12,7 +12,6 @@ import java.util.UUID;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class BasicLessonResponse {
-
     UUID id;
     String languageCode;
     String lessonType;

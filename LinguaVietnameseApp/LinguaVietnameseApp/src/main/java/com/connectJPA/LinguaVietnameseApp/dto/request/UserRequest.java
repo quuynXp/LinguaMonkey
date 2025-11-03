@@ -35,6 +35,7 @@ public class UserRequest {
 
     private String bio;
 
+
     private String phone;
 
     private String avatarUrl;
@@ -51,6 +52,7 @@ public class UserRequest {
     private List<String> languages;
     private Country country;
     private Integer level = 1;
+    private String authProvider;
     private Integer score = 0;
     private Integer streak = 0;
 

@@ -7,7 +7,7 @@ export const useUser = (id?: string) =>
     queryKey: ["user", id],
     queryFn: async () => {
       if (!id) throw new Error("User ID is required");
-      const res = await instance.get<ApiResponse<User>>(`/users/${id}`);
+      const res = await instance.get<ApiResponse<User>>(`/api/v1/users/${id}`);
       // backend uses { code, message, result }
       return (res.data as any)?.result ?? (res.data as any);
     },
@@ -20,7 +20,7 @@ export const useUserAchievements = (id?: string) =>
     queryKey: ["user", id, "achievements"],
     queryFn: async () => {
       if (!id) return [];
-      const res = await instance.get(`/users/${id}/achievements`);
+      const res = await instance.get(`/api/v1/users/${id}/achievements`);
       return (res.data as any)?.result ?? res.data ?? [];
     },
     enabled: !!id,
@@ -32,7 +32,7 @@ export const useUserLearningActivities = (id?: string, timeframe: "week" | "mont
     queryKey: ["user", id, "activities", timeframe],
     queryFn: async () => {
       if (!id) return [];
-      const res = await instance.get(`/users/${id}/learning-activities`, { params: { timeframe } });
+      const res = await instance.get(`/api/v1/users/${id}/learning-activities`, { params: { timeframe } });
       return (res.data as any)?.result ?? res.data ?? [];
     },
     enabled: !!id,
@@ -45,7 +45,7 @@ export const useSendFriendRequest = () => {
     mutationFn: async (payload: { currentUserId?: string; targetUserId: string } | string) => {
       const target =
         typeof payload === "string" ? payload : (payload as any).targetUserId || (payload as any).requestedId;
-      const res = await instance.post(`/friendships`, { requestedUserId: target });
+      const res = await instance.post(`/api/v1/friendships`, { requestedUserId: target });
       return (res.data as any)?.result ?? res.data;
     },
     onSuccess: (_, payload) => {
@@ -65,7 +65,7 @@ export const useAcceptFriendRequest = () => {
     mutationFn: async (payload: { currentUserId: string; otherUserId: string }) => {
       const { currentUserId, otherUserId } = payload;
       // adjust endpoint if your backend uses different path
-      const res = await instance.put(`/friendships/${currentUserId}/${otherUserId}`, { status: "ACCEPTED" });
+      const res = await instance.put(`/api/v1/friendships/${currentUserId}/${otherUserId}`, { status: "ACCEPTED" });
       return (res.data as any)?.result ?? res.data;
     },
     onSuccess: (_, payload) => {
@@ -81,7 +81,7 @@ export const useFriendRequestStatus = (currentUserId?: string, otherUserId?: str
     queryKey: ["friendship", "request-status", currentUserId, otherUserId],
     queryFn: async () => {
       if (!currentUserId || !otherUserId) return null;
-      const res = await instance.get(`/friendships/request-status`, {
+      const res = await instance.get(`/api/v1/friendships/request-status`, {
         params: { currentUserId, otherUserId },
       });
       return (res.data as any)?.result ?? res.data ?? null;
@@ -95,7 +95,7 @@ export const useCheckIfFriends = (user1Id?: string, user2Id?: string) =>
     queryKey: ["friendship", "check", user1Id, user2Id],
     queryFn: async () => {
       if (!user1Id || !user2Id) return false;
-      const res = await instance.get(`/friendships/check`, { params: { user1Id, user2Id } });
+      const res = await instance.get(`/api/v1/friendships/check`, { params: { user1Id, user2Id } });
       return ((res.data as any)?.result ?? res.data) as boolean;
     },
     enabled: !!user1Id && !!user2Id,
@@ -115,7 +115,7 @@ export const useUsers = () => ({
       queryKey: ["userLevelInfo", id],
       queryFn: async () => {
         if (!id) throw new Error("User ID is required");
-        const res = await instance.get(`/users/${id}/level-info`);
+        const res = await instance.get(`/api/v1/users/${id}/level-info`);
         return (res.data as any)?.result ?? res.data;
       },
       enabled: !!id,

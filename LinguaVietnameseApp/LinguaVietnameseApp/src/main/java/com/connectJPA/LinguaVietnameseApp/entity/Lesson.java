@@ -9,6 +9,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.springframework.data.elasticsearch.annotations.Document;
 
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -38,8 +39,8 @@ public class Lesson extends BaseEntity {
     @Column(name = "exp_reward", nullable = false)
     private int expReward;
 
-    @Column(name = "course_id", nullable = false)
-    private UUID courseId;
+    @OneToMany(mappedBy = "lesson")
+    private List<CourseVersionLesson> courseVersions;
 
     @Column(name = "creator_id", nullable = false)
     private UUID creatorId;

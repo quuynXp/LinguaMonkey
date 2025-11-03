@@ -18,4 +18,13 @@ public class UserBadge extends BaseEntity {
     @EmbeddedId
     private UserBadgeId id;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @MapsId("badgeId") // Ánh xạ tới trường 'badgeId' trong UserBadgeId
+    @JoinColumn(name = "badge_id")
+    private Badge badge;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @MapsId("userId") // Ánh xạ tới trường 'userId' trong UserBadgeId
+    @JoinColumn(name = "user_id")
+    private User user;
 }

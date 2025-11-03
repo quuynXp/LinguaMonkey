@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
@@ -14,15 +15,12 @@ import java.util.UUID;
 public class CourseResponse {
     private UUID courseId;
     private String title;
-    private String description;
-    private String difficultyLevel;
-    private String thumbnailUrl;
-    private boolean isDeleted;
     private UUID creatorId;
-    private CourseType type;
     private BigDecimal price;
+    private CourseApprovalStatus approvalStatus;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime updatedAt;
+    private CourseVersionResponse latestPublicVersion;
 }

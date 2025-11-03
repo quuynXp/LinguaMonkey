@@ -11,4 +11,5 @@ import lombok.Setter;
 public class SystemException extends AppException{
     private ErrorCode errorCode;
 
+
 }

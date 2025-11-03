@@ -26,7 +26,7 @@ export const useProgressStats = (userId: string | undefined) => {
       try {
         // Fetch lesson progress
         const progressResponse = await axiosInstance.get<PaginatedResponse<LessonProgressResponse>>(
-          `/lesson-progress`,
+          `/api/v1/lesson-progress`,
           { params: { userId } }
         );
         const progressData = progressResponse.data.data;
@@ -34,7 +34,7 @@ export const useProgressStats = (userId: string | undefined) => {
 
         // Fetch all lessons
         const lessonsResponse = await axiosInstance.get<PaginatedResponse<LessonResponse>>(
-          `/lessons`
+          `/api/v1/lessons`
         );
         const lessonsData = lessonsResponse.data.data;
         setLessons(lessonsData);

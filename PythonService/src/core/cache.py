@@ -1,5 +1,5 @@
 # src/core/cache.py
-import aioredis
+from redis import asyncio as aioredis  # <<< THAY ĐỔI DUY NHẤT Ở ĐÂY
 import logging
 import os
 import json
@@ -12,6 +12,7 @@ def get_redis_client():
     if redis_client is None:
         try:
             redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+            # Dòng này vẫn hoạt động bình thường với thư viện mới
             redis_client = aioredis.from_url(redis_url, decode_responses=True)
             logging.info(f"Redis client initialized at {redis_url}")
         except Exception as e:

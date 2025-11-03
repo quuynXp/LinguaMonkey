@@ -20,7 +20,7 @@ export const useGrammar = () => {
       queryKey: ["grammarTopic", topicId],
       queryFn: async () => {
         if (!topicId) return null;
-        const res = await instance.get(`/grammar/topics/${topicId}`);
+        const res = await instance.get(`/api/v1/grammar/topics/${topicId}`);
         return res.data?.result ?? null;
       },
       enabled: !!topicId,
@@ -32,7 +32,7 @@ export const useGrammar = () => {
       queryKey: ["grammarRule", ruleId],
       queryFn: async () => {
         if (!ruleId) return null;
-        const res = await instance.get(`/grammar/rules/${ruleId}`);
+        const res = await instance.get(`/api/v1/grammar/rules/${ruleId}`);
         return res.data?.result ?? null;
       },
       enabled: !!ruleId,

@@ -21,7 +21,7 @@ export const useStudyHistory = (userId?: string, timeFilter?: string) => {
     // Gọi đúng endpoint controller mới với cả 2 params
     // Backend dùng "period", không phải "timeFilter"
     const response = await instance.get<ApiResponse<StudyHistoryResponse>>(
-      `/user-learning-activities/history?userId=${userId}&period=${timeFilter}`
+      `/api/v1/user-learning-activities/history?userId=${userId}&period=${timeFilter}`
     )
 
     return response.data.result!

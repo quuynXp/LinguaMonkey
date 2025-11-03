@@ -11,7 +11,7 @@ export const useLeaderboards = () => {
     if (params?.page !== undefined) queryParams.append("page", String(params.page));
     if (params?.limit !== undefined) queryParams.append("limit", String(params.limit));
 
-    const url = `/leaderboards${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+    const url = `/api/v1/leaderboards${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
 
     return useQuery<Leaderboard[]>({
       queryKey: ["leaderboards", params],
@@ -27,7 +27,7 @@ export const useLeaderboards = () => {
       queryKey: ["leaderboard", leaderboardId],
       queryFn: async () => {
         if (!leaderboardId) throw new Error("Invalid leaderboardId");
-        const res = await instance.get(`/leaderboards/${leaderboardId}`);
+        const res = await instance.get(`/api/v1/leaderboards/${leaderboardId}`);
         return res.data.result;
       },
       enabled: !!leaderboardId,
@@ -52,7 +52,7 @@ export const useLeaderboards = () => {
       }
     }
 
-    const url = `/leaderboard-entries?${queryParams.toString()}`;
+    const url = `/api/v1/leaderboard-entries?${queryParams.toString()}`;
 
     return useQuery<LeaderboardEntry[]>({
       queryKey: ["leaderboardEntries", leaderboardId, params],
@@ -71,7 +71,7 @@ export const useLeaderboards = () => {
       queryKey: ["userLeaderboardPosition", leaderboardId],
       queryFn: async () => {
         if (!leaderboardId) throw new Error("Invalid leaderboardId");
-        const res = await instance.get(`/leaderboards/${leaderboardId}/user-position`);
+        const res = await instance.get(`/api/v1/leaderboards/${leaderboardId}/user-position`);
         return res.data.result;
       },
       enabled: !!leaderboardId,

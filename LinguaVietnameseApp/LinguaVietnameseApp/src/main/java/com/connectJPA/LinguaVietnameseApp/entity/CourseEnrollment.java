@@ -27,6 +27,11 @@ public class CourseEnrollment extends BaseEntity {
     @Column(name = "course_id", nullable = false)
     private UUID courseId;
 
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_version_id")
+    private CourseVersion courseVersion;
+
     @Enumerated(EnumType.STRING)
     private CourseEnrollmentStatus status;
 

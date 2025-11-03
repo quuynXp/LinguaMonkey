@@ -1,22 +1,28 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
-import { useUserStore } from "../stores/UserStore";
+// Bỏ import useUserStore vì chúng ta sẽ lấy userId từ context/storage
 import type {
-  ApiResponse, TestLesson, TestQuestion, TestSession, TestResult
+  ApiResponse,
+  TestConfig, // <- Đổi tên
+  TestSessionStartData, // <- Dùng type mới
+  TestResult
 } from "../types/api";
 
 const API_BASE = "/api/v1/tests";
 
-export const useAvailableTestLessons = (params?: { languageCode?: string; certificate?: string; skill?: string }) => {
+// Đổi tên hook: useAvailableTestLessons -> useAvailableTests
+export const useAvailableTests = (params?: { languageCode?: string }) => {
   const qs = new URLSearchParams();
   if (params?.languageCode) qs.append("languageCode", params.languageCode);
-  if (params?.certificate) qs.append("certificate", params.certificate);
-  if (params?.skill) qs.append("skill", params.skill);
-  const url = qs.toString() ? `${API_BASE}/lessons?${qs.toString()}` : `${API_BASE}/lessons`;
+
+  // Sửa URL: .../lessons -> /available
+  const url = `${API_BASE}/available?${qs.toString()}`;
+
   return useQuery({
-    queryKey: ["testLessons", params || {}],
+    queryKey: ["availableTests", params || {}],
     queryFn: async () => {
-      const res = await instance.get<ApiResponse<TestLesson[]>>(url);
+      // Dùng TestConfig
+      const res = await instance.get<ApiResponse<TestConfig[]>>(url);
       return res.data.result ?? [];
     },
     staleTime: 5 * 60_000,
@@ -25,65 +31,61 @@ export const useAvailableTestLessons = (params?: { languageCode?: string; certif
 
 export const useStartTest = () => {
   const qc = useQueryClient();
-  const user = useUserStore(s => s.user);
 
   const mutation = useMutation({
-    mutationFn: async ({ lessonId }: { lessonId: string }) => {
-      const res = await instance.post<ApiResponse<{ sessionId: string; questions: TestQuestion[] }>>(
-        `${API_BASE}/start?lessonId=${encodeURIComponent(lessonId)}`
+    // Sửa tham số: lessonId -> testConfigId
+    mutationFn: async (testConfigId: string) => {
+      // Giả định userId được đính kèm tự động vào request (interceptors)
+      // Sửa URL:
+      const res = await instance.post<ApiResponse<TestSessionStartData>>(
+        `${API_BASE}/start?testConfigId=${encodeURIComponent(testConfigId)}`
       );
       return res.data.result!;
     },
     onSuccess: (data) => {
+      // Lưu cache session data
       qc.setQueryData(["testSession", data.sessionId], data);
     }
   });
 
   return {
-    startTest: (lessonId: string) => mutation.mutateAsync({ lessonId }),
+    // Sửa tên tham số
+    startTest: (testConfigId: string) => mutation.mutateAsync(testConfigId),
     isStarting: mutation.isPending,
     error: mutation.error,
   };
 };
 
-export const useTestSession = (sessionId: string | null) => {
-  return useQuery({
-    queryKey: ["testSession", sessionId],
-    queryFn: async () => {
-      if (!sessionId) throw new Error("sessionId required");
-      const res = await instance.get<ApiResponse<TestSession>>(`${API_BASE}/sessions/${sessionId}`);
-      return res.data.result!;
-    },
-    enabled: !!sessionId,
-    staleTime: 30_000,
-  });
-};
+// Hook này không dùng trong màn hình nhưng vẫn để lại cho đầy đủ
+// export const useTestSession = (sessionId: string | null) => {
+// ...
+// };
 
 export const useSubmitTest = () => {
   const qc = useQueryClient();
-  const user = useUserStore(s => s.user);
 
   const mutation = useMutation({
-    mutationFn: async ({ sessionId, answers }: { sessionId: string; answers: Record<string, any> }) => {
+    // Giả định userId được đính kèm tự động
+    mutationFn: async ({ sessionId, answers }: { sessionId: string; answers: Record<string, number> }) => {
       const res = await instance.post<ApiResponse<TestResult>>(`${API_BASE}/sessions/${sessionId}/submit`, { answers });
       return res.data.result!;
     },
     onSuccess: (data, vars) => {
       qc.invalidateQueries({ queryKey: ["testSession", vars.sessionId] });
-      qc.invalidateQueries({ queryKey: ["currentUser"] });
+      qc.invalidateQueries({ queryKey: ["currentUser"] }); // Cập nhật profile (exp/level)
     },
   });
 
   return {
-    submitTest: (sessionId: string, answers: Record<string, any>) => mutation.mutateAsync({ sessionId, answers }),
+    submitTest: (sessionId: string, answers: Record<string, number>) => mutation.mutateAsync({ sessionId, answers }),
     isSubmitting: mutation.isPending,
     error: mutation.error,
   };
 };
 
 export default {
-  useAvailableTestLessons,
+  useAvailableTests,
   useStartTest,
-  useTestSession,
+  //   useTestSession,
   useSubmitTest,
 };

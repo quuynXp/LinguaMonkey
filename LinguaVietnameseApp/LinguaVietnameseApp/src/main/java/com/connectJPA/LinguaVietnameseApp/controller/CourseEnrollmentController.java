@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CourseEnrollmentRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.SwitchVersionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseEnrollmentResponse;
 import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
@@ -73,6 +74,19 @@ public class CourseEnrollmentController {
             @Valid @RequestBody CourseEnrollmentRequest request,
             Locale locale) {
         CourseEnrollmentResponse enrollment = courseEnrollmentService.createCourseEnrollment(request);
+        return AppApiResponse.<CourseEnrollmentResponse>builder()
+                .code(201)
+                .message(messageSource.getMessage("courseEnrollment.created.success", null, locale))
+                .result(enrollment)
+                .build();
+    }
+
+    @Operation(summary = "Learner chọn học version khác", description = "Cập nhật enrollment để trỏ đến version đã chọn (đè lên bản cũ)")
+    @PutMapping("/switch-version")
+    public AppApiResponse<CourseEnrollmentResponse> switchCourseVersion(
+            @Valid @RequestBody SwitchVersionRequest request, // Request chứa enrollmentId và newVersionId
+            Locale locale) {
+        CourseEnrollmentResponse enrollment = courseEnrollmentService.switchCourseVersion(request);
         return AppApiResponse.<CourseEnrollmentResponse>builder()
                 .code(201)
                 .message(messageSource.getMessage("courseEnrollment.created.success", null, locale))

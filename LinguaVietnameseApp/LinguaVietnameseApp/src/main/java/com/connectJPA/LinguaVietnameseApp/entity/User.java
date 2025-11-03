@@ -24,6 +24,8 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 public class User extends BaseEntity {
+    private static final long ONLINE_THRESHOLD_MINUTES = 5;
+
     @org.springframework.data.annotation.Id
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -80,5 +82,16 @@ public class User extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     private LearningPlace learningPace;
+
+    @Transient
+    public boolean isOnline() {
+        if (this.lastActiveAt == null) {
+            return false;
+        }
+
+        OffsetDateTime onlineThreshold = OffsetDateTime.now().minusMinutes(ONLINE_THRESHOLD_MINUTES);
+
+        return this.lastActiveAt.isAfter(onlineThreshold);
+    }
 
 }

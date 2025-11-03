@@ -30,31 +30,31 @@ import type {
 } from "../types/api";
 
 // Lesson API Base
-const LESSON_API_BASE = "/lessons";
+const LESSON_API_BASE = "/api/v1/lessons";
 
 // Lesson Category API Base
-const LESSON_CATEGORY_API_BASE = "/lesson-categories";
+const LESSON_CATEGORY_API_BASE = "/api/v1/lesson-categories";
 
 // Lesson Order In Series API Base
-const LESSON_ORDER_IN_SERIES_API_BASE = "/lesson-order-in-series";
+const LESSON_ORDER_IN_SERIES_API_BASE = "/api/v1/lesson-order-in-series";
 
 // Lesson Progress API Base
-const LESSON_PROGRESS_API_BASE = "/lesson-progress";
+const LESSON_PROGRESS_API_BASE = "/api/v1/lesson-progress";
 
 // Lesson Progress Wrong Item API Base
-const LESSON_PROGRESS_WRONG_ITEM_API_BASE = "/lesson-progress-wrong-items";
+const LESSON_PROGRESS_WRONG_ITEM_API_BASE = "/api/v1/lesson-progress-wrong-items";
 
 // Lesson Question API Base
-const LESSON_QUESTION_API_BASE = "/lesson-questions";
+const LESSON_QUESTION_API_BASE = "/api/v1/lesson-questions";
 
 // Lesson Review API Base
-const LESSON_REVIEW_API_BASE = "/lesson-reviews";
+const LESSON_REVIEW_API_BASE = "/api/v1/lesson-reviews";
 
 // Lesson Series API Base
-const LESSON_SERIES_API_BASE = "/lesson-series";
+const LESSON_SERIES_API_BASE = "/api/v1/lesson-series";
 
 // Lesson Sub Category API Base
-const LESSON_SUB_CATEGORY_API_BASE = "/lesson-sub-categories";
+const LESSON_SUB_CATEGORY_API_BASE = "/api/v1/lesson-sub-categories";
 
 /* ------------------ Generic Build Query Params ------------------ */
 const buildQueryParams = (params: Record<string, any>) => {

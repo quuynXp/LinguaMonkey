@@ -86,9 +86,10 @@ public class LessonReviewController {
     @PutMapping("/{id}")
     public AppApiResponse<LessonReviewResponse> updateLessonReview(
             @Parameter(description = "Lesson review ID") @PathVariable UUID id,
+            @Parameter(description = "User ID") @PathVariable UUID userId,
             @RequestBody LessonReviewRequest request,
             Locale locale) {
-        LessonReviewResponse response = lessonReviewService.updateLessonReview(id, request);
+        LessonReviewResponse response = lessonReviewService.updateLessonReview(id, userId, request);
         return AppApiResponse.<LessonReviewResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("lessonReview.update.success", null, locale))

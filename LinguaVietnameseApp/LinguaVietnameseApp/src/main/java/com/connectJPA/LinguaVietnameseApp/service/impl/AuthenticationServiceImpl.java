@@ -326,7 +326,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                         .provider(AuthProvider.EMAIL)
                         .providerUserId(user.getEmail())
                         .verified(true)
-                        .primaryAccount(true)
+                        .isPrimary(true)
                         .linkedAt(OffsetDateTime.now())
                         .build())));
 
@@ -664,7 +664,7 @@ public User findOrCreateUserAccount(String email, String fullName, String phone,
             .provider(provider)
             .providerUserId(providerUserId)
             .verified(true)
-            .primaryAccount(existingUser.isEmpty())
+            .isPrimary(existingUser.isEmpty())
             .linkedAt(OffsetDateTime.now())
             .build();
 

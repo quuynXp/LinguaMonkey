@@ -1,75 +1,173 @@
-import { View, Text, TouchableOpacity, ScrollView, Animated } from "react-native";
-import Icon from "react-native-vector-icons/MaterialIcons";
+import React, { useState } from "react";
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from "react-native";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { useProficiencyTest } from "../../hooks/useProficiencyTest";
-import { formatDateTime } from "../../utils/timeHelper";
+import { useTranslation } from "react-i18next";
+import {
+  useAvailableTestLessons, // Đổi tên hook này thành useAvailableTests
+  useStartTest,
+  useSubmitTest,
+} from "../../hooks/useTesting"; // Đảm bảo import đúng file bạn đã cung cấp
+
+// Giả định các kiểu dữ liệu
+type TestConfig = {
+  testConfigId: string;
+  title: string;
+  description: string;
+};
+type TestQuestion = {
+  questionId: string;
+  questionText: string;
+  options: string[];
+};
+type TestResult = {
+  score: number;
+  totalQuestions: number;
+  percentage: number;
+  proficiencyEstimate: string;
+  questions: (TestQuestion & { explanation: string; userAnswerIndex: number; correctAnswerIndex: number; isCorrect: boolean })[];
+};
+
+type Stage = "selection" | "testing" | "submitting" | "results";
 
 const ProficiencyTestScreen = () => {
-  const {
-    t, availableLanguages, selectedLangIndex, setSelectedLangIndex,
-    stage, questions, currentQuestion, answers,
-    handleAnswer, startTest, completeTest,
-    fadeAnim, progressAnim, results, isCompleted,
-    timeLeft, loading
-  } = useProficiencyTest();
+  const { t } = useTranslation();
+  const [stage, setStage] = useState<Stage>("selection");
+  const [currentTest, setCurrentTest] = useState<TestConfig | null>(null);
 
-  // ví dụ UI rút gọn
-  if (stage === "choose-language") {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [questions, setQuestions] = useState<TestQuestion[]>([]);
+  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [result, setResult] = useState<TestResult | null>(null);
+
+  // 1. Lấy danh sách các bài test có sẵn
+  const { data: availableTests, isLoading: isLoadingTests } = useAvailableTestLessons({
+    languageCode: "en", // Hoặc lấy từ state
+  });
+
+  // 2. Hook để bắt đầu test
+  const { startTest, isStarting } = useStartTest();
+
+  // 3. Hook để nộp bài
+  const { submitTest, isSubmitting } = useSubmitTest();
+
+  const handleSelectTest = async (testConfig: TestConfig) => {
+    try {
+      setCurrentTest(testConfig);
+      // Gọi API /start
+      const response = await startTest(testConfig.testConfigId);
+      if (response) {
+        setSessionId(response.sessionId);
+        setQuestions(response.questions); // Backend chỉ trả về câu hỏi
+        setAnswers({});
+        setCurrentQuestionIdx(0);
+        setStage("testing");
+      }
+    } catch (e) {
+      console.error("Failed to start test", e);
+    }
+  };
+
+  const handleAnswer = (questionId: string, answerIndex: number) => {
+    setAnswers(prev => ({ ...prev, [questionId]: answerIndex }));
+    // Tự động chuyển câu
+    if (currentQuestionIdx < questions.length - 1) {
+      setCurrentQuestionIdx(idx => idx + 1);
+    }
+  };
+
+  const handleSubmitTest = async () => {
+    if (!sessionId) return;
+    setStage("submitting");
+    try {
+      // Gọi API /submit
+      const resultData = await submitTest(sessionId, answers);
+      setResult(resultData);
+      setStage("results");
+    } catch (e) {
+      console.error("Failed to submit test", e);
+      setStage("testing"); // Quay lại nếu lỗi
+    }
+  };
+
+  // --- RENDER ---
+
+  if (isLoadingTests || isStarting) {
+    return <ActivityIndicator size="large" style={styles.container} />;
+  }
+
+  // Giai đoạn 1: Chọn bài test
+  if (stage === "selection") {
     return (
       <View style={styles.container}>
-        <Text>{t("proficiencyTest.selectLanguage")}</Text>
-        {availableLanguages.map((lang, idx) => (
-          <TouchableOpacity key={lang} onPress={() => setSelectedLangIndex(idx)}>
-            <Text>{lang.toUpperCase()}</Text>
-          </TouchableOpacity>
-        ))}
-        <TouchableOpacity onPress={startTest}>
-          <Text>{t("proficiencyTest.startTest")}</Text>
-        </TouchableOpacity>
+        <Text>{t("proficiencyTest.selectTest")}</Text>
+        <ScrollView>
+          {availableTests?.map(test => (
+            <TouchableOpacity key={test.testConfigId} onPress={() => handleSelectTest(test)}>
+              <Text>{test.title}</Text>
+              <Text>{test.description}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
       </View>
     );
   }
 
-  if (stage === "testing") {
+  // Giai đoạn 2: Làm bài test
+  if (stage === "testing" && questions.length > 0) {
+    const q = questions[currentQuestionIdx];
     return (
       <View style={styles.container}>
-        <Animated.View style={{ opacity: fadeAnim }}>
-          <Text>
-            {t("proficiencyTest.questionProgress", { current: currentQuestion + 1, total: questions.length })}
-          </Text>
-          <Text>{formatDateTime(timeLeft)}</Text>
-
-          <ScrollView>
-            <Text>{questions[currentQuestion]?.question}</Text>
-            {questions[currentQuestion]?.options.map((opt, idx) => (
-              <TouchableOpacity key={idx} onPress={() => handleAnswer(idx)}>
-                <Text>{opt}</Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-
-          <TouchableOpacity onPress={completeTest}>
+        <Text>
+          {t("proficiencyTest.questionProgress", { current: currentQuestionIdx + 1, total: questions.length })}
+        </Text>
+        <ScrollView>
+          <Text>{q.questionText}</Text>
+          {q.options.map((opt, idx) => (
+            <TouchableOpacity
+              key={idx}
+              onPress={() => handleAnswer(q.questionId, idx)}
+              style={answers[q.questionId] === idx ? styles.selectedOption : styles.option}
+            >
+              <Text>{opt}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        {Object.keys(answers).length === questions.length && (
+          <TouchableOpacity onPress={handleSubmitTest}>
             <Text>{t("proficiencyTest.completeTest")}</Text>
           </TouchableOpacity>
-        </Animated.View>
+        )}
       </View>
     );
   }
 
-  if (isCompleted && results) {
+  // Giai đoạn 3: Đang nộp bài
+  if (stage === "submitting") {
+    return <ActivityIndicator size="large" style={styles.container} />;
+  }
+
+  // Giai đoạn 4: Kết quả
+  if (stage === "results" && result) {
     return (
       <View style={styles.container}>
         <Text>{t("proficiencyTest.results.title")}</Text>
-        <Text>{results.percentage}%</Text>
+        <Text>Trình độ: {result.proficiencyEstimate}</Text>
+        <Text>Điểm: {result.score} / {result.totalQuestions} ({result.percentage.toFixed(1)}%)</Text>
+        <ScrollView>
+          {/* (Render chi tiết giải thích từng câu ở đây) */}
+        </ScrollView>
       </View>
     );
   }
 
-  return null;
+  return <View style={styles.container}><Text>Đã xảy ra lỗi.</Text></View>;
 };
 
 const styles = createScaledSheet({
   container: { flex: 1, padding: 20, backgroundColor: "#fff" },
+  option: { padding: 10, marginVertical: 5, borderWidth: 1, borderColor: "#ccc" },
+  selectedOption: { padding: 10, marginVertical: 5, borderWidth: 2, borderColor: "blue" },
 });
 
 export default ProficiencyTestScreen;

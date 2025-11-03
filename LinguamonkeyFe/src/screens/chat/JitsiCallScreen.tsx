@@ -1,32 +1,12 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, Modal, FlatList } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { WebSocketService } from '../../services/WebSocketService';
-import { VoiceStreamService } from '../../services/VoiceStreamService';
-import { useAppStore } from '../../stores/appStore';
-import { useTokenStore } from '../../stores/tokenStore';
-import Constants from 'expo-constants';
-import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTranslation } from 'react-i18next';
+import { useRoute, RouteProp } from '@react-navigation/native';
 
-// Định nghĩa cấu trúc dữ liệu cho phụ đề kép
-interface DualSubtitle {
-  original: string;
-  originalLang: string;
-  translated: string;
-  translatedLang: string;
-}
-
-// *** LỖI FIX ***
-// Dựa trên lỗi "Argument ... is not assignable",
-// chúng ta đoán WSMessage là một object, không phải string.
-interface WSMessage {
-  type: string;
-  data: any;
-}
-
-const apiUrl = Constants.expoConfig?.extra?.apiUrl || 'YOUR_FALLBACK_API_URL';
-const WS_URL = `ws://${apiUrl}:8000/ws/voice`; // Đảm bảo apiUrl không có http://
+import { useChatStore } from '../../stores/ChatStore';
+import { useAppStore } from '../../stores/appStore';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const LANGUAGES = [
   { code: 'en', name: 'English' },
@@ -36,85 +16,52 @@ const LANGUAGES = [
   { code: 'zh', name: 'Chinese' },
 ];
 
-const JitsiWebView = ({ route }: any) => {
+type JitsiParams = {
+  JitsiCall: {
+    roomId: string;
+  };
+};
+
+const JitsiWebView = () => {
   const { t } = useTranslation();
+  const route = useRoute<RouteProp<JitsiParams, 'JitsiCall'>>();
   const { roomId = 'test-room' } = route.params || {};
 
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
+  
+  // --- STATE CỤC BỘ CHO UI ---
   const [nativeLang, setNativeLang] = useState(defaultNativeLangCode);
-
-  const [subtitleData, setSubtitleData] = useState<DualSubtitle | null>(null);
   const [showSettings, setShowSettings] = useState(false);
 
-  const ws = useRef<WebSocketService | null>(null);
-  const voiceStream = useRef<VoiceStreamService | null>(null);
+  // --- STATE TỪ ZUSTAND STORE ---
+  const subtitles = useChatStore(s => s.currentVideoSubtitles);
+  
+  // --- ACTIONS TỪ ZUSTAND STORE ---
+  const connectVideoSubtitles = useChatStore(s => s.connectVideoSubtitles);
+  const disconnectVideoSubtitles = useChatStore(s => s.disconnectVideoSubtitles);
+  const updateSubtitleLanguage = useChatStore(s => s.updateSubtitleLanguage);
+  
+  // Xóa bỏ hoàn toàn logic WebSocket và VoiceStream cũ
+  // const ws = useRef<WebSocketService | null>(null);
+  // const voiceStream = useRef<VoiceStreamService | null>(null);
 
   useEffect(() => {
-    let accessToken;
-    try {
-      accessToken = useTokenStore.getState().getAccessTokenSync();
-      if (!accessToken) {
-        console.error("No access token found for WebSocket");
-        return;
-      }
-
-      ws.current = new WebSocketService(WS_URL, accessToken);
-
-      // *** LỖI FIX ***
-      // Các thuộc tính 'onOpen', 'onError', 'onClose' không tồn tại.
-      // Chúng ta phải xóa chúng đi.
-      // Chúng ta giả định service tự kết nối và chỉ cung cấp 'onMessage'.
-
-      // onMessage tồn tại (dựa trên code gốc của bạn)
-      ws.current.onMessage((msg: WSMessage) => { // Thêm type WSMessage
-        if (msg.type === 'dual_subtitle_update') {
-          setSubtitleData(msg.data as DualSubtitle);
-        }
-        // Fallback cho flow cũ
-        else if (msg.type === 'subtitle_update') {
-          // *** LỖI FIX ***
-          // Thuộc tính 'lang' không tồn tại trên 'msg'.
-          setSubtitleData({
-            original: msg.data as string, // Giả sử data là string
-            originalLang: '?', // Không thể lấy lang
-            translated: '...', // Không thể lấy bản dịch
-            translatedLang: nativeLang,
-          });
-        }
-      });
-
-      voiceStream.current = new VoiceStreamService(ws.current, `sess_${Date.now()}`);
-
-    } catch (error) {
-      console.error("Failed to initialize services:", error);
-    }
-
+    // Kết nối service phụ đề khi vào màn hình
+    connectVideoSubtitles(roomId, nativeLang);
+    
     // Cleanup khi component unmount
     return () => {
-      console.log('Closing WebSocket connection...');
-      
-      // *** LỖI FIX ***
-      // Thuộc tính 'stopStreaming' không tồn tại.
-      // voiceStream.current?.stopStreaming(); // Xóa dòng này
-
-      // .close() tồn tại (dựa trên code gốc và thông báo lỗi "Did you mean 'close'?")
-      ws.current?.close();
+      disconnectVideoSubtitles();
     };
-  }, [nativeLang]); // Thêm nativeLang vào dependency array để đảm bảo nó luôn mới nhất
+  }, [roomId, nativeLang, connectVideoSubtitles, disconnectVideoSubtitles]);
 
   // Xử lý khi đổi ngôn ngữ
   const handleLanguageChange = (langCode: string) => {
     setNativeLang(langCode);
     setShowSettings(false);
-
-    // *** LỖI FIX ***
-    // Argument 'string' không gán được cho 'WSMessage'.
-    // Chúng ta phải gửi một object thay vì một string.
-    const message: WSMessage = {
-      type: 'config_update',
-      data: { targetLang: langCode }
-    };
-    ws.current?.send(message);
+    
+    // Gửi yêu cầu đổi ngôn ngữ qua store
+    updateSubtitleLanguage(langCode);
   };
 
   return (
@@ -125,21 +72,22 @@ const JitsiWebView = ({ route }: any) => {
         allowsFullscreenVideo
         javaScriptEnabled
         mediaPlaybackRequiresUserAction={false}
-        mediaCapturePermissionGrantType="grantIfSameHostElsePrompt"
+        // Quyền media cho React Native WebView
+        mediaCapturePermissionGrantType="grant" 
         allowsInlineMediaPlayback
       />
 
       {/* Vùng hiển thị phụ đề kép */}
       <View style={styles.subtitleContainer}>
-        {subtitleData ? (
+        {subtitles ? ( // Dùng state 'subtitles' từ store
           <>
             {/* Phụ đề gốc */}
             <Text style={styles.subtitleTextOriginal}>
-              {`[${subtitleData.originalLang}] ${subtitleData.original}`}
+              {`[${subtitles.originalLang}] ${subtitles.original}`}
             </Text>
             {/* Phụ đề dịch */}
             <Text style={styles.subtitleTextTranslated}>
-              {`[${subtitleData.translatedLang}] ${subtitleData.translated}`}
+              {`[${subtitles.translatedLang}] ${subtitles.translated}`}
             </Text>
           </>
         ) : (
@@ -147,12 +95,12 @@ const JitsiWebView = ({ route }: any) => {
         )}
       </View>
 
-      {/* Nút cài đặt */}
+      {/* Nút cài đặt (Giữ nguyên) */}
       <TouchableOpacity style={styles.menuButton} onPress={() => setShowSettings(true)}>
         <Text style={styles.menuText}>⚙️</Text>
       </TouchableOpacity>
 
-      {/* Modal chọn ngôn ngữ */}
+      {/* Modal chọn ngôn ngữ (Giữ nguyên) */}
       <Modal visible={showSettings} transparent animationType="slide">
         <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
         <View style={styles.modalContainer}>
@@ -178,7 +126,6 @@ const JitsiWebView = ({ route }: any) => {
   );
 };
 
-export default JitsiWebView;
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
@@ -242,3 +189,5 @@ const styles = createScaledSheet({
   },
   langText: { fontSize: 16, textAlign: 'center', color: 'white' },
 });
+
+export default JitsiWebView;

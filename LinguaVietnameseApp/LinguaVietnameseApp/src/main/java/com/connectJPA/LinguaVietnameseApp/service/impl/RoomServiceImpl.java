@@ -2,9 +2,11 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomMemberRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.RoomMemberId;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomRole;
@@ -31,7 +33,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -144,6 +148,54 @@ public class RoomServiceImpl implements RoomService {
             roomRepository.softDeleteByRoomId(id);
         } catch (Exception e) {
             log.error("Error while deleting room ID {}: {}", id, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true) // Tối ưu cho việc đọc
+    @Cacheable(value = "room_members", key = "#roomId") // Thêm cache
+    public List<MemberResponse> getRoomMembers(UUID roomId) {
+        try {
+            // 1. Kiểm tra xem phòng có tồn tại không
+            if (!roomRepository.existsById(roomId)) {
+                throw new AppException(ErrorCode.ROOM_NOT_FOUND);
+            }
+
+            // 2. Lấy danh sách thành viên từ repository
+            // (Sử dụng tên method đã thêm ở Bước 2)
+            List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId);
+
+            // 3. Map từ List<RoomMember> sang List<MemberResponse>
+            //    **GIẢ ĐỊNH**: Entity `RoomMember` của bạn có một field `User user`
+            //    (được @ManyToOne và @MapsId("userId"))
+            //    **GIẢ ĐỊNH**: Entity `User` của bạn có các method getUsername(), getAvatarUrl(), isOnline()
+            return members.stream()
+                    .map(member -> {
+                        User user = member.getUser();
+                        if (user == null || user.isDeleted()) {
+                            log.warn("RoomMember with id {} references a null or deleted user {}", member.getId(), member.getId().getUserId());
+                            return null; // Bỏ qua nếu user không hợp lệ
+                        }
+
+                        return MemberResponse.builder()
+                                .userId(user.getUserId())
+                                .username(user.getNickname())
+                                .avatarUrl(user.getAvatarUrl())
+                                .role(String.valueOf(member.getRole()))
+                                .isOnline(user.isOnline()) // Giả định user có trường isOnline
+                                .build();
+                    })
+                    .filter(Objects::nonNull) // Lọc bỏ các member có user bị null hoặc đã xóa
+                    .collect(Collectors.toList());
+
+        } catch (AppException e) {
+            // Ném lại AppException đã bắt
+            log.warn("Error fetching room members for room {}: {}", roomId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            // Bắt các lỗi khác
+            log.error("Error while fetching members for room ID {}: {}", roomId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

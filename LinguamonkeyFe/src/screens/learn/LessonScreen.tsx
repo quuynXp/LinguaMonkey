@@ -14,16 +14,16 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons'; 
 import { useLesson, useLessonQuestions, useLessonProgress, useSubmitLesson, useCompleteLesson } from "../../hooks/useLessons";
-import { useAppStore } from "../../stores/appStore"
 import type { LessonQuestion, UserLearningActivity } from "../../types/api";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useUserStore } from "../../stores/UserStore";
 
 const { width } = Dimensions.get("window")
 
 const LessonScreen = ({ navigation, route }: any) => {
   const { lessonId } = route.params
   const { t } = useTranslation()
-  const { user } = useAppStore()
+  const { user } = useUserStore()
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({})

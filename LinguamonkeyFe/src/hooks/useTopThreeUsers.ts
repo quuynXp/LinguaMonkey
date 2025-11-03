@@ -10,7 +10,7 @@ const useTopThreeUsers = () => {
     const fetchTopThreeUsers = async () => {
       setIsLoading(true);
       try {
-        const response = await axiosIntansce.get('/leaderboards/global/top-3');
+        const response = await axiosIntansce.get('/api/v1/leaderboards/global/top-3');
         setTopThreeUsers(response.data.result);
         console.log("Data result top3", response.data.result)
         setIsError(false);

@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.service;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomMemberRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
@@ -17,7 +18,7 @@ public interface RoomService {
     RoomResponse createRoom(RoomRequest request);
     RoomResponse updateRoom(UUID id, RoomRequest request);
     void deleteRoom(UUID id);
-
+    List<MemberResponse> getRoomMembers(UUID roomId);
     Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable);
 
     void addRoomMembers(UUID roomId, List<RoomMemberRequest> memberRequests);

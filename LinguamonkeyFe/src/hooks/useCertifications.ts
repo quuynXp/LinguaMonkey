@@ -59,7 +59,7 @@ export const useCertifications = () => {
         const params = new URLSearchParams();
         if (languages && languages.length > 0) languages.forEach((l) => params.append("languages", l));
         const res = await instance.get<ApiResponse<CertificationTest[]>>(
-          `/certifications/available?${params.toString()}`
+          `/api/v1/certifications/available?${params.toString()}`
         );
         return res.data.result ?? [];
       },
@@ -71,7 +71,7 @@ export const useCertifications = () => {
       queryKey: ["certificationTest", testId],
       queryFn: async () => {
         if (!testId) throw new Error("Test ID is required");
-        const res = await instance.get<ApiResponse<CertificationTest>>(`/certifications/${testId}`);
+        const res = await instance.get<ApiResponse<CertificationTest>>(`/api/v1/certifications/${testId}`);
         return res.data.result!;
       },
       enabled: !!testId,
@@ -84,7 +84,7 @@ export const useCertifications = () => {
       queryFn: async () => {
         if (!testId) throw new Error("Test ID is required");
         const res = await instance.get<ApiResponse<TestQuestion[]>>(
-          `/certifications/${testId}/questions?mode=${mode}`
+          `/api/v1/certifications/${testId}/questions?mode=${mode}`
         );
         return res.data.result ?? [];
       },
@@ -97,7 +97,7 @@ export const useCertifications = () => {
       queryKey: ["userCertificationResults", page, limit],
       queryFn: async () => {
         const res = await instance.get<ApiResponse<PaginatedResponse<TestResult>>>(
-          `/certifications/results?page=${page}&limit=${limit}`
+          `/api/v1/certifications/results?page=${page}&limit=${limit}`
         );
         return res.data.result ?? { data: [], pagination: { page, limit, total: 0, totalPages: 0 } };
       },
@@ -113,7 +113,7 @@ export const useCertifications = () => {
         mode: "practice" | "exam";
         timeSpent: number;
       }) => {
-        const res = await instance.post<ApiResponse<TestResult>>(`/certifications/${payload.testId}/submit`, {
+        const res = await instance.post<ApiResponse<TestResult>>(`/api/v1/certifications/${payload.testId}/submit`, {
           answers: payload.answers,
           mode: payload.mode,
           timeSpent: payload.timeSpent,
@@ -138,7 +138,7 @@ export const useCertifications = () => {
     const mutation = useMutation({
       mutationFn: async (payload: { testId: string; mode: "practice" | "exam" }) => {
         const res = await instance.post<ApiResponse<{ sessionId: string; startTime: string }>>(
-          `/certifications/${payload.testId}/start`,
+          `/api/v1/certifications/${payload.testId}/start`,
           { mode: payload.mode }
         );
         return res.data.result!;

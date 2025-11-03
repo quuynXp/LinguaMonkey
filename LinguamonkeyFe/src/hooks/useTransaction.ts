@@ -36,7 +36,7 @@ export const useTransaction = (id?: string) =>
     queryKey: ["transaction", id],
     queryFn: async () => {
       if (!id) throw new Error("Transaction ID is required");
-      const res = await instance.get<ApiResponse<Transaction>>(`/transactions/${id}`);
+      const res = await instance.get<ApiResponse<Transaction>>(`/api/v1/transactions/${id}`);
       return (res.data as any)?.result ?? res.data;
     },
     enabled: !!id,
@@ -47,7 +47,7 @@ export const useTransactions = (params?: { userId?: string; status?: string; pag
   useQuery<PaginatedResponse<Transaction>>({
     queryKey: ["transactions", params],
     queryFn: async () => {
-      const res = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/transactions`, {
+      const res = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/api/v1/transactions`, {
         params,
       });
       return (res.data as any)?.result ?? res.data;
@@ -60,7 +60,7 @@ export const useTransactionsByUser = (userId?: string, page?: number, size?: num
     queryKey: ["transactions", "user", userId, page, size],
     queryFn: async () => {
       if (!userId) throw new Error("User ID is required");
-      const res = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/transactions/user/${userId}`, {
+      const res = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/api/v1/transactions/user/${userId}`, {
         params: { page, size },
       });
       return (res.data as any)?.result ?? res.data;
@@ -73,7 +73,7 @@ export const useCreateTransaction = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (payload: TransactionRequest) => {
-      const res = await instance.post<ApiResponse<Transaction>>(`/transactions`, payload);
+      const res = await instance.post<ApiResponse<Transaction>>(`/api/v1/transactions`, payload);
       return (res.data as any)?.result ?? res.data;
     },
     onSuccess: () => {
@@ -86,7 +86,7 @@ export const useUpdateTransaction = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: TransactionRequest }) => {
-      const res = await instance.put<ApiResponse<Transaction>>(`/transactions/${id}`, data);
+      const res = await instance.put<ApiResponse<Transaction>>(`/api/v1/transactions/${id}`, data);
       return (res.data as any)?.result ?? res.data;
     },
     onSuccess: (_, { id }) => {
@@ -100,7 +100,7 @@ export const useDeleteTransaction = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const res = await instance.delete<ApiResponse<void>>(`/transactions/${id}`);
+      const res = await instance.delete<ApiResponse<void>>(`/api/v1/transactions/${id}`);
       return (res.data as any)?.result ?? res.data;
     },
     onSuccess: (_, id) => {
@@ -114,7 +114,7 @@ export const useDeleteTransaction = () => {
 export const useCreatePayment = () =>
   useMutation({
     mutationFn: async (payload: PaymentRequest) => {
-      const res = await instance.post<ApiResponse<string>>(`/transactions/create-payment`, payload);
+      const res = await instance.post<ApiResponse<string>>(`/api/v1/transactions/create-payment`, payload);
       return (res.data as any)?.result ?? res.data;
     },
   });
@@ -122,7 +122,7 @@ export const useCreatePayment = () =>
 export const useHandleWebhook = () =>
   useMutation({
     mutationFn: async (payload: WebhookRequest) => {
-      const res = await instance.post<ApiResponse<string>>(`/transactions/webhook`, payload);
+      const res = await instance.post<ApiResponse<string>>(`/api/v1/transactions/webhook`, payload);
       return (res.data as any)?.result ?? res.data;
     },
   });

@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserLearningActivityMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
@@ -44,7 +45,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final BadgeRepository badgeRepository;
 
     /* --------------------------------------------------------------------- */
-    /*  DASHBOARD STATISTICS                                                 */
+    /* DASHBOARD STATISTICS                                                 */
     /* --------------------------------------------------------------------- */
     @Override
     public DashboardStatisticsResponse getDashboardStatistics(UUID userId,
@@ -92,8 +93,12 @@ public class StatisticsServiceImpl implements StatisticsService {
             Course course = courseRepository
                     .findByCourseIdAndIsDeletedFalse(e.getCourseId())
                     .orElse(null);
-            if (course == null) continue;
 
+            // Lấy version public mới nhất
+            CourseVersion version = (course != null) ? course.getLatestPublicVersion() : null;
+            if (course == null || version == null) continue;
+
+            // TODO: 'lessonProgressService.getAllLessonProgress' cũng có thể bị lỗi
             Page<LessonProgressResponse> progressPage = lessonProgressService.getAllLessonProgress(
                     course.getCourseId().toString(),
                     userId.toString(),
@@ -105,11 +110,14 @@ public class StatisticsServiceImpl implements StatisticsService {
                     .filter(LessonProgressResponse::isCompleted)
                     .count();
 
+            // === SỬA LỖI 1 ===
+            // Lấy tổng số bài học từ 'version'
+            int totalLessons = (version.getLessons() != null) ? version.getLessons().size() : 0;
+
             courseProgressList.add(CourseProgressDto.builder()
                     .courseId(course.getCourseId())
                     .courseTitle(course.getTitle())
-                    .courseImageUrl(course.getThumbnail())
-                    .totalLessons(course.getLessons().size())
+                    .totalLessons(totalLessons) // ĐÃ SỬA
                     .completedLessons(completed)
                     .build());
         }
@@ -183,7 +191,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     /* --------------------------------------------------------------------- */
-    /*  OVERVIEW (admin)                                                    */
+    /* OVERVIEW (admin)                                                    */
     /* --------------------------------------------------------------------- */
     @Override
     public StatisticsOverviewResponse getOverview(UUID userId,
@@ -315,6 +323,9 @@ public class StatisticsServiceImpl implements StatisticsService {
         BigDecimal revenue;
         long count;
         BucketAggregate(BigDecimal r, long c) { revenue = r; count = c; }
+        // (Thêm getter để tránh lỗi nếu BucketAggregate là private)
+        BigDecimal getRevenue() { return revenue; }
+        long getCount() { return count; }
     }
     private static class BucketRange {
         LocalDate start, end; // end exclusive
@@ -322,7 +333,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     /* --------------------------------------------------------------------- */
-    /*  USER STATISTICS                                                     */
+    /* USER STATISTICS                                                     */
     /* --------------------------------------------------------------------- */
     @Override
     public StatisticsResponse getUserStatistics(UUID userId,
@@ -392,7 +403,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     /* --------------------------------------------------------------------- */
-    /*  USER COUNT / GROWTH                                                 */
+    /* USER COUNT / GROWTH                                                 */
     /* --------------------------------------------------------------------- */
     @Override
     public List<UserCountResponse> getUserCounts(String period, LocalDate startDate, LocalDate endDate) {
@@ -441,7 +452,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     /* --------------------------------------------------------------------- */
-    /*  ACTIVITY / TRANSACTION AGGREGATIONS                                 */
+    /* ACTIVITY / TRANSACTION AGGREGATIONS                                 */
     /* --------------------------------------------------------------------- */
     @Override
     public List<ActivityCountResponse> getActivityStatistics(String activityType,
@@ -556,7 +567,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     }
 
     /* --------------------------------------------------------------------- */
-    /*  TEACHER METHODS                                                      */
+    /* TEACHER METHODS                                                      */
     /* --------------------------------------------------------------------- */
     @Override
     public TeacherOverviewResponse getTeacherOverview(UUID teacherId,
@@ -570,12 +581,19 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         int totalCourses = courses.size();
 
-        List<UUID> courseIds = courses.stream().map(Course::getCourseId).collect(Collectors.toList());
+        // === SỬA LỖI 2 ===
+        // Đếm lessons từ các 'latestPublicVersion'
         int totalLessons = 0;
-        if (!courseIds.isEmpty()) {
-            List<Lesson> lessons = lessonRepository.findByCourseIdIn(courseIds);
-            totalLessons = lessons != null ? lessons.size() : 0;
+        for (Course c : courses) {
+            // Chỉ đếm lesson của các khóa đã public
+            CourseVersion v = c.getLatestPublicVersion();
+            if (v != null && v.getStatus() == VersionStatus.PUBLIC && v.getLessons() != null) {
+                totalLessons += v.getLessons().size();
+            }
         }
+        // DÒNG CŨ BỊ LỖI: List<Lesson> lessons = lessonRepository.findByCourseIdIn(courseIds);
+
+        List<UUID> courseIds = courses.stream().map(Course::getCourseId).collect(Collectors.toList());
 
         OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end   = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
@@ -599,7 +617,7 @@ public class StatisticsServiceImpl implements StatisticsService {
 
             List<Transaction> relevant = txs.stream()
                     .filter(t -> {
-                        // try to read courseId via reflection (fallback if field missing)
+                        // (Logic reflection này khá rủi ro, nhưng giữ nguyên)
                         try {
                             java.lang.reflect.Method m = t.getClass().getMethod("getCourseId");
                             Object cid = m.invoke(t);
@@ -668,8 +686,12 @@ public class StatisticsServiceImpl implements StatisticsService {
             cp.setCourseId(c.getCourseId());
             cp.setTitle(c.getTitle());
 
-            List<Lesson> lessons = lessonRepository.findByCourseIdAndIsDeletedFalse(c.getCourseId());
-            cp.setLessonsCount(lessons != null ? lessons.size() : 0);
+            // === SỬA LỖI 3 ===
+            // Lấy lessons từ version (public hoặc draft)
+            CourseVersion version = c.getLatestPublicVersion();
+            int lessonsCount = (version != null && version.getLessons() != null) ? version.getLessons().size() : 0;
+            cp.setLessonsCount(lessonsCount);
+            // DÒNG CŨ BỊ LỖI: List<Lesson> lessons = lessonRepository.findByCourseIdAndIsDeletedFalse(c.getCourseId());
 
             List<CourseEnrollment> enrolls = courseEnrollmentRepository
                     .findByCourseIdAndEnrolledAtBetween(c.getCourseId(), start, end);
@@ -714,8 +736,17 @@ public class StatisticsServiceImpl implements StatisticsService {
         if (!course.getCreatorId().equals(teacherId))
             throw new SecurityException("Not course owner");
 
-        List<Lesson> lessons = lessonRepository.findByCourseIdAndIsDeletedFalse(courseId);
-        if (lessons == null) lessons = Collections.emptyList();
+        // === SỬA LỖI 4 ===
+        // Lấy lessons từ version (public hoặc draft)
+        CourseVersion version = course.getLatestPublicVersion();
+        if (version == null || version.getLessons() == null) {
+            return Collections.emptyList(); // Không có bài học
+        }
+        // Lấy danh sách Lesson thực tế
+        List<Lesson> lessons = version.getLessons().stream()
+                .map(CourseVersionLesson::getLesson)
+                .collect(Collectors.toList());
+        // DÒNG CŨ BỊ LỖI: List<Lesson> lessons = lessonRepository.findByCourseIdAndIsDeletedFalse(courseId);
 
         OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end   = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);

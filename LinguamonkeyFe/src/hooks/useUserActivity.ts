@@ -5,7 +5,7 @@ import type { ApiResponse, PaginatedResponse } from "../types/api";
 
 export const useUserLearningActivities = () => {
   const queryClient = useQueryClient();
-  const BASE = "/user-learning-activities";
+  const BASE = "/api/v1/user-learning-activities";
 
   const useAllActivities = (params?: { userId?: string; page?: number; size?: number; sort?: string }) => {
     return useQuery({

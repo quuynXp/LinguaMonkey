@@ -26,6 +26,8 @@ WHERE ur.user_id = :userId
 
      boolean existsByIdUserIdAndIdRoleId(UUID userId, UUID roleId);
 
+     List<UserRole> findById_RoleId(UUID roleId);
+
     @Query("SELECT ur.role FROM UserRole ur " +
             "WHERE ur.id.userId = :userId")
     List<Role> findRolesByUserId(@Param("userId") UUID userId);

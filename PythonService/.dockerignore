@@ -1,25 +1,34 @@
-
+# Python
 venv/
 .venv/
-
-
-pycache/
+env/
+__pycache__/
 *.pyc
 *.pyo
+*.pyd
 
-
+# Môi trường / IDE
 .idea/
 .vscode/
+*.swp
+*.swo
 
+# Build/Dist artifacts
+build/
+dist/
+*.egg-info/
+wheels/
 
-.env
-*.env
-
-Git
-
+# Git
 .git/
 .gitignore
+.gitattributes
 
-
+# Credentials / Logs
+.env
+*.env
 *.log
-*.swp
+
+# Test
+.pytest_cache/
+.tox/

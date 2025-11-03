@@ -20,17 +20,21 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     @Query("SELECT l FROM Lesson l WHERE l.lessonId = :id AND l.isDeleted = false")
     Optional<Lesson> findByLessonIdAndIsDeletedFalse(@Param("id") UUID id);
 
+    long countByIsDeletedFalse();
+
     @Query("UPDATE Lesson l SET l.isDeleted = true, l.deletedAt = CURRENT_TIMESTAMP WHERE l.lessonId = :id AND l.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
 
-    List<Lesson> findByCourseIdIn(List<UUID> courseIds);
-
-    List<Lesson> findByCourseIdAndIsDeletedFalse(UUID courseId);
+    // --- ĐÃ LOẠI BỎ ---
+    // List<Lesson> findByCourseIdIn(List<UUID> courseIds); // Lỗi!
+    // List<Lesson> findByCourseIdAndIsDeletedFalse(UUID courseId); // Lỗi!
 
     SkillType findSkillTypeByLessonIdAndIsDeletedFalse(UUID lessonId);
 
+    // (Các hàm này RẤT QUAN TRỌNG cho P2P Creator và vẫn hoạt động tốt)
     List<Lesson> findByLessonIdIn(List<UUID> ids);
     List<Lesson> findByCreatorIdAndLessonIdIn(UUID creatorId, List<UUID> ids);
     Page<Lesson> findByCreatorId(UUID creatorId, Pageable pageable);
+
     Page<Lesson> findAll(Specification<com.connectJPA.LinguaVietnameseApp.entity.Lesson> spec, Pageable pageable);
 }

@@ -32,6 +32,8 @@ public class LessonReview extends BaseEntity {
     @Column(name = "rating", nullable = false)
     private BigDecimal rating;
 
+    private boolean verified;
+
     @Column(name = "language_code")
     private String languageCode;
 

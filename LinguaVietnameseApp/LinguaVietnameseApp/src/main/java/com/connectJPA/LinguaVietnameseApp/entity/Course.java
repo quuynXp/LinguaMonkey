@@ -14,8 +14,10 @@ import org.springframework.data.elasticsearch.annotations.Document;
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @EntityListeners(ElasticsearchEntityListener.class)
 @Data
@@ -35,15 +37,21 @@ public class Course extends BaseEntity {
     @Column(name = "title", nullable = false)
     private String title;
 
-    @Column(name = "description")
-    private String description;
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "latest_public_version_id")
+    private CourseVersion latestPublicVersion;
+
+    // THÊM: Quan hệ OneToMany tới tất cả các phiên bản của khóa học này.
+    @OneToMany(
+            mappedBy = "course",
+            cascade = CascadeType.ALL, // Quản lý vòng đời của version cùng với course
+            orphanRemoval = true
+    )
+    private List<CourseVersion> allVersions;
 
     @Column(name = "difficulty_level")
     @Enumerated(EnumType.STRING)
     private DifficultyLevel difficultyLevel;
-
-    @Column(name = "thumbnail_url")
-    private String thumbnailUrl;
 
     @Enumerated(EnumType.STRING)
     private CourseType type;
@@ -59,15 +67,17 @@ public class Course extends BaseEntity {
     @Column(name = "approval_status", nullable = false)
     private CourseApprovalStatus approvalStatus = CourseApprovalStatus.PENDING;
 
-    public String getThumbnail() {
-        return thumbnailUrl;
-    }
-
-    @OneToMany(mappedBy = "courseId", fetch = FetchType.LAZY)
-    private List<Lesson> lessonList;
-
     public List<Lesson> getLessons() {
-        return lessonList != null ? lessonList : Collections.emptyList();
+        if (this.latestPublicVersion == null || this.latestPublicVersion.getLessons() == null) {
+            return Collections.emptyList(); // Trả về danh sách rỗng nếu không có
+        }
+
+        List<CourseVersionLesson> versionLessons = this.latestPublicVersion.getLessons();
+
+        return versionLessons.stream()
+                .sorted(Comparator.comparingInt(CourseVersionLesson::getOrderIndex))
+                .map(CourseVersionLesson::getLesson)
+                .collect(Collectors.toList());
     }
 }
 

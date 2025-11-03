@@ -13,7 +13,7 @@ export const useFlashcards = () => {
       queryKey: ["dueFlashcards", lessonId, limit],
       queryFn: async () => {
         const qp = lessonId ? `?lessonId=${lessonId}&limit=${limit}` : `?limit=${limit}`;
-        const res = await instance.get<ApiResponse<any[]>>(`/flashcards/due${qp}`);
+        const res = await instance.get<ApiResponse<any[]>>(`/api/v1/flashcards/due${qp}`);
         return res.data.result ?? [];
       },
       enabled: true,
@@ -35,7 +35,7 @@ export const useFlashcards = () => {
   const useReviewFlashcard = () => {
     const mutation = useMutation({
       mutationFn: async ({ flashcardId, quality }: { flashcardId: string; quality: number }) => {
-        const res = await instance.post<ApiResponse<any>>(`/flashcards/${flashcardId}/review?quality=${quality}`);
+        const res = await instance.post<ApiResponse<any>>(`/api/v1/flashcards/${flashcardId}/review?quality=${quality}`);
         return res.data.result!;
       },
       onSuccess: (updatedCard) => {

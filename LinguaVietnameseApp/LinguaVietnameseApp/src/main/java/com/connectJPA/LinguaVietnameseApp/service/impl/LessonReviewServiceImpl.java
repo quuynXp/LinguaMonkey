@@ -2,35 +2,87 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonReviewRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonReviewResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.LessonProgress;
 import com.connectJPA.LinguaVietnameseApp.entity.LessonReview;
+import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressId;
+import com.connectJPA.LinguaVietnameseApp.exception.AppException;
+import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
+import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.LessonReviewMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonProgressRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonReviewRepository;
 import com.connectJPA.LinguaVietnameseApp.service.LessonReviewService;
+import learning.ReviewQualityResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class LessonReviewServiceImpl implements LessonReviewService {
 
     private final LessonReviewRepository lessonReviewRepository;
     private final LessonReviewMapper lessonReviewMapper;
+    private final LessonProgressRepository lessonProgressRepository; // Cần để check 70%
+    private final GrpcClientService grpcClientService;
+
+    private static final double MIN_PROGRESS_PERCENT_TO_REVIEW = 70.0;
 
     @Override
     @Transactional
     public LessonReviewResponse createLessonReview(LessonReviewRequest request) {
-        try {
-            LessonReview lessonReview = lessonReviewMapper.toEntity(request);
-            lessonReview = lessonReviewRepository.save(lessonReview);
-            return lessonReviewMapper.toResponse(lessonReview);
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to create lesson review: " + e.getMessage(), e);
+        UUID userId = request.getUserId();
+        UUID lessonId = request.getLessonId();
+
+        LessonProgress progress = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId))
+                .orElseThrow(() -> new AppException(ErrorCode.LESSON_PROGRESS_NOT_FOUND));
+
+        if (progress.getMaxScore() == null || progress.getMaxScore() == 0) {
+            throw new AppException(ErrorCode.INVALID_INPUT_DATA);
         }
+
+        double percent = ((double) progress.getScore() / progress.getMaxScore()) * 100.0;
+        if (percent < MIN_PROGRESS_PERCENT_TO_REVIEW) {
+            throw new AppException(ErrorCode.UNAUTHORIZED);
+        }
+
+        LessonReview review = lessonReviewMapper.toEntity(request);
+        review.setVerified(false); // Mặc định
+
+        // 4. Gọi gRPC để phân tích review (bất đồng bộ)
+        try {
+            CompletableFuture<ReviewQualityResponse> aiFuture = grpcClientService.callAnalyzeReviewQualityAsync(
+                    null, // token
+                    userId.toString(),
+                    lessonId.toString(),
+                    request.getComment(),
+                    request.getRating().floatValue(),
+                    "LESSON" // contentType
+            );
+
+            ReviewQualityResponse aiResponse = aiFuture.get(); // Chờ kết quả
+
+            if (aiResponse.getIsValid()) {
+                review.setVerified(true);
+            } else {
+                review.setVerified(false);
+                log.warn("AI flagged lesson review. Reason: {}", aiResponse.getSentiment());
+            }
+
+        } catch (Exception e) {
+            review.setVerified(false); // Nếu AI lỗi, lưu là chưa xác thực
+        }
+
+        // 5. Lưu review
+        review = lessonReviewRepository.save(review);
+        return lessonReviewMapper.toResponse(review);
     }
 
     @Override
@@ -45,6 +97,13 @@ public class LessonReviewServiceImpl implements LessonReviewService {
     }
 
     @Override
+    public LessonReviewResponse getLessonReviewByIds(UUID lessonId, UUID userId) {
+        LessonReview review = lessonReviewRepository.findByLessonIdAndUserIdAndIsDeletedFalse(lessonId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.COURSE_REVIEW_NOT_FOUND));
+        return lessonReviewMapper.toResponse(review);
+    }
+
+    @Override
     public Page<LessonReviewResponse> getAllLessonReviews(Pageable pageable) {
         try {
             Page<LessonReview> lessonReviews = lessonReviewRepository.findAllByIsDeletedFalse(pageable);
@@ -54,18 +113,39 @@ public class LessonReviewServiceImpl implements LessonReviewService {
         }
     }
 
-    @Override
     @Transactional
-    public LessonReviewResponse updateLessonReview(UUID id, LessonReviewRequest request) {
+    @Override
+    public LessonReviewResponse updateLessonReview(UUID lessonId, UUID userId, LessonReviewRequest request) {
+        LessonReview review = lessonReviewRepository.findByLessonIdAndUserIdAndIsDeletedFalse(lessonId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.COURSE_REVIEW_NOT_FOUND));
+
+        lessonReviewMapper.updateEntityFromRequest(request, review);
+
         try {
-            LessonReview lessonReview = lessonReviewRepository.findByIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new RuntimeException("Lesson review not found"));
-            lessonReviewMapper.updateEntityFromRequest(request, lessonReview);
-            lessonReview = lessonReviewRepository.save(lessonReview);
-            return lessonReviewMapper.toResponse(lessonReview);
+            CompletableFuture<ReviewQualityResponse> aiFuture = grpcClientService.callAnalyzeReviewQualityAsync(
+                    null, // token
+                    userId.toString(),
+                    lessonId.toString(),
+                    request.getComment(),
+                    request.getRating().floatValue(),
+                    "LESSON" // contentType
+            );
+
+            ReviewQualityResponse aiResponse = aiFuture.get(); // Chờ kết quả
+
+            if (aiResponse.getIsValid()) {
+                review.setVerified(true);
+            } else {
+                review.setVerified(false);
+            }
+
         } catch (Exception e) {
-            throw new RuntimeException("Failed to update lesson review: " + e.getMessage(), e);
+            log.error("gRPC call failed during lesson review, saving as unverified: {}", e.getMessage());
+            review.setVerified(false); // Nếu AI lỗi, lưu là chưa xác thực
         }
+
+        review = lessonReviewRepository.save(review);
+        return lessonReviewMapper.toResponse(review);
     }
 
     @Override

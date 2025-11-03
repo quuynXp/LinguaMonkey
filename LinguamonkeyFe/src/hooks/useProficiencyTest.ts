@@ -52,7 +52,7 @@ export const useProficiencyTest = () => {
 
     try {
       // 1) get category
-      const catResp = await instance.get("/lesson-categories", {
+      const catResp = await instance.get("/api/v1/lesson-categories", {
         params: { lessonCategoryName: "initial", languageCode: code, page: 0, size: 1 },
       });
       const catPayload = catResp.data as BackendApiResponse<BackendPage<LessonCategoryResponse>>;
@@ -62,7 +62,7 @@ export const useProficiencyTest = () => {
       const categoryId = categories[0].lessonCategoryId;
 
       // 2) get lesson
-      const lessonResp = await instance.get("/lessons", {
+      const lessonResp = await instance.get("/api/v1/lessons", {
         params: { categoryId, languageCode: code, page: 0, size: 1 },
       });
       const lessonPayload = lessonResp.data as BackendApiResponse<BackendPage<LessonResponse>>;
@@ -72,7 +72,7 @@ export const useProficiencyTest = () => {
       const lesson = lessons[0];
 
       // 3) get questions
-      const qResp = await instance.get("/lesson-questions", {
+      const qResp = await instance.get("/api/v1/lesson-questions", {
         params: { lessonId: lesson.lessonId, languageCode: code, page: 0, size: 500 },
       });
       const qPayload = qResp.data as BackendApiResponse<BackendPage<LessonQuestionResponse>>;
@@ -144,7 +144,7 @@ export const useProficiencyTest = () => {
       });
       try {
         await Promise.all(
-          wrongItems.map((item) => instance.post("/lesson-progress-wrong-items", item))
+          wrongItems.map((item) => instance.post("/api/v1/lesson-progress-wrong-items", item))
         );
       } catch (err) {
         console.error("Save wrong items error", err);

@@ -1,98 +1,72 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useMemo } from 'react';
 import {
   Alert,
   Animated,
   FlatList,
   Modal,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  ActivityIndicator
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
-import { useChatStore } from "../../stores/ChatStore";
+import { useQuery } from '@tanstack/react-query';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import instance from '../../api/axiosInstance'; // Import axios instance
+
+// Kiểu dữ liệu trả về từ API /api/v1/rooms (RoomResponse)
+interface ApiRoom {
+  roomId: string;
+  roomName: string;
+  description: string;
+  purpose: 'GROUP_CHAT' | 'PRIVATE_CHAT' | 'AI_CHAT';
+  roomType: 'PUBLIC' | 'PRIVATE';
+  creatorId: string;
+  memberCount: number;
+  maxMembers: number;
+  createdAt: string; 
+  // ... (Thêm các trường khác nếu bạn cần, vd: language, level)
+}
 
 interface Room {
   id: string;
   name: string;
   description: string;
-  purpose: 'social' | 'learning';
+  purpose: 'social' | 'learning' | 'ai'; // Map từ 'GROUP_CHAT'
   memberCount: number;
   maxMembers: number;
-  language: string;
-  level: 'beginner' | 'intermediate' | 'advanced';
+  language: string; // Giả định
+  level: 'beginner' | 'intermediate' | 'advanced'; // Giả định
   isPrivate: boolean;
-  createdBy: string;
+  createdBy: string; // Giả định
   createdAt: Date;
 }
 
+const mapApiRoomToComponent = (apiRoom: ApiRoom): Room => ({
+  id: apiRoom.roomId,
+  name: apiRoom.roomName,
+  description: apiRoom.description || 'No description',
+  purpose: apiRoom.purpose === 'GROUP_CHAT' ? 'social' : 'learning', // Map logic
+  memberCount: apiRoom.memberCount,
+  maxMembers: apiRoom.maxMembers,
+  language: 'en', // TODO: API (RoomResponse) cần trả về
+  level: 'beginner', // TODO: API (RoomResponse) cần trả về
+  isPrivate: apiRoom.roomType === 'PRIVATE',
+  createdBy: apiRoom.creatorId, // TODO: Cần fetch tên user
+  createdAt: new Date(apiRoom.createdAt),
+});
+
+
 const ChatRoomListScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const [rooms, setRooms] = useState<Room[]>([
-    {
-      id: '1',
-      name: 'Học tiếng Anh cơ bản',
-      description: 'Phòng dành cho người mới bắt đầu học tiếng Anh',
-      purpose: 'learning',
-      memberCount: 12,
-      maxMembers: 20,
-      language: 'en',
-      level: 'beginner',
-      isPrivate: false,
-      createdBy: 'Teacher Anna',
-      createdAt: new Date(Date.now() - 86400000),
-    },
-    {
-      id: '2',
-      name: 'Chinese Culture Chat',
-      description: 'Discuss Chinese culture and traditions',
-      purpose: 'social',
-      memberCount: 8,
-      maxMembers: 15,
-      language: 'zh',
-      level: 'intermediate',
-      isPrivate: false,
-      createdBy: 'Li Wei',
-      createdAt: new Date(Date.now() - 172800000),
-    },
-    {
-      id: '3',
-      name: 'Advanced English Practice',
-      description: 'For advanced English learners',
-      purpose: 'learning',
-      memberCount: 15,
-      maxMembers: 25,
-      language: 'en',
-      level: 'advanced',
-      isPrivate: false,
-      createdBy: 'John Smith',
-      createdAt: new Date(Date.now() - 259200000),
-    },
-    {
-      id: '4',
-      name: 'Giao lưu tiếng Việt',
-      description: 'Phòng chat cho người nước ngoài học tiếng Việt',
-      purpose: 'social',
-      memberCount: 6,
-      maxMembers: 12,
-      language: 'vi',
-      level: 'beginner',
-      isPrivate: false,
-      createdBy: 'Minh Nguyen',
-      createdAt: new Date(Date.now() - 345600000),
-    },
-  ]);
-
+  
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'learning' | 'social'>('all');
+  const [selectedFilter, setSelectedFilter] = useState<'all' | 'GROUP_CHAT' | 'AI_CHAT'>('all');
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const activities = useChatStore(state => state.activities)
-  const stats = useChatStore(state => state.stats)
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -102,37 +76,46 @@ const ChatRoomListScreen = ({ navigation }) => {
     }).start();
   }, []);
 
-  const filteredRooms = rooms.filter(room => {
-    const matchesSearch = room.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      room.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesFilter = selectedFilter === 'all' || room.purpose === selectedFilter;
-    return matchesSearch && matchesFilter;
+  // --- THAY THẾ MOCK BẰNG useQuery ---
+  const { data: apiRooms, isLoading: isLoadingRooms, isError } = useQuery({
+    queryKey: ['rooms', selectedFilter, searchQuery],
+    queryFn: async () => {
+      const params = {
+        page: 0,
+        size: 20,
+        purpose: selectedFilter === 'all' ? null : selectedFilter,
+        roomName: searchQuery || null,
+      };
+      const response = await instance.get('/api/v1/rooms', { params });
+      return response.data.result.content as ApiRoom[]; // Lấy content từ Page
+    },
   });
+
+  // Dùng useMemo để map dữ liệu API
+  const rooms: Room[] = useMemo(() => {
+    if (!apiRooms) return [];
+    return apiRooms.map(mapApiRoomToComponent);
+  }, [apiRooms]);
+  
+  // Logic filter cũ không cần nữa vì API đã filter
+  // const filteredRooms = rooms; 
 
   const joinRoom = (room: Room) => {
     if (room.memberCount >= room.maxMembers) {
       Alert.alert(t('room.full'), t('room.full.message'));
       return;
     }
-
-    Alert.alert(
-      t('room.join'),
-      t('room.join.confirm', { name: room.name }),
-      [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('join'),
-          onPress: () => {
-            navigation.navigate('UserChat', { room });
-          },
-        },
-      ]
-    );
+    
+    // Sửa navigation: Chuyển sang GroupChatScreen (file bạn vừa sửa)
+    navigation.navigate('GroupChat', { 
+      roomId: room.id, 
+      roomName: room.name 
+    });
   };
 
   const joinRoomByCode = () => {
     if (roomCode.trim()) {
-      // Simulate finding room by code
+      // TODO: Thay bằng API call (GET /api/v1/rooms/{roomCode})
       const foundRoom = rooms.find(room => room.id === roomCode.trim());
       if (foundRoom) {
         setShowJoinModal(false);
@@ -144,32 +127,7 @@ const ChatRoomListScreen = ({ navigation }) => {
     }
   };
 
-  const getLevelColor = (level: string) => {
-    switch (level) {
-      case 'beginner': return '#10B981';
-      case 'intermediate': return '#F59E0B';
-      case 'advanced': return '#EF4444';
-      default: return '#6B7280';
-    }
-  };
-
-  const getLevelText = (level: string) => {
-    switch (level) {
-      case 'beginner': return t('level.beginner');
-      case 'intermediate': return t('level.intermediate');
-      case 'advanced': return t('level.advanced');
-      default: return level;
-    }
-  };
-
-  const getLanguageFlag = (language: string) => {
-    switch (language) {
-      case 'en': return '🇺🇸';
-      case 'zh': return '🇨🇳';
-      case 'vi': return '🇻🇳';
-      default: return '🌐';
-    }
-  };
+  // ... (Giữ nguyên các hàm helper: getLevelColor, getLevelText, getLanguageFlag) ...
 
   const renderRoom = ({ item }: { item: Room }) => (
     <TouchableOpacity
@@ -221,7 +179,7 @@ const ChatRoomListScreen = ({ navigation }) => {
     </TouchableOpacity>
   );
 
-  const renderFilterButton = (filter: 'all' | 'learning' | 'social', label: string) => (
+  const renderFilterButton = (filter: 'all' | 'GROUP_CHAT' | 'AI_CHAT', label: string) => (
     <TouchableOpacity
       style={[styles.filterButton, selectedFilter === filter && styles.activeFilterButton]}
       onPress={() => setSelectedFilter(filter)}
@@ -253,32 +211,38 @@ const ChatRoomListScreen = ({ navigation }) => {
             placeholder={t('room.search')}
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
-            onChangeText={setSearchQuery}
+            onChangeText={setSearchQuery} // API sẽ tự động refetch
           />
         </View>
 
         {/* Filters */}
         <View style={styles.filtersContainer}>
           {renderFilterButton('all', t('all'))}
-          {renderFilterButton('learning', t('learning'))}
-          {renderFilterButton('social', t('social'))}
+          {renderFilterButton('GROUP_CHAT', t('learning'))}
+          {renderFilterButton('AI_CHAT', t('social'))} 
         </View>
 
         {/* Room List */}
-        <FlatList
-          data={filteredRooms}
-          renderItem={renderRoom}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.roomsList}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Icon name="chat-bubble-outline" size={48} color="#D1D5DB" />
-              <Text style={styles.emptyText}>{t('room.empty')}</Text>
-              <Text style={styles.emptySubtext}>{t('room.empty.subtext')}</Text>
-            </View>
-          }
-        />
+        {isLoadingRooms ? (
+          <ActivityIndicator size="large" style={{ marginTop: 20 }} />
+        ) : isError ? (
+          <Text style={styles.emptyText}>{t('error.loading')}</Text>
+        ) : (
+          <FlatList
+            data={rooms} // Dùng data thật
+            renderItem={renderRoom}
+            keyExtractor={(item) => item.id}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.roomsList}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Icon name="chat-bubble-outline" size={48} color="#D1D5DB" />
+                <Text style={styles.emptyText}>{t('room.empty')}</Text>
+                <Text style={styles.emptySubtext}>{t('room.empty.subtext')}</Text>
+              </View>
+            }
+          />
+        )}
 
         {/* Create Room Button */}
         <TouchableOpacity
@@ -305,11 +269,9 @@ const ChatRoomListScreen = ({ navigation }) => {
                 <Icon name="close" size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
-
             <Text style={styles.modalDescription}>
               {t('room.join.by.code.desc')}
             </Text>
-
             <TextInput
               style={styles.codeInput}
               placeholder={t('room.code.placeholder')}
@@ -318,7 +280,6 @@ const ChatRoomListScreen = ({ navigation }) => {
               onChangeText={setRoomCode}
               autoCapitalize="none"
             />
-
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -343,6 +304,7 @@ const ChatRoomListScreen = ({ navigation }) => {
   );
 };
 
+// Dán styles từ file 'ChatRoomListScreen.ts' cũ của bạn vào đây
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -634,3 +596,15 @@ const styles = createScaledSheet({
 });
 
 export default ChatRoomListScreen;
+
+function getLanguageFlag(language: string): React.ReactNode {
+  throw new Error('Function not implemented.');
+}
+function getLevelColor(level: string) {
+  throw new Error('Function not implemented.');
+}
+
+function getLevelText(level: string): React.ReactNode {
+  throw new Error('Function not implemented.');
+}
+

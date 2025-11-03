@@ -1,226 +1,268 @@
 import { create } from "zustand";
-import { Client, IMessage } from "@stomp/stompjs";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import instance from "../api/axiosInstance";
-import { useTokenStore } from "./tokenStore"; // Import tokenStore
+import { stompService, StompMessageCallback } from "../services/stompService";
+import { pythonAiWsService, AiChatMessage, AiMessageCallback } from "../services/pythonAiWsService";
+import { VideoSubtitleService, DualSubtitle } from "../services/videoSubtitleService";
+import instance from "../api/axiosInstance"; // axiosInstance của bạn
+import { useTokenStore } from "./tokenStore";
+import { ChatMessage as Message } from "../types/api";
 
-type Activity = {
-  id?: string;
-  type: string;
-  title: string;
-  description?: string;
-  createdAt?: string;
+
+type AiMessage = {
+  id: string; // Dùng Date.now() hoặc uuid
+  role: 'user' | 'assistant';
+  content: string;
+  isStreaming?: boolean;
 };
 
-type ChatStats = {
-  totalMessages: number;
-  translationsUsed: number;
-  videoCalls: number;
-  lastActiveAt?: string;
-  online?: boolean;
-  level?: number;
-  exp?: number;
-  streak?: number;
-};
-
-// --- MỚI THÊM ---
 type TypingStatus = {
   roomId: string;
   userId: string;
   isTyping: boolean;
 };
-// --- KẾT THÚC THÊM MỚI ---
 
+// Định nghĩa State của store
 type UseChatState = {
-  client?: Client | null;
-  connected: boolean;
-  messages: any[];
-  activities: Activity[];
-  stats?: ChatStats;
-  typingStatus: { [roomId: string]: TypingStatus }; // Thay đổi: Hỗ trợ nhiều phòng
-  connect: (token: string) => void;
-  disconnect: () => void;
-  sendMessage: (roomId: string, payload: any) => void;
-  subscribeRoom: (roomId: string) => void;
-  setStats: (s: ChatStats) => void;
-  updateLastActive: (userId: string) => Promise<void>;
-  // --- MỚI THÊM ---
-  reactToMessage: (messageId: string, reaction: string) => void;
-  markMessageAsRead: (messageId: string) => void;
+  // --- State chung ---
+  stompConnected: boolean;
+  aiWsConnected: boolean;
+
+  // --- State cho Flow 2: User/Group Chat (Java) ---
+  messagesByRoom: { [roomId: string]: Message[] };
+  typingStatusByRoom: { [roomId: string]: TypingStatus };
+  isLoadingMessages: { [roomId: string]: boolean };
+
+  // --- State cho Flow 1: AI Chat (Python) ---
+  aiChatHistory: AiMessage[];
+  isAiStreaming: boolean;
+
+  // --- State cho Flow 3: Video Call Subtitles ---
+  videoSubtitleService: VideoSubtitleService | null;
+  currentVideoSubtitles: DualSubtitle | null;
+  
+  // --- ACTIONS ---
+  
+  // --- Actions chung ---
+  connectAllServices: () => void;
+  disconnectAllServices: () => void;
+
+  // --- Actions cho Flow 2 (Java) ---
+  loadAndSubscribeToRoom: (roomId: string) => Promise<void>;
+  unsubscribeFromRoom: (roomId: string) => void;
+  sendGroupMessage: (roomId: string, payload: { content: string; purpose: 'GROUP_CHAT' | 'PRIVATE_CHAT' | 'AI_CHAT' }) => void;
   sendTypingStatus: (roomId: string, isTyping: boolean) => void;
-  // --- KẾT THÚC THÊM MỚI ---
-};
+  reactToMessage: (messageId: string, reaction: string) => void;
+  
+  // --- Actions cho Flow 1 (Python) ---
+  sendAiMessage: (prompt: string) => void;
 
-// --- MỚI: Helper function để lấy auth header ---
-const getAuthHeaders = () => {
-  const token = useTokenStore.getState().accessToken;
-  return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
-// --- MỚI: Helper function để cập nhật hoặc thêm tin nhắn ---
-const upsertMessage = (existingMessages: any[], newMessage: any) => {
-  const messageIdKey = newMessage.chatMessageId || newMessage.id;
-  const index = existingMessages.findIndex(m => (m.chatMessageId || m.id) === messageIdKey);
-  if (index > -1) {
-    // Cập nhật tin nhắn đã có (ví dụ: reaction, read status)
-    const updatedMessages = [...existingMessages];
-    updatedMessages[index] = { ...updatedMessages[index], ...newMessage };
-    return updatedMessages;
-  }
-  // Thêm tin nhắn mới
-  return [...existingMessages, newMessage];
+  // --- Actions cho Flow 3 (Video) ---
+  connectVideoSubtitles: (roomId: string, targetLang: string) => void;
+  updateSubtitleLanguage: (lang: string) => void;
+  disconnectVideoSubtitles: () => void;
 };
 
 export const useChatStore = create<UseChatState>((set, get) => ({
-  client: null,
-  connected: false,
-  messages: [],
-  activities: [],
-  stats: undefined,
-  typingStatus: {}, // Thay đổi: Khởi tạo là object rỗng
+  // --- State ---
+  stompConnected: false,
+  aiWsConnected: false,
+  messagesByRoom: {},
+  typingStatusByRoom: {},
+  isLoadingMessages: {},
+  aiChatHistory: [],
+  isAiStreaming: false,
+  videoSubtitleService: null,
+  currentVideoSubtitles: null,
 
-  connect: (token: string) => {
-    if (get().client && get().connected) return;
-    const client = new Client({
-      brokerURL: `${process.env.EXPO_PUBLIC_WS_BASE_URL || "wss://192.168.2.60:8080/ws"}`,
-      connectHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
-      reconnectDelay: 5000,
-      heartbeatIncoming: 10000,
-      heartbeatOutgoing: 10000,
-      onConnect: (frame) => {
-        console.log("STOMP connected", frame);
-        set({ connected: true });
+  // --- ACTIONS ---
 
-        // Kênh cho tin nhắn private/AI, hoặc các cập nhật (reaction/read) cho user
-        client.subscribe("/user/queue/messages", (msg: IMessage) => {
-          const body = JSON.parse(msg.body);
-          set((s) => ({ messages: upsertMessage(s.messages, body) })); // Dùng helper
-        });
-
-        client.subscribe("/user/queue/activity", (msg: IMessage) => {
-          const body = JSON.parse(msg.body);
-          set((s) => ({ activities: [body, ...s.activities].slice(0, 50) }));
-        });
-
-        client.subscribe("/user/queue/stats", (msg: IMessage) => {
-          const body = JSON.parse(msg.body);
-          set({ stats: body });
-        });
-
-        // --- MỚI: Đăng ký kênh typing private/AI ---
-        client.subscribe("/user/queue/typing", (msg: IMessage) => {
-          const body: TypingStatus = JSON.parse(msg.body);
-          set((s) => ({
-            typingStatus: {
-              ...s.typingStatus,
-              [body.roomId]: body,
+  // --- Actions chung ---
+  connectAllServices: () => {
+    // 1. Kết nối STOMP (Java)
+    if (!stompService.isConnected) {
+      stompService.connect((client) => {
+        set({ stompConnected: true });
+        
+        // Đăng ký các kênh /user/queue cá nhân
+        stompService.subscribe("/user/queue/messages", (msg) => {
+          // Xử lý tin nhắn private hoặc update (reaction, read)
+          const message = msg as Message;
+          set((state) => ({
+            messagesByRoom: {
+              ...state.messagesByRoom,
+              [message.roomId]: upsertMessage(state.messagesByRoom[message.roomId] || [], message),
             },
           }));
         });
-        // --- KẾT THÚC MỚI ---
-      },
-      onStompError: (frame) => {
-        console.error("STOMP error", frame);
-      },
-      onDisconnect: () => {
-        console.log("STOMP disconnected");
-        set({ connected: false });
-      }
-    });
-    client.activate();
-    set({ client });
-  },
+        
+        stompService.subscribe("/user/queue/typing", (msg) => {
+           const typing = msg as TypingStatus;
+           set(state => ({
+             typingStatusByRoom: { ...state.typingStatusByRoom, [typing.roomId]: typing }
+           }));
+        });
+      });
+    }
 
-  disconnect: () => {
-    const client = get().client;
-    if (client && client.active) client.deactivate();
-    set({ client: null, connected: false });
-  },
-
-  sendMessage: (roomId, payload) => {
-    const client = get().client;
-    if (!client || !client.active) throw new Error("STOMP not connected");
-    client.publish({
-      destination: `/app/chat/room/${roomId}`,
-      body: JSON.stringify(payload),
-      headers: getAuthHeaders(), // Thêm header
-    });
-  },
-
-  subscribeRoom: (roomId) => {
-    const client = get().client;
-    if (!client || !client.active) return;
-
-    // --- MỚI: Đăng ký kênh tin nhắn/updates của group ---
-    client.subscribe(`/topic/room/${roomId}`, (msg: IMessage) => {
-      const body = JSON.parse(msg.body);
-      set((s) => ({ messages: upsertMessage(s.messages, body) })); // Dùng helper
-    });
-    // --- KẾT THÚC MỚI ---
-
-    // Kênh dịch (đã có)
-    client.subscribe(`/topic/room/${roomId}/translations`, (msg: IMessage) => {
-      const body = JSON.parse(msg.body); // { messageId, targetLang, translatedText, provider }
-      set((s) => ({
-        messages: s.messages.map(m =>
-          (m.id || m.chatMessageId) === body.messageId ? { ...m, translatedText: body.translatedText, translatedLang: body.targetLang } : m)
-      }));
-    });
-
-    // --- MỚI: Đăng ký kênh typing của group ---
-    client.subscribe(`/topic/room/${roomId}/typing`, (msg: IMessage) => {
-      const body: TypingStatus = JSON.parse(msg.body);
-      set((s) => ({
-        typingStatus: {
-          ...s.typingStatus,
-          [body.roomId]: body,
-        },
-      }));
-    });
-    // --- KẾT THÚC MỚI ---
-  },
-
-  setStats: (s) => set({ stats: s }),
-
-  updateLastActive: async (userId: string) => {
-    try {
-      await instance.patch(`/users/${userId}/last-active`);
-    } catch (e) {
-      console.warn("updateLastActive failed", e);
+    // 2. Kết nối WebSocket (Python AI Chat)
+    if (!pythonAiWsService.isConnected) {
+      const onAiMessage: AiMessageCallback = (msg) => {
+        if (msg.type === 'chat_response_chunk') {
+          set((state) => {
+            const lastMessage = state.aiChatHistory[state.aiChatHistory.length - 1];
+            if (lastMessage && lastMessage.role === 'assistant' && lastMessage.isStreaming) {
+              // Nối chunk vào tin nhắn cuối cùng
+              lastMessage.content += msg.content || "";
+              return { aiChatHistory: [...state.aiChatHistory] };
+            } else {
+              // Bắt đầu một tin nhắn streaming mới
+              return {
+                isAiStreaming: true,
+                aiChatHistory: [
+                  ...state.aiChatHistory,
+                  { id: Date.now().toString(), role: 'assistant', content: msg.content || "", isStreaming: true }
+                ]
+              };
+            }
+          });
+        } else if (msg.type === 'chat_response_complete') {
+          set((state) => {
+             const lastMessage = state.aiChatHistory[state.aiChatHistory.length - 1];
+             if(lastMessage && lastMessage.isStreaming) {
+                lastMessage.isStreaming = false;
+             }
+             return { isAiStreaming: false, aiChatHistory: [...state.aiChatHistory] };
+          });
+        }
+      };
+      pythonAiWsService.connect(onAiMessage);
+      set({ aiWsConnected: true });
     }
   },
 
-  // --- MỚI: Các hàm actions ---
-  reactToMessage: (messageId, reaction) => {
-    const client = get().client;
-    if (!client || !client.active) throw new Error("STOMP not connected");
-    client.publish({
-      destination: `/app/chat/message/${messageId}/react`,
-      body: reaction, // BE chỉ cần payload là string
-      headers: getAuthHeaders(),
-    });
+  disconnectAllServices: () => {
+    stompService.disconnect();
+    pythonAiWsService.disconnect();
+    get().disconnectVideoSubtitles(); // Gọi action nội bộ
+    set({ stompConnected: false, aiWsConnected: false });
   },
 
-  markMessageAsRead: (messageId) => {
-    const client = get().client;
-    if (!client || !client.active) throw new Error("STOMP not connected");
-    client.publish({
-      destination: `/app/chat/message/${messageId}/read`,
-      body: "", // Không cần body
-      headers: getAuthHeaders(),
-    });
+  // --- Actions cho Flow 2 (Java) ---
+  loadAndSubscribeToRoom: async (roomId: string) => {
+    if (get().isLoadingMessages[roomId] || get().messagesByRoom[roomId]) {
+      // Đã load hoặc đang load
+      return;
+    }
+
+    set(state => ({ isLoadingMessages: { ...state.isLoadingMessages, [roomId]: true }}));
+
+    try {
+      // 1. Gọi REST để lấy lịch sử tin nhắn
+      const response = await instance.get(`/api/v1/chat/room/${roomId}/messages`);
+      const messages = response.data.result.content.reverse(); // API trả về phân trang (mới nhất trước)
+      
+      set((state) => ({
+        messagesByRoom: { ...state.messagesByRoom, [roomId]: messages },
+      }));
+
+      // 2. Subscribe STOMP để nhận tin nhắn mới
+      if (get().stompConnected) {
+        stompService.subscribe(`/topic/room/${roomId}`, (msg) => {
+          const message = msg as Message;
+          set((state) => ({
+            messagesByRoom: {
+              ...state.messagesByRoom,
+              [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], message),
+            },
+          }));
+        });
+        
+        stompService.subscribe(`/topic/room/${roomId}/typing`, (msg) => {
+           const typing = msg as TypingStatus;
+           set(state => ({
+             typingStatusByRoom: { ...state.typingStatusByRoom, [typing.roomId]: typing }
+           }));
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load messages for room", roomId, e);
+    } finally {
+      set(state => ({ isLoadingMessages: { ...state.isLoadingMessages, [roomId]: false }}));
+    }
+  },
+
+  unsubscribeFromRoom: (roomId: string) => {
+    stompService.unsubscribe(`/topic/room/${roomId}`);
+    stompService.unsubscribe(`/topic/room/${roomId}/typing`);
+    // Giữ lại tin nhắn trong state, không xóa
+  },
+  
+  sendGroupMessage: (roomId, payload) => {
+    // Gửi qua STOMP (Java)
+    stompService.publish(`/app/chat/room/${roomId}`, payload);
   },
 
   sendTypingStatus: (roomId, isTyping) => {
-    const client = get().client;
-    if (!client || !client.active) throw new Error("STOMP not connected");
-    client.publish({
-      destination: `/app/chat/room/${roomId}/typing`,
-      body: JSON.stringify({ isTyping }), // BE cần object TypingStatusRequest
-      headers: getAuthHeaders(),
+    stompService.publish(`/app/chat/room/${roomId}/typing`, { isTyping });
+  },
+
+  reactToMessage: (messageId, reaction) => {
+    stompService.publish(`/app/chat/message/${messageId}/react`, reaction); // BE Java nhận String
+  },
+
+  // --- Actions cho Flow 1 (Python) ---
+  sendAiMessage: (prompt: string) => {
+    if (!get().aiWsConnected) {
+      console.warn("AI WS not connected. Cannot send message.");
+      return;
+    }
+    
+    // Thêm tin nhắn của user vào lịch sử
+    const userMessage: AiMessage = { id: Date.now().toString(), role: 'user', content: prompt };
+    set(state => ({ 
+      aiChatHistory: [...state.aiChatHistory, userMessage],
+      isAiStreaming: true,
+    }));
+    
+    // Lấy lịch sử để gửi
+    const history = get().aiChatHistory.map(m => ({ role: m.role, content: m.content }));
+    
+    // Gửi qua WebSocket (Python)
+    pythonAiWsService.sendMessage({
+      type: 'chat_request',
+      prompt: prompt,
+      history: history.slice(0, -1) // Gửi lịch sử *trước* tin nhắn này
     });
   },
-  // --- KẾT THÚC MỚI ---
+
+  // --- Actions cho Flow 3 (Video) ---
+  connectVideoSubtitles: (roomId: string, targetLang: string) => {
+    const service = new VideoSubtitleService();
+    set({ videoSubtitleService: service, currentVideoSubtitles: null });
+
+    service.connect(roomId, targetLang, (subtitle) => {
+      set({ currentVideoSubtitles: subtitle });
+    });
+  },
+
+  updateSubtitleLanguage: (lang: string) => {
+    get().videoSubtitleService?.updateTargetLanguage(lang);
+  },
+
+  disconnectVideoSubtitles: () => {
+    get().videoSubtitleService?.disconnect();
+    set({ videoSubtitleService: null, currentVideoSubtitles: null });
+  },
 }));
+
+// --- Helper ---
+function upsertMessage(existingMessages: Message[], newMessage: Message): Message[] {
+  const index = existingMessages.findIndex(m => m.chatMessageId === newMessage.chatMessageId);
+  if (index > -1) {
+    // Cập nhật (reaction, read status, edit,...)
+    const updated = [...existingMessages];
+    updated[index] = { ...updated[index], ...newMessage };
+    return updated;
+  }
+  // Thêm mới
+  return [...existingMessages, newMessage];
+}

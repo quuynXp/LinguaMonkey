@@ -97,6 +97,63 @@ public class GrpcClientService {
         });
     }
 
+    public CompletableFuture<FindMatchResponse> callFindMatchAsync(String token, String userId, CallPreferences preferences) {
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        FindMatchRequest request = FindMatchRequest.newBuilder()
+                .setUserId(userId)
+                .setPreferences(preferences)
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                FindMatchResponse response = stub.findMatch(request).get();
+                if (response == null || !response.getError().isEmpty()) {
+                    log.error("gRPC FindMatch failed: {}", response.getError());
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                return response;
+            } catch (Exception e) {
+                log.error("gRPC call to FindMatch failed: {}", e.getMessage());
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
+
+    public CompletableFuture<ReviewQualityResponse> callAnalyzeReviewQualityAsync(String token, String userId, String contentId, String content, float rating, String contentType) {
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        ReviewQualityRequest request = ReviewQualityRequest.newBuilder()
+                .setUserId(userId)
+                .setContentId(contentId) // courseId hoặc lessonId
+                .setReviewText(content)
+                .setRating(rating)
+                .setContentType(contentType) // "COURSE" hoặc "LESSON"
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Giả định gRPC server có hàm 'analyzeReviewQuality'
+                ReviewQualityResponse response = stub.analyzeReviewQuality(request).get();
+                if (!response.getError().isEmpty()) {
+                    log.error("AI review analysis failed: {}", response.getError());
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                return response;
+            } catch (Exception e) {
+                log.error("gRPC call to analyzeReviewQuality failed: {}", e.getMessage());
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
     public CompletableFuture<QuizGenerationResponse> generateLanguageQuiz(String token, String userId, int numQuestions, String mode, String topic) {
         ManagedChannel channel = createChannelWithToken(token);
         LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);

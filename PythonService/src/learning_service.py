@@ -368,6 +368,40 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         )
 
 
+async def AnalyzeReviewQuality(self, request, context):
+    claims = self._verify_token(context)
+    if not claims:
+        # Trả về lỗi nếu không xác thực
+        return learning_pb2.ReviewQualityResponse(error="Unauthenticated")
+
+    user_id = request.user_id or claims.get("sub")
+
+    try:
+        # Gọi hàm (giả lập) AI analyzer
+        is_valid, sentiment, topics, suggested_action, error = await analyze_review(
+            user_id=user_id,
+            content_id=request.content_id,
+            review_text=request.review_text,
+            rating=request.rating,
+            content_type=request.content_type,
+        )
+
+        if error:
+            return learning_pb2.ReviewQualityResponse(error=error)
+
+        # Trả về response thành công
+        return learning_pb2.ReviewQualityResponse(
+            is_valid=is_valid,
+            sentiment=sentiment,
+            topics=topics,
+            suggested_action=suggested_action,
+        )
+
+    except Exception as e:
+        logging.error(f"AnalyzeReviewQuality failed unexpectedly: {e}")
+        return learning_pb2.ReviewQualityResponse(error=f"Internal server error: {e}")
+
+
 async def serve():
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
     learning_pb2_grpc.add_LearningServiceServicer_to_server(LearningService(), server)

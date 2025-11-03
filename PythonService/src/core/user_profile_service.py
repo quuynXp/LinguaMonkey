@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc, join
 from sqlalchemy.orm import selectinload
-import aioredis
+from redis import asyncio as aioredis
 import asyncio
 
 # Import các model đã định nghĩa

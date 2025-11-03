@@ -13,6 +13,12 @@ public interface LessonReviewRepository extends JpaRepository<LessonReview, UUID
     @Query("SELECT lr FROM LessonReview lr WHERE lr.reviewId = :id AND lr.isDeleted = false")
     Optional<LessonReview> findByIdAndIsDeletedFalse(UUID id);
 
+    boolean existsByLessonIdAndUserId(UUID lessonId, UUID userId);
+
+    Optional<LessonReview> findByLessonIdAndUserIdAndIsDeletedFalse(UUID lessonId, UUID userId);
+
+    Page<LessonReview> findByLessonIdAndIsDeletedFalse(UUID lessonId, Pageable pageable);
+
     @Query("SELECT lr FROM LessonReview lr WHERE lr.isDeleted = false")
     Page<LessonReview> findAllByIsDeletedFalse(Pageable pageable);
 

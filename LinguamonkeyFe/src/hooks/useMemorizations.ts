@@ -47,7 +47,7 @@ export const useMemorizations = () => {
   const useCreateMemorization = () =>
     useMutation({
       mutationFn: async (data: { content_type: string; content_id?: string; note_text?: string; is_favorite?: boolean }) => {
-        const res = await instance.post("/user/memorizations", data)
+        const res = await instance.post("/api/v1/user/memorizations", data)
         return res.data
       },
       onSuccess: () => {

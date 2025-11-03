@@ -20,6 +20,6 @@ public class CourseSummaryResponse {
     private long reviewCount;
     private int star; // nếu cần hiển thị star integer
 
-    public CourseSummaryResponse(UUID courseId, String title, String thumbnailUrl) {
+    public CourseSummaryResponse(UUID courseId, String title) {
     }
 }

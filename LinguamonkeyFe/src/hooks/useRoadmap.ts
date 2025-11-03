@@ -18,7 +18,7 @@ export const useRoadmap = () => {
       queryKey: ["userRoadmap", languageCode, user?.userId],
       queryFn: async () => {
         if (!user?.userId) throw new Error("User not logged in");
-        let endpoint = `/roadmaps/user/${user.userId}`;
+        let endpoint = `/api/v1/roadmaps/user/${user.userId}`;
         if (languageCode) endpoint += `?language=${languageCode}`;
         const res = await instance.get<ApiResponse<LearningRoadmap[]>>(endpoint);
         const list = res.data.result || [];
@@ -32,7 +32,7 @@ export const useRoadmap = () => {
     useQuery({
       queryKey: ["defaultRoadmaps", languageCode],
       queryFn: async () => {
-        let endpoint = `/roadmaps`;
+        let endpoint = `/api/v1/roadmaps`;
         if (languageCode) endpoint += `?language=${languageCode}`;
         const res = await instance.get<ApiResponse<LearningRoadmap[]>>(endpoint);
         return res.data.result;
@@ -45,7 +45,7 @@ export const useRoadmap = () => {
       queryKey: ["roadmapItem", itemId],
       queryFn: async () => {
         if (!itemId) throw new Error("Item id missing");
-        const res = await instance.get<ApiResponse<RoadmapItemDetail>>(`/roadmaps/items/${itemId}`);
+        const res = await instance.get<ApiResponse<RoadmapItemDetail>>(`/api/v1/roadmaps/items/${itemId}`);
         return res.data.result;
       },
       enabled: !!itemId,
@@ -80,7 +80,7 @@ export const useRoadmap = () => {
       queryKey: ["roadmapDetail", roadmapId],
       queryFn: async () => {
         if (!roadmapId) throw new Error("Missing roadmapId");
-        const res = await instance.get<ApiResponse<LearningRoadmap>>(`/roadmaps/${roadmapId}${userId ? `?userId=${userId}` : ""}`);
+        const res = await instance.get<ApiResponse<LearningRoadmap>>(`/api/v1/roadmaps/${roadmapId}${userId ? `?userId=${userId}` : ""}`);
         return res.data.result;
       },
       enabled: !!roadmapId,
@@ -90,7 +90,7 @@ export const useRoadmap = () => {
   const useUpdateGoal = () =>
     useMutation({
       mutationFn: async ({ goalId, goalData }: { goalId: string; goalData: Partial<UserGoal> }) => {
-        const res = await instance.put<ApiResponse<UserGoal>>(`/user-goals/${goalId}`, goalData);
+        const res = await instance.put<ApiResponse<UserGoal>>(`/api/v1/user-goals/${goalId}`, goalData);
         return res.data.result;
       },
       onSuccess: () => {
@@ -193,7 +193,7 @@ export const useRoadmap = () => {
         title: string;
         description: string;
       }) => {
-        const res = await instance.put<ApiResponse<LearningRoadmap>>(`/roadmaps/${roadmapId}`, {
+        const res = await instance.put<ApiResponse<LearningRoadmap>>(`/api/v1/roadmaps/${roadmapId}`, {
           title,
           description,
         });
@@ -219,7 +219,7 @@ export const useRoadmap = () => {
     useQuery({
       queryKey: ["suggestions", roadmapId],
       queryFn: async () => {
-        const res = await instance.get<ApiResponse<any>>(`/roadmaps/${roadmapId}/suggestions`);
+        const res = await instance.get<ApiResponse<any>>(`/api/v1/roadmaps/${roadmapId}/suggestions`);
         return res.data.result;
       },
     });
@@ -239,7 +239,7 @@ export const useRoadmap = () => {
       }) => {
         if (!user?.userId) throw new Error("User not logged in");
         const res = await instance.post<ApiResponse<any>>(
-          `/roadmaps/${roadmapId}/suggestions`,
+          `/api/v1/roadmaps/${roadmapId}/suggestions`,
           { itemId, suggestedOrderIndex, reason, userId: user.userId }
         );
         return res.data.result;
@@ -259,7 +259,7 @@ export const useRoadmap = () => {
         userId: string;
       }) => {
         const res = await instance.put<ApiResponse<any>>(
-          `/roadmaps/suggestions/${suggestionId}/apply?userId=${userId}`
+          `/api/v1/roadmaps/suggestions/${suggestionId}/apply?userId=${userId}`
         );
         return res.data.result;
       },

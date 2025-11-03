@@ -1,5 +1,3 @@
-"use client"
-
 import { useCallback } from "react"
 import { showToast as showToastComponent } from "../components/Toast"
 

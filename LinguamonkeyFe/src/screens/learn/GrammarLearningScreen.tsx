@@ -18,6 +18,7 @@ import { useAppStore } from "../../stores/appStore";
 import type { GrammarExercise, GrammarRule, GrammarTopic, SubmitExerciseResponse } from "../../types/api";
 import { grammarExerciseSchema, validateData } from "../../utils/validation";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useUserStore } from "../../stores/UserStore";
 
 const GrammarLearningScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -32,7 +33,7 @@ const GrammarLearningScreen = ({ navigation }: any) => {
   const { useGrammarTopics, useGrammarTopic, useGrammarRule, useSubmitGrammarExercise, useUpdateGrammarProgress } =
     useGrammar();
 
-  const currentUser = useAppStore((s) => s.user);
+  const currentUser = useUserStore().user;
   const userId = currentUser?.userId ?? null;
 
   const topicsQuery = useGrammarTopics();

@@ -18,7 +18,7 @@ export const useReminders = () => {
     if (params?.page) queryParams.append("page", params.page.toString())
     if (params?.limit) queryParams.append("limit", params.limit.toString())
 
-    const url = `/user/reminders${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
+    const url = `/api/v1/user/reminders${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
 
     return useQuery<UserReminder[]>({
       queryKey: ["userReminders", params],
@@ -35,7 +35,7 @@ export const useReminders = () => {
       queryKey: ["reminder", reminderId],
       queryFn: async () => {
         if (!reminderId) throw new Error("Invalid reminderId")
-        const res = await instance.get(`/user/reminders/${reminderId}`)
+        const res = await instance.get(`/api/v1/user/reminders/${reminderId}`)
         return res.data
       },
       enabled: !!reminderId,
@@ -66,7 +66,7 @@ export const useReminders = () => {
   const useUpdateReminder = () =>
     useMutation({
       mutationFn: async ({ reminderId, data }: { reminderId: string; data: Partial<UserReminder> }) => {
-        const res = await instance.put(`/user/reminders/${reminderId}`, data)
+        const res = await instance.put(`/api/v1/user/reminders/${reminderId}`, data)
         return res.data
       },
       onSuccess: (data, variables) => {
@@ -79,7 +79,7 @@ export const useReminders = () => {
   const useDeleteReminder = () =>
     useMutation({
       mutationFn: async (reminderId: string) => {
-        const res = await instance.delete(`/user/reminders/${reminderId}`)
+        const res = await instance.delete(`/api/v1/user/reminders/${reminderId}`)
         return res.data
       },
       onSuccess: () => {
@@ -91,7 +91,7 @@ export const useReminders = () => {
   const useToggleReminder = () =>
     useMutation({
       mutationFn: async (reminderId: string) => {
-        const res = await instance.put(`/user/reminders/toggle`, { id: reminderId })
+        const res = await instance.put(`/api/v1/user/reminders/toggle`, { id: reminderId })
         return res.data
       },
       onSuccess: (data, reminderId) => {

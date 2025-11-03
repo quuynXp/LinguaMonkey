@@ -1,151 +1,263 @@
-"use client"
-
-import { useNavigation, useRoute } from "@react-navigation/native"
-import { useEffect, useRef, useState } from "react"
+import React, { useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    Share,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
-} from "react-native"
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Share,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useTranslation } from "react-i18next"
-import { useChatStore } from "../../stores/ChatStore"
-import { translateText } from "../../services/pythonService" // assuming path
-import { } from "../../types/api"
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { useTranslation } from "react-i18next";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { useChatStore } from "../../stores/ChatStore";
+import { useUserStore } from "../../stores/UserStore";
+import instance from "../../api/axiosInstance";
 import { createScaledSheet } from "../../utils/scaledStyles";
 
-const GroupChatRoomScreen = () => {
-  const { t } = useTranslation()
-  const [messages, setMessages] = useState([
-    {
-      id: 1,
-      text: "Chào mọi người! Hôm nay chúng ta học gì nhỉ?",
-      sender: "other",
-      timestamp: "10:30",
-      user: "Minh Anh",
-      avatar: "👩",
-    },
-    {
-      id: 2,
-      text: "Tôi muốn luyện tập phát âm tiếng Anh",
-      sender: "other",
-      timestamp: "10:32",
-      user: "Hoàng Nam",
-      avatar: "👨",
-    },
-    { id: 3, text: "Ý tưởng hay đó! Chúng ta có thể thực hành cùng nhau", sender: "user", timestamp: "10:35" },
-    {
-      id: 4,
-      text: "Let's practice English pronunciation together!",
-      sender: "other",
-      timestamp: "10:37",
-      user: "Sarah",
-      avatar: "👱‍♀️",
-    },
-  ])
-  const [inputText, setInputText] = useState("")
-  const [showRoomSettings, setShowRoomSettings] = useState(false)
-  const [translatingMessageId, setTranslatingMessageId] = useState(null)
-  const [roomInfo, setRoomInfo] = useState({
-    name: "Nhóm học tiếng Anh",
-    members: 15,
-    onlineMembers: 8,
-    roomId: "ROOM789ABC",
-    isAdmin: true,
-    canKick: true,
-    description: "Nhóm luyện tập tiếng Anh hàng ngày",
-  })
-  const [editingRoomName, setEditingRoomName] = useState(false)
-  const [newRoomName, setNewRoomName] = useState(roomInfo.name)
-  const [showMembersList, setShowMembersList] = useState(false)
-  const activities = useChatStore(state => state.activities)
-  const stats = useChatStore(state => state.stats)
+// --- Kiểu dữ liệu từ API (Dựa trên schema và controller) ---
+type ApiRoomInfo = {
+  roomId: string;
+  roomName: string;
+  description: string;
+  purpose: 'GROUP_CHAT' | 'PRIVATE_CHAT' | 'AI_CHAT';
+  roomType: 'PUBLIC' | 'PRIVATE';
+  creatorId: string;
+  memberCount: number;
+  // ... (Các trường khác từ RoomResponse.java)
+};
 
-  const flatListRef = useRef(null)
-  const navigation = useNavigation()
-  const route = useRoute()
+type ApiMember = {
+  userId: string;
+  username: string; // Giả định MemberResponse có trường này
+  avatarUrl: string | null; // Giả định MemberResponse có trường này
+  role: 'MEMBER' | 'ADMIN' | 'MODERATOR'; // Giả định MemberResponse có trường này
+  isOnline: boolean; // Giả định MemberResponse có trường này
+};
 
-  const members = [
-    { id: 1, name: "Minh Anh", avatar: "👩", isOnline: true, role: "member" },
-    { id: 2, name: "Hoàng Nam", avatar: "👨", isOnline: true, role: "member" },
-    { id: 3, name: "Sarah", avatar: "👱‍♀️", isOnline: true, role: "moderator" },
-    { id: 4, name: "David", avatar: "👨‍🦱", isOnline: false, role: "member" },
-    { id: 5, name: "Lisa", avatar: "👩‍🦰", isOnline: true, role: "member" },
-  ]
+type ChatRoomParams = {
+  ChatRoom: {
+    roomId: string;
+    roomName: string; // Tên ban đầu
+  };
+};
+
+type Message = {
+  chatMessageId: string;
+  roomId: string;
+  senderId: string;
+  content: string;
+  sentAt: string;
+  purpose: 'GROUP_CHAT' | 'PRIVATE_CHAT';
+  translatedText?: string;
+  reactions?: any;
+};
+
+const GroupChatScreen = () => {
+  const { t } = useTranslation();
+  const navigation = useNavigation();
+  const route = useRoute<RouteProp<ChatRoomParams, 'ChatRoom'>>();
+  const queryClient = useQueryClient();
+  
+  const { roomId, roomName: initialRoomName } = route.params;
+  const { user } = useUserStore();
+  
+  // --- STATE CỤC BỘ CHO UI ---
+  const [inputText, setInputText] = useState("");
+  const [showRoomSettings, setShowRoomSettings] = useState(false);
+  const [localTranslations, setLocalTranslations] = useState<{ [msgId: string]: string }>({});
+  const [showMembersList, setShowMembersList] = useState(false);
+  const [editingRoomName, setEditingRoomName] = useState(false);
+  const [newRoomName, setNewRoomName] = useState(initialRoomName);
+
+  // --- STATE TỪ ZUSTAND STORE (CHO CHAT) ---
+  const isLoadingMessages = useChatStore(s => s.isLoadingMessages[roomId]);
+  const typingStatus = useChatStore(s => s.typingStatusByRoom[roomId]);
+  const serverMessages = useChatStore(s => s.messagesByRoom[roomId] || []);
+
+  // --- ACTIONS TỪ ZUSTAND STORE (CHO CHAT) ---
+  const loadAndSubscribe = useChatStore(s => s.loadAndSubscribeToRoom);
+  const unsubscribe = useChatStore(s => s.unsubscribeFromRoom);
+  const sendGroupMessage = useChatStore(s => s.sendGroupMessage);
+  const sendTypingStatus = useChatStore(s => s.sendTypingStatus);
+  const reactToMessage = useChatStore(s => s.reactToMessage);
+
+  const flatListRef = useRef<FlatList>(null);
+
+  // --- GỌI API LẤY THÔNG TIN PHÒNG (THAY CHO MOCK) ---
+  const { data: roomInfo, isLoading: isLoadingRoomInfo } = useQuery<ApiRoomInfo>({
+    queryKey: ['roomInfo', roomId],
+    queryFn: async () => {
+      const response = await instance.get(`/api/v1/rooms/${roomId}`);
+      return response.data.result; // Dựa theo AppApiResponse
+    },
+    onSuccess: (data) => {
+      if (data) {
+        setNewRoomName(data.roomName);
+      }
+    }
+  });
+
+  // --- GỌI API LẤY THÀNH VIÊN (THAY CHO MOCK) ---
+  const { data: members = [], isLoading: isLoadingMembers } = useQuery<ApiMember[]>({
+    queryKey: ['roomMembers', roomId],
+    queryFn: async () => {
+      // GET /api/v1/rooms/{roomId}/members (API bạn vừa thêm ở bước 1)
+      const response = await instance.get(`/api/v1/rooms/${roomId}/members`);
+      return response.data.result; 
+    },
+    enabled: !!roomId, // Chỉ chạy khi có roomId
+  });
+
+  // --- API DỊCH (GIỮ NGUYÊN) ---
+  const { mutate: translateMutate, isPending: isTranslating } = useMutation({
+    mutationFn: async ({ text, targetLanguage, messageId }: { text: string, targetLanguage: string, messageId: string }) => {
+      const response = await instance.post('/api/py/translate', { 
+        text, 
+        target_lang: targetLanguage 
+      });
+      return { translated_text: response.data.translated_text, messageId };
+    },
+    onSuccess: (data) => {
+      setLocalTranslations(prev => ({ ...prev, [data.messageId]: data.translated_text }));
+    },
+    onError: () => { Alert.alert(t('error'), t('translation.error')); }
+  });
+
+  // --- API CẬP NHẬT TÊN PHÒNG (THAY CHO TODO) ---
+  const { mutate: updateRoomNameMutate, isPending: isUpdatingRoom } = useMutation({
+    mutationFn: (newName: string) => {
+      // PUT /api/v1/rooms/{id} (Từ RoomController)
+      const payload = {
+        roomName: newName,
+        creatorId: roomInfo?.creatorId,
+        maxMembers: roomInfo?.memberCount, // Giữ lại giá trị cũ
+        purpose: roomInfo?.purpose,
+        roomType: roomInfo?.roomType,
+        description: roomInfo?.description
+      };
+      return instance.put(`/api/v1/rooms/${roomId}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roomInfo', roomId] }); 
+      setEditingRoomName(false);
+    },
+    onError: () => { Alert.alert(t('error'), t('group.nameUpdateError')); }
+  });
+  
+  // --- API KICK THÀNH VIÊN (THAY CHO TODO) ---
+  const { mutate: kickMemberMutate, isPending: isKicking } = useMutation({
+    mutationFn: (userIdToKick: string) => {
+      // DELETE /api/v1/rooms/{id}/members (Từ RoomController)
+      return instance.delete(`/api/v1/rooms/${roomId}/members`, {
+        data: [userIdToKick] // Body là một mảng UUID [string]
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['roomMembers', roomId] });
+      queryClient.invalidateQueries({ queryKey: ['roomInfo', roomId] }); // Tải lại cả thông tin phòng (để cập nhật memberCount)
+      Alert.alert(t("success"), t("group.kick.success"));
+    },
+    onError: () => { Alert.alert(t('error'), t('group.kick.error')); }
+  });
+
+  // --- KẾT HỢP DATA ---
+  const messages = serverMessages.map((msg: Message) => {
+    const localTranslation = localTranslations[msg.chatMessageId];
+    const senderInfo = members.find(m => m.userId === msg.senderId);
+    return {
+      ...msg,
+      id: msg.chatMessageId,
+      sender: msg.senderId === user?.id ? 'user' : 'other',
+      timestamp: new Date(msg.sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      text: msg.content,
+      translatedText: localTranslation || msg.translatedText,
+      translated: !!(localTranslation || msg.translatedText),
+      user: senderInfo?.username || msg.senderId,
+      avatar: senderInfo?.avatarUrl || '👩', 
+    };
+  });
+
+  // --- EFFECTS ---
+  useEffect(() => {
+    loadAndSubscribe(roomId);
+    return () => {
+      unsubscribe(roomId);
+    };
+  }, [roomId, loadAndSubscribe, unsubscribe]);
 
   useEffect(() => {
-    flatListRef.current?.scrollToEnd({ animated: true })
-  }, [messages])
-
-  const sendMessage = () => {
-    if (inputText.trim() === "") return
-
-    const newMessage = {
-      id: Date.now(),
-      text: inputText,
-      sender: "user",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    if (messages.length > 0) {
+      flatListRef.current?.scrollToEnd({ animated: true });
     }
+  }, [messages.length]);
 
-    setMessages((prevMessages) => [...prevMessages, newMessage])
-    setInputText("")
-  }
+  // --- HANDLERS (Store-connected) ---
+  const handleSendMessage = () => {
+    if (inputText.trim() === "") return;
+    sendGroupMessage(roomId, {
+      content: inputText,
+      purpose: roomInfo?.purpose || 'GROUP_CHAT'
+    });
+    setInputText("");
+    sendTypingStatus(roomId, false);
+  };
 
-  const translateMessage = async (messageId, messageText) => {
-    setTranslatingMessageId(messageId)
-    try {
-      const translatedText = await translateText(messageText, "vi")
-      setMessages((prevMessages) =>
-        prevMessages.map((msg) => (msg.id === messageId ? { ...msg, translatedText, translated: true } : msg)),
-      )
-    } catch (error) {
-      console.error("Translation error:", error)
-      Alert.alert(t('error'), t('translation.error'))
-    } finally {
-      setTranslatingMessageId(null)
-    }
-  }
+  const handleTyping = (text: string) => {
+    setInputText(text);
+    sendTypingStatus(roomId, text.length > 0);
+  };
 
+  const handleTranslate = (messageId: string, messageText: string) => {
+    translateMutate({ messageId, text: messageText, targetLanguage: 'vi' });
+  };
+
+  const handleReact = (messageId: string) => {
+    const reaction = "👍";
+    reactToMessage(messageId, reaction);
+  };
+  
+  // --- UI Handlers (Đã kết nối API) ---
   const shareRoomId = async () => {
+    if (!roomInfo) return;
     try {
       await Share.share({
         message: t("group.share.message", { roomId: roomInfo.roomId, description: roomInfo.description }),
         title: t("group.share.title"),
-      })
-    } catch (error) {
-      console.error("Error sharing:", error)
+      });
+    } catch (error) { console.error("Error sharing:", error); }
+  };
+
+  const handleUpdateRoomName = () => {
+    if (newRoomName.trim() === "" || newRoomName === roomInfo?.roomName) {
+      setEditingRoomName(false);
+      return;
     }
-  }
+    updateRoomNameMutate(newRoomName.trim());
+  };
 
-  const updateRoomName = () => {
-    if (newRoomName.trim() === "") return
-    setRoomInfo((prev) => ({ ...prev, name: newRoomName.trim() }))
-    setEditingRoomName(false)
-  }
-
-  const kickMember = (member) => {
-    Alert.alert(t("group.kick.confirm"), t("group.kick.confirm.message", { name: member.name }), [
+  const handleKickMember = (member: ApiMember) => {
+    Alert.alert(t("group.kick.confirm"), t("group.kick.confirm.message", { name: member.username }), [
       { text: t("cancel"), style: "cancel" },
       {
         text: t("confirm"),
         style: "destructive",
-        onPress: () => {
-          Alert.alert(t("success"), t("group.kick.success", { name: member.name }))
-        },
+        onPress: () => kickMemberMutate(member.userId),
       },
-    ])
-  }
+    ]);
+  };
+  
+  const isUserAdmin = roomInfo?.creatorId === user?.id; // Logic check admin
 
-  const renderMessage = ({ item: message }) => (
+  // --- RENDER ---
+  const renderMessage = ({ item: message }: { item: (typeof messages)[0] }) => (
     <View
       style={[
         styles.messageContainer,
@@ -154,58 +266,56 @@ const GroupChatRoomScreen = () => {
     >
       {message.sender === "other" && (
         <View style={styles.messageHeader}>
+          {/* TODO: Thay 'Text' bằng 'Image' cho avatarUrl */}
           <Text style={styles.avatar}>{message.avatar}</Text>
           <Text style={styles.senderName}>{message.user}</Text>
         </View>
       )}
 
-      <View style={[styles.messageBubble, message.sender === "user" ? styles.userMessage : styles.otherMessage]}>
-        <Text
-          style={[styles.messageText, message.sender === "user" ? styles.userMessageText : styles.otherMessageText]}
-        >
-          {message.translated ? message.translatedText : message.text}
-        </Text>
-        <Text style={[styles.timestamp, message.sender === "user" ? styles.userTimestamp : styles.otherTimestamp]}>
-          {message.timestamp}
-        </Text>
-      </View>
+      <TouchableOpacity onLongPress={() => handleReact(message.id)}>
+        <View style={[styles.messageBubble, message.sender === "user" ? styles.userMessage : styles.otherMessage]}>
+          <Text style={[styles.messageText, message.sender === "user" ? styles.userMessageText : styles.otherMessageText]}>
+            {message.translated ? message.translatedText : message.text}
+          </Text>
+          <Text style={[styles.timestamp, message.sender === "user" ? styles.userTimestamp : styles.otherTimestamp]}>
+            {message.timestamp}
+          </Text>
+        </View>
+      </TouchableOpacity>
 
-      {message.sender === "other" && (
+      {message.sender === "other" && !message.translated && (
         <TouchableOpacity
           style={styles.translateButton}
-          onPress={() => translateMessage(message.id, message.text)}
-          disabled={translatingMessageId === message.id}
+          onPress={() => handleTranslate(message.id, message.text)}
+          disabled={isTranslating}
         >
-          {translatingMessageId === message.id ? (
-            <ActivityIndicator size="small" color="#6B7280" />
-          ) : (
-            <Icon name={message.translated ? "language" : "language-outline"} size={16} color="#6B7280" />
-          )}
+          {isTranslating ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name={"language"} size={16} color="#6B7280" />}
         </TouchableOpacity>
       )}
     </View>
-  )
+  );
 
-  const renderMember = ({ item: member }) => (
+  const renderMember = ({ item: member }: { item: ApiMember }) => (
     <View style={styles.memberItem}>
       <View style={styles.memberInfo}>
-        <Text style={styles.memberAvatar}>{member.avatar}</Text>
+        {/* TODO: Thay 'Text' bằng 'Image' cho avatarUrl */}
+        <Text style={styles.memberAvatar}>{member.avatarUrl || '👩'}</Text>
         <View style={styles.memberDetails}>
-          <Text style={styles.memberName}>{member.name}</Text>
+          <Text style={styles.memberName}>{member.username}</Text>
           <View style={styles.memberStatus}>
             <View style={[styles.onlineIndicator, { backgroundColor: member.isOnline ? "#10B981" : "#6B7280" }]} />
-            <Text style={styles.memberRole}>{member.role === "moderator" ? t("moderator") : t("member")}</Text>
+            <Text style={styles.memberRole}>{t(member.role.toLowerCase())}</Text>
           </View>
         </View>
       </View>
 
-      {roomInfo.canKick && member.role !== "moderator" && (
-        <TouchableOpacity style={styles.kickButton} onPress={() => kickMember(member)}>
+      {isUserAdmin && member.userId !== user?.id && (
+        <TouchableOpacity style={styles.kickButton} onPress={() => handleKickMember(member)} disabled={isKicking}>
           <Icon name="person-remove-outline" size={18} color="#EF4444" />
         </TouchableOpacity>
       )}
     </View>
-  )
+  );
 
   return (
     <KeyboardAvoidingView
@@ -219,25 +329,26 @@ const GroupChatRoomScreen = () => {
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-
           <View style={styles.roomInfo}>
-            <Text style={styles.roomName}>{roomInfo.name}</Text>
-            <Text style={styles.memberCount}>
-              {roomInfo.onlineMembers}/{roomInfo.members} {t("group.members.online")}
-            </Text>
+            <Text style={styles.roomName}>{roomInfo?.roomName || initialRoomName}</Text>
+            {typingStatus?.isTyping && typingStatus.userId !== user?.id ? (
+               <Text style={styles.memberCount} numberOfLines={1}>{typingStatus.userId} {t("is typing...")}</Text>
+            ) : (
+               <Text style={styles.memberCount}>{roomInfo?.memberCount || 0} {t("group.members")}</Text>
+            )}
           </View>
-
           <TouchableOpacity style={styles.headerButton} onPress={() => setShowRoomSettings(true)}>
             <Icon name="settings-outline" size={22} color="#6B7280" />
           </TouchableOpacity>
         </View>
 
         {/* Messages */}
+        {(isLoadingMessages || isLoadingRoomInfo) && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
         <FlatList
           ref={flatListRef}
           data={messages}
           renderItem={renderMessage}
-          keyExtractor={(item) => item.id.toString()}
+          keyExtractor={(item) => item.id}
           style={styles.messagesContainer}
           onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
           showsVerticalScrollIndicator={false}
@@ -249,12 +360,12 @@ const GroupChatRoomScreen = () => {
             style={styles.input}
             placeholder={t("group.input.placeholder")}
             value={inputText}
-            onChangeText={setInputText}
-            onSubmitEditing={sendMessage}
+            onChangeText={handleTyping}
+            onSubmitEditing={handleSendMessage}
             returnKeyType="send"
             multiline
           />
-          <TouchableOpacity style={styles.sendButton} onPress={sendMessage}>
+          <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
             <Icon name="send" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
@@ -274,7 +385,7 @@ const GroupChatRoomScreen = () => {
                   <Icon name="close" size={24} color="#374151" />
                 </TouchableOpacity>
               </View>
-
+              {isLoadingRoomInfo || !roomInfo ? <ActivityIndicator style={{ padding: 20 }} /> : (
               <View style={styles.settingsContent}>
                 {/* Room Name */}
                 <View style={styles.settingItem}>
@@ -287,33 +398,31 @@ const GroupChatRoomScreen = () => {
                           style={styles.editNameInput}
                           value={newRoomName}
                           onChangeText={setNewRoomName}
-                          onSubmitEditing={updateRoomName}
+                          onSubmitEditing={handleUpdateRoomName}
                           autoFocus
                         />
-                        <TouchableOpacity onPress={updateRoomName}>
-                          <Icon name="checkmark" size={20} color="#10B981" />
+                        <TouchableOpacity onPress={handleUpdateRoomName} disabled={isUpdatingRoom}>
+                          {isUpdatingRoom ? <ActivityIndicator size="small" /> : <Icon name="checkmark" size={20} color="#10B981" />}
                         </TouchableOpacity>
                       </View>
                     ) : (
-                      <TouchableOpacity onPress={() => setEditingRoomName(true)}>
-                        <Text style={styles.settingValue}>{roomInfo.name}</Text>
+                      <TouchableOpacity onPress={() => setEditingRoomName(isUserAdmin)}>
+                        <Text style={styles.settingValue}>{roomInfo.roomName}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
                 </View>
-
                 {/* Members */}
                 <TouchableOpacity style={styles.settingItem} onPress={() => setShowMembersList(true)}>
                   <Icon name="people-outline" size={20} color="#6B7280" />
                   <View style={styles.settingInfo}>
                     <Text style={styles.settingLabel}>{t("group.members")}</Text>
                     <Text style={styles.settingValue}>
-                      {roomInfo.members} {t("people")} ({roomInfo.onlineMembers} {t("online")})
+                      {roomInfo.memberCount} {t("people")}
                     </Text>
                   </View>
                   <Icon name="chevron-forward" size={16} color="#9CA3AF" />
                 </TouchableOpacity>
-
                 {/* Room ID */}
                 <View style={styles.settingItem}>
                   <Icon name="key-outline" size={20} color="#6B7280" />
@@ -325,7 +434,6 @@ const GroupChatRoomScreen = () => {
                     <Icon name="share-outline" size={18} color="#3B82F6" />
                   </TouchableOpacity>
                 </View>
-
                 {/* Description */}
                 <View style={styles.settingItem}>
                   <Icon name="document-text-outline" size={20} color="#6B7280" />
@@ -334,25 +442,23 @@ const GroupChatRoomScreen = () => {
                     <Text style={styles.settingValue}>{roomInfo.description}</Text>
                   </View>
                 </View>
-
                 {/* Action Buttons */}
                 <View style={styles.actionButtons}>
                   <TouchableOpacity style={styles.actionButton} onPress={shareRoomId}>
                     <Icon name="share-outline" size={20} color="#3B82F6" />
                     <Text style={styles.actionButtonText}>{t("group.share")}</Text>
                   </TouchableOpacity>
-
                   <TouchableOpacity style={styles.actionButton}>
                     <Icon name="notifications-outline" size={20} color="#3B82F6" />
                     <Text style={styles.actionButtonText}>{t("group.notifications")}</Text>
                   </TouchableOpacity>
-
                   <TouchableOpacity style={[styles.actionButton, styles.dangerButton]}>
                     <Icon name="exit-outline" size={20} color="#EF4444" />
                     <Text style={[styles.actionButtonText, styles.dangerButtonText]}>{t("group.leave")}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
+              )}
             </View>
           </View>
         </Modal>
@@ -372,21 +478,23 @@ const GroupChatRoomScreen = () => {
                   <Icon name="close" size={24} color="#374151" />
                 </TouchableOpacity>
               </View>
-
+              {isLoadingMembers ? <ActivityIndicator style={{ padding: 20 }}/> :
               <FlatList
                 data={members}
                 renderItem={renderMember}
-                keyExtractor={(item) => item.id.toString()}
+                keyExtractor={(item) => item.userId}
                 style={styles.membersList}
               />
+              }
             </View>
           </View>
         </Modal>
       </View>
     </KeyboardAvoidingView>
-  )
-}
+  );
+};
 
+// Dán styles từ file 'GroupChatRoomScreen.ts' cũ của bạn vào đây
 const styles = createScaledSheet({
   header: {
     flexDirection: "row",
@@ -642,6 +750,6 @@ const styles = createScaledSheet({
     borderRadius: 6,
     backgroundColor: "#FEF2F2",
   },
-})
+});
 
-export default GroupChatRoomScreen
+export default GroupChatScreen;

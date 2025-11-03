@@ -14,7 +14,7 @@ export const useBadge = (badgeId?: string) => {
 
     try {
       const { data } = await axiosInstance.get<{ result: BadgeResponse }>(
-        `/badges/${badgeId}`
+        `/api/v1/badges/${badgeId}`
       );
       setBadge(data.result);
     } catch (err) {
@@ -48,7 +48,7 @@ export const useBadgeProgress = (userId?: string) => {
 
     try {
       const { data } = await axiosInstance.get<{ result: BadgeProgressResponse[] }>(
-        `/badges/user/${userId}/progress`
+        `/api/v1/badges/user/${userId}/progress`
       );
       setProgressList(data.result || []);
     } catch (err) {

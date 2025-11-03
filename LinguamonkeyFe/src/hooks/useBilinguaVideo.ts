@@ -36,7 +36,7 @@ export const useVideos = (
         if (q) params.set("q", q);
         if (language) params.set("language", language);
         if (sort) params.set("sort", sort);
-        const res = await instance.get<ApiResponse<any>>(`/videos/search?${params.toString()}`);
+        const res = await instance.get<ApiResponse<any>>(`/api/v1/videos/search?${params.toString()}`);
         const pageResult = res.data.result;
         const content: BilingualVideo[] = pageResult?.content ?? [];
         return {
@@ -46,7 +46,7 @@ export const useVideos = (
           totalElements: pageResult?.totalElements ?? content.length,
         };
       } else {
-        const res = await instance.get<ApiResponse<any>>(`/videos/bilingual?${params.toString()}`);
+        const res = await instance.get<ApiResponse<any>>(`/api/v1/videos/bilingual?${params.toString()}`);
         const pageResult = res.data.result;
         const content: BilingualVideo[] = pageResult?.content ?? [];
         return {
@@ -70,7 +70,7 @@ export const useVideo = (videoId?: string | null) => {
     queryKey: ["video", videoId],
     queryFn: async () => {
       if (!videoId) throw new Error("Missing video id");
-      const res = await instance.get<ApiResponse<BilingualVideo>>(`/videos/${videoId}`);
+      const res = await instance.get<ApiResponse<BilingualVideo>>(`/api/v1/videos/${videoId}`);
       return res.data.result;
     },
     enabled: !!videoId,
@@ -85,7 +85,7 @@ export const useVideoCategories = () => {
   return useQuery({
     queryKey: ["videoCategories"],
     queryFn: async () => {
-      const res = await instance.get<ApiResponse<string[]>>(`/videos/categories`);
+      const res = await instance.get<ApiResponse<string[]>>(`/api/v1/videos/categories`);
       return res.data.result ?? [];
     },
   });
@@ -100,7 +100,7 @@ export const useVideoSubtitles = (videoId?: string | null) => {
     queryKey: ["videoSubtitles", videoId],
     queryFn: async () => {
       if (!videoId) throw new Error("Missing video id");
-      const res = await instance.get<ApiResponse<VideoSubtitle[]>>(`/videos/${videoId}/subtitles`);
+      const res = await instance.get<ApiResponse<VideoSubtitle[]>>(`/api/v1/videos/${videoId}/subtitles`);
       return res.data.result ?? [];
     },
     enabled: !!videoId,
@@ -118,7 +118,7 @@ export const useVideoReviews = (videoId?: string | null, page = 0, size = 20) =>
     queryFn: async () => {
       if (!videoId) throw new Error("Missing video id");
       const params = new URLSearchParams({ page: String(page), size: String(size) });
-      const res = await instance.get<ApiResponse<any>>(`/videos/${videoId}/reviews?${params.toString()}`);
+      const res = await instance.get<ApiResponse<any>>(`/api/v1/videos/${videoId}/reviews?${params.toString()}`);
       const pageResult = res.data.result;
       return pageResult?.content ?? [];
     },
@@ -134,7 +134,7 @@ export const useCreateReview = () => {
   const qc = useQueryClient();
   const mutation = useMutation({
     mutationFn: async ({ videoId, req }: { videoId: string; req: CreateReviewRequest }) => {
-      const res = await instance.post<ApiResponse<VideoReviewResponse>>(`/videos/${videoId}/reviews`, req);
+      const res = await instance.post<ApiResponse<VideoReviewResponse>>(`/api/v1/videos/${videoId}/reviews`, req);
       return res.data.result;
     },
     onSuccess: (_data, vars) => {
@@ -159,7 +159,7 @@ export const useReactReview = () => {
   const mutation = useMutation({
     mutationFn: async ({ reviewId, reaction }: { reviewId: string; reaction: number }) => {
       if (!user?.userId) throw new Error("User not logged in");
-      await instance.post<ApiResponse<void>>(`/reviews/${reviewId}/react`, null, {
+      await instance.post<ApiResponse<void>>(`/api/v1/reviews/${reviewId}/react`, null, {
         params: { userId: user.userId, reaction },
       });
     },
@@ -206,7 +206,7 @@ export const useReactReview = () => {
 export const useTrackVideoProgress = () => {
   const mutation = useMutation({
     mutationFn: async ({ videoId, progress, duration }: { videoId: string; progress: number; duration?: number }) => {
-      await instance.post(`/videos/${videoId}/progress`, { progress, duration });
+      await instance.post(`/api/v1/videos/${videoId}/progress`, { progress, duration });
     },
   });
   return {
@@ -225,9 +225,9 @@ export const useLikeVideo = () => {
     mutationFn: async ({ videoId, currentlyLiked }: { videoId: string; currentlyLiked?: boolean }) => {
       if (!user?.userId) throw new Error("User not logged in");
       if (currentlyLiked) {
-        await instance.delete<ApiResponse<void>>(`/videos/${videoId}/like`, { params: { userId: user.userId } });
+        await instance.delete<ApiResponse<void>>(`/api/v1/videos/${videoId}/like`, { params: { userId: user.userId } });
       } else {
-        await instance.post<ApiResponse<void>>(`/videos/${videoId}/like`, null, { params: { userId: user.userId } });
+        await instance.post<ApiResponse<void>>(`/api/v1/videos/${videoId}/like`, null, { params: { userId: user.userId } });
       }
     },
     onMutate: async ({ videoId, currentlyLiked }) => {
@@ -268,9 +268,9 @@ export const useDislikeVideo = () => {
     mutationFn: async ({ videoId, currentlyDisliked }: { videoId: string; currentlyDisliked?: boolean }) => {
       if (!user?.userId) throw new Error("User not logged in");
       if (currentlyDisliked) {
-        await instance.delete<ApiResponse<void>>(`/videos/${videoId}/dislike`, { params: { userId: user.userId } });
+        await instance.delete<ApiResponse<void>>(`/api/v1/videos/${videoId}/dislike`, { params: { userId: user.userId } });
       } else {
-        await instance.post<ApiResponse<void>>(`/videos/${videoId}/dislike`, null, { params: { userId: user.userId } });
+        await instance.post<ApiResponse<void>>(`/api/v1/videos/${videoId}/dislike`, null, { params: { userId: user.userId } });
       }
     },
     onMutate: async ({ videoId, currentlyDisliked }) => {
@@ -310,9 +310,9 @@ export const useFavoriteVideo = () => {
     mutationFn: async ({ videoId, currentlyFavorited }: { videoId: string; currentlyFavorited?: boolean }) => {
       if (!user?.userId) throw new Error("User not logged in");
       if (currentlyFavorited) {
-        await instance.delete<ApiResponse<void>>(`/videos/${videoId}/favorite`, { params: { userId: user.userId } });
+        await instance.delete<ApiResponse<void>>(`/api/v1/videos/${videoId}/favorite`, { params: { userId: user.userId } });
       } else {
-        await instance.post<ApiResponse<void>>(`/videos/${videoId}/favorite`, null, { params: { userId: user.userId } });
+        await instance.post<ApiResponse<void>>(`/api/v1/videos/${videoId}/favorite`, null, { params: { userId: user.userId } });
       }
     },
     onMutate: async ({ videoId, currentlyFavorited }) => {
