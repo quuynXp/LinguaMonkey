@@ -1,11 +1,10 @@
-"use client"
-
 import React, { useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import { useUserStore } from "../../stores/UserStore"
 
 interface Goal {
   id: string
@@ -99,7 +98,7 @@ const LearningGoalsScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
   const [selectedPreset, setSelectedPreset] = useState<string>("regular")
   const { showToast } = useToast()
-  const { user } = useAppStore()
+  const { user } = useUserStore()
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {

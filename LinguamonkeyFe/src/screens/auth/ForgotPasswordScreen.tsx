@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
-import { sendPasswordReset } from '../../services/authService';
+import { resetPassword } from '../../services/authService';
 import { createScaledSheet } from "../../utils/scaledStyles";
 
 const ForgotPasswordScreen = ({ navigation }) => {

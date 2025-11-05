@@ -8,5 +8,5 @@ import java.util.UUID;
 public interface TestSessionRepository extends JpaRepository<TestSession, UUID> {
 
     // Tìm session theo ID và user (để bảo mật)
-    Optional<TestSession> findByIdAndUserId(UUID sessionId, UUID userId);
+    Optional<TestSession> findByTestSessionIdAndUserId(UUID testSessionId, UUID userId);
 }

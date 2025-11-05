@@ -111,9 +111,8 @@ const CallSearchScreen = ({ navigation, route }) => {
       clearInterval(timer);
       pulseAnimation.stop();
       rotateAnimation.stop();
-      // TODO: Gửi request "hủy" tìm kiếm nếu user thoát
     };
-  }, []);
+  }, [fadeAnim, findMatch, preferences, pulseAnimation, rotateAnimation]);
 
   useEffect(() => {
     const complexity = preferences.interests.length + (preferences.gender !== "any" ? 1 : 0) + 2;

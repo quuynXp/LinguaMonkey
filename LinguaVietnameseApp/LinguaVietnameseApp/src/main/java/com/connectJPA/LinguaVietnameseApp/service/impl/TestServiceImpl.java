@@ -111,7 +111,7 @@ public class TestServiceImpl implements TestService {
     @Transactional
     @Override
     public TestResultResponse submitTest(UUID sessionId, UUID userId, TestSubmissionRequest submission) {
-        TestSession session = testSessionRepository.findByIdAndUserId(sessionId, userId)
+        TestSession session = testSessionRepository.findByTestSessionIdAndUserId(sessionId, userId)
                 .orElseThrow(() -> new AppException(ErrorCode.ITEM_NOT_FOUND));
 
         if (!"PENDING".equals(session.getStatus())) {

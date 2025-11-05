@@ -60,8 +60,7 @@ export default {
       "expo-font",
       "expo-web-browser",
       "expo-audio",
-      "expo-video",
-      'react-native-vector-icons'
+      "expo-video"
     ],
     experiments: {
       typedRoutes: true

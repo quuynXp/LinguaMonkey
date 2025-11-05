@@ -14,7 +14,6 @@ import * as Localization from "expo-localization";
 import instance from "./api/axiosInstance";
 import { EXPO_PUBLIC_API_BASE_URL } from "react-native-dotenv";
 
-
 const API_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
 console.log("API_URL", API_URL);
 
@@ -125,7 +124,7 @@ const RootNavigation = () => {
             const payload = decodeToken(accessToken);
             if (payload?.userId) {
               setUser({ ...user, userId: payload.userId });
-              const userRes = await instance.get(`/users/${payload.userId}`);
+              const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
               const rawUser = userRes.data.result || {};
               const normalizedUser = {
                 ...rawUser,
@@ -214,7 +213,7 @@ const RootNavigation = () => {
       notificationListener.current && notificationListener.current.remove();
       responseListener.current && responseListener.current.remove();
     };
-  }, [initializeTokens]);
+  }, [initializeTokens, user, setUser]);
 
   useEffect(() => {
     const requestNotificationPermission = async () => {

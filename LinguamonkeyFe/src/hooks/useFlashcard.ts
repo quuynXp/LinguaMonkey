@@ -6,7 +6,7 @@ import type { ApiResponse, PaginatedResponse } from "../types/api";
 
 export const useFlashcards = () => {
   const queryClient = useQueryClient();
-  const BASE = "/lessons"; // then /{lessonId}/flashcards
+  const BASE = "/api/v1/lessons"; // then /{lessonId}/flashcards
 
   const useGetDue = (lessonId: string | null, limit = 20) => {
     return useQuery({

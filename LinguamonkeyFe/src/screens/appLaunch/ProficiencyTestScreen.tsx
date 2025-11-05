@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator } from "rea
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useTranslation } from "react-i18next";
 import {
-  useAvailableTestLessons, // Đổi tên hook này thành useAvailableTests
+  useAvailableTests, // Đổi tên hook này thành useAvailableTests
   useStartTest,
   useSubmitTest,
 } from "../../hooks/useTesting"; // Đảm bảo import đúng file bạn đã cung cấp
@@ -41,7 +41,7 @@ const ProficiencyTestScreen = () => {
   const [result, setResult] = useState<TestResult | null>(null);
 
   // 1. Lấy danh sách các bài test có sẵn
-  const { data: availableTests, isLoading: isLoadingTests } = useAvailableTestLessons({
+  const { data: availableTests, isLoading: isLoadingTests } = useAvailableTests({
     languageCode: "en", // Hoặc lấy từ state
   });
 

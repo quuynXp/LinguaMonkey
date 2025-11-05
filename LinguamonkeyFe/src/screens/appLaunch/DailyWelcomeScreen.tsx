@@ -11,8 +11,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { useUserStore } from "../../stores/UserStore";
 import { useLearningStore } from "../../stores/LearningStore";
-import { useUISettingsStore } from "../../stores/UISettingsStore";
 import axiosInstance from "../../api/axiosInstance";
+import { useAppStore } from '../../stores/appStore';
 import { getGreetingTime } from "../../utils/timeHelper";
 import { useProgressStats } from "../../hooks/useProgressStats";
 import { User, UserGoalResponse, UserBadge } from "../../types/api";
@@ -20,7 +20,7 @@ import { StackNavigationProp } from "@react-navigation/stack";
 import { MaterialIcons } from '@expo/vector-icons';
 import { resetToTab, resetToAuth } from "../../utils/navigationRef";
 import { createScaledSheet } from '../../utils/scaledStyles';
-import { useBadge } from '../../hooks/useBadge';
+// import { useBadge } from '../../hooks/useBadge';
 
 type RootStackParamList = {
   DailyWelcome: undefined;
@@ -34,10 +34,10 @@ type DailyWelcomeScreenProps = {
 
 const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   const user = useUserStore((state) => state.user);
-  const addBadge = useUserStore((state) => state.addBadge);
+  const addBadge = useUserStore((state) => state.badgeId);
   const { t } = useTranslation();
   const { selectedLesson, updateProgress } = useLearningStore();
-  const { currentLanguage, setCurrentLanguage } = useUISettingsStore();
+  const { nativeLanguageId, setNativeLanguage } = useUserStore();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.8)).current;
@@ -77,7 +77,6 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
           const response = await axiosInstance.get<{ data: UserBadge[] }>(`/badge/${userId}`);
           const badgesData = response.data.data;
           setAchievements(badgesData.filter((badge) => badge.badgeId));
-          badgesData.forEach((badge) => addBadge(badge.badgeId));
         }
       } catch (error) {
         console.error("Failed to fetch achievements:", error);
@@ -101,7 +100,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
     fetchAchievements();
     fetchUserGoal();
 
-    const messages = motivationalMessages[currentLanguage || "en"];
+    const messages = motivationalMessages[nativeLanguageId || "en"];
     const randomMessage = messages[Math.floor(Math.random() * messages.length)];
     setMotivationalMessage(randomMessage);
 
@@ -126,10 +125,10 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         useNativeDriver: true,
       }).start();
     }, 500);
-  }, [currentLanguage, user?.userId, navigation]);
+  }, [nativeLanguageId, user?.userId, navigation]);
 
   const getGreeting = () => {
-    return getGreetingTime(undefined, currentLanguage || "en");
+    return getGreetingTime(undefined, nativeLanguageId || "en");
   };
 
   const getStreakMessage = () => {
@@ -213,7 +212,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         </View>
 
         {/* Achievements */}
-        <View style={styles.achievementsList}>
+        {/* <View style={styles.achievementsList}>
           {achievements.map((ach) => {
             const { badge, loading } = useBadge(ach.badgeId);
 
@@ -229,7 +228,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
               </View>
             );
           })}
-        </View>
+        </View> */}
 
         {/* Continue Learning */}
         <TouchableOpacity

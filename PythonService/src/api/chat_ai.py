@@ -1,10 +1,12 @@
-import google.generativeai as genai
+# src/api/chat_ai.py
 import os
-from dotenv import load_dotenv
 import logging
+from dotenv import load_dotenv
+import google.generativeai as genai
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+# Thiết lập API key
+genai.api_key = os.getenv("GOOGLE_API_KEY")
 
 # Khởi tạo model (chỉ định tên model)
 MODEL_NAME = "gemini-1.5-flash"
@@ -18,15 +20,15 @@ async def chat_with_ai(
 ) -> tuple[str, str]:
     """
     message: tin nhắn hiện tại từ user
-    history: danh sách lịch sử [{role: "user"/"model", content: "..."}]
-    language: ngôn ngữ (hiện tại Gemini tự phát hiện, nhưng vẫn truyền vào)
+    history: danh sách lịch sử [{role: "user"/"assistant", content: "..."}]
+    language: ngôn ngữ (Gemini tự phát hiện, vẫn có thể dùng để thêm vào prompt)
     user_profile: Dữ liệu cá nhân hóa (từ cache/DB)
     """
     try:
         # --- Personalization ---
         system_instruction = (
             "You are a friendly and helpful language learning assistant "
-            "for the 'LinguaMonkey' app."
+            "for the 'MonkeyLingua' app."
         )
 
         if user_profile:
@@ -44,19 +46,25 @@ async def chat_with_ai(
                 "----------------------------------------------------------"
             )
 
-        # Khởi tạo model với system_instruction
-        model = genai.GenerativeModel(
-            MODEL_NAME, system_instruction=system_instruction
+        # --- Ghép lịch sử hội thoại ---
+        # Google GenAI mới không dùng model.start_chat trực tiếp
+        # Chúng ta tạo messages list: [{"role": "system"/"user"/"assistant", "content": "..."}]
+        messages = [{"role": "system", "content": system_instruction}]
+        # chuyển history sang role "user" / "assistant"
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
+
+        messages.append({"role": "user", "content": message})
+
+        # Gọi API async
+        response = await genai.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages
         )
 
-        # Ghép lịch sử hội thoại
-        chat = model.start_chat(history=history)
-
-        # Gửi tin nhắn (thêm ngôn ngữ vào tin nhắn nếu cần)
-        # prompt = f"[Language: {language}] {message}"
-
-        response = await chat.send_message_async(message)
-        return response.text, ""
+        # Lấy nội dung trả về
+        reply_text = response.choices[0].message.content
+        return reply_text, ""
 
     except Exception as e:
         logging.error(f"Gemini chat error: {str(e)}")

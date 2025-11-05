@@ -5,88 +5,118 @@ export interface ApiResponse<T> {
 }
 
 // Cấu hình một bài test (Lấy từ /api/v1/tests/available)
+// Maps to: proficiency_test_configs
 export interface TestConfig {
-  testConfigId: string;
-  testType: string; // "PLACEMENT_TEST", "SKILL_TEST", "GRAMMAR", "VOCABULARY"
-  title: string;
-  description: string;
-  numQuestions: number;
+  testConfigId: string; // SQL: test_config_id
+  testType: string; // SQL: test_type
+  title: string; // SQL: title
+  description: string | null; // SQL: description
+  numQuestions: number; // SQL: num_questions
 }
 
 // Câu hỏi được trả về khi bắt đầu test
+// Maps to: test_session_questions
 export interface TestQuestion {
-  questionId: string;
-  questionText: string;
-  options: string[];
-  skillType: string;
-  orderIndex: number;
+  questionId: string; // SQL: question_id
+  questionText: string; // SQL: question_text
+  options: string[]; // SQL: options_json (assuming mapping)
+  skillType: string | null; // SQL: skill_type
+  orderIndex: number; // SQL: order_index
 }
 
 // Dữ liệu trả về khi bắt đầu test (từ /api/v1/tests/start)
+// DTO - No direct table
 export interface TestSessionStartData {
   sessionId: string;
   questions: TestQuestion[];
 }
 
 // Câu hỏi chi tiết có trong kết quả
+// DTO extending TestQuestion, based on test_session_questions
 export interface TestResultQuestion extends TestQuestion {
-  userAnswerIndex: number | null;
-  correctAnswerIndex: number;
-  isCorrect: boolean;
-  explanation: string;
+  userAnswerIndex: number | null; // SQL: user_answer_index
+  correctAnswerIndex: number; // SQL: correct_answer_index
+  isCorrect: boolean | null; // SQL: is_correct
+  explanation: string | null; // SQL: explanation
 }
 
 // Kết quả trả về khi nộp bài (từ /api/v1/tests/sessions/{id}/submit)
+// DTO based on test_sessions
 export interface TestResult {
-  sessionId: string;
-  score: number;
-  totalQuestions: number;
-  percentage: number;
-  proficiencyEstimate: string; // "A1", "B2", v.v.
-  questions: TestResultQuestion[];
+  sessionId: string; // SQL: test_session_id
+  score: number | null; // SQL: score
+  totalQuestions: number; // DTO field
+  percentage: number | null; // SQL: percentage
+  proficiencyEstimate: string | null; // SQL: proficiency_estimate
+  questions: TestResultQuestion[]; // DTO field
 }
 
+// Maps to: daily_challenges
+export interface DailDayChallenge {
+  id: string, // SQL: id
+  title: string, // SQL: title
+  description: string | null, // SQL: description
+  rewardCoins: number | null, // SQL: reward_coins
+  difficulty: string // SQL: difficulty
+}
+
+// Maps to: user_daily_challenges (as a DTO)
+export interface UserDailyChallenge {
+  id: string, // DTO-specific ID (schema has composite PK)
+  userId: string, // SQL: user_id
+  challengeId: string, // Changed from 'challenge'. SQL: challenge_id
+  expReward: number, // SQL: exp_reward
+  rewardCoins: number | null, // SQL: reward_coins
+  progress: number | null, // SQL: progress
+  isCompleted: boolean | null, // SQL: is_completed
+  assignedAt: string | null, // SQL: assigned_at
+  completedAt: string | null // SQL: completed_at
+}
 
 // src/types/api.ts
+// Maps to: basic_lessons
 export interface BasicLessonResponse {
-  id: string;
-  languageCode: 'en' | 'zh' | 'vi';
-  lessonType: string; // e.g., 'ALPHABET', 'IPA', 'HANZI', 'VIET_PHONETIC'
-  symbol: string; // Ký tự chính (A, 我, a, etc.)
-  romanization?: string; // Phiên âm (IPA / Pinyin / Latin)
-  meaning?: string; // Nghĩa của ký tự
-  pronunciationAudioUrl?: string; // Link âm thanh phát âm
-  videoUrl?: string; // Video hướng dẫn
-  imageUrl?: string; // Ảnh minh họa
-  exampleSentence?: string; // Ví dụ
-  exampleTranslation?: string; // Dịch nghĩa
-  createdAt?: string;
-  updatedAt?: string;
+  basicLessonId: string; // Changed from 'id'. SQL: basic_lesson_id
+  languageCode: 'en' | 'zh' | 'vi'; // SQL: language_code
+  lessonType: string; // SQL: lesson_type
+  symbol: string; // SQL: symbol
+  romanization?: string | null; // SQL: romanization
+  meaning?: string | null; // SQL: meaning
+  pronunciationAudioUrl?: string | null; // SQL: pronunciation_audio_url
+  videoUrl?: string | null; // SQL: video_url
+  imageUrl?: string | null; // SQL: image_url
+  exampleSentence?: string | null; // SQL: example_sentence
+  exampleTranslation?: string | null; // SQL: example_translation
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
 }
 
 
+// DTO - No direct table
 export interface QuizApiResponse {
   quizId: string;
   questions: QuizQuestion[];
 }
 
+// DTO based on user_learning_activities
 export interface StudySession {
-  id: string;         // activity_id
-  type: string;       // e.g., "LESSON_COMPLETED", "DAILY_CHALLENGE_COMPLETED"
-  title: string;
-  date: string;       // Backend trả về Instant (ISO String)
-  duration: number;   // duration_in_seconds
-  score?: number;
-  maxScore?: number;
-  experience: number;
-  skills: string[];   // Backend trả về List<String>
-  completed: boolean;
+  activityId: string; // Changed from 'id'. SQL: activity_id
+  activityType: string; // Changed from 'type'. SQL: activity_type
+  title: string; // DTO field
+  createdAt: string; // Changed from 'date'. SQL: created_at
+  durationInSeconds: number | null; // Changed from 'duration'. SQL: duration_in_seconds
+  score?: number; // DTO field
+  maxScore?: number; // DTO field
+  experience: number; // DTO field
+  skills: string[]; // DTO field
+  completed: boolean; // DTO field
 }
 
 /**
  * Khớp với StatsResponse.java từ backend
  * Đây là các chỉ số thống kê
  */
+// DTO - No direct table
 export interface StudyStats {
   totalSessions: number;
   totalTime: number; // in seconds
@@ -97,6 +127,7 @@ export interface StudyStats {
 /**
  * Khớp với TestResult (tạm thời, bạn có thể mở rộng sau)
  */
+// DTO - No direct table (Duplicate interface name, this is a DTO)
 export interface TestResult {
   id: string;
   testType: "toeic" | "ielts";
@@ -116,12 +147,14 @@ export interface TestResult {
  * Khớp với StudyHistoryResponse.java từ backend
  * Đây là đối tượng gốc mà endpoint /history trả về
  */
+// DTO - No direct table
 export interface StudyHistoryResponse {
   sessions: StudySession[];
   tests: TestResult[];
   stats: StudyStats;
 }
 
+// DTO - No direct table
 export type BadgeProgressResponse = {
   badgeId: string;
   badgeName: string;
@@ -135,36 +168,39 @@ export type BadgeProgressResponse = {
   isAchieved: boolean;
 };
 
+// DTO - No direct table
 export interface RoomResponse {
   roomId: string;
   roomName: string;
 }
 
+// DTO based on users table
 export interface UserResponse {
-  userId: string;
-  email: string;
-  fullname: string;
-  nickname: string;
-  bio: string;
-  phone: string;
-  avatarUrl: string;
-  character3dId: string | null;
-  badgeId: string | null;
-  nativeLanguageId: string | null; // (Đây là nativeLanguageCode)
-  authProvider: string;
-  country: string; // (Backend gửi Enum, FE nhận string, OK)
-  level: number;
-  exp: number;
-  expToNextLevel: number;
-  progress: number; // (Backend gửi Double/BigDecimal, FE nhận number)
-  streak: number;
-  isDeleted: boolean;
-  createdAt: string;
-  updatedAt: string;
-  languages: string[]; // <===== TRƯỜNG MỚI ĐƯỢC THÊM
+  userId: string; // SQL: user_id
+  email: string | null; // SQL: email
+  fullname: string | null; // SQL: fullname
+  nickname: string | null; // SQL: nickname
+  bio: string | null; // SQL: bio
+  phone: string | null; // SQL: phone
+  avatarUrl: string | null; // SQL: avatar_url
+  character3dId: string | null; // SQL: character3d_id
+  badgeId: string | null; // DTO field
+  nativeLanguageCode: string | null; // Changed from 'nativeLanguageId'. SQL: native_language_code
+  authProvider: string; // DTO field (from user_auth_accounts)
+  country: string | null; // SQL: country
+  level: number; // SQL: level
+  exp: number; // SQL: exp
+  expToNextLevel: number; // DTO field
+  progress: number; // DTO field
+  streak: number; // SQL: streak
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt: string; // SQL: created_at
+  updatedAt: string; // SQL: updated_at
+  languages: string[]; // DTO field (from user_languages)
 }
 
 
+// DTO - No direct table
 export type WSMessage =
   | { type: 'room_info'; data: { players: Player[]; isHost: boolean } }
   | { type: 'player_joined'; data: { player: Player } }
@@ -177,6 +213,7 @@ export type WSMessage =
 
 
 // Type cho người chơi trong phòng (Team)
+// DTO - No direct table
 export interface Player {
   id: string;
   name: string;
@@ -192,35 +229,44 @@ export enum MediaType {
 }
 
 // (Các type này nên được định nghĩa ở file /types chung)
+// DTO - No direct table (Duplicate)
 export interface Player {
   id: string;
   name: string;
   avatar: string;
 }
 
-export interface Wallet { walletId: string; userId: string; balance: number }
+// Maps to: wallets
+export interface Wallet {
+  walletId: string; // SQL: wallet_id
+  userId: string; // SQL: user_id
+  balance: number; // SQL: balance
+}
 
+// Maps to: user_media
 export interface UserMedia {
-  id: number;
-  userId: string;
-  mediaType: MediaType;
-  fileName: string;
-  filePath: string;
-  fileUrl: string;
-  createdAt?: string;
+  id: string; // Changed from 'number'. SQL: id (uuid)
+  userId: string; // SQL: user_id
+  mediaType: MediaType; // SQL: media_type
+  fileName: string | null; // SQL: file_name
+  filePath: string | null; // SQL: file_path
+  fileUrl: string | null; // SQL: file_url
+  createdAt?: string | null; // SQL: created_at
 }
 
+// Maps to: badges
 export interface BadgeResponse {
-  badgeId: string;
-  badgeName: string;
-  description: string;
-  imageUrl: string;
-  createdAt?: string; // ISO date string
-  updatedAt?: string;
-  isDeleted?: boolean;
-  deletedAt?: string | null;
+  badgeId: string; // SQL: badge_id
+  badgeName: string; // SQL: badge_name
+  description: string | null; // SQL: description
+  imageUrl: string | null; // SQL: image_url
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  isDeleted?: boolean; // SQL: is_deleted
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// DTO - No direct table
 export interface MindMapNode {
   id: string;
   title: string;
@@ -235,6 +281,7 @@ export interface MindMapNode {
   rules: string[];
 }
 
+// DTO - No direct table
 export interface IPASound {
   symbol: string;
   example: string;
@@ -243,6 +290,7 @@ export interface IPASound {
   description: string;
 }
 
+// DTO - No direct table
 export interface ConversationTopic {
   id: string;
   title: string;
@@ -253,6 +301,7 @@ export interface ConversationTopic {
   scenarios: string[];
 }
 
+// DTO - No direct table
 export interface AIResponse {
   text: string;
   audioUrl: string;
@@ -264,23 +313,29 @@ export interface AIResponse {
   };
 }
 
+// Maps to: flashcards (as a DTO)
 export interface Flashcard {
-  id: string;
-  lessonId?: string;
-  word: string;
-  definition: string;
-  example?: string;
-  image?: string;
+  flashcardId: string; // Changed from 'id'. SQL: flashcard_id
+  lessonId: string; // Changed from 'lessonId?'. SQL: lesson_id (NOT NULL)
+  front: string; // Changed from 'word'. SQL: front
+  back: string; // Changed from 'definition'. SQL: back
+  exampleSentence?: string | null; // Changed from 'example'. SQL: example_sentence
+  imageUrl?: string | null; // Changed from 'image'. SQL: image_url
+  userId?: string | null; // Changed from 'author'. SQL: user_id
+  tags?: string | null; // Changed from 'category'. SQL: tags
+  nextReviewAt?: string | null; // SQL: next_review_at
+
+  // DTO fields (not in schema table)
   isPublic?: boolean;
   likes?: number;
   isFavorite?: boolean;
   isLiked?: boolean;
-  author?: string;
+  author?: string; // Kept original 'author' in case DTO uses it
   difficulty?: "beginner" | "intermediate" | "advanced";
-  category?: string;
-  nextReviewAt?: string;
+  category?: string; // Kept original 'category' in case DTO uses it
 }
 
+// DTO - No direct table
 export interface ReadingText {
   id: string;
   title: string;
@@ -291,6 +346,7 @@ export interface ReadingText {
   vocabulary: string[];
 }
 
+// DTO - No direct table
 export interface Translation {
   original: string;
   translated: string;
@@ -298,23 +354,24 @@ export interface Translation {
   suggestion?: string;
 }
 
+// Maps to: lesson_questions (as a DTO)
 export interface QuizQuestion {
-  id: string;
-  questionText: string,
-  // unified shape covering both variants seen in original file
-  question?: string; // used when question text present
-  riddle?: string; // some usages used 'riddle'
-  category?: string;
-  options?: string[];
-  correctAnswer?: number;
-  correctAnswerIndex?: number; // alias if some code expects different key
-  explanation?: string;
-  type?: "vocabulary" | "grammar" | "comprehension";
-  difficulty?: "easy" | "medium" | "hard";
-  skill?: string;
-  points?: number;
+  lessonQuestionId: string; // Changed from 'id'. SQL: lesson_question_id
+  question: string; // Changed from 'questionText'. SQL: question
+  // 'question' field from original file removed as it duplicates 'question'
+  // 'riddle' field from original file removed as it's not in schema
+  category?: string; // DTO field
+  options?: string[]; // Maps to options_json or optiona/b/c/d
+  correctOption?: string | null; // Changed from 'correctAnswer'. SQL: correct_option
+  correctAnswerIndex?: number; // DTO alias
+  explainAnswer?: string | null; // Changed from 'explanation'. SQL: explain_answer
+  questionType?: string | null; // Changed from 'type'. SQL: question_type
+  difficulty?: "easy" | "medium" | "hard"; // DTO field
+  skillType?: string | null; // Changed from 'skill'. SQL: skill_type
+  weight?: number; // Changed from 'points'. SQL: weight (bigint)
 }
 
+// DTO - No direct table
 export interface Sentence {
   id: string;
   text: string;
@@ -324,6 +381,7 @@ export interface Sentence {
   audioUrl: string;
 }
 
+// DTO - No direct table
 export interface WordScore {
   word: string;
   score?: number;
@@ -331,6 +389,7 @@ export interface WordScore {
   suggestion?: string;
 }
 
+// DTO - No direct table
 export interface Topic {
   id: string;
   title: string;
@@ -341,6 +400,7 @@ export interface Topic {
   contentCount: number;
 }
 
+// DTO - No direct table
 export interface Content {
   id: string;
   title: string;
@@ -352,6 +412,7 @@ export interface Content {
   thumbnail?: string;
 }
 
+// DTO - No direct table
 export interface PronunciationResult {
   overallScore?: number;
   wordScores?: WordScore[];
@@ -359,6 +420,7 @@ export interface PronunciationResult {
   suggestions?: string[];
 }
 
+// DTO - No direct table
 export interface QuizResult {
   score?: number;
   totalQuestions?: number;
@@ -398,6 +460,7 @@ export type Country =
 
 export type LearningPace = "SLOW" | "MAINTAIN" | "FAST" | "ACCELERATED";
 
+// DTO - No direct table
 export interface CreateUserPayload {
   username?: string;
   email?: string | null;
@@ -421,6 +484,7 @@ export interface CreateUserPayload {
   languages?: string[];
 }
 
+// DTO - No direct table
 export interface RegisterResult {
   user: User;
   accessToken: string;
@@ -428,33 +492,40 @@ export interface RegisterResult {
 }
 
 /* Generic responses / DTOs */
+// DTO based on lesson_categories
 export interface LessonCategoryResponse {
-  lessonCategoryId: string;
-  lessonCategoryName?: string;
+  lessonCategoryId: string; // SQL: lesson_category_id
+  lessonCategoryName?: string | null; // SQL: lesson_category_name
 }
+
+// DTO based on lessons
 export interface LessonResponse {
-  lessonId: string;
-  lessonName?: string;
+  lessonId: string; // SQL: lesson_id
+  lessonName?: string; // SQL: lesson_name
 }
+
+// DTO based on lesson_questions
 export interface LessonQuestionResponse {
-  lessonQuestionId: string;
-  lessonId: string;
-  question: string;
-  optionA?: string;
-  optionB?: string;
-  optionC?: string;
-  optionD?: string;
-  correctOption?: string;
+  lessonQuestionId: string; // SQL: lesson_question_id
+  lessonId: string; // SQL: lesson_id
+  question: string; // SQL: question
+  optiona?: string | null; // Changed from optionA. SQL: optiona
+  optionb?: string | null; // Changed from optionB. SQL: optionb
+  optionc?: string | null; // Changed from optionC. SQL: optionc
+  optiond?: string | null; // Changed from optionD. SQL: optiond
+  correctOption?: string | null; // SQL: correct_option
 }
 
+// Maps to: lesson_progress_wrong_items (as Request DTO)
 export interface LessonProgressWrongItemRequest {
-  lessonId: string;
-  userId: string;
-  lessonQuestionId: string;
-  wrongAnswer?: string;
-  isDeleted?: boolean;
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  lessonQuestionId: string; // SQL: lesson_question_id
+  wrongAnswer?: string | null; // SQL: wrong_answer
+  isDeleted?: boolean; // SQL: is_deleted
 }
 
+// DTO - No direct table
 export interface UIQuestion {
   id: string;
   lessonId: string;
@@ -471,27 +542,30 @@ export enum AgeRange {
 }
 
 /* --- Entities (camelCase) --- */
+// Maps to: interests
 export interface Interest {
-  interestId: string;
-  interestName: string;
-  description?: string | null;
-  icon?: string | null;
-  color?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  interestId: string; // SQL: interest_id
+  interestName: string; // SQL: interest_name
+  description?: string | null; // SQL: description
+  icon?: string | null; // SQL: icon
+  color?: string | null; // SQL: color
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: user_interests
 export interface UserInterest {
-  userId: string;
-  interestId: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  userId: string; // SQL: user_id
+  interestId: string; // SQL: interest_id
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// DTO - No direct table
 export interface BVRaw {
   videoId: string;
   title: string;
@@ -506,6 +580,7 @@ export interface BVRaw {
   progress: number;
 }
 
+// DTO - No direct table
 export interface SubtitleRaw {
   subtitleId: string;
   videoId: string;
@@ -515,6 +590,7 @@ export interface SubtitleRaw {
   updatedAt?: string;
 }
 
+// DTO - No direct table
 export interface Subtitle extends SubtitleRaw {
   startTime: number;
   endTime: number;
@@ -522,6 +598,7 @@ export interface Subtitle extends SubtitleRaw {
   translatedText?: string;
 }
 
+// DTO - No direct table
 export interface VocabularyItem {
   word: string;
   pronunciation?: string;
@@ -529,6 +606,7 @@ export interface VocabularyItem {
   timestamp: number;
 }
 
+// DTO - No direct table
 export interface BilingualVideo extends BVRaw {
   subtitles: Subtitle[];
   vocabulary?: VocabularyItem[];
@@ -540,50 +618,66 @@ export interface BilingualVideo extends BVRaw {
   isDisliked: boolean;
 }
 
+// Maps to: user_memorizations
 export interface Note {
-  noteId: string;
-  userId: string;
-  targetId?: string | null;
-  targetType?: string | null;
-  content: string;
-  createdAt?: string;
-  updatedAt?: string;
+  memorizationId: string; // Changed from 'noteId'. SQL: memorization_id
+  userId: string; // SQL: user_id
+  contentId?: string | null; // Changed from 'targetId'. SQL: content_id
+  contentType: string; // Changed from 'targetType'. SQL: content_type
+  noteText: string | null; // Changed from 'content'. SQL: note_text
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  // Added from schema
+  isFavorite: boolean;
+  isDeleted?: boolean;
+  deletedAt?: string | null;
 }
 
+// Maps to: grammar_topics
 export interface GrammarTopic {
-  topicId: string;
-  topicName: string;
-  languageCode?: string | null;
-  description?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  rules?: GrammarRule[];
+  id: number; // Changed from 'topicId: string'. SQL: id (serial)
+  title: string; // Changed from 'topicName'. SQL: title
+  languageCode?: string | null; // DTO field, not in schema
+  description?: string | null; // SQL: description
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  rules?: GrammarRule[]; // DTO field
 }
 
+// Maps to: grammar_lessons
 export interface GrammarRule {
-  ruleId: string;
-  topicId: string;
-  title: string;
-  explanation?: string | null;
-  examples?: string[] | null;
-  createdAt?: string;
-  updatedAt?: string;
-  exercises?: GrammarExercise[];
-  userScore?: number | null;
+  id: number; // Changed from 'ruleId: string'. SQL: id (serial)
+  topicId: number; // Changed from 'topicId: string'. SQL: topic_id (integer)
+  title: string; // SQL: title
+  content: string; // Changed from 'explanation'. SQL: content (NOT NULL)
+  examples?: string[] | null; // DTO field (related to grammar_examples)
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  exercises?: GrammarExercise[]; // DTO field
+  userScore?: number | null; // DTO field
+  // Added from schema
+  level?: string | null;
+  deletedAt?: string | null;
+  isDeleted?: boolean;
 }
 
+// Maps to: grammar_examples (partially, this is a DTO)
 export interface GrammarExercise {
-  exerciseId: string;
-  ruleId: string;
-  type: "fill-blank" | "multiple-choice" | "transformation" | string;
-  question?: string | null;
-  options?: string[] | null;
-  correct?: string | null;
-  explanation?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
+  id: number; // Changed from 'exerciseId: string'. SQL: id (serial)
+  lessonId: number; // Changed from 'ruleId: string'. SQL: lesson_id (integer)
+  type: "fill-blank" | "multiple-choice" | "transformation" | string; // DTO field
+  question?: string | null; // DTO field
+  // Added from schema
+  sentenceEn: string; // SQL: sentence_en
+  sentenceVi: string; // SQL: sentence_vi
+  options?: string[] | null; // DTO field
+  correct?: string | null; // DTO field
+  note?: string | null; // Changed from 'explanation'. SQL: note
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO - No direct table
 export interface SubmitExerciseResponse {
   score?: number;
   total: number;
@@ -591,6 +685,7 @@ export interface SubmitExerciseResponse {
   details: Record<string, boolean> | Record<string, boolean>;
 }
 
+// DTO - No direct table
 export interface PaginatedResponse<T> {
   data: T[];
   pagination: {
@@ -602,30 +697,34 @@ export interface PaginatedResponse<T> {
 }
 
 /* --- User related types --- */
+// Maps to: users
 export interface User {
-  userId: string;
-  email?: string | null;
-  password?: string | null;
-  fullname?: string | null;
-  nickname?: string | null;
-  phone?: string | null;
-  avatarUrl?: string | null;
-  character3dId?: string | null;
-  nativeLanguageCode?: string | null;
-  authProvider?: string | null;
-  country?: string | null;
-  level?: number;
-  exp?: number;
-  streak?: number;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  learningPace?: string | null;
-  ageRange?: string | null;
-  proficiency?: string | null;
+  userId: string; // SQL: user_id
+  email?: string | null; // SQL: email
+  password?: string | null; // SQL: password
+  fullname?: string | null; // SQL: fullname
+  nickname?: string | null; // SQL: nickname
+  phone?: string | null; // SQL: phone
+  avatarUrl?: string | null; // SQL: avatar_url
+  character3dId?: string | null; // SQL: character3d_id
+  nativeLanguageCode?: string | null; // SQL: native_language_code
+  authProvider?: string | null; // DTO field
+  country?: string | null; // SQL: country
+  level?: number; // SQL: level
+  exp?: number; // SQL: exp
+  streak?: number; // SQL: streak
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  learningPace?: string | null; // SQL: learning_pace
+  ageRange?: string | null; // SQL: age_range
+  proficiency?: string | null; // SQL: proficiency
+  lastActiveAt?: string | null; // Added from schema
+  bio?: string | null; // Added from schema
 }
 
+// DTO - No direct table
 export interface UserProfile {
   userId: string;
   email: string;
@@ -658,6 +757,7 @@ export interface UserProfile {
   updatedAt?: string;
 }
 
+// DTO - No direct table
 export interface UserStats {
   totalStudyTime: number;
   lessonsCompleted: number;
@@ -666,753 +766,873 @@ export interface UserStats {
   averageScore: number;
 }
 
+// Maps to: user_badges
 export interface UserBadge {
-  badgeId: string;
-  userId: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  badgeId: string; // SQL: badge_id
+  userId: string; // SQL: user_id
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: badges
 export interface Badge {
-  badgeId: string;
-  badgeName: string;
-  description?: string | null;
-  imageUrl?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  badgeId: string; // SQL: badge_id
+  badgeName: string; // SQL: badge_name
+  description?: string | null; // SQL: description
+  imageUrl?: string | null; // SQL: image_url
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  // Added from schema
+  criteriaType?: string | null;
+  criteriaThreshold?: number | null;
 }
 
+// Maps to: user_languages
 export interface UserLanguage {
-  languageCode: string;
-  userId: string;
-  proficiencyLevel?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  languageCode: string; // SQL: language_code
+  userId: string; // SQL: user_id
+  proficiencyLevel?: string | null; // SQL: proficiency_level
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: languages
 export interface Language {
-  languageCode: string;
-  languageName: string;
-  description?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  languageCode: string; // SQL: language_code
+  languageName: string; // SQL: language_name
+  description?: string | null; // SQL: description
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
 /* --- Learning content types --- */
+// Maps to: lessons
 export interface Lesson {
-  lessonId: string;
-  lessonName: string;
-  title: string;
-  languageCode?: string | null;
-  expReward?: number;
-  lessonSeriesId?: string | null;
-  lessonCategoryId?: string | null;
-  lessonSubCategoryId?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  courseId?: string | null;
+  lessonId: string; // SQL: lesson_id
+  lessonName: string; // SQL: lesson_name
+  title: string; // SQL: title
+  languageCode?: string | null; // SQL: language_code
+  expReward: number; // SQL: exp_reward
+  lessonSeriesId?: string | null; // SQL: lesson_series_id
+  lessonCategoryId?: string | null; // SQL: lesson_category_id
+  lessonSubCategoryId?: string | null; // SQL: lesson_sub_category_id
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  // courseId?: string | null; // Removed, not in schema
+  // Added from schema
+  lessonType?: string | null;
+  skillTypes?: string | null;
+  isFree: boolean;
+  creatorId?: string | null; // SQL: "creator_id "
+  description?: string | null;
+  difficultyLevel?: string | null; // SQL: "difficulty_level "
+  durationSeconds?: number | null; // SQL: duration_seconds (bigint)
+  passScorePercent?: number | null; // SQL: pass_score_percent (bigint)
+  certificateCode?: string | null;
+  allowedRetakeCount: number; // SQL: allowed_retake_count (bigint)
+  shuffleQuestions: boolean;
 }
 
+// Maps to: lesson_questions
 export interface LessonQuestion {
-  lessonQuestionId: string;
-  lessonId: string;
-  languageCode?: string | null;
-  question: string;
-  optionA?: string | null;
-  optionB?: string | null;
-  optionC?: string | null;
-  optionD?: string | null;
-  correctOption?: string | null;
-  skillType?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  lessonQuestionId: string; // SQL: lesson_question_id
+  lessonId: string; // SQL: lesson_id
+  languageCode?: string | null; // SQL: language_code
+  question: string; // SQL: question
+  optiona?: string | null; // Changed from optionA. SQL: optiona
+  optionb?: string | null; // Changed from optionB. SQL: optionb
+  optionc?: string | null; // Changed from optionC. SQL: optionc
+  optiond?: string | null; // Changed from optionD. SQL: optiond
+  correctOption?: string | null; // SQL: correct_option
+  skillType?: string | null; // SQL: skill_type
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  // Added from schema
+  questionType?: string | null;
+  optionsJson?: string | null;
+  mediaUrl?: string | null;
+  weight: number; // SQL: weight (bigint)
+  orderIndex?: number | null; // SQL: order_index (bigint)
+  explainAnswer?: string | null;
 }
 
+// Maps to: lesson_progress
 export interface LessonProgress {
-  lessonId: string;
-  userId: string;
-  score?: number;
-  isDeleted?: boolean;
-  completedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  score: number; // SQL: score (NOT NULL)
+  isDeleted?: boolean; // SQL: is_deleted
+  completedAt?: string | null; // SQL: completed_at
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  // Added from schema
+  maxScore?: number | null; // SQL: max_score (bigint)
+  attemptNumber?: number | null; // SQL: attempt_number (bigint)
+  needsReview: boolean; // SQL: needs_review
+  answersJson?: string | null; // SQL: answers_json
 }
 
 /* --- Integrated backend DTOs --- */
+// Maps to: user_goals
 export interface UserGoalResponse {
-  goalId: string;
-  userId: string;
-  languageCode: string;
-  examName: string;
-  targetScore?: number;
-  targetSkill: string;
-  customDescription: string;
-  goalType: string;
-  targetProficiency: string;
-  targetDate: string;
-  createdAt?: string;
-  updatedAt?: string;
-  isDeleted?: boolean;
-  deletedAt?: string | null;
+  goalId: string; // SQL: goal_id
+  userId: string; // SQL: user_id
+  languageCode: string | null; // SQL: language_code
+  certificate: string | null; // Changed from 'examName'. SQL: certificate
+  targetScore?: number | null; // SQL: target_score
+  targetSkill: string | null; // SQL: target_skill
+  customDescription: string | null; // SQL: custom_description
+  goalType: string; // SQL: goal_type
+  targetProficiency: string | null; // SQL: target_proficiency
+  targetDate: string | null; // SQL: target_date
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  isDeleted?: boolean; // SQL: is_deleted
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// DTO based on lesson_progress
 export interface LessonProgressResponse {
-  lessonId: string;
-  userId: string;
-  score?: number;
-  completedAt?: string | null;
-  isDeleted: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  score?: number; // SQL: score
+  completedAt?: string | null; // SQL: completed_at
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// Maps to: lesson_categories
 export interface LessonCategory {
-  lessonCategoryId: string;
-  lessonCategoryName?: string;
-  languageCode?: string | null;
-  description?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  lessonCategoryId: string; // SQL: lesson_category_id
+  lessonCategoryName?: string | null; // SQL: lesson_category_name
+  languageCode?: string | null; // SQL: language_code
+  description?: string | null; // SQL: description
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: lesson_series
 export interface LessonSeries {
-  lessonSeriesId: string;
-  lessonSeriesName: string;
-  title: string;
-  languageCode?: string | null;
-  description?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  lessonSeriesId: string; // SQL: lesson_series_id
+  lessonSeriesName: string; // SQL: lesson_series_name
+  title: string; // SQL: title
+  languageCode?: string | null; // SQL: language_code
+  description?: string | null; // SQL: description
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: user_series_progress
 export interface UserSeriesProgress {
-  seriesId: string;
-  userId: string;
-  currentIndex: number;
-  isDeleted?: boolean;
-  startedAt: string;
-  completedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  seriesId: string; // SQL: series_id
+  userId: string; // SQL: user_id
+  currentIndex: number; // SQL: current_index
+  isDeleted?: boolean; // SQL: is_deleted
+  startedAt: string; // SQL: started_at
+  completedAt?: string | null; // SQL: completed_at
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: courses (with DTO fields)
 export interface Course {
-  courseId: string;
-  title: string;
-  languageCode?: string | null;
-  description?: string | null;
-  thumbnailUrl?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  creatorId?: string | null;
-  difficultyLevel?: string | null;
+  courseId: string; // SQL: course_id
+  title: string; // SQL: title
+  languageCode?: string | null; // SQL: language_code
+  description?: string | null; // DTO field (not in courses table)
+  thumbnailUrl?: string | null; // DTO field (not in courses table)
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  creatorId?: string | null; // SQL: creator_id
+  difficultyLevel?: string | null; // SQL: difficulty_level
+  // Added from schema
+  approvalStatus?: string | null;
+  price: number;
+  latestPublicVersionId?: string | null;
 }
 
+// Maps to: course_enrollments
 export interface CourseEnrollment {
-  enrollmentId: string;
-  courseId: string;
-  userId: string;
-  enrolledAt: string;
-  completedAt?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  status: string;
+  enrollmentId: string; // SQL: enrollment_id
+  // courseId: string; // Removed, not in schema table
+  courseVersionId: string | null; // Added from schema. SQL: course_version_id
+  userId: string; // SQL: user_id
+  enrolledAt: string; // SQL: enrolled_at
+  completedAt?: string | null; // SQL: completed_at
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  status: string; // SQL: status
 }
 
 /* --- Video & multimedia --- */
+// Maps to: videos
 export interface Video {
-  videoId: string;
-  videoUrl: string;
-  originalSubtitleUrl?: string | null;
-  lessonId: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  videoId: string; // SQL: video_id
+  videoUrl: string; // SQL: video_url
+  originalSubtitleUrl?: string | null; // SQL: original_subtitle_url
+  lessonId: string; // SQL: lesson_id
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: video_subtitles
 export interface VideoSubtitle {
-  videoSubtitleId: string;
-  videoId: string;
-  languageCode: string;
-  subtitleUrl: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  videoSubtitleId: string; // SQL: video_subtitle_id
+  videoId: string; // SQL: video_id
+  languageCode: string; // SQL: language_code
+  subtitleUrl: string; // SQL: subtitle_url
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
 /* --- Memorization / Notes --- */
+// Maps to: user_memorizations
 export interface UserMemorization {
-  memorizationId: string;
-  userId: string;
-  contentType: string;
-  contentId?: string | null;
-  noteText?: string | null;
-  isFavorite: boolean;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  memorizationId: string; // SQL: memorization_id
+  userId: string; // SQL: user_id
+  contentType: string; // SQL: content_type
+  contentId?: string | null; // SQL: content_id
+  noteText?: string | null; // SQL: note_text
+  isFavorite: boolean; // SQL: is_favorite
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
 /* --- Social features --- */
+// Maps to: friendships
 export interface Friendship {
-  user1Id: string;
-  user2Id: string;
-  status: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  user1Id: string; // SQL: user1_id
+  user2Id: string; // SQL: user2_id
+  status: string; // SQL: status
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: rooms
 export interface Room {
-  roomId: string;
-  roomName: string;
-  creatorId?: string | null;
-  maxMembers: number;
-  purpose?: string | null;
-  roomType: string;
-  status: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  roomId: string; // SQL: room_id
+  roomName: string; // SQL: room_name
+  creatorId?: string | null; // SQL: creator_id
+  maxMembers: number; // SQL: max_members
+  purpose?: string | null; // SQL: purpose
+  roomType: string; // SQL: room_type
+  status: string; // SQL: status
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  // Added from schema
+  topic?: string | null;
+  nickNameInRom?: string | null;
 }
 
+// Maps to: room_members
 export interface RoomMember {
-  roomId: string;
-  userId: string;
-  role?: string | null;
-  isDeleted?: boolean;
-  joinedAt: string;
-  endAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  roomId: string; // SQL: room_id
+  userId: string; // SQL: user_id
+  role?: string | null; // SQL: role
+  isDeleted?: boolean; // SQL: is_deleted
+  joinedAt: string; // SQL: joined_at
+  endAt?: string | null; // SQL: end_at
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: chat_messages
 export interface ChatMessage {
-  chatMessageId: string;
-  content?: string | null;
-  mediaUrl?: string | null;
-  messageType?: string | null;
-  roomId: string;
-  senderId: string;
-  isRead: boolean;
-  isDeleted?: boolean;
-  sentAt: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  chatMessageId: string; // SQL: chat_message_id
+  content?: string | null; // SQL: content
+  mediaUrl?: string | null; // SQL: media_url
+  messageType?: string | null; // SQL: message_type
+  roomId: string; // SQL: room_id
+  senderId: string; // SQL: sender_id
+  isRead: boolean; // SQL: is_read
+  isDeleted?: boolean; // SQL: is_deleted
+  sentAt: string; // SQL: sent_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  receiverId?: string | null; // Added from schema
 }
 
+// Maps to: message_reactions
 export interface MessageReaction {
-  reactionId: string;
-  chatMessageId: string;
-  sentAt: string;
-  userId: string;
-  reaction: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  reactionId: string; // SQL: reaction_id
+  chatMessageId: string; // SQL: chat_message_id
+  sentAt: string; // SQL: sent_at
+  userId: string; // SQL: user_id
+  reaction: string; // SQL: reaction
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
 /* --- Gamification --- */
+// Maps to: events
 export interface Event {
-  eventId: string;
-  eventName: string;
-  description?: string | null;
-  startDate: string;
-  endDate: string;
-  eventType: string;
-  maxScore: number;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  eventId: string; // SQL: event_id
+  eventName: string; // SQL: event_name
+  description?: string | null; // SQL: description
+  startDate: string; // SQL: start_date
+  endDate: string; // SQL: end_date
+  eventType: string; // SQL: event_type
+  maxScore: number; // SQL: max_score
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: user_events
 export interface UserEvent {
-  eventId: string;
-  userId: string;
-  score?: number;
-  rank?: number | null;
-  participatedAt: string;
-  isCompleted: boolean;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  eventId: string; // SQL: event_id
+  userId: string; // SQL: user_id
+  score: number; // SQL: score
+  rank?: number | null; // SQL: rank
+  participatedAt: string; // SQL: participated_at
+  isCompleted: boolean; // SQL: is_completed
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: leaderboard_entries
 export interface LeaderboardEntry {
-  leaderboardEntryId: {
+  // SQL: PK is (leaderboard_id, user_id)
+  leaderboardId: string; // Added from schema
+  userId: string; // Added from schema
+  leaderboardEntryId: { // Original DTO structure
     leaderboardId?: string | null;
     userId?: string | null;
   };
-  score?: number;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  score?: number; // SQL: score
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: leaderboards
 export interface Leaderboard {
-  leaderboardId: string;
-  period?: string | null;
-  tab?: string | null;
-  snapshotDate?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  leaderboardId: string; // SQL: leaderboard_id
+  period?: string | null; // SQL: period
+  tab?: string | null; // SQL: tab
+  snapshotDate?: string | null; // SQL: snapshot_date (date)
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
 /* --- Reminders --- */
+// Maps to: user_reminders
 export interface UserReminder {
-  id: string;
-  userId: string;
-  targetType: string;
-  targetId?: string | null;
-  title?: string | null;
-  message?: string | null;
-  reminderTime: string;
-  reminderDate?: string | null;
-  repeatType?: string | null;
-  enabled: boolean;
-  isDeleted?: boolean;
-  createdAt?: string;
+  id: string; // SQL: id
+  userId: string; // SQL: user_id
+  targetType: string; // SQL: target_type
+  targetId?: string | null; // SQL: target_id
+  title?: string | null; // SQL: title
+  message?: string | null; // SQL: message
+  reminderTime: string; // SQL: reminder_time
+  reminderDate?: string | null; // SQL: reminder_date
+  repeatType?: string | null; // SQL: repeat_type
+  enabled: boolean | null; // SQL: enabled
+  isDeleted?: boolean | null; // SQL: is_deleted
+  createdAt?: string | null; // SQL: created_at
 }
 
 /* --- Learning activities --- */
+// Maps to: user_learning_activities
 export interface UserLearningActivity {
-  activityId: string;
-  userId: string;
-  activityType: string;
-  duration?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  targetId?: string | null;
+  activityId: string; // SQL: activity_id
+  userId: string; // SQL: user_id
+  activityType: string; // SQL: activity_type
+  durationInSeconds?: number | null; // Changed from 'duration'. SQL: duration_in_seconds
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  targetId?: string | null; // SQL: target_id
+  // Added from schema
+  details?: string | null;
+  relatedEntityId?: string | null;
 }
 
 /* --- Notifications --- */
+// Maps to: notifications
 export interface Notification {
-  notificationId: string;
-  userId: string;
-  languageCode?: string | null;
-  title: string;
-  content?: string | null;
-  type?: string | null;
-  payload?: any | null;
-  read: boolean;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  notificationId: string; // SQL: notification_id
+  userId: string; // SQL: user_id
+  languageCode?: string | null; // SQL: language_code
+  title: string; // SQL: title
+  content?: string | null; // SQL: content
+  type?: string | null; // SQL: type
+  payload?: any | null; // SQL: payload (varchar)
+  read: boolean; // SQL: read
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
 /* --- User Goals & Roadmap --- */
+// Maps to: user_goals
 export interface UserGoal {
-  goalId: string;
-  userId: string;
-  languageCode?: string | null;
-  certificate?: string | null;
-  targetScore?: number | null;
-  targetSkill?: string | null;
-  customDescription?: string | null;
-  goalType: string;
-  targetProficiency?: string | null;
-  targetDate?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  goalId: string; // SQL: goal_id
+  userId: string; // SQL: user_id
+  languageCode?: string | null; // SQL: language_code
+  certificate?: string | null; // SQL: certificate
+  targetScore?: number | null; // SQL: target_score
+  targetSkill?: string | null; // SQL: target_skill
+  customDescription?: string | null; // SQL: custom_description
+  goalType: string; // SQL: goal_type
+  targetProficiency?: string | null; // SQL: target_proficiency
+  targetDate?: string | null; // SQL: target_date
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: roadmaps (as a DTO)
 export interface Roadmap {
-  roadmapId: string;
-  languageCode: string;
-  title: string;
-  description?: string | null;
-  completedItems: number;
-  estimatedCompletionTime: number;
-  totalItems: number;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  isDeleted: boolean;
+  roadmapId: string; // SQL: roadmap_id
+  languageCode: string; // SQL: language_code
+  title: string; // SQL: title
+  description?: string | null; // SQL: description
+  completedItems: number; // DTO field
+  estimatedCompletionTime: number; // DTO field
+  totalItems: number; // SQL: total_items
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  isDeleted: boolean | null; // SQL: is_deleted
+  type?: string | null; // Added from schema
 }
 
+// Maps to: user_roadmaps
 export interface UserRoadmap {
-  userRoadmapId: string;
-  roadmapId: string;
-  userId: string;
-  currentLevel: number;
-  targetLevel?: string | null;
-  targetProficiency?: string | null;
-  estimatedCompletionTime?: number | null;
-  completedItems: number;
-  status: string;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  isDeleted: boolean;
-  language?: string | null;
+  userRoadmapId: string; // SQL: user_roadmap_id
+  roadmapId: string; // SQL: roadmap_id
+  userId: string; // SQL: user_id
+  currentLevel: number; // SQL: current_level
+  targetLevel?: number | null; // Changed from 'string'. SQL: target_level (integer)
+  targetProficiency?: string | null; // SQL: target_proficiency
+  estimatedCompletionTime?: number | null; // SQL: estimated_completion_time
+  completedItems: number; // SQL: completed_items
+  status: string; // SQL: status
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  isDeleted: boolean | null; // SQL: is_deleted
+  language?: string | null; // SQL: language
 }
 
+// Maps to: roadmap_items
 export interface RoadmapItem {
-  itemId: string;
-  roadmapId: string;
-  title: string;
-  description?: string | null;
-  type?: string | null;
-  level?: number | null;
-  estimatedTime?: number | null;
-  orderIndex?: number | null;
-  category?: string | null;
-  difficulty?: string | null;
-  expReward: number;
-  contentId?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  isDeleted: boolean;
+  itemId: string; // SQL: item_id
+  roadmapId: string; // SQL: roadmap_id
+  title: string; // SQL: title
+  description?: string | null; // SQL: description
+  type?: string | null; // SQL: type
+  level?: number | null; // SQL: level
+  estimatedTime?: number | null; // SQL: estimated_time
+  orderIndex?: number | null; // SQL: order_index
+  category?: string | null; // SQL: category
+  difficulty?: string | null; // SQL: difficulty
+  expReward: number; // SQL: exp_reward
+  contentId?: string | null; // SQL: content_id
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  isDeleted: boolean | null; // SQL: is_deleted
 }
 
+// Maps to: roadmap_milestones
 export interface RoadmapMilestone {
-  milestoneId: string;
-  roadmapId: string;
-  title: string;
-  description?: string | null;
-  level?: number | null;
-  requirements?: string[] | null;
-  rewards?: string[] | null;
-  orderIndex?: number | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  isDeleted: boolean;
+  milestoneId: string; // SQL: milestone_id
+  roadmapId: string; // SQL: roadmap_id
+  title: string; // SQL: title
+  description?: string | null; // SQL: description
+  level?: number | null; // SQL: level
+  requirements?: string[] | null; // SQL: requirements (text[])
+  rewards?: string[] | null; // SQL: rewards (text[])
+  orderIndex?: number | null; // SQL: order_index
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  isDeleted: boolean | null; // SQL: is_deleted
 }
 
+// Maps to: roadmap_guidance
 export interface RoadmapGuidance {
-  guidanceId: string;
-  itemId: string;
-  stage?: string | null;
-  title?: string | null;
-  description?: string | null;
-  tips?: string[] | null;
-  estimatedTime?: number | null;
-  orderIndex?: number | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  isDeleted: boolean;
+  guidanceId: string; // SQL: guidance_id
+  itemId: string; // SQL: item_id
+  stage?: string | null; // SQL: stage
+  title?: string | null; // SQL: title
+  description?: string | null; // SQL: description
+  tips?: string[] | null; // SQL: tips (text[])
+  estimatedTime?: number | null; // SQL: estimated_time
+  orderIndex?: number | null; // SQL: order_index
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  isDeleted: boolean | null; // SQL: is_deleted
 }
 
+// Maps to: roadmap_resources
 export interface RoadmapResource {
-  resourceId: string;
-  itemId: string;
-  type?: string | null;
-  title?: string | null;
-  description?: string | null;
-  url?: string | null;
-  contentId?: string | null;
-  duration?: number | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  isDeleted: boolean;
+  resourceId: string; // SQL: resource_id
+  itemId: string; // SQL: item_id
+  type?: string | null; // SQL: type
+  title?: string | null; // SQL: title
+  description?: string | null; // SQL: description
+  url?: string | null; // SQL: url
+  contentId?: string | null; // SQL: content_id
+  duration?: number | null; // SQL: duration
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  isDeleted: boolean | null; // SQL: is_deleted
 }
 
 /* --- Missing / other DB types (camelCase) --- */
+// Maps to: character3ds
 export interface Character3D {
-  character3dId: string;
-  character3dName: string;
-  description?: string | null;
-  modelUrl?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  character3dId: string; // SQL: character3d_id
+  character3dName: string; // SQL: character3d_name
+  description?: string | null; // SQL: description
+  modelUrl?: string | null; // SQL: model_url
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: couples
 export interface Couple {
-  user1Id: string;
-  user2Id: string;
-  status: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  id: string; // Added from schema. SQL: id
+  user1Id: string; // SQL: user1_id
+  user2Id: string; // SQL: user2_id
+  status: string; // SQL: status
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  // Added from schema
+  exploringStart?: string | null;
+  exploringExpiresAt?: string | null;
+  coupleStartDate?: string | null;
+  coupleScore?: number | null;
 }
 
+// Maps to: course_discounts
 export interface CourseDiscount {
-  discountId: string;
-  courseId: string;
-  discountPercentage: number;
-  startDate?: string | null;
-  endDate?: string | null;
-  isActive: boolean;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  discountId: string; // SQL: discount_id
+  courseId: string; // SQL: course_id
+  discountPercentage: number; // SQL: discount_percentage
+  startDate?: string | null; // SQL: start_date
+  endDate?: string | null; // SQL: end_date
+  isActive: boolean; // SQL: is_active
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: course_reviews
 export interface CourseReview {
-  reviewId: string;
-  courseId: string;
-  userId: string;
-  languageCode?: string | null;
-  rating: number;
-  comment?: string | null;
-  reviewedAt: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  reviewId: string; // SQL: review_id
+  courseId: string; // SQL: course_id
+  userId: string; // SQL: user_id
+  languageCode?: string | null; // SQL: language_code
+  rating: number; // SQL: rating (numeric)
+  comment?: string | null; // SQL: comment
+  reviewedAt: string; // SQL: reviewed_at
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: group_answers
 export interface GroupAnswer {
-  groupAnswerId: string;
-  groupSessionId?: string | null;
-  lessonQuestionId?: string | null;
-  userId?: string | null;
-  selectedOption?: string | null;
-  isCorrect: boolean;
-  isDeleted?: boolean;
-  answeredAt: string;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  groupAnswerId: string; // SQL: group_answer_id
+  groupSessionId?: string | null; // SQL: group_session_id
+  lessonQuestionId?: string | null; // SQL: lesson_question_id
+  userId?: string | null; // SQL: user_id
+  selectedOption?: string | null; // SQL: selected_option
+  isCorrect: boolean; // SQL: is_correct
+  isDeleted?: boolean; // SQL: is_deleted
+  answeredAt: string; // SQL: answered_at
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: group_sessions
 export interface GroupSession {
-  groupSessionId: string;
-  lessonId?: string | null;
-  roomId?: string | null;
-  userId?: string | null;
-  isDeleted?: boolean;
-  startedAt: string;
-  endedAt?: string | null;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  groupSessionId: string; // SQL: group_session_id
+  lessonId?: string | null; // SQL: lesson_id
+  roomId?: string | null; // SQL: room_id
+  userId?: string | null; // SQL: user_id
+  isDeleted?: boolean; // SQL: is_deleted
+  startedAt: string; // SQL: started_at
+  endedAt?: string | null; // SQL: ended_at
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: invalidated_tokens
 export interface InvalidatedToken {
-  token: string;
-  expiryTime: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  token: string; // SQL: token
+  expiryTime: string; // SQL: expiry_time
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: lesson_sub_categories
 export interface LessonSubCategory {
-  lessonSubCategoryId: string;
-  lessonSubCategoryName: string;
-  lessonCategoryId?: string | null;
-  languageCode?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  lessonSubCategoryId: string; // SQL: lesson_sub_category_id
+  lessonSubCategoryName: string; // SQL: lesson_sub_category_name
+  lessonCategoryId?: string | null; // SQL: lesson_category_id
+  languageCode?: string | null; // SQL: language_code
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: lesson_order_in_series
 export interface LessonOrderInSeries {
-  lessonId: string;
-  lessonSeriesId: string;
-  orderIndex: number;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  lessonId: string; // SQL: lesson_id
+  lessonSeriesId: string; // SQL: lesson_series_id
+  orderIndex: number; // SQL: order_index
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: lesson_progress_wrong_items
 export interface LessonProgressWrongItem {
-  lessonId: string;
-  userId: string;
-  lessonQuestionId: string;
-  wrongAnswer?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  lessonQuestionId: string; // SQL: lesson_question_id
+  wrongAnswer?: string | null; // SQL: wrong_answer
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  attemptNumber: number; // Added from schema
 }
 
+// Maps to: lesson_reviews
 export interface LessonReview {
-  reviewId: string;
-  lessonId: string;
-  userId: string;
-  languageCode?: string | null;
-  rating: number;
-  comment?: string | null;
-  reviewedAt: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  reviewId: string; // SQL: review_id
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  languageCode?: string | null; // SQL: language_code
+  rating: number; // SQL: rating (numeric)
+  comment?: string | null; // SQL: comment
+  reviewedAt: string; // SQL: reviewed_at
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  verified?: boolean | null; // Added from schema
 }
 
+// Maps to: permissions
 export interface Permission {
-  permissionId: string;
-  name: string;
-  description?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  permissionId: string; // SQL: permission_id
+  name: string; // SQL: name
+  description?: string | null; // SQL: description
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: refresh_tokens
 export interface RefreshToken {
-  id: string;
-  userId: string;
-  token: string;
-  isRevoked: boolean;
-  expiresAt?: string | null;
-  createdAt?: string;
-  deviceId?: string | null;
-  ip?: string | null;
-  userAgent?: string | null;
+  id: string; // SQL: id
+  userId: string; // SQL: user_id
+  token: string; // SQL: token
+  isRevoked: boolean; // SQL: is_revoked
+  expiresAt?: string | null; // SQL: expires_at
+  createdAt?: string; // SQL: created_at
+  deviceId?: string | null; // SQL: device_id
+  ip?: string | null; // SQL: ip
+  userAgent?: string | null; // SQL: user_agent
 }
 
+// Maps to: role_permissions
 export interface RolePermission {
-  permissionId: string;
-  roleId: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  permissionId: string; // SQL: permission_id
+  roleId: string; // SQL: role_id
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: roles
 export interface Role {
-  roleId: string;
-  roleName: string;
-  description?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  roleId: string; // SQL: role_id
+  roleName: string; // SQL: role_name
+  description?: string | null; // SQL: description
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: transactions
 export interface Transaction {
-  transactionId: string;
-  userId: string;
-  amount: number;
-  description?: string | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
-  status: string;
-  provider: string;
-  currency: string;
+  transactionId: string; // SQL: transaction_id
+  userId: string; // SQL: user_id
+  amount: number; // SQL: amount (double precision)
+  description?: string | null; // SQL: description
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
+  status: string; // SQL: status
+  provider: string; // SQL: provider
+  currency: string; // SQL: currency
+  // Added from schema
+  walletId?: string | null;
+  senderId?: string | null;
+  receiverId?: string | null;
+  originalTransactionId?: string | null;
+  type: string;
+  paymentGatewayTransactionId?: string | null;
+  idempotencyKey?: string | null;
 }
 
+// Maps to: user_certificates
 export interface UserCertificate {
-  userId: string;
-  certificate: string;
-  createdAt?: string;
+  userId: string; // SQL: user_id
+  certificate: string; // SQL: certificate
+  createdAt?: string; // SQL: created_at (time with time zone)
 }
 
+// Maps to: user_fcm_tokens
 export interface UserFcmToken {
-  userFcmTokenId: string;
-  userId?: string | null;
-  fcmToken: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  userFcmTokenId: string; // SQL: user_fcm_token_id
+  userId?: string | null; // SQL: user_id
+  fcmToken: string; // SQL: fcm_token
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: user_roles
 export interface UserRole {
-  roleId: string;
-  userId: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  roleId: string; // SQL: role_id
+  userId: string; // SQL: user_id
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: video_call_participants
 export interface VideoCallParticipant {
-  videoCallId: string;
-  userId: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  videoCallId: string; // SQL: video_call_id
+  userId: string; // SQL: user_id
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// Maps to: video_calls
 export interface VideoCall {
-  videoCallId: string;
-  roomId?: string | null;
-  callerId?: string | null;
-  calleeId?: string | null;
-  videoCallType?: string | null;
-  status: string;
-  startTime?: string | null;
-  endTime?: string | null;
-  duration?: string | null;
-  qualityMetrics?: any | null;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-  deletedAt?: string | null;
+  videoCallId: string; // SQL: video_call_id
+  roomId?: string | null; // SQL: room_id
+  callerId?: string | null; // SQL: caller_id
+  calleeId?: string | null; // SQL: callee_id
+  videoCallType?: string | null; // SQL: video_call_type
+  status: string; // SQL: status
+  startTime?: string | null; // SQL: start_time
+  endTime?: string | null; // SQL: end_time
+  duration?: string | null; // SQL: duration (interval)
+  qualityMetrics?: any | null; // SQL: quality_metrics (jsonb)
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
+  deletedAt?: string | null; // SQL: deleted_at
 }
 
+// DTO - No direct table
 export interface CreateReviewRequest {
   userId: string;
   rating: number;
   content: string;
 }
 
+// DTO based on video_reviews
 export interface VideoReviewResponse {
-  reviewId: string;
-  videoId: string;
-  userId: string;
-  rating: number;
-  content: string;
-  likeCount: number;
-  dislikeCount: number;
-  createdAt?: string;
-  updatedAt?: string;
-  userReaction?: number;
+  reviewId: string; // SQL: review_id
+  videoId: string; // SQL: video_id
+  userId: string; // SQL: user_id
+  rating: number | null; // SQL: rating (integer)
+  content: string | null; // SQL: content
+  likeCount: number; // DTO field
+  dislikeCount: number; // DTO field
+  createdAt?: string | null; // SQL: created_at
+  updatedAt?: string | null; // SQL: updated_at
+  userReaction?: number; // DTO field
 }
 
 /* Request Interfaces from Java DTOs */
+// DTO - No direct table
 export interface LessonCategoryRequest {
   lessonCategoryName?: string;
   description?: string;
   isDeleted?: boolean;
 }
 
+// DTO - No direct table
 export interface LessonSeriesRequest {
   lessonSeriesName: string;
   title: string;
@@ -1420,17 +1640,19 @@ export interface LessonSeriesRequest {
   isDeleted?: boolean;
 }
 
+// DTO - No direct table
 export interface LessonQuestionRequest {
   lessonId?: string;
   question?: string;
-  optionA?: string;
-  optionB?: string;
-  optionC?: string;
-  optionD?: string;
+  optiona?: string; // Changed from optionA
+  optionb?: string; // Changed from optionB
+  optionc?: string; // Changed from optionC
+  optiond?: string; // Changed from optionD
   correctOption?: string;
   isDeleted?: boolean;
 }
 
+// DTO - No direct table
 export interface LessonSubCategoryRequest {
   lessonSubCategoryId?: string;
   lessonSubCategoryName?: string;
@@ -1438,6 +1660,7 @@ export interface LessonSubCategoryRequest {
   isDeleted?: boolean;
 }
 
+// DTO - No direct table
 export interface LessonRequest {
   lessonName: string;
   title: string;
@@ -1445,12 +1668,13 @@ export interface LessonRequest {
   expReward: number;
   creatorId?: string;
   skillType?: string;
-  courseId?: string;
+  // courseId?: string; // Removed, not in schema
   lessonSeriesId?: string;
   lessonCategoryId?: string;
   lessonSubCategoryId?: string;
 }
 
+// DTO - No direct table
 export interface LessonReviewRequest {
   lessonId: string;
   userId: string;
@@ -1460,6 +1684,7 @@ export interface LessonReviewRequest {
   isDeleted?: boolean;
 }
 
+// DTO - No direct table
 export interface LessonOrderInSeriesRequest {
   lessonId: string;
   lessonSeriesId: string;
@@ -1467,6 +1692,7 @@ export interface LessonOrderInSeriesRequest {
   isDeleted?: boolean;
 }
 
+// DTO - No direct table
 export interface LessonProgressRequest {
   lessonId: string;
   userId: string;
@@ -1476,97 +1702,107 @@ export interface LessonProgressRequest {
 }
 
 /* Response Interfaces from Java DTOs */
+// DTO based on lesson_categories
 export interface LessonCategoryResponse {
-  lessonCategoryId: string;
-  lessonCategoryName?: string;
-  description?: string;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonCategoryId: string; // SQL: lesson_category_id
+  lessonCategoryName?: string | null; // SQL: lesson_category_name
+  description?: string | null; // SQL: description
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO based on lesson_order_in_series
 export interface LessonOrderInSeriesResponse {
-  lessonId: string;
-  lessonSeriesId: string;
-  orderIndex?: number;
-  isDeleted?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonId: string; // SQL: lesson_id
+  lessonSeriesId: string; // SQL: lesson_series_id
+  orderIndex?: number; // SQL: order_index
+  isDeleted?: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO based on lesson_progress
 export interface LessonProgressResponse {
-  lessonId: string;
-  userId: string;
-  score?: number;
-  completedAt?: string | null;
-  isDeleted: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  score?: number; // SQL: score
+  completedAt?: string | null; // SQL: completed_at
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO based on lesson_progress_wrong_items
 export interface LessonProgressWrongItemResponse {
-  lessonId: string;
-  userId: string;
-  lessonQuestionId: string;
-  wrongAnswer?: string;
-  isDeleted: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  lessonQuestionId: string; // SQL: lesson_question_id
+  wrongAnswer?: string | null; // SQL: wrong_answer
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO based on lesson_questions
 export interface LessonQuestionResponse {
-  lessonQuestionId: string;
-  lessonId: string;
-  question: string;
-  optionA?: string;
-  optionB?: string;
-  optionC?: string;
-  optionD?: string;
-  correctOption?: string;
-  isDeleted: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonQuestionId: string; // SQL: lesson_question_id
+  lessonId: string; // SQL: lesson_id
+  question: string; // SQL: question
+  optiona?: string | null; // Changed from optionA. SQL: optiona
+  optionb?: string | null; // Changed from optionB. SQL: optionb
+  optionc?: string | null; // Changed from optionC. SQL: optionc
+  optiond?: string | null; // Changed from optionD. SQL: optiond
+  correctOption?: string | null; // SQL: correct_option
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO based on lessons
 export interface LessonResponse {
-  lessonId: string;
-  lessonName?: string;
-  title?: string;
-  languageCode?: string;
-  expReward?: number;
-  courseId?: string;
-  lessonSeriesId?: string;
-  lessonCategoryId?: string;
-  lessonSubCategoryId?: string;
-  lessonType?: string;
-  skillTypes?: string;
+  lessonId: string; // SQL: lesson_id
+  lessonName?: string; // SQL: lesson_name
+  title?: string; // SQL: title
+  languageCode?: string | null; // SQL: language_code
+  expReward?: number; // SQL: exp_reward
+  // courseId?: string; // Removed, not in schema
+  lessonSeriesId?: string | null; // SQL: lesson_series_id
+  lessonCategoryId?: string | null; // SQL: lesson_category_id
+  lessonSubCategoryId?: string | null; // SQL: lesson_sub_category_id
+  lessonType?: string | null; // SQL: lesson_type
+  skillTypes?: string | null; // SQL: skill_types
+  // DTO fields
   flashcardCount?: number;
   dueFlashcardsCount?: number;
   videoUrls?: string[];
 }
 
+// DTO based on lesson_reviews
 export interface LessonReviewResponse {
-  reviewId: string;
-  lessonId: string;
-  userId: string;
-  rating: number;
-  comment?: string;
-  reviewedAt?: string;
-  isDeleted: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  reviewId: string; // SQL: review_id
+  lessonId: string; // SQL: lesson_id
+  userId: string; // SQL: user_id
+  rating: number; // SQL: rating (numeric)
+  comment?: string | null; // SQL: comment
+  reviewedAt?: string; // SQL: reviewed_at
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO based on lesson_series
 export interface LessonSeriesResponse {
-  lessonSeriesId: string;
-  lessonSeriesName: string;
-  title: string;
-  description?: string;
-  isDeleted: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonSeriesId: string; // SQL: lesson_series_id
+  lessonSeriesName: string; // SQL: lesson_series_name
+  title: string; // SQL: title
+  description?: string | null; // SQL: description
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }
 
+// DTO - No direct table
 export interface LessonStatsResponse {
   lessonId: string;
   lessonName?: string;
@@ -1574,11 +1810,12 @@ export interface LessonStatsResponse {
   completions?: number;
 }
 
+// DTO based on lesson_sub_categories
 export interface LessonSubCategoryResponse {
-  lessonSubCategoryId: string;
-  lessonSubCategoryName: string;
-  lessonCategoryId?: string;
-  isDeleted: boolean;
-  createdAt?: string;
-  updatedAt?: string;
+  lessonSubCategoryId: string; // SQL: lesson_sub_category_id
+  lessonSubCategoryName: string; // SQL: lesson_sub_category_name
+  lessonCategoryId?: string | null; // SQL: lesson_category_id
+  isDeleted: boolean; // SQL: is_deleted
+  createdAt?: string; // SQL: created_at
+  updatedAt?: string; // SQL: updated_at
 }

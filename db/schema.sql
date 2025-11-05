@@ -2,6 +2,8 @@
 -- Please log an issue at https://github.com/pgadmin-org/pgadmin4/issues/new/choose if you find any bugs, including reproduction steps.
 BEGIN;
 
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 CREATE TABLE IF NOT EXISTS public.admirations
 (
@@ -23,12 +25,33 @@ CREATE TABLE IF NOT EXISTS public.badges
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
+    criteria_type character varying(100) COLLATE pg_catalog."default",
+    criteria_threshold integer,
     CONSTRAINT badges_pkey PRIMARY KEY (badge_id),
     CONSTRAINT badges_badge_name_key UNIQUE (badge_name)
 );
 
 COMMENT ON TABLE public.badges
-    IS 'Lưu trữ huy hiệu cho thành tích của người dùng';
+    IS 'Lưu trữ huy hiệu cho thành tích của người dùng, bao gồm cả điều kiện để đạt được (criteria)';
+
+CREATE TABLE IF NOT EXISTS public.basic_lessons
+(
+    basic_lesson_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    language_code character varying(10) COLLATE pg_catalog."default" NOT NULL,
+    lesson_type character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    symbol character varying(50) COLLATE pg_catalog."default" NOT NULL,
+    romanization character varying(50) COLLATE pg_catalog."default",
+    meaning text COLLATE pg_catalog."default",
+    pronunciation_audio_url text COLLATE pg_catalog."default",
+    video_url text COLLATE pg_catalog."default",
+    image_url text COLLATE pg_catalog."default",
+    example_sentence text COLLATE pg_catalog."default",
+    example_translation text COLLATE pg_catalog."default",
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone,
+    is_deleted boolean DEFAULT false,
+    CONSTRAINT basic_lessons_pkey PRIMARY KEY (basic_lesson_id)
+);
 
 CREATE TABLE IF NOT EXISTS public.character3ds
 (
@@ -109,7 +132,6 @@ COMMENT ON TABLE public.course_discounts
 CREATE TABLE IF NOT EXISTS public.course_enrollments
 (
     enrollment_id uuid NOT NULL DEFAULT uuid_generate_v4(),
-    course_id uuid NOT NULL,
     user_id uuid NOT NULL,
     enrolled_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     completed_at timestamp with time zone,
@@ -118,6 +140,7 @@ CREATE TABLE IF NOT EXISTS public.course_enrollments
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
     status character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'active'::character varying,
+    course_version_id uuid,
     CONSTRAINT course_enrollments_pkey PRIMARY KEY (enrollment_id)
 );
 
@@ -143,13 +166,35 @@ CREATE TABLE IF NOT EXISTS public.course_reviews
 COMMENT ON TABLE public.course_reviews
     IS 'Lưu trữ đánh giá khóa học';
 
+CREATE TABLE IF NOT EXISTS public.course_version_lessons
+(
+    version_id uuid NOT NULL,
+    lesson_id uuid NOT NULL,
+    order_index integer NOT NULL DEFAULT 0,
+    CONSTRAINT course_version_lessons_pkey PRIMARY KEY (version_id, lesson_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.course_versions
+(
+    version_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    course_id uuid NOT NULL,
+    version_number integer NOT NULL DEFAULT 1,
+    description text COLLATE pg_catalog."default",
+    thumbnail_url character varying(255) COLLATE pg_catalog."default",
+    status character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'DRAFT'::character varying,
+    reason_for_change text COLLATE pg_catalog."default",
+    created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    published_at timestamp with time zone,
+    is_deleted boolean NOT NULL DEFAULT false,
+    deleted_at timestamp with time zone,
+    CONSTRAINT course_versions_pkey PRIMARY KEY (version_id)
+);
+
 CREATE TABLE IF NOT EXISTS public.courses
 (
     course_id uuid NOT NULL DEFAULT uuid_generate_v4(),
     title character varying(255) COLLATE pg_catalog."default" NOT NULL,
     language_code character varying(2) COLLATE pg_catalog."default",
-    description text COLLATE pg_catalog."default",
-    thumbnail_url character varying(255) COLLATE pg_catalog."default",
     is_deleted boolean NOT NULL DEFAULT false,
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -158,6 +203,7 @@ CREATE TABLE IF NOT EXISTS public.courses
     difficulty_level character varying(50) COLLATE pg_catalog."default",
     approval_status character varying COLLATE pg_catalog."default",
     price numeric NOT NULL DEFAULT 0,
+    latest_public_version_id uuid,
     CONSTRAINT courses_pkey PRIMARY KEY (course_id)
 );
 
@@ -526,6 +572,7 @@ CREATE TABLE IF NOT EXISTS public.lesson_reviews
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
+    verified boolean,
     CONSTRAINT lesson_reviews_pkey PRIMARY KEY (review_id)
 );
 
@@ -581,7 +628,6 @@ CREATE TABLE IF NOT EXISTS public.lessons
     created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
     deleted_at timestamp with time zone,
-    course_id uuid,
     lesson_type character varying(50) COLLATE pg_catalog."default",
     skill_types text COLLATE pg_catalog."default",
     is_free boolean NOT NULL DEFAULT false,
@@ -663,6 +709,21 @@ CREATE TABLE IF NOT EXISTS public.permissions
 
 COMMENT ON TABLE public.permissions
     IS 'Lưu trữ quyền cho các vai trò';
+
+CREATE TABLE IF NOT EXISTS public.proficiency_test_configs
+(
+    test_config_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    test_type character varying(100) COLLATE pg_catalog."default" NOT NULL,
+    language_code character varying(10) COLLATE pg_catalog."default" NOT NULL,
+    title character varying(255) COLLATE pg_catalog."default" NOT NULL,
+    description text COLLATE pg_catalog."default",
+    num_questions integer NOT NULL DEFAULT 15,
+    ai_topic character varying(100) COLLATE pg_catalog."default",
+    is_active boolean DEFAULT true,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now(),
+    CONSTRAINT proficiency_test_configs_pkey PRIMARY KEY (test_config_id)
+);
 
 CREATE TABLE IF NOT EXISTS public.refresh_tokens
 (
@@ -860,6 +921,35 @@ CREATE TABLE IF NOT EXISTS public.rooms
 
 COMMENT ON TABLE public.rooms
     IS 'Lưu trữ các phòng trò chuyện để giao tiếp';
+
+CREATE TABLE IF NOT EXISTS public.test_session_questions
+(
+    question_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    test_session_id uuid NOT NULL,
+    question_text text COLLATE pg_catalog."default" NOT NULL,
+    options_json jsonb,
+    correct_answer_index integer NOT NULL,
+    explanation text COLLATE pg_catalog."default",
+    skill_type character varying(50) COLLATE pg_catalog."default",
+    user_answer_index integer,
+    is_correct boolean,
+    order_index integer NOT NULL,
+    CONSTRAINT test_session_questions_pkey PRIMARY KEY (question_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.test_sessions
+(
+    test_session_id uuid NOT NULL DEFAULT gen_random_uuid(),
+    user_id uuid NOT NULL,
+    test_config_id uuid NOT NULL,
+    status character varying(50) COLLATE pg_catalog."default" NOT NULL DEFAULT 'PENDING'::character varying,
+    started_at timestamp with time zone DEFAULT now(),
+    completed_at timestamp with time zone,
+    score integer,
+    percentage numeric(5, 2),
+    proficiency_estimate character varying(50) COLLATE pg_catalog."default",
+    CONSTRAINT test_sessions_pkey PRIMARY KEY (test_session_id)
+);
 
 CREATE TABLE IF NOT EXISTS public.transactions
 (
@@ -1315,17 +1405,17 @@ ALTER TABLE IF EXISTS public.course_discounts
 
 
 ALTER TABLE IF EXISTS public.course_enrollments
-    ADD CONSTRAINT fk_course_enrollments_course FOREIGN KEY (course_id)
-    REFERENCES public.courses (course_id) MATCH SIMPLE
+    ADD CONSTRAINT fk_course_enrollments_user FOREIGN KEY (user_id)
+    REFERENCES public.users (user_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;
 
 
 ALTER TABLE IF EXISTS public.course_enrollments
-    ADD CONSTRAINT fk_course_enrollments_user FOREIGN KEY (user_id)
-    REFERENCES public.users (user_id) MATCH SIMPLE
+    ADD CONSTRAINT fk_enrollments_course_version FOREIGN KEY (course_version_id)
+    REFERENCES public.course_versions (version_id) MATCH SIMPLE
     ON UPDATE NO ACTION
-    ON DELETE CASCADE;
+    ON DELETE SET NULL;
 
 
 ALTER TABLE IF EXISTS public.course_reviews
@@ -1349,6 +1439,27 @@ ALTER TABLE IF EXISTS public.course_reviews
     ON DELETE CASCADE;
 
 
+ALTER TABLE IF EXISTS public.course_version_lessons
+    ADD CONSTRAINT fk_cvl_lesson FOREIGN KEY (lesson_id)
+    REFERENCES public.lessons (lesson_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.course_version_lessons
+    ADD CONSTRAINT fk_cvl_version FOREIGN KEY (version_id)
+    REFERENCES public.course_versions (version_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.course_versions
+    ADD CONSTRAINT fk_course_versions_course FOREIGN KEY (course_id)
+    REFERENCES public.courses (course_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
 ALTER TABLE IF EXISTS public.courses
     ADD CONSTRAINT fk_course_creator FOREIGN KEY (creator_id)
     REFERENCES public.users (user_id) MATCH SIMPLE
@@ -1361,6 +1472,14 @@ ALTER TABLE IF EXISTS public.courses
     REFERENCES public.languages (language_code) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE SET NULL;
+
+
+ALTER TABLE IF EXISTS public.courses
+    ADD CONSTRAINT fk_courses_latest_public_version FOREIGN KEY (latest_public_version_id)
+    REFERENCES public.course_versions (version_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE SET NULL
+    DEFERRABLE INITIALLY DEFERRED;
 
 
 ALTER TABLE IF EXISTS public.friendships
@@ -1574,13 +1693,6 @@ ALTER TABLE IF EXISTS public.lessons
 
 
 ALTER TABLE IF EXISTS public.lessons
-    ADD CONSTRAINT fk_lesson_to_course FOREIGN KEY (course_id)
-    REFERENCES public.courses (course_id) MATCH SIMPLE
-    ON UPDATE NO ACTION
-    ON DELETE CASCADE;
-
-
-ALTER TABLE IF EXISTS public.lessons
     ADD CONSTRAINT fk_lesson_to_series FOREIGN KEY (lesson_series_id)
     REFERENCES public.lesson_series (lesson_series_id) MATCH SIMPLE
     ON UPDATE NO ACTION
@@ -1625,6 +1737,13 @@ ALTER TABLE IF EXISTS public.notifications
 ALTER TABLE IF EXISTS public.notifications
     ADD CONSTRAINT fk_notifications_user FOREIGN KEY (user_id)
     REFERENCES public.users (user_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.proficiency_test_configs
+    ADD CONSTRAINT fk_test_config_language FOREIGN KEY (language_code)
+    REFERENCES public.languages (language_code) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;
 
@@ -1719,6 +1838,27 @@ ALTER TABLE IF EXISTS public.room_members
 
 ALTER TABLE IF EXISTS public.rooms
     ADD CONSTRAINT fk_room_creator FOREIGN KEY (creator_id)
+    REFERENCES public.users (user_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.test_session_questions
+    ADD CONSTRAINT fk_test_question_session FOREIGN KEY (test_session_id)
+    REFERENCES public.test_sessions (test_session_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.test_sessions
+    ADD CONSTRAINT fk_test_session_config FOREIGN KEY (test_config_id)
+    REFERENCES public.proficiency_test_configs (test_config_id) MATCH SIMPLE
+    ON UPDATE NO ACTION
+    ON DELETE CASCADE;
+
+
+ALTER TABLE IF EXISTS public.test_sessions
+    ADD CONSTRAINT fk_test_session_user FOREIGN KEY (user_id)
     REFERENCES public.users (user_id) MATCH SIMPLE
     ON UPDATE NO ACTION
     ON DELETE CASCADE;

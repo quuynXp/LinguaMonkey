@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import instance from "../api/axiosInstance" // (Đảm bảo đường dẫn này đúng)
-import type { ApiResponse, PaginatedResponse } from "../types/api" // (Đảm bảo đường dẫn này đúng)
+import type { ApiResponse, BilingualVideo, PaginatedResponse, Video, VideoSubtitle } from "../types/api" // (Đảm bảo đường dẫn này đúng)
 
 // ==========================================================
 // === INTERFACES (Cần khớp với DTOs của BE) ===
@@ -340,22 +340,7 @@ export const useCourses = () => {
   /**
    * [Creator] Tạo 1 khóa học mới
    */
-  const useCreateCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async (courseData: CreateCourseRequest) => {
-        const response = await instance.post<ApiResponse<Course>>("/api/v1/courses", courseData)
-        return response.data.result!
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-      },
-    })
-    return {
-      createCourse: mutation.mutateAsync,
-      isCreating: mutation.isPending,
-      error: mutation.error,
-    }
-  }
+ 
 
   /**
    * [Creator] Cập nhật chi tiết chung (Title, Price)
@@ -463,25 +448,6 @@ export const useCourses = () => {
     }
   }
   
-  /**
-   * [Learner] Mua / Đăng ký khóa học
-   */
-  const usePurchaseCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: PurchaseRequest) => {
-        const response = await instance.post<ApiResponse<CourseEnrollment>>("/api/v1/course-enrollments", payload)
-        return response.data.result!
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["enrolledCourses"] })
-      },
-    })
-    return {
-      purchaseCourse: mutation.mutateAsync,
-      isPurchasing: mutation.isPending,
-      error: mutation.error,
-    }
-  }
   
   /**
    * [Learner] Đổi version đang học
@@ -575,11 +541,11 @@ export const useCourses = () => {
     })
   }
   const useVideo = (videoId: string | null) => {
-    return useQuery<VideoResponse>({
+    return useQuery<Video>({
       queryKey: ["video", videoId],
       queryFn: async () => {
         if (!videoId) throw new Error("videoId is required")
-        const response = await instance.get<ApiResponse<VideoResponse>>(`/api/v1/videos/${videoId}`)
+        const response = await instance.get<ApiResponse<Video>>(`/api/v1/videos/${videoId}`)
         return response.data.result!
       },
       enabled: !!videoId,
@@ -588,8 +554,8 @@ export const useCourses = () => {
   }
   const useCreateVideo = () => {
     const mutation = useMutation({
-      mutationFn: async (payload: Partial<VideoResponse>) => {
-        const response = await instance.post<ApiResponse<VideoResponse>>("/videos", payload)
+      mutationFn: async (payload: Partial<Video>) => {
+        const response = await instance.post<ApiResponse<Video>>("/videos", payload)
         return response.data.result!
       },
       onSuccess: () => {
@@ -606,8 +572,8 @@ export const useCourses = () => {
   }
   const useUpdateVideo = () => {
     const mutation = useMutation({
-      mutationFn: async ({ videoId, payload }: { videoId: string; payload: Partial<VideoResponse> }) => {
-        const response = await instance.put<ApiResponse<VideoResponse>>(`/api/v1/videos/${videoId}`, payload)
+      mutationFn: async ({ videoId, payload }: { videoId: string; payload: Partial<Video> }) => {
+        const response = await instance.put<ApiResponse<Video>>(`/api/v1/videos/${videoId}`, payload)
         return response.data.result!
       },
       onSuccess: (data) => {
@@ -710,11 +676,11 @@ export const useCourses = () => {
       isTracking: mutation.isPending,
     }
   }
-  // ... (Course Mutations remain the same) ...
+
   const useCreateCourse = () => {
     const mutation = useMutation({
       mutationFn: async (courseData: Partial<Course>) => {
-        const response = await instance.post<ApiResponse<Course>>("/courses", courseData)
+        const response = await instance.post<ApiResponse<Course>>("/api/v1/courses", courseData)
         return response.data.result!
       },
       onSuccess: () => {
@@ -748,24 +714,7 @@ export const useCourses = () => {
       error: mutation.error,
     }
   }
-  const useDeleteCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async (courseId: string) => {
-        const response = await instance.delete<ApiResponse<void>>(`/api/v1/courses/${courseId}`)
-        return response.data.result
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["allCourses"] })
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-      },
-    })
 
-    return {
-      deleteCourse: mutation.mutateAsync,
-      isDeleting: mutation.isPending,
-      error: mutation.error,
-    }
-  }
   const useEnrollCourse = () => {
     const mutation = useMutation({
       mutationFn: async (enrollmentPayload: Partial<CourseEnrollment>) => {

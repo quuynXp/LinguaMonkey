@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
 import { queryClient } from "../services/queryClient";
-import { DailyChallenge, UserDailyChallenge } from "../types/api";
+import { DailDayChallenge, UserDailyChallenge } from "../types/api";
 
 const DAILY_CHALLENGES_KEY = ["dailyChallenges"];
 

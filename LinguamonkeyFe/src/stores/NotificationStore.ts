@@ -1,15 +1,15 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Notification, Reminder } from '../types/api';
+import type { Notification, UserReminder } from '../types/api';
 
 interface NotificationState {
   notifications: Notification[];
-  reminders: Reminder[];
+  reminders: UserReminder[];
   unreadNotifications: number;
 
   addNotification: (notification: Notification) => void;
-  addReminder: (reminder: Reminder) => void;
+  addReminder: (reminder: UserReminder) => void;
   markAsRead: (notificationId: string) => void;
   clearNotifications: () => void;
 }

@@ -1,5 +1,3 @@
-// === EditProfileScreen.tsx ===
-// Thay thế/đặt vào màn EditProfile (nút 'Edit' trong ProfileScreen sẽ gotoTab('Profile','EditProfile'))
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,

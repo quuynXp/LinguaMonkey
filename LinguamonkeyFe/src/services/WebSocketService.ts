@@ -1,8 +1,6 @@
 import { AppState } from 'react-native';
-import { useTokenStore } from '../stores/tokenStore';
 
 const API_URL = process.env.EXPO_PUBLIC_API_BASE_URL
-const JWT_TOKEN = useTokenStore().accessToken;
 const KONG_SECURE_WSS_URL = `wss://${API_URL}:8443`;
 
 interface WSMessage {

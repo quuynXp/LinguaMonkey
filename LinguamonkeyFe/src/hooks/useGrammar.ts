@@ -9,7 +9,7 @@ export const useGrammar = () => {
     useQuery<GrammarTopic[]>({
       queryKey: ["grammarTopics"],
       queryFn: async () => {
-        const res = await instance.get("/grammar/topics");
+        const res = await instance.get("/api/v1/grammar/topics");
         return res.data?.result ?? [];
       },
       staleTime: 60_000,
@@ -44,7 +44,7 @@ export const useGrammar = () => {
     useQuery<MindMapNode[]>({
       queryKey: ["grammarMindmap"],
       queryFn: async () => {
-        const res = await instance.get("/grammar/mindmap");
+        const res = await instance.get("/api/v1/grammar/mindmap");
         return res.data?.result ?? [];
       },
       staleTime: 300_000, // Longer stale time for static-like structure
@@ -53,7 +53,7 @@ export const useGrammar = () => {
   const useSubmitGrammarExercise = () =>
     useMutation({
       mutationFn: async (payload: { ruleId: string; userId: string; answers: Record<string, string> }) => {
-        const res = await instance.post("/grammar/exercises/submit", payload);
+        const res = await instance.post("/api/v1/grammar/exercises/submit", payload);
         return res.data?.result as SubmitExerciseResponse;
       },
       onSuccess: (data, variables) => {
@@ -66,7 +66,7 @@ export const useGrammar = () => {
   const useUpdateGrammarProgress = () =>
     useMutation({
       mutationFn: async (payload: { topicId: string; ruleId: string; userId: string; score: number }) => {
-        const res = await instance.post("/grammar/progress", payload);
+        const res = await instance.post("/api/v1/grammar/progress", payload);
         return res.data?.result;
       },
       onSuccess: (data, variables) => {

@@ -164,7 +164,6 @@ const PaymentScreen = ({ navigation, route }) => {
         >
           {createPayment.isPending ? (
             <>
-              <LottieView source={require("../../assets/animations/loading.json")} autoPlay loop style={styles.loadingAnimation} />
               <Text style={styles.payButtonText}>Processing...</Text>
             </>
           ) : (

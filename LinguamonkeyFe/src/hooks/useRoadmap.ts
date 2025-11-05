@@ -56,7 +56,7 @@ export const useRoadmap = () => {
     useQuery({
       queryKey: ["userGoals"],
       queryFn: async () => {
-        const res = await instance.get<ApiResponse<UserGoal[]>>("/user-goals");
+        const res = await instance.get<ApiResponse<UserGoal[]>>("/api/v1/user-goals");
         return res.data.result;
       },
     });
@@ -65,7 +65,7 @@ export const useRoadmap = () => {
   const useCreateGoal = () =>
     useMutation({
       mutationFn: async (goalData: Partial<UserGoal>) => {
-        const res = await instance.post<ApiResponse<UserGoal>>("/user-goals", goalData);
+        const res = await instance.post<ApiResponse<UserGoal>>("/api/v1/user-goals", goalData);
         return res.data.result;
       },
       onSuccess: () => {
@@ -104,7 +104,7 @@ export const useRoadmap = () => {
     useMutation({
       mutationFn: async (itemId: string) => {
         if (!user?.userId) throw new Error("User not logged in");
-        const res = await instance.post<ApiResponse<{ success: boolean }>>("/roadmaps/items/start", {
+        const res = await instance.post<ApiResponse<{ success: boolean }>>("/api/v1/roadmaps/items/start", {
           userId: user.userId,
           itemId,
         });
@@ -121,7 +121,7 @@ export const useRoadmap = () => {
     useMutation({
       mutationFn: async ({ itemId, score }: { itemId: string; score?: number }) => {
         if (!user?.userId) throw new Error("User not logged in");
-        const res = await instance.post<ApiResponse<{ success: boolean }>>("/roadmaps/items/complete", {
+        const res = await instance.post<ApiResponse<{ success: boolean }>>("/api/v1/roadmaps/items/complete", {
           userId: user.userId,
           itemId,
           score,
@@ -157,7 +157,7 @@ export const useRoadmap = () => {
           isCustom: preferences.is_custom ?? false,
           additionalPrompt: preferences.additional_prompt ?? "",
         };
-        const res = await instance.post<ApiResponse<LearningRoadmap>>("/roadmaps/generate", payload);
+        const res = await instance.post<ApiResponse<LearningRoadmap>>("/api/v1/roadmaps/generate", payload);
         return res.data.result;
       },
       onSuccess: () => {
@@ -170,7 +170,7 @@ export const useRoadmap = () => {
     useMutation({
       mutationFn: async ({ roadmapId }: { roadmapId: string }) => {
         if (!user?.userId) throw new Error("User not logged in");
-        const res = await instance.post<ApiResponse<void>>("/roadmaps/assign", {
+        const res = await instance.post<ApiResponse<void>>("/api/v1/roadmaps/assign", {
           userId: user.userId,
           roadmapId,
         });
@@ -209,7 +209,7 @@ export const useRoadmap = () => {
     useQuery({
       queryKey: ["publicRoadmaps"],
       queryFn: async () => {
-        const res = await instance.get<ApiResponse<LearningRoadmap[]>>("/roadmaps/public");
+        const res = await instance.get<ApiResponse<LearningRoadmap[]>>("/api/v1/roadmaps/public");
         return res.data.result;
       },
     });

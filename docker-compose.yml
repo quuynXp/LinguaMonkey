@@ -20,6 +20,8 @@ services:
       POSTGRES_USER: linguauser
       POSTGRES_DB: linguaviet_db
       POSTGRES_PASSWORD: linguapass
+      TZ: "Asia/Ho_Chi_Minh"
+      PGTZ: "Asia/Ho_Chi_Minh"
     volumes:
       - app_data:/var/lib/postgresql/data
     ports:

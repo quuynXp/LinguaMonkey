@@ -11,7 +11,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 const API_BASE_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
 
-const { user, setUser } = useUserStore();
+
 export const refreshClient = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
@@ -19,7 +19,7 @@ export const refreshClient = axios.create({
 
 export const loginWithEmail = async (email: string, password: string) => {
   try {
-    const res = await refreshClient.post('/auth/login', { email, password });
+    const res = await refreshClient.post('/api/v1/auth/login', { email, password });
     if (res.data.result.authenticated) {
       await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
       return true;
@@ -33,7 +33,7 @@ export const loginWithEmail = async (email: string, password: string) => {
 
 export const handleGoogleLogin = async (idToken: string) => {
   try {
-    const res = await refreshClient.post('/auth/google-login', { idToken });
+    const res = await refreshClient.post('/api/v1/auth/google-login', { idToken });
     await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
     return true;
   } catch (error) {
@@ -44,7 +44,7 @@ export const handleGoogleLogin = async (idToken: string) => {
 
 export const handleFacebookLogin = async (accessToken: string) => {
   try {
-    const res = await refreshClient.post('/auth/facebook-login', { accessToken });
+    const res = await refreshClient.post('/api/v1/auth/facebook-login', { accessToken });
     await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
     return true;
   } catch (error) {
@@ -80,6 +80,7 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
     if (!payload?.userId) {
       throw new Error('Invalid token payload: missing userId');
     }
+    const { user, setUser } = useUserStore.getState();
 
     setUser({ ...user, userId: payload.userId });
     const userRes = await refreshClient.get(`/users/${payload.userId}`);
