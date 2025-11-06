@@ -74,7 +74,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
     const fetchAchievements = async () => {
       try {
         if (userId) {
-          const response = await axiosInstance.get<{ data: UserBadge[] }>(`/badge/${userId}`);
+          const response = await axiosInstance.get<{ data: UserBadge[] }>(`/api/v1/badge/${userId}`);
           const badgesData = response.data.data;
           setAchievements(badgesData.filter((badge) => badge.badgeId));
         }
@@ -86,7 +86,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
     const fetchUserGoal = async () => {
       try {
         if (userId) {
-          const response = await axiosInstance.get<{ data: UserGoalResponse[] }>(`/user-goals`, {
+          const response = await axiosInstance.get<{ data: UserGoalResponse[] }>(`/api/v1/user-goals`, {
             params: { userId },
           });
           const goalsData = response.data.data;

@@ -24,6 +24,7 @@ services:
       PGTZ: "Asia/Ho_Chi_Minh"
     volumes:
       - app_data:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d
     ports:
       - "5433:5432"
     networks:

@@ -204,7 +204,7 @@ class NotificationService {
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;
     try {
-      await instance.post('/notifications/email/purchase-course', null, {
+      await instance.post('/api/v1/notifications/email/purchase-course', null, {
         params: { userId, courseName },
       });
       await this.sendLocalNotification('Course Purchased', `You have successfully purchased ${courseName}!`);
@@ -216,7 +216,7 @@ class NotificationService {
   async sendVoucherRegistrationNotification(userId: string, voucherCode: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;
     try {
-      await instance.post('/notifications/email/voucher-registration', null, {
+      await instance.post('/api/v1/notifications/email/voucher-registration', null, {
         params: { userId, voucherCode },
       });
       await this.sendLocalNotification('Voucher Registered', `Voucher ${voucherCode} registered successfully!`);
@@ -228,7 +228,7 @@ class NotificationService {
   async sendAchievementNotification(userId: string, title: string, message: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;
     try {
-      await instance.post('/notifications/email/achievement', null, {
+      await instance.post('/api/v1/notifications/email/achievement', null, {
         params: { userId, title, message },
       });
       await this.sendLocalNotification(title, message);
@@ -240,7 +240,7 @@ class NotificationService {
   async sendDailyStudyReminderNotification(userId: string): Promise<void> {
     if (!this.preferences.studyReminders) return;
     try {
-      await instance.post('/notifications/email/daily-reminder', null, {
+      await instance.post('/api/v1/notifications/email/daily-reminder', null, {
         params: { userId },
       });
       await this.sendLocalNotification('Daily Study Reminder', 'Time to practice your language skills!');
@@ -251,7 +251,7 @@ class NotificationService {
 
   async sendPasswordResetNotification(userId: string, resetLink: string): Promise<void> {
     try {
-      await instance.post('/notifications/email/password-reset', null, {
+      await instance.post('/api/v1/notifications/email/password-reset', null, {
         params: { userId, resetLink },
       });
       await this.sendLocalNotification('Password Reset', 'A password reset link has been sent to your email.');
@@ -262,7 +262,7 @@ class NotificationService {
 
   async sendVerifyAccountNotification(userId: string, verifyLink: string): Promise<void> {
     try {
-      await instance.post('/notifications/email/verify-account', null, {
+      await instance.post('/api/v1/notifications/email/verify-account', null, {
         params: { userId, verifyLink },
       });
       await this.sendLocalNotification('Account Verification', 'Please verify your account using the link sent to your email.');
@@ -274,7 +274,7 @@ class NotificationService {
   async sendInactivityWarningNotification(userId: string, days: number): Promise<void> {
     if (!this.preferences.streakReminders) return;
     try {
-      await instance.post('/notifications/email/inactivity-warning', null, {
+      await instance.post('/api/v1/notifications/email/inactivity-warning', null, {
         params: { userId, days },
       });
       await this.sendLocalNotification('Inactivity Warning', `You haven't practiced for ${days} days. Keep your streak alive!`);
@@ -286,7 +286,7 @@ class NotificationService {
   async sendStreakRewardNotification(userId: string, streakDays: number): Promise<void> {
     if (!this.preferences.streakReminders) return;
     try {
-      await instance.post('/notifications/email/streak-reward', null, {
+      await instance.post('/api/v1/notifications/email/streak-reward', null, {
         params: { userId, streakDays },
       });
       await this.sendLocalNotification('Streak Reward', `Congratulations on your ${streakDays}-day streak!`);

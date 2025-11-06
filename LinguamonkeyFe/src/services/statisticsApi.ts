@@ -21,7 +21,7 @@ export const getStatisticsOverview = async (params: {
     if (params.aggregate) formattedParams.aggregate = params.aggregate;
 
     console.log("Fetching statistics overview with params: ", formattedParams);
-    const res = await instance.get(`/statistics/overview`, { params: formattedParams });
+    const res = await instance.get(`/api/v1/statistics/overview`, { params: formattedParams });
 
     // adjust depending on your backend structure: here we expect res.data.result
     const result = res.data.result || res.data || {};
@@ -43,13 +43,13 @@ export const getStatisticsOverview = async (params: {
 
 // Lấy user count theo kỳ
 export const getUserCounts = async (period: "day" | "month" | "year") => {
-  const res = await instance.get(`/statistics/users/count`, { params: { period } });
+  const res = await instance.get(`/api/v1/statistics/users/count`, { params: { period } });
   return res.data.result;
 };
 
 // Lấy user growth
 export const getUserGrowth = async (period: "day" | "month" | "year") => {
-  const res = await instance.get(`/statistics/users/growth`, { params: { period } });
+  const res = await instance.get(`/api/v1/statistics/users/growth`, { params: { period } });
   return res.data.result;
 };
 
@@ -57,7 +57,7 @@ export const getUserGrowth = async (period: "day" | "month" | "year") => {
 export const getActivities = async (
   params: { status?: string; provider?: string; startDate?: string; endDate?: string; aggregate?: "day" | "week" | "month" } = {}
 ) => {
-  const res = await instance.get(`/statistics/activities`, { params });
+  const res = await instance.get(`/api/v1/statistics/activities`, { params });
   return res.data.result;
 };
 
@@ -65,7 +65,7 @@ export const getActivities = async (
 export const getTransactions = async (
   params: { status?: string; provider?: string; startDate?: string; endDate?: string; aggregate?: "day" | "week" | "month" } = {}
 ) => {
-  const res = await instance.get(`/statistics/transactions`, { params });
+  const res = await instance.get(`/api/v1/statistics/transactions`, { params });
   return res.data.result;
 };
 
@@ -81,6 +81,6 @@ export const getUserStatistics = async (userId: string, params: {
   if (params.endDate instanceof Date) formattedParams.endDate = params.endDate.toISOString().split("T")[0];
   if (params.aggregate) formattedParams.aggregate = params.aggregate;
 
-  const res = await instance.get(`/statistics/user/${userId}`, { params: formattedParams });
+  const res = await instance.get(`/api/v1/statistics/user/${userId}`, { params: formattedParams });
   return res.data.result;
 };

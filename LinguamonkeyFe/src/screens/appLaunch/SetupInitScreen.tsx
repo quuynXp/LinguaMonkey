@@ -243,7 +243,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const fetchCharacters = async () => {
     try {
-      const response = await instance.get('/character3ds');
+      const response = await instance.get('/api/v1/character3ds');
       const charactersArray = response.data.result?.content;
 
       if (Array.isArray(charactersArray)) {
@@ -259,7 +259,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const fetchLanguages = async () => {
     try {
-      const response = await instance.get('/languages')
+      const response = await instance.get('/api/v1/languages')
       const languageArray = response.data.result?.content
       if (Array.isArray(languageArray)) {
         // normalize language codes to uppercase to avoid mismatch
@@ -280,7 +280,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const fetchInterests = async () => {
     try {
-      const response = await instance.get('/interests')
+      const response = await instance.get('/api/v1/interests')
       const data = response.data.result || []
       setInterests(data) // giữ nguyên camelCase từ BE
     } catch (error) {
@@ -370,7 +370,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       console.log("Create user payload ->", JSON.stringify(payload, null, 2))
 
       console.log("Creating temp account with payload:", payload)
-      const response = await instance.post('/users', payload)
+      const response = await instance.post('/api/v1/users', payload)
       console.log("Account created, response:", response.data)
       useUserStore.getState().setUser(response.data.result.user)
       if (response.data.result.accessToken) {

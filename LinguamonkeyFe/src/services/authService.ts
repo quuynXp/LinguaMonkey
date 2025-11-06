@@ -55,7 +55,7 @@ export const handleFacebookLogin = async (accessToken: string) => {
 
 export const logout = async () => {
   try {
-    await refreshClient.post('/auth/logout');
+    await refreshClient.post('/api/v1/auth/logout');
   } catch (error) {
     console.error('Logout error:', error);
   } finally {
@@ -83,7 +83,7 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
     const { user, setUser } = useUserStore.getState();
 
     setUser({ ...user, userId: payload.userId });
-    const userRes = await refreshClient.get(`/users/${payload.userId}`);
+    const userRes = await refreshClient.get(`/api/v1/users/${payload.userId}`);
     const rawUser = userRes.data.result || {};
     const normalizedUser = {
       ...rawUser,
@@ -142,7 +142,7 @@ export const requestOtp = async (emailOrPhone: string) => {
   try {
     // Hàm này sẽ ném lỗi 'USER_NOT_FOUND' nếu bạn chưa sửa backend.
     // Sau khi sửa backend, nó sẽ luôn thành công.
-    const res = await refreshClient.post('/auth/request-otp', { emailOrPhone });
+    const res = await refreshClient.post('/api/v1/auth/request-otp', { emailOrPhone });
     return res.data.result?.success || false;
   } catch (error: any) {
     console.error('Request OTP error:', error.response?.data || error.message);
@@ -154,7 +154,7 @@ export const requestOtp = async (emailOrPhone: string) => {
 export const verifyOtpLogin = async (emailOrPhone: string, otpCode: string) => {
   try {
     // Hàm này gọi '/auth/verify-otp', vốn đã hỗ trợ 'findOrCreateUserAccount'
-    const res = await refreshClient.post('/auth/verify-otp', { emailOrPhone, code: otpCode });
+    const res = await refreshClient.post('/api/v1/auth/verify-otp', { emailOrPhone, code: otpCode });
     if (res.data.result?.token && res.data.result?.refreshToken) {
       await handleLoginSuccess(res.data.result.token, res.data.result.refreshToken);
       return true;
@@ -172,7 +172,7 @@ export const registerWithEmail = async (firstName: string, lastName: string, ema
 
     // Bước 1: Gọi endpoint đăng ký (sử dụng /auth/register từ Controller)
     // Giả sử UserRequest trên backend chấp nhận { fullname, email, password }
-    await refreshClient.post('/auth/register', {
+    await refreshClient.post('/api/v1/auth/register', {
       fullname,
       email: email.toLowerCase(),
       password
@@ -200,7 +200,7 @@ export const registerWithEmail = async (firstName: string, lastName: string, ema
  */
 export const checkResetMethods = async (identifier: string) => {
   try {
-    const res = await refreshClient.post('/auth/check-reset-methods', { identifier });
+    const res = await refreshClient.post('/api/v1/auth/check-reset-methods', { identifier });
     return res.data.result as { hasEmail: boolean; hasPhone: boolean; email?: string; phone?: string; };
   } catch (error: any) {
     console.error('Check reset methods error:', error.response?.data || error.message);
@@ -215,7 +215,7 @@ export const checkResetMethods = async (identifier: string) => {
  */
 export const requestPasswordResetOtp = async (identifier: string, method: 'EMAIL' | 'PHONE') => {
   try {
-    await refreshClient.post('/auth/request-password-reset-otp', { identifier, method });
+    await refreshClient.post('/api/v1/auth/request-password-reset-otp', { identifier, method });
     return true;
   } catch (error: any) {
     console.error('Request password reset OTP error:', error.response?.data || error.message);
@@ -231,7 +231,7 @@ export const requestPasswordResetOtp = async (identifier: string, method: 'EMAIL
  */
 export const verifyPasswordResetOtp = async (identifier: string, code: string) => {
   try {
-    const res = await refreshClient.post('/auth/verify-password-reset-otp', { identifier, code });
+    const res = await refreshClient.post('/api/v1/auth/verify-password-reset-otp', { identifier, code });
     if (!res.data.result?.resetToken) {
       throw new Error('Invalid response from server: missing resetToken');
     }
@@ -275,9 +275,9 @@ export const refreshTokenApi = async (refreshToken: string, deviceId?: string, i
 
     const body = { refreshToken: refreshToken.trim() };
 
-    console.log('[refreshTokenApi] sending request /auth/refresh-token', { headers, body: { refreshToken: '***' } });
+    console.log('[refreshTokenApi] sending request /api/v1/auth/refresh-token', { headers, body: { refreshToken: '***' } });
 
-    const res = await refreshClient.post('/auth/refresh-token', body, { headers });
+    const res = await refreshClient.post('/api/v1/auth/refresh-token', body, { headers });
 
     console.log('[refreshTokenApi] response', { status: res.status, dataSummary: res.data?.result ? 'has-result' : 'no-result' });
 

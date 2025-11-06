@@ -15,7 +15,7 @@ export const getTeacherOverview = async (params: {
   if (params.aggregate) formatted.aggregate = params.aggregate;
   if (params.period) formatted.period = params.period;
 
-  const res = await instance.get(`/statistics/teacher/overview`, { params: formatted });
+  const res = await instance.get(`/api/v1/statistics/teacher/overview`, { params: formatted });
   return res.data.result;
 };
 
@@ -34,7 +34,7 @@ export const getTeacherCoursesPerformance = async (params: {
   if (params.aggregate) formatted.aggregate = params.aggregate;
   if (params.period) formatted.period = params.period;
 
-  const res = await instance.get(`/statistics/teacher/courses/performance`, { params: formatted });
+  const res = await instance.get(`/api/v1/statistics/teacher/courses/performance`, { params: formatted });
   return res.data.result;
 };
 
@@ -49,7 +49,7 @@ export const getTeacherCourseLessons = async (courseId: string, params: {
   if (params.startDate instanceof Date) formatted.startDate = params.startDate.toISOString().split("T")[0];
   if (params.endDate instanceof Date) formatted.endDate = params.endDate.toISOString().split("T")[0];
 
-  const res = await instance.get(`/statistics/teacher/courses/${courseId}/lessons`, { params: formatted });
+  const res = await instance.get(`/api/v1/statistics/teacher/courses/${courseId}/lessons`, { params: formatted });
   return res.data.result;
 };
 
@@ -66,6 +66,6 @@ export const getTeacherCourseRevenue = async (courseId: string, params: {
   if (params.endDate instanceof Date) formatted.endDate = params.endDate.toISOString().split("T")[0];
   if (params.aggregate) formatted.aggregate = params.aggregate;
 
-  const res = await instance.get(`/statistics/teacher/courses/${courseId}/revenue`, { params: formatted });
+  const res = await instance.get(`/api/v1/statistics/teacher/courses/${courseId}/revenue`, { params: formatted });
   return res.data.result;
 };

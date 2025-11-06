@@ -24,7 +24,7 @@ export async function loginWithGoogle(): Promise<void> {
       }
 
       // Gửi token về backend để verify, backend trả JWT + user info
-      const res = await instance.post('/auth/google', { token: result.params.id_token });
+      const res = await instance.post('/api/v1/auth/google', { token: result.params.id_token });
 
       const { jwt, refreshToken, user } = res.data;
 
@@ -58,7 +58,7 @@ export async function loginWithFacebook(): Promise<void> {
       }
 
       // Gửi token về backend để verify, backend trả JWT + user info
-      const res = await instance.post('/auth/facebook', { token: result.params.access_token });
+      const res = await instance.post('/api/v1/auth/facebook', { token: result.params.access_token });
 
       const { jwt, refreshToken, user } = res.data;
 
@@ -81,7 +81,7 @@ export async function loginWithFacebook(): Promise<void> {
  */
 export async function sendOtp(phoneNumber: string): Promise<string> {
   try {
-    const res = await instance.post('/auth/phone/send-otp', { phone: phoneNumber });
+    const res = await instance.post('/api/v1/auth/phone/send-otp', { phone: phoneNumber });
     return res.data.otpSid;
   } catch (err: any) {
     throw new Error(err?.response?.data?.message || 'Send OTP failed');
@@ -90,7 +90,7 @@ export async function sendOtp(phoneNumber: string): Promise<string> {
 
 export async function verifyOtp(otpSid: string, code: string): Promise<void> {
   try {
-    const res = await instance.post('/auth/phone/verify-otp', { otpSid, code });
+    const res = await instance.post('/api/v1/auth/phone/verify-otp', { otpSid, code });
 
     const { jwt, refreshToken, user } = res.data;
 

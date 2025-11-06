@@ -102,7 +102,7 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     queryKey: ["leaderboard", leaderboardId, "top-3"],
     queryFn: async () => {
       if (!leaderboardId) return [];
-      const res = await instance.get(`/leaderboards/${leaderboardId}/top-3`);
+      const res = await instance.get(`/api/v1/leaderboards/${leaderboardId}/top-3`);
       return res.data?.result ?? res.data ?? [];
     },
     enabled: !!leaderboardId,
