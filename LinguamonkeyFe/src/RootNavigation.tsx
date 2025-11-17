@@ -3,7 +3,10 @@ import { Platform, View, Text } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import NetInfo from "@react-native-community/netinfo";
-import messaging from '@react-native-firebase/messaging';
+import messaging, {
+  getInitialNotification, onMessage,
+  onNotificationOpenedApp
+} from '@react-native-firebase/messaging';
 import {
   RootNavigationRef,
   flushPendingActions,
@@ -85,8 +88,7 @@ const RootNavigation = () => {
 
 
   useEffect(() => {
-    // 1. Khi app đang mở (Foreground)
-    const unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
+    const unsubscribeOnMessage = onMessage(messaging(), async remoteMessage => { // <-- SỬA Ở ĐÂY
       console.log('Foreground Notification (FCM):', remoteMessage);
       notificationService.sendLocalNotification(
         remoteMessage.notification?.title || 'Thông báo',
@@ -95,18 +97,10 @@ const RootNavigation = () => {
       );
     });
 
-    const unsubscribeOnOpen = messaging().onNotificationOpenedApp(remoteMessage => {
+    const unsubscribeOnOpen = onNotificationOpenedApp(messaging(), remoteMessage => { // <-- SỬA Ở ĐÂY
       console.log('Background Notification Tapped (FCM):', remoteMessage);
       handleNotificationNavigation(remoteMessage);
     });
-
-    // messaging()
-    //   .getInitialNotification()
-    //   .then(remoteMessage => {
-    //     if (remoteMessage) {
-    //       console.log('Quit State Notification Tapped (FCM):', remoteMessage);
-    //     }
-    //   });
 
     return () => {
       unsubscribeOnMessage();
@@ -375,7 +369,7 @@ const RootNavigation = () => {
       ref={RootNavigationRef}
       onReady={async () => {
         console.log("Navigation is ready");
-        const initialMessage = await messaging().getInitialNotification();
+        const initialMessage = await getInitialNotification(messaging());
         if (initialMessage) {
           console.log('Handling Quit State Notification onReady:');
           handleNotificationNavigation(initialMessage);

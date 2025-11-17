@@ -39,10 +39,12 @@ export const useStartTest = () => {
       const res = await instance.post<ApiResponse<TestSessionStartData>>(
         `${API_BASE}/start?testConfigId=${encodeURIComponent(testConfigId)}`
       );
-      return res.data.result!;
+      return res.data.result;
     },
     onSuccess: (data) => {
-      qc.setQueryData(["testSession", data.sessionId], data);
+      if (data && data.sessionId) {
+        qc.setQueryData(["testSession", data.sessionId], data);
+      }
     }
   });
 

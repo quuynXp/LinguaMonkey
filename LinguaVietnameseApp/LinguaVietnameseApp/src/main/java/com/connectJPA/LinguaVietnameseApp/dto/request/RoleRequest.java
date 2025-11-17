@@ -1,10 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
-import lombok.Builder;
-import lombok.Getter;
+import lombok.*;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class RoleRequest {
     private String name;
 }

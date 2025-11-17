@@ -1,11 +1,8 @@
-import axios, { AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
+import axios, { InternalAxiosRequestConfig } from 'axios';
 import { Platform } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
 import { showError } from '../utils/toastHelper';
 import * as Localization from 'expo-localization';
-import { getErrorMessageFromCode } from '../types/errorCodes';
-import { t } from 'i18next';
-import * as Application from 'expo-application';
 import { refreshTokenApi } from '../services/authService';
 import { resetToAuth } from '../utils/navigationRef';
 import AsyncStorage from '@react-native-async-storage/async-storage';

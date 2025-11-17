@@ -50,14 +50,12 @@ async function loadTextureFromDataUri(dataUri: string): Promise<THREE.Texture> {
   const base64 = matches[2];
   const extension = mime.split("/")[1] || "png";
 
-  // Some versions/typings of expo-file-system may not expose cacheDirectory on the namespace;
-  // cast to any and fall back to documentDirectory or empty string to avoid TS errors.
   const cacheDir = (FileSystem as any).cacheDirectory ?? (FileSystem as any).documentDirectory ?? "";
   const fileUri = `${cacheDir}temp_texture_${Math.random()
     .toString(36)
     .substring(2)}.${extension}`;
 
-  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: FileSystem.EncodingType.Base64 });
+  await FileSystem.writeAsStringAsync(fileUri, base64, { encoding: "base64" });
 
   return new Promise((resolve, reject) => {
     new TextureLoader().load(
@@ -245,7 +243,7 @@ export default function ModelViewer({
       (gestureState.numberActiveTouches && gestureState.numberActiveTouches >= 2),
 
     onPanResponderGrant: (evt) => {
-      const native = (evt.nativeEvent as any);
+      const native = evt.nativeEvent as any;
       const touches = native.touches || [];
 
       touchStartTimeRef.current = Date.now();
@@ -285,7 +283,7 @@ export default function ModelViewer({
     },
 
     onPanResponderMove: (evt: GestureResponderEvent, gesture: PanResponderGestureState) => {
-      const native = (evt.nativeEvent as any);
+      const native = evt.nativeEvent as any;
       const touches = native.touches || [];
 
       // Two-finger gestures
@@ -471,21 +469,28 @@ export default function ModelViewer({
                     }
                   }
 
-                  const runtimeMaterials: THREE.Material[] = [];
-                  gltf.scene.traverse((node: any) => {
-                    if (node.isMesh) {
-                      const mats = Array.isArray(node.material) ? node.material : [node.material];
-                      mats.forEach((m: any) => {
-                        if (m && runtimeMaterials.indexOf(m) === -1) runtimeMaterials.push(m);
-                      });
-                    }
-                  });
+                  // =================================================================
+                  // == START: ĐÃ SỬA LỖI LOGIC LOAD TEXTURE
+                  // =================================================================
 
+                  // Lấy TẤT CẢ các runtime material một cách chính xác bằng index
+                  const runtimeMaterials = await Promise.all(
+                    materialsJson.map((mJson: any, mi: number) => {
+                      // parser.getDependency sẽ trả về Promise<THREE.Material>
+                      // tương ứng với material tại index 'mi'
+                      return parser.getDependency("material", mi);
+                    })
+                  );
+
+                  // Bây giờ, runtimeMaterials[mi] tương ứng với materialsJson[mi]
                   for (let mi = 0; mi < materialsJson.length; mi++) {
                     const mJson = materialsJson[mi];
-                    const matName = mJson.name || "";
-                    const runtime = runtimeMaterials.find((rm) => (rm as any).name === matName);
-                    if (!runtime) continue;
+                    const runtime = runtimeMaterials[mi] as THREE.MeshStandardMaterial; // Lấy material đã resolve
+
+                    if (!runtime) {
+                      console.warn("Could not find runtime material for index", mi, mJson.name);
+                      continue;
+                    }
 
                     const pbr = mJson.pbrMetallicRoughness || {};
                     const baseInfo = pbr.baseColorTexture;
@@ -493,7 +498,7 @@ export default function ModelViewer({
                       const texIdx = baseInfo.index;
                       const tex = textureIndexToTexture[texIdx];
                       if (tex) {
-                        (runtime as any).map = tex;
+                        (runtime as any).map = tex.clone(); // Dùng .clone() để tránh lỗi nếu texture được chia sẻ
                         (runtime as any).map.colorSpace = SRGBColorSpace;
                         (runtime as any).map.flipY = false;
                         (runtime as any).map.needsUpdate = true;
@@ -503,7 +508,7 @@ export default function ModelViewer({
                     if (mJson.normalTexture?.index != null) {
                       const t = textureIndexToTexture[mJson.normalTexture.index];
                       if (t) {
-                        (runtime as any).normalMap = t;
+                        (runtime as any).normalMap = t.clone();
                         (runtime as any).normalMap.flipY = false;
                         (runtime as any).normalMap.needsUpdate = true;
                         runtime.needsUpdate = true;
@@ -512,7 +517,7 @@ export default function ModelViewer({
                     if (mJson.occlusionTexture?.index != null) {
                       const t = textureIndexToTexture[mJson.occlusionTexture.index];
                       if (t) {
-                        (runtime as any).aoMap = t;
+                        (runtime as any).aoMap = t.clone();
                         (runtime as any).aoMap.flipY = false;
                         (runtime as any).aoMap.needsUpdate = true;
                         runtime.needsUpdate = true;
@@ -521,7 +526,8 @@ export default function ModelViewer({
                     if (mJson.emissiveTexture?.index != null) {
                       const t = textureIndexToTexture[mJson.emissiveTexture.index];
                       if (t) {
-                        (runtime as any).emissiveMap = t;
+                        (runtime as any).emissiveMap = t.clone();
+                        (runtime as any).emissiveMap.colorSpace = SRGBColorSpace; // Emissive map cũng cần colorSpace
                         (runtime as any).emissiveMap.flipY = false;
                         (runtime as any).emissiveMap.needsUpdate = true;
                         runtime.needsUpdate = true;
@@ -529,12 +535,16 @@ export default function ModelViewer({
                     }
                   }
 
-                  const tKeys = Object.keys(textureIndexToTexture).map((n) => +n).sort((a, b) => a - b);
+                  // Cập nhật đoạn code fallback để dùng mảng runtimeMaterials mới
+                  const tKeys = Object.keys(textureIndexToTexture)
+                    .map((n) => +n)
+                    .sort((a, b) => a - b);
                   if (tKeys.length) {
                     const firstTex = textureIndexToTexture[tKeys[0]];
-                    runtimeMaterials.forEach((rm) => {
-                      if (!(rm as any).map) {
-                        (rm as any).map = firstTex;
+                    runtimeMaterials.forEach((rm: any) => {
+                      // Thêm kiểm tra rm tồn tại
+                      if (rm && !(rm as any).map) {
+                        (rm as any).map = firstTex.clone();
                         (rm as any).map.colorSpace = SRGBColorSpace;
                         (rm as any).map.flipY = false;
                         (rm as any).map.needsUpdate = true;
@@ -542,6 +552,10 @@ export default function ModelViewer({
                       }
                     });
                   }
+
+                  // =================================================================
+                  // == END: ĐÃ SỬA LỖI LOGIC LOAD TEXTURE
+                  // =================================================================
 
                   const model = gltf.scene;
                   let box = new THREE.Box3().setFromObject(model);

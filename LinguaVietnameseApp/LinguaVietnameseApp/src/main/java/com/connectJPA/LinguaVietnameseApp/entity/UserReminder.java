@@ -27,6 +27,7 @@ public class UserReminder {
     private UUID userId;
 
     @Column(name = "target_type", nullable = false)
+    @Enumerated(EnumType.STRING)
     private TargetType targetType; // LESSON, EXAM, STREAK, EVENT
 
     @Column(name = "target_id")

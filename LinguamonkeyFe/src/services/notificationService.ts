@@ -4,7 +4,10 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import instance from '../api/axiosInstance';
 import { useAppStore } from '../stores/appStore';
-import messaging from '@react-native-firebase/messaging';
+import messaging, {
+  requestPermission,
+  getToken
+} from '@react-native-firebase/messaging';
 import { useUserStore } from '../stores/UserStore';
 
 export interface NotificationPreferences {
@@ -79,7 +82,7 @@ class NotificationService {
   }
 
   async requestFirebasePermissions(): Promise<boolean> {
-    const authStatus = await messaging().requestPermission();
+    const authStatus = await requestPermission(messaging());
     const enabled =
       authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
       authStatus === messaging.AuthorizationStatus.PROVISIONAL;
@@ -93,7 +96,7 @@ class NotificationService {
     if (!enabled) return null;
 
     try {
-      const fcmToken = await messaging().getToken();
+      const fcmToken = await getToken(messaging());
       console.log('Firebase FCM Token:', fcmToken);
       return fcmToken;
     } catch (error) {

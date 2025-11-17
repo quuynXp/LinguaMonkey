@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Alert,
   Animated,
@@ -8,7 +8,6 @@ import {
   View,
   Image,
   ActivityIndicator,
-  Switch,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
@@ -17,6 +16,7 @@ import { useAppStore } from '../../stores/appStore';
 import { useUserStore } from '../../stores/UserStore';
 import { gotoTab, resetToAuth } from '../../utils/navigationRef';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { useShallow } from 'zustand/react/shallow';
 
 /* ────────────────────── Helpers ────────────────────── */
 const ccToFlag = (code?: string | null) => {
@@ -67,63 +67,29 @@ const handleLogout = () => {
 const ProfileScreen: React.FC = () => {
   const { t } = useTranslation();
 
-  /* ────── App Store (shallow) ────── */
-  const {
-    notificationPreferences,
-    privacySettings,
-  } = useAppStore(
-    (state: any) => ({
+  const { notificationPreferences, privacySettings } = useAppStore(
+    useShallow((state) => ({
       notificationPreferences: state.notificationPreferences,
       privacySettings: state.privacySettings,
-    })
+    }))
   );
 
-  const { setPrivacySettings, updateNotificationPreferences } = useMemo(
-    () => ({
-      setPrivacySettings: useAppStore.getState().setPrivacySettings,
-      updateNotificationPreferences: useAppStore.getState().updateNotificationPreferences,
-    }),
-    [],
-  );
+  const user = useUserStore((state) => state.user);
+  const name = useUserStore((state) => state.name);
+  const streak = useUserStore((state) => state.streak);
+  const languages = useUserStore((state) => state.languages);
+  const dailyGoal = useUserStore((state) => state.dailyGoal);
+  const statusMessage = useUserStore((state) => state.statusMessage);
+  const badges = useUserStore((state) => state.badges);
+  const level = useUserStore((state) => state.level);
+  const expToNextLevel = useUserStore((state) => state.expToNextLevel);
+  const exp = useUserStore((state) => state.exp);
 
-  /* ────── User Store (shallow) ────── */
-  const {
-    user,
-    name,
-    streak,
-    languages,
-    dailyGoal,
-    statusMessage,
-    badges,
-    level,
-    expToNextLevel,
-    exp,
-  } = useUserStore(
-    (state: any) => ({
-      user: state.user,
-      name: state.name,
-      streak: state.streak,
-      languages: state.languages,
-      dailyGoal: state.dailyGoal,
-      statusMessage: state.statusMessage,
-      badges: state.badges,
-      level: state.level,
-      expToNextLevel: state.expToNextLevel,
-      exp: state.exp,
-    })
-  );
+  // Select methods - these are stable references
+  const uploadTemp = useUserStore((state) => state.uploadTemp);
+  const updateUserAvatar = useUserStore((state) => state.updateUserAvatar);
+  const deleteTempFile = useUserStore((state) => state.deleteTempFile);
 
-  const {
-    uploadTemp,
-    updateUserAvatar,
-    deleteTempFile,
-  } = useUserStore(
-    (state: any) => ({
-      uploadTemp: state.uploadTemp,
-      updateUserAvatar: state.updateUserAvatar,
-      deleteTempFile: state.deleteTempFile,
-    })
-  );
   /* ────── Local UI state ────── */
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -131,7 +97,7 @@ const ProfileScreen: React.FC = () => {
   const [uploading, setUploading] = useState(false);
 
   /* ────── Avatar picker ────── */
-  const pickImage = async () => {
+  const pickImage = useCallback(async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
@@ -168,7 +134,7 @@ const ProfileScreen: React.FC = () => {
     } finally {
       setUploading(false);
     }
-  };
+  }, [user?.userId, uploadTemp, updateUserAvatar, deleteTempFile, user?.avatarUrl, t]);
 
   /* ────── Entrance animation (run once) ────── */
   useEffect(() => {
@@ -176,10 +142,9 @@ const ProfileScreen: React.FC = () => {
       Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
     ]).start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);   // ← chạy 1 lần duy nhất
+  }, [fadeAnim, slideAnim]);
 
-  /* ────── Sync previewUrl với avatarUrl từ store ────── */
+  /* ────── Sync previewUrl with avatarUrl from store ────── */
   useEffect(() => {
     if (user?.avatarUrl && !uploading && previewUrl !== user.avatarUrl) {
       setPreviewUrl(user.avatarUrl);
@@ -226,8 +191,7 @@ const ProfileScreen: React.FC = () => {
           key: 'notification_quiet',
           label: t('profile.quietHours'),
           icon: 'nightlight',
-          value: `${notificationPreferences?.quietHours?.enabled ? 'On' : 'Off'} ${notificationPreferences?.quietHours?.start ?? ''
-            }-${notificationPreferences?.quietHours?.end ?? ''}`,
+          value: `${notificationPreferences?.quietHours?.enabled ? 'On' : 'Off'} ${notificationPreferences?.quietHours?.start ?? ''}-${notificationPreferences?.quietHours?.end ?? ''}`,
         },
       ].filter((i) => i.value !== undefined && i.value !== null && i.value !== ''),
     [t, user, privacySettings, notificationPreferences],
@@ -247,8 +211,8 @@ const ProfileScreen: React.FC = () => {
     [t],
   );
 
-  /* ────── Renderers ────── */
-  const renderProfileHeader = () => (
+  /* ────── Render functions ────── */
+  const renderProfileHeader = useCallback(() => (
     <View style={styles.profileHeader}>
       <View style={styles.avatarContainer}>
         {previewUrl ? (
@@ -334,81 +298,28 @@ const ProfileScreen: React.FC = () => {
         )}
       </View>
     </View>
-  );
+  ), [previewUrl, uploading, pickImage, name, user, t, streak, dailyGoal, languages, level, expCurrent, expNext, expRatio, statusMessage]);
 
-  const renderDetails = () => (
+  const renderDetails = useCallback(() => (
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>{t('profile.details')}</Text>
-      {details.map((d) => {
-        const isPrivacy = d.key.startsWith('privacy_');
-        const isNotification = d.key.startsWith('notification_');
-
-        const renderRight = () => {
-          if (isPrivacy) {
-            const field = d.key.replace('privacy_', '') as keyof typeof privacySettings;
-            return (
-              <Switch
-                value={!!privacySettings?.[field]}
-                onValueChange={(val) =>
-                  setPrivacySettings({ ...privacySettings, [field]: val })
-                }
-              />
-            );
-          }
-          if (isNotification) {
-            const field = d.key.replace('notification_', '') as keyof typeof notificationPreferences;
-            if (field === 'quiet') {
-              return (
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ color: '#6B7280', marginRight: 6 }}>
-                    {notificationPreferences?.quietHours?.start} - {notificationPreferences?.quietHours?.end}
-                  </Text>
-                  <Switch
-                    value={!!notificationPreferences?.quietHours?.enabled}
-                    onValueChange={(val) =>
-                      updateNotificationPreferences({
-                        quietHours: {
-                          ...(notificationPreferences?.quietHours ?? { start: '22:00', end: '07:00' }),
-                          enabled: val,
-                        },
-                      })
-                    }
-                  />
-                </View>
-              );
-            }
-            return (
-              <Switch
-                value={!!notificationPreferences?.[field]}
-                onValueChange={(val) =>
-                  updateNotificationPreferences({ ...notificationPreferences, [field]: val })
-                }
-              />
-            );
-          }
-          return (
-            <Text style={styles.detailValue}>
-              {d.flag ? `${d.flag} ${fmt(d.value)}` : fmt(d.value)}
-            </Text>
-          );
-        };
-
-        return (
-          <View key={d.key} style={styles.detailRow}>
-            <View style={styles.detailIcon}>
-              <Icon name={d.icon as any} size={20} color="#fff" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.detailLabel}>{d.label}</Text>
-            </View>
-            {renderRight()}
+      {details.map((d) => (
+        <View key={d.key} style={styles.detailRow}>
+          <View style={styles.detailIcon}>
+            <Icon name={d.icon as any} size={20} color="#fff" />
           </View>
-        );
-      })}
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailLabel}>{d.label}</Text>
+          </View>
+          <Text style={styles.detailValue}>
+            {d.flag ? `${d.flag} ${fmt(d.value)}` : fmt(d.value)}
+          </Text>
+        </View>
+      ))}
     </View>
-  );
+  ), [details, t]);
 
-  const renderBadges = () => (
+  const renderBadges = useCallback(() => (
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>{t('profile.badges')}</Text>
       <View style={styles.badgesRow}>
@@ -424,9 +335,9 @@ const ProfileScreen: React.FC = () => {
         )}
       </View>
     </View>
-  );
+  ), [badges, t]);
 
-  const renderNavigationButtons = () => (
+  const renderNavigationButtons = useCallback(() => (
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>{t('profile.actions')}</Text>
       {navigationButtons.map((btn) => (
@@ -440,9 +351,9 @@ const ProfileScreen: React.FC = () => {
         </TouchableOpacity>
       ))}
     </View>
-  );
+  ), [navigationButtons, t]);
 
-  const renderSettingsSummary = () => (
+  const renderSettingsSummary = useCallback(() => (
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>{t('profile.settingsSummary')}</Text>
 
@@ -487,9 +398,9 @@ const ProfileScreen: React.FC = () => {
         </View>
       )}
     </View>
-  );
+  ), [notificationPreferences, privacySettings, t]);
 
-  const renderInfoNotices = () => (
+  const renderInfoNotices = useCallback(() => (
     <View style={styles.card}>
       <Text style={styles.sectionTitle}>{t('profile.aboutYourAccount')}</Text>
       <View style={styles.noticeRow}>
@@ -511,7 +422,7 @@ const ProfileScreen: React.FC = () => {
         </Text>
       </View>
     </View>
-  );
+  ), [t]);
 
   /* ────── JSX ────── */
   return (

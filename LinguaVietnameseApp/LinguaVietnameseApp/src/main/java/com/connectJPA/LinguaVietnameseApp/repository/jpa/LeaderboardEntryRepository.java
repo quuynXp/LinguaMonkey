@@ -17,23 +17,24 @@ import java.util.UUID;
 
 public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEntry, LeaderboardEntryId> {
 
-    @Query("SELECT le FROM LeaderboardEntry le " +
-            "WHERE le.id.leaderboardId = :leaderboardId " +
-            "AND le.isDeleted = false")
+    // [THAY ĐỔI] - Thêm "JOIN le.user u" và "AND u.isDeleted = false"
+    @Query("SELECT le FROM LeaderboardEntry le JOIN le.user u " +
+           "WHERE le.id.leaderboardId = :leaderboardId " +
+           "AND le.isDeleted = false AND u.isDeleted = false")
     Page<LeaderboardEntry> findByLeaderboardIdAndIsDeletedFalse(
             @Param("leaderboardId") UUID leaderboardId,
             Pageable pageable);
 
     @Query(value = "SELECT rank FROM (" +
-            " SELECT user_id, RANK() OVER (ORDER BY score DESC) as rank " +
-            " FROM leaderboard_entries WHERE leaderboard_id = :leaderboardId" +
-            ") t WHERE user_id = :userId", nativeQuery = true)
+                   " SELECT user_id, RANK() OVER (ORDER BY score DESC) as rank " +
+                   " FROM leaderboard_entries WHERE leaderboard_id = :leaderboardId" +
+                   ") t WHERE user_id = :userId", nativeQuery = true)
     Integer findRankByLeaderboardAndUser(@Param("leaderboardId") UUID leaderboardId,
                                          @Param("userId") UUID userId);
 
     @Query("SELECT le FROM LeaderboardEntry le JOIN le.leaderboard l " +
-            "WHERE l.period = :period AND l.tab = :tab AND l.snapshotDate = :date AND le.isDeleted = false " +
-            "ORDER BY le.score DESC")
+           "WHERE l.period = :period AND l.tab = :tab AND l.snapshotDate = :date AND le.isDeleted = false " +
+           "ORDER BY le.score DESC")
     Page<LeaderboardEntry> findTopUsers(
             @Param("period") String period,
             @Param("tab") String tab,
@@ -42,24 +43,24 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
     );
 
     @Query(value = "SELECT rank FROM (" +
-            " SELECT user_id, RANK() OVER (ORDER BY score DESC) as rank " +
-            " FROM leaderboard_entries WHERE leaderboard_id = (SELECT leaderboard_id FROM leaderboards WHERE tab = :tab ORDER BY created_at DESC LIMIT 1)" +
-            ") t WHERE user_id = :userId", nativeQuery = true)
+                   " SELECT user_id, RANK() OVER (ORDER BY score DESC) as rank " +
+                   " FROM leaderboard_entries WHERE leaderboard_id = (SELECT leaderboard_id FROM leaderboards WHERE tab = :tab ORDER BY created_at DESC LIMIT 1)" +
+                   ") t WHERE user_id = :userId", nativeQuery = true)
     Integer findRankByUserAndTab(@Param("userId") UUID userId, @Param("tab") String tab, @Param("type") String type);
 
     @Query("SELECT le FROM LeaderboardEntry le " +
-            "WHERE le.id.leaderboardId = :leaderboardId " +
-            "AND le.id.userId = :userId " +
-            "AND le.isDeleted = false")
+           "WHERE le.id.leaderboardId = :leaderboardId " +
+           "AND le.id.userId = :userId " +
+           "AND le.isDeleted = false")
     Page<LeaderboardEntry> findByLeaderboardIdAndUserIdAndIsDeletedFalse(
             @Param("leaderboardId") UUID leaderboardId,
             @Param("userId") UUID userId,
             Pageable pageable);
 
     @Query("SELECT le FROM LeaderboardEntry le " +
-            "WHERE le.id.leaderboardId = :leaderboardId " +
-            "AND le.id.userId = :userId " +
-            "AND le.isDeleted = false")
+           "WHERE le.id.leaderboardId = :leaderboardId " +
+           "AND le.id.userId = :userId " +
+           "AND le.isDeleted = false")
     Optional<LeaderboardEntry> findByLeaderboardIdAndUserIdAndIsDeletedFalse(
             @Param("leaderboardId") UUID leaderboardId,
             @Param("userId") UUID userId);
@@ -67,19 +68,19 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
     @Transactional
     @Modifying
     @Query("UPDATE LeaderboardEntry le " +
-            "SET le.isDeleted = true, le.deletedAt = CURRENT_TIMESTAMP " +
-            "WHERE le.id.leaderboardId = :leaderboardId " +
-            "AND le.id.userId = :userId " +
-            "AND le.isDeleted = false")
+           "SET le.isDeleted = true, le.deletedAt = CURRENT_TIMESTAMP " +
+           "WHERE le.id.leaderboardId = :leaderboardId " +
+           "AND le.id.userId = :userId " +
+           "AND le.isDeleted = false")
     void softDeleteByLeaderboardIdAndUserId(
             @Param("leaderboardId") UUID leaderboardId,
             @Param("userId") UUID userId);
 
     @Query("SELECT le FROM LeaderboardEntry le " +
-            "JOIN User u ON le.leaderboardEntryId.userId = u.userId " +
-            "WHERE le.leaderboardEntryId.leaderboardId = :leaderboardId " +
-            "AND le.isDeleted = false AND u.isDeleted = false " +
-            "ORDER BY u.level DESC")
+           "JOIN User u ON le.leaderboardEntryId.userId = u.userId " + // Lưu ý: Giả định entity User được join đúng cách
+           "WHERE le.leaderboardEntryId.leaderboardId = :leaderboardId " +
+           "AND le.isDeleted = false AND u.isDeleted = false " +
+           "ORDER BY u.level DESC")
     List<LeaderboardEntry> findTop3ByLeaderboardIdOrderByUserLevelDesc(
             @Param("leaderboardId") UUID leaderboardId,
             Pageable pageable);

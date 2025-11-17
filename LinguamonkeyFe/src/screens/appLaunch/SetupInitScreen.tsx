@@ -2,13 +2,13 @@ import * as Localization from "expo-localization"
 import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, Text, TextInput, TouchableOpacity, View, FlatList } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Character3D, Language, Interest, Country, AgeRange, LearningPace, CreateUserPayload, languageToCountry } from "../../types/api"
+import { Character3D, Language, Interest, Country, LearningPace, CreateUserPayload, languageToCountry } from "../../types/api"
 import instance from "../../api/axiosInstance"
 import ModelViewer from "../../components/ModelViewer"
 import CountryFlag from "react-native-country-flag"
 import { useTranslation } from "react-i18next"
-import { SafeAreaView } from "react-native-safe-area-context"
 import { gotoTab } from "../../utils/navigationRef";
+import PhoneInput from "react-native-phone-number-input";
 
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useUserStore } from "../../stores/UserStore";
@@ -584,39 +584,18 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       </View>
 
       <View style={styles.inputContainer}>
-        <Text style={styles.inputLabel}>{t("auth.email")} *</Text>
-        <TextInput
-          style={styles.textInput}
-          value={email} // Sẽ được điền sẵn từ UserStore
-          onChangeText={setEmail}
-          placeholder={t("auth.enterEmail")}
-          keyboardType="email-address"
-          autoCapitalize="none"
-        // Cân nhắc thêm: editable={false} nếu user đăng ký bằng email
-        />
-      </View>
-
-      {/* --- INPUT SĐT MỚI --- */}
-      <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>{t("auth.phoneNumber")}</Text>
-        {/* GỢI Ý: Đây là nơi tốt nhất để dùng thư viện 'react-native-phone-number-input'
-          <PhoneInput
-            defaultValue={phoneNumber}
-            defaultCode={country || "VN"}
-            onChangeFormattedText={(text) => {
-              setPhoneNumber(text);
-            }}
-            containerStyle={styles.phoneInputContainer}
-            textContainerStyle={styles.phoneInputTextContainer}
-          />
-        */}
-        {/* Fallback dùng TextInput đơn giản */}
-        <TextInput
-          style={styles.textInput}
-          value={phoneNumber}
-          onChangeText={setPhoneNumber}
-          placeholder={t("auth.enterPhoneNumber")}
-          keyboardType="phone-pad"
+        <PhoneInput
+          defaultValue={phoneNumber}
+          defaultCode={(country || "VN") as any}
+          layout="first"
+          onChangeFormattedText={(text) => {
+            setPhoneNumber(text);
+          }}
+          withDarkTheme={false}
+          withShadow
+          containerStyle={styles.phoneInputContainer}
+          textContainerStyle={styles.phoneInputTextContainer}
         />
         <Text style={styles.inputHint}>
           {t("auth.phoneHint")}
@@ -1415,6 +1394,19 @@ const styles = createScaledSheet({
     borderRadius: 12,
     paddingVertical: 16,
     gap: 8,
+  },
+  phoneInputContainer: {
+    width: "100%",
+    height: 50,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+  },
+  phoneInputTextContainer: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 8,
+    paddingVertical: 0,
   },
   nextButtonText: {
     fontSize: 16,

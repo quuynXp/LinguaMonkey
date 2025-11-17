@@ -1,5 +1,5 @@
 // EnhancedLeaderboardScreen.tsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Animated,
   FlatList,
@@ -46,16 +46,13 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const { user } = useUserStore();
 
-  // giữ pattern factory hook của bạn
   const { useLeaderboards, useLeaderboardEntries } = useLeaderboardsHooksFactory();
 
   const [selectedTab, setSelectedTab] = useState<string>("global");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("all");
 
-  // leaderboard snapshot id for current tab+period
   const [leaderboardId, setLeaderboardId] = useState<string | null>(null);
 
-  // pagination state for entries
   const [page, setPage] = useState<number>(0);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [entriesAccum, setEntriesAccum] = useState<any[]>([]);
@@ -68,7 +65,6 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     }).start();
   }, [fadeAnim]);
 
-  // --- 1) get leaderboard snapshot(s) for current tab+period (page 0 limit 1)
   const {
     data: leaderboardsResp,
     isLoading: leaderboardsLoading,
@@ -76,25 +72,18 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     refetch: refetchLeaderboards,
   } = useLeaderboards({ tab: selectedTab, period: selectedPeriod, page: 0, limit: 1 });
 
-  // parse leaderboardsResp — hook của bạn trả res.data.result (Page<LeaderboardResponse>)
-  const resolvedLeaderboardList = (() => {
+  const resolvedLeaderboardList = useMemo(() => {
     const d: any = leaderboardsResp;
     if (!d) return [];
-    // Page-like with content
     if (d.content && Array.isArray(d.content)) return d.content;
-    // maybe direct array
     if (Array.isArray(d)) return d;
-    // single object fallback
     return [d];
-  })();
+  }, [leaderboardsResp]);
 
-  // set leaderboardId to first snapshot's id when leaderboards change
   useEffect(() => {
-    setPage(0); // reset pagination when snapshot changes
+    setPage(0);
     const first = resolvedLeaderboardList[0];
-    // reset hasMore whenever leaderboard snapshot changes
     setHasMore(true);
-    // reset accumulated entries on snapshot change
     setEntriesAccum([]);
     if (first && (first.leaderboardId || first.id)) {
       const id = String(first.leaderboardId ?? first.id);
@@ -103,7 +92,6 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
       setLeaderboardId(null);
     }
   }, [resolvedLeaderboardList, selectedTab, selectedPeriod]);
-  // Note: include resolvedLeaderboardList so effect runs when parsed content changes
 
   const top3Query = useQuery({
     queryKey: ["leaderboard", leaderboardId, "top-3"],
@@ -150,13 +138,13 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     setPage((p) => p + 1);
   }, [leaderboardId, entriesLoading, hasMore]);
 
-  useEffect(() => {
-    if (leaderboardId) refetchEntries();
-  }, [page, leaderboardId, refetchEntries]);
+  // useEffect(() => {
+  //   if (leaderboardId) refetchEntries();
+  // }, [page, leaderboardId, refetchEntries]);
 
-  useEffect(() => {
-    refetchLeaderboards();
-  }, [selectedTab, selectedPeriod, refetchLeaderboards]);
+  // useEffect(() => {
+  //   refetchLeaderboards();
+  // }, [selectedTab, selectedPeriod, refetchLeaderboards]);
 
   const onPressUser = (entry: any) => {
     const targetUserId = entry?.leaderboardEntryId?.userId ?? entry?.userId ?? entry?.id;

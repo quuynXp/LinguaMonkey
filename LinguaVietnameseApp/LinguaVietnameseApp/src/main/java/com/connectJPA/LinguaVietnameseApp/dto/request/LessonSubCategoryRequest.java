@@ -1,12 +1,13 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
-import lombok.Builder;
-import lombok.Getter;
+import lombok.*;
 
 import java.util.UUID;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class LessonSubCategoryRequest {
     private UUID lessonSubCategoryId;
     private String lessonSubCategoryName;

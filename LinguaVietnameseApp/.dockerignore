@@ -11,10 +11,6 @@ build/
 .env
 *.env
 
-
-firebase-config.json
-
-
 *.log
 
 

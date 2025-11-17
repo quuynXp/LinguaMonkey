@@ -1,8 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import jakarta.validation.constraints.*;
-import lombok.Builder;
-import lombok.Getter;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -11,6 +10,8 @@ import java.util.UUID;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class LessonReviewRequest {
     @NotNull(message = "Lesson ID is required")
     private UUID lessonId;

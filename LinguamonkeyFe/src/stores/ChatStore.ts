@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { stompService, StompMessageCallback } from '../services/stompService';
+import { stompService } from '../services/stompService';
 import {
   pythonAiWsService,
-  AiChatMessage,
   AiMessageCallback,
 } from '../services/pythonAiWsService';
 import {
@@ -18,9 +17,7 @@ import {
 import { NavigationProp } from '@react-navigation/native';
 import { useUserStore } from './UserStore';
 
-// --- TYPES ---
 
-// Khớp với RoomPurpose.java
 type RoomPurpose =
   | 'QUIZ_TEAM'
   | 'CALL'
@@ -28,18 +25,17 @@ type RoomPurpose =
   | 'GROUP_CHAT'
   | 'AI_CHAT';
 
-// Khớp với RoomRequest.java (và giả định RoomType)
 type RoomRequest = {
   roomName: string;
-  creatorId: string; // UUID
+  creatorId: string;
   description?: string; // RoomRequest.java có, nhưng DB/api.ts Room không có. Gửi null
   maxMembers: number;
   purpose: RoomPurpose;
-  roomType: 'PUBLIC' | 'PRIVATE'; // Giả định enum RoomType
+  roomType: 'PUBLIC' | 'PRIVATE';
 };
 
 type AiMessage = {
-  id: string; // Dùng Date.now() hoặc uuid
+  id: string;
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;

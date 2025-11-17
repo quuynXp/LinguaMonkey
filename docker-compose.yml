@@ -142,7 +142,7 @@ services:
     env_file:
       - ./LinguaVietnameseApp/.env
     volumes:
-      - ./LinguaVietnameseApp/firebase-config.json:/app/config/firebase-config.json:ro
+      - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro
     networks:
       - lingua-net
     restart: always

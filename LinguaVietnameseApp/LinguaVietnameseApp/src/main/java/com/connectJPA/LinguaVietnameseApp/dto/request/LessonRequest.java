@@ -2,11 +2,13 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import jakarta.validation.constraints.*;
-import lombok.Data;
+import lombok.*;
 
 import java.util.UUID;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class LessonRequest {
     @NotBlank(message = "Lesson name is required")
     @Size(max = 50, message = "Lesson name must not exceed 50 characters")

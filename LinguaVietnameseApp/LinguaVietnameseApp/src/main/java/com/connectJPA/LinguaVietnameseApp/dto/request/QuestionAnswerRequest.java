@@ -1,13 +1,14 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import jakarta.validation.constraints.*;
-import lombok.Builder;
-import lombok.Getter;
+import lombok.*;
 
 import java.util.UUID;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class QuestionAnswerRequest {
     @NotNull(message = "Lesson question ID is required")
     private UUID lessonQuestionId;

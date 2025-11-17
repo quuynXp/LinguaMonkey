@@ -1,5 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.enums;
 
 public enum TargetType {
-    LESSON, EXAM, STREAK, EVENT
+    LESSON, EXAM, STREAK, EVENT, ROADMAP, FLASHCARD, COUPLE
 }

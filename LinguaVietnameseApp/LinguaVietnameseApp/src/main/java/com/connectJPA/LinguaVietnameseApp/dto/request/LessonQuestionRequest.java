@@ -3,11 +3,13 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 import jakarta.validation.constraints.Size;
 import lombok.Builder;
 import lombok.Getter;
-
+import lombok.*;
 import java.util.UUID;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class LessonQuestionRequest {
     private UUID lessonId;
     private String question;

@@ -18,9 +18,7 @@ public class FirebaseConfig {
 
     @Bean
     public FirebaseMessaging firebaseMessaging() throws IOException {
-        InputStream serviceAccount = getClass()
-                .getClassLoader()
-                .getResourceAsStream("firebase/web-app-love-firebase-adminsdk-fbsvc-9bafbc5626.json");
+        InputStream serviceAccount = new java.io.FileInputStream(credentialsPath);
 
         FirebaseOptions options = FirebaseOptions.builder()
                 .setCredentials(GoogleCredentials.fromStream(serviceAccount))

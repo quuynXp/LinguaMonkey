@@ -26,7 +26,7 @@ const ProfileStack = () => (
     <Stack.Screen name="LearningGoals" component={LearningGoalsScreen} />
     <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} />
     <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
-    <Stack.Screen name="UserProfileView" component={UserProfileViewScreen} />
+    <Stack.Screen name="UserProfileViewScreen" component={UserProfileViewScreen} />
     <Stack.Screen name="About" component={AboutScreen} />
     <Stack.Screen name="Settings" component={SettingsScreen} />
     <Stack.Screen name="EnhancedUserManagement" component={EnhancedUserManagementScreen} />

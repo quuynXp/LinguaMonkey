@@ -1,10 +1,12 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+import lombok.*;
 import java.util.UUID;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class RefundRequest {
     @NotNull
     private UUID originalTransactionId; // Giao dịch P2P (mua course)

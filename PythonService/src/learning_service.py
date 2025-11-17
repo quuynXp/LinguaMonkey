@@ -1,4 +1,4 @@
-# learning_service.py
+# src/learning_service.py
 import os
 import grpc.aio
 from concurrent import futures
@@ -9,18 +9,18 @@ from cryptography.hazmat.backends import default_backend
 import asyncio
 from dotenv import load_dotenv
 
-# Import protobuf definitions
+# === IMPORT DECORATOR MỚI ===
+from .core.grpc_auth_decorator import authenticated_grpc_method
+
+# === CÁC IMPORT CỦA BẠN (giữ nguyên) ===
 from . import learning_service_pb2 as learning_pb2
 from . import learning_service_pb2_grpc as learning_pb2_grpc
 
-# Import core services (DB, Cache, Auth)
 from .core.session import AsyncSessionLocal
 from .core.cache import get_redis_client, close_redis_client
 from .core.user_profile_service import get_user_profile
 from .core.kafka_consumer import consume_user_updates
 
-# Import AI/API functions
-# (Giữ nguyên các import AI/API)
 from .api.speech_to_text import speech_to_text
 from .api.chat_ai import chat_with_ai
 from .api.spelling_checker import check_spelling
@@ -35,14 +35,14 @@ from .api.translation import translate_text
 from .api.tts_generator import generate_tts
 from .api.quiz_generator import generate_quiz
 from .api.analytics_service import analyze_course_quality, decide_refund
-
+# Giả sử bạn có import này
+from .api.review_analyzer import analyze_review
 
 load_dotenv()
 
 
 class LearningService(learning_pb2_grpc.LearningServiceServicer):
     def __init__(self):
-        # (Giữ nguyên __init__ và redis_client)
         try:
             with open("public_key.pem", "rb") as f:
                 self.public_key = serialization.load_pem_public_key(
@@ -53,8 +53,9 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             raise
         self.redis_client = get_redis_client()
 
+    # === HÀM XÁC THỰC GỐC (ĐƯỢC GIỮ LẠI) ===
+    # Decorator sẽ gọi hàm này
     def _verify_token(self, context):
-        # (Giữ nguyên _verify_token)
         try:
             metadata = dict(context.invocation_metadata())
             auth = metadata.get("authorization", "")
@@ -80,37 +81,32 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             context.set_details(f"Invalid token: {str(e)}")
             return None
 
-    # --- Helper to get session and profile ---
-    # <<< ĐÂY LÀ HÀM ĐÃ SỬA SIGNATURE (NHẬN db_session) >>>
+    # === HÀM HELPER (GIỮ NGUYÊN) ===
     async def _get_profile_from_db(self, user_id: str, db_session):
         """Fetches user profile using cache and DB."""
         if not user_id:
             return None
-        # Hàm này VẪN DÙNG REDIS (self.redis_client) như bình thường
-        # Nó chỉ dùng db_session khi cache miss
         return await get_user_profile(user_id, db_session, self.redis_client)
 
-    # --- Speech & Audio ---
-    # (Các hàm SpeechToText, GenerateTts, CheckPronunciation, StreamPronunciation
-    # giữ nguyên VÌ CHÚNG KHÔNG GỌI _get_profile_from_db)
-    async def SpeechToText(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.SpeechResponse()
+    # === CÁC HANDLER ĐÃ ĐƯỢC DỌN DẸP ===
+    # Chú ý: (self, request, context, claims)
+    # 'claims' được tự động inject bởi decorator
+
+    @authenticated_grpc_method
+    async def SpeechToText(self, request, context, claims) -> learning_pb2.SpeechResponse:
         audio_data = (
             request.audio.inline_data if request.audio.inline_data else b""
         )
         text, error = speech_to_text(audio_data, request.language)
         return learning_pb2.SpeechResponse(text=text, error=error)
 
-    async def GenerateTts(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.TtsResponse()
+    @authenticated_grpc_method
+    async def GenerateTts(self, request, context, claims) -> learning_pb2.TtsResponse:
         audio_data, error = generate_tts(request.text, request.language)
         return learning_pb2.TtsResponse(audio_data=audio_data, error=error)
 
-    async def CheckPronunciation(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.PronunciationResponse()
+    @authenticated_grpc_method
+    async def CheckPronunciation(self, request, context, claims) -> learning_pb2.PronunciationResponse:
         audio_data = request.audio.inline_data if request.audio.inline_data else b""
         feedback, score, error = await check_pronunciation(audio_data, request.reference_text)
         ipa = "/mɒk/"
@@ -119,10 +115,9 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             feedback=feedback, score=score, error=error, ipa=ipa, suggestion=suggestion
         )
     
-    async def StreamPronunciation(self, request_iterator, context):
-        # (Giữ nguyên StreamPronunciation)
-        if not self._verify_token(context):
-            return
+    @authenticated_grpc_method
+    async def StreamPronunciation(self, request_iterator, context, claims):
+        # Auth đã chạy, 'claims' có sẵn nếu bạn cần
         full_audio_chunks = []
         try:
             async for chunk in request_iterator:
@@ -148,18 +143,13 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             )
 
 
-    # --- Text-based ---
-    # (CheckSpelling, CheckTranslation, CheckWritingWithImage giữ nguyên
-    # VÌ CHÚNG KHÔNG GỌI _get_profile_from_db)
-    async def CheckSpelling(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.SpellingResponse()
+    @authenticated_grpc_method
+    async def CheckSpelling(self, request, context, claims) -> learning_pb2.SpellingResponse:
         corrections, error = check_spelling(request.text, request.language)
         return learning_pb2.SpellingResponse(corrections=corrections, error=error)
 
-    async def CheckTranslation(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.CheckTranslationResponse()
+    @authenticated_grpc_method
+    async def CheckTranslation(self, request, context, claims) -> learning_pb2.CheckTranslationResponse:
         feedback, score, error = check_translation(
             request.reference_text, request.translated_text, request.target_language
         )
@@ -167,47 +157,35 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             feedback=feedback, score=score, error=error
         )
 
-    async def CheckWritingWithImage(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.WritingImageResponse()
+    @authenticated_grpc_method
+    async def CheckWritingWithImage(self, request, context, claims) -> learning_pb2.WritingImageResponse:
         image_data = request.image.inline_data if request.image.inline_data else b""
         feedback, score, error = analyze_image_with_text(request.text, image_data)
         return learning_pb2.WritingImageResponse(
             feedback=feedback, score=score, error=error
         )
 
-    # <<< SỬA ĐỔI HÀM ChatWithAI >>>
-    async def ChatWithAI(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.ChatResponse()
-
+    @authenticated_grpc_method
+    async def ChatWithAI(self, request, context, claims) -> learning_pb2.ChatResponse:
         user_id = request.user_id or claims.get("sub")
         history_list = [{"role": m.role, "content": m.content} for m in request.history]
 
         try:
-            # 1. Tạo session
             async with AsyncSessionLocal() as db_session:
-                # 2. Lấy profile và truyền session vào
                 user_profile = await self._get_profile_from_db(user_id, db_session)
-
-                # 3. Gọi AI
                 response, error = await chat_with_ai(
                     request.message,
                     history_list,
-                    "en",  # Language param
+                    "en",
                     user_profile,
                 )
             return learning_pb2.ChatResponse(response=response, error=error)
-        
         except Exception as e:
             logging.error(f"Error during ChatWithAI with session: {e}", exc_info=True)
             return learning_pb2.ChatResponse(error=f"Internal service error: {str(e)}")
 
-    # (Translate giữ nguyên)
-    async def Translate(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.TranslateResponse()
+    @authenticated_grpc_method
+    async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
         translated_text, error = translate_text(
             request.text, request.source_language, request.target_language
         )
@@ -220,22 +198,15 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             error=error,
         )
 
-    # --- Content Generation ---
-    # <<< SỬA ĐỔI HÀM GenerateImage >>>
-    async def GenerateImage(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.GenerateImageResponse()
-
+    @authenticated_grpc_method
+    async def GenerateImage(self, request, context, claims) -> learning_pb2.GenerateImageResponse:
         user_id = request.user_id or claims.get("sub")
-
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
                 image_data, error = generate_image(
                     user_id, request.prompt, request.language, user_profile
                 )
-            
             return learning_pb2.GenerateImageResponse(
                 image_urls=["https://example.com/mock_image.png"], # Mock
                 model_used="mock_model",
@@ -245,14 +216,9 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"Error during GenerateImage with session: {e}", exc_info=True)
             return learning_pb2.GenerateImageResponse(error=f"Internal service error: {str(e)}")
 
-    # <<< SỬA ĐỔI HÀM GenerateText >>>
-    async def GenerateText(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.GenerateTextResponse()
-
+    @authenticated_grpc_method
+    async def GenerateText(self, request, context, claims) -> learning_pb2.GenerateTextResponse:
         user_id = request.user_id or claims.get("sub")
-        
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
@@ -264,21 +230,15 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"Error during GenerateText with session: {e}", exc_info=True)
             return learning_pb2.GenerateTextResponse(error=f"Internal service error: {str(e)}")
 
-    # <<< SỬA ĐỔI HÀM GeneratePassage >>>
-    async def GeneratePassage(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.GeneratePassageResponse()
-
+    @authenticated_grpc_method
+    async def GeneratePassage(self, request, context, claims) -> learning_pb2.GeneratePassageResponse:
         user_id = request.user_id or claims.get("sub")
-        
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
                 passage, error = generate_passage(
                     user_id, request.language, request.topic, user_profile
                 )
-            
             return learning_pb2.GeneratePassageResponse(
                 passage=passage, difficulty="medium", error=error
             )
@@ -286,12 +246,8 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"Error during GeneratePassage with session: {e}", exc_info=True)
             return learning_pb2.GeneratePassageResponse(error=f"Internal service error: {str(e)}")
 
-    # --- Personalized Learning ---
-    # (CreateOrUpdateRoadmap giữ nguyên)
-    async def CreateOrUpdateRoadmap(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.RoadmapResponse()
+    @authenticated_grpc_method
+    async def CreateOrUpdateRoadmap(self, request, context, claims) -> learning_pb2.RoadmapResponse:
         new_id = request.roadmap_id or "new_roadmap_" + os.urandom(4).hex()
         return learning_pb2.RoadmapResponse(
             roadmap_id=new_id,
@@ -300,14 +256,9 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             language=request.language,
         )
 
-    # <<< SỬA ĐỔI HÀM CreateOrUpdateRoadmapDetailed >>>
-    async def CreateOrUpdateRoadmapDetailed(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.RoadmapDetailedResponse(error="Unauthenticated")
-
+    @authenticated_grpc_method
+    async def CreateOrUpdateRoadmapDetailed(self, request, context, claims) -> learning_pb2.RoadmapDetailedResponse:
         user_id = request.user_id or claims.get("sub")
-        
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
@@ -320,7 +271,6 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             if error:
                 return learning_pb2.RoadmapDetailedResponse(error=error)
             
-            # (Phần map DTO giữ nguyên)
             title = totals.get("title", "Generated Detailed Roadmap")
             description = totals.get("description", generated_text)
             items_proto = [learning_pb2.RoadmapItemProto(**i) for i in items]
@@ -342,44 +292,27 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"Error during CreateOrUpdateRoadmapDetailed with session: {e}", exc_info=True)
             return learning_pb2.RoadmapDetailedResponse(error=f"Internal service error: {str(e)}")
 
-    # <<< HÀM GenerateLanguageQuiz (Đã sửa từ lần trước) >>>
-    async def GenerateLanguageQuiz(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.QuizGenerationResponse(error="Unauthenticated")
-
+    @authenticated_grpc_method
+    async def GenerateLanguageQuiz(self, request, context, claims) -> learning_pb2.QuizGenerationResponse:
         user_id = request.user_id or claims.get("sub")
         try:
-            # Tạo session một lần duy nhất ở đầu handler
             async with AsyncSessionLocal() as db_session:
-                # 1. Lấy user_profile dùng session đã tạo
                 user_profile = await self._get_profile_from_db(user_id, db_session)
-                
-                # 2. Gọi generate_quiz
                 questions_list, error = await generate_quiz(
                     user_id, request.num_questions, request.mode, request.topic, user_profile
                 )
-                
                 if error:
                     return learning_pb2.QuizGenerationResponse(error=error)
-
                 questions_proto = [learning_pb2.QuizQuestionProto(**q) for q in questions_list]
-
                 return learning_pb2.QuizGenerationResponse(
                     quiz_id="quiz_" + os.urandom(4).hex(), questions=questions_proto
                 )
-
         except Exception as e:
-            # Bắt tất cả các lỗi (bao gồm cả lỗi SQLAlchemy)
             logging.error(f"Error during GenerateLanguageQuiz with session: {e}", exc_info=True)
             return learning_pb2.QuizGenerationResponse(error=f"Internal service error: {str(e)}")
 
-    # --- System-level / analytics ---
-    # (Các hàm AnalyzeCourseQuality, RefundDecision, AnalyzeReviewQuality giữ nguyên
-    # VÌ CHÚNG KHÔNG GỌI _get_profile_from_db)
-    async def AnalyzeCourseQuality(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.CourseQualityResponse()
+    @authenticated_grpc_method
+    async def AnalyzeCourseQuality(self, request, context, claims) -> learning_pb2.CourseQualityResponse:
         score, warnings, verdict, error = analyze_course_quality(
             request.course_id, request.lesson_ids
         )
@@ -387,9 +320,8 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             quality_score=score, warnings=warnings, verdict=verdict, error=error
         )
 
-    async def RefundDecision(self, request, context):
-        if not self._verify_token(context):
-            return learning_pb2.RefundDecisionResponse()
+    @authenticated_grpc_method
+    async def RefundDecision(self, request, context, claims) -> learning_pb2.RefundDecisionResponse:
         decision, label, confidence, explanations, error = decide_refund(
             request.transaction_id,
             request.user_id,
@@ -404,10 +336,8 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             error=error,
         )
 
-    async def AnalyzeReviewQuality(self, request, context):
-        claims = self._verify_token(context)
-        if not claims:
-            return learning_pb2.ReviewQualityResponse(error="Unauthenticated")
+    @authenticated_grpc_method
+    async def AnalyzeReviewQuality(self, request, context, claims) -> learning_pb2.ReviewQualityResponse:
         user_id = request.user_id or claims.get("sub")
         try:
             is_valid, sentiment, topics, suggested_action, error = await analyze_review(
@@ -429,7 +359,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"AnalyzeReviewQuality failed unexpectedly: {e}")
             return learning_pb2.ReviewQualityResponse(error=f"Internal server error: {e}")
 
-# (Hàm serve() và __main__ giữ nguyên)
+# === HÀM SERVE (GIỮ NGUYÊN) ===
 async def serve():
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
     learning_pb2_grpc.add_LearningServiceServicer_to_server(LearningService(), server)

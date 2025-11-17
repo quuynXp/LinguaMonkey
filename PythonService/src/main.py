@@ -1,4 +1,4 @@
-# main.py
+# src/main.py
 from fastapi import (
     FastAPI,
     HTTPException,
@@ -6,6 +6,7 @@ from fastapi import (
     WebSocketDisconnect,
     Depends,
     status,
+    APIRouter # <-- ĐÃ THÊM
 )
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -15,6 +16,7 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 from dotenv import load_dotenv
+from datetime import datetime # <-- ĐÃ THÊM
 
 # Import core services
 from src.core.session import get_db, AsyncSessionLocal
@@ -31,9 +33,7 @@ from src.core.kafka_producer import get_kafka_producer, stop_kafka_producer, sen
 
 load_dotenv()
 
-app = FastAPI()
-
-# Load RSA public key for JWT verification
+# === CÀI ĐẶT CHUNG ===
 try:
     with open("public_key.pem", "rb") as f:
         PUBLIC_KEY = serialization.load_pem_public_key(
@@ -47,11 +47,9 @@ security = HTTPBearer()
 redis_client = get_redis_client()
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
-    await close_redis_client()
-    await stop_kafka_producer()
+# === HÀM XÁC THỰC TẬP TRUNG ===
 
+# 1. Cho HTTP (Giữ nguyên hàm của bạn)
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
@@ -72,7 +70,47 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Invalid token: {str(e)}"
         )
 
+# 2. Cho WebSocket (Hàm dependency mới)
+async def get_websocket_user(websocket: WebSocket, token: str) -> str:
+    """
+    Xác thực token từ query param của WebSocket.
+    Trả về user_id nếu thành công.
+    Tự động đóng WS và raise WebSocketDisconnect nếu thất bại.
+    """
+    try:
+        decoded_token = jwt.decode(
+            token, PUBLIC_KEY, algorithms=["RS256"], issuer="LinguaMonkey.com"
+        )
+        user_id = decoded_token.get("sub")
+        if not user_id:
+            raise jwt.InvalidTokenError("Missing 'sub' (user_id) in token")
+        return user_id
+        
+    except jwt.ExpiredSignatureError:
+        reason = "Token expired"
+        logging.warning(f"WebSocket Auth failed: {reason}")
+        await websocket.close(code=1008, reason=reason)
+        raise WebSocketDisconnect(code=1008, reason=reason)
+    except Exception as e:
+        reason = f"Invalid token: {str(e)}"
+        logging.warning(f"WebSocket Auth failed: {reason}")
+        await websocket.close(code=1008, reason=reason)
+        raise WebSocketDisconnect(code=1008, reason=reason)
 
+# === KHỞI TẠO APP VÀ ROUTERS ===
+app = FastAPI()
+
+# Router cho các API cần bảo vệ
+protected_router = APIRouter(dependencies=[Depends(verify_token)])
+# (Bạn có thể tạo public_router = APIRouter() cho các API public)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    await close_redis_client()
+    await stop_kafka_producer()
+
+# === ĐỊNH NGHĨA MODEL ===
 class TranslationRequest(BaseModel):
     text: str
     source_lang: str
@@ -84,24 +122,25 @@ class ChatRequest(BaseModel):
     history: list[dict]
 
 
+# === CÁC HANDLERS ===
+
+# --- WebSocket Handlers (Gắn vào 'app') ---
+
 @app.websocket("/ws/voice")
 async def voice_stream(websocket: WebSocket, token: str):
     try:
-        decoded_token = jwt.decode(
-            token, PUBLIC_KEY, algorithms=["RS256"], issuer="LinguaMonkey.com"
-        )
-        user_id = decoded_token.get("sub")
-    except Exception as e:
-        logging.warning(f"WebSocket Auth failed: {e}")
-        await websocket.close(code=1008)
-        return
+        # GỌI HÀM AUTH TẬP TRUNG
+        user_id = await get_websocket_user(websocket, token)
+    except WebSocketDisconnect:
+        return # Auth thất bại, kết nối đã bị đóng
 
     await websocket.accept()
     logging.info(f"Client {user_id} connected to WebSocket")
 
-    # Note: We can load user_profile here if speech_to_text needs personalization
+    # (Logic get_db / user_profile nếu cần)
     # async with AsyncSessionLocal() as db_session:
     #     user_profile = await get_user_profile(user_id, db_session, redis_client)
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -112,11 +151,7 @@ async def voice_stream(websocket: WebSocket, token: str):
                 else b""
             )
 
-            # Process with Whisper (speech_to_text)
-            # We could pass user_profile here if ASR model supports biasing
-            text, error = speech_to_text(
-                audio_chunk, "en"
-            )  # Assume English; make dynamic
+            text, error = speech_to_text(audio_chunk, "en") 
 
             if error:
                 await websocket.send_text(
@@ -133,33 +168,32 @@ async def voice_stream(websocket: WebSocket, token: str):
         await websocket.close(code=1011)
 
 
-@app.websocket("/chat-stream") # Phải khớp với FE: /ws/py/chat-stream
-async def chat_stream(
-    websocket: WebSocket, 
-    token: str, 
-    db: AsyncSession = Depends(get_db)
-):
+@app.websocket("/chat-stream")
+async def chat_stream(websocket: WebSocket, token: str):
     try:
-        decoded_token = jwt.decode(
-            token, PUBLIC_KEY, algorithms=["RS256"], issuer="LinguaMonkey.com"
-        )
-        user_id = decoded_token.get("sub")
-        if not user_id:
-            await websocket.close(code=1008)
-            return
-    except Exception as e:
-        logging.warning(f"WebSocket Auth failed: {e}")
-        await websocket.close(code=1008)
-        return
+        # GỌI HÀM AUTH TẬP TRUNG
+        user_id = await get_websocket_user(websocket, token)
+    except WebSocketDisconnect:
+        return # Auth thất bại
 
     await websocket.accept()
     logging.info(f"Client {user_id} connected to AI Chat WebSocket")
     
-    user_profile = await get_user_profile(user_id, db, redis_client)
+    user_profile = None
     
+    # Vẫn phải quản lý DB session thủ công cho WebSocket
+    try:
+        async with AsyncSessionLocal() as db:
+            user_profile = await get_user_profile(user_id, db, redis_client)
+            
+    except Exception as e:
+        logging.error(f"Failed to get user profile for {user_id}: {e}", exc_info=True)
+        await websocket.close(code=1011, reason="Profile loading failed")
+        return
+
+    # Vòng lặp xử lý message
     room_id = None
     message_type = "TEXT"
-
     try:
         while True:
             data = await websocket.receive_text()
@@ -168,8 +202,6 @@ async def chat_stream(
             if msg.get("type") == "chat_request":
                 prompt = msg.get("prompt", "")
                 history = msg.get("history", [])
-                
-                # FE PHẢI GỬI LÊN room_id 
                 room_id = msg.get("roomId") 
                 message_type = msg.get("messageType", "TEXT")
 
@@ -182,7 +214,6 @@ async def chat_stream(
                 
                 full_ai_response = ""
                 
-                # Gọi hàm streaming
                 async for chunk in chat_with_ai_stream(prompt, history, user_profile):
                     full_ai_response += chunk
                     await websocket.send_text(json.dumps({
@@ -190,19 +221,17 @@ async def chat_stream(
                         "content": chunk
                     }))
                 
-                # Gửi tín hiệu kết thúc stream
                 await websocket.send_text(json.dumps({
                     "type": "chat_response_complete"
                 }))
 
-                # === BƯỚC QUAN TRỌNG: GỬI TỚI KAFKA ===
                 kafka_payload = {
                     "userId": user_id,
                     "roomId": room_id,
                     "userPrompt": prompt,
                     "aiResponse": full_ai_response,
                     "messageType": message_type,
-                    "sentAt": datetime.now().isoformat() # Thêm timestamp
+                    "sentAt": datetime.now().isoformat()
                 }
                 await send_chat_to_kafka(kafka_payload)
 
@@ -212,16 +241,20 @@ async def chat_stream(
         logging.error(f"AI Chat WebSocket Error: {e}", exc_info=True)
         try:
             await websocket.send_text(json.dumps({
-                "type": "error",
-                "content": str(e)
+                "type": "error", "content": str(e)
             }))
         except:
             pass
     finally:
-        await websocket.close(code=1011)
+        if websocket.client_state.name != 'DISCONNECTED':
+            await websocket.close(code=1011)
 
-@app.post("/translate")
+
+# --- HTTP Handlers (Gắn vào 'protected_router') ---
+
+@protected_router.post("/translate")
 async def translate(request: TranslationRequest, user: dict = Depends(verify_token)):
+    # Auth đã chạy. 'user' là claims từ token.
     try:
         translated_text, error = translate_text(
             request.text, request.source_lang, request.target_lang
@@ -234,11 +267,11 @@ async def translate(request: TranslationRequest, user: dict = Depends(verify_tok
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/chat-ai")
+@protected_router.post("/chat-ai")
 async def chat(
     request: ChatRequest,
-    user: dict = Depends(verify_token),
-    db: AsyncSession = Depends(get_db),
+    user: dict = Depends(verify_token), # Lấy claims
+    db: AsyncSession = Depends(get_db), # Lấy DB session
 ):
     try:
         user_id = user.get("sub")
@@ -248,9 +281,7 @@ async def chat(
                 detail="Invalid token, missing 'sub' (user_id)",
             )
 
-        # Get personalized profile
         user_profile = await get_user_profile(user_id, db, redis_client)
-
         response, error = await chat_with_ai(
             request.message, request.history, "en", user_profile
         )
@@ -263,8 +294,12 @@ async def chat(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# === KẾT NỐI ROUTER VÀO APP ===
+app.include_router(protected_router, tags=["Protected API"])
+
+
 if __name__ == "__main__":
     import uvicorn
-
     logging.basicConfig(level=logging.INFO)
+    # Cổng 8000 theo file gốc của bạn, dù 8001 mới là cổng expose trong Docker
     uvicorn.run(app, host="0.0.0.0", port=8000)

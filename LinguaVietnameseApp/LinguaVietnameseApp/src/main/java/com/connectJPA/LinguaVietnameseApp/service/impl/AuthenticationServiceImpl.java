@@ -139,7 +139,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .subject(user.getUserId().toString())
                     .issuer("LinguaMonkey.com")
                     .issueTime(new Date())
-                    .expirationTime(Date.from(Instant.now().plus(1, ChronoUnit.HOURS)))
+                    .expirationTime(Date.from(Instant.now().plus(30, ChronoUnit.DAYS)))
                     .claim("scope", buildScope(user.getUserId()))
                     .claim("userId", user.getUserId())
                     .build();
@@ -266,14 +266,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             String newRefreshToken = oldRefreshToken;
 
             if (daysLeft <= 7) {
-                newRefreshToken = generateRefreshToken(user, 30);
+                newRefreshToken = generateRefreshToken(user, 360);
                 oldToken.setToken(newRefreshToken);
-                oldToken.setExpiresAt(now.plusDays(30));
+                oldToken.setExpiresAt(now.plusDays(360));
                 oldToken.setRevoked(false);
                 // oldToken is managed; save is optional but explicit is fine
                 refreshTokenRepository.save(oldToken);
             } else {
-                oldToken.setExpiresAt(now.plusDays(30));
+                oldToken.setExpiresAt(now.plusDays(360));
                 refreshTokenRepository.save(oldToken);
             }
 
@@ -551,16 +551,16 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 
                 if (daysLeft <= 7) {
                     log.info("Refresh token expiring soon ({} days left). Generating new one.", daysLeft);
-                    newRefreshToken = generateRefreshToken(user, 30);
+                    newRefreshToken = generateRefreshToken(user, 360);
                     oldToken.setToken(newRefreshToken.trim());
-                    oldToken.setExpiresAt(now.plusDays(30));
+                    oldToken.setExpiresAt(now.plusDays(360));
                 } else {
                     log.info("Refresh token still valid ({} days left). Extending expiry.", daysLeft);
-                    oldToken.setExpiresAt(now.plusDays(30));
+                    oldToken.setExpiresAt(now.plusDays(360));
                 }
             } catch (Exception e) {
                 log.warn("Failed to calculate expiry, using defaults: {}", e.getMessage());
-                oldToken.setExpiresAt(now.plusDays(30));
+                oldToken.setExpiresAt(now.plusDays(360));
             }
             
             try {

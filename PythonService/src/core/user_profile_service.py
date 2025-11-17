@@ -7,7 +7,6 @@ from sqlalchemy.orm import selectinload
 from redis import asyncio as aioredis
 import asyncio
 
-# Import các model đã định nghĩa
 from src.core.models import (
     ChatMessage,
     Users,
@@ -21,7 +20,9 @@ from src.core.models import (
     UserRoadmaps,
     Languages,
 )
+
 from src.core.cache import get_from_cache, set_to_cache
+
 
 CACHE_TTL_SECONDS = 3600
 CACHE_KEY_PREFIX = "user_profile"
@@ -53,11 +54,14 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
         ).where(UserGoals.user_id == user_id)
 
         # 4. Truy vấn sở thích (JOIN với bảng Interests để lấy tên)
+        # ============ SỬA LỖI JOIN Ở ĐÂY ============
         interests_query = (
             select(Interests.interest_name)
+            .select_from(UserInterests)  # <-- Chỉ định rõ bảng FROM
             .join(Interests, UserInterests.interest_id == Interests.interest_id)
             .where(UserInterests.user_id == user_id)
         )
+        # ============ KẾT THÚC SỬA ============
 
         # 5. Truy vấn các bài học gần đây (JOIN với Lessons để lấy tên)
         recent_lessons_query = (
@@ -88,28 +92,16 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
             .limit(10)
         )
 
-        # Thực thi tất cả truy vấn song song
-        results = await asyncio.gather(
-            db_session.execute(user_query),
-            db_session.execute(lang_query),
-            db_session.execute(goals_query),
-            db_session.execute(interests_query),
-            db_session.execute(recent_lessons_query),
-            db_session.execute(roadmap_query),
-            db_session.execute(chat_query),
-        )
-
-        (
-            user_result,
-            lang_result,
-            goals_result,
-            interests_result,
-            lessons_result,
-            roadmap_result,
-            chat_result,
-        ) = results
-
-        # --- Xử lý kết quả ---
+        # Thực thi tuần tự (Giữ nguyên)
+        user_result = await db_session.execute(user_query)
+        lang_result = await db_session.execute(lang_query)
+        goals_result = await db_session.execute(goals_query)
+        interests_result = await db_session.execute(interests_query) # <-- Lỗi xảy ra ở đây
+        lessons_result = await db_session.execute(recent_lessons_query)
+        roadmap_result = await db_session.execute(roadmap_query)
+        chat_result = await db_session.execute(chat_query)
+        
+        # --- Xử lý kết quả (Giữ nguyên) ---
         user_data = user_result.scalar_one_or_none()
         if not user_data:
             return {"error": "User not found"}
@@ -174,20 +166,15 @@ async def get_user_profile(
 
     cache_key = f"{CACHE_KEY_PREFIX}:{user_id}"
 
-    # 1. Try to get from cache
     cached_profile = await get_from_cache(redis_client, cache_key)
     if cached_profile:
         logging.debug(f"Cache HIT for user profile: {user_id}")
         return cached_profile
 
-    # 2. Cache MISS: Build from DB
     logging.debug(f"Cache MISS for user profile: {user_id}")
     profile = await _build_user_profile_from_db(user_id, db_session)
-
-    # 3. Set to cache
     if "error" not in profile:
         await set_to_cache(
             redis_client, cache_key, profile, ttl_seconds=CACHE_TTL_SECONDS
         )
-
     return profile

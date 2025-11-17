@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort; // [THÊM] Import Sort
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -43,9 +44,32 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             }
             UUID leaderboardUuid = (leaderboardId != null) ? UUID.fromString(leaderboardId) : null;
 
-            Page<LeaderboardEntry> entries =
-                    leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, pageable);
+            // [THAY ĐỔI] Bắt đầu logic mới
+            // 1. Tìm leaderboard cha để xác định 'tab'
+            Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid)
+                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+            String tab = leaderboard.getTab();
 
+            // 2. Tạo Pageable hiệu lực với sắp xếp mặc định nếu FE không cung cấp
+            Pageable effectivePageable = pageable;
+            if (pageable.getSort().isUnsorted()) {
+                Sort defaultSort;
+                if ("level".equalsIgnoreCase(tab)) {
+                    // Sắp xếp theo User Level (cao đến thấp) cho tab "level"
+                    defaultSort = Sort.by(Sort.Direction.DESC, "user.level");
+                } else {
+                    // Sắp xếp mặc định theo Score (cao đến thấp) cho tất cả các tab khác
+                    defaultSort = Sort.by(Sort.Direction.DESC, "score");
+                }
+                effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), defaultSort);
+            }
+            // [THAY ĐỔI] Kết thúc logic mới
+
+            // 3. Sử dụng effectivePageable
+            Page<LeaderboardEntry> entries =
+                    leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, effectivePageable);
+
+            // 4. Map sang DTO (như cũ)
             return entries.map(entry -> {
                 LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
                 userRepository.findByUserIdAndIsDeletedFalse(entry.getLeaderboardEntryId().getUserId())
@@ -64,6 +88,8 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
         }
     }
 
+    // ... (Các phương thức khác giữ nguyên) ...
+    
     @Override
     public LeaderboardEntryResponse getLeaderboardEntryByIds(UUID leaderboardId, Pageable pageable) {
         try {
@@ -73,9 +99,30 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (leaderboardId == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            Page<LeaderboardEntry> entries =
-                    leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, pageable);
+            // [THAY ĐỔI] Áp dụng logic tương tự như getAllLeaderboardEntries
+            // 1. Tìm leaderboard cha để xác định 'tab'
+            Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
+                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+            String tab = leaderboard.getTab();
 
+            // 2. Tạo Pageable hiệu lực
+            Pageable effectivePageable = pageable;
+            if (pageable.getSort().isUnsorted()) {
+                Sort defaultSort;
+                if ("level".equalsIgnoreCase(tab)) {
+                    defaultSort = Sort.by(Sort.Direction.DESC, "user.level");
+                } else {
+                    defaultSort = Sort.by(Sort.Direction.DESC, "score");
+                }
+                effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), defaultSort);
+            }
+
+            // 3. Sử dụng effectivePageable
+            Page<LeaderboardEntry> entries =
+                    leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, effectivePageable);
+
+            // 4. Map DTO (Lưu ý: logic gốc của bạn trả về Page nhưng tên phương thức là get...ByIds)
+            // Giả sử bạn muốn trả về trang đầu tiên
             return (LeaderboardEntryResponse) entries.map(entry -> {
                 LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
                 userRepository.findByUserIdAndIsDeletedFalse(entry.getLeaderboardEntryId().getUserId())
@@ -93,7 +140,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
 
     @Override
     @Transactional
