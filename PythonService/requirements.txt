@@ -28,3 +28,4 @@ flake8
 sqlalchemy
 asyncpg
 redis>=5.0.0
+aiokafka

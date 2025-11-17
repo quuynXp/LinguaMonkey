@@ -1,4 +1,4 @@
-package com.quyen10924.MonkeyLingua
+package com.lingua.monkey
 
 import android.app.Application
 import android.content.res.Configuration

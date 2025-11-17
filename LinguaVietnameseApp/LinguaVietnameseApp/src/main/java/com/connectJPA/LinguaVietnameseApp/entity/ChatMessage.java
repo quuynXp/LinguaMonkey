@@ -8,6 +8,8 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
+import org.springframework.data.elasticsearch.annotations.Document;
+import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
@@ -16,6 +18,8 @@ import java.util.UUID;
 @Entity
 @Data
 @Table(name = "chat_messages")
+@Document(indexName = "chat_messages")
+@EntityListeners(ElasticsearchEntityListener.class)
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor

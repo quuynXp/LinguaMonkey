@@ -26,7 +26,7 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     void softDeleteById(@Param("id") UUID id);
 
     // --- ĐÃ LOẠI BỎ ---
-    // List<Lesson> findByCourseIdIn(List<UUID> courseIds); // Lỗi!
+    // List<Lesson> findByCourseVersion_Course_CourseIdIn(List<UUID> courseIds); // Lỗi!
     // List<Lesson> findByCourseIdAndIsDeletedFalse(UUID courseId); // Lỗi!
 
     SkillType findSkillTypeByLessonIdAndIsDeletedFalse(UUID lessonId);

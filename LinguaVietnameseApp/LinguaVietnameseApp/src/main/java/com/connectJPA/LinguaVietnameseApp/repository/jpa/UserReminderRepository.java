@@ -11,6 +11,8 @@ public interface UserReminderRepository extends JpaRepository<UserReminder, UUID
 
     List<UserReminder> findByEnabledTrueAndReminderTime(OffsetDateTime time);
 
+    List<UserReminder> findByReminderTimeBeforeAndEnabledTrueAndIsDeletedFalse(OffsetDateTime now);
+
     List<UserReminder> findByEnabledTrueAndReminderTimeAndReminderDate(
             OffsetDateTime time, OffsetDateTime date
     );

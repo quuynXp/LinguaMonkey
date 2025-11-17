@@ -48,4 +48,5 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
     @Query("UPDATE User u SET u.isDeleted = true, u.deletedAt = CURRENT_TIMESTAMP WHERE u.userId = :id AND u.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
 
+    List<User> findByIsDeletedFalseOrderByExpDesc(Pageable pageable);
 }

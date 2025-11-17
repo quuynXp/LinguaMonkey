@@ -1,26 +1,37 @@
 import React, { useRef, useState } from 'react';
 import {
-    Alert,
-    Animated,
-    KeyboardAvoidingView,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ActivityIndicator, // Thêm ActivityIndicator
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useChatStore } from '../../stores/ChatStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { useTranslation } from 'react-i18next';
+
+type RoomPurpose =
+  | 'QUIZ_TEAM'
+  | 'CALL'
+  | 'PRIVATE_CHAT'
+  | 'GROUP_CHAT'
+  | 'AI_CHAT';
 
 const CreateRoomScreen = ({ navigation }) => {
+  const { t } = useTranslation(); // Khởi tạo t
+  const createAndNavigateToRoom = useChatStore(
+    (state) => state.createAndNavigateToRoom,
+  );
+  const isCreating = useChatStore((state) => state.isCreatingRoom);
+
   const [roomName, setRoomName] = useState('');
-  const [roomDescription, setRoomDescription] = useState('');
-  const [roomPurpose, setRoomPurpose] = useState<'learning' | 'social'>('learning');
-  const [selectedLanguage, setSelectedLanguage] = useState('en');
-  const [selectedLevel, setSelectedLevel] = useState<'beginner' | 'intermediate' | 'advanced'>('beginner');
+  const [roomPurpose, setRoomPurpose] = useState<RoomPurpose>('QUIZ_TEAM');
   const [maxMembers, setMaxMembers] = useState('20');
   const [isPrivate, setIsPrivate] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
@@ -43,108 +54,33 @@ const CreateRoomScreen = ({ navigation }) => {
     ]).start();
   }, []);
 
-  const languages = [
-    { code: 'en', name: 'English', flag: '🇺🇸' },
-    { code: 'zh', name: '中文', flag: '🇨🇳' },
-    { code: 'vi', name: 'Tiếng Việt', flag: '🇻🇳' },
-    { code: 'ja', name: '日本語', flag: '🇯🇵' },
-    { code: 'ko', name: '한국어', flag: '🇰🇷' },
-    { code: 'fr', name: 'Français', flag: '🇫🇷' },
-  ];
+  const handleCreateRoom = async () => {
+    if (isCreating) return;
 
-  const levels = [
-    { value: 'beginner', label: 'Sơ cấp', color: '#10B981' },
-    { value: 'intermediate', label: 'Trung cấp', color: '#F59E0B' },
-    { value: 'advanced', label: 'Nâng cao', color: '#EF4444' },
-  ];
-
-  const createRoom = () => {
     if (!roomName.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập tên phòng');
-      return;
-    }
-
-    if (!roomDescription.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mô tả phòng');
+      Alert.alert(t('common.error'), t('createRoom.errors.nameRequired'));
       return;
     }
 
     if (isPrivate && !roomPassword.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mật khẩu cho phòng riêng tư');
+      Alert.alert(t('common.error'), t('createRoom.errors.passwordRequired'));
       return;
     }
 
-    const roomData = {
-      name: roomName.trim(),
-      description: roomDescription.trim(),
-      purpose: roomPurpose,
-      language: selectedLanguage,
-      level: selectedLevel,
-      maxMembers: parseInt(maxMembers),
-      isPrivate,
-      password: isPrivate ? roomPassword : null,
+    const roomPayload = {
+      roomName: roomName.trim(),
+      maxMembers: parseInt(maxMembers) || 20,
+      purpose: roomPurpose, // Đã là 'QUIZ_TEAM' hoặc 'GROUP_CHAT'
+      roomType: (isPrivate ? 'PRIVATE' : 'PUBLIC') as 'PRIVATE' | 'PUBLIC',
     };
 
-    Alert.alert(
-      'Tạo phòng thành công!',
-      `Phòng "${roomName}" đã được tạo. Mã phòng: ${Math.random().toString(36).substr(2, 8).toUpperCase()}`,
-      [
-        {
-          text: 'OK',
-          onPress: () => {
-            navigation.navigate('UserChat', { room: roomData });
-          },
-        },
-      ]
-    );
+    try {
+      await createAndNavigateToRoom(roomPayload, navigation);
+    } catch (error) {
+      console.error(error);
+      Alert.alert(t('common.error'), t('createRoom.errors.creationFailed'));
+    }
   };
-
-  const renderLanguageOption = (language) => (
-    <TouchableOpacity
-      key={language.code}
-      style={[
-        styles.optionButton,
-        selectedLanguage === language.code && styles.selectedOption,
-      ]}
-      onPress={() => setSelectedLanguage(language.code)}
-    >
-      <Text style={styles.languageFlag}>{language.flag}</Text>
-      <Text
-        style={[
-          styles.optionText,
-          selectedLanguage === language.code && styles.selectedOptionText,
-        ]}
-      >
-        {language.name}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  const renderLevelOption = (level) => (
-    <TouchableOpacity
-      key={level.value}
-      style={[
-        styles.optionButton,
-        selectedLevel === level.value && styles.selectedOption,
-      ]}
-      onPress={() => setSelectedLevel(level.value)}
-    >
-      <View
-        style={[
-          styles.levelIndicator,
-          { backgroundColor: level.color },
-        ]}
-      />
-      <Text
-        style={[
-          styles.optionText,
-          selectedLevel === level.value && styles.selectedOptionText,
-        ]}
-      >
-        {level.label}
-      </Text>
-    </TouchableOpacity>
-  );
 
   return (
     <KeyboardAvoidingView
@@ -155,7 +91,7 @@ const CreateRoomScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tạo phòng mới</Text>
+        <Text style={styles.headerTitle}>{t('createRoom.title')}</Text>
         <View style={styles.placeholder} />
       </View>
 
@@ -171,103 +107,74 @@ const CreateRoomScreen = ({ navigation }) => {
         >
           {/* Room Name */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Tên phòng *</Text>
+            <Text style={styles.inputLabel}>
+              {t('createRoom.roomNameLabel')} *
+            </Text>
             <TextInput
               style={styles.textInput}
               value={roomName}
               onChangeText={setRoomName}
-              placeholder="Nhập tên phòng..."
+              placeholder={t('createRoom.roomNamePlaceholder')}
               placeholderTextColor="#9CA3AF"
               maxLength={50}
             />
             <Text style={styles.characterCount}>{roomName.length}/50</Text>
           </View>
 
-          {/* Room Description */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Mô tả phòng *</Text>
-            <TextInput
-              style={[styles.textInput, styles.multilineInput]}
-              value={roomDescription}
-              onChangeText={setRoomDescription}
-              placeholder="Mô tả mục đích và nội dung của phòng..."
-              placeholderTextColor="#9CA3AF"
-              multiline
-              numberOfLines={3}
-              maxLength={200}
-              textAlignVertical="top"
-            />
-            <Text style={styles.characterCount}>{roomDescription.length}/200</Text>
-          </View>
-
-          {/* Room Purpose */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Mục đích phòng</Text>
+            <Text style={styles.inputLabel}>
+              {t('createRoom.purposeLabel')}
+            </Text>
             <View style={styles.purposeContainer}>
               <TouchableOpacity
                 style={[
                   styles.purposeButton,
-                  roomPurpose === 'learning' && styles.selectedPurpose,
+                  roomPurpose === 'QUIZ_TEAM' && styles.selectedPurpose,
                 ]}
-                onPress={() => setRoomPurpose('learning')}
+                onPress={() => setRoomPurpose('QUIZ_TEAM')}
               >
                 <Icon
                   name="school"
                   size={20}
-                  color={roomPurpose === 'learning' ? '#FFFFFF' : '#4F46E5'}
+                  color={roomPurpose === 'QUIZ_TEAM' ? '#FFFFFF' : '#4F46E5'}
                 />
                 <Text
                   style={[
                     styles.purposeText,
-                    roomPurpose === 'learning' && styles.selectedPurposeText,
+                    roomPurpose === 'QUIZ_TEAM' && styles.selectedPurposeText,
                   ]}
                 >
-                  Học tập
+                  {t('createRoom.purposeLearning')}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
                   styles.purposeButton,
-                  roomPurpose === 'social' && styles.selectedPurpose,
+                  roomPurpose === 'GROUP_CHAT' && styles.selectedPurpose,
                 ]}
-                onPress={() => setRoomPurpose('social')}
+                onPress={() => setRoomPurpose('GROUP_CHAT')}
               >
                 <Icon
                   name="group"
                   size={20}
-                  color={roomPurpose === 'social' ? '#FFFFFF' : '#10B981'}
+                  color={roomPurpose === 'GROUP_CHAT' ? '#FFFFFF' : '#10B981'}
                 />
                 <Text
                   style={[
                     styles.purposeText,
-                    roomPurpose === 'social' && styles.selectedPurposeText,
+                    roomPurpose === 'GROUP_CHAT' && styles.selectedPurposeText,
                   ]}
                 >
-                  Giao lưu
+                  {t('createRoom.purposeSocial')}
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Language Selection */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Ngôn ngữ chính</Text>
-            <View style={styles.optionsGrid}>
-              {languages.map(renderLanguageOption)}
-            </View>
-          </View>
-
-          {/* Level Selection */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Trình độ</Text>
-            <View style={styles.optionsGrid}>
-              {levels.map(renderLevelOption)}
-            </View>
-          </View>
-
-          {/* Max Members */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Số thành viên tối đa</Text>
+            <Text style={styles.inputLabel}>
+              {t('createRoom.maxMembersLabel')}
+            </Text>
             <TextInput
               style={styles.textInput}
               value={maxMembers}
@@ -279,21 +186,33 @@ const CreateRoomScreen = ({ navigation }) => {
             />
           </View>
 
-          {/* Privacy Settings */}
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Cài đặt riêng tư</Text>
+            <Text style={styles.inputLabel}>
+              {t('createRoom.privacyLabel')}
+            </Text>
             <TouchableOpacity
               style={styles.privacyToggle}
               onPress={() => setIsPrivate(!isPrivate)}
             >
               <View style={styles.privacyInfo}>
-                <Icon name={isPrivate ? 'lock' : 'public'} size={20} color="#6B7280" />
+                <Icon
+                  name={isPrivate ? 'lock' : 'public'}
+                  size={20}
+                  color="#6B7280"
+                />
                 <Text style={styles.privacyText}>
-                  {isPrivate ? 'Phòng riêng tư' : 'Phòng công khai'}
+                  {isPrivate
+                    ? t('createRoom.privacyPrivate')
+                    : t('createRoom.privacyPublic')}
                 </Text>
               </View>
               <View style={[styles.toggle, isPrivate && styles.toggleActive]}>
-                <View style={[styles.toggleThumb, isPrivate && styles.toggleThumbActive]} />
+                <View
+                  style={[
+                    styles.toggleThumb,
+                    isPrivate && styles.toggleThumbActive,
+                  ]}
+                />
               </View>
             </TouchableOpacity>
             {isPrivate && (
@@ -301,7 +220,7 @@ const CreateRoomScreen = ({ navigation }) => {
                 style={[styles.textInput, styles.passwordInput]}
                 value={roomPassword}
                 onChangeText={setRoomPassword}
-                placeholder="Nhập mật khẩu phòng..."
+                placeholder={t('createRoom.passwordPlaceholder')}
                 placeholderTextColor="#9CA3AF"
                 secureTextEntry
                 maxLength={20}
@@ -309,40 +228,47 @@ const CreateRoomScreen = ({ navigation }) => {
             )}
           </View>
 
-          {/* Room Rules */}
           <View style={styles.rulesSection}>
-            <Text style={styles.rulesTitle}>Quy tắc phòng chat</Text>
+            <Text style={styles.rulesTitle}>{t('createRoom.rulesTitle')}</Text>
             <View style={styles.rulesList}>
               <View style={styles.ruleItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>Tôn trọng tất cả thành viên</Text>
+                <Text style={styles.ruleText}>{t('createRoom.rule1')}</Text>
               </View>
               <View style={styles.ruleItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>Không spam hoặc quảng cáo</Text>
+                <Text style={styles.ruleText}>{t('createRoom.rule2')}</Text>
               </View>
               <View style={styles.ruleItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>Sử dụng ngôn ngữ phù hợp</Text>
+                <Text style={styles.ruleText}>{t('createRoom.rule3')}</Text>
               </View>
               <View style={styles.ruleItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>Giúp đỡ lẫn nhau trong học tập</Text>
+                <Text style={styles.ruleText}>{t('createRoom.rule4')}</Text>
               </View>
             </View>
           </View>
 
-          {/* Create Button */}
           <TouchableOpacity
             style={[
               styles.createButton,
-              (!roomName.trim() || !roomDescription.trim()) && styles.createButtonDisabled,
+              (!roomName.trim() || isCreating) &&
+              styles.createButtonDisabled,
             ]}
-            onPress={createRoom}
-            disabled={!roomName.trim() || !roomDescription.trim()}
+            onPress={handleCreateRoom}
+            disabled={!roomName.trim() || isCreating}
           >
-            <Icon name="add-circle" size={20} color="#FFFFFF" />
-            <Text style={styles.createButtonText}>Tạo phòng</Text>
+            {isCreating ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <>
+                <Icon name="add-circle" size={20} color="#FFFFFF" />
+                <Text style={styles.createButtonText}>
+                  {t('createRoom.createButton')}
+                </Text>
+              </>
+            )}
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>

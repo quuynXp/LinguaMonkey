@@ -13,6 +13,7 @@ export interface AiChatMessage {
   history?: { role: 'user' | 'assistant', content: string }[];
   content?: string; // Nội dung của chunk
   is_final?: boolean;
+  roomId?: string,
 }
 
 export type AiMessageCallback = (message: AiChatMessage) => void;
@@ -20,16 +21,16 @@ export type AiMessageCallback = (message: AiChatMessage) => void;
 export class PythonAiWsService {
   private ws: WebSocket | null = null;
   private url: string;
-  private token: string;
+  // private token: string;
   private onMessageCallback?: AiMessageCallback;
   private reconnectInterval?: ReturnType<typeof setTimeout>;
 
   constructor() {
     // Đây là route ta định nghĩa trong init-kong.sh cho AI chat
     // Sơ đồ của bạn cho thấy FE-WS-Python, nên ta giả định endpoint này
-    this.url = `${KONG_WS_URL}/ws/py/chat-stream`; 
-    this.token = useTokenStore.getState().accessToken || "";
-    
+    this.url = `${KONG_WS_URL}/ws/py/chat-stream`;
+    // this.token = useTokenStore.getState().accessToken || "";
+
     AppState.addEventListener('change', this.handleAppStateChange);
   }
 
@@ -39,15 +40,16 @@ export class PythonAiWsService {
       return;
     }
 
-    if (!this.token) {
+    const token = useTokenStore.getState().accessToken;
+
+    if (!token) {
       console.error("AI WS: No token, connection aborted.");
       return;
     }
-    
+
     this.onMessageCallback = onMessage;
 
-    // Gửi token qua query param, Kong sẽ chuyển nó thành header
-    const connectUrl = `${this.url}?token=${encodeURIComponent(this.token)}`;
+    const connectUrl = `${this.url}?token=${encodeURIComponent(token)}`;
     this.ws = new WebSocket(connectUrl);
 
     this.ws.onopen = () => console.log('✅ AI WS connected via Kong');
@@ -58,7 +60,7 @@ export class PythonAiWsService {
         try {
           const msg = JSON.parse(e.data) as AiChatMessage;
           this.onMessageCallback(msg);
-        } catch {}
+        } catch { }
       }
     };
   }
@@ -88,13 +90,13 @@ export class PythonAiWsService {
       console.warn("AI WS: Not connected. Message not sent.");
     }
   }
-  
+
   public disconnect(): void {
     if (this.reconnectInterval) clearTimeout(this.reconnectInterval);
     this.ws?.close();
     this.ws = null;
   }
-  
+
   public get isConnected(): boolean {
     return this.ws?.readyState === WebSocket.OPEN;
   }

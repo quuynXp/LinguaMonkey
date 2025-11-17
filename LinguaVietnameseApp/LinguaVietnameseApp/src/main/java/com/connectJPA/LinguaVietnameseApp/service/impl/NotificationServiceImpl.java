@@ -14,8 +14,8 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserFcmTokenRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.EmailService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
-import com.google.firebase.messaging.FirebaseMessaging;
-import com.google.firebase.messaging.Message;
+import com.google.firebase.messaging.*;
+import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -29,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -41,6 +42,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final FirebaseMessaging firebaseMessaging;
     private final UserFcmTokenRepository userFcmTokenRepository;
     private final UserRepository userRepository;
+    private final Gson gson = new Gson();
 
     private String getUserEmailByUserId(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId)
@@ -121,18 +123,53 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public void createPushNotification(NotificationRequest request) {
-        createNotification(request); // Save to database
+        // 1. Lưu notification vào DB (code của bạn đã có)
+        Notification savedNotification = notificationMapper.toEntity(request);
+        savedNotification.setCreatedAt(OffsetDateTime.now());
+        notificationRepository.save(savedNotification);
+
+        // 2. Lấy tất cả token của user
         List<UserFcmToken> tokens = userFcmTokenRepository.findByUserIdAndIsDeletedFalse(request.getUserId());
+
+        if (tokens.isEmpty()) {
+            log.warn("No FCM tokens found for user {}", request.getUserId());
+            return;
+        }
+
+        AndroidConfig androidConfig = AndroidConfig.builder()
+                .setNotification(AndroidNotification.builder()
+                        .setSound("notification") // Tên file âm thanh custom
+                        .setIcon("ic_notification") // Tên icon custom
+                        .setChannelId("default_channel_id") // Quan trọng: Phải tạo Channel ở FE
+                        .build())
+                .build();
+
+        ApnsConfig apnsConfig = ApnsConfig.builder()
+                .setAps(Aps.builder()
+                        .setSound("notification.mp3") // Tên file âm thanh custom cho iOS
+                        .build())
+                .build();
+
+        // 5. Gửi push
         for (UserFcmToken token : tokens) {
             try {
-                Message message = Message.builder()
+                Message.Builder messageBuilder = Message.builder()
                         .setToken(token.getFcmToken())
                         .setNotification(com.google.firebase.messaging.Notification.builder()
                                 .setTitle(request.getTitle())
                                 .setBody(request.getContent())
                                 .build())
-                        .build();
+                        .setAndroidConfig(androidConfig) // Áp dụng config Android
+                        .setApnsConfig(apnsConfig);     // Áp dụng config iOS
+
+                if (request.getPayload() != null && !request.getPayload().isEmpty()) {
+                    Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
+                    messageBuilder.putAllData(dataPayload);
+                }
+
+                Message message = messageBuilder.build();
                 firebaseMessaging.send(message);
+
             } catch (Exception e) {
                 log.error("Failed to send push notification to user {}: {}", request.getUserId(), e.getMessage());
             }

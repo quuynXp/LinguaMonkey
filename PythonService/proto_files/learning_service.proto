@@ -189,6 +189,7 @@ message PronunciationRequest {
   MediaRef audio = 2;
   string language = 3;
   Metadata metadata = 4;
+  string reference_text = 5;
 }
 
 message PronunciationResponse {

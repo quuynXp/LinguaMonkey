@@ -1,12 +1,8 @@
 apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
-
+apply plugin: 'com.google.gms.google-services'
 def projectRoot = rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
-
-project.ext.react = [
-    enableHermes: false
-]
 
 /**
  * This is the configuration block to customize your React Native Android app.
@@ -86,15 +82,14 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
 android {
-    namespace "com.quyen10924.MonkeyLingua"
     ndkVersion rootProject.ext.ndkVersion
 
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    
+    namespace "com.lingua.monkey"
     defaultConfig {
-        applicationId "com.quyen10924.MonkeyLingua"
+        applicationId "com.lingua.monkey"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -160,8 +155,6 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
-    implementation 'com.facebook.android:facebook-login:latest.release'
-
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";

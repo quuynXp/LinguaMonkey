@@ -19,6 +19,5 @@ public interface ChatMessageService {
     void handleTypingStatus(UUID roomId, TypingStatusRequest request);
     ChatStatsResponse getStatsByUser(UUID userId);
     ChatMessageResponse saveTranslation(UUID messageId, String targetLang, String translatedText);
-
-
+    ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request);
 }

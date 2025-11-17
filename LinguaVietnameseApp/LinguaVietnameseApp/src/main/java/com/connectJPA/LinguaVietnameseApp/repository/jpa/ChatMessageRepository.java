@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.ChatMessage;
+import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -11,13 +12,13 @@ import org.springframework.data.repository.query.Param;
 import java.util.Optional;
 import java.util.UUID;
 
-public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> {
-    @Query(value = "SELECT * FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND deleted = false LIMIT :limit OFFSET :offset",
-            countQuery = "SELECT COUNT(*) FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND deleted = false",
+public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMessagesId> {
+    @Query(value = "SELECT * FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND is_deleted = false LIMIT :limit OFFSET :offset",
+            countQuery = "SELECT COUNT(*) FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND is_deleted = false",
             nativeQuery = true)
     Page<ChatMessage> findByRoomIdAndSenderIdAndIsDeletedFalse(@Param("roomId") UUID roomId, @Param("senderId") UUID senderId, Pageable pageable);
 
-    @Query(value = "SELECT * FROM chat_messages WHERE chat_message_id = :id AND deleted = false", nativeQuery = true)
+    @Query(value = "SELECT * FROM chat_messages WHERE chat_message_id = :id AND is_deleted = false", nativeQuery = true)
     Optional<ChatMessage> findByChatMessageIdAndIsDeletedFalse(@Param("id") UUID id);
 
     long  countBySenderIdAndIsDeletedFalse(UUID senderId);

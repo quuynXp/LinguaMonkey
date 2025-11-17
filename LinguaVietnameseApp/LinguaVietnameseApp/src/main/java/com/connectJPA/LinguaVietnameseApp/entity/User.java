@@ -81,7 +81,7 @@ public class User extends BaseEntity {
     private OffsetDateTime lastActiveAt;
 
     @Enumerated(EnumType.STRING)
-    private LearningPlace learningPace;
+    private LearningPace learningPace;
 
     @Transient
     public boolean isOnline() {

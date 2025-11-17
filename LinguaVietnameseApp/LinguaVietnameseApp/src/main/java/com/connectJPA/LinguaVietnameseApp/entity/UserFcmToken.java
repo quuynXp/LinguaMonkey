@@ -27,4 +27,7 @@ public class UserFcmToken extends BaseEntity {
 
     @Column(name = "fcm_token", nullable = false, unique = true)
     private String fcmToken;
+
+    @Column(name = "device_id")
+    private String deviceId;
 }

@@ -4,7 +4,8 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import instance from '../api/axiosInstance';
 import { useAppStore } from '../stores/appStore';
-import * as navigationService from './navigationService';
+import messaging from '@react-native-firebase/messaging';
+import { useUserStore } from '../stores/UserStore';
 
 export interface NotificationPreferences {
   enablePush: boolean;
@@ -28,7 +29,27 @@ export interface NotificationPreferences {
 }
 
 const STORAGE_KEY = 'notification-preferences';
-const EXPO_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID; 
+// const EXPO_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID; 
+
+if (Platform.OS === 'android') {
+  Notifications.setNotificationChannelAsync('default_channel_id', {
+    name: 'Default Channel',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 250, 250, 250],
+    lightColor: '#FF231F7C',
+    sound: 'notification.mp3',
+  });
+}
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 class NotificationService {
   private preferences: NotificationPreferences;
@@ -55,6 +76,75 @@ class NotificationService {
       },
     };
     this.loadPreferences();
+  }
+
+  async requestFirebasePermissions(): Promise<boolean> {
+    const authStatus = await messaging().requestPermission();
+    const enabled =
+      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+
+    console.log('Firebase Permission status:', authStatus);
+    return enabled;
+  }
+
+  async getFcmToken(): Promise<string | null> {
+    const enabled = await this.requestFirebasePermissions();
+    if (!enabled) return null;
+
+    try {
+      const fcmToken = await messaging().getToken();
+      console.log('Firebase FCM Token:', fcmToken);
+      return fcmToken;
+    } catch (error) {
+      console.error('Error getting FCM token:', error);
+      return null;
+    }
+  }
+
+  async registerTokenToBackend() {
+    const fcmToken = await this.getFcmToken();
+    if (!fcmToken) {
+      console.log('Could not get FCM token, skipping registration.');
+      return;
+    }
+
+    const userId = useUserStore.getState().user?.userId;
+    if (!userId) {
+      console.log('User not logged in, skipping token registration.');
+      return;
+    }
+
+    try {
+      const deviceId = Device.osInternalBuildId || Device.osBuildId || 'unknown_device';
+
+      await instance.post('/api/v1/users/fcm-token', {
+        fcmToken: fcmToken,
+        userId: userId,
+        deviceId: deviceId,
+      });
+
+      console.log('FCM Token registered to backend successfully.');
+    } catch (error) {
+      console.error('Error registering FCM token to backend:', error);
+    }
+  }
+
+
+  async sendLocalNotification(title: string, body: string, data?: object): Promise<void> {
+    const prefs = this.getPreferences();
+    if (!prefs.enablePush || (prefs.quietHours.enabled && this.isQuietHours())) return;
+
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title,
+        body,
+        data: data as Record<string, unknown> | undefined,
+        sound: prefs.soundEnabled ? 'default_sound.wav' : undefined,
+        vibrate: prefs.vibrationEnabled ? [0, 250, 250, 250] : undefined,
+      },
+      trigger: null,
+    });
   }
 
   async loadPreferences(): Promise<void> {
@@ -93,39 +183,6 @@ class NotificationService {
     return finalStatus === 'granted';
   }
 
-  async getExpoPushToken(): Promise<string | null> {
-    const granted = await this.requestPermissions();
-    if (!granted) return null;
-
-    try {
-      const token = (
-        await Notifications.getExpoPushTokenAsync({
-          projectId: EXPO_PROJECT_ID,
-        })
-      ).data;
-      console.log('Expo push token:', token);
-      return token;
-    } catch (error) {
-      console.error('Error getting Expo push token:', error);
-      return null;
-    }
-  }
-
-  async sendLocalNotification(title: string, body: string, chatId?: string): Promise<void> {
-    if (!this.preferences.enablePush || (this.preferences.quietHours.enabled && this.isQuietHours())) return;
-
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title,
-        body,
-        data: chatId ? { chatId } : undefined,
-        sound: "../assets/sounds/notification.mp3",
-        vibrate: this.preferences.vibrationEnabled ? [0, 250, 250, 250] : undefined,
-      },
-      trigger: null,
-    });
-  }
-
   async scheduleStudyReminder(): Promise<string | null> {
     if (!this.preferences.enablePush || !this.preferences.scheduled || !this.preferences.studyReminders) return null;
 
@@ -134,7 +191,6 @@ class NotificationService {
     const triggerDate = new Date();
     triggerDate.setHours(hour, minute, 0, 0);
 
-    // If the scheduled time has passed today, schedule for tomorrow
     if (triggerDate < now) {
       triggerDate.setDate(triggerDate.getDate() + 1);
     }
@@ -196,10 +252,19 @@ class NotificationService {
       : currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
   }
 
-  async sendMessageNotification(sender: string, message: string, chatId: string): Promise<void> {
-    if (!this.preferences.messageNotifications) return;
-    await this.sendLocalNotification(`New Message from ${sender}`, message, chatId);
-  }
+  // async sendMessageNotification(sender: string, message: string, chatId: string, receiverId: string): Promise<void> {
+  //   try {
+  //     await instance.post('/api/v1/notifications/send-message', { // Giả sử bạn có endpoint này
+  //       senderId: useUserStore.getState().user?.userId,
+  //       receiverId: receiverId,
+  //       title: `New Message from ${sender}`,
+  //       content: message,
+  //       payload: `{"screen":"Chat", "stackScreen":"ChatDetail", "chatId":"${chatId}"}`
+  //     });
+  //   } catch (error) {
+  //     console.error('Error triggering message notification:', error);
+  //   }
+  // }
 
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;

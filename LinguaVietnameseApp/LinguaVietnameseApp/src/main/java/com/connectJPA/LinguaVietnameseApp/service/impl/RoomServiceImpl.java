@@ -62,6 +62,42 @@ public class RoomServiceImpl implements RoomService {
         }
     }
 
+
+    @Transactional
+    @Override
+    public RoomResponse findOrCreateAiChatRoom(UUID userId) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+
+        RoomPurpose aiPurpose = RoomPurpose.AI_CHAT;
+        RoomType aiRoomType = RoomType.PRIVATE;
+
+        Room room = roomRepository.findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(
+                userId, aiPurpose, aiRoomType
+        ).orElse(null);
+
+        if (room != null) {
+            log.info("Found existing AI room {} for user {}", room.getRoomId(), userId);
+            return roomMapper.toResponse(room);
+        }
+
+        log.info("No AI room found for user {}. Creating new one.", userId);
+        
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        RoomRequest newRoomRequest = RoomRequest.builder()
+                .roomName("AI Chat with " + user.getNickname())
+                .creatorId(userId)
+                .purpose(aiPurpose)
+                .roomType(aiRoomType)
+                .maxMembers(2)
+                .build();
+
+        return this.createRoom(newRoomRequest); 
+    }
+
     @Override
     @Cacheable(value = "rooms", key = "#id")
     public RoomResponse getRoomById(UUID id) {

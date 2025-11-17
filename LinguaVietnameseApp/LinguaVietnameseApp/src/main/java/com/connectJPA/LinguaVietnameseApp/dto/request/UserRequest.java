@@ -2,7 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
-import com.connectJPA.LinguaVietnameseApp.enums.LearningPlace;
+import com.connectJPA.LinguaVietnameseApp.enums.LearningPace;
 import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -43,7 +43,7 @@ public class UserRequest {
     private UUID character3dId;
     private UUID badgeId;
     private AgeRange ageRange;
-    private LearningPlace learningPace;
+    private LearningPace learningPace;
     private List<UUID> interestestIds;
     private List<String> goalIds;
     private List<String> certificationIds;

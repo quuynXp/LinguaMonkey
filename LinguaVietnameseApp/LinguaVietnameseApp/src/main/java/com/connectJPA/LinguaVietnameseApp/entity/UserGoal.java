@@ -28,7 +28,7 @@ public class UserGoal extends BaseEntity {
     private String languageCode;
     @Enumerated(EnumType.STRING)
     private Certification certificate;
-    private int targetScore;
+    private Integer targetScore;
     private String targetSkill;
     private String customDescription;
     @Enumerated(EnumType.STRING)

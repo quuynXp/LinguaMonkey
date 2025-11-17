@@ -59,6 +59,7 @@
     "failed": "Login failed"
   },
   "error": {
+    "generic_internal": "Loading error",
     "general": "Error",
     "title": "Error",
     "loadCharacters": "Failed to load characters",
@@ -83,7 +84,39 @@
     "nameRequired": "Name is required",
     "nameMin": "Name must be at least 2 characters"
   },
+  "createRoom": {
+    "title": "Tạo phòng mới",
+    "roomNameLabel": "Tên phòng",
+    "roomNamePlaceholder": "Nhập tên phòng...",
+    "descriptionLabel": "Mô tả phòng",
+    "descriptionPlaceholder": "Mô tả mục đích và nội dung của phòng...",
+    "purposeLabel": "Mục đích phòng",
+    "purposeLearning": "Học tập",
+    "purposeSocial": "Giao lưu",
+    "languageLabel": "Ngôn ngữ chính",
+    "levelLabel": "Trình độ",
+    "maxMembersLabel": "Số thành viên tối đa",
+    "privacyLabel": "Cài đặt riêng tư",
+    "privacyPrivate": "Phòng riêng tư",
+    "privacyPublic": "Phòng công khai",
+    "passwordPlaceholder": "Nhập mật khẩu phòng...",
+    "rulesTitle": "Quy tắc phòng chat",
+    "rule1": "Tôn trọng tất cả thành viên",
+    "rule2": "Không spam hoặc quảng cáo",
+    "rule3": "Sử dụng ngôn ngữ phù hợp",
+    "rule4": "Giúp đỡ lẫn nhau trong học tập",
+    "createButton": "Tạo phòng",
+    "errors": {
+      "nameRequired": "Vui lòng nhập tên phòng",
+      "descriptionRequired": "Vui lòng nhập mô tả phòng",
+      "passwordRequired": "Vui lòng nhập mật khẩu cho phòng riêng tư",
+      "creationFailed": "Tạo phòng thất bại. Vui lòng thử lại."
+    }
+  },
   "auth": {
+    "phoneNumber":"Phone number",
+    "enterPhoneNumber":"Enter your phone number",
+    "phoneHint": "We'll send a verification code to this number.",
     "emailAddress": "Email address",
     "password": "Password",
     "forgotPassword": "Forgot password?",
@@ -160,6 +193,8 @@
     "changeAvatar": "Change Avatar",
     "removeAvatar": "Remove Avatar",
     "confirmChanges": "Confirm Changes",
+    "vibrationOn": "Vibration On",
+    "vibrationOff": "Vibration Off",
     "commitChanges": "Commit",
     "saveSuccess": "Profile updated successfully",
     "saveFailed": "Failed to update profile",
@@ -272,6 +307,16 @@
     "startNow": "Start Now",
     "continue": "Continue Learning",
     "dailyGoal": "Daily Goal",
+    "interactiveQuiz": "Interactive Quiz",
+    "vocabularyFlashcards": "Vocabulary Flashcards",
+    "ipaPronunciation": "IPA Pronunciation",
+    "quizLearning": "Quiz Learning",
+    "notes": "Notes",
+    "listeningLessons": "Listening Lessons",
+    "speakingLessons": "Speaking Lessons",
+    "readingLessons": "Reading Lessons",
+    "writingLessons": "Writing Lessons",
+    "learningTools": "Learning Tools",
     "dailyGoalDescription": "Complete at least 1 lesson and practice for 15 minutes daily to maintain your learning streak.",
     "dailyChallenge": "Daily Challenge",
     "dailyChallengeDescription": "Complete today's challenge to earn bonus XP and rewards.",
@@ -305,7 +350,12 @@
     "recommendedCourses": "Recommended Courses",
     "viewAllCourses": "View All Courses"
   },
+  "all": "All",
+  "learning": "Learning",
+  "social": "Social",
+  "join": "Join",
   "common": {
+    "skip": "Skip",
     "loading": "Loading...",
     "appName": "MonkeyLingua",
     "error": "Error",
@@ -429,6 +479,11 @@
       "both": "Both"
     }
   },
+  "levels": {
+    "beginner": "Sơ cấp",
+    "intermediate": "Trung cấp",
+    "advanced": "Nâng cao"
+  },
   "notes": {
     "title": "My Notes",
     "topics": "Topics",
@@ -511,6 +566,8 @@
   "errors": {
     "network": "Network error. Please check your connection.",
     "server": "Server Error",
+    "loading": "Loading...",
+    "loadTestsFailed": "Faild to load tests",
     "unauthorized": "You are not authorized to perform this action.",
     "notFound": "The requested resource was not found.",
     "validation": "Please check your input and try again.",
@@ -755,6 +812,7 @@
     "userChatDescription": "Connect with other learners",
     "videoCall": "Video Call",
     "joinRoom": "Join Room",
+    "callSetup": "Call setup",
     "createRoom": "Create Room",
     "settings": "Chat Settings",
     "welcome": "Welcome to Chat!",
@@ -1015,8 +1073,15 @@
     "interestsAndGoals.desc": "Select your interests and set learning goals to personalize",
     "loadingModels": "Loading 3D models..."
   },
+  "loading.room": "Đang tải phòng chat...",
+  "error.aiRoomNotFound": "Không thể tạo phòng chat AI. Vui lòng thử lại.",
+  "error.roomNotReady": "Phòng chat chưa sẵn sàng.",
+  "action.retry": "Thử lại",
   "proficiencyTest": {
     "title": "Proficiency Test",
+    "description": "Start adding vocabulary notes to build your personal dictionary",
+    "selectTest": "Select Test",
+    "noTestsAvailable": "No proficiency tests are available at the moment.",
     "selectLanguage": "Choose a language for the test",
     "startTest": "Start Test",
     "noQuestionsAvailable": "No questions are available for this test.",

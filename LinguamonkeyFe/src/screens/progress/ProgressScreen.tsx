@@ -398,8 +398,8 @@ const styles = createScaledSheet({
     marginRight: 12,
   },
   progressFill: {
-    padding: 10
-  },
+    height: "100%",
+},
   sessionInfo: {
     flex: 1,
   },

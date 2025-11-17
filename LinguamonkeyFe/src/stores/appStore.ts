@@ -2,7 +2,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { GrammarTopic, BilingualVideo, Language } from '../types/api';
+import type { GrammarTopic, BilingualVideo } from '../types/api';
 
 interface CallPreferences {
   interests: string[];
@@ -66,6 +66,7 @@ interface AppState {
   selectedGrammarTopic: GrammarTopic | null;
   selectedVideo: BilingualVideo | null;
   selectedNoteTopic: string;
+  selectedChapter: any;
 
   // Cấu hình ngôn ngữ (của app, không phải của user)
   supportLanguage: string[];

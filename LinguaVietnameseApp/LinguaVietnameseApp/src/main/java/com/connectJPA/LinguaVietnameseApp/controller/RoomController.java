@@ -18,8 +18,11 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.nio.file.attribute.UserPrincipal;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -45,6 +48,25 @@ public class RoomController {
                 .code(200)
                 .message(messageSource.getMessage("room.list.success", null, locale))
                 .result(rooms)
+                .build();
+    }
+
+
+    @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
+    @GetMapping("/ai-chat-room")
+    public AppApiResponse<RoomResponse> getAiChatRoom(
+            @AuthenticationPrincipal UserPrincipal userPrincipal,
+            Locale locale) {
+
+        String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
+        UUID currentUserId = UUID.fromString(currentUserIdStr);
+
+        RoomResponse room = roomService.findOrCreateAiChatRoom(currentUserId);
+
+        return AppApiResponse.<RoomResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("room.ai_room.success", null, locale))
+                .result(room)
                 .build();
     }
 

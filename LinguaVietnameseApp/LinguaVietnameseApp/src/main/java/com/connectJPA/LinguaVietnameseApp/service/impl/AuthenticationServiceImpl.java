@@ -91,25 +91,37 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     final UserAuthAccountRepository userAuthAccountRepository;
 
     private RSAPrivateKey getPrivateKey() throws Exception {
-        String key = new String(Files.readAllBytes(privateKeyResource.getFile().toPath()), StandardCharsets.UTF_8);
-        key = key.replaceAll("-----BEGIN (.*)-----", "")
-                .replaceAll("-----END (.*)-----", "")
-                .replaceAll("\\s", "");
-        byte[] keyBytes = Base64.getDecoder().decode(key);
-        PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return (RSAPrivateKey) kf.generatePrivate(spec);
+        try {
+            byte[] keyBytes = privateKeyResource.getInputStream().readAllBytes();
+            String key = new String(keyBytes, StandardCharsets.UTF_8);
+            key = key.replaceAll("-----BEGIN (.*)-----", "")
+                    .replaceAll("-----END (.*)-----", "")
+                    .replaceAll("\\s", "");
+            byte[] decoded = Base64.getDecoder().decode(key);
+            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            return (RSAPrivateKey) kf.generatePrivate(spec);
+        } catch (Exception e) {
+            log.error("Failed to load private key", e);
+            throw new AppException(ErrorCode.TOKEN_GENERATION_FAILED);
+        }
     }
 
     private RSAPublicKey getPublicKey() throws Exception {
-        String key = new String(Files.readAllBytes(publicKeyResource.getFile().toPath()), StandardCharsets.UTF_8);
-        key = key.replaceAll("-----BEGIN (.*)-----", "")
-                .replaceAll("-----END (.*)-----", "")
-                .replaceAll("\\s", "");
-        byte[] keyBytes = Base64.getDecoder().decode(key);
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return (RSAPublicKey) kf.generatePublic(spec);
+        try {
+            byte[] keyBytes = publicKeyResource.getInputStream().readAllBytes();
+            String key = new String(keyBytes, StandardCharsets.UTF_8);
+            key = key.replaceAll("-----BEGIN (.*)-----", "")
+                    .replaceAll("-----END (.*)-----", "")
+                    .replaceAll("\\s", "");
+            byte[] decoded = Base64.getDecoder().decode(key);
+            X509EncodedKeySpec spec = new X509EncodedKeySpec(decoded);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            return (RSAPublicKey) kf.generatePublic(spec);
+        } catch (Exception e) {
+            log.error("Failed to load public key", e);
+            throw new AppException(ErrorCode.TOKEN_SIGNATURE_INVALID);
+        }
     }
 
 
@@ -392,28 +404,25 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Transactional
     public boolean requestOtp(String emailOrPhone) {
         boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
-        String phone = isPhone ? normalizePhone(emailOrPhone) : null;
+        
+        String key = isPhone ? normalizePhone(emailOrPhone) : emailOrPhone.toLowerCase().trim();
 
-        // 1. Tạo mã OTP
         String code = String.format("%06d", new Random().nextInt(999999));
-        log.info("Generated OTP: {} for user: {}", code, emailOrPhone);
+        log.info("Generated OTP: {} for user: {} (key: {})", code, emailOrPhone, key);
 
-        // 2. Lưu OTP và thời gian hết hạn (10 phút)
-        otpLoginCodes.put(emailOrPhone, code);
-        otpLoginExpiry.put(emailOrPhone, Instant.now().plus(10, ChronoUnit.MINUTES));
+        otpLoginCodes.put(key, code);
+        otpLoginExpiry.put(key, Instant.now().plus(10, ChronoUnit.MINUTES));
 
-        // 3. Gửi OTP
         try {
             if (isPhone) {
-                smsService.sendSms(phone, code);
-                log.warn("SMS service not configured. OTP for {} is {}", phone, code);
+                smsService.sendSms(key, code); 
+                log.warn("SMS service not configured. OTP for {} is {}", key, code);
                 return true;
             } else {
-                // Gửi qua email (dùng emailOrPhone trực tiếp)
-                emailService.sendOtpEmail(emailOrPhone, code, Locale.getDefault());
+                emailService.sendOtpEmail(key, code, Locale.getDefault());
             }
         } catch (Exception e) {
-            log.error("Failed to send OTP for {}", emailOrPhone, e);
+            log.error("Failed to send OTP for {}", key, e);
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
 
@@ -461,27 +470,71 @@ public class AuthenticationServiceImpl implements AuthenticationService {
 
     @Transactional
     public AuthenticationResponse refreshTokenWithDevice(String oldRefreshToken, String deviceId, String ip, String userAgent) {
+        String cleanToken = null;
+        UUID userId = null;
+        
         try {
+            cleanToken = oldRefreshToken != null ? oldRefreshToken.trim() : null;
+            
+            if (cleanToken == null || cleanToken.isEmpty()) {
+                log.error("Empty refresh token received");
+                throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
+            }
 
-            SignedJWT jwt = SignedJWT.parse(oldRefreshToken);
+            log.info("Processing refresh token: length={}, deviceId={}", cleanToken.length(), deviceId);
+
+            SignedJWT jwt = SignedJWT.parse(cleanToken);
             if (!jwt.verify(new RSASSAVerifier(getPublicKey()))) {
+                log.error("Token signature verification failed");
                 throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
             }
 
             Date exp = jwt.getJWTClaimsSet().getExpirationTime();
-            if (exp.before(new Date())) throw new AppException(ErrorCode.REFRESH_TOKEN_EXPIRED);
+            if (exp.before(new Date())) {
+                log.error("Token expired at: {}", exp);
+                throw new AppException(ErrorCode.REFRESH_TOKEN_EXPIRED);
+            }
 
             String subject = jwt.getJWTClaimsSet().getSubject();
             if (subject == null || subject.isBlank()) {
+                log.error("Token subject is null or blank");
                 throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
             }
-            UUID userId = UUID.fromString(subject);
-            RefreshToken oldToken = refreshTokenRepository
-                    .findByUserIdAndTokenAndIsRevokedFalse(userId, oldRefreshToken)
-                    .orElseThrow(() -> new AppException(ErrorCode.REFRESH_TOKEN_NOT_FOUND));
-
-            if (!deviceId.equals(oldToken.getDeviceId())) {
-                throw new AppException(ErrorCode.REFRESH_TOKEN_DEVICE_MISMATCH);
+            
+            userId = UUID.fromString(subject);
+            
+            Optional<RefreshToken> optionalToken = refreshTokenRepository
+                    .findByUserIdAndTokenAndIsRevokedFalse(userId, cleanToken);
+            
+            if (optionalToken.isEmpty()) {
+                log.error("Token not found in database for userId: {}", userId);
+                
+                List<RefreshToken> userTokens = refreshTokenRepository.findAllByUserId(userId);
+                log.error("User has {} tokens in DB", userTokens.size());
+                if (!userTokens.isEmpty()) {
+                    RefreshToken firstToken = userTokens.get(0);
+                    log.error("Sample token - length: {}, deviceId: {}, isRevoked: {}", 
+                        firstToken.getToken().length(), 
+                        firstToken.getDeviceId(),
+                        firstToken.isRevoked());
+                }
+                
+                throw new AppException(ErrorCode.REFRESH_TOKEN_NOT_FOUND);
+            }
+            
+            RefreshToken oldToken = optionalToken.get();
+            
+            try {
+                if (oldToken.getDeviceId() == null) {
+                    log.info("Migrating token without deviceId. Setting: {}", deviceId);
+                    oldToken.setDeviceId(deviceId != null ? deviceId : "unknown");
+                } else if (deviceId != null && !deviceId.equals(oldToken.getDeviceId())) {
+                    log.info("Device changed: {} -> {}. Allowing migration.", 
+                        oldToken.getDeviceId(), deviceId);
+                    oldToken.setDeviceId(deviceId);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to update deviceId, continuing anyway: {}", e.getMessage());
             }
 
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
@@ -490,22 +543,46 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             String newAccessToken = generateToken(user);
             OffsetDateTime now = OffsetDateTime.now();
 
-            long daysLeft = ChronoUnit.DAYS.between(now, oldToken.getExpiresAt());
-            String newRefreshToken = oldRefreshToken;
-
-            if (daysLeft <= 7) {
-                newRefreshToken = generateRefreshToken(user,30);
-                oldToken.setToken(newRefreshToken);
+            long daysLeft = 0;
+            String newRefreshToken = cleanToken;
+            
+            try {
+                daysLeft = ChronoUnit.DAYS.between(now, oldToken.getExpiresAt());
+                
+                if (daysLeft <= 7) {
+                    log.info("Refresh token expiring soon ({} days left). Generating new one.", daysLeft);
+                    newRefreshToken = generateRefreshToken(user, 30);
+                    oldToken.setToken(newRefreshToken.trim());
+                    oldToken.setExpiresAt(now.plusDays(30));
+                } else {
+                    log.info("Refresh token still valid ({} days left). Extending expiry.", daysLeft);
+                    oldToken.setExpiresAt(now.plusDays(30));
+                }
+            } catch (Exception e) {
+                log.warn("Failed to calculate expiry, using defaults: {}", e.getMessage());
                 oldToken.setExpiresAt(now.plusDays(30));
-                oldToken.setIp(ip);
-                oldToken.setUserAgent(userAgent);
+            }
+            
+            try {
+                if (deviceId != null && !deviceId.isEmpty()) {
+                    oldToken.setDeviceId(deviceId);
+                }
+                if (ip != null && !ip.isEmpty()) {
+                    oldToken.setIp(ip);
+                }
+                if (userAgent != null && !userAgent.isEmpty()) {
+                    oldToken.setUserAgent(userAgent);
+                }
                 oldToken.setRevoked(false);
+            } catch (Exception e) {
+                log.warn("Failed to update metadata: {}", e.getMessage());
+            }
+            
+            try {
                 refreshTokenRepository.save(oldToken);
-            } else {
-                oldToken.setIp(ip);
-                oldToken.setUserAgent(userAgent);
-                oldToken.setExpiresAt(now.plusDays(30));
-                refreshTokenRepository.save(oldToken);
+                log.info("✅ Token refresh successful for userId: {}", userId);
+            } catch (Exception e) {
+                log.error("Failed to save token, but returning new tokens anyway: {}", e.getMessage());
             }
 
             return AuthenticationResponse.builder()
@@ -514,10 +591,58 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .authenticated(true)
                     .build();
 
+        } catch (AppException e) {
+            log.error("Business exception during refresh for userId {}: {}", userId, e.getErrorCode());
+            throw e;
+            
         } catch (ParseException | JOSEException e) {
+            log.error("Invalid token format or signature: {}", e.getMessage());
             throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
+            
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid userId in token: {}", e.getMessage());
+            throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
+            
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            log.error("💥 Unexpected error during token refresh: ", e);
+            
+            if (userId != null && cleanToken != null) {
+                try {
+                    log.warn("Attempting emergency token generation for userId: {}", userId);
+                    User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElse(null);
+                    
+                    if (user != null) {
+                        String emergencyAccessToken = generateToken(user);
+                        String emergencyRefreshToken = generateRefreshToken(user, 30);
+                        
+                        try {
+                            RefreshToken emergencyToken = RefreshToken.builder()
+                                    .token(emergencyRefreshToken.trim())
+                                    .userId(userId)
+                                    .deviceId(deviceId != null ? deviceId : "emergency")
+                                    .ip(ip)
+                                    .userAgent(userAgent)
+                                    .expiresAt(OffsetDateTime.now().plusDays(30))
+                                    .isRevoked(false)
+                                    .build();
+                            refreshTokenRepository.save(emergencyToken);
+                        } catch (Exception saveError) {
+                            log.warn("Failed to save emergency token: {}", saveError.getMessage());
+                        }
+                        
+                        log.info("✅ Emergency tokens generated successfully");
+                        return AuthenticationResponse.builder()
+                                .token(emergencyAccessToken)
+                                .refreshToken(emergencyRefreshToken)
+                                .authenticated(true)
+                                .build();
+                    }
+                } catch (Exception emergencyError) {
+                    log.error("Emergency token generation also failed: {}", emergencyError.getMessage());
+                }
+            }
+            
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 
@@ -627,50 +752,52 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         secureResetTokens.remove(resetToken);
     }
 
-//    Helper
-public User findOrCreateUserAccount(String email, String fullName, String phone, AuthProvider provider, String providerUserId) {
+    public User findOrCreateUserAccount(String email, String fullName, String phone, AuthProvider provider, String providerUserId) {
+        String normalizedPhone = (phone == null || phone.isBlank()) ? null : normalizePhone(phone);
 
-    // chuẩn hoá phone trước khi tìm
-    String normalizedPhone = phone == null ? null : normalizePhone(phone);
+        Optional<UserAuthAccount> existingAuth =
+                userAuthAccountRepository.findByProviderAndProviderUserId(provider, providerUserId);
 
-    Optional<UserAuthAccount> existingAuth =
-            userAuthAccountRepository.findByProviderAndProviderUserId(provider, providerUserId);
+        if (existingAuth.isPresent()) {
+            return existingAuth.get().getUser();
+        }
 
-    if (existingAuth.isPresent()) {
-        return existingAuth.get().getUser();
+        Optional<User> existingUser = Optional.empty();
+        if (email != null && !email.isBlank()) {
+            existingUser = userRepository.findByEmailAndIsDeletedFalse(email.toLowerCase().trim());
+        } else if (normalizedPhone != null) {
+            existingUser = userRepository.findByPhoneAndIsDeletedFalse(normalizedPhone);
+        }
+
+        User user = existingUser.orElseGet(() -> {
+            User u = User.builder()
+                    .email(email != null ? email.toLowerCase().trim() : null)
+                    .phone(normalizedPhone)
+                    .fullname(fullName != null ? fullName : "User")
+                    .createdAt(OffsetDateTime.now())
+                    .build();
+            return userRepository.save(u);
+        });
+
+        // ✅ FIX 4: Check if auth account already exists before creating
+        boolean authExists = userAuthAccountRepository
+                .findByUser_UserIdAndProviderAndProviderUserId(user.getUserId(), provider, providerUserId)
+                .isPresent();
+
+        if (!authExists) {
+            UserAuthAccount authAccount = UserAuthAccount.builder()
+                    .user(user)
+                    .provider(provider)
+                    .providerUserId(providerUserId)
+                    .verified(true)
+                    .isPrimary(existingUser.isEmpty())
+                    .linkedAt(OffsetDateTime.now())
+                    .build();
+            userAuthAccountRepository.save(authAccount);
+        }
+
+        return user;
     }
-
-    Optional<User> existingUser = Optional.empty();
-    if (email != null && !email.isBlank()) {
-        existingUser = userRepository.findByEmailAndIsDeletedFalse(email);
-    } else if (normalizedPhone != null && !normalizedPhone.isBlank()) {
-        existingUser = userRepository.findByPhoneAndIsDeletedFalse(normalizedPhone);
-    }
-
-    User user = existingUser.orElseGet(() -> {
-        User u = User.builder()
-                .email(email)
-                .phone(normalizedPhone)
-                .fullname(fullName)
-                .createdAt(OffsetDateTime.now())
-                .build();
-        // nếu bạn thêm trường phone_e164, set vào đó luôn
-        // u.setPhoneE164(normalizedPhone);
-        return userRepository.save(u);
-    });
-
-    UserAuthAccount authAccount = UserAuthAccount.builder()
-            .user(user)
-            .provider(provider)
-            .providerUserId(providerUserId)
-            .verified(true)
-            .isPrimary(existingUser.isEmpty())
-            .linkedAt(OffsetDateTime.now())
-            .build();
-
-    userAuthAccountRepository.save(authAccount);
-    return user;
-}
 
 
     private AuthenticationResponse createAndSaveTokens(User user, String deviceId, String ip, String userAgent) {

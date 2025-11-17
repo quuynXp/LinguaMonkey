@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserCertificateId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserInterestId;
+import com.connectJPA.LinguaVietnameseApp.entity.id.UserLanguageId;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -74,6 +75,7 @@ public class UserServiceImpl implements UserService {
     private final EventService eventService;
     private final DatingInviteRepository datingInviteRepository;
     private final MinioService minioService;
+    private final UserFcmTokenRepository userFcmTokenRepository;
 
     // --- CÁC DEPENDENCIES MỚI ĐỂ LẤY FULL RESPONSE ---
     private final UserLanguageRepository userLanguageRepository;
@@ -121,12 +123,12 @@ public class UserServiceImpl implements UserService {
         // 5. Lấy authProvider (ví dụ: lấy provider "primary" hoặc đầu tiên)
         try {
             // Ưu tiên tìm provider 'primary'
-            Optional<UserAuthAccount> primaryAuth = userAuthAccountRepository.findByUserUserIdAndIsPrimaryTrue(user.getUserId());
+            Optional<UserAuthAccount> primaryAuth = userAuthAccountRepository.findByUser_UserIdAndIsPrimaryTrue(user.getUserId());
             if (primaryAuth.isPresent()) {
                 response.setAuthProvider(String.valueOf(primaryAuth.get().getProvider()));
             } else {
                 // Nếu không có, lấy bất kỳ provider nào (ví dụ: provider đầu tiên)
-                Optional<UserAuthAccount> anyAuth = userAuthAccountRepository.findFirstByUserUserIdOrderByLinkedAtAsc(user.getUserId());
+                Optional<UserAuthAccount> anyAuth = userAuthAccountRepository.findFirstByUser_UserIdOrderByLinkedAtAsc(user.getUserId());
                 anyAuth.ifPresent(auth -> response.setAuthProvider(String.valueOf(auth.getProvider())));
             }
         } catch (Exception e) {
@@ -329,7 +331,7 @@ public class UserServiceImpl implements UserService {
                             try {
                                 return UserGoal.builder()
                                         .userId(savedUser.getUserId())
-                                        .goalType(GoalType.valueOf(goalStr))
+                                        .goalType(GoalType.valueOf(goalStr.toUpperCase()))
                                         .build();
                             } catch (IllegalArgumentException ex) {
                                 log.warn("Unknown GoalType from request: {}", goalStr);
@@ -418,11 +420,92 @@ public class UserServiceImpl implements UserService {
             if (request.getStreak() != null) user.setStreak(request.getStreak());
 
             user = userRepository.save(user);
+            final User savedUser = user;
 
-            // SỬA: Dùng hàm helper mới
-            return mapUserToResponseWithAllDetails(user);
+            if (request.getGoalIds() != null) {
+                userGoalRepository.deleteAll(userGoalRepository.findByUserIdAndIsDeletedFalse(savedUser.getUserId()));
+                
+                List<UserGoal> userGoals = request.getGoalIds().stream()
+                        .filter(Objects::nonNull)
+                        .map(goalStr -> {
+                            try {
+                                return UserGoal.builder()
+                                        .userId(savedUser.getUserId())
+                                        .goalType(GoalType.valueOf(goalStr.toUpperCase()))
+                                        .build();
+                            } catch (IllegalArgumentException ex) {
+                                log.warn("Unknown GoalType from request: {}", goalStr);
+                                return null;
+                            }
+                        })
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+                if (!userGoals.isEmpty()) userGoalRepository.saveAll(userGoals);
+            }
+
+            if (request.getCertificationIds() != null) {
+                userCertificateRepository.deleteAll(userCertificateRepository.findAllByIdUserId(savedUser.getUserId()));
+                
+                List<UserCertificate> certs = request.getCertificationIds().stream()
+                        .filter(Objects::nonNull)
+                        .map(certStr -> {
+                            try {
+                                // Đảm bảo Certification enum tồn tại
+                                return UserCertificate.builder()
+                                        .id(new UserCertificateId(savedUser.getUserId(),
+                                                Certification.valueOf(certStr.toUpperCase()).toString()))
+                                        .build();
+                            } catch (IllegalArgumentException ex) {
+                                log.warn("Unknown Certification: {}", certStr);
+                                return null;
+                            }
+                        })
+                        .filter(Objects::nonNull)
+                        .toList();
+                if (!certs.isEmpty()) userCertificateRepository.saveAll(certs);
+            }
+
+            if (request.getInterestestIds() != null) {
+                userInterestRepository.deleteAll(userInterestRepository.findByIdUserIdAndIsDeletedFalse(savedUser.getUserId()));
+                
+                List<UserInterest> interests = request.getInterestestIds().stream()
+                        .filter(Objects::nonNull)
+                        .map(interestId -> UserInterest.builder()
+                                .id(new UserInterestId(savedUser.getUserId(), interestId))
+                                .user(savedUser)
+                                .interest(interestRepository.findById(interestId).orElse(null))
+                                .build())
+                        .filter(ui -> ui.getInterest() != null) // Chỉ lưu nếu interestId hợp lệ
+                        .collect(Collectors.toList());
+                if (!interests.isEmpty()) userInterestRepository.saveAll(interests);
+            }
+
+            if (request.getLanguages() != null) {
+                userLanguageRepository.deleteAll(userLanguageRepository.findByIdUserId(savedUser.getUserId()));
+
+                List<UserLanguage> languages = request.getLanguages().stream()
+                    .map(langCode -> languageRepository.findByLanguageCodeAndIsDeletedFalse(langCode).orElse(null))
+                    .filter(Objects::nonNull)
+                    .map(lang -> {
+                        UserLanguageId userLangId = UserLanguageId.builder()
+                                .languageCode(lang.getLanguageCode())
+                                .userId(savedUser.getUserId())
+                                .build();
+                        
+                        return UserLanguage.builder()
+                                .id(userLangId)
+                                .proficiencyLevel(null)
+                                .build();
+                    })
+                    .collect(Collectors.toList());
+                
+                if (!languages.isEmpty()) userLanguageRepository.saveAll(languages);
+            }
+            
+
+            return mapUserToResponseWithAllDetails(savedUser); 
         } catch (Exception e) {
-            log.error("Error while updating user ID {}: {}", id, e.getMessage());
+            log.error("Error while updating user ID {}: {}", id, e.getMessage(), e); // Thêm ", e" để in stack trace
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -1053,6 +1136,31 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.error("Error while fetching level info for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void registerFcmToken(NotificationRequest request) {
+        if (!userRepository.existsById(request.getUserId())) {
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
+        }
+
+        Optional<UserFcmToken> existingToken = userFcmTokenRepository
+                .findByUserIdAndDeviceId(request.getUserId(), request.getDeviceId());
+
+        if (existingToken.isPresent()) {
+            UserFcmToken token = existingToken.get();
+            token.setFcmToken(request.getFcmToken());
+            userFcmTokenRepository.save(token);
+        } else {
+            // Thêm token mới
+            UserFcmToken newToken = UserFcmToken.builder()
+                    .userId(request.getUserId())
+                    .fcmToken(request.getFcmToken())
+                    .deviceId(request.getDeviceId())
+                    .build();
+            userFcmTokenRepository.save(newToken);
         }
     }
 

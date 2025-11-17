@@ -1,21 +1,27 @@
-import React, { useEffect, useState, useRef } from "react";
-import { ActivityIndicator, Platform, View, Text } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Platform, View, Text } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import NetInfo from "@react-native-community/netinfo";
-import { RootNavigationRef, flushPendingActions, resetToTab } from "./utils/navigationRef";
+import messaging from '@react-native-firebase/messaging';
+import {
+  RootNavigationRef,
+  flushPendingActions,
+  resetToTab,
+  gotoTab,
+} from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
-import notificationService from './services/notificationService';
+import notificationService from "./services/notificationService";
 import MainStack from "./navigation/stack/MainStack";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
 import * as Localization from "expo-localization";
 import instance from "./api/axiosInstance";
-import { EXPO_PUBLIC_API_BASE_URL } from "react-native-dotenv";
+import SplashScreen from "./screens/Splash/SplashScreen";
+import { API_BASE_URL } from "./api/apiConfig";
 
-const API_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
-console.log("API_URL", API_URL);
+console.log("API_URL:", API_BASE_URL);
 
 type InitialRoute =
   | "Auth"
@@ -24,23 +30,41 @@ type InitialRoute =
   | "AppLaunchScreen"
   | "ProficiencyTestScreen"
   | "SetupInitScreen"
-  | "Admin"
-  | "Teacher";
+  | "Admin";
+
+
+const handleNotificationNavigation = (remoteMessage: any) => {
+  if (!remoteMessage || !remoteMessage.data) {
+    console.log('No data payload in notification.');
+    return;
+  }
+
+  const { data } = remoteMessage;
+  const { screen, stackScreen, ...params } = data;
+
+  if (screen) {
+    console.log(`Navigating to: ${screen} -> ${stackScreen} with params:`, params);
+    gotoTab(
+      screen as any,
+      stackScreen,
+      params
+    );
+  }
+};
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [initialScreenName, setInitialScreenName] =
     useState<InitialRoute>("AppLaunchScreen");
 
-    const { user, setUser } = useUserStore.getState();
+  const { user, setUser } = useUserStore.getState();
 
-  const [initialRouteParams, setInitialRouteParams] = useState<object | undefined>(undefined);
+  const [initialRouteParams, setInitialRouteParams] = useState<
+    object | undefined
+  >(undefined);
   const [isConnected, setIsConnected] = useState(true);
 
   const initializeTokens = useTokenStore((s) => s.initializeTokens);
-
-  const notificationListener = useRef<any>(null);
-  const responseListener = useRef<any>(null);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -54,7 +78,40 @@ const RootNavigation = () => {
 
   useEffect(() => {
     notificationService.loadPreferences();
-    notificationService.requestPermissions();
+    if (user?.userId) {
+      notificationService.registerTokenToBackend();
+    }
+  }, [user?.userId]);
+
+
+  useEffect(() => {
+    // 1. Khi app đang mở (Foreground)
+    const unsubscribeOnMessage = messaging().onMessage(async remoteMessage => {
+      console.log('Foreground Notification (FCM):', remoteMessage);
+      notificationService.sendLocalNotification(
+        remoteMessage.notification?.title || 'Thông báo',
+        remoteMessage.notification?.body || '',
+        remoteMessage.data
+      );
+    });
+
+    const unsubscribeOnOpen = messaging().onNotificationOpenedApp(remoteMessage => {
+      console.log('Background Notification Tapped (FCM):', remoteMessage);
+      handleNotificationNavigation(remoteMessage);
+    });
+
+    // messaging()
+    //   .getInitialNotification()
+    //   .then(remoteMessage => {
+    //     if (remoteMessage) {
+    //       console.log('Quit State Notification Tapped (FCM):', remoteMessage);
+    //     }
+    //   });
+
+    return () => {
+      unsubscribeOnMessage();
+      unsubscribeOnOpen();
+    };
   }, []);
 
   useEffect(() => {
@@ -97,11 +154,11 @@ const RootNavigation = () => {
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
-          savedLanguage = locales[0].languageCode || 'en';
+          savedLanguage = locales[0].languageCode || "en";
           await AsyncStorage.setItem("userLanguage", savedLanguage);
           console.log("Saved default language:", savedLanguage);
         }
-        userStore.setNativeLanguage(savedLanguage);
+        userStore.setLocalNativeLanguage(savedLanguage);
 
         const currentDate = new Date().toLocaleDateString("en-CA");
         const lastAppOpenDate = await AsyncStorage.getItem("lastAppOpenDate");
@@ -124,46 +181,53 @@ const RootNavigation = () => {
             const payload = decodeToken(accessToken);
             if (payload?.userId) {
               setUser({ ...user, userId: payload.userId });
-              const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
+              const userRes = await instance.get(
+                `/api/v1/users/${payload.userId}`
+              );
               const rawUser = userRes.data.result || {};
               const normalizedUser = {
                 ...rawUser,
-                userId:
-                  rawUser.userId ?? rawUser.user_id ?? rawUser.id,
+                userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id,
                 roles: getRoleFromToken(accessToken),
               };
-              userStore.setUser(normalizedUser);
-              userStore.setAuthenticated(true);
+              userStore.setUser(normalizedUser, savedLanguage);
+              // userStore.setAuthenticated(true);
               await AsyncStorage.setItem("hasLoggedIn", "true");
 
-              if (!hasFinishedSetup) {
-                console.log("User logged in but has NOT finished setup. Forcing SetupInitScreen.");
-                setInitialScreenName("SetupInitScreen");
-                setInitialRouteParams(undefined);
-                return; // Dừng tại đây, buộc user vào Setup
-              }
-
+              // **THAY ĐỔI: Kiểm tra ADMIN trước tiên**
               const roles = getRoleFromToken(accessToken);
               console.log("User roles from token:", roles);
 
-
               if (roles.includes("ROLE_ADMIN")) {
+                console.log(
+                  "User is ADMIN. Bypassing setup/test and routing to Admin screen."
+                );
                 setInitialScreenName("Admin");
                 setInitialRouteParams(undefined);
-              } else if (roles.includes("ROLE_TEACHER")) {
-                setInitialScreenName("Teacher");
+                return; // Dừng tại đây, đưa Admin vào màn hình
+              }
+
+              // **THAY ĐỔI: User không phải admin mới kiểm tra setup**
+              if (!hasFinishedSetup) {
+                console.log(
+                  "User (non-admin) logged in but has NOT finished setup. Forcing SetupInitScreen."
+                );
+                setInitialScreenName("SetupInitScreen");
                 setInitialRouteParams(undefined);
+                return; // Dừng tại đây, buộc user (non-admin) vào Setup
+              }
+
+              // **THAY ĐỔI: Bỏ logic ROLE_TEACHER**
+              // Chỉ xử lý user thường (đã qua check admin và check setup)
+              if (!hasDonePlacementTest) {
+                setInitialScreenName("ProficiencyTestScreen");
               } else {
-                if (!hasDonePlacementTest) {
-                  setInitialScreenName("ProficiencyTestScreen");
-                } else {
-                  setInitialScreenName(
-                    isFirstOpenToday ? "DailyWelcome" : "TabApp"
-                  );
-                  setInitialRouteParams(undefined);
-                  if (!isFirstOpenToday) {
-                    resetToTab("Home");
-                  }
+                setInitialScreenName(
+                  isFirstOpenToday ? "DailyWelcome" : "TabApp"
+                );
+                setInitialRouteParams(undefined);
+                if (!isFirstOpenToday) {
+                  resetToTab("Home");
                 }
               }
             }
@@ -199,19 +263,8 @@ const RootNavigation = () => {
 
     boot();
 
-    notificationListener.current =
-      Notifications.addNotificationReceivedListener((notification) => {
-        console.log("Foreground Notification:", notification);
-      });
-    responseListener.current =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        console.log("User tapped notification:", response);
-      });
-
     return () => {
       mounted = false;
-      notificationListener.current && notificationListener.current.remove();
-      responseListener.current && responseListener.current.remove();
     };
   }, [initializeTokens, user, setUser]);
 
@@ -260,20 +313,74 @@ const RootNavigation = () => {
   }
 
   if (isLoading) {
-    return (
-      <View
-        style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-      >
-        <ActivityIndicator />
-      </View>
-    );
+    return <SplashScreen />;
   }
+
+  // const linking = {
+  //   prefixes: ['linguamonkey://'],
+  //   config: {
+  //     screens: {
+  //       TabApp: {
+  //         screens: {
+  //           Chat: {
+  //             screens: {
+  //               ChatDetail: 'chat/:chatId',
+  //             },
+  //           },
+  //           Profile: 'profile',
+  //         },
+  //       },
+  //       Auth: 'auth',
+  //     },
+  //   },
+  //   async getInitialURL() {
+  //     const message = await messaging().getInitialNotification();
+  //     const url = message?.data?.link;
+
+  //     if (url) {
+  //       return url;
+  //     }
+
+  //     return Notifications.getInitialNotificationAsync()
+  //       .then(response => response?.notification.request.content.data?.url);
+  //   },
+  //   subscribe(listener: (url: string) => void) {
+  //     const onNotification = (response: Notifications.NotificationResponse) => {
+  //       const url = response.notification.request.content.data?.url as string;
+  //       if (url) {
+  //         listener(url);
+  //       }
+  //     };
+
+  //     const subscription = Notifications.addNotificationResponseReceivedListener(onNotification);
+
+  //     const unsubscribeFirebase = messaging().onNotificationOpenedApp(remoteMessage => {
+  //       const url = remoteMessage.data?.link as string;
+  //       if (url) {
+  //         listener(url);
+  //       } else {
+  //         handleNotificationNavigation(remoteMessage);
+  //       }
+  //     });
+
+  //     return () => {
+  //       subscription.remove();
+  //       unsubscribeFirebase();
+  //     };
+  //   },
+  // };
 
   return (
     <NavigationContainer
       ref={RootNavigationRef}
-      onReady={() => {
+      onReady={async () => {
         console.log("Navigation is ready");
+        const initialMessage = await messaging().getInitialNotification();
+        if (initialMessage) {
+          console.log('Handling Quit State Notification onReady:');
+          handleNotificationNavigation(initialMessage);
+        }
+
         flushPendingActions();
       }}
     >

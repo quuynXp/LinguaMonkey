@@ -75,56 +75,56 @@ public class StatisticsController {
     @GetMapping("/overview")
     public AppApiResponse<StatisticsOverviewResponse> overview(
             @RequestParam(value = "userId", required = false) UUID userId,
-            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String startDateStr,
-            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String endDateStr,
+            @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String startDate,
+            @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String endDate,
             @RequestParam(value = "period", required = false) String period,
             @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate
     ) {
         // parse / default dates
         LocalDate today = LocalDate.now();
-        LocalDate startDate = null;
-        LocalDate endDate = null;
+        LocalDate localStartDate = null;
+        LocalDate localEndDate = null;
 
         try {
-            if (startDateStr != null && endDateStr != null) {
-                startDate = LocalDate.parse(startDateStr);
-                endDate = LocalDate.parse(endDateStr);
+            if (startDate != null && endDate != null) {
+                localStartDate = LocalDate.parse(startDate);
+                localEndDate = LocalDate.parse(endDate);
             } else {
                 // derive from period
                 if (period != null) {
                     switch (period.toLowerCase()) {
                         case "day" -> {
-                            startDate = today;
-                            endDate = today;
+                            localStartDate = today;
+                            localEndDate = today;
                         }
                         case "month" -> {
-                            endDate = today;
-                            startDate = today.minusMonths(1).plusDays(1);
+                            localEndDate = today;
+                            localStartDate = today.minusMonths(1).plusDays(1);
                         }
                         case "year" -> {
-                            endDate = today;
-                            startDate = today.minusYears(1).plusDays(1);
+                            localEndDate = today;
+                            localStartDate = today.minusYears(1).plusDays(1);
                         }
                         default -> {
-                            endDate = today;
-                            startDate = today.minusWeeks(1).plusDays(1);
+                            localEndDate = today;
+                            localStartDate = today.minusWeeks(1).plusDays(1);
                         }
                     }
                 } else {
                     // fallback 7 days
-                    endDate = today;
-                    startDate = today.minusWeeks(1).plusDays(1);
+                    localEndDate = today;
+                    localStartDate = today.minusWeeks(1).plusDays(1);
                 }
             }
         } catch (DateTimeParseException ex) {
             throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
         }
 
-        if (startDate.isAfter(endDate)) {
+        if (localStartDate.isAfter(localEndDate)) {
             throw new IllegalArgumentException("startDate cannot be after endDate");
         }
 
-        StatisticsOverviewResponse resp = statisticsService.getOverview(userId, startDate, endDate, aggregate);
+        StatisticsOverviewResponse resp = statisticsService.getOverview(userId, localStartDate, localEndDate, aggregate);
 
         Locale locale = LocaleContextHolder.getLocale();
         String msg = messageSource.getMessage("statistics.get.success", null, "OK", locale);

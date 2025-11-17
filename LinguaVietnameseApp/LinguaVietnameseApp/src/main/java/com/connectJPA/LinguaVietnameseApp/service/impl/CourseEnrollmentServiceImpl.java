@@ -36,7 +36,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
     @Cacheable(value = "courseEnrollments", key = "#courseId + ':' + #userId + ':' + #pageable")
     public Page<CourseEnrollmentResponse> getAllCourseEnrollments(UUID courseId, UUID userId, Pageable pageable) {
         try {
-            Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findAllByCourseIdAndUserIdAndIsDeletedFalse(courseId, userId, pageable);
+            Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findAllByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId, pageable);
             return enrollments.map(courseEnrollmentMapper::toResponse);
         } catch (RedisConnectionFailureException e) {
             throw new AppException(ErrorCode.REDIS_CONNECTION_FAILED);
@@ -82,7 +82,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
     @Cacheable(value = "courseEnrollment", key = "#courseId + ':' + #userId")
     public CourseEnrollmentResponse getCourseEnrollmentByIds(UUID courseId, UUID userId) {
         try {
-            CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
+            CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.COURSE_ENROLLMENT_NOT_FOUND));
             return courseEnrollmentMapper.toResponse(enrollment);
         } catch (RedisConnectionFailureException e) {
@@ -112,7 +112,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
     @CachePut(value = "courseEnrollment", key = "#courseId + ':' + #userId")
     public CourseEnrollmentResponse updateCourseEnrollment(UUID courseId, UUID userId, CourseEnrollmentRequest request) {
         try {
-            CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
+            CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.COURSE_ENROLLMENT_NOT_FOUND));
             courseEnrollmentMapper.updateEntityFromRequest(request, enrollment);
             enrollment = courseEnrollmentRepository.save(enrollment);
@@ -129,7 +129,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
     @CacheEvict(value = "courseEnrollment", key = "#courseId + ':' + #userId")
     public void deleteCourseEnrollment(UUID courseId, UUID userId) {
         try {
-            CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
+            CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.COURSE_ENROLLMENT_NOT_FOUND));
             enrollment.setDeleted(true);
             courseEnrollmentRepository.save(enrollment);

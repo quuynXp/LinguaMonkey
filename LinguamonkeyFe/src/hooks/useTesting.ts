@@ -10,18 +10,20 @@ import type {
 
 const API_BASE = "/api/v1/tests";
 
-// Đổi tên hook: useAvailableTestLessons -> useAvailableTests
-export const useAvailableTests = (params?: { languageCode?: string }) => {
+export const useAvailableTests = (params?: { languageCode?: string | null }) => {
   const qs = new URLSearchParams();
-  if (params?.languageCode) qs.append("languageCode", params.languageCode);
+  if (params?.languageCode) {
+    qs.append("languageCode", params.languageCode);
+  }
 
-  // Sửa URL: .../lessons -> /available
   const url = `${API_BASE}/available?${qs.toString()}`;
 
   return useQuery({
-    queryKey: ["availableTests", params || {}],
+    queryKey: ["availableTests", params?.languageCode ?? ''],
     queryFn: async () => {
-      // Dùng TestConfig
+      if (!params?.languageCode) {
+        return [];
+      }
       const res = await instance.get<ApiResponse<TestConfig[]>>(url);
       return res.data.result ?? [];
     },
@@ -33,17 +35,13 @@ export const useStartTest = () => {
   const qc = useQueryClient();
 
   const mutation = useMutation({
-    // Sửa tham số: lessonId -> testConfigId
     mutationFn: async (testConfigId: string) => {
-      // Giả định userId được đính kèm tự động vào request (interceptors)
-      // Sửa URL:
       const res = await instance.post<ApiResponse<TestSessionStartData>>(
         `${API_BASE}/start?testConfigId=${encodeURIComponent(testConfigId)}`
       );
       return res.data.result!;
     },
     onSuccess: (data) => {
-      // Lưu cache session data
       qc.setQueryData(["testSession", data.sessionId], data);
     }
   });

@@ -1,5 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.enums;
 
-public enum LearningPlace {
+public enum LearningPace {
     SLOW, MAINTAIN, FAST, ACCELERATED
 }

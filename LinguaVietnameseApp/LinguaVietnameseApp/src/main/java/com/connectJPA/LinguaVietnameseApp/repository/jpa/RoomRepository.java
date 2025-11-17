@@ -46,4 +46,10 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             @Param("roomType") RoomType roomType,
             Pageable pageable);
 
+    Optional<Room> findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(
+            UUID creatorId,
+            RoomPurpose purpose,
+            RoomType roomType
+    );
+
 }

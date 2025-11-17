@@ -2,7 +2,8 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { getStorage } from './tokenStoreInterface';
-import { refreshTokenPure } from '../services/authPure';
+import { refreshTokenApi } from '../services/authService';
+import { getDeviceIdSafe } from '../api/axiosInstance';
 import { decodeToken } from '../utils/decodeToken';
 
 const isTokenValid = (token: string | null): boolean => {
@@ -48,14 +49,12 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
 
       if (trimmedAccess) {
         await accessStorage.setItem('accessToken', trimmedAccess);
-        console.log('Stored accessToken length:', trimmedAccess.length);
       } else {
         await accessStorage.removeItem('accessToken');
       }
 
       if (trimmedRefresh) {
         await refreshStorage.setItem('refreshToken', trimmedRefresh);
-        console.log('Stored refreshToken length:', trimmedRefresh.length);
       } else {
         await refreshStorage.removeItem('refreshToken');
       }
@@ -113,7 +112,8 @@ export const useTokenStore = create<TokenStore>((set, get) => ({
       if (refreshToken) {
         console.log('[initializeTokens] AccessToken invalid/expired. Attempting refresh...');
         try {
-          const result = await refreshTokenPure(refreshToken);
+          const deviceId = await getDeviceIdSafe(); // Lấy deviceId
+          const result = await refreshTokenApi(refreshToken, deviceId);
           console.log('[initializeTokens] Refresh success ✅');
           await get().setTokens(result.token, result.refreshToken); // setTokens sẽ set state và initialized
           set({ initialized: true });

@@ -1,7 +1,5 @@
-"use client"
-
 import { useEffect, useRef, useState } from "react"
-import { Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { Animated, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { createScaledSheet } from "../../utils/scaledStyles"
 

@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
+import com.connectJPA.LinguaVietnameseApp.entity.Language;
 import com.connectJPA.LinguaVietnameseApp.entity.UserLanguage;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserLanguageId;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -18,4 +19,9 @@ public interface UserLanguageRepository extends JpaRepository<UserLanguage, User
      */
     @Query("SELECT ul.id.languageCode FROM UserLanguage ul WHERE ul.id.userId = :userId AND ul.isDeleted = false")
     List<String> findLanguageCodesByUserId(@Param("userId") UUID userId);
+
+    // SỬA LỖI Ở ĐÂY:
+    // 1. Đổi kiểu trả về từ List<Language> -> List<UserLanguage>
+    // 2. Đổi tên phương thức findById_UserId -> findByIdUserId
+    List<UserLanguage> findByIdUserId(UUID userId);
 }

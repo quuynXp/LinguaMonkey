@@ -159,6 +159,8 @@ services:
       - elasticsearch
     env_file:
       - ./PythonService/.env
+    ports: 
+      - "50051:50051"
     networks:
       - lingua-net
     restart: always
@@ -240,7 +242,7 @@ services:
       - kong
     volumes:
       - ./kong-init:/scripts
-      - ./LinguaVietnameseApp/src/main/resources/public_key.pem:/scripts/public_key.pem:ro
+      - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/keys/public_key.pem:ro
     entrypoint: ["/bin/sh", "/scripts/init-kong.sh"]
     networks:
       - lingua-net

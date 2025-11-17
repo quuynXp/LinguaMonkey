@@ -12,7 +12,6 @@ def get_redis_client():
     if redis_client is None:
         try:
             redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-            # Dòng này vẫn hoạt động bình thường với thư viện mới
             redis_client = aioredis.from_url(redis_url, decode_responses=True)
             logging.info(f"Redis client initialized at {redis_url}")
         except Exception as e:
@@ -46,3 +45,12 @@ async def set_to_cache(
         await client.set(key, json.dumps(data), ex=ttl_seconds)
     except Exception as e:
         logging.warning(f"Cache SET error for key {key}: {e}")
+
+
+async def delete_from_cache(client: aioredis.Redis, key: str):
+    """Deletes a key from the cache."""
+    try:
+        await client.delete(key)
+        logging.info(f"Cache DELETED for key {key}")
+    except Exception as e:
+        logging.warning(f"Cache DELETE error for key {key}: {e}")

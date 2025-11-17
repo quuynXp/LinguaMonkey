@@ -236,13 +236,14 @@ public class GrpcClientService {
         });
     }
 
-    public CompletableFuture<PronunciationResponseBody> callCheckPronunciationAsync(String token, byte[] audioData, String language) {
+    public CompletableFuture<PronunciationResponseBody> callCheckPronunciationAsync(String token, byte[] audioData, String language, String referenceText) {
         ManagedChannel channel = createChannelWithToken(token);
         LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
 
         PronunciationRequest request = PronunciationRequest.newBuilder()
                 .setAudio(MediaRef.newBuilder().setInlineData(com.google.protobuf.ByteString.copyFrom(audioData)))
                 .setLanguage(language)
+                .setReferenceText(referenceText)
                 .build();
 
         return CompletableFuture.supplyAsync(() -> {

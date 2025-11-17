@@ -226,7 +226,7 @@ const ChatRoomListScreen = ({ navigation }) => {
         {isLoadingRooms ? (
           <ActivityIndicator size="large" style={{ marginTop: 20 }} />
         ) : isError ? (
-          <Text style={styles.emptyText}>{t('error.loading')}</Text>
+          <Text style={styles.emptyText}>{t('errors.loading')}</Text>
         ) : (
           <FlatList
             data={rooms} // Dùng data thật

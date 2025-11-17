@@ -1,6 +1,6 @@
 import * as Localization from "expo-localization"
 import { useEffect, useRef, useState } from "react"
-import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, FlatList } from "react-native"
+import { Alert, Animated, ScrollView, Text, TextInput, TouchableOpacity, View, FlatList } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Character3D, Language, Interest, Country, AgeRange, LearningPace, CreateUserPayload, languageToCountry } from "../../types/api"
 import instance from "../../api/axiosInstance"
@@ -12,7 +12,6 @@ import { gotoTab } from "../../utils/navigationRef";
 
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useUserStore } from "../../stores/UserStore";
-import { t } from "i18next"
 import { useTokenStore } from "../../stores/tokenStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,18 +22,18 @@ type SetupInitScreenProps = {
 }
 
 const countryToDefaultLanguage: Record<string, string> = {
-  US: "EN",
-  VN: "VI",
-  JP: "JA",
-  CN: "ZH",
-  FR: "FR",
-  DE: "DE",
-  ES: "ES",
-  IT: "IT",
-  KR: "KO",
-  RU: "RU",
-  IN: "EN",
-  ZH: "ZH",
+  US: "en",
+  VN: "vi",
+  JP: "jp",
+  CN: "zh",
+  FR: "fr",
+  DE: "de",
+  ES: "es",
+  IT: "it",
+  KR: "ko",
+  RU: "ru",
+  IN: "in",
+  ZH: "zh",
 }
 
 const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
@@ -53,12 +52,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const [learningGoalsSelected, setLearningGoalsSelected] = useState<string[]>([])
   const [learningPace, setLearningPace] = useState("")
 
-
   const [characters, setCharacters] = useState<Character3D[]>([])
   const [languages, setLanguages] = useState<Language[]>([])
   const [interests, setInterests] = useState<Interest[]>([])
-
-
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
@@ -78,14 +74,14 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   ]
 
   const certifications = [
-    { id: "toefl", name: "TOEFL", description: "Test of English as a Foreign Language", languageCode: "EN" },
-    { id: "ielts", name: "IELTS", description: "International English Language Testing System", languageCode: "EN" },
-    { id: "hsk", name: "HSK", description: "Hanyu Shuiping Kaoshi (Chinese)", languageCode: "ZH" },
-    { id: "jlpt", name: "JLPT", description: "Japanese Language Proficiency Test", languageCode: "JP" },
-    { id: "topik", name: "TOPIK", description: "Test of Proficiency in Korean", languageCode: "KR" },
-    { id: "dalf", name: "DALF", description: "Diplôme Approfondi de Langue Française", languageCode: "FR" },
-    { id: "dele", name: "DELE", description: "Diplomas de Español como Lengua Extranjera", languageCode: "ES" },
-    { id: "goethe", name: "Goethe", description: "German Language Certificate", languageCode: "DE" },
+    { id: "toefl", name: "TOEFL", description: "Test of English as a Foreign Language", languageCode: "en" },
+    { id: "ielts", name: "IELTS", description: "International English Language Testing System", languageCode: "en" },
+    { id: "hsk", name: "HSK", description: "Hanyu Shuiping Kaoshi (Chinese)", languageCode: "zh" },
+    { id: "jlpt", name: "JLPT", description: "Japanese Language Proficiency Test", languageCode: "jp" },
+    { id: "topik", name: "TOPIK", description: "Test of Proficiency in Korean", languageCode: "kr" },
+    { id: "dalf", name: "DALF", description: "Diplôme Approfondi de Langue Française", languageCode: "fr" },
+    { id: "dele", name: "DELE", description: "Diplomas de Español como Lengua Extranjera", languageCode: "es" },
+    { id: "goethe", name: "Goethe", description: "German Language Certificate", languageCode: "de" },
   ]
 
 
@@ -264,7 +260,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       if (Array.isArray(languageArray)) {
         // normalize language codes to uppercase to avoid mismatch
         const normalized = languageArray.map((lang: any) => ({
-          languageCode: String(lang.languageCode ?? "").toUpperCase(),
+          languageCode: String(lang.languageCode ?? "").toLowerCase(),
           languageName: lang.languageName,
           description: lang.description ?? undefined,
         }))
@@ -343,8 +339,8 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const mappedAge = mapAgeRangeToEnum(ageRange)
       if (mappedAge) payload.ageRange = mappedAge as unknown as string
 
-      if (nativeLanguage) payload.nativeLanguageCode = nativeLanguage.toUpperCase()
-      if (targetLanguages?.length) payload.languages = targetLanguages.map(code => code.toUpperCase())
+      if (nativeLanguage) payload.nativeLanguageCode = nativeLanguage.toLowerCase()
+      if (targetLanguages?.length) payload.languages = targetLanguages.map(code => code.toLowerCase())
 
       if (certificationsSelected?.length) {
         // ensure we only map valid non-empty strings
@@ -369,24 +365,72 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       // DEBUG: ensure nothing silly like "undefined" exists
       console.log("Create user payload ->", JSON.stringify(payload, null, 2))
 
-      console.log("Creating temp account with payload:", payload)
-      const response = await instance.post('/api/v1/users', payload)
-      console.log("Account created, response:", response.data)
-      useUserStore.getState().setUser(response.data.result.user)
-      if (response.data.result.accessToken) {
-         useTokenStore.getState().setTokens(response.data.result.accessToken, response.data.result.refreshToken)
+      const existingUser = useUserStore.getState().user;
+
+      let response;
+
+      if (existingUser?.userId) {
+        // LUỒNG B: CẬP NHẬT USER ĐÃ TỒN TẠI
+        // Người dùng đã đăng nhập (Google, Email...) và chỉ đang setup profile
+
+        console.log(`Updating existing user ${existingUser.userId}...`);
+
+        // Gọi PUT đến /api/v1/users/{id}
+        response = await instance.put(`/api/v1/users/${existingUser.userId}`, payload);
+
+        console.log("Account updated, response:", response.data);
+
+        // Endpoint PUT trả về AppApiResponse<UserResponse> (chỉ có user, không có token)
+        useUserStore.getState().setUser(response.data.result);
+        // Không cần set token, vì user đã đăng nhập
+
+      } else {
+        console.log("Quick Start: Checking if email is available...");
+
+        let emailCheckResponse;
+        try {
+          emailCheckResponse = await instance.get('/api/v1/users/check-email', {
+            params: { email: payload.email }
+          });
+        } catch (checkError: any) {
+          console.error("Email check failed:", checkError.response?.data || checkError.message);
+          throw new Error("Failed to verify email. Please check connection.");
+        }
+
+        const isEmailAvailable = emailCheckResponse.data.result;
+
+        if (!isEmailAvailable) {
+          console.warn("Email already exists. Quick start failed.");
+          Alert.alert(
+            t("error.title"),
+            t("error.emailExistsQuickStart", "This email is already registered. Please go back and log in.")
+          );
+          return;
+        }
+
+        console.log("Email is available. Creating new user...");
+        response = await instance.post('/api/v1/users', payload);
+
+        console.log("Account created, response:", response.data);
+
+        const result = response.data.result;
+        useUserStore.getState().setUser(result.user);
+
+        if (result.accessToken) {
+          useTokenStore.getState().setTokens(result.accessToken, result.refreshToken);
+        }
       }
-      // useTokenStore.getState().setTokens(response.data.result.accessToken, response.data.result.refreshToken)
 
       await AsyncStorage.setItem("hasFinishedSetup", "true");
+      gotoTab("ProficiencyTestScreen");
 
-      gotoTab("ProficiencyTestScreen")
-    } catch (error) {
-      console.error("createTempAccountAndSetup error:", error)
-      Alert.alert(t("error.title"), t("error.setupAccount"))
+    } catch (error: any) {
+      console.error("createTempAccountAndSetup error:", error.response?.data || error.message);
+
+      const errorMessage = error.response?.data?.message || t("error.setupAccount");
+      Alert.alert(t("error.title"), errorMessage);
     }
   }
-
 
   const handleBack = () => {
     if (currentStep > 1) {
@@ -402,7 +446,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     setter(newArray)
   }
 
-  const normalizeLangCode = (code?: string) => (code ? String(code).toUpperCase() : "")
+  const normalizeLangCode = (code?: string) => (code ? String(code).toLowerCase() : "")
 
   // prevent selecting the same as native: user must explicitly choose a non-native language
   const toggleTargetLanguage = (langCodeRaw: string) => {
@@ -497,11 +541,18 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
               selectedCharacter?.character3dId === item.character3dId && styles.characterCardSelected
             ]}
           >
-            {/* Truyền onTap để chọn khi user tap nhanh vào model */}
-            <ModelViewer
-              modelUrl={item.modelUrl}
-              onTap={() => setSelectedCharacter(item)}
-            />
+            {item.modelUrl && typeof item.modelUrl === 'string' ? (
+              <ModelViewer
+                modelUrl={item.modelUrl}
+                onTap={() => setSelectedCharacter(item)}
+              />
+            ) : (
+              // Hiển thị một placeholder nếu không có model
+              <View style={styles.modelPlaceholder}>
+                <Icon name="broken-image" size={40} color="#9CA3AF" />
+                <Text style={styles.modelErrorText}>No Model</Text>
+              </View>
+            )}
             <Text style={styles.characterName}>{item.character3dName}</Text>
             <Text style={styles.characterPersonality}>{item.description}</Text>
 
@@ -541,7 +592,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
           placeholder={t("auth.enterEmail")}
           keyboardType="email-address"
           autoCapitalize="none"
-          // Cân nhắc thêm: editable={false} nếu user đăng ký bằng email
+        // Cân nhắc thêm: editable={false} nếu user đăng ký bằng email
         />
       </View>
 
@@ -549,16 +600,16 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       <View style={styles.inputContainer}>
         <Text style={styles.inputLabel}>{t("auth.phoneNumber")}</Text>
         {/* GỢI Ý: Đây là nơi tốt nhất để dùng thư viện 'react-native-phone-number-input'
-          <PhoneInput
-            defaultValue={phoneNumber}
-            defaultCode={country || "VN"}
-            onChangeFormattedText={(text) => {
-              setPhoneNumber(text);
-            }}
-            containerStyle={styles.phoneInputContainer}
-            textContainerStyle={styles.phoneInputTextContainer}
-          />
-        */}
+          <PhoneInput
+            defaultValue={phoneNumber}
+            defaultCode={country || "VN"}
+            onChangeFormattedText={(text) => {
+              setPhoneNumber(text);
+            }}
+            containerStyle={styles.phoneInputContainer}
+            textContainerStyle={styles.phoneInputTextContainer}
+          />
+        */}
         {/* Fallback dùng TextInput đơn giản */}
         <TextInput
           style={styles.textInput}
@@ -987,7 +1038,7 @@ const styles = createScaledSheet({
     color: "#FFFFFF",
   },
   stepLine: {
-    width: 40,
+    width: 30,
     height: 2,
     backgroundColor: "#E5E7EB",
     marginHorizontal: 8,
@@ -1369,6 +1420,19 @@ const styles = createScaledSheet({
     fontSize: 16,
     color: "#FFFFFF",
     fontWeight: "600",
+  },
+  modelPlaceholder: {
+    height: 150, // Đặt chiều cao tương tự ModelViewer
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F3F4F6', // Màu nền xám nhạt
+    borderRadius: 8,
+  },
+  modelErrorText: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 8,
   },
 })
 

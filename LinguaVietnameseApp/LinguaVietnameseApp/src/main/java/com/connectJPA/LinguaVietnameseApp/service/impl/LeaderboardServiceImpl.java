@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LeaderboardRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.LeaderboardEntryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LeaderboardResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Leaderboard;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
@@ -12,11 +13,15 @@ import com.connectJPA.LinguaVietnameseApp.service.LeaderboardService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,6 +29,7 @@ import java.util.UUID;
 public class LeaderboardServiceImpl implements LeaderboardService {
     private final LeaderboardRepository leaderboardRepository;
     private final LeaderboardMapper leaderboardMapper;
+    private final UserRepository userRepository;
 
     @Override
     public Page<LeaderboardResponse> getAllLeaderboards(String period, String tab, Pageable pageable) {
@@ -39,6 +45,15 @@ public class LeaderboardServiceImpl implements LeaderboardService {
         }
     }
 
+    @Override
+    public List<LeaderboardEntryResponse> getGlobalTopThree() {
+        PageRequest pageable = PageRequest.of(0, 3);
+        return userRepository.findByIsDeletedFalseOrderByExpDesc(pageable)
+                .stream()
+                .map(LeaderboardEntryResponse::fromUser)
+                .collect(Collectors.toList());
+    }
+    
     @Override
     public LeaderboardResponse getLeaderboardById(UUID id) {
         try {

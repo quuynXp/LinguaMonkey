@@ -1,12 +1,9 @@
 import axios from "axios";
-import { EXPO_PUBLIC_API_BASE_URL } from "react-native-dotenv";
+import { API_BASE_URL } from "./apiConfig";
 
-const API_BASE_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
-
-// KHÔNG import axiosInstance ở đây!
 export async function refreshTokenApi(refreshToken: string) {
   try {
-    const res = await axios.post(`${API_BASE_URL}/auth/refresh-token`, { refreshToken });
+    const res = await axios.post(`${API_BASE_URL}/api/v1/auth/refresh-token`, { refreshToken });
     return res.data;
   } catch (err) {
     console.error("[refreshTokenApi] error", err);
@@ -16,7 +13,7 @@ export async function refreshTokenApi(refreshToken: string) {
 
 export async function introspectToken(token: string) {
   try {
-    const res = await axios.post(`${API_BASE_URL}/auth/introspect`, { token });
+    const res = await axios.post(`${API_BASE_URL}/api/v1/auth/introspect`, { token });
     return res.data?.active || false;
   } catch (err) {
     console.error("[introspectToken] error", err);

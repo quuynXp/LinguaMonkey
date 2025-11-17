@@ -57,6 +57,8 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
 
   // pagination state for entries
   const [page, setPage] = useState<number>(0);
+  const [hasMore, setHasMore] = useState<boolean>(true);
+  const [entriesAccum, setEntriesAccum] = useState<any[]>([]);
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -90,13 +92,18 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
   useEffect(() => {
     setPage(0); // reset pagination when snapshot changes
     const first = resolvedLeaderboardList[0];
+    // reset hasMore whenever leaderboard snapshot changes
+    setHasMore(true);
+    // reset accumulated entries on snapshot change
+    setEntriesAccum([]);
     if (first && (first.leaderboardId || first.id)) {
       const id = String(first.leaderboardId ?? first.id);
       setLeaderboardId(id);
     } else {
       setLeaderboardId(null);
     }
-  }, [leaderboardsResp, selectedTab, selectedPeriod]);
+  }, [resolvedLeaderboardList, selectedTab, selectedPeriod]);
+  // Note: include resolvedLeaderboardList so effect runs when parsed content changes
 
   const top3Query = useQuery({
     queryKey: ["leaderboard", leaderboardId, "top-3"],
@@ -116,35 +123,45 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     refetch: refetchEntries,
   } = useLeaderboardEntries(leaderboardId, { page, limit: PAGE_LIMIT });
 
-  const resolvedEntries = (() => {
+  // accumulate pages into `entriesAccum` so the FlatList shows appended results
+  useEffect(() => {
     const d: any = entriesResp;
-    if (!d) return [];
+    if (!d) return;
+
     let arr: any[] = [];
     if (d.content && Array.isArray(d.content)) arr = d.content;
     else if (Array.isArray(d)) arr = d;
     else arr = [d];
 
-    return arr.slice(3);
-  })();
+    // append or replace accumulated entries depending on page
+    if (page === 0) setEntriesAccum(arr);
+    else setEntriesAccum((prev) => [...prev, ...arr]);
+
+    // determine whether there are more pages based on fetched length
+    if (arr.length < PAGE_LIMIT) setHasMore(false);
+    else setHasMore(true);
+  }, [entriesResp, page]);
+
+  const resolvedEntries = entriesAccum.slice(3);
 
   // load more handler
   const loadMore = useCallback(() => {
-    if (!leaderboardId || entriesLoading) return;
+    if (!leaderboardId || entriesLoading || !hasMore) return;
     setPage((p) => p + 1);
-  }, [leaderboardId, entriesLoading]);
+  }, [leaderboardId, entriesLoading, hasMore]);
 
   useEffect(() => {
     if (leaderboardId) refetchEntries();
-  }, [page, leaderboardId]);
+  }, [page, leaderboardId, refetchEntries]);
 
   useEffect(() => {
     refetchLeaderboards();
-  }, [selectedTab, selectedPeriod]);
+  }, [selectedTab, selectedPeriod, refetchLeaderboards]);
 
   const onPressUser = (entry: any) => {
     const targetUserId = entry?.leaderboardEntryId?.userId ?? entry?.userId ?? entry?.id;
     if (!targetUserId) return;
-    navigation.navigate("UserProfileView", { userId: String(targetUserId) });
+    navigation.navigate("UserProfileViewScreen", { userId: String(targetUserId) });
   };
 
   // ---------- renderItem (clean fields from BE) ----------

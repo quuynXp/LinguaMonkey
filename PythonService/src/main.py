@@ -26,6 +26,8 @@ from src.core.user_profile_service import get_user_profile
 from src.api.translation import translate_text
 from src.api.chat_ai import chat_with_ai
 from src.api.speech_to_text import speech_to_text
+from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
+from src.core.kafka_producer import get_kafka_producer, stop_kafka_producer, send_chat_to_kafka
 
 load_dotenv()
 
@@ -48,7 +50,7 @@ redis_client = get_redis_client()
 @app.on_event("shutdown")
 async def shutdown_event():
     await close_redis_client()
-
+    await stop_kafka_producer()
 
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
@@ -130,6 +132,93 @@ async def voice_stream(websocket: WebSocket, token: str):
         logging.error(f"WebSocket Error: {e}")
         await websocket.close(code=1011)
 
+
+@app.websocket("/chat-stream") # Phải khớp với FE: /ws/py/chat-stream
+async def chat_stream(
+    websocket: WebSocket, 
+    token: str, 
+    db: AsyncSession = Depends(get_db)
+):
+    try:
+        decoded_token = jwt.decode(
+            token, PUBLIC_KEY, algorithms=["RS256"], issuer="LinguaMonkey.com"
+        )
+        user_id = decoded_token.get("sub")
+        if not user_id:
+            await websocket.close(code=1008)
+            return
+    except Exception as e:
+        logging.warning(f"WebSocket Auth failed: {e}")
+        await websocket.close(code=1008)
+        return
+
+    await websocket.accept()
+    logging.info(f"Client {user_id} connected to AI Chat WebSocket")
+    
+    user_profile = await get_user_profile(user_id, db, redis_client)
+    
+    room_id = None
+    message_type = "TEXT"
+
+    try:
+        while True:
+            data = await websocket.receive_text()
+            msg = json.loads(data)
+
+            if msg.get("type") == "chat_request":
+                prompt = msg.get("prompt", "")
+                history = msg.get("history", [])
+                
+                # FE PHẢI GỬI LÊN room_id 
+                room_id = msg.get("roomId") 
+                message_type = msg.get("messageType", "TEXT")
+
+                if not room_id:
+                    logging.error("No roomId provided by client.")
+                    await websocket.send_text(json.dumps({
+                        "type": "error", "content": "roomId is required"
+                    }))
+                    continue
+                
+                full_ai_response = ""
+                
+                # Gọi hàm streaming
+                async for chunk in chat_with_ai_stream(prompt, history, user_profile):
+                    full_ai_response += chunk
+                    await websocket.send_text(json.dumps({
+                        "type": "chat_response_chunk",
+                        "content": chunk
+                    }))
+                
+                # Gửi tín hiệu kết thúc stream
+                await websocket.send_text(json.dumps({
+                    "type": "chat_response_complete"
+                }))
+
+                # === BƯỚC QUAN TRỌNG: GỬI TỚI KAFKA ===
+                kafka_payload = {
+                    "userId": user_id,
+                    "roomId": room_id,
+                    "userPrompt": prompt,
+                    "aiResponse": full_ai_response,
+                    "messageType": message_type,
+                    "sentAt": datetime.now().isoformat() # Thêm timestamp
+                }
+                await send_chat_to_kafka(kafka_payload)
+
+    except WebSocketDisconnect:
+        logging.info(f"Client {user_id} disconnected from AI Chat")
+    except Exception as e:
+        logging.error(f"AI Chat WebSocket Error: {e}", exc_info=True)
+        try:
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "content": str(e)
+            }))
+        except:
+            pass
+    finally:
+        await websocket.close(code=1011)
 
 @app.post("/translate")
 async def translate(request: TranslationRequest, user: dict = Depends(verify_token)):

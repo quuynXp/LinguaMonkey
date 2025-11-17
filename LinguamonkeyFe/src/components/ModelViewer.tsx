@@ -50,7 +50,10 @@ async function loadTextureFromDataUri(dataUri: string): Promise<THREE.Texture> {
   const base64 = matches[2];
   const extension = mime.split("/")[1] || "png";
 
-  const fileUri = `${FileSystem.cacheDirectory}temp_texture_${Math.random()
+  // Some versions/typings of expo-file-system may not expose cacheDirectory on the namespace;
+  // cast to any and fall back to documentDirectory or empty string to avoid TS errors.
+  const cacheDir = (FileSystem as any).cacheDirectory ?? (FileSystem as any).documentDirectory ?? "";
+  const fileUri = `${cacheDir}temp_texture_${Math.random()
     .toString(36)
     .substring(2)}.${extension}`;
 
@@ -63,12 +66,12 @@ async function loadTextureFromDataUri(dataUri: string): Promise<THREE.Texture> {
         tex.flipY = false;
         (tex as any).colorSpace = SRGBColorSpace;
         tex.needsUpdate = true;
-        FileSystem.deleteAsync(fileUri).catch(() => {});
+        FileSystem.deleteAsync(fileUri).catch(() => { });
         resolve(tex);
       },
       undefined,
       (err) => {
-        FileSystem.deleteAsync(fileUri).catch(() => {});
+        FileSystem.deleteAsync(fileUri).catch(() => { });
         reject(err);
       }
     );
@@ -79,25 +82,25 @@ function disposeObject(obj: any) {
   if (!obj) return;
   try {
     if (obj.geometry) obj.geometry.dispose();
-  } catch {}
+  } catch { }
   if (obj.material) {
     const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
     mats.forEach((m: any) => {
       try {
         if (m.map) m.map.dispose();
-      } catch {}
+      } catch { }
       try {
         if (m.normalMap) m.normalMap.dispose();
-      } catch {}
+      } catch { }
       try {
         if (m.aoMap) m.aoMap.dispose();
-      } catch {}
+      } catch { }
       try {
         if (m.emissiveMap) m.emissiveMap.dispose();
-      } catch {}
+      } catch { }
       try {
         if (m.dispose) m.dispose();
-      } catch {}
+      } catch { }
     });
   }
 }
@@ -149,11 +152,6 @@ export default function ModelViewer({
   const selectionHelperRef = useRef<THREE.BoxHelper | null>(null);
 
   useEffect(() => {
-    if (typeof (global as any).URL === "undefined") {
-      (global as any).URL = { createObjectURL: () => "data:image/png;base64,", revokeObjectURL: () => {} };
-    } else if (typeof (global as any).URL.revokeObjectURL !== "function") {
-      (global as any).URL.revokeObjectURL = () => {};
-    }
     return () => {
       if (holdTimeoutRef.current) {
         clearTimeout(holdTimeoutRef.current);
@@ -610,9 +608,9 @@ export default function ModelViewer({
               scene.traverse((o: any) => {
                 try {
                   if (o.geometry) o.geometry.dispose();
-                } catch {}
+                } catch { }
               });
-            } catch {}
+            } catch { }
           };
         }}
         {...panResponder.panHandlers}

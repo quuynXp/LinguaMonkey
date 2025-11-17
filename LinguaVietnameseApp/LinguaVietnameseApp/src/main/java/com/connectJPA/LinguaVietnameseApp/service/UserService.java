@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.service;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TeacherApplyRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
@@ -40,4 +41,6 @@ public interface UserService {
     void resetStreakIfNoActivity(UUID id);
     void sendStreakReminder(UUID id);
     LevelInfoResponse getLevelInfo(UUID id);
+
+    void registerFcmToken(NotificationRequest request);
 }

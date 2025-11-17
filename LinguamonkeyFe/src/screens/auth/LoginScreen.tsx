@@ -1,6 +1,6 @@
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Animated, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { showError, showSuccess } from "../../utils/toastHelper";
 import {
@@ -14,7 +14,6 @@ import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 import { isValidEmail } from '../../utils/validation';
 import { gotoTab } from '../../utils/navigationRef';
-import { Image } from 'react-native';
 import PhoneInput from 'react-native-phone-number-input';
 import { createScaledSheet } from '../../utils/scaledStyles';
 
@@ -117,7 +116,7 @@ const LoginScreen = ({ navigation }) => {
       showError(t("fillAllFields"));
       return;
     }
-    
+
     setIsLoading(true);
     try {
       const result = await loginWithEmail(email, password);
@@ -160,11 +159,17 @@ const LoginScreen = ({ navigation }) => {
         showError(t("otpSentFailed"));
       }
     } catch (error: any) {
-      if (error.message === 'PHONE_NOT_FOUND') {
-         showError(t("phoneNotFound"));
-      } else {
-         showError(error.message || t("otpSentFailed"));
+      let errorMessage = t("otpSentFailed"); 
+      if (error && error.message === 'PHONE_NOT_FOUND') {
+        errorMessage = t("phoneNotFound");
+      } else if (error && typeof error.message === 'string' && error.message) {
+        errorMessage = error.message;
+      } else if (error && error.response && error.response.data && typeof error.response.data.message === 'string') {
+        errorMessage = error.response.data.message;
       }
+
+      showError(errorMessage);
+
     } finally {
       setIsLoading(false);
     }
@@ -315,7 +320,7 @@ const LoginScreen = ({ navigation }) => {
             </TouchableOpacity>
           </>
         )}
-        
+
         {/* Sign Up Link */}
         <View style={styles.footer}>
           <Text style={styles.footerText}>{t('dontHaveAccount')} </Text>
@@ -336,7 +341,7 @@ const styles = createScaledSheet({
   header: { marginBottom: 20 },
   title: { fontSize: 28, fontWeight: "bold", color: "#1F2937", textAlign: "center", marginBottom: 8 },
   subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center", marginBottom: 30, lineHeight: 24 },
-  
+
   // Toggle Styles
   toggleContainer: {
     flexDirection: 'row',
@@ -374,7 +379,7 @@ const styles = createScaledSheet({
   inputIcon: { marginRight: 12 },
   textInput: { flex: 1, fontSize: 16, color: "#1F2937", paddingVertical: 12 },
   eyeIcon: { padding: 4 },
-  
+
   // Phone Input Styles
   phoneInputContainer: {
     width: '100%',
@@ -396,7 +401,7 @@ const styles = createScaledSheet({
   loginButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#4F46E5", borderRadius: 12, paddingVertical: 16, gap: 8 },
   loginButtonDisabled: { opacity: 0.7, backgroundColor: '#A5B4FC' },
   loginButtonText: { fontSize: 16, color: "#FFFFFF", fontWeight: "600" },
-  
+
   // Divider
   dividerContainer: {
     flexDirection: 'row',

@@ -24,7 +24,7 @@ public class UserResponse {
     private String avatarUrl;
     private UUID character3dId;
     private UUID badgeId; // (Giả định)
-    private String nativeLanguageId; // (nativeLanguageCode từ entity)
+    private String nativeLanguageCode; // (nativeLanguageCode từ entity)
     private String authProvider; // (Giả định)
     private Country country;
     private int level;

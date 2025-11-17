@@ -7,6 +7,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -17,5 +18,6 @@ public interface UserFcmTokenRepository extends JpaRepository<UserFcmToken, UUID
 
     List<UserFcmToken> findByUserIdAndIsDeletedFalse(UUID userId);
 
+    Optional<UserFcmToken> findByUserIdAndDeviceId(UUID userId, String deviceId);
 
 }

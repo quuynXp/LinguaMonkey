@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
@@ -10,6 +11,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
@@ -38,7 +40,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping
-//    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')") // Dòng này giờ sẽ hoạt động
     public AppApiResponse<Page<UserResponse>> getAllUsers(
             @Parameter(description = "Email filter") @RequestParam(required = false) String email,
             @Parameter(description = "Fullname filter") @RequestParam(required = false) String fullname,
@@ -60,7 +62,8 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/{userId}")
-//    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
+    // === SỬA LỖI VẤN ĐỀ 2: SO SÁNH STRING VỚI STRING ===
+//     @PreAuthorize("hasAuthority('ROLE_ADMIN') or authentication.name.equals(#userId.toString())")
     public AppApiResponse<UserResponse> getUserById(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             Locale locale) {
@@ -93,6 +96,22 @@ public class UserController {
         return AppApiResponse.<Void>builder()
                 .code(200)
                 .message(messageSource.getMessage("user.admire.success", null, locale))
+                .build();
+    }
+
+    @Operation(summary = "Register FCM token", description = "Register or update FCM token for push notifications")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Token registered successfully"),
+            @ApiResponse(responseCode = "400", description = "Invalid request")
+    })
+    @PostMapping("/fcm-token")
+    public AppApiResponse<Void> registerFcmToken(
+            @Valid @RequestBody NotificationRequest request,
+            Locale locale) {
+        userService.registerFcmToken(request);
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message(messageSource.getMessage("fcm.token.registered", null, locale))
                 .build();
     }
 
@@ -152,7 +171,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PutMapping("/{id}")
-//    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
+//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateUser(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @RequestBody UserRequest request,
@@ -185,7 +204,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @DeleteMapping("/{id}")
-//    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
+//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Void> deleteUser(
             @Parameter(description = "User ID") @PathVariable UUID id,
             Locale locale) {
@@ -205,10 +224,10 @@ public class UserController {
     })
     @PatchMapping("/{id}/avatar") // Endpoint không đổi
     public AppApiResponse<UserResponse> updateAvatar( // Đổi tên hàm
-                                                      @Parameter(description = "User ID") @PathVariable UUID id,
-                                                      @Parameter(description = "Temporary file path from /files/upload-temp")
-                                                      @RequestParam String tempPath, // **QUAN TRỌNG: Đổi từ avatarUrl sang tempPath**
-                                                      Locale locale) {
+                                                     @Parameter(description = "User ID") @PathVariable UUID id,
+                                                     @Parameter(description = "Temporary file path from /files/upload-temp")
+                                                     @RequestParam String tempPath, // **QUAN TRỌNG: Đổi từ avatarUrl sang tempPath**
+                                                     Locale locale) {
 
         // Gọi service mới
         UserResponse user = userService.updateUserAvatar(id, tempPath);
@@ -272,20 +291,9 @@ public class UserController {
                 .build();
     }
 
-    @PatchMapping("/{id}/last-active")
-    public AppApiResponse<Void> updateLastActive(
-            @PathVariable UUID id,
-            Locale locale) {
-        userService.updateLastActive(id);
-        return AppApiResponse.<Void>builder()
-                .code(200)
-                .message(messageSource.getMessage("user.last_active.updated", null, locale))
-                .build();
-    }
-
     @Operation(summary = "Get user stats (derived from existing tables)")
     @GetMapping("/{id}/stats")
-//    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
+//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserStatsResponse> getUserStats(
             @PathVariable UUID id,
             Locale locale) {
@@ -305,7 +313,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PatchMapping("/{id}/country")
-//    @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
+//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateCountry(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @Parameter(description = "Country") @RequestParam Country country,

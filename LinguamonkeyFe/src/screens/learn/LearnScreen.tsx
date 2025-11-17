@@ -1,8 +1,7 @@
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect, useMemo } from "react"
 import {
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -14,18 +13,17 @@ import { useTranslation } from "react-i18next"
 import { useUserStore } from "../../stores/UserStore"
 import { useCourses } from "../../hooks/useCourses"
 import { useCertifications } from "../../hooks/useCertifications"
-import useLesson, { useGetLessonsBySkillType }  from "../../hooks/useLessons"  // Assuming default export
+import { useGetLessonsBySkillType } from "../../hooks/useLessons" // Assuming default export
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { UserLearningActivity } from "../../types/api"
-
 
 const LearnScreen = ({ navigation }) => {
   const { t } = useTranslation()
   const { user, isAuthenticated } = useUserStore()
 
   const {
-    usePurchasedCourses,
-    useFreeCourses,
+    useEnrolledCourses,
+    useAllCourses,
     useRecommendedCourses,
     useBilingualVideos,
   } = useCourses()
@@ -34,16 +32,33 @@ const LearnScreen = ({ navigation }) => {
     data: purchasedCoursesData,
     isLoading: purchasedLoading,
     refetch: refetchPurchased,
-  } = usePurchasedCourses(0, 5)
-  const { data: freeCoursesData, isLoading: freeLoading, refetch: refetchFree } = useFreeCourses(0, 5)
+  } = useEnrolledCourses({
+    userId: user?.userId,
+    page: 0,
+    size: 5,
+  })
+
+  const {
+    data: freeCoursesData,
+    isLoading: freeLoading,
+    refetch: refetchFree,
+  } = useAllCourses({
+    type: "FREE",
+    page: 0,
+    size: 5,
+  })
 
   const {
     data: recommendedCourses,
     isLoading: recommendedLoading,
     refetch: refetchRecommended,
-  } = useRecommendedCourses(user?.userId || user?.userId || "", 5)
+  } = useRecommendedCourses(user?.userId, 5) // <-- FIX 2: Bỏ chuỗi rỗng "", chỉ truyền user?.userId
 
-  const { data: videosData, isLoading: videosLoading, refetch: refetchVideos } = useBilingualVideos({
+  const {
+    data: videosData,
+    isLoading: videosLoading,
+    refetch: refetchVideos,
+  } = useBilingualVideos({
     page: 0,
     size: 5,
   })
@@ -55,35 +70,70 @@ const LearnScreen = ({ navigation }) => {
   } = useCertifications().useAvailableCertifications(user?.languages)
 
   const purchasedCourses = useMemo(
-  () => purchasedCoursesData?.data || [],
-  [purchasedCoursesData]
-)
+    () =>
+      purchasedCoursesData?.data.map((enrollment) => ({
+        ...enrollment.course,
+        progress: enrollment.progressPercent,
+        completedLessons: enrollment.completedLessons,
+      })) || [],
+    [purchasedCoursesData]
+  )
 
-const freeCourses = useMemo(
-  () => freeCoursesData?.data || [],
-  [freeCoursesData]
-)
+  const freeCourses = useMemo(
+    () => freeCoursesData?.data || [],
+    [freeCoursesData]
+  )
   const videos = useMemo(
-  () => videosData?.data || [],
-  [videosData]
-)
+    () => videosData?.data || [],
+    [videosData]
+  )
 
+  const {
+    data: listeningLessonsData,
+    isLoading: listeningLessonsLoading,
+  } = useGetLessonsBySkillType("LISTENING", { page: 0, size: 3 })
+  const {
+    data: speakingLessonsData,
+    isLoading: speakingLessonsLoading,
+  } = useGetLessonsBySkillType("SPEAKING", { page: 0, size: 3 })
+  const {
+    data: readingLessonsData,
+    isLoading: readingLessonsLoading,
+  } = useGetLessonsBySkillType("READING", { page: 0, size: 3 })
+  const {
+    data: writingLessonsData,
+    isLoading: writingLessonsLoading,
+  } = useGetLessonsBySkillType("WRITING", { page: 0, size: 3 })
 
-  const { data: listeningLessonsData, isLoading: listeningLessonsLoading } = useGetLessonsBySkillType("LISTENING", { page: 0, size: 3 })
-  const { data: speakingLessonsData, isLoading: speakingLessonsLoading } = useGetLessonsBySkillType("SPEAKING", { page: 0, size: 3 })
-  const { data: readingLessonsData, isLoading: readingLessonsLoading } = useGetLessonsBySkillType("READING", { page: 0, size: 3 })
-  const { data: writingLessonsData, isLoading: writingLessonsLoading } = useGetLessonsBySkillType("WRITING", { page: 0, size: 3 })
+  const listeningLessons = useMemo(
+    () => listeningLessonsData?.data || [],
+    [listeningLessonsData]
+  )
+  const speakingLessons = useMemo(
+    () => speakingLessonsData?.data || [],
+    [speakingLessonsData]
+  )
+  const readingLessons = useMemo(
+    () => readingLessonsData?.data || [],
+    [readingLessonsData]
+  )
+  const writingLessons = useMemo(
+    () => writingLessonsData?.data || [],
+    [writingLessonsData]
+  )
 
-  const listeningLessons = useMemo(() => listeningLessonsData?.data || [], [listeningLessonsData])
-  const speakingLessons = useMemo(() => speakingLessonsData?.data || [], [speakingLessonsData])
-  const readingLessons = useMemo(() => readingLessonsData?.data || [], [readingLessonsData])
-  const writingLessons = useMemo(() => writingLessonsData?.data || [], [writingLessonsData])
-
-  
-  const isLoading = purchasedLoading || freeLoading || recommendedLoading || videosLoading || certificationsLoading ||
-    listeningLessonsLoading || speakingLessonsLoading || readingLessonsLoading || writingLessonsLoading
+  const isLoading =
+    purchasedLoading ||
+    freeLoading ||
+    recommendedLoading ||
+    videosLoading ||
+    certificationsLoading ||
+    listeningLessonsLoading ||
+    speakingLessonsLoading ||
+    readingLessonsLoading ||
+    writingLessonsLoading
   const isRefreshing = false
-  
+
   useEffect(() => {
     console.log("LearnScreen - User:", user)
   }, [user, purchasedCourses, freeCourses, recommendedCourses, certifications])
@@ -101,7 +151,10 @@ const freeCourses = useMemo(
       ...course,
       courseId: course.courseId || course.id,
     }
-    navigation.navigate("CourseDetailsScreen", { course: safeCourse, isPurchased })
+    navigation.navigate("CourseDetailsScreen", {
+      course: safeCourse,
+      isPurchased,
+    })
   }
 
   // video navigation: provide mode 'original' or 'bilingual'
@@ -111,7 +164,8 @@ const freeCourses = useMemo(
 
   const handleViewAllCourses = () => navigation.navigate("StudentCoursesScreen")
   const handleViewAllVideos = () => navigation.navigate("BilingualVideoScreen")
-  const handleViewAllCertifications = () => navigation.navigate("CertificationLearning")
+  const handleViewAllCertifications = () =>
+    navigation.navigate("CertificationLearning")
 
   const handleViewAllLessons = (skillType) => {
     switch (skillType) {
@@ -136,27 +190,44 @@ const freeCourses = useMemo(
     navigation.navigate(screenName)
   }
 
-  // helper to map fields safely
-  const mapCourseFields = (course) => ({
-    id: course.courseId || course.id,
-    title: course.title || course.name,
-    image: course.thumbnailUrl || course.image || null,
-    instructor: course.creatorName || course.instructor || "",
-    isFree: course.type === "FREE" || course.isFree || false,
-    price: course.price,
-    originalPrice: course.originalPrice,
-    rating: course.rating ?? 0,
-    students: course.students ?? 0,
-    level: course.difficultyLevel || course.level || "",
-    duration: course.duration || "",
-    progress: course.progress ?? course.percentageCompleted ?? 0,
-    completedLessons: course.completedLessons ?? 0,
-    totalLessons: course.totalLessons ?? 0,
-    discount: course.discount,
-  })
+  //
+  // =================================================================
+  // === FIX 1: SỬA LỖI MAP DỮ LIỆU SAI VỊ TRÍ (latestPublicVersion) ===
+  // =================================================================
+  //
+  const mapCourseFields = (course) => {
+    const version = course.latestPublicVersion
+    return {
+      id: course.courseId || course.id,
+      title: course.title || course.name,
+      // Lấy thumbnail từ version
+      image: version?.thumbnailUrl || course.thumbnailUrl || course.image || null,
+      instructor: course.creatorName || course.instructor || "",
+      isFree:
+        course.type === "FREE" ||
+        course.isFree ||
+        (course.price !== undefined && course.price === 0),
+      price: course.price,
+      originalPrice: course.originalPrice,
+      rating: course.rating ?? 0,
+      students: course.students ?? 0,
+      level: course.difficultyLevel || course.level || "",
+      // Duration có thể cần BE tổng hợp, tạm thời giữ logic cũ
+      duration: course.duration || "",
+      progress: course.progress ?? course.percentageCompleted ?? 0,
+      completedLessons: course.completedLessons ?? 0,
+      // Lấy tổng số bài học từ version
+      totalLessons: (version?.lessons?.length || course.totalLessons) ?? 0,
+      discount: course.discount,
+    }
+  }
+  // =================================================================
+  // === KẾT THÚC FIX 1 ===
+  // =================================================================
+  //
 
   const renderCourseCard = (rawCourse, isPurchased = false) => {
-    const course = mapCourseFields(rawCourse)
+    const course = mapCourseFields(rawCourse) // Hàm này giờ đã đúng
     return (
       <TouchableOpacity
         key={course.id}
@@ -166,7 +237,12 @@ const freeCourses = useMemo(
         {course.image ? (
           <Image source={{ uri: course.image }} style={styles.courseImage} />
         ) : (
-          <View style={[styles.courseImage, { justifyContent: "center", alignItems: "center" }]}>
+          <View
+            style={[
+              styles.courseImage,
+              { justifyContent: "center", alignItems: "center" },
+            ]}
+          >
             <Icon name="menu-book" size={40} color="#9CA3AF" />
           </View>
         )}
@@ -192,7 +268,9 @@ const freeCourses = useMemo(
             <View style={styles.ratingContainer}>
               <Icon name="star" size={14} color="#F59E0B" />
               <Text style={styles.ratingText}>{course.rating}</Text>
-              <Text style={styles.studentsText}>({(course.students || 0).toLocaleString()})</Text>
+              <Text style={styles.studentsText}>
+                ({(course.students || 0).toLocaleString()})
+              </Text>
             </View>
             <View style={styles.courseMeta}>
               <Text style={styles.levelText}>{course.level}</Text>
@@ -207,17 +285,26 @@ const freeCourses = useMemo(
                   {t("courses.progress")}: {course.progress}%
                 </Text>
                 <Text style={styles.lessonsText}>
-                  {course.completedLessons}/{course.totalLessons} {t("courses.lessons")}
+                  {course.completedLessons}/{course.totalLessons}{" "}
+                  {t("courses.lessons")}
                 </Text>
               </View>
               <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
+                <View
+                  style={[styles.progressFill, { width: `${course.progress}%` }]}
+                />
               </View>
             </View>
           ) : (
             <View style={styles.priceSection}>
-              {course.originalPrice && <Text style={styles.originalPrice}>${course.originalPrice}</Text>}
-              <Text style={styles.price}>{course.isFree ? t("courses.free") : `$${course.price ?? 0}`}</Text>
+              {course.originalPrice && (
+                <Text style={styles.originalPrice}>
+                  ${course.originalPrice}
+                </Text>
+              )}
+              <Text style={styles.price}>
+                {course.isFree ? t("courses.free") : `$${course.price ?? 0}`}
+              </Text>
             </View>
           )}
         </View>
@@ -238,13 +325,24 @@ const freeCourses = useMemo(
     }
 
     return (
-      <TouchableOpacity key={video.id} style={styles.videoCard} onPress={() => handleVideoPress(rawVideo, "bilingual")}>
+      <TouchableOpacity
+        key={video.id}
+        style={styles.videoCard}
+        onPress={() => handleVideoPress(rawVideo, "bilingual")}
+      >
         <View style={styles.videoThumbnail}>
           {video.thumbnail ? (
-            <Image source={{ uri: video.thumbnail }} style={styles.thumbnailImage} />
+            <Image
+              source={{ uri: video.thumbnail }}
+              style={styles.thumbnailImage}
+            />
           ) : (
             <View style={styles.thumbnailPlaceholder}>
-              <Icon name="play-circle-filled" size={48} color="rgba(255,255,255,0.9)" />
+              <Icon
+                name="play-circle-filled"
+                size={48}
+                color="rgba(255,255,255,0.9)"
+              />
             </View>
           )}
 
@@ -253,7 +351,15 @@ const freeCourses = useMemo(
           </View>
 
           {/* small control: Original vs Bilingual */}
-          <View style={{ position: "absolute", top: 8, left: 8, flexDirection: "row", gap: 6 }}>
+          <View
+            style={{
+              position: "absolute",
+              top: 8,
+              left: 8,
+              flexDirection: "row",
+              gap: 6,
+            }}
+          >
             <TouchableOpacity
               onPress={() => handleVideoPress(rawVideo, "original")}
               style={{
@@ -264,7 +370,9 @@ const freeCourses = useMemo(
                 marginRight: 6,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12 }}>{t("videos.original")}</Text>
+              <Text style={{ color: "#fff", fontSize: 12 }}>
+                {t("videos.original")}
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => handleVideoPress(rawVideo, "bilingual")}
@@ -275,13 +383,17 @@ const freeCourses = useMemo(
                 borderRadius: 6,
               }}
             >
-              <Text style={{ color: "#fff", fontSize: 12 }}>{t("videos.bilingual")}</Text>
+              <Text style={{ color: "#fff", fontSize: 12 }}>
+                {t("videos.bilingual")}
+              </Text>
             </TouchableOpacity>
           </View>
 
           {video.progress && video.progress > 0 && (
             <View style={styles.videoProgressIndicator}>
-              <View style={[styles.videoProgressBar, { width: `${video.progress}%` }]} />
+              <View
+                style={[styles.videoProgressBar, { width: `${video.progress}%` }]}
+              />
             </View>
           )}
         </View>
@@ -292,8 +404,15 @@ const freeCourses = useMemo(
             {video.description}
           </Text>
           <View style={styles.videoMeta}>
-            <View style={[styles.levelBadge, { backgroundColor: getLevelColor(video.level) }]}>
-              <Text style={styles.levelText}>{t(`videos.levels.${video.level}`) || video.level}</Text>
+            <View
+              style={[
+                styles.levelBadge,
+                { backgroundColor: getLevelColor(video.level) },
+              ]}
+            >
+              <Text style={styles.levelText}>
+                {t(`videos.levels.${video.level}`) || video.level}
+              </Text>
             </View>
             <Text style={styles.categoryText}>{video.category}</Text>
           </View>
@@ -326,7 +445,9 @@ const freeCourses = useMemo(
           <Icon name="book" size={40} color="#9CA3AF" />
         </View>
         <View style={styles.lessonContent}>
-          <Text style={styles.lessonTitle}>{lesson.title || lesson.lessonName}</Text>
+          <Text style={styles.lessonTitle}>
+            {lesson.title || lesson.lessonName}
+          </Text>
           <View style={styles.lessonStats}>
             <View style={styles.expContainer}>
               <Icon name="star" size={14} color="#F59E0B" />
@@ -340,15 +461,37 @@ const freeCourses = useMemo(
   }
 
   const learningTools = [
-    { name: t('learn.interactiveQuiz'), icon: 'quiz', screen: 'InteractiveQuiz' },
-    { name: t('learn.vocabularyFlashcards'), icon: 'style', screen: 'VocabularyFlashcards' },
-    { name: t('learn.ipaPronunciation'), icon: 'record-voice-over', screen: 'IPAScreen' },
-    { name: t('learn.quizLearning'), icon: 'question-answer', screen: 'QuizLearning' },
-    { name: t('learn.notes'), icon: 'notes', screen: 'NotesScreen' },
+    {
+      name: t("learn.interactiveQuiz"),
+      icon: "quiz",
+      screen: "InteractiveQuiz",
+    },
+    {
+      name: t("learn.vocabularyFlashcards"),
+      icon: "style",
+      screen: "VocabularyFlashcards",
+    },
+    {
+      name: t("learn.ipaPronunciation"),
+      icon: "record-voice-over",
+      screen: "IPAScreen",
+    },
+    {
+      name: t("learn.quizLearning"),
+      icon: "question-answer",
+      screen: "QuizLearning",
+    },
+    { name: t("learn.notes"), icon: "notes", screen: "NotesScreen" },
   ]
 
+  //
+  // =================================================================
+  // === FIX 4: SỬA LỖI KEY PROP (dùng tool.screen thay vì tool.name) ===
+  // =================================================================
+  //
   const renderLearningToolCard = (tool) => (
     <TouchableOpacity
+      key={tool.screen} // <-- FIX: Dùng 'screen' làm key vì nó là duy nhất
       style={styles.toolCard}
       onPress={() => handleNavigation(tool.screen)}
     >
@@ -358,6 +501,10 @@ const freeCourses = useMemo(
       <Text style={styles.toolName}>{tool.name}</Text>
     </TouchableOpacity>
   )
+  // =================================================================
+  // === KẾT THÚC FIX 4 ===
+  // =================================================================
+  //
 
   if (isLoading && !purchasedCourses.length && !freeCourses.length) {
     return (
@@ -373,7 +520,12 @@ const freeCourses = useMemo(
       style={styles.container}
       showsVerticalScrollIndicator={false}
       refreshControl={
-        <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} colors={["#4F46E5"]} tintColor="#4F46E5" />
+        <RefreshControl
+          refreshing={isRefreshing}
+          onRefresh={handleRefresh}
+          colors={["#4F46E5"]}
+          tintColor="#4F46E5"
+        />
       }
     >
       <View style={styles.header}>
@@ -383,7 +535,9 @@ const freeCourses = useMemo(
       {isAuthenticated && user && (
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeText}>
-            {t("learn.welcome", { name: user.fullname || user.nickname || t("learn.defaultName") })}
+            {t("learn.welcome", {
+              name: user.fullname || user.nickname || t("learn.defaultName"),
+            })}
           </Text>
           <View style={styles.userStats}>
             <View style={styles.statItem}>
@@ -405,12 +559,18 @@ const freeCourses = useMemo(
       {certifications && certifications.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t("learn.certifications")}</Text>
+            <Text style={styles.sectionTitle}>
+              {t("learn.certifications")}
+            </Text>
             <TouchableOpacity onPress={handleViewAllCertifications}>
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.horizontalScroll}
+          >
             {certifications.slice(0, 5).map((c) => (
               <View key={c.id} style={styles.certificationCard}>
                 <Text>{c.name}</Text>
@@ -423,12 +583,18 @@ const freeCourses = useMemo(
       {videos.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t("learn.bilingualVideos")}</Text>
+            <Text style={styles.sectionTitle}>
+              {t("learn.bilingualVideos")}
+            </Text>
             <TouchableOpacity onPress={handleViewAllVideos}>
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.horizontalScroll}
+          >
             {videos.map(renderVideoCard)}
           </ScrollView>
         </View>
@@ -437,24 +603,36 @@ const freeCourses = useMemo(
       {/* New Skills Sections */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t("learn.listeningLessons")}</Text>
+          <Text style={styles.sectionTitle}>
+            {t("learn.listeningLessons")}
+          </Text>
           <TouchableOpacity onPress={() => handleViewAllLessons("LISTENING")}>
             <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.horizontalScroll}
+        >
           {listeningLessons.map(renderLessonCard)}
         </ScrollView>
       </View>
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t("learn.speakingLessons")}</Text>
+          <Text style={styles.sectionTitle}>
+            {t("learn.speakingLessons")}
+          </Text>
           <TouchableOpacity onPress={() => handleViewAllLessons("SPEAKING")}>
             <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.horizontalScroll}
+        >
           {speakingLessons.map(renderLessonCard)}
         </ScrollView>
       </View>
@@ -466,7 +644,11 @@ const freeCourses = useMemo(
             <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.horizontalScroll}
+        >
           {readingLessons.map(renderLessonCard)}
         </ScrollView>
       </View>
@@ -478,7 +660,11 @@ const freeCourses = useMemo(
             <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
           </TouchableOpacity>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.horizontalScroll}
+        >
           {writingLessons.map(renderLessonCard)}
         </ScrollView>
       </View>
@@ -501,7 +687,11 @@ const freeCourses = useMemo(
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.horizontalScroll}
+          >
             {purchasedCourses.map((c) => renderCourseCard(c, true))}
           </ScrollView>
         </View>
@@ -515,7 +705,11 @@ const freeCourses = useMemo(
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.horizontalScroll}
+          >
             {freeCourses.map((c) => renderCourseCard(c, false))}
           </ScrollView>
         </View>
@@ -524,33 +718,50 @@ const freeCourses = useMemo(
       {recommendedCourses && recommendedCourses.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
+            <Text style={styles.sectionTitle}>
+              {t("learn.recommendedCourses")}
+            </Text>
             <TouchableOpacity onPress={handleViewAllCourses}>
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          {recommendedCourses.map((c) => renderCourseCard(c, false))}
+          {/* Sửa: Lỗi này không phải horizontal, nó là vertical list */}
+          <View style={{ gap: 16 }}>
+            {recommendedCourses.map((c) => renderCourseCard(c, false))}
+          </View>
         </View>
       )}
 
       <View style={styles.section}>
-        <TouchableOpacity style={styles.viewAllCoursesButton} onPress={handleViewAllCourses}>
+        <TouchableOpacity
+          style={styles.viewAllCoursesButton}
+          onPress={handleViewAllCourses}
+        >
           <Icon name="school" size={24} color="#FFFFFF" />
-          <Text style={styles.viewAllCoursesText}>{t("learn.viewAllCourses")}</Text>
+          <Text style={styles.viewAllCoursesText}>
+            {t("learn.viewAllCourses")}
+          </Text>
           <Icon name="arrow-forward" size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
-      {!isLoading && purchasedCourses.length === 0 && freeCourses.length === 0 && (
-        <View style={styles.emptyState}>
-          <Icon name="school" size={64} color="#9CA3AF" />
-          <Text style={styles.emptyTitle}>{t("learn.noContent")}</Text>
-          <Text style={styles.emptyMessage}>{t("learn.noContentMessage")}</Text>
-        </View>
-      )}
+      {!isLoading &&
+        purchasedCourses.length === 0 &&
+        freeCourses.length === 0 && (
+          <View style={styles.emptyState}>
+            <Icon name="school" size={64} color="#9CA3AF" />
+            <Text style={styles.emptyTitle}>{t("learn.noContent")}</Text>
+            <Text style={styles.emptyMessage}>
+              {t("learn.noContentMessage")}
+            </Text>
+          </View>
+        )}
     </ScrollView>
   )
 }
+
+// ... (phần styles giữ nguyên, không cần thay đổi)
+// ... (phần styles giữ nguyên, không cần thay đổi)
 
 const styles = createScaledSheet({
   container: {
@@ -695,7 +906,8 @@ const styles = createScaledSheet({
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     marginRight: 16,
-    width: 280,
+    // Sửa: Recommended courses không nên set width
+    // width: 280, 
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,

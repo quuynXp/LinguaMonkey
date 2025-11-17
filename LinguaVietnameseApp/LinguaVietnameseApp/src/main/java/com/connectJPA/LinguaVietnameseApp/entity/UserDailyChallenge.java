@@ -12,6 +12,9 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 @Entity
@@ -50,6 +53,37 @@ public class UserDailyChallenge extends BaseEntity {
     // timestamps
     private Instant assignedAt;
     private Instant completedAt;
+
+    public UserDailyChallenge(UUID userId, UUID id, LocalDate today, int i, int baseExp, boolean b, int rewardCoins, int i1) {
+        OffsetDateTime assignedDateTime = (today != null) ? today.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
+
+        int stack = i;
+
+        UUID challengeId = id;
+
+        this.id = new UserDailyChallengeId(userId, challengeId, assignedDateTime, stack);
+
+        User u = new User();
+        u.setUserId(userId);
+        this.user = u;
+
+        DailyChallenge c = new DailyChallenge();
+        c.setId(challengeId);
+        this.challenge = c;
+
+        this.expReward = baseExp;       // 'baseExp' -> expReward
+        this.rewardCoins = rewardCoins;   // 'rewardCoins' -> rewardCoins
+        this.progress = i1;             // 'i1' -> progress
+        this.isCompleted = b;             // 'b' -> isCompleted
+
+        this.assignedAt = (assignedDateTime != null) ? assignedDateTime.toInstant() : null;
+
+        if (this.isCompleted) {
+            this.completedAt = Instant.now();
+        } else {
+            this.completedAt = null;
+        }
+    }
 
     // convenience JSON props so FE receives simple ids
     @JsonProperty("userId")

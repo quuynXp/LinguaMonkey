@@ -96,7 +96,13 @@ public class LessonServiceImpl implements LessonService {
                     predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
                 }
                 if (courseId != null) {
-                    predicates.add(cb.equal(root.get("courseId"), courseId));
+                    Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions"); 
+                    
+                    Join<CourseVersionLesson, CourseVersion> cvJoin = cvlJoin.join("courseVersion"); 
+                    
+                    Join<CourseVersion, Course> cJoin = cvJoin.join("course"); 
+                    
+                    predicates.add(cb.equal(cJoin.get("courseId"), courseId));
                 }
                 if (seriesId != null) {
                     predicates.add(cb.equal(root.get("lessonSeriesId"), seriesId));

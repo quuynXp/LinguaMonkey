@@ -6,6 +6,7 @@ import io.lettuce.core.dynamic.annotation.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 
 import java.time.OffsetDateTime;
@@ -24,6 +25,10 @@ public interface CoupleRepository extends JpaRepository<Couple, UUID> {
 
     @Query("select c from Couple c where c.status = :status and c.exploringExpiresAt < :now")
     List<Couple> findExploringExpired(@Param("status") CoupleStatus status, @Param("now") OffsetDateTime now);
+
+    @Modifying
+    @Query("UPDATE Couple c SET c.status = 'expired' WHERE c.status = 'exploring' AND c.exploringExpiresAt < :now")
+    int expireExploringCouples(@Param("now") OffsetDateTime now);
 
     Page<Couple> findAllByUser1_UserIdOrUser2_UserIdAndStatusAndIsDeletedFalse(UUID userId1, UUID userId2, String status, Pageable pageable);
 }

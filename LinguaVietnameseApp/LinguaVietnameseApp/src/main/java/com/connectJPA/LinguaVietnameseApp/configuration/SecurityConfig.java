@@ -12,10 +12,8 @@ import org.springframework.security.config.annotation.web.configurers.AbstractHt
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
-
-import javax.crypto.spec.SecretKeySpec;
-import java.nio.charset.StandardCharsets;
 
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
@@ -26,12 +24,9 @@ import java.util.Base64;
 
 @Configuration
 @EnableWebSecurity
-@EnableMethodSecurity
+@EnableMethodSecurity // Quan trọng: Phải có @EnableMethodSecurity để @PreAuthorize hoạt động
 @Slf4j
 public class SecurityConfig {
-
-//    @Value("${jwt.signer-key}")
-//    private String signerKey;
 
     @Value("classpath:public_key.pem")
     Resource publicKeyResource;
@@ -44,7 +39,7 @@ public class SecurityConfig {
                         .requestMatchers(
                                 "/api/v1/auth/**",
                                 "/api/swagger", "/api/swagger/**", "/swagger-ui/**", "/v3/api-docs/**",
-                                "/api/v1/users", "/api/v1/users/check-email",
+                                "/api/v1/users/check-email",
                                 "/api/v1/interests", "/api/v1/character3ds", "/api/v1/languages",
                                 "/api/v1/badge", "/api/v1/certificates"
                         ).permitAll()
@@ -53,7 +48,7 @@ public class SecurityConfig {
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt
                                 .decoder(jwtDecoder())
-                                .jwtAuthenticationConverter(jwtAuthenticationConverter())
+                                .jwtAuthenticationConverter(jwtAuthenticationConverter()) // <-- Áp dụng converter đã sửa
                         )
                 );
 
@@ -71,22 +66,33 @@ public class SecurityConfig {
         }
     }
 
-    // Thêm hàm helper để đọc public key (copy từ AuthenticationServiceImpl)
     private RSAPublicKey getPublicKey() throws Exception {
-        String key = new String(publicKeyResource.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        key = key.replaceAll("-----BEGIN (.*)-----", "")
-                .replaceAll("-----END (.*)-----", "")
-                .replaceAll("\\s", "");
-        byte[] keyBytes = Base64.getDecoder().decode(key);
-        X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
-        KeyFactory kf = KeyFactory.getInstance("RSA");
-        return (RSAPublicKey) kf.generatePublic(spec);
+        try (InputStream is = publicKeyResource.getInputStream()) {
+            String key = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            key = key.replaceAll("-----BEGIN (.*)-----", "")
+                    .replaceAll("-----END (.*)-----", "")
+                    .replaceAll("\\s", "");
+            byte[] keyBytes = Base64.getDecoder().decode(key);
+            X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
+            KeyFactory kf = KeyFactory.getInstance("RSA");
+            return (RSAPublicKey) kf.generatePublic(spec);
+        }
     }
 
     @Bean
     public JwtAuthenticationConverter jwtAuthenticationConverter() {
+        JwtGrantedAuthoritiesConverter grantedAuthoritiesConverter = new JwtGrantedAuthoritiesConverter();
+        
+        grantedAuthoritiesConverter.setAuthoritiesClaimName("scope");
+        
+        grantedAuthoritiesConverter.setAuthorityPrefix("");
+
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
+        
         converter.setPrincipalClaimName("sub");
+        
+        converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
+
         return converter;
     }
 }

@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/search")
@@ -19,12 +20,22 @@ public class SearchController {
     private final LessonSearchService lessonSearchService;
     private final NotificationSearchService notificationSearchService;
     private final UserMemorizationSearchService userMemorizationSearchService;
+    private final ChatMessageSearchService chatMessageSearchService;
 
     @GetMapping("/users")
     public Page<User> searchUsers(@RequestParam String keyword,
                                   @RequestParam(defaultValue = "0") int page,
                                   @RequestParam(defaultValue = "10") int size) {
         return userSearchService.searchUsers(keyword, page, size);
+    }
+
+    @GetMapping("/messages")
+    public Page<ChatMessage> searchMessages(
+            @RequestParam String keyword,
+            @RequestParam(required = false) UUID roomId, // Tùy chọn: lọc theo phòng
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return chatMessageSearchService.searchMessages(keyword, roomId, page, size);
     }
 
     @GetMapping("/courses")

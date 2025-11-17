@@ -13,6 +13,7 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -25,6 +26,7 @@ import java.util.UUID;
 @RequestMapping("/api/v1/tests")
 @Tag(name = "Proficiency Tests", description = "APIs for AI-generated proficiency tests")
 @RequiredArgsConstructor
+@Slf4j
 public class TestController {
 
     private final TestService testService;
@@ -54,7 +56,6 @@ public class TestController {
             @RequestHeader("Authorization") String authorizationHeader,
             Locale locale) {
 
-        // === SỬA ĐỔI: Lấy userId từ SecurityUtil ===
         UUID userId = securityUtil.getCurrentUserId();
 
         try {
@@ -69,8 +70,21 @@ public class TestController {
         } catch (AppException e) {
             return AppApiResponse.<TestSessionResponse>builder()
                     .code(e.getErrorCode().getStatusCode().value())
-                    .message(e.getErrorCode().getMessage()) // Lấy message trực tiếp từ ErrorCode
+                    .message(e.getErrorCode().getMessage()) 
                     .build();
+        } catch (java.util.concurrent.CompletionException e) { // <-- THÊM KHỐI NÀY
+            if (e.getCause() instanceof AppException appEx) {
+                return AppApiResponse.<TestSessionResponse>builder()
+                        .code(appEx.getErrorCode().getStatusCode().value())
+                        .message(appEx.getErrorCode().getMessage())
+                        .build();
+            } else {
+                log.error("Unhandled completion exception: {}", e.getMessage(), e);
+                return AppApiResponse.<TestSessionResponse>builder()
+                        .code(500)
+                        .message("Unexpected error during test generation: " + e.getMessage())
+                        .build();
+            }
         }
     }
 

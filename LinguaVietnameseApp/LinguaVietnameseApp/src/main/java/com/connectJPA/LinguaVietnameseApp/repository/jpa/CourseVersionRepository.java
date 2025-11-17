@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -28,6 +30,8 @@ public interface CourseVersionRepository extends JpaRepository<CourseVersion, UU
             "AND cv.status = 'PUBLIC' " +
             "ORDER BY cv.versionNumber DESC")
     Optional<CourseVersion> findLatestPublicVersionByCourseId(@Param("courseId") UUID courseId);
+
+    List<CourseVersion> findByStatusAndPublishedAtBeforeAndIsDeletedFalse(String status, OffsetDateTime now);
 
     boolean existsByCourse_CourseIdAndStatus(UUID courseId, VersionStatus status);
 }

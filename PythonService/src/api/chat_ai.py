@@ -1,4 +1,3 @@
-# src/api/chat_ai.py
 import os
 import logging
 from dotenv import load_dotenv
@@ -13,10 +12,10 @@ MODEL_NAME = "gemini-1.5-flash"
 
 
 async def chat_with_ai(
-    message: str,
-    history: list[dict],
-    language: str,
-    user_profile: dict | None = None,
+        message: str,
+        history: list[dict],
+        language: str,
+        user_profile: dict | None = None,
 ) -> tuple[str, str]:
     """
     message: tin nhắn hiện tại từ user
@@ -54,6 +53,7 @@ async def chat_with_ai(
         for h in history:
             messages.append({"role": h["role"], "content": h["content"]})
 
+        # **LOGIC SỬA: Thêm tin nhắn của user SAU vòng lặp**
         messages.append({"role": "user", "content": message})
 
         # Gọi API async
@@ -69,3 +69,51 @@ async def chat_with_ai(
     except Exception as e:
         logging.error(f"Gemini chat error: {str(e)}")
         return "", str(e)
+
+
+async def chat_with_ai_stream(
+        message: str,
+        history: list[dict],
+        user_profile: dict | None = None,
+):
+    try:
+        system_instruction = (
+            "You are a friendly and helpful language learning assistant "
+            "for the 'MonkeyLingua' app."
+        )
+
+        if user_profile:
+            profile_summary = f"User ID: {user_profile.get('user_id')}. "
+            if user_profile.get("recent_messages_summary"):
+                profile_summary += (
+                    "Their recent messages were about: "
+                    f"{user_profile.get('recent_messages_summary')}. "
+                )
+
+            system_instruction += (
+                "\n\n--User Context (Use this to personalize your response)\n"
+                f"{profile_summary}\n"
+                "Tailor your explanations and examples to this user.\n"
+                "----------------------------------------------------------"
+            )
+
+        messages = [{"role": "system", "content": system_instruction}]
+        for h in history:
+            messages.append({"role": h["role"], "content": h["content"]})
+
+        messages.append({"role": "user", "content": message})
+
+        # Gọi API streaming
+        model = genai.GenerativeModel(MODEL_NAME)
+        response_stream = await model.generate_content_async(
+            messages,
+            stream=True
+        )
+
+        async for chunk in response_stream:
+            if chunk.parts:
+                yield chunk.parts[0].text
+
+    except Exception as e:
+        logging.error(f"Gemini streaming chat error: {str(e)}")
+        yield f"Error: {str(e)}"

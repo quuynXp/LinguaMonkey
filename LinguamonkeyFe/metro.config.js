@@ -17,9 +17,8 @@ module.exports = (async () => {
     ]),
   ];
 
-  // Nếu bạn dùng SVG, sử dụng transformer riêng cho SVG (không ghi đè toàn bộ transformer mặc định)
-  const svgTransformer = require.resolve("react-native-svg-transformer");
-  config.transformer.babelTransformerPath = svgTransformer;
+  // const svgTransformer = require.resolve("react-native-svg-transformer");
+  // config.transformer.babelTransformerPath = svgTransformer;
 
   config.resolver.assetExts.push("env");
   config.resolver.sourceExts.push("env");

@@ -32,10 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -302,7 +299,7 @@ public class CourseServiceImpl implements CourseService {
     }
 
     private void sendLearnerUpdateNotification(Course course, CourseVersion version, String content) {
-        List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByCourseIdAndIsDeletedFalse(course.getCourseId());
+        List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndIsDeletedFalse(course.getCourseId());
         for (CourseEnrollment enrollment : enrollments) {
             // Chỉ thông báo nếu họ *không* ở version mới nhất
             if (enrollment.getCourseVersion().getVersionId() != null && !enrollment.getCourseVersion().getVersionId().equals(version.getVersionId())) {
@@ -340,8 +337,17 @@ public class CourseServiceImpl implements CourseService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        List<UUID> enrolledCourseIds = courseEnrollmentRepository.findByUserId(userId)
-                .stream().map(CourseEnrollment::getCourseId).toList();
+        List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId);
+
+        List<UUID> enrolledCourseIds = enrollments.stream()
+                .map(enrollment -> {
+                    if (enrollment.getCourseVersion() != null && enrollment.getCourseVersion().getCourse() != null) {
+                        return enrollment.getCourseVersion().getCourse().getCourseId();
+                    }
+                    return null; // An toàn nếu data bị null
+                })
+                .filter(Objects::nonNull) // Lọc bỏ các enrollment có thể bị lỗi data
+                .collect(Collectors.toList());
 
         List<Course> recommended = courseRepository.findRecommendedCourses(
                 user.getProficiency(),
@@ -398,8 +404,10 @@ public class CourseServiceImpl implements CourseService {
     public Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable) {
         Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId, pageable);
         return enrollments.map(enrollment -> {
-            Course course = courseRepository.findById(enrollment.getCourseId())
-                    .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
+            Course course = enrollment.getCourseVersion().getCourse(); 
+            if (course == null) {
+                throw new AppException(ErrorCode.COURSE_NOT_FOUND); 
+            }
             return courseMapper.toResponse(course);
         });
     }

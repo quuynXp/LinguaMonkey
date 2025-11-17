@@ -9,17 +9,19 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  StyleSheet, // Import StyleSheet
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
-
 import { useToast } from "../../hooks/useToast";
 import instance from "../../api/axiosInstance";
 import { useChatStore } from "../../stores/ChatStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { useUserStore } from "../../stores/UserStore"; // Giữ lại useUserStore
+import { useUserStore } from "../../stores/UserStore";
+import { RoomResponse } from "../../types/api";
+import { queryClient } from "../../services/queryClient";
 
 type AiMessage = {
   id: string;
@@ -30,7 +32,7 @@ type AiMessage = {
 
 const ChatAIScreen = () => {
   const { t, i18n } = useTranslation();
-  const { user } = useUserStore(); 
+  const { user } = useUserStore();
   const { showToast } = useToast();
   const navigation = useNavigation();
   const scrollViewRef = useRef<FlatList>(null);
@@ -44,9 +46,32 @@ const ChatAIScreen = () => {
   // --- STATE TỪ ZUSTAND STORE ---
   const aiHistory = useChatStore(s => s.aiChatHistory);
   const isAiStreaming = useChatStore(s => s.isAiStreaming);
-
   const sendAiMessage = useChatStore(s => s.sendAiMessage);
 
+  useEffect(() => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  }, [aiHistory.length, aiHistory[aiHistory.length - 1]?.content]);
+
+  const {
+    data: aiRoomData,
+    isLoading: isLoadingAiRoom,
+    error: aiRoomError
+  } = useQuery<RoomResponse>({
+    queryKey: ['aiChatRoom', user?.userId],
+    queryFn: async () => {
+      const response = await instance.get(`/api/v1/rooms/ai-chat-room`);
+      return response.data.result;
+    },
+    enabled: !!user?.userId,
+    retry: 3, // ✅ Retry 3 lần nếu fail
+    staleTime: Infinity, // ✅ Cache mãi mãi vì room ID không đổi
+  });
+
+  const aiChatRoomId = aiRoomData?.roomId;
+
+  // Loading / error UI for aiRoom is handled later in the component to ensure hooks are called in a stable order.
+
+  // --- API DỊCH ---
   const { mutate: translateMutate, isPending: isTranslating } = useMutation({
     mutationFn: async ({ text, targetLanguage, messageId }: { text: string, targetLanguage: string, messageId: string }) => {
       const response = await instance.post('/api/py/translate', {
@@ -60,25 +85,26 @@ const ChatAIScreen = () => {
         ...prev,
         [data.messageId]: data.translated_text
       }));
-      showToast({ message : t("translation.success")});
+      showToast({ message: t("translation.success") });
     },
     onError: () => {
-      showToast({ message : t("error.translation")});
+      showToast({ message: t("error.translation") });
     },
   });
 
+  // --- API LẤY MÔI TRƯỜNG/CHỦ ĐỀ ---
   const { data: environmentsData } = useQuery({
     queryKey: ["chat-ai-environments"],
     queryFn: async () => {
       const response = await instance.get("/api/v1/chat/environments");
-      return response.data.result; 
+      return response.data.result;
     },
   });
 
   const { data: topicsData } = useQuery({
     queryKey: ["chat-ai-topics"],
     queryFn: async () => {
-      const response = await instance.get("/api/v1/chat/topics"); // Giả sử API Java
+      const response = await instance.get("/api/v1/chat/topics");
       return response.data.result;
     },
   });
@@ -88,17 +114,25 @@ const ChatAIScreen = () => {
     { id: "business", name: t("environment.business"), icon: "briefcase", description: t("environment.businessDesc") },
   ];
   const conversationTopics = topicsData || [
-    { id: "introduction", title: t("topics.introduction"), prompt: t("topics.introductionPrompt") },
-    { id: "job_interview", title: t("topics.jobInterview"), prompt: t("topics.jobInterviewPrompt") },
+    { id: "greetings", title: t("topics.greetings") || "Greetings", prompt: "Hi, let's practice a greeting conversation." },
+    { id: "travel", title: t("topics.travel") || "Travel", prompt: "Tell me about travel to your country." },
   ];
 
-  useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
-  }, [aiHistory.length, aiHistory[aiHistory.length - 1]?.content]);
-
+  // --- FUNCTIONS ---
   const handleSendMessage = (messageText = inputText) => {
     if (messageText.trim() === "" || isAiStreaming) return;
-    sendAiMessage(messageText);
+
+    // ✅ Double-check roomId
+    if (!aiChatRoomId) {
+      console.error("AI Chat Room ID is still not loaded!");
+      showToast({
+        message: t("error.roomNotReady"),
+        type: "error"
+      });
+      return;
+    }
+
+    sendAiMessage(messageText, aiChatRoomId);
     setInputText("");
   };
 
@@ -117,14 +151,15 @@ const ChatAIScreen = () => {
 
   const selectTopic = (topic: any) => {
     setShowTopicsModal(false);
-    handleSendMessage(topic.prompt); 
+    handleSendMessage(topic.prompt);
   };
 
   const changeLanguage = (lang: string) => {
     i18n.changeLanguage(lang);
-    showToast({message : t("language.changed")});
+    showToast({ message: t("language.changed") });
   };
 
+  // --- RENDER MESSAGE ITEM ---
   const renderMessage = ({ item: message }: { item: AiMessage }) => {
     const isUser = message.role === 'user';
     const translatedText = localTranslations[message.id];
@@ -165,6 +200,35 @@ const ChatAIScreen = () => {
     );
   };
 
+  // ======================================================
+  // === SỬA LỖI RACE CONDITION: THÊM LOADING / ERROR ===
+  // ======================================================
+
+  // Nếu đang loading room ID, hiển thị màn hình chờ
+  if (isLoadingAiRoom) {
+    return (
+      <View style={styles.fullScreenLoading}>
+        <ActivityIndicator size="large" color="#3B82F6" />
+        <Text style={styles.loadingText}>Loading AI Chat...</Text>
+      </View>
+    );
+  }
+
+  // Nếu load room ID bị lỗi, hiển thị màn hình lỗi
+  if (aiRoomError) {
+    return (
+      <View style={styles.fullScreenLoading}>
+        <Icon name="error-outline" size={48} color="#EF4444" />
+        <Text style={styles.errorText}>Error loading AI chat room.</Text>
+        <Text>{aiRoomError.message}</Text>
+      </View>
+    );
+  }
+  // ======================================================
+  // === KẾT THÚC SỬA LỖI ===
+  // ======================================================
+
+  // Chỉ render UI chat khi đã có roomId
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
@@ -207,14 +271,14 @@ const ChatAIScreen = () => {
         {/* Chat List */}
         <FlatList
           ref={scrollViewRef}
-          data={aiHistory} // Dùng data từ store
+          data={aiHistory}
           renderItem={renderMessage}
           keyExtractor={(item) => item.id}
           style={styles.chatContainer}
           onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
         />
 
-        {/* Loading Indicator */}
+        {/* Loading Indicator (Streaming) */}
         {isAiStreaming && (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color="#6B7280" />
@@ -222,6 +286,7 @@ const ChatAIScreen = () => {
           </View>
         )}
 
+        {/* Input Container */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
@@ -231,7 +296,7 @@ const ChatAIScreen = () => {
             onSubmitEditing={() => handleSendMessage()}
             returnKeyType="send"
             multiline
-            editable={!isAiStreaming} 
+            editable={!isAiStreaming}
           />
           <TouchableOpacity
             style={[styles.sendButton, isAiStreaming && styles.sendButtonDisabled]}
@@ -242,6 +307,7 @@ const ChatAIScreen = () => {
           </TouchableOpacity>
         </View>
 
+        {/* Modals */}
         <Modal
           visible={showEnvironmentModal}
           transparent={true}
@@ -256,7 +322,7 @@ const ChatAIScreen = () => {
                   <Icon name="close" size={24} color="#374151" />
                 </TouchableOpacity>
               </View>
-              <FlatList
+              http://10.0.2.2:8000/api/v1/rooms/ai-chat-room           <FlatList
                 data={environments}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
@@ -309,7 +375,10 @@ const ChatAIScreen = () => {
   );
 };
 
-const styles = createScaledSheet({
+// Sử dụng StyleSheet.create thay vì createScaledSheet cho các style mới
+// và hợp nhất các style cũ/mới
+const styles = StyleSheet.create({
+  // Style cũ từ createScaledSheet
   header: {
     flexDirection: "row",
     alignItems: "center",
@@ -415,12 +484,14 @@ const styles = createScaledSheet({
     borderRadius: 12,
     backgroundColor: "#F9FAFB",
   },
+  // Style này dùng cho loading "..." KHI ĐANG STREAMING
   loadingContainer: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     padding: 12,
   },
+  // Style này dùng cho loading "..." KHI ĐANG STREAMING
   loadingText: {
     marginLeft: 8,
     color: "#6B7280",
@@ -513,6 +584,23 @@ const styles = createScaledSheet({
     color: "#1F2937",
     flex: 1,
   },
+
+  // === STYLE MỚI CHO LOADING/ERROR ===
+  fullScreenLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  errorText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#EF4444',
+    textAlign: 'center',
+    paddingHorizontal: 20,
+  },
 });
+
 
 export default ChatAIScreen;

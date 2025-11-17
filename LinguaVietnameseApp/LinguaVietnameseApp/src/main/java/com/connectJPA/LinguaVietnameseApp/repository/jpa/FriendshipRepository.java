@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -21,6 +22,10 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Friendsh
 
     @Query("SELECT COUNT(f) FROM Friendship f WHERE (f.id.user1Id = :userId OR f.id.user2Id = :userId) AND f.status = 'accepted' AND f.isDeleted = false")
     long countAcceptedFriends(UUID userId);
+
+    @Modifying
+    @Query("UPDATE Friendship f SET f.status = 'expired' WHERE f.status = 'pending' AND f.createdAt < :sevenDaysAgo")
+    int expirePendingFriendships(@Param("sevenDaysAgo") OffsetDateTime sevenDaysAgo);
 
     @Modifying
     @Query("UPDATE Friendship f SET f.isDeleted = true, f.deletedAt = CURRENT_TIMESTAMP WHERE f.id.user1Id = :user1Id AND f.id.user2Id = :user2Id AND f.isDeleted = false")

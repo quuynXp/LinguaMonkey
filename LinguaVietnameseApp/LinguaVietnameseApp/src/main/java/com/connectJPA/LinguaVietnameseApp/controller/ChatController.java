@@ -3,21 +3,26 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.ChatMessageBody;
 import com.connectJPA.LinguaVietnameseApp.dto.TranslationEvent;
 import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.RoomMemberId;
+import com.connectJPA.LinguaVietnameseApp.enums.NotificationType;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
+import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
@@ -53,6 +58,8 @@ public class ChatController {
     private final RoomMemberRepository roomMemberRepository;
     private final GrpcClientService grpcClientService;
     private final AuthenticationService authenticationService;
+    private final NotificationService notificationService;
+    private final UserRepository userRepository;
 
     @Operation(summary = "Get chat messages by room ID", description = "Get paginated messages for a room")
     @GetMapping("/room/{roomId}/messages")
@@ -130,8 +137,18 @@ public class ChatController {
                     message.getSenderId().toString(), "/queue/messages", message);
             messagingTemplate.convertAndSendToUser(
                     message.getReceiverId().toString(), "/queue/messages", message);
+
+            sendPushNotification(senderId, message.getReceiverId(), room, message.getContent());
         } else if (message.getPurpose() == RoomPurpose.GROUP_CHAT) {
             messagingTemplate.convertAndSend("/topic/room/" + roomId, message);
+
+            List<RoomMember> members = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(roomId);
+            for (RoomMember member : members) {
+                UUID memberId = member.getId().getUserId();
+                if (!memberId.equals(senderId)) {
+                    sendPushNotification(senderId, memberId, room, message.getContent());
+                }
+            }
         } else if (message.getPurpose() == RoomPurpose.AI_CHAT) {
             messagingTemplate.convertAndSendToUser(
                     message.getSenderId().toString(), "/queue/messages", message);
@@ -267,4 +284,30 @@ public class ChatController {
         }
         return authorization.substring(7);
     }
+
+    private void sendPushNotification(UUID senderId, UUID receiverId, Room room, String messageContent) {
+                if (receiverId == null) return;
+
+                User sender = userRepository.findByUserIdAndIsDeletedFalse(senderId)
+                                .orElse(null);
+                String senderName = (sender != null && sender.getFullname() != null) ? sender.getFullname() : "Tin nhắn mới";
+
+                String title = (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) ? senderName : room.getRoomName();
+
+                String payload = String.format("{\"screen\":\"Chat\", \"stackScreen\":\"ChatDetail\", \"chatId\":\"%s\"}", room.getRoomId());
+
+                NotificationRequest notificationRequest = NotificationRequest.builder()
+                                        .userId(receiverId)
+                                        .title(title)
+                                        .content(messageContent)
+                                        .type(NotificationType.MESSAGE.name())
+                                        .payload(payload)
+                                        .build();
+
+                try {
+                        notificationService.createPushNotification(notificationRequest);
+                } catch (Exception e) {
+                        log.error("Failed to send push notification for message to user {}: {}", receiverId, e.getMessage());
+                }
+        }
 }

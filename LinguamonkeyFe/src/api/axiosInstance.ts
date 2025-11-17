@@ -6,19 +6,18 @@ import * as Localization from 'expo-localization';
 import { getErrorMessageFromCode } from '../types/errorCodes';
 import { t } from 'i18next';
 import * as Application from 'expo-application';
-import { refreshTokenApi, introspectToken } from './tokenHelper';
+import { refreshTokenApi } from '../services/authService';
 import { resetToAuth } from '../utils/navigationRef';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { EXPO_PUBLIC_API_BASE_URL } from "react-native-dotenv"
 import * as Device from 'expo-device';
+import { API_BASE_URL } from './apiConfig';
 
-const API_BASE_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
 const userLocale = Localization.getLocales()[0]?.languageTag || 'en-US';
 let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 
 
-async function getDeviceIdSafe() {
+export async function getDeviceIdSafe() {
   try {
     const deviceId =
       Device.osInternalBuildId ||
@@ -74,65 +73,65 @@ instance.interceptors.request.use(async (config: InternalAxiosRequestConfig) => 
   return config;
 });
 
-// instance.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
-//   await waitForTokenStoreInit(5000);
+instance.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+  await waitForTokenStoreInit(5000);
 
-//   if (config.url?.toLowerCase().includes('/auth/refresh-token')) {
-//     const rawData = config.data;
-//     let dataObj: any = rawData;
+  if (config.url?.toLowerCase().includes('/api/v1/auth/refresh-token')) {
+    const rawData = config.data;
+    let dataObj: any = rawData;
 
-//     if (typeof rawData === 'string') {
-//       try { dataObj = JSON.parse(rawData); } catch {
-//         try {
-//           dataObj = Object.fromEntries(new URLSearchParams(rawData).entries());
-//         } catch {
-//           dataObj = rawData;
-//         }
-//       }
-//     }
+    if (typeof rawData === 'string') {
+      try { dataObj = JSON.parse(rawData); } catch {
+        try {
+          dataObj = Object.fromEntries(new URLSearchParams(rawData).entries());
+        } catch {
+          dataObj = rawData;
+        }
+      }
+    }
 
-//     const bodyHasRefresh =
-//       dataObj &&
-//       typeof dataObj === 'object' &&
-//       'refreshToken' in dataObj &&
-//       typeof dataObj.refreshToken === 'string' &&
-//       dataObj.refreshToken.trim().length > 0;
+    const bodyHasRefresh =
+      dataObj &&
+      typeof dataObj === 'object' &&
+      'refreshToken' in dataObj &&
+      typeof dataObj.refreshToken === 'string' &&
+      dataObj.refreshToken.trim().length > 0;
 
-//     console.log('[instance.request] /auth/refresh-token request detected', {
-//       url: config.url,
-//       bodyPresent: !!dataObj,
-//       bodyHasRefresh,
-//       callerStack: new Error().stack?.split('\n').slice(2, 7)
-//     });
+    console.log('[instance.request] /api/v1/auth/refresh-token request detected', {
+      url: config.url,
+      bodyPresent: !!dataObj,
+      bodyHasRefresh,
+      callerStack: new Error().stack?.split('\n').slice(2, 7)
+    });
 
-//     if (!bodyHasRefresh) {
-//       console.warn('[instance.request] Missing refreshToken in body. Allowing request to proceed — server may accept other formats.');
-//     }
-//   }
+    if (!bodyHasRefresh) {
+      console.warn('[instance.request] Missing refreshToken in body. Allowing request to proceed — server may accept other formats.');
+    }
+  }
 
-//   const accessToken = useTokenStore.getState().accessToken;
+  const accessToken = useTokenStore.getState().accessToken;
 
-//   let deviceId = 'unknown-device';
-//   try {
-//     if (Platform.OS === 'android' || Platform.OS === 'ios') {
-//       deviceId = Device.osInternalBuildId || Device.modelId || Device.modelName || 'unknown-device';
-//     } else {
-//       deviceId = Device.deviceName || 'unknown-device';
-//     }
-//   } catch (e) {
-//     console.warn('[device id read error]', e);
-//   }
+  let deviceId = 'unknown-device';
+  try {
+    if (Platform.OS === 'android' || Platform.OS === 'ios') {
+      deviceId = Device.osInternalBuildId || Device.modelId || Device.modelName || 'unknown-device';
+    } else {
+      deviceId = Device.deviceName || 'unknown-device';
+    }
+  } catch (e) {
+    console.warn('[device id read error]', e);
+  }
 
-//   config.headers['Accept-Language'] = userLocale;
-//   config.headers['Device-Id'] = deviceId;
-//   config.headers['X-Forwarded-For'] = 'unknown-ip';
+  config.headers['Accept-Language'] = userLocale;
+  config.headers['Device-Id'] = deviceId;
+  config.headers['X-Forwarded-For'] = 'unknown-ip';
 
-//   if (accessToken && accessToken.trim().length > 0) {
-//     config.headers['Authorization'] = `Bearer ${accessToken.trim()}`;
-//   }
+  if (accessToken && accessToken.trim().length > 0) {
+    config.headers['Authorization'] = `Bearer ${accessToken.trim()}`;
+  }
 
-//   return config;
-// });
+  return config;
+});
 
 instance.interceptors.response.use(
   res => res,
@@ -148,7 +147,7 @@ instance.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    const isRefreshEndpoint = originalRequest.url?.includes('/auth/refresh-token');
+    const isRefreshEndpoint = originalRequest.url?.includes('/api/v1/auth/refresh-token');
     if (isRefreshEndpoint) {
       await clearTokens();
       if (hasLoggedIn) resetToAuth('Login');
@@ -174,12 +173,13 @@ instance.interceptors.response.use(
         isRefreshing = true;
         refreshPromise = (async () => {
           try {
-            const result = await refreshTokenApi(latestRefresh);
+            const deviceId = await getDeviceIdSafe();
+            const result = await refreshTokenApi(latestRefresh, deviceId);
+
             if (!result?.token || !result?.refreshToken) throw new Error('Invalid refresh result');
             await setTokens(result.token, result.refreshToken);
             return result.token;
           } catch {
-            await clearTokens();
             return null;
           } finally {
             isRefreshing = false;

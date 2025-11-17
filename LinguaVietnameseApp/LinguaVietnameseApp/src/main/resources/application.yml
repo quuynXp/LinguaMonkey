@@ -72,6 +72,9 @@ kafka:
   user:
     profile:
       topic: USER_PROFILE_UPDATES
+  chat:
+    persistence:
+      topic: CHAT_MESSAGE_PERSISTENCE
 
 # External Services
 vnpay:

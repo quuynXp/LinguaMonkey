@@ -24,6 +24,9 @@ public class NotificationRequest {
 
     private String payload;
 
+    private String fcmToken;
+    private String deviceId;
+    
     private boolean read = false;
     private boolean isDeleted = false;
 }

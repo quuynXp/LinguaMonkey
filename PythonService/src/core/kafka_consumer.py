@@ -4,7 +4,7 @@ import asyncio
 import json
 import os
 from aiokafka import AIOKafkaConsumer
-from src.core.cache import get_redis_client, delete_from_cache
+from .cache import get_redis_client, delete_from_cache
 
 KAFKA_TOPIC = os.getenv("KAFKA_USER_PROFILE_TOPIC", "USER_PROFILE_UPDATES")
 KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")

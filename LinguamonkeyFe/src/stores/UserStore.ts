@@ -1,4 +1,3 @@
-// stores/UserStore.ts
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,11 +9,8 @@ import type {
   ApiResponse,
 } from '../types/api';
 import instance from '../api/axiosInstance';
-// Giả định 'UserResponse' trong 'types/api.ts' ĐÃ ĐƯỢC CẬP NHẬT
-// để bao gồm: languages: string[]
 import { UserResponse } from '../types/api';
 
-// ===== HELPER TYPES =====
 interface DailyGoal {
   completedLessons: number;
   totalLessons: number;
@@ -26,17 +22,12 @@ interface UploadFile {
   type: string;
 }
 
-// ===== STORE DEFINITION =====
 
-// Định nghĩa tất cả các thuộc tính phẳng (flattened) từ UserResponse DTO
 interface UserState {
-  // STATE
   user: UserResponse | null;
   isAuthenticated: boolean;
-  setNativeLanguage: (languageId: string) => void;
 
-  // --- Thuộc tính phẳng từ UserResponse DTO ---
-  name: string; // (từ fullname hoặc nickname)
+  name: string;
   streak: number;
   level?: number;
   exp?: number;
@@ -45,22 +36,21 @@ interface UserState {
   bio?: string;
   phone?: string;
   country?: string;
-  progress?: number; // (Từ backend, % tổng thể)
-  nativeLanguageId?: string; // (Mã ngôn ngữ)
-  badgeId?: string; // (UUID badge)
-  character3dId?: string; // (UUID 3D)
-  authProvider?: string; // (VD: 'google', 'facebook', 'email')
-  // --- HẾT ---
+  progress?: number;
+  nativeLanguageId?: string;
+  badgeId?: string;
+  badges: string[];
+  character3dId?: string;
+  authProvider?: string;
 
-  // State gốc của UserStore (không có trong DTO)
-  languages: string[]; // (Danh sách mã ngôn ngữ user học)
+  languages: string[];
   dailyGoal: DailyGoal;
   recentLessons: Lesson[];
-  statusMessage: string; // (Logic cũ dùng 'bio' làm 'statusMessage')
+  statusMessage: string;
   hasDonePlacementTest?: boolean;
 
   // ACTIONS CƠ BẢN
-  setUser: (user: UserResponse | null) => void;
+  setUser: (user: UserResponse | null, detectedLanguage?: string) => void;
   setAuthenticated: (authenticated: boolean) => void;
   setProfileData: (data: Partial<UserState>) => void;
   logout: () => void;
@@ -77,10 +67,12 @@ interface UserState {
   uploadTemp: (file: UploadFile) => Promise<string>;
   deleteTempFile: (path: string) => Promise<void>;
   updateUserAvatar: (tempPath: string) => Promise<UserResponse>;
+
+  setLocalNativeLanguage: (languageId: string) => void; // <-- MỚI
+  updateNativeLanguageOnServer: (languageId: string) => Promise<void>;
 }
 
 // --- TRẠNG THÁI MẶC ĐỊNH ---
-// Dùng để khởi tạo và reset khi logout, đảm bảo tính nhất quán
 const defaultUserState: Omit<
   UserState,
   | 'setUser'
@@ -94,6 +86,8 @@ const defaultUserState: Omit<
   | 'uploadTemp'
   | 'deleteTempFile'
   | 'updateUserAvatar'
+  | 'setLocalNativeLanguage'
+  | 'updateNativeLanguageOnServer'
 > = {
   user: null,
   isAuthenticated: false,
@@ -111,6 +105,7 @@ const defaultUserState: Omit<
   badgeId: undefined,
   character3dId: undefined,
   authProvider: undefined,
+  badges: [],
   languages: [],
   dailyGoal: { completedLessons: 0, totalLessons: 0 },
   recentLessons: [],
@@ -121,28 +116,18 @@ const defaultUserState: Omit<
 export const useUserStore = create<UserState>()(
   persist(
     (set, get) => ({
-      // ===== STATE IMPLEMENTATION =====
       ...defaultUserState,
 
-      // ===== ACTIONS IMPLEMENTATION =====
-
-      /**
-       * Action quan trọng nhất: Đặt thông tin user.
-       * Tự động đồng bộ hóa object 'user' và các thuộc tính phẳng.
-       */
-      setUser: (user) => {
+      setUser: (user, detectedLanguage) => {
         if (!user) {
-          // Nếu user là null (logout), reset về trạng thái mặc định
           set(defaultUserState);
           return;
         }
 
-        // Nếu có user, cập nhật 'user' và tất cả thuộc tính phẳng
         set({
           user: user,
           isAuthenticated: true,
 
-          // --- Trích xuất thuộc tính phẳng từ UserResponse DTO ---
           name: user.fullname ?? user.nickname ?? '',
           streak: user.streak ?? 0,
           level: user.level,
@@ -152,61 +137,62 @@ export const useUserStore = create<UserState>()(
           bio: user.bio,
           phone: user.phone,
           country: user.country,
-          // DTO trả về BigDecimal/Double, chuyển sang number
           progress: user.progress ? Number(user.progress) : undefined,
-          nativeLanguageId: user.nativeLanguageId,
+          nativeLanguageId: user.nativeLanguageCode,
           badgeId: user.badgeId,
+          badges: (user as any).badges ?? [],
           character3dId: user.character3dId,
           authProvider: user.authProvider,
-          // --- HẾT ---
 
-          // Logic cũ
           statusMessage: user.bio ?? '',
 
-          // ===== SỬA ĐỔI QUAN TRỌNG =====
-          // Lấy 'languages' trực tiếp từ UserResponse DTO đã được cập nhật
           languages: user.languages ?? [],
-          // ===============================
 
-          // (Giữ 'as any' nếu trường này không có trong UserResponse đã định nghĩa)
           hasDonePlacementTest: (user as any).hasDonePlacementTest,
         });
+        if (user.nativeLanguageCode) {
+          set({ nativeLanguageId: user.nativeLanguageCode });
+        } else if (detectedLanguage) {
+          console.log(
+            'User has no native language. Syncing detected language to server:',
+            detectedLanguage
+          );
+          get().updateNativeLanguageOnServer(detectedLanguage);
+          set({ nativeLanguageId: detectedLanguage }); // Cập nhật local state ngay
+        }
       },
 
       setAuthenticated: (authenticated) => set({ isAuthenticated: authenticated }),
 
-      // Action này có thể gây mất đồng bộ state, cân nhắc khi sử dụng
       setProfileData: (data) => set((state) => ({ ...state, ...data })),
 
       setHasDonePlacementTest: (value) => set({ hasDonePlacementTest: value }),
 
-      setNativeLanguage: (languageId: string) => {
+      logout: () => set(defaultUserState),
+
+
+      setLocalNativeLanguage: (languageId: string) => {
+        set({ nativeLanguageId: languageId });
+      },
+
+      updateNativeLanguageOnServer: async (languageId: string) => {
         set({ nativeLanguageId: languageId });
 
-        // Nếu muốn đồng bộ với backend luôn
         const user = get().user;
-        if (user?.userId) {
-          instance
-            .patch(`/users/${user.userId}/native-language`, null, {
-              params: { nativeLanguageCode: languageId },
-            })
-            .then(res => {
-              console.log('Native language updated');
-              // (Lưu ý: Backend trả về UserResponse mới, ta nên setUser
-              // nếu muốn đồng bộ ngay)
-              // if (res.data?.result) {
-              //   get().setUser(res.data.result);
-              // }
-            })
-            .catch(err => {
-              console.error('Failed to update native language:', err);
-            });
+        if (!user?.userId) {
+          console.error('Cannot update native language, user not logged in.');
+          return;
+        }
+
+        try {
+          await instance.patch(`/api/v1/users/${user.userId}/native-language`, null, {
+            params: { nativeLanguageCode: languageId },
+          });
+          console.log('Native language updated on server');
+        } catch (err) {
+          console.error('Failed to update native language on server:', err);
         }
       },
-      /**
-       * Logout: Reset store về trạng thái mặc định.
-       */
-      logout: () => set(defaultUserState),
 
       saveProfileToServer: async (userId, payload) => {
         try {
@@ -215,7 +201,6 @@ export const useUserStore = create<UserState>()(
             payload,
           );
           if (res?.data?.result) {
-            // SỬA: Gọi setUser để cập nhật toàn bộ state một cách đồng bộ
             get().setUser(res.data.result);
             return res.data.result;
           }
@@ -290,7 +275,6 @@ export const useUserStore = create<UserState>()(
           );
 
           if (res.data && res.data.code === 200 && res.data.result) {
-            // SỬA: Gọi setUser để cập nhật toàn bộ state một cách đồng bộ
             get().setUser(res.data.result);
             return res.data.result;
           } else {
@@ -303,16 +287,12 @@ export const useUserStore = create<UserState>()(
       },
     }),
     {
-      // ===== PERSIST CONFIG (Đã cập nhật) =====
       name: 'user-storage-v2',
       storage: createJSONStorage(() => AsyncStorage),
-      // Chỉ persist các thuộc tính phẳng.
-      // `user` object cũng được persist để làm "source" khi hydrate.
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,
 
-        // Persist các thuộc tính phẳng
         name: state.name,
         streak: state.streak,
         level: state.level,
@@ -325,10 +305,10 @@ export const useUserStore = create<UserState>()(
         progress: state.progress,
         nativeLanguageId: state.nativeLanguageId,
         badgeId: state.badgeId,
+        badges: state.badges,
         character3dId: state.character3dId,
         authProvider: state.authProvider,
 
-        // State gốc của UserStore
         languages: state.languages,
         dailyGoal: state.dailyGoal,
         recentLessons: state.recentLessons,

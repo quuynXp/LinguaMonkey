@@ -74,8 +74,10 @@ public class SkillLessonController {
         Lesson lesson = lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
+        String referenceText = lesson.getDescription();
+
         try {
-            PronunciationResponseBody response = grpcClientService.callCheckPronunciationAsync(token, audio.getBytes(), languageCode).get();
+            PronunciationResponseBody response = grpcClientService.callCheckPronunciationAsync(token, audio.getBytes(), languageCode, referenceText).get();
             saveLessonProgress(lessonId, extractUserId(token), response.getScore());
             return AppApiResponse.<PronunciationResponseBody>builder()
                     .code(200)

@@ -70,7 +70,7 @@ const HomeScreen = ({ navigation }) => {
 
   const selectDefault = (defaultId) => {
     instance.post("/roadmaps/assign", { roadmapId: defaultId }).then(() => {
-      queryClient.invalidateQueries({queryKey :["userRoadmap"] })
+      queryClient.invalidateQueries({ queryKey: ["userRoadmap"] })
     })
   }
 
@@ -244,10 +244,17 @@ const HomeScreen = ({ navigation }) => {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.challengeScroll}>
               {dailyChallenges?.map((challenge) => (
-                <TouchableOpacity key={challenge.id.challengeId} style={[styles.challengeCard, { backgroundColor: challenge.isCompleted ? "#4ECDC4" : "#F59E0B" }]} onPress={() => completeMutation.mutate(challenge.id.challengeId)}>
+                <TouchableOpacity key={challenge.challengeId} style={[styles.challengeCard, { backgroundColor: challenge.isCompleted ? "#4ECDC4" : "#F59E0B" }]}
+                  onPress={() => {
+                    if (!challenge.isCompleted) {
+                      console.log("Completing challenge:", challenge.challengeId);
+                      completeMutation.mutate(challenge.challengeId);
+                    }
+                  }} disabled={challenge.isCompleted}>
                   <View style={styles.challengeIcon}><Icon name="sports-esports" size={32} color="#FFFFFF" /></View>
-                  <Text style={styles.challengeTitle}>{t("home.challenge.challenge")}</Text>
-                  <Text style={styles.challengeDescription}>{challenge.expReward} XP {challenge.isCompleted ? `(${t("home.challenge.completed")})` : ""}</Text>
+                  <Text style={styles.challengeTitle}>{challenge.dailyChallenge?.title || t("home.challenge.challenge")}</Text>
+                  <Text style={styles.challengeDescription}>{challenge.expReward} XP</Text>
+                  <Text style={styles.challengeDescription}>{challenge.isCompleted ? `(${t("home.challenge.completed")})` : `(${t("home.challenge.pending")})`}</Text>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity style={[styles.challengeCard, { backgroundColor: "#3B82F6" }]} onPress={() => assignMutation.mutate()}>

@@ -20,6 +20,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.time.OffsetDateTime; // <-- Thêm import này
+import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -62,24 +64,42 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         try {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+            
             if (room.getPurpose() != request.getPurpose()) {
                 throw new AppException(ErrorCode.ROOM_PURPOSE_MISMATCH);
             }
+            
             if (room.getPurpose() != RoomPurpose.AI_CHAT) {
-                // Verify sender is a member of the room
                 String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
                 roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, UUID.fromString(currentUserId))
                         .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
             }
+
+            return saveMessageInternal(roomId, request);
+
+        } catch (Exception e) {
+            log.error("Error while saving message for room ID {}: {}", roomId, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request) {
+        try {
+            Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+
             ChatMessage message = chatMessageMapper.toEntity(request);
             message.setRoomId(roomId);
-            message.setSenderId(request.getSenderId());
+            message.setSenderId(request.getSenderId()); 
+
             message = chatMessageRepository.save(message);
             ChatMessageResponse response = chatMessageMapper.toResponse(message);
             response.setPurpose(room.getPurpose());
             return response;
         } catch (Exception e) {
-            log.error("Error while saving message for room ID {}: {}", roomId, e.getMessage());
+            log.error("Error during internal saveMessage for room ID {}: {}", roomId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

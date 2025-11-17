@@ -1,6 +1,3 @@
-// src/screens/CallSetupScreen.tsx
-// (Hoàn chỉnh - Thay thế mock data bằng useQuery)
-
 import React, { useRef, useState } from "react"
 import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
@@ -44,13 +41,13 @@ const languageFlags: { [key: string]: string } = {
 
 const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   const { t } = useTranslation()
-  const { user } = useUserStore(); 
+  const { user } = useUserStore();
   const { setCallPreferences } = useAppStore();
 
   const [preferences, setPreferences] = useState<CallPreferences>({
     interests: [],
     gender: "any",
-    nativeLanguage: user?.nativeLanguageId || "en", // Lấy từ userStore
+    nativeLanguage: user?.nativeLanguageCode || "en",
     learningLanguage: "vi",
     ageRange: "18-30",
     callDuration: "15",
@@ -59,28 +56,26 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  // --- THAY THẾ MOCK BẰNG API ---
-  const { data: interests = [], isLoading: isLoadingInterests } = useQuery<ApiInterest[]>({
+  const { data: interestsData, isLoading: isLoadingInterests } = useQuery<ApiInterest[]>({
     queryKey: ["interests"],
     queryFn: async () => {
-      // API này đã có trong schema (bảng interests)
       const response = await instance.get("/api/v1/interests");
-      return response.data.result; // Dựa theo AppApiResponse
+      return response.data.result;
     },
   });
 
-  const { data: languages = [], isLoading: isLoadingLanguages } = useQuery<ApiLanguage[]>({
+  const interests = interestsData || [];
+
+  const { data: languagesData, isLoading: isLoadingLanguages } = useQuery<ApiLanguage[]>({
     queryKey: ["languages"],
     queryFn: async () => {
-      // API này đã có trong schema (bảng languages)
       const response = await instance.get("/api/v1/languages");
       return response.data.result;
     },
   });
-  
-  // Xóa bỏ savePreferencesMutation, logic này sẽ nằm ở CallSearchScreen
 
-  // Options (từ file cũ)
+  const languages = languagesData || [];
+
   const genderOptions = [
     { value: "any", label: t("call.genderAny"), icon: "people" },
     { value: "male", label: t("call.genderMale"), icon: "man" },
@@ -132,9 +127,8 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
       Alert.alert(t("call.selectInterests"), t("call.selectInterestsMessage"))
       return
     }
-    // Lưu preferences vào appStore và điều hướng
-    setCallPreferences(preferences); // Lưu vào Zustand
-    navigation.navigate("CallSearch", { preferences }); // Truyền qua params
+    setCallPreferences(preferences);
+    navigation.navigate("CallSearch", { preferences });
   }
 
   const renderInterestItem = (interest: ApiInterest) => {
@@ -232,7 +226,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
             <Text style={styles.sectionSubtitle}>
               {t("call.selectTopics", { count: preferences.interests.length })}
             </Text>
-            {isLoadingInterests ? <ActivityIndicator/> : 
+            {isLoadingInterests ? <ActivityIndicator /> :
               <View style={styles.interestsGrid}>{interests.map(renderInterestItem)}</View>
             }
           </View>
@@ -246,7 +240,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
           {/* Native Language */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.partnerNativeLanguage")}</Text>
-            {isLoadingLanguages ? <ActivityIndicator/> :
+            {isLoadingLanguages ? <ActivityIndicator /> :
               <View style={styles.languagesGrid}>
                 {languages.map((lang) =>
                   renderLanguageOption(lang, preferences.nativeLanguage, (value) =>
@@ -260,7 +254,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
           {/* Learning Language */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.partnerLearningLanguage")}</Text>
-            {isLoadingLanguages ? <ActivityIndicator/> :
+            {isLoadingLanguages ? <ActivityIndicator /> :
               <View style={styles.languagesGrid}>
                 {languages.map((lang) =>
                   renderLanguageOption(lang, preferences.learningLanguage, (value) =>

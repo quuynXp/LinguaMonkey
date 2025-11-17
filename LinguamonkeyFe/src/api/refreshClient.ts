@@ -2,11 +2,10 @@ import axios, { InternalAxiosRequestConfig } from 'axios';
 import * as Application from 'expo-application';
 import { Platform } from 'react-native';
 import * as Localization from 'expo-localization';
-import {EXPO_PUBLIC_API_BASE_URL} from "react-native-dotenv"
 import { showError, showSuccess } from '../utils/toastHelper';
 import * as Device from 'expo-device';
+import { API_BASE_URL } from './apiConfig';
 
-const API_BASE_URL = EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_BASE_URL;
 
 async function getDeviceIdSafe() {
   try {

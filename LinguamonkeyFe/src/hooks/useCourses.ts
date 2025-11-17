@@ -1,6 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import instance from "../api/axiosInstance" // (Đảm bảo đường dẫn này đúng)
-import type { ApiResponse, BilingualVideo, PaginatedResponse, Video, VideoSubtitle } from "../types/api" // (Đảm bảo đường dẫn này đúng)
+import type {
+  ApiResponse,
+  BilingualVideo,
+  PaginatedResponse,
+  Video,
+  VideoSubtitle,
+} from "../types/api" // (Đảm bảo đường dẫn này đúng)
 
 // ==========================================================
 // === INTERFACES (Cần khớp với DTOs của BE) ===
@@ -59,6 +65,7 @@ export interface CourseEnrollment {
   completedLessons?: number
 }
 
+// ... (Các interface khác giữ nguyên) ...
 export interface CourseDiscount {
   discountId: string
   course: Course
@@ -68,20 +75,18 @@ export interface CourseDiscount {
   isActive: boolean
 }
 
-export interface Review { // Dùng chung cho CourseReview và LessonReview
+export interface Review {
   reviewId?: string
   courseId?: string
   lessonId?: string
   userId: string
-  userFullName?: string // (BE nên cung cấp qua Mapper)
-  userAvatarUrl?: string // (BE nên cung cấp qua Mapper)
+  userFullName?: string
+  userAvatarUrl?: string
   rating: number
   comment?: string
   reviewedAt?: string
-  isVerified?: boolean // Từ AI gRPC
+  isVerified?: boolean
 }
-
-// === REQUEST PAYLOADS (Cho Mutations) ===
 
 interface CreateCourseRequest {
   creatorId: string
@@ -99,7 +104,7 @@ interface UpdateCourseDetailsRequest {
 interface UpdateCourseVersionRequest {
   description?: string
   thumbnailUrl?: string
-  lessonIds: string[] // Danh sách UUID của bài học
+  lessonIds: string[]
 }
 
 interface PublishVersionRequest {
@@ -108,8 +113,8 @@ interface PublishVersionRequest {
 
 interface CreateReviewRequest {
   userId: string
-  courseId?: string // Dùng cho course review
-  lessonId?: string // Dùng cho lesson review
+  courseId?: string
+  lessonId?: string
   rating: number
   comment?: string
 }
@@ -120,9 +125,8 @@ interface SwitchVersionRequest {
 }
 
 interface PurchaseRequest {
-  courseId: string;
-  userId: string; 
-  // paymentInfo?: any // (Không cần thiết nếu dùng Wallet/Redirect)
+  courseId: string
+  userId: string
 }
 
 /**
@@ -149,9 +153,26 @@ export const useCourses = () => {
     sortBy?: string
     sortOrder?: "asc" | "desc"
   }) => {
-    const { page = 0, size = 20, title, languageCode, type, sortBy, sortOrder } = params || {}
+    const {
+      page = 0,
+      size = 20,
+      title,
+      languageCode,
+      type,
+      sortBy,
+      sortOrder,
+    } = params || {}
     return useQuery<PaginatedResponse<Course>>({
-      queryKey: ["allCourses", page, size, title, languageCode, type, sortBy, sortOrder],
+      queryKey: [
+        "allCourses",
+        page,
+        size,
+        title,
+        languageCode,
+        type,
+        sortBy,
+        sortOrder,
+      ],
       queryFn: async () => {
         const qp = new URLSearchParams()
         qp.append("page", page.toString())
@@ -161,31 +182,58 @@ export const useCourses = () => {
         if (type) qp.append("type", type)
         if (sortBy) qp.append("sort", `${sortBy},${sortOrder ?? "asc"}`)
 
-        const response = await instance.get<ApiResponse<PaginatedResponse<Course>>>(`/api/v1/courses?${qp.toString()}`)
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<Course>>
+        >(`/api/v1/courses?${qp.toString()}`)
         const pageResult = response.data.result as any // BE trả về Page
         return {
-            data: pageResult.content,
-            pagination: { page: pageResult.number, limit: pageResult.size, total: pageResult.totalElements, totalPages: pageResult.totalPages }
+          data: pageResult.content,
+          pagination: {
+            page: pageResult.number,
+            limit: pageResult.size,
+            total: pageResult.totalElements,
+            totalPages: pageResult.totalPages,
+          },
         }
       },
+      //
+      // =================================================================
+      // === FIX 3: Thêm staleTime để cache (5 phút) ===
+      // =================================================================
+      //
+      staleTime: 5 * 60 * 1000,
     })
   }
-  
+
   /**
    * Tìm kiếm khóa học (Elasticsearch)
    */
-  const useSearchCourses = (query: string, page = 0, size = 20, options?: { enabled?: boolean }) => {
+  const useSearchCourses = (
+    query: string,
+    page = 0,
+    size = 20,
+    options?: { enabled?: boolean }
+  ) => {
     return useQuery<PaginatedResponse<Course>>({
-        queryKey: ["searchCourses", query, page, size],
-        queryFn: async () => {
-            const response = await instance.get<ApiResponse<PaginatedResponse<Course>>>(`/api/v1/search/courses?keyword=${query}&page=${page}&size=${size}`)
-            const pageResult = response.data.result as any
-            return {
-                data: pageResult.content,
-                pagination: { page: pageResult.number, limit: pageResult.size, total: pageResult.totalElements, totalPages: pageResult.totalPages }
-            }
-        },
-        enabled: options?.enabled ?? true,
+      queryKey: ["searchCourses", query, page, size],
+      queryFn: async () => {
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<Course>>
+        >(
+          `/api/v1/search/courses?keyword=${query}&page=${page}&size=${size}`
+        )
+        const pageResult = response.data.result as any
+        return {
+          data: pageResult.content,
+          pagination: {
+            page: pageResult.number,
+            limit: pageResult.size,
+            total: pageResult.totalElements,
+            totalPages: pageResult.totalPages,
+          },
+        }
+      },
+      enabled: options?.enabled ?? true,
     })
   }
 
@@ -197,7 +245,9 @@ export const useCourses = () => {
       queryKey: ["course", courseId],
       queryFn: async () => {
         if (!courseId) throw new Error("Course ID is required")
-        const response = await instance.get<ApiResponse<Course>>(`/api/v1/courses/${courseId}`)
+        const response = await instance.get<ApiResponse<Course>>(
+          `/api/v1/courses/${courseId}`
+        )
         return response.data.result!
       },
       enabled: !!courseId,
@@ -207,50 +257,74 @@ export const useCourses = () => {
   /**
    * Lấy các khóa học ĐÃ MUA (cho Learner)
    */
-  const useEnrolledCourses = (params?: { userId?: string; page?: number; size?: number }) => {
-     const { userId, page = 0, size = 20 } = params || {}
-     return useQuery<PaginatedResponse<CourseEnrollment>>({
-        queryKey: ["enrolledCourses", userId, page, size],
-        queryFn: async () => {
-            const qp = new URLSearchParams()
-            if (userId) qp.append("userId", userId)
-            qp.append("page", page.toString())
-            qp.append("size", size.toString())
-            const url = `/api/v1/course-enrollments?${qp.toString()}`
-            const response = await instance.get<ApiResponse<PaginatedResponse<CourseEnrollment>>>(url)
-            const pageResult = response.data.result as any
-            return {
-                data: pageResult.content,
-                pagination: { page: pageResult.number, limit: pageResult.size, total: pageResult.totalElements, totalPages: pageResult.totalPages }
-            }
-        },
-        enabled: !!userId,
-     })
+  const useEnrolledCourses = (params?: {
+    userId?: string
+    page?: number
+    size?: number
+  }) => {
+    const { userId, page = 0, size = 20 } = params || {}
+    return useQuery<PaginatedResponse<CourseEnrollment>>({
+      queryKey: ["enrolledCourses", userId, page, size],
+      queryFn: async () => {
+        const qp = new URLSearchParams()
+        if (userId) qp.append("userId", userId)
+        qp.append("page", page.toString())
+        qp.append("size", size.toString())
+        const url = `/api/v1/course-enrollments?${qp.toString()}`
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<CourseEnrollment>>
+        >(url)
+        const pageResult = response.data.result as any
+        return {
+          data: pageResult.content,
+          pagination: {
+            page: pageResult.number,
+            limit: pageResult.size,
+            total: pageResult.totalElements,
+            totalPages: pageResult.totalPages,
+          },
+        }
+      },
+      enabled: !!userId,
+      //
+      // =================================================================
+      // === FIX 3: Thêm staleTime (1 phút, vì đây là dữ liệu cá nhân) ===
+      // =================================================================
+      //
+      staleTime: 60 * 1000,
+    })
   }
 
   /**
    * Lấy các khóa học CỦA TÔI (cho Creator P2P)
    */
   const useTeacherCourses = (creatorId?: string, page = 0, size = 20) => {
-     return useQuery<PaginatedResponse<Course>>({
-        queryKey: ["teacherCourses", creatorId, page, size],
-        queryFn: async () => {
-            if (!creatorId) throw new Error("creatorId is required")
-            const qp = new URLSearchParams()
-            qp.append("page", page.toString())
-            qp.append("size", size.toString())
-            // TODO: BE cần thêm filter status (DRAFT, PENDING, PUBLIC)
-            const response = await instance.get<ApiResponse<PaginatedResponse<Course>>>(`/api/v1/courses/creator/${creatorId}?${qp.toString()}`)
-            const pageResult = response.data.result as any
-            return {
-                data: pageResult.content,
-                pagination: { page: pageResult.number, limit: pageResult.size, total: pageResult.totalElements, totalPages: pageResult.totalPages }
-            }
-        },
-        enabled: !!creatorId,
-     })
+    return useQuery<PaginatedResponse<Course>>({
+      queryKey: ["teacherCourses", creatorId, page, size],
+      queryFn: async () => {
+        if (!creatorId) throw new Error("creatorId is required")
+        const qp = new URLSearchParams()
+        qp.append("page", page.toString())
+        qp.append("size", size.toString())
+        // TODO: BE cần thêm filter status (DRAFT, PENDING, PUBLIC)
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<Course>>
+        >(`/api/v1/courses/creator/${creatorId}?${qp.toString()}`)
+        const pageResult = response.data.result as any
+        return {
+          data: pageResult.content,
+          pagination: {
+            page: pageResult.number,
+            limit: pageResult.size,
+            total: pageResult.totalElements,
+            totalPages: pageResult.totalPages,
+          },
+        }
+      },
+      enabled: !!creatorId,
+    })
   }
-  
+
   /**
    * Lấy các khóa học đang GIẢM GIÁ
    */
@@ -261,32 +335,57 @@ export const useCourses = () => {
         const qp = new URLSearchParams()
         qp.append("page", page.toString())
         qp.append("size", size.toString())
-        const response = await instance.get<ApiResponse<PaginatedResponse<CourseDiscount>>>(`/api/v1/course-discounts?${qp.toString()}`)
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<CourseDiscount>>
+        >(`/api/v1/course-discounts?${qp.toString()}`)
         const pageResult = response.data.result as any
         return {
-            data: pageResult.content,
-            pagination: { page: pageResult.number, limit: pageResult.size, total: pageResult.totalElements, totalPages: pageResult.totalPages }
+          data: pageResult.content,
+          pagination: {
+            page: pageResult.number,
+            limit: pageResult.size,
+            total: pageResult.totalElements,
+            totalPages: pageResult.totalPages,
+          },
         }
       },
+      //
+      // =================================================================
+      // === FIX 3: Thêm staleTime (5 phút) ===
+      // =================================================================
+      //
+      staleTime: 5 * 60 * 1000,
     })
   }
-  
+
   // (useRecommendedCourses, useCourseCategories, useCourseLevels giữ nguyên)
   // ...
   const useRecommendedCourses = (userId?: string, limit = 5) => {
     return useQuery<Course[]>({
       queryKey: ["recommendedCourses", userId, limit],
       queryFn: async () => {
-        if (!userId) return []
-        const response = await instance.get<ApiResponse<Course[]>>(`/api/v1/courses/recommended?userId=${userId}&limit=${limit}`)
+        // if (!userId) return [] // Không cần check này vì đã có `enabled`
+        const response = await instance.get<ApiResponse<Course[]>>(
+          `/api/v1/courses/recommended?userId=${userId}&limit=${limit}`
+        )
         return response.data.result || []
       },
       enabled: !!userId,
+      //
+      // =================================================================
+      // === FIX 3: Thêm staleTime (5 phút) ===
+      // =================================================================
+      //
+      staleTime: 5 * 60 * 1000,
     })
   }
 
-  const useCourseCategories = () => { /* ... (giữ nguyên) ... */ }
-  const useCourseLevels = () => { /* ... (giữ nguyên) ... */ }
+  const useCourseCategories = () => {
+    /* ... (giữ nguyên) ... */
+  }
+  const useCourseLevels = () => {
+    /* ... (giữ nguyên) ... */
+  }
 
   /**
    * Lấy review của 1 khóa học
@@ -299,11 +398,18 @@ export const useCourses = () => {
         if (courseId) qp.append("courseId", courseId)
         qp.append("page", page.toString())
         qp.append("size", size.toString())
-        const response = await instance.get<ApiResponse<PaginatedResponse<Review>>>(`/api/v1/course-reviews?${qp.toString()}`)
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<Review>>
+        >(`/api/v1/course-reviews?${qp.toString()}`)
         const pageResult = response.data.result as any
         return {
-            data: pageResult.content,
-            pagination: { page: pageResult.number, limit: pageResult.size, total: pageResult.totalElements, totalPages: pageResult.totalPages }
+          data: pageResult.content,
+          pagination: {
+            page: pageResult.number,
+            limit: pageResult.size,
+            total: pageResult.totalElements,
+            totalPages: pageResult.totalPages,
+          },
         }
       },
       enabled: !!courseId,
@@ -321,34 +427,42 @@ export const useCourses = () => {
         if (lessonId) qp.append("lessonId", lessonId)
         qp.append("page", page.toString())
         qp.append("size", size.toString())
-        const response = await instance.get<ApiResponse<PaginatedResponse<Review>>>(`/api/v1/lesson-reviews?${qp.toString()}`)
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<Review>>
+        >(`/api/v1/lesson-reviews?${qp.toString()}`)
         const pageResult = response.data.result as any
         return {
-            data: pageResult.content,
-            pagination: { page: pageResult.number, limit: pageResult.size, total: pageResult.totalElements, totalPages: pageResult.totalPages }
+          data: pageResult.content,
+          pagination: {
+            page: pageResult.number,
+            limit: pageResult.size,
+            total: pageResult.totalElements,
+            totalPages: pageResult.totalPages,
+          },
         }
       },
       enabled: !!lessonId,
     })
   }
 
-
   // ---------------------------------------------
   // === MUTATIONS (THAY ĐỔI DỮ LIỆU) ===
   // ---------------------------------------------
 
-  /**
-   * [Creator] Tạo 1 khóa học mới
-   */
- 
-
-  /**
-   * [Creator] Cập nhật chi tiết chung (Title, Price)
-   */
+  // ... (Toàn bộ phần Mutations giữ nguyên) ...
   const useUpdateCourseDetails = () => {
     const mutation = useMutation({
-      mutationFn: async ({ courseId, courseData }: { courseId: string; courseData: UpdateCourseDetailsRequest }) => {
-        const response = await instance.put<ApiResponse<Course>>(`/api/v1/courses/${courseId}/details`, courseData)
+      mutationFn: async ({
+        courseId,
+        courseData,
+      }: {
+        courseId: string
+        courseData: UpdateCourseDetailsRequest
+      }) => {
+        const response = await instance.put<ApiResponse<Course>>(
+          `/api/v1/courses/${courseId}/details`,
+          courseData
+        )
         return response.data.result!
       },
       onSuccess: (data) => {
@@ -364,13 +478,19 @@ export const useCourses = () => {
     }
   }
 
-  /**
-   * [Creator] Lưu tạm (update) một bản DRAFT
-   */
   const useUpdateCourseVersion = () => {
     const mutation = useMutation({
-      mutationFn: async ({ versionId, versionData }: { versionId: string; versionData: UpdateCourseVersionRequest }) => {
-        const response = await instance.put<ApiResponse<CourseVersion>>(`/api/v1/courses/versions/${versionId}`, versionData)
+      mutationFn: async ({
+        versionId,
+        versionData,
+      }: {
+        versionId: string
+        versionData: UpdateCourseVersionRequest
+      }) => {
+        const response = await instance.put<ApiResponse<CourseVersion>>(
+          `/api/v1/courses/versions/${versionId}`,
+          versionData
+        )
         return response.data.result!
       },
       onSuccess: (data) => {
@@ -384,14 +504,20 @@ export const useCourses = () => {
       error: mutation.error,
     }
   }
-  
-  /**
-   * [Creator] Yêu cầu PUBLISH một bản DRAFT
-   */
+
   const usePublishCourseVersion = () => {
     const mutation = useMutation({
-      mutationFn: async ({ versionId, publishData }: { versionId: string; publishData: PublishVersionRequest }) => {
-        const response = await instance.post<ApiResponse<CourseVersion>>(`/api/v1/courses/versions/${versionId}/publish`, publishData)
+      mutationFn: async ({
+        versionId,
+        publishData,
+      }: {
+        versionId: string
+        publishData: PublishVersionRequest
+      }) => {
+        const response = await instance.post<ApiResponse<CourseVersion>>(
+          `/api/v1/courses/versions/${versionId}/publish`,
+          publishData
+        )
         return response.data.result!
       },
       onSuccess: (data) => {
@@ -405,14 +531,13 @@ export const useCourses = () => {
       error: mutation.error,
     }
   }
-  
-  /**
-   * [Creator] Tạo một bản DRAFT mới (để edit)
-   */
+
   const useCreateNewDraftVersion = () => {
     const mutation = useMutation({
       mutationFn: async (courseId: string) => {
-        const response = await instance.post<ApiResponse<CourseVersion>>(`/api/v1/courses/${courseId}/versions`)
+        const response = await instance.post<ApiResponse<CourseVersion>>(
+          `/api/v1/courses/${courseId}/versions`
+        )
         return response.data.result!
       },
       onSuccess: (data) => {
@@ -427,40 +552,40 @@ export const useCourses = () => {
     }
   }
 
-  /**
-   * [Creator] Xóa khóa học
-   */
   const useDeleteCourse = () => {
     const mutation = useMutation({
-        mutationFn: async (courseId: string) => {
-            const response = await instance.delete<ApiResponse<void>>(`/api/v1/courses/${courseId}`)
-            return response.data.result
-        },
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["allCourses"] })
-            queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-        },
+      mutationFn: async (courseId: string) => {
+        const response = await instance.delete<ApiResponse<void>>(
+          `/api/v1/courses/${courseId}`
+        )
+        return response.data.result
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["allCourses"] })
+        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
+      },
     })
     return {
-        deleteCourse: mutation.mutateAsync,
-        isDeleting: mutation.isPending,
-        error: mutation.error,
+      deleteCourse: mutation.mutateAsync,
+      isDeleting: mutation.isPending,
+      error: mutation.error,
     }
   }
-  
-  
-  /**
-   * [Learner] Đổi version đang học
-   */
+
   const useSwitchCourseVersion = () => {
     const mutation = useMutation({
       mutationFn: async (payload: SwitchVersionRequest) => {
-        const response = await instance.put<ApiResponse<CourseEnrollment>>("/api/v1/course-enrollments/switch-version", payload)
+        const response = await instance.put<ApiResponse<CourseEnrollment>>(
+          "/api/v1/course-enrollments/switch-version",
+          payload
+        )
         return response.data.result!
       },
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: ["enrolledCourses"] })
-        queryClient.invalidateQueries({ queryKey: ["enrollment", data.courseId, data.userId] })
+        queryClient.invalidateQueries({
+          queryKey: ["enrollment", data.courseId, data.userId],
+        })
       },
     })
     return {
@@ -469,19 +594,23 @@ export const useCourses = () => {
       error: mutation.error,
     }
   }
-  
-  /**
-   * [Learner] Tạo review cho khóa học
-   */
+
   const useCreateCourseReview = () => {
     const mutation = useMutation({
       mutationFn: async (payload: CreateReviewRequest) => {
-        const response = await instance.post<ApiResponse<Review>>("/api/v1/course-reviews", payload)
+        const response = await instance.post<ApiResponse<Review>>(
+          "/api/v1/course-reviews",
+          payload
+        )
         return response.data.result!
       },
       onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["courseReviews", variables.courseId] })
-        queryClient.invalidateQueries({ queryKey: ["course", variables.courseId] })
+        queryClient.invalidateQueries({
+          queryKey: ["courseReviews", variables.courseId],
+        })
+        queryClient.invalidateQueries({
+          queryKey: ["course", variables.courseId],
+        })
       },
     })
     return {
@@ -490,29 +619,37 @@ export const useCourses = () => {
       error: mutation.error,
     }
   }
-  
-  /**
-   * [Learner] Tạo review cho bài học
-   */
+
   const useCreateLessonReview = () => {
     const mutation = useMutation({
       mutationFn: async (payload: CreateReviewRequest) => {
-        const response = await instance.post<ApiResponse<Review>>("/api/v1/lesson-reviews", payload)
+        const response = await instance.post<ApiResponse<Review>>(
+          "/api/v1/lesson-reviews",
+          payload
+        )
         return response.data.result!
       },
       onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["lessonReviews", variables.lessonId] })
+        queryClient.invalidateQueries({
+          queryKey: ["lessonReviews", variables.lessonId],
+        })
       },
     })
     return {
       createLessonReview: mutation.mutateAsync,
       isCreatingReview: mutation.isPending,
       error: mutation.error,
+      s
     }
   }
 
   // ... (Video hooks remain the same) ...
-  const useBilingualVideos = (params?: { page?: number; size?: number; category?: string; level?: string }) => {
+  const useBilingualVideos = (params?: {
+    page?: number
+    size?: number
+    category?: string
+    level?: string
+  }) => {
     const { page = 0, size = 10, category, level } = params || {}
 
     return useQuery<PaginatedResponse<BilingualVideo>>({
@@ -524,8 +661,15 @@ export const useCourses = () => {
         if (category && category !== "All") qp.append("category", category)
         if (level) qp.append("level", level)
 
-        const response = await instance.get<ApiResponse<PaginatedResponse<BilingualVideo>>>(`/api/v1/api/videos/bilingual?${qp.toString()}`)
-        return response.data.result || { data: [], pagination: { page, limit: size, total: 0, totalPages: 0 } }
+        const response = await instance.get<
+          ApiResponse<PaginatedResponse<BilingualVideo>>
+        >(`/api/v1/videos/bilingual?${qp.toString()}`)
+        return (
+          response.data.result || {
+            data: [],
+            pagination: { page, limit: size, total: 0, totalPages: 0 },
+          }
+        )
       },
       staleTime: 5 * 60 * 1000,
     })
@@ -534,7 +678,9 @@ export const useCourses = () => {
     return useQuery<string[]>({
       queryKey: ["videoCategories"],
       queryFn: async () => {
-        const response = await instance.get<ApiResponse<string[]>>("/videos/categories")
+        const response = await instance.get<ApiResponse<string[]>>(
+          "/api/v1/videos/categories"
+        )
         return response.data.result || []
       },
       staleTime: 30 * 60 * 1000,
@@ -545,7 +691,9 @@ export const useCourses = () => {
       queryKey: ["video", videoId],
       queryFn: async () => {
         if (!videoId) throw new Error("videoId is required")
-        const response = await instance.get<ApiResponse<Video>>(`/api/v1/videos/${videoId}`)
+        const response = await instance.get<ApiResponse<Video>>(
+          `/api/v1/videos/${videoId}`
+        )
         return response.data.result!
       },
       enabled: !!videoId,
@@ -555,7 +703,10 @@ export const useCourses = () => {
   const useCreateVideo = () => {
     const mutation = useMutation({
       mutationFn: async (payload: Partial<Video>) => {
-        const response = await instance.post<ApiResponse<Video>>("/videos", payload)
+        const response = await instance.post<ApiResponse<Video>>(
+          "/videos",
+          payload
+        )
         return response.data.result!
       },
       onSuccess: () => {
@@ -572,8 +723,17 @@ export const useCourses = () => {
   }
   const useUpdateVideo = () => {
     const mutation = useMutation({
-      mutationFn: async ({ videoId, payload }: { videoId: string; payload: Partial<Video> }) => {
-        const response = await instance.put<ApiResponse<Video>>(`/api/v1/videos/${videoId}`, payload)
+      mutationFn: async ({
+        videoId,
+        payload,
+      }: {
+        videoId: string
+        payload: Partial<Video>
+      }) => {
+        const response = await instance.put<ApiResponse<Video>>(
+          `/api/v1/videos/${videoId}`,
+          payload
+        )
         return response.data.result!
       },
       onSuccess: (data) => {
@@ -591,7 +751,9 @@ export const useCourses = () => {
   const useDeleteVideo = () => {
     const mutation = useMutation({
       mutationFn: async (videoId: string) => {
-        const response = await instance.delete<ApiResponse<void>>(`/api/v1/videos/${videoId}`)
+        const response = await instance.delete<ApiResponse<void>>(
+          `/api/v1/videos/${videoId}`
+        )
         return response.data.result
       },
       onSuccess: () => {
@@ -611,7 +773,9 @@ export const useCourses = () => {
       queryKey: ["videoSubtitles", videoId],
       queryFn: async () => {
         if (!videoId) throw new Error("videoId is required")
-        const response = await instance.get<ApiResponse<VideoSubtitle[]>>(`/api/v1/videos/${videoId}/subtitles`)
+        const response = await instance.get<ApiResponse<VideoSubtitle[]>>(
+          `/api/v1/videos/${videoId}/subtitles`
+        )
         return response.data.result || []
       },
       enabled: !!videoId,
@@ -620,12 +784,23 @@ export const useCourses = () => {
   }
   const useAddSubtitle = () => {
     const mutation = useMutation({
-      mutationFn: async ({ videoId, payload }: { videoId: string; payload: Partial<VideoSubtitle> }) => {
-        const response = await instance.post<ApiResponse<VideoSubtitle>>(`/api/v1/videos/${videoId}/subtitles`, payload)
+      mutationFn: async ({
+        videoId,
+        payload,
+      }: {
+        videoId: string
+        payload: Partial<VideoSubtitle>
+      }) => {
+        const response = await instance.post<ApiResponse<VideoSubtitle>>(
+          `/api/v1/videos/${videoId}/subtitles`,
+          payload
+        )
         return response.data.result!
       },
       onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["videoSubtitles", variables.videoId] })
+        queryClient.invalidateQueries({
+          queryKey: ["videoSubtitles", variables.videoId],
+        })
       },
     })
 
@@ -637,12 +812,22 @@ export const useCourses = () => {
   }
   const useDeleteSubtitle = () => {
     const mutation = useMutation({
-      mutationFn: async ({ videoId, subtitleId }: { videoId: string; subtitleId: string }) => {
-        const response = await instance.delete<ApiResponse<void>>(`/api/v1/videos/${videoId}/subtitles/${subtitleId}`)
+      mutationFn: async ({
+        videoId,
+        subtitleId,
+      }: {
+        videoId: string
+        subtitleId: string
+      }) => {
+        const response = await instance.delete<ApiResponse<void>>(
+          `/api/v1/videos/${videoId}/subtitles/${subtitleId}`
+        )
         return response.data.result
       },
       onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["videoSubtitles", variables.videoId] })
+        queryClient.invalidateQueries({
+          queryKey: ["videoSubtitles", variables.videoId],
+        })
       },
     })
 
@@ -663,10 +848,13 @@ export const useCourses = () => {
         currentTime: number
         duration: number
       }) => {
-        const response = await instance.post<ApiResponse<{ success: boolean }>>(`/api/v1/videos/${videoId}/progress`, {
-          currentTime,
-          duration,
-        })
+        const response = await instance.post<ApiResponse<{ success: boolean }>>(
+          `/api/v1/videos/${videoId}/progress`,
+          {
+            currentTime,
+            duration,
+          }
+        )
         return response.data.result!
       },
     })
@@ -680,7 +868,10 @@ export const useCourses = () => {
   const useCreateCourse = () => {
     const mutation = useMutation({
       mutationFn: async (courseData: Partial<Course>) => {
-        const response = await instance.post<ApiResponse<Course>>("/api/v1/courses", courseData)
+        const response = await instance.post<ApiResponse<Course>>(
+          "/api/v1/courses",
+          courseData
+        )
         return response.data.result!
       },
       onSuccess: () => {
@@ -697,8 +888,17 @@ export const useCourses = () => {
   }
   const useUpdateCourse = () => {
     const mutation = useMutation({
-      mutationFn: async ({ courseId, courseData }: { courseId: string; courseData: Partial<Course> }) => {
-        const response = await instance.put<ApiResponse<Course>>(`/api/v1/courses/${courseId}`, courseData)
+      mutationFn: async ({
+        courseId,
+        courseData,
+      }: {
+        courseId: string
+        courseData: Partial<Course>
+      }) => {
+        const response = await instance.put<ApiResponse<Course>>(
+          `/api/v1/courses/${courseId}`,
+          courseData
+        )
         return response.data.result!
       },
       onSuccess: (data) => {
@@ -718,7 +918,10 @@ export const useCourses = () => {
   const useEnrollCourse = () => {
     const mutation = useMutation({
       mutationFn: async (enrollmentPayload: Partial<CourseEnrollment>) => {
-        const response = await instance.post<ApiResponse<CourseEnrollment>>("/course-enrollments", enrollmentPayload)
+        const response = await instance.post<ApiResponse<CourseEnrollment>>(
+          "/course-enrollments",
+          enrollmentPayload
+        )
         return response.data.result!
       },
       onSuccess: () => {
@@ -735,8 +938,13 @@ export const useCourses = () => {
   }
   const usePurchaseCourse = () => {
     const mutation = useMutation({
-      mutationFn: async (payload: Partial<CourseEnrollment> & { paymentInfo?: any }) => {
-        const response = await instance.post<ApiResponse<CourseEnrollment>>("/course-enrollments", payload)
+      mutationFn: async (
+        payload: Partial<CourseEnrollment> & { paymentInfo?: any }
+      ) => {
+        const response = await instance.post<ApiResponse<CourseEnrollment>>(
+          "/course-enrollments",
+          payload
+        )
         return response.data.result!
       },
       onSuccess: () => {
@@ -750,7 +958,7 @@ export const useCourses = () => {
       error: mutation.error,
     }
   }
-return {
+  return {
     // Queries
     useAllCourses,
     useSearchCourses,
@@ -763,7 +971,7 @@ return {
     useCourseLevels,
     useCourseReviews,
     useLessonReviews,
-    
+
     // Mutations (P2P Creator)
     useCreateCourse,
     useUpdateCourseDetails,
@@ -771,11 +979,11 @@ return {
     usePublishCourseVersion,
     useCreateNewDraftVersion,
     useDeleteCourse,
-    
+
     // Mutations (Learner)
     usePurchaseCourse,
     useSwitchCourseVersion,
-    
+
     // Mutations (Reviews)
     useCreateCourseReview,
     useCreateLessonReview,

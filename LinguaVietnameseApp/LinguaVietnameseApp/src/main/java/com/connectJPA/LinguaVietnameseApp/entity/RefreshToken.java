@@ -37,6 +37,10 @@ public class RefreshToken {
     private String deviceId;
     private String ip;
     private String userAgent;
+
+    public void setToken(String token) {
+        this.token = token != null ? token.trim() : null;
+    }
 }
 
 

@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -29,6 +30,16 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             ") t WHERE user_id = :userId", nativeQuery = true)
     Integer findRankByLeaderboardAndUser(@Param("leaderboardId") UUID leaderboardId,
                                          @Param("userId") UUID userId);
+
+    @Query("SELECT le FROM LeaderboardEntry le JOIN le.leaderboard l " +
+            "WHERE l.period = :period AND l.tab = :tab AND l.snapshotDate = :date AND le.isDeleted = false " +
+            "ORDER BY le.score DESC")
+    Page<LeaderboardEntry> findTopUsers(
+            @Param("period") String period,
+            @Param("tab") String tab,
+            @Param("date") LocalDate date,
+            Pageable pageable
+    );
 
     @Query(value = "SELECT rank FROM (" +
             " SELECT user_id, RANK() OVER (ORDER BY score DESC) as rank " +

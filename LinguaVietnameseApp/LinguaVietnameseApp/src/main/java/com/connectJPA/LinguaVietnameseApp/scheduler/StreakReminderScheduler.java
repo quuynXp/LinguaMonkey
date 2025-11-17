@@ -37,6 +37,8 @@ public class StreakReminderScheduler {
                         .title("Keep Your Streak Alive!")
                         .content("Complete a lesson today to maintain your " + user.getStreak() + "-day streak!")
                         .type("STREAK_REMINDER")
+                        // THÊM PAYLOAD: Mở app và điều hướng đến tab học
+                        .payload("{\"screen\":\"Learn\"}")
                         .build();
                 notificationService.createPushNotification(notificationRequest);
             }
@@ -59,8 +61,11 @@ public class StreakReminderScheduler {
                         .title("Streak Reset")
                         .content("Your streak has been reset to 0 due to inactivity.")
                         .type("STREAK_RESET")
+                        // THÊM PAYLOAD: Mở app đến trang Home
+                        .payload("{\"screen\":\"Home\"}")
                         .build();
-                notificationService.createNotification(notificationRequest);
+                // Sửa lỗi logic: Phải gọi createPushNotification
+                notificationService.createPushNotification(notificationRequest);
             }
         }
     }

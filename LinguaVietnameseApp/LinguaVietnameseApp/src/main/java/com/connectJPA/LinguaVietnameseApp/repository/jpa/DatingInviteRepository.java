@@ -3,6 +3,9 @@ package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 import com.connectJPA.LinguaVietnameseApp.entity.DatingInvite;
 import com.connectJPA.LinguaVietnameseApp.enums.DatingInviteStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -13,4 +16,8 @@ public interface DatingInviteRepository extends JpaRepository<DatingInvite, UUID
     Optional<DatingInvite> findTopBySenderIdAndTargetIdAndStatus(UUID senderId, UUID targetId, DatingInviteStatus status);
     List<DatingInvite> findByExpiresAtBeforeAndStatus(OffsetDateTime time, DatingInviteStatus status);
     List<DatingInvite> findByTargetIdAndStatus(UUID targetId, DatingInviteStatus status);
+
+    @Modifying
+    @Query("UPDATE DatingInvite d SET d.status = 'expired' WHERE d.status = 'pending' AND d.expiresAt < :now")
+    int expirePendingInvites(@Param("now") OffsetDateTime now);
 }

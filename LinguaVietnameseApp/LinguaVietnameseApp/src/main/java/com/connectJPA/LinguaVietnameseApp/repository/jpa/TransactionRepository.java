@@ -28,6 +28,9 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     Page<Transaction> findByUser_UserIdAndStatus(UUID userId, TransactionStatus status, Pageable pageable);
 
+
+    List<Transaction> findByStatusAndCreatedAtBeforeAndIsDeletedFalse(String status, OffsetDateTime time);
+
     Optional<Transaction> findByIdempotencyKey(String idempotencyKey);
 
     Page<Transaction> findByUser_UserIdOrSender_UserIdOrReceiver_UserId(

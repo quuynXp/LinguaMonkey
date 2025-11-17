@@ -62,7 +62,6 @@ export const useLeaderboards = () => {
         return res.data.result;
       },
       enabled: !!leaderboardId, // <-- CRITICAL: only run when we have an id
-      keepPreviousData: true,
     });
   };
 

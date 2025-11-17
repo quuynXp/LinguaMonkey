@@ -90,9 +90,8 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         List<CourseProgressDto> courseProgressList = new ArrayList<>();
         for (CourseEnrollment e : enrollments) {
-            Course course = courseRepository
-                    .findByCourseIdAndIsDeletedFalse(e.getCourseId())
-                    .orElse(null);
+            // SỬA: Lấy Course trực tiếp từ quan hệ
+            Course course = e.getCourseVersion().getCourse();
 
             // Lấy version public mới nhất
             CourseVersion version = (course != null) ? course.getLatestPublicVersion() : null;
@@ -591,7 +590,7 @@ public class StatisticsServiceImpl implements StatisticsService {
                 totalLessons += v.getLessons().size();
             }
         }
-        // DÒNG CŨ BỊ LỖI: List<Lesson> lessons = lessonRepository.findByCourseIdIn(courseIds);
+        // DÒNG CŨ BỊ LỖI: List<Lesson> lessons = lessonRepository.findByCourseVersion_Course_CourseIdIn(courseIds);
 
         List<UUID> courseIds = courses.stream().map(Course::getCourseId).collect(Collectors.toList());
 
@@ -604,7 +603,7 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         if (!courseIds.isEmpty()) {
             List<CourseEnrollment> enrolls = courseEnrollmentRepository
-                    .findByCourseIdInAndEnrolledAtBetween(courseIds, start, end);
+                    .findByCourseVersion_Course_CourseIdInAndEnrolledAtBetween(courseIds, start, end);
             totalStudents = enrolls.stream()
                     .map(CourseEnrollment::getUserId)
                     .distinct()
@@ -639,7 +638,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             OffsetDateTime fullStart = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
             OffsetDateTime fullEnd   = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
             List<Transaction> allTx = transactionRepository.findByCreatedAtBetween(fullStart, fullEnd);
-            Set<UUID> enrolledAll = courseEnrollmentRepository.findByCourseIdIn(courseIds).stream()
+            Set<UUID> enrolledAll = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdIn(courseIds).stream()
                     .map(CourseEnrollment::getUserId)
                     .collect(Collectors.toSet());
 
@@ -694,7 +693,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             // DÒNG CŨ BỊ LỖI: List<Lesson> lessons = lessonRepository.findByCourseIdAndIsDeletedFalse(c.getCourseId());
 
             List<CourseEnrollment> enrolls = courseEnrollmentRepository
-                    .findByCourseIdAndEnrolledAtBetween(c.getCourseId(), start, end);
+                    .findByCourseVersion_Course_CourseIdAndEnrolledAtBetween(c.getCourseId(), start, end);
             cp.setStudentsCount(enrolls.stream()
                     .map(CourseEnrollment::getUserId)
                     .distinct()
@@ -794,10 +793,9 @@ public class StatisticsServiceImpl implements StatisticsService {
                         Object cid = m.invoke(t);
                         if (cid instanceof UUID && courseId.equals(cid)) return true;
                     } catch (Exception ignored) {}
-                    return courseEnrollmentRepository.findByCourseIdAndIsDeletedFalse(courseId)
+                    return courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndIsDeletedFalse(courseId)
                             .stream()
-                            .map(CourseEnrollment::getUserId)
-                            .anyMatch(u -> u.equals(t.getUserId()));
+                            .map(CourseEnrollment::getUserId).isParallel();
                 })
                 .collect(Collectors.toList());
 

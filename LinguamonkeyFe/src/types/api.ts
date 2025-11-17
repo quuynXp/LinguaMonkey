@@ -192,13 +192,18 @@ export interface UserResponse {
   exp: number; // SQL: exp
   expToNextLevel: number; // DTO field
   progress: number; // DTO field
+  ageRange?: string; // Ví dụ: '18-24', '25-34', etc.
+  learningPace?: string; // Ví dụ: 'casual', 'serious', etc.
+  proficiency?: string; // Ví dụ: 'beginner', 'intermediate', etc.
+  certificationIds?: string[]; // Hoặc kiểu dữ liệu đúng của nó
+  goalIds?: string[]; // Hoặc kiểu dữ liệu đúng của nó
+  interestestIds?: string[];
   streak: number; // SQL: streak
   isDeleted: boolean; // SQL: is_deleted
   createdAt: string; // SQL: created_at
   updatedAt: string; // SQL: updated_at
   languages: string[]; // DTO field (from user_languages)
 }
-
 
 // DTO - No direct table
 export type WSMessage =
