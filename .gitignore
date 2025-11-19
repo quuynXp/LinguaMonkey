@@ -1,10 +1,29 @@
-HELP.md
-target/
-!.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+# ===============================================
+# 🛑 1. Quy tắc Cốt lõi & Phụ thuộc (Core & Dependencies)
+# ===============================================
+# Thư mục phụ thuộc chính cho JavaScript/Node.js/React
+node_modules/
 
-### STS ###
+# Thư mục đầu ra của dự án Java/Spring Boot/Maven
+/target/
+
+# Thư mục đầu ra của Gradle
+/build/
+
+# Thư mục đầu ra của Go
+/bin/
+
+# Thư mục đầu ra của Python
+/dist/
+/venv/
+__pycache__/
+*.pyc
+
+# ===============================================
+# 💻 2. Quy tắc IDE (IDE-specific exclusions)
+# ===============================================
+
+### STS / Eclipse ###
 .apt_generated
 .classpath
 .factorypath
@@ -14,12 +33,10 @@ target/
 .sts4-cache
 
 ### IntelliJ IDEA ###
-.idea
+.idea/
 *.iws
 *.iml
 *.ipr
-
-**/serviceAccountKey.json
 
 ### NetBeans ###
 /nbproject/private/
@@ -27,29 +44,71 @@ target/
 /dist/
 /nbdist/
 /.nb-gradle/
-build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
 ### VS Code ###
 .vscode/
 
+# ===============================================
+# 📱 3. Quy tắc Ứng dụng Di động (Mobile App Exclusions)
+# ===============================================
 
-# Loại bỏ các tệp hệ điều hành
+### React Native / Expo ###
+.expo/
+web-build/
+# Các tệp bundle, cache của Metro
+*.bundle
+.hash
+
+### Flutter ###
+.dart_tool/
+.packages
+/ios/Flutter/Generated.xcconfig
+/ios/Pods/
+/android/.gradle/
+/android/local.properties
+/android/build/
+/android/app/build/
+
+### Android (Dành cho Android Native hoặc RN/Flutter) ###
+.gradle
+/local.properties
+/captures/
+.externalNativeBuild/
+# Môi trường Gradle Wrapper
+!.mvn/wrapper/maven-wrapper.jar
+
+### iOS / Swift (Dành cho iOS Native hoặc RN/Flutter) ###
+/DerivedData/
+*.xcworkspace
+/Pods/
+/vendor/
 .DS_Store
-Thumbs.db
 
-# Loại bỏ tệp nhật ký
+# ===============================================
+# ⚙️ 4. Cấu hình Riêng tư & Tệp hệ thống (Private Config & OS Files)
+# ===============================================
+# Tệp cấu hình nhạy cảm/biến môi trường
+*.env
+*.local
+*.pem
+*.key
+*.cer
+*.jks
+**/serviceAccountKey.json
+LinguamonkeyFe/service-account.json
+
+# Tệp Nhật ký (Logs)
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+/logs/
 
-# Loại bỏ tệp biên dịch
+# Tệp biên dịch/Cache
 *.class
 *.o
 *.so
-
-# Loại bỏ thư mục đầu ra của dự án
-/build/
-
-# Loại bỏ tệp cấu hình cá nhân
-*.env
-LinguamonkeyFe/service-account.json
+.DS_Store
+Thumbs.db

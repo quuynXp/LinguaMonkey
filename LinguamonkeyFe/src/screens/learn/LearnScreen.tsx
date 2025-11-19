@@ -13,11 +13,47 @@ import { useTranslation } from "react-i18next"
 import { useUserStore } from "../../stores/UserStore"
 import { useCourses } from "../../hooks/useCourses"
 import { useCertifications } from "../../hooks/useCertifications"
-import { useGetLessonsBySkillType } from "../../hooks/useLessons" // Assuming default export
+import { useGetLessonsBySkillType } from "../../hooks/useLessons"
 import { createScaledSheet } from "../../utils/scaledStyles"
-import { UserLearningActivity } from "../../types/api"
 
-const LearnScreen = ({ navigation }) => {
+// Helper để map dữ liệu từ BE (CourseResponse) sang định dạng FE cần dùng
+// Logic: Ưu tiên lấy trực tiếp từ course (nếu DTO đã flatten), nếu không thì lấy từ latestPublicVersion
+const mapCourseFields = (course: any) => {
+  if (!course) return null
+
+  // Backend DTO thường trả về các trường này ở root
+  const version = course.latestPublicVersion || {}
+
+  return {
+    id: course.courseId || course.id, // BE dùng courseId
+    title: course.title || course.courseName || "Untitled Course",
+    // Ưu tiên ảnh ở root (CourseResponse), fallback vào version
+    image: course.thumbnailUrl || version.thumbnailUrl || null,
+    // BE trả về creatorName hoặc thông qua object creator
+    instructor: course.creatorName || course.creator?.fullname || "Unknown Teacher",
+    isFree:
+      course.type === "FREE" ||
+      course.price === 0 ||
+      (course.price === undefined && course.isFree),
+    price: course.price ?? 0,
+    originalPrice: course.originalPrice, // Có thể null
+    rating: course.averageRating ?? 0, // BE: averageRating
+    students: course.studentsCount ?? course.students ?? 0, // BE: studentsCount
+    level: course.difficultyLevel || course.level || "BEGINNER",
+    duration: course.duration || "0h", // Có thể cần format lại từ seconds nếu BE trả về int
+
+    // Tiến độ (chỉ có nếu là purchased course/enrollment)
+    progress: course.progress ?? 0,
+    completedLessons: course.completedLessons ?? 0,
+
+    // Tổng số bài học: Lấy từ root nếu có, không thì đếm trong version
+    totalLessons: course.totalLessons ?? version.lessons?.length ?? 0,
+
+    discount: course.discount,
+  }
+}
+
+const LearnScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
   const { user, isAuthenticated } = useUserStore()
 
@@ -28,6 +64,7 @@ const LearnScreen = ({ navigation }) => {
     useBilingualVideos,
   } = useCourses()
 
+  // 1. Khóa học đã mua
   const {
     data: purchasedCoursesData,
     isLoading: purchasedLoading,
@@ -38,6 +75,7 @@ const LearnScreen = ({ navigation }) => {
     size: 5,
   })
 
+  // 2. Khóa học miễn phí
   const {
     data: freeCoursesData,
     isLoading: freeLoading,
@@ -48,12 +86,14 @@ const LearnScreen = ({ navigation }) => {
     size: 5,
   })
 
+  // 3. Khóa học đề xuất
   const {
-    data: recommendedCourses,
+    data: recommendedCoursesData,
     isLoading: recommendedLoading,
     refetch: refetchRecommended,
-  } = useRecommendedCourses(user?.userId, 5) // <-- FIX 2: Bỏ chuỗi rỗng "", chỉ truyền user?.userId
+  } = useRecommendedCourses(user?.userId, 5)
 
+  // 4. Video song ngữ
   const {
     data: videosData,
     isLoading: videosLoading,
@@ -63,64 +103,55 @@ const LearnScreen = ({ navigation }) => {
     size: 5,
   })
 
+  // 5. Chứng chỉ
   const {
     data: certifications,
     isLoading: certificationsLoading,
     refetch: refetchCertifications,
   } = useCertifications().useAvailableCertifications(user?.languages)
 
-  const purchasedCourses = useMemo(
-    () =>
-      purchasedCoursesData?.data.map((enrollment) => ({
+  // --- Xử lý dữ liệu (Memoization) ---
+
+  const purchasedCourses = useMemo(() => {
+    // API EnrolledCourses trả về danh sách Enrollment
+    // Cấu trúc: { course: {...}, progress: number, completedLessons: number }
+    const list = purchasedCoursesData?.data || []
+    return list.map((enrollment: any) => {
+      // Gộp thông tin tiến độ vào object course để tiện map
+      const courseWithProgress = {
         ...enrollment.course,
-        progress: enrollment.progressPercent,
-        completedLessons: enrollment.completedLessons,
-      })) || [],
-    [purchasedCoursesData]
-  )
+        progress: enrollment.progress ?? 0, // BE: progress hoặc progressPercent
+        completedLessons: enrollment.completedLessons ?? 0,
+      }
+      return mapCourseFields(courseWithProgress)
+    }).filter(Boolean)
+  }, [purchasedCoursesData])
 
-  const freeCourses = useMemo(
-    () => freeCoursesData?.data || [],
-    [freeCoursesData]
-  )
-  const videos = useMemo(
-    () => videosData?.data || [],
-    [videosData]
-  )
+  const freeCourses = useMemo(() => {
+    const list = freeCoursesData?.data || []
+    return list.map(mapCourseFields).filter(Boolean)
+  }, [freeCoursesData])
 
-  const {
-    data: listeningLessonsData,
-    isLoading: listeningLessonsLoading,
-  } = useGetLessonsBySkillType("LISTENING", { page: 0, size: 3 })
-  const {
-    data: speakingLessonsData,
-    isLoading: speakingLessonsLoading,
-  } = useGetLessonsBySkillType("SPEAKING", { page: 0, size: 3 })
-  const {
-    data: readingLessonsData,
-    isLoading: readingLessonsLoading,
-  } = useGetLessonsBySkillType("READING", { page: 0, size: 3 })
-  const {
-    data: writingLessonsData,
-    isLoading: writingLessonsLoading,
-  } = useGetLessonsBySkillType("WRITING", { page: 0, size: 3 })
+  const recommendedCourses = useMemo(() => {
+    // Recommended API trả về List<CourseResponse> trực tiếp (không phân trang)
+    const list = Array.isArray(recommendedCoursesData) ? recommendedCoursesData : []
+    return list.map(mapCourseFields).filter(Boolean)
+  }, [recommendedCoursesData])
 
-  const listeningLessons = useMemo(
-    () => listeningLessonsData?.data || [],
-    [listeningLessonsData]
-  )
-  const speakingLessons = useMemo(
-    () => speakingLessonsData?.data || [],
-    [speakingLessonsData]
-  )
-  const readingLessons = useMemo(
-    () => readingLessonsData?.data || [],
-    [readingLessonsData]
-  )
-  const writingLessons = useMemo(
-    () => writingLessonsData?.data || [],
-    [writingLessonsData]
-  )
+  const videos = useMemo(() => {
+    return videosData?.data || []
+  }, [videosData])
+
+  // --- Fetch Lessons theo Skill ---
+  const { data: listeningData, isLoading: loadListen } = useGetLessonsBySkillType("LISTENING", { page: 0, size: 3 })
+  const { data: speakingData, isLoading: loadSpeak } = useGetLessonsBySkillType("SPEAKING", { page: 0, size: 3 })
+  const { data: readingData, isLoading: loadRead } = useGetLessonsBySkillType("READING", { page: 0, size: 3 })
+  const { data: writingData, isLoading: loadWrite } = useGetLessonsBySkillType("WRITING", { page: 0, size: 3 })
+
+  const listeningLessons = useMemo(() => listeningData?.data || [], [listeningData])
+  const speakingLessons = useMemo(() => speakingData?.data || [], [speakingData])
+  const readingLessons = useMemo(() => readingData?.data || [], [readingData])
+  const writingLessons = useMemo(() => writingData?.data || [], [writingData])
 
   const isLoading =
     purchasedLoading ||
@@ -128,15 +159,12 @@ const LearnScreen = ({ navigation }) => {
     recommendedLoading ||
     videosLoading ||
     certificationsLoading ||
-    listeningLessonsLoading ||
-    speakingLessonsLoading ||
-    readingLessonsLoading ||
-    writingLessonsLoading
-  const isRefreshing = false
+    loadListen ||
+    loadSpeak ||
+    loadRead ||
+    loadWrite
 
-  useEffect(() => {
-    console.log("LearnScreen - User:", user)
-  }, [user, purchasedCourses, freeCourses, recommendedCourses, certifications])
+  // --- Handlers ---
 
   const handleRefresh = () => {
     refetchPurchased()
@@ -146,103 +174,54 @@ const LearnScreen = ({ navigation }) => {
     refetchCertifications()
   }
 
-  const handleCoursePress = (course, isPurchased = false) => {
-    const safeCourse = {
-      ...course,
-      courseId: course.courseId || course.id,
-    }
+  const handleCoursePress = (rawCourse: any, isPurchased = false) => {
+    // Cần đảm bảo truyền object course gốc (raw) hoặc object đã map nhưng đủ ID
+    // Ở đây ta truyền course đã map bởi mapCourseFields
     navigation.navigate("CourseDetailsScreen", {
-      course: safeCourse,
+      course: rawCourse, // rawCourse ở đây là item đã qua hàm mapCourseFields
       isPurchased,
     })
   }
 
-  // video navigation: provide mode 'original' or 'bilingual'
-  const handleVideoPress = (video, mode = "bilingual") => {
+  const handleVideoPress = (video: any, mode = "bilingual") => {
     navigation.navigate("BilingualVideoScreen", { selectedVideo: video, mode })
   }
 
   const handleViewAllCourses = () => navigation.navigate("StudentCoursesScreen")
   const handleViewAllVideos = () => navigation.navigate("BilingualVideoScreen")
-  const handleViewAllCertifications = () =>
-    navigation.navigate("CertificationLearning")
+  const handleViewAllCertifications = () => navigation.navigate("CertificationLearning")
 
-  const handleViewAllLessons = (skillType) => {
-    switch (skillType) {
-      case "LISTENING":
-        navigation.navigate("ListeningScreen")
-        break
-      case "SPEAKING":
-        navigation.navigate("SpeakingScreen")
-        break
-      case "READING":
-        navigation.navigate("ReadingScreen")
-        break
-      case "WRITING":
-        navigation.navigate("WritingScreen")
-        break
-      default:
-        break
+  const handleViewAllLessons = (skillType: string) => {
+    // Điều hướng tới màn hình list bài học tương ứng
+    // Bạn cần đảm bảo các màn hình này đã được khai báo trong Navigator
+    const screens: Record<string, string> = {
+      LISTENING: "ListeningScreen", // Hoặc màn hình danh sách bài nghe
+      SPEAKING: "SpeakingScreen",
+      READING: "ReadingScreen",
+      WRITING: "WritingScreen"
     }
+    // Nếu chưa có màn hình list riêng, có thể dẫn tới một màn hình chung kèm param
+    navigation.navigate(screens[skillType] || "FreeLessonScreen", { skillType })
   }
 
-  const handleNavigation = (screenName) => {
+  const handleNavigation = (screenName: string) => {
     navigation.navigate(screenName)
   }
 
-  //
-  // =================================================================
-  // === FIX 1: SỬA LỖI MAP DỮ LIỆU SAI VỊ TRÍ (latestPublicVersion) ===
-  // =================================================================
-  //
-  const mapCourseFields = (course) => {
-    const version = course.latestPublicVersion
-    return {
-      id: course.courseId || course.id,
-      title: course.title || course.name,
-      // Lấy thumbnail từ version
-      image: version?.thumbnailUrl || course.thumbnailUrl || course.image || null,
-      instructor: course.creatorName || course.instructor || "",
-      isFree:
-        course.type === "FREE" ||
-        course.isFree ||
-        (course.price !== undefined && course.price === 0),
-      price: course.price,
-      originalPrice: course.originalPrice,
-      rating: course.rating ?? 0,
-      students: course.students ?? 0,
-      level: course.difficultyLevel || course.level || "",
-      // Duration có thể cần BE tổng hợp, tạm thời giữ logic cũ
-      duration: course.duration || "",
-      progress: course.progress ?? course.percentageCompleted ?? 0,
-      completedLessons: course.completedLessons ?? 0,
-      // Lấy tổng số bài học từ version
-      totalLessons: (version?.lessons?.length || course.totalLessons) ?? 0,
-      discount: course.discount,
-    }
-  }
-  // =================================================================
-  // === KẾT THÚC FIX 1 ===
-  // =================================================================
-  //
+  // --- Render Items ---
 
-  const renderCourseCard = (rawCourse, isPurchased = false) => {
-    const course = mapCourseFields(rawCourse) // Hàm này giờ đã đúng
+  const renderCourseCardItem = (course: any, isPurchased = false) => {
+    if (!course) return null;
     return (
       <TouchableOpacity
         key={course.id}
         style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
-        onPress={() => handleCoursePress(rawCourse, isPurchased)}
+        onPress={() => handleCoursePress(course, isPurchased)}
       >
         {course.image ? (
-          <Image source={{ uri: course.image }} style={styles.courseImage} />
+          <Image source={{ uri: course.image }} style={styles.courseImage} resizeMode="cover" />
         ) : (
-          <View
-            style={[
-              styles.courseImage,
-              { justifyContent: "center", alignItems: "center" },
-            ]}
-          >
+          <View style={[styles.courseImage, { justifyContent: "center", alignItems: "center" }]}>
             <Icon name="menu-book" size={40} color="#9CA3AF" />
           </View>
         )}
@@ -254,53 +233,48 @@ const LearnScreen = ({ navigation }) => {
           </View>
         )}
 
-        {course.isFree && (
+        {course.isFree && !isPurchased && (
           <View style={styles.freeBadge}>
             <Text style={styles.freeText}>{t("courses.free")}</Text>
           </View>
         )}
 
         <View style={styles.courseContent}>
-          <Text style={styles.courseTitle}>{course.title}</Text>
-          <Text style={styles.courseInstructor}>by {course.instructor}</Text>
+          <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
+          <Text style={styles.courseInstructor} numberOfLines={1}>by {course.instructor}</Text>
 
           <View style={styles.courseStats}>
             <View style={styles.ratingContainer}>
               <Icon name="star" size={14} color="#F59E0B" />
-              <Text style={styles.ratingText}>{course.rating}</Text>
+              <Text style={styles.ratingText}>{course.rating.toFixed(1)}</Text>
               <Text style={styles.studentsText}>
                 ({(course.students || 0).toLocaleString()})
               </Text>
             </View>
             <View style={styles.courseMeta}>
               <Text style={styles.levelText}>{course.level}</Text>
-              <Text style={styles.durationText}>{course.duration}</Text>
+              {/* <Text style={styles.durationText}>{course.duration}</Text> */}
             </View>
           </View>
 
-          {isPurchased && course.progress !== undefined ? (
+          {isPurchased ? (
             <View style={styles.progressSection}>
               <View style={styles.progressInfo}>
                 <Text style={styles.progressText}>
-                  {t("courses.progress")}: {course.progress}%
+                  {t("courses.progress")}: {Math.round(course.progress)}%
                 </Text>
                 <Text style={styles.lessonsText}>
-                  {course.completedLessons}/{course.totalLessons}{" "}
-                  {t("courses.lessons")}
+                  {course.completedLessons}/{course.totalLessons} {t("courses.lessons")}
                 </Text>
               </View>
               <View style={styles.progressBar}>
-                <View
-                  style={[styles.progressFill, { width: `${course.progress}%` }]}
-                />
+                <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
               </View>
             </View>
           ) : (
             <View style={styles.priceSection}>
-              {course.originalPrice && (
-                <Text style={styles.originalPrice}>
-                  ${course.originalPrice}
-                </Text>
+              {course.originalPrice && course.originalPrice > course.price && (
+                <Text style={styles.originalPrice}>${course.originalPrice}</Text>
               )}
               <Text style={styles.price}>
                 {course.isFree ? t("courses.free") : `$${course.price ?? 0}`}
@@ -312,12 +286,12 @@ const LearnScreen = ({ navigation }) => {
     )
   }
 
-  const renderVideoCard = (rawVideo) => {
+  const renderVideoCard = (rawVideo: any) => {
     const video = {
       id: rawVideo.videoId || rawVideo.id,
       title: rawVideo.title,
       thumbnail: rawVideo.thumbnailUrl || rawVideo.thumbnail || null,
-      duration: rawVideo.duration || rawVideo.length || "",
+      duration: rawVideo.duration || "",
       description: rawVideo.description || "",
       level: rawVideo.level,
       category: rawVideo.category,
@@ -332,17 +306,10 @@ const LearnScreen = ({ navigation }) => {
       >
         <View style={styles.videoThumbnail}>
           {video.thumbnail ? (
-            <Image
-              source={{ uri: video.thumbnail }}
-              style={styles.thumbnailImage}
-            />
+            <Image source={{ uri: video.thumbnail }} style={styles.thumbnailImage} resizeMode="cover" />
           ) : (
             <View style={styles.thumbnailPlaceholder}>
-              <Icon
-                name="play-circle-filled"
-                size={48}
-                color="rgba(255,255,255,0.9)"
-              />
+              <Icon name="play-circle-filled" size={48} color="rgba(255,255,255,0.9)" />
             </View>
           )}
 
@@ -350,102 +317,47 @@ const LearnScreen = ({ navigation }) => {
             <Text style={styles.durationText}>{video.duration}</Text>
           </View>
 
-          {/* small control: Original vs Bilingual */}
-          <View
-            style={{
-              position: "absolute",
-              top: 8,
-              left: 8,
-              flexDirection: "row",
-              gap: 6,
-            }}
-          >
-            <TouchableOpacity
-              onPress={() => handleVideoPress(rawVideo, "original")}
-              style={{
-                backgroundColor: "rgba(0,0,0,0.5)",
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 6,
-                marginRight: 6,
-              }}
-            >
-              <Text style={{ color: "#fff", fontSize: 12 }}>
-                {t("videos.original")}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleVideoPress(rawVideo, "bilingual")}
-              style={{
-                backgroundColor: "rgba(0,0,0,0.5)",
-                paddingHorizontal: 8,
-                paddingVertical: 4,
-                borderRadius: 6,
-              }}
-            >
-              <Text style={{ color: "#fff", fontSize: 12 }}>
-                {t("videos.bilingual")}
-              </Text>
-            </TouchableOpacity>
+          {/* Control overlay */}
+          <View style={{ position: "absolute", top: 8, left: 8, flexDirection: "row", gap: 6 }}>
+            {/* Nút này có thể gây khó bấm trên card nhỏ, cân nhắc bỏ hoặc làm to hơn */}
           </View>
-
-          {video.progress && video.progress > 0 && (
-            <View style={styles.videoProgressIndicator}>
-              <View
-                style={[styles.videoProgressBar, { width: `${video.progress}%` }]}
-              />
-            </View>
-          )}
         </View>
 
         <View style={styles.videoInfo}>
-          <Text style={styles.videoTitle}>{video.title}</Text>
-          <Text style={styles.videoDescription} numberOfLines={2}>
-            {video.description}
-          </Text>
-          <View style={styles.videoMeta}>
-            <View
-              style={[
-                styles.levelBadge,
-                { backgroundColor: getLevelColor(video.level) },
-              ]}
-            >
-              <Text style={styles.levelText}>
-                {t(`videos.levels.${video.level}`) || video.level}
-              </Text>
-            </View>
-            <Text style={styles.categoryText}>{video.category}</Text>
+          <Text style={styles.videoTitle} numberOfLines={1}>{video.title}</Text>
+          <Text style={styles.videoDescription} numberOfLines={1}>{video.category}</Text>
+          <View style={[styles.levelBadge, { backgroundColor: getLevelColor(video.level), alignSelf: 'flex-start', marginTop: 4 }]}>
+            <Text style={[styles.levelText, { color: '#fff', fontSize: 10 }]}>
+              {video.level}
+            </Text>
           </View>
         </View>
       </TouchableOpacity>
     )
   }
 
-  const getLevelColor = (level) => {
+  const getLevelColor = (level: string) => {
     switch ((level || "").toLowerCase()) {
-      case "beginner":
-        return "#4CAF50"
-      case "intermediate":
-        return "#FF9800"
-      case "advanced":
-        return "#F44336"
-      default:
-        return "#757575"
+      case "beginner": return "#4CAF50"
+      case "intermediate": return "#FF9800"
+      case "advanced": return "#F44336"
+      default: return "#757575"
     }
   }
 
-  const renderLessonCard = (lesson) => {
+  const renderLessonCard = (lesson: any) => {
     return (
       <TouchableOpacity
         key={lesson.lessonId}
         style={styles.lessonCard}
-        onPress={() => navigation.navigate("Lesson", { lesson })}
+        onPress={() => navigation.navigate("LessonScreen", { lesson })} // Fix tên màn hình
       >
         <View style={styles.lessonImagePlaceholder}>
-          <Icon name="book" size={40} color="#9CA3AF" />
+          {/* Nếu có ảnh bài học thì hiện, không thì hiện icon */}
+          <Icon name="auto-stories" size={40} color="#9CA3AF" />
         </View>
         <View style={styles.lessonContent}>
-          <Text style={styles.lessonTitle}>
+          <Text style={styles.lessonTitle} numberOfLines={2}>
             {lesson.title || lesson.lessonName}
           </Text>
           <View style={styles.lessonStats}>
@@ -460,38 +372,9 @@ const LearnScreen = ({ navigation }) => {
     )
   }
 
-  const learningTools = [
-    {
-      name: t("learn.interactiveQuiz"),
-      icon: "quiz",
-      screen: "InteractiveQuiz",
-    },
-    {
-      name: t("learn.vocabularyFlashcards"),
-      icon: "style",
-      screen: "VocabularyFlashcards",
-    },
-    {
-      name: t("learn.ipaPronunciation"),
-      icon: "record-voice-over",
-      screen: "IPAScreen",
-    },
-    {
-      name: t("learn.quizLearning"),
-      icon: "question-answer",
-      screen: "QuizLearning",
-    },
-    { name: t("learn.notes"), icon: "notes", screen: "NotesScreen" },
-  ]
-
-  //
-  // =================================================================
-  // === FIX 4: SỬA LỖI KEY PROP (dùng tool.screen thay vì tool.name) ===
-  // =================================================================
-  //
-  const renderLearningToolCard = (tool) => (
+  const renderLearningToolCard = (tool: any) => (
     <TouchableOpacity
-      key={tool.screen} // <-- FIX: Dùng 'screen' làm key vì nó là duy nhất
+      key={tool.screen}
       style={styles.toolCard}
       onPress={() => handleNavigation(tool.screen)}
     >
@@ -501,12 +384,10 @@ const LearnScreen = ({ navigation }) => {
       <Text style={styles.toolName}>{tool.name}</Text>
     </TouchableOpacity>
   )
-  // =================================================================
-  // === KẾT THÚC FIX 4 ===
-  // =================================================================
-  //
 
-  if (isLoading && !purchasedCourses.length && !freeCourses.length) {
+  // --- Main Render ---
+
+  if (isLoading && !purchasedCourses.length && !freeCourses.length && !listeningLessons.length) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#4F46E5" />
@@ -521,7 +402,7 @@ const LearnScreen = ({ navigation }) => {
       showsVerticalScrollIndicator={false}
       refreshControl={
         <RefreshControl
-          refreshing={isRefreshing}
+          refreshing={false} // Có thể bind với isRefetching của react-query
           onRefresh={handleRefresh}
           colors={["#4F46E5"]}
           tintColor="#4F46E5"
@@ -532,6 +413,7 @@ const LearnScreen = ({ navigation }) => {
         <Text style={styles.title}>{t("learn.title")}</Text>
       </View>
 
+      {/* Welcome Section */}
       {isAuthenticated && user && (
         <View style={styles.welcomeSection}>
           <Text style={styles.welcomeText}>
@@ -543,133 +425,35 @@ const LearnScreen = ({ navigation }) => {
             <View style={styles.statItem}>
               <Icon name="trending-up" size={16} color="#10B981" />
               <Text style={styles.statText}>
-                {t("learn.level")} {user.level}
+                {t("learn.level")} {user.level || 1}
               </Text>
             </View>
             <View style={styles.statItem}>
               <Icon name="local-fire-department" size={16} color="#F59E0B" />
               <Text style={styles.statText}>
-                {user.streak} {t("learn.dayStreak")}
+                {user.streak || 0} {t("learn.dayStreak")}
               </Text>
             </View>
           </View>
         </View>
       )}
 
-      {certifications && certifications.length > 0 && (
+      {/* My Courses (Purchased) */}
+      {purchasedCourses.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {t("learn.certifications")}
-            </Text>
-            <TouchableOpacity onPress={handleViewAllCertifications}>
+            <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
+            <TouchableOpacity onPress={handleViewAllCourses}>
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.horizontalScroll}
-          >
-            {certifications.slice(0, 5).map((c) => (
-              <View key={c.id} style={styles.certificationCard}>
-                <Text>{c.name}</Text>
-              </View>
-            ))}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {purchasedCourses.map((c: any) => renderCourseCardItem(c, true))}
           </ScrollView>
         </View>
       )}
 
-      {videos.length > 0 && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {t("learn.bilingualVideos")}
-            </Text>
-            <TouchableOpacity onPress={handleViewAllVideos}>
-              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-            </TouchableOpacity>
-          </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.horizontalScroll}
-          >
-            {videos.map(renderVideoCard)}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* New Skills Sections */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            {t("learn.listeningLessons")}
-          </Text>
-          <TouchableOpacity onPress={() => handleViewAllLessons("LISTENING")}>
-            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.horizontalScroll}
-        >
-          {listeningLessons.map(renderLessonCard)}
-        </ScrollView>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>
-            {t("learn.speakingLessons")}
-          </Text>
-          <TouchableOpacity onPress={() => handleViewAllLessons("SPEAKING")}>
-            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.horizontalScroll}
-        >
-          {speakingLessons.map(renderLessonCard)}
-        </ScrollView>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t("learn.readingLessons")}</Text>
-          <TouchableOpacity onPress={() => handleViewAllLessons("READING")}>
-            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.horizontalScroll}
-        >
-          {readingLessons.map(renderLessonCard)}
-        </ScrollView>
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t("learn.writingLessons")}</Text>
-          <TouchableOpacity onPress={() => handleViewAllLessons("WRITING")}>
-            <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.horizontalScroll}
-        >
-          {writingLessons.map(renderLessonCard)}
-        </ScrollView>
-      </View>
-
-      {/* New Learning Tools Section */}
+      {/* Learning Tools */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
@@ -679,24 +463,50 @@ const LearnScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {purchasedCourses.length > 0 && (
+      {/* Skill Lessons: Listening */}
+      {listeningLessons.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
-            <TouchableOpacity onPress={handleViewAllCourses}>
+            <Text style={styles.sectionTitle}>{t("learn.listeningLessons")}</Text>
+            <TouchableOpacity onPress={() => handleViewAllLessons("LISTENING")}>
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.horizontalScroll}
-          >
-            {purchasedCourses.map((c) => renderCourseCard(c, true))}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {listeningLessons.map(renderLessonCard)}
           </ScrollView>
         </View>
       )}
 
+      {/* Skill Lessons: Speaking */}
+      {speakingLessons.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.speakingLessons")}</Text>
+            <TouchableOpacity onPress={() => handleViewAllLessons("SPEAKING")}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {speakingLessons.map(renderLessonCard)}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Recommended Courses */}
+      {recommendedCourses.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
+          </View>
+          {/* Render Vertical List cho Recommended */}
+          <View style={{ gap: 16 }}>
+            {recommendedCourses.map((c: any) => renderCourseCardItem(c, false))}
+          </View>
+        </View>
+      )}
+
+      {/* Free Courses */}
       {freeCourses.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -705,64 +515,53 @@ const LearnScreen = ({ navigation }) => {
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.horizontalScroll}
-          >
-            {freeCourses.map((c) => renderCourseCard(c, false))}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {freeCourses.map((c: any) => renderCourseCardItem(c, false))}
           </ScrollView>
         </View>
       )}
 
-      {recommendedCourses && recommendedCourses.length > 0 && (
+      {/* Videos */}
+      {videos.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>
-              {t("learn.recommendedCourses")}
-            </Text>
-            <TouchableOpacity onPress={handleViewAllCourses}>
+            <Text style={styles.sectionTitle}>{t("learn.bilingualVideos")}</Text>
+            <TouchableOpacity onPress={handleViewAllVideos}>
               <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
             </TouchableOpacity>
           </View>
-          {/* Sửa: Lỗi này không phải horizontal, nó là vertical list */}
-          <View style={{ gap: 16 }}>
-            {recommendedCourses.map((c) => renderCourseCard(c, false))}
-          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {videos.map(renderVideoCard)}
+          </ScrollView>
         </View>
       )}
 
-      <View style={styles.section}>
-        <TouchableOpacity
-          style={styles.viewAllCoursesButton}
-          onPress={handleViewAllCourses}
-        >
-          <Icon name="school" size={24} color="#FFFFFF" />
-          <Text style={styles.viewAllCoursesText}>
-            {t("learn.viewAllCourses")}
-          </Text>
-          <Icon name="arrow-forward" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
-      </View>
-
-      {!isLoading &&
-        purchasedCourses.length === 0 &&
-        freeCourses.length === 0 && (
-          <View style={styles.emptyState}>
-            <Icon name="school" size={64} color="#9CA3AF" />
-            <Text style={styles.emptyTitle}>{t("learn.noContent")}</Text>
-            <Text style={styles.emptyMessage}>
-              {t("learn.noContentMessage")}
-            </Text>
+      {/* Certifications */}
+      {certifications && certifications.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.certifications")}</Text>
+            <TouchableOpacity onPress={handleViewAllCertifications}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
           </View>
-        )}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {certifications.map((c: any) => (
+              <View key={c.id} style={styles.certificationCard}>
+                <Text style={styles.certificationName}>{c.name}</Text>
+                <Text style={styles.certificationLanguage}>{c.languageCode}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      <View style={{ height: 50 }} />
     </ScrollView>
   )
 }
 
-// ... (phần styles giữ nguyên, không cần thay đổi)
-// ... (phần styles giữ nguyên, không cần thay đổi)
-
+// Styles giữ nguyên như cũ, chỉ đảm bảo createScaledSheet hoạt động
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -846,74 +645,35 @@ const styles = createScaledSheet({
     width: 200,
     padding: 16,
     borderLeftWidth: 4,
+    borderColor: "#4F46E5",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  certificationHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  certificationIcon: {
-    fontSize: 20,
-    marginRight: 8,
-  },
-  certificationInfo: {
-    flex: 1,
-  },
-  certificationLevel: {
+  certificationName: {
     fontSize: 14,
-    fontWeight: "600",
+    fontWeight: "500",
     color: "#1F2937",
+    marginBottom: 8,
   },
   certificationLanguage: {
     fontSize: 12,
     color: "#6B7280",
   },
-  completedBadge: {
-    padding: 4,
-  },
-  certificationName: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#1F2937",
-    marginBottom: 12,
-    lineHeight: 18,
-  },
-  certificationStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  certificationStat: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  certificationStatText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  bestScore: {
-    fontSize: 12,
-    color: "#10B981",
-    fontWeight: "500",
-  },
   courseCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     marginRight: 16,
-    // Sửa: Recommended courses không nên set width
-    // width: 280, 
+    width: 260, // Fixed width for horizontal scroll
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
     overflow: "hidden",
+    marginBottom: 8, // add margin bottom for shadow visibility
   },
   purchasedCourseCard: {
     borderWidth: 2,
@@ -921,8 +681,8 @@ const styles = createScaledSheet({
   },
   courseImage: {
     width: "100%",
-    height: 120,
-    backgroundColor: "#F3F4F6",
+    height: 140,
+    backgroundColor: "#E5E7EB",
   },
   purchasedBadge: {
     position: "absolute",
@@ -934,6 +694,7 @@ const styles = createScaledSheet({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+    zIndex: 1,
   },
   purchasedText: {
     fontSize: 12,
@@ -945,10 +706,11 @@ const styles = createScaledSheet({
     position: "absolute",
     top: 12,
     left: 12,
-    backgroundColor: "#10B981",
+    backgroundColor: "#F59E0B",
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
+    zIndex: 1,
   },
   freeText: {
     fontSize: 12,
@@ -963,6 +725,7 @@ const styles = createScaledSheet({
     fontWeight: "bold",
     color: "#1F2937",
     marginBottom: 4,
+    height: 44, // limit height for 2 lines
   },
   courseInstructor: {
     fontSize: 14,
@@ -1000,7 +763,7 @@ const styles = createScaledSheet({
   },
   durationText: {
     fontSize: 12,
-    color: "#6B7280",
+    color: "#FFFFFF",
   },
   progressSection: {
     marginTop: 8,
@@ -1011,7 +774,7 @@ const styles = createScaledSheet({
     marginBottom: 8,
   },
   progressText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "#1F2937",
   },
@@ -1056,10 +819,11 @@ const styles = createScaledSheet({
     shadowRadius: 4,
     elevation: 3,
     overflow: "hidden",
+    marginBottom: 5,
   },
   videoThumbnail: {
     height: 135,
-    backgroundColor: "#F3F4F6",
+    backgroundColor: "#000",
     position: "relative",
     justifyContent: "center",
     alignItems: "center",
@@ -1073,7 +837,7 @@ const styles = createScaledSheet({
     height: "100%",
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#E5E7EB",
+    backgroundColor: "#1F2937",
   },
   durationBadge: {
     position: "absolute",
@@ -1090,11 +854,11 @@ const styles = createScaledSheet({
     left: 0,
     right: 0,
     height: 3,
-    backgroundColor: "rgba(0,0,0,0.3)",
+    backgroundColor: "rgba(255,255,255,0.3)",
   },
   videoProgressBar: {
     height: "100%",
-    backgroundColor: "#2196F3",
+    backgroundColor: "#EF4444", // Youtube red style
   },
   videoInfo: {
     padding: 12,
@@ -1109,53 +873,16 @@ const styles = createScaledSheet({
     fontSize: 12,
     color: "#6B7280",
     lineHeight: 16,
-    marginBottom: 8,
-  },
-  videoMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
+    marginBottom: 4,
   },
   levelBadge: {
     paddingHorizontal: 6,
     paddingVertical: 2,
-    borderRadius: 8,
+    borderRadius: 4,
   },
   categoryText: {
     fontSize: 10,
     color: "#9CA3AF",
-  },
-  categoryGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 12,
-  },
-  categoryCard: {
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 12,
-    alignItems: "center",
-    width: "47%",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  categoryIcon: {
-    width: 48,
-    height: 48,
-    backgroundColor: "#EEF2FF",
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 12,
-  },
-  categoryName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1F2937",
-    textAlign: "center",
   },
   viewAllCoursesButton: {
     backgroundColor: "#4F46E5",
@@ -1189,28 +916,18 @@ const styles = createScaledSheet({
     textAlign: "center",
     marginBottom: 24,
   },
-  refreshButton: {
-    backgroundColor: "#4F46E5",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  refreshButtonText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
   lessonCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     marginRight: 16,
-    width: 220,
+    width: 200,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 4,
     overflow: "hidden",
+    marginBottom: 8,
   },
   lessonImagePlaceholder: {
     width: "100%",
@@ -1226,7 +943,8 @@ const styles = createScaledSheet({
     fontSize: 14,
     fontWeight: "bold",
     color: "#1F2937",
-    marginBottom: 4,
+    marginBottom: 8,
+    height: 40, // fixed height for title
   },
   lessonStats: {
     flexDirection: "row",
@@ -1241,11 +959,17 @@ const styles = createScaledSheet({
   expText: {
     fontSize: 12,
     color: "#6B7280",
+    fontWeight: '600'
   },
   skillText: {
-    fontSize: 12,
+    fontSize: 10,
     color: "#4F46E5",
-    fontWeight: "500",
+    fontWeight: "bold",
+    textTransform: 'uppercase',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4
   },
   toolGrid: {
     flexDirection: "row",
@@ -1257,7 +981,7 @@ const styles = createScaledSheet({
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
-    width: "48%",
+    width: "48%", // 2 cột
     marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },

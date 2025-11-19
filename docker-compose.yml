@@ -247,5 +247,26 @@ services:
     networks:
       - lingua-net
     restart: "no"
+    
+  # === AUTO BACKUP SERVICE ===
+  db-backup:
+    image: prodrigestivill/postgres-backup-local
+    container_name: db-backup
+    restart: always
+    user: postgres:postgres # Để tránh lỗi quyền trên Linux, trên Windows có thể không cần
+    volumes:
+      - ./backups:/backups  # Backup sẽ lưu vào thư mục 'backups' ngay cạnh file docker-compose
+    depends_on:
+      - app-database
+    environment:
+      - POSTGRES_HOST=app-database
+      - POSTGRES_DB=linguaviet_db
+      - POSTGRES_USER=linguauser
+      - POSTGRES_PASSWORD=linguapass
+      - SCHEDULE=@daily      # Chạy mỗi ngày (hoặc @every 6h)
+      - BACKUP_KEEP_DAYS=7   # Giữ backup trong 7 ngày, tự xóa cũ hơn
+      - BACKUP_DIR=/backups
+    networks:
+      - lingua-net
 
 

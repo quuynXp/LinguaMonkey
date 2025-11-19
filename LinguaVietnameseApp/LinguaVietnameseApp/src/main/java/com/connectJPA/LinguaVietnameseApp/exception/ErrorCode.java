@@ -23,6 +23,9 @@ public enum ErrorCode {
     INVALID_REQUEST(1008, "error.invalid_request", HttpStatus.BAD_REQUEST, true),
     INVALID_INPUT_DATA(1009, "error.invalid_input_data", HttpStatus.BAD_REQUEST, true),
 
+    DUPLICATE_SUGGESTION(409, "roadmap.duplicate_suggestion", HttpStatus.BAD_REQUEST, true),
+
+
     // Nhóm: User & Auth Logic (400) (11xx)
     INVALID_USER_INFO(1100, "error.invalid_user_info", HttpStatus.BAD_REQUEST, true),
     EMAIL_ALREADY_EXISTS(1101, "error.email_already_exists", HttpStatus.BAD_REQUEST, true),

@@ -11,4 +11,6 @@ import java.util.UUID;
 public interface DailyChallengeRepository extends JpaRepository<DailyChallenge, UUID> {
     @Query(value = "SELECT * FROM daily_challenges WHERE is_deleted = false ORDER BY random() LIMIT :count", nativeQuery = true)
     List<DailyChallenge> findRandomChallenges(@Param("count") int count);
+
+    List<DailyChallenge> findByIsDeletedFalse();
 }

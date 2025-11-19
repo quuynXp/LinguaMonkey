@@ -15,8 +15,8 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
-import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,7 +24,7 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
 
     private final DailyChallengeRepository dailyChallengeRepository;
     private final UserDailyChallengeRepository userDailyChallengeRepository;
-    private final UserRepository userRepository; // assume bạn có User entity & repo
+    private final UserRepository userRepository;
 
     @Override
     public List<UserDailyChallenge> getTodayChallenges(UUID userId) {
@@ -39,20 +39,40 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     @Transactional
     public UserDailyChallenge assignChallenge(UUID userId) {
         User user = userRepository.findById(userId)
-               .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        List<DailyChallenge> challenges = dailyChallengeRepository.findAll();
-        if (challenges.isEmpty()) throw new RuntimeException("No challenges available");
+                .orElseThrow(() -> new RuntimeException("User not found"));
 
-        // random 1 challenge
-        DailyChallenge challenge = challenges.get(new Random().nextInt(challenges.size()));
+        List<DailyChallenge> allChallenges = dailyChallengeRepository.findByIsDeletedFalse();
+        if (allChallenges.isEmpty()) {
+            throw new RuntimeException("No challenges available");
+        }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
+        
+        // Lấy danh sách thử thách đã gán hôm nay
+        List<UserDailyChallenge> todayChallenges = getTodayChallenges(userId);
+        
+        // Lọc những challenge chưa được gán hôm nay
+        Set<UUID> assignedChallengeIds = todayChallenges.stream()
+                .map(udc -> udc.getId().getChallengeId())
+                .collect(Collectors.toSet());
+        
+        List<DailyChallenge> availableChallenges = allChallenges.stream()
+                .filter(ch -> !assignedChallengeIds.contains(ch.getId()))
+                .collect(Collectors.toList());
+        
+        if (availableChallenges.isEmpty()) {
+            // Nếu tất cả challenge đã gán, trả về lỗi hoặc reset
+            throw new RuntimeException("All daily challenges already assigned for today");
+        }
 
-        // lấy stack count = số challenge đã nhận trong ngày
-        List<UserDailyChallenge> today = getTodayChallenges(userId);
-        int stack = today.size() + 1;
+        // Random 1 challenge từ available
+        DailyChallenge challenge = availableChallenges
+                .get(new Random().nextInt(availableChallenges.size()));
 
+        int stack = todayChallenges.size() + 1;
+        
+        // Công thức exp: base * (1 + (stack - 1) * 0.2)
+        // Stack 1: base, Stack 2: base * 1.2, Stack 3: base * 1.4...
         int expReward = (int) (challenge.getBaseExp() * (1 + (stack - 1) * 0.2));
         int coinReward = challenge.getRewardCoins();
 
@@ -77,40 +97,56 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     @Override
     @Transactional
     public void completeChallenge(UUID userId, UUID challengeId) {
-        UserDailyChallengeId id = UserDailyChallengeId.builder()
-                .userId(userId)
-                .challengeId(challengeId)
-                .assignedDate(OffsetDateTime.now())
-                .build();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         OffsetDateTime startOfDay = now.truncatedTo(ChronoUnit.DAYS);
         OffsetDateTime endOfDay = startOfDay.plusDays(1).minusNanos(1);
 
-        UserDailyChallenge challenge = userDailyChallengeRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Challenge not found"));
-
-        List<UserDailyChallenge> challenges = userDailyChallengeRepository.findChallengeForToday(
-                userId, challengeId, startOfDay, endOfDay
-        );
+        List<UserDailyChallenge> challenges = userDailyChallengeRepository
+                .findChallengeForToday(userId, challengeId, startOfDay, endOfDay);
 
         if (challenges.isEmpty()) {
-            throw new RuntimeException("Challenge not found for today or already completed");
+            throw new RuntimeException("Challenge not found for today");
         }
 
         UserDailyChallenge challengeToComplete = challenges.stream()
                 .filter(c -> !c.isCompleted())
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Challenge already completed"));
+                .orElseThrow(() -> new RuntimeException("Challenge already completed or not assigned"));
 
-        if (!challengeToComplete.isCompleted()) {
-            challengeToComplete.setCompleted(true);
-            challengeToComplete.setCompletedAt(Instant.now());
-            userDailyChallengeRepository.save(challengeToComplete);
+        // Mark as completed
+        challengeToComplete.setCompleted(true);
+        challengeToComplete.setCompletedAt(Instant.now());
+        userDailyChallengeRepository.save(challengeToComplete);
 
-            User user = userRepository.findById(userId)
-                    .orElseThrow(() -> new RuntimeException("User not found"));
-            user.setExp(user.getExp() + challengeToComplete.getExpReward());
-            userRepository.save(user);
-            }
+        // Update user exp
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        user.setExp(user.getExp() + challengeToComplete.getExpReward());
+        userRepository.save(user);
+    }
+
+    @Override
+    public Map<String, Object> getDailyChallengeStats(UUID userId) {
+        List<UserDailyChallenge> todayChallenges = getTodayChallenges(userId);
+        
+        long completed = todayChallenges.stream()
+                .filter(UserDailyChallenge::isCompleted)
+                .count();
+        
+        int totalExpReward = todayChallenges.stream()
+                .mapToInt(UserDailyChallenge::getExpReward)
+                .sum();
+        
+        int totalCoins = todayChallenges.stream()
+                .mapToInt(UserDailyChallenge::getRewardCoins)
+                .sum();
+
+        return Map.of(
+                "totalChallenges", (long) todayChallenges.size(),
+                "completedChallenges", completed,
+                "totalExpReward", totalExpReward,
+                "totalCoins", totalCoins,
+                "canAssignMore", todayChallenges.size() < 5 // Max 5 challenges per day
+        );
     }
 }

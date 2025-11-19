@@ -21,11 +21,24 @@ public class RoadmapResource extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID resourceId;
 
+    @Column(name = "item_id", nullable = false)
     private UUID itemId;
+
+    @Column(name = "type")
     private String type;
+
+    @Column(name = "title")
     private String title;
+
+    @Column(name = "description")
     private String description;
+
+    @Column(name = "url")
     private String url;
+
+    @Column(name = "content_id")
     private UUID contentId;
+
+    @Column(name = "duration")
     private Integer duration;
 }

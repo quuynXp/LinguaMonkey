@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 import java.time.LocalDateTime;
 
@@ -23,18 +24,30 @@ public class RoadmapMilestone extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID milestoneId;
 
+    @Column(name = "roadmap_id", nullable = false)
     private UUID roadmapId;
+
+    @Column(name = "title", nullable = false)
     private String title;
+
+    @Column(name = "description")
     private String description;
+
+    @Column(name = "level")
     private Integer level;
 
-    @Column(columnDefinition = "text[]")
-    private String[] requirements;
-
-    @Column(columnDefinition = "text[]")
-    private String[] rewards;
-
+    @Column(name = "order_index")
     private Integer orderIndex;
 
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "roadmap_milestone_requirements", joinColumns = @JoinColumn(name = "milestone_id"))
+    @Column(name = "requirement")
+    private List<String> requirements;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "roadmap_milestone_rewards", joinColumns = @JoinColumn(name = "milestone_id"))
+    @Column(name = "reward")
+    private List<String> rewards;
 }
 

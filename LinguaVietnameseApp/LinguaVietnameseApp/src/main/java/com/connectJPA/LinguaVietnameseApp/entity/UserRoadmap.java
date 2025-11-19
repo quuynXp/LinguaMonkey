@@ -23,19 +23,36 @@ public class UserRoadmap extends BaseEntity {
     @EmbeddedId
     private UserRoadmapId userRoadmapId;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "roadmap_id", insertable = false, updatable = false)
     private Roadmap roadmap;
 
-    @ManyToOne
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", insertable = false, updatable = false)
     private User user;
 
+    @Column(name = "current_level")
     private Integer currentLevel;
+
+    @Column(name = "target_level")
     private Integer targetLevel;
+
+    @Column(name = "target_proficiency")
     private String targetProficiency;
+
+    @Column(name = "estimated_completion_time")
     private Integer estimatedCompletionTime;
-    private String language;
+
+    @Column(name = "completed_items")
     private Integer completedItems;
+
+    @Column(name = "status")
     private String status;
-    private boolean isPublic;
+
+    @Column(name = "is_public", nullable = false)
+    private Boolean isPublic;
+
+    @Column(name = "language")
+    private String language;
 }
 

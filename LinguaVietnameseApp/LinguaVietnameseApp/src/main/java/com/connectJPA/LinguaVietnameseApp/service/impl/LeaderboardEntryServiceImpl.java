@@ -18,7 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort; // [THÊM] Import Sort
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -31,6 +31,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Slf4j
 public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
+
     private final LeaderboardEntryRepository leaderboardEntryRepository;
     private final LeaderboardEntryMapper leaderboardEntryMapper;
     private final UserRepository userRepository;
@@ -42,34 +43,35 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
+
             UUID leaderboardUuid = (leaderboardId != null) ? UUID.fromString(leaderboardId) : null;
 
-            // [THAY ĐỔI] Bắt đầu logic mới
-            // 1. Tìm leaderboard cha để xác định 'tab'
+            // Get leaderboard to determine sorting
             Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+
             String tab = leaderboard.getTab();
 
-            // 2. Tạo Pageable hiệu lực với sắp xếp mặc định nếu FE không cung cấp
+            // Apply default sort if none provided
             Pageable effectivePageable = pageable;
             if (pageable.getSort().isUnsorted()) {
                 Sort defaultSort;
-                if ("level".equalsIgnoreCase(tab)) {
-                    // Sắp xếp theo User Level (cao đến thấp) cho tab "level"
-                    defaultSort = Sort.by(Sort.Direction.DESC, "user.level");
+
+                // Sort by level DESC for global/level-based tabs
+                if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
+                    defaultSort = Sort.by(Sort.Direction.DESC, "user.level", "score");
                 } else {
-                    // Sắp xếp mặc định theo Score (cao đến thấp) cho tất cả các tab khác
+                    // Sort by score DESC for other tabs
                     defaultSort = Sort.by(Sort.Direction.DESC, "score");
                 }
+
                 effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), defaultSort);
             }
-            // [THAY ĐỔI] Kết thúc logic mới
 
-            // 3. Sử dụng effectivePageable
-            Page<LeaderboardEntry> entries =
-                    leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, effectivePageable);
+            // Fetch entries
+            Page<LeaderboardEntry> entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, effectivePageable);
 
-            // 4. Map sang DTO (như cũ)
+            // Map to DTO with user info
             return entries.map(entry -> {
                 LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
                 userRepository.findByUserIdAndIsDeletedFalse(entry.getLeaderboardEntryId().getUserId())
@@ -88,8 +90,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
         }
     }
 
-    // ... (Các phương thức khác giữ nguyên) ...
-    
     @Override
     public LeaderboardEntryResponse getLeaderboardEntryByIds(UUID leaderboardId, Pageable pageable) {
         try {
@@ -99,44 +99,44 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (leaderboardId == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            // [THAY ĐỔI] Áp dụng logic tương tự như getAllLeaderboardEntries
-            // 1. Tìm leaderboard cha để xác định 'tab'
+
+            // Get leaderboard for sorting logic
             Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+
             String tab = leaderboard.getTab();
 
-            // 2. Tạo Pageable hiệu lực
             Pageable effectivePageable = pageable;
             if (pageable.getSort().isUnsorted()) {
                 Sort defaultSort;
-                if ("level".equalsIgnoreCase(tab)) {
-                    defaultSort = Sort.by(Sort.Direction.DESC, "user.level");
+                if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
+                    defaultSort = Sort.by(Sort.Direction.DESC, "user.level", "score");
                 } else {
                     defaultSort = Sort.by(Sort.Direction.DESC, "score");
                 }
                 effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), defaultSort);
             }
 
-            // 3. Sử dụng effectivePageable
-            Page<LeaderboardEntry> entries =
-                    leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, effectivePageable);
+            Page<LeaderboardEntry> entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, effectivePageable);
 
-            // 4. Map DTO (Lưu ý: logic gốc của bạn trả về Page nhưng tên phương thức là get...ByIds)
-            // Giả sử bạn muốn trả về trang đầu tiên
-            return (LeaderboardEntryResponse) entries.map(entry -> {
-                LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
-                userRepository.findByUserIdAndIsDeletedFalse(entry.getLeaderboardEntryId().getUserId())
-                        .ifPresent(u -> {
-                            dto.setAvatarUrl(u.getAvatarUrl());
-                            dto.setFullname(u.getFullname());
-                            dto.setNickname(u.getNickname());
-                            dto.setLevel(u.getLevel());
-                        });
-                return dto;
-            });
+            // Return first entry
+            return entries.getContent().stream()
+                    .findFirst()
+                    .map(entry -> {
+                        LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
+                        userRepository.findByUserIdAndIsDeletedFalse(entry.getLeaderboardEntryId().getUserId())
+                                .ifPresent(u -> {
+                                    dto.setAvatarUrl(u.getAvatarUrl());
+                                    dto.setFullname(u.getFullname());
+                                    dto.setNickname(u.getNickname());
+                                    dto.setLevel(u.getLevel());
+                                });
+                        return dto;
+                    })
+                    .orElse(null);
 
         } catch (Exception e) {
-            log.error("Error while fetching leaderboard entries: {}", e.getMessage(), e);
+            log.error("Error while fetching leaderboard entry: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -148,9 +148,13 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (request == null || request.getLeaderboardId() == null || request.getUserId() == null) {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
+
             LeaderboardEntry entry = leaderboardEntryMapper.toEntity(request);
-            entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId()).get());
-            entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId()).get());
+            entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
+                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
+            entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
+
             entry = leaderboardEntryRepository.save(entry);
             return leaderboardEntryMapper.toResponse(entry);
         } catch (Exception e) {
@@ -166,11 +170,16 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (leaderboardId == null || userId == null || request == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
+
             LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
+
             leaderboardEntryMapper.updateEntityFromRequest(request, entry);
-            entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId()).get());
-            entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId()).get());
+            entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
+                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
+            entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
+
             entry = leaderboardEntryRepository.save(entry);
             return leaderboardEntryMapper.toResponse(entry);
         } catch (Exception e) {
@@ -186,8 +195,10 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (leaderboardId == null || userId == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
+
+            leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
+
             leaderboardEntryRepository.softDeleteByLeaderboardIdAndUserId(leaderboardId, userId);
         } catch (Exception e) {
             log.error("Error while deleting leaderboard entry for {} and {}: {}", leaderboardId, userId, e.getMessage());
@@ -195,28 +206,26 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
         }
     }
 
+    // Get top 3 for specific leaderboard
     @Override
     public List<LeaderboardEntryResponse> getTop3LeaderboardEntries(UUID leaderboardId) {
         try {
             if (leaderboardId == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            Pageable pageable = PageRequest.of(0, 3); // Lấy 3 bản ghi đầu tiên
-            List<LeaderboardEntry> entries = leaderboardEntryRepository
-                    .findTop3ByLeaderboardIdOrderByUserLevelDesc(leaderboardId, pageable);
+
+            Pageable pageable = PageRequest.of(0, 3, Sort.by(Sort.Direction.DESC, "user.level", "score"));
+            List<LeaderboardEntry> entries = leaderboardEntryRepository.findTop3ByLeaderboardIdOrderByUserLevelDesc(leaderboardId, pageable);
 
             return entries.stream().map(entry -> {
                 LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
-                Optional<User> u = userRepository.findByUserIdAndIsDeletedFalse(entry.getLeaderboardEntryId()
-                        .getUserId());
-                dto.setAvatarUrl(u.orElseThrow()
-                        .getAvatarUrl());
-                dto.setFullname(u.get()
-                        .getFullname());
-                dto.setNickname(u.get()
-                        .getNickname());
-                dto.setLevel(u.get()
-                        .getLevel());
+                userRepository.findByUserIdAndIsDeletedFalse(entry.getLeaderboardEntryId().getUserId())
+                        .ifPresent(u -> {
+                            dto.setAvatarUrl(u.getAvatarUrl());
+                            dto.setFullname(u.getFullname());
+                            dto.setNickname(u.getNickname());
+                            dto.setLevel(u.getLevel());
+                        });
                 return dto;
             }).collect(Collectors.toList());
         } catch (Exception e) {
@@ -228,12 +237,9 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     @Override
     public List<LeaderboardEntryResponse> getTop3GlobalLeaderboardEntries() {
         try {
-            // Tìm leaderboard mới nhất với tab = "global"
-            Leaderboard leaderboard = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global", PageRequest.of(0,1))
-                    .stream().findFirst()
+            Leaderboard leaderboard = leaderboardRepository.findMostRecentByTab("global")
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
 
-            // Lấy top 3 mục nhập cho leaderboard này
             return getTop3LeaderboardEntries(leaderboard.getLeaderboardId());
         } catch (Exception e) {
             log.error("Error while fetching top 3 global leaderboard entries: {}", e.getMessage());

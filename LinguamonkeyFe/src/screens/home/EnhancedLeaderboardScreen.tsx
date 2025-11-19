@@ -23,20 +23,12 @@ type EnhancedLeaderboardScreenProps = {
   navigation: StackNavigationProp<any>;
 };
 
+// Tab simplification: Remove period, add proper categories
 const tabsStatic = [
-  { id: "global", titleKey: "leaderboard.tabs.top100", icon: "leaderboard" },
-  { id: "week", titleKey: "leaderboard.tabs.thisWeek", icon: "date-range" },
-  { id: "events", titleKey: "leaderboard.tabs.events", icon: "event" },
-  { id: "seasons", titleKey: "leaderboard.tabs.seasons", icon: "ac-unit" },
-  { id: "friends", titleKey: "leaderboard.tabs.friends", icon: "people" },
-  { id: "couples", titleKey: "leaderboard.tabs.couples", icon: "favorite" },
-];
-
-const periods = [
-  { id: "all", titleKey: "leaderboard.periods.allTime" },
-  { id: "month", titleKey: "leaderboard.periods.thisMonth" },
-  { id: "week", titleKey: "leaderboard.periods.thisWeek" },
-  { id: "today", titleKey: "leaderboard.periods.today" },
+  { id: "global", titleKey: "leaderboard.tabs.global", icon: "leaderboard", sortBy: "level" },
+  { id: "friends", titleKey: "leaderboard.tabs.friends", icon: "people", sortBy: "level" },
+  { id: "couples", titleKey: "leaderboard.tabs.couples", icon: "favorite", sortBy: "level" },
+  { id: "country", titleKey: "leaderboard.tabs.country", icon: "location-on", sortBy: "level" },
 ];
 
 const PAGE_LIMIT = 20;
@@ -49,10 +41,7 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
   const { useLeaderboards, useLeaderboardEntries } = useLeaderboardsHooksFactory();
 
   const [selectedTab, setSelectedTab] = useState<string>("global");
-  const [selectedPeriod, setSelectedPeriod] = useState<string>("all");
-
   const [leaderboardId, setLeaderboardId] = useState<string | null>(null);
-
   const [page, setPage] = useState<number>(0);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [entriesAccum, setEntriesAccum] = useState<any[]>([]);
@@ -65,12 +54,12 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     }).start();
   }, [fadeAnim]);
 
+  // Fetch leaderboard metadata for selected tab (no period parameter)
   const {
     data: leaderboardsResp,
     isLoading: leaderboardsLoading,
     isError: leaderboardsError,
-    refetch: refetchLeaderboards,
-  } = useLeaderboards({ tab: selectedTab, period: selectedPeriod, page: 0, limit: 1 });
+  } = useLeaderboards({ tab: selectedTab, page: 0, limit: 1 });
 
   const resolvedLeaderboardList = useMemo(() => {
     const d: any = leaderboardsResp;
@@ -80,6 +69,7 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     return [d];
   }, [leaderboardsResp]);
 
+  // Reset pagination when tab changes
   useEffect(() => {
     setPage(0);
     const first = resolvedLeaderboardList[0];
@@ -91,8 +81,9 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     } else {
       setLeaderboardId(null);
     }
-  }, [resolvedLeaderboardList, selectedTab, selectedPeriod]);
+  }, [resolvedLeaderboardList, selectedTab]);
 
+  // Fetch top 3 separately
   const top3Query = useQuery({
     queryKey: ["leaderboard", leaderboardId, "top-3"],
     queryFn: async () => {
@@ -104,14 +95,14 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     staleTime: 1000 * 60,
   });
 
+  // Fetch entries from 4 onwards (NO TOP 3)
   const {
     data: entriesResp,
     isLoading: entriesLoading,
     isError: entriesError,
-    refetch: refetchEntries,
   } = useLeaderboardEntries(leaderboardId, { page, limit: PAGE_LIMIT });
 
-  // accumulate pages into `entriesAccum` so the FlatList shows appended results
+  // Accumulate pages
   useEffect(() => {
     const d: any = entriesResp;
     if (!d) return;
@@ -121,30 +112,20 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     else if (Array.isArray(d)) arr = d;
     else arr = [d];
 
-    // append or replace accumulated entries depending on page
     if (page === 0) setEntriesAccum(arr);
     else setEntriesAccum((prev) => [...prev, ...arr]);
 
-    // determine whether there are more pages based on fetched length
     if (arr.length < PAGE_LIMIT) setHasMore(false);
     else setHasMore(true);
   }, [entriesResp, page]);
 
+  // Get sorted entries skipping top 3 (start from index 3)
   const resolvedEntries = entriesAccum.slice(3);
 
-  // load more handler
   const loadMore = useCallback(() => {
     if (!leaderboardId || entriesLoading || !hasMore) return;
     setPage((p) => p + 1);
   }, [leaderboardId, entriesLoading, hasMore]);
-
-  // useEffect(() => {
-  //   if (leaderboardId) refetchEntries();
-  // }, [page, leaderboardId, refetchEntries]);
-
-  // useEffect(() => {
-  //   refetchLeaderboards();
-  // }, [selectedTab, selectedPeriod, refetchLeaderboards]);
 
   const onPressUser = (entry: any) => {
     const targetUserId = entry?.leaderboardEntryId?.userId ?? entry?.userId ?? entry?.id;
@@ -152,11 +133,13 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     navigation.navigate("UserProfileViewScreen", { userId: String(targetUserId) });
   };
 
-  // ---------- renderItem (clean fields from BE) ----------
+  // Render entry from position 4+ (ranks 4, 5, 6...)
   const renderItem = ({ item, index }: { item: any; index: number }) => {
     if (!item) return null;
 
     const uid = item?.leaderboardEntryId?.userId ?? item.userId ?? item.id;
+    const rank = index + 4; // Position in list starts at 4
+
     return (
       <TouchableOpacity
         onPress={() => onPressUser(item)}
@@ -169,9 +152,9 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
           backgroundColor: uid === user?.userId ? "#ECFDF5" : "#FFFFFF",
         }}
       >
-        {/* Rank (list index starts at 0; Top-3 rendered separately) */}
+        {/* Rank */}
         <View style={{ width: 36, alignItems: "center" }}>
-          <Text style={{ fontWeight: "700" }}>{index + 4}</Text>
+          <Text style={{ fontWeight: "700", fontSize: 14 }}>{rank}</Text>
         </View>
 
         {/* Avatar */}
@@ -196,16 +179,95 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
           <Text style={{ fontWeight: "700" }}>
             {(item.score ?? item.exp ?? 0).toLocaleString()}
           </Text>
-          <Text style={{ fontSize: 11, color: "#9CA3AF" }}>Exp</Text>
+          <Text style={{ fontSize: 11, color: "#9CA3AF" }}>EXP</Text>
         </View>
       </TouchableOpacity>
     );
   };
 
-  // ---------- UI ----------
+  // Render single podium entry (top 1, 2, or 3)
+  const renderPodiumEntry = (entry: any, position: number) => {
+    if (!entry) return null;
+
+    const placeColor =
+      position === 1 ? "#F59E0B" : // Gold
+        position === 2 ? "#9CA3AF" : // Silver
+          "#CD7C2F";                   // Bronze
+
+    const height =
+      position === 1 ? 120 :
+        position === 2 ? 100 :
+          80;
+
+    return (
+      <TouchableOpacity
+        key={position}
+        onPress={() => onPressUser(entry)}
+        style={{ flex: 1, alignItems: "center", marginHorizontal: 4 }}
+      >
+        {/* Rank badge */}
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: placeColor,
+            justifyContent: "center",
+            alignItems: "center",
+            marginBottom: 8,
+          }}
+        >
+          <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 14 }}>{position}</Text>
+        </View>
+
+        {/* Avatar */}
+        <Image
+          source={{ uri: entry.avatarUrl }}
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            marginBottom: 8,
+            backgroundColor: "#E5E7EB",
+            borderWidth: 3,
+            borderColor: placeColor,
+          }}
+        />
+
+        {/* Name */}
+        <Text
+          numberOfLines={1}
+          ellipsizeMode="tail"
+          style={{ fontWeight: "600", fontSize: 12, maxWidth: 90, textAlign: "center" }}
+        >
+          {entry.fullname}
+          {entry.nickname ? ` (${entry.nickname})` : ""}
+        </Text>
+
+        {/* Level */}
+        <Text style={{ color: "#6B7280", fontSize: 11, marginTop: 4 }}>
+          {t("leaderboard.level")} {typeof entry.level !== "undefined" ? entry.level : "-"}
+        </Text>
+
+        {/* Podium base */}
+        <View
+          style={{
+            width: "100%",
+            height: height,
+            backgroundColor: placeColor,
+            marginTop: 8,
+            opacity: 0.2,
+            borderRadius: 4,
+          }}
+        />
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+
         {/* Header */}
         <SafeAreaView
           edges={["top"]}
@@ -234,7 +296,7 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
           </View>
         </SafeAreaView>
 
-        {/* Tabs */}
+        {/* Tab selection (NO PERIODS) */}
         <View style={{ flexDirection: "row", paddingVertical: 8, paddingHorizontal: 12 }}>
           <FlatList
             horizontal
@@ -243,7 +305,10 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
             showsHorizontalScrollIndicator={false}
             renderItem={({ item }) => (
               <TouchableOpacity
-                onPress={() => { setSelectedTab(item.id); setPage(0); }}
+                onPress={() => {
+                  setSelectedTab(item.id);
+                  setPage(0);
+                }}
                 style={{
                   paddingHorizontal: 12,
                   paddingVertical: 8,
@@ -253,8 +318,19 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
                 }}
               >
                 <View style={{ flexDirection: "row", alignItems: "center" }}>
-                  <Icon name={item.icon as any} size={16} color={selectedTab === item.id ? "#FFF" : "#6B7280"} />
-                  <Text style={{ marginLeft: 6, color: selectedTab === item.id ? "#FFF" : "#374151", fontWeight: selectedTab === item.id ? "700" : "600" }}>
+                  <Icon
+                    name={item.icon as any}
+                    size={16}
+                    color={selectedTab === item.id ? "#FFF" : "#6B7280"}
+                  />
+                  <Text
+                    style={{
+                      marginLeft: 6,
+                      color: selectedTab === item.id ? "#FFF" : "#374151",
+                      fontWeight: selectedTab === item.id ? "700" : "600",
+                      fontSize: 13,
+                    }}
+                  >
                     {t(item.titleKey)}
                   </Text>
                 </View>
@@ -263,69 +339,27 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
           />
         </View>
 
-        {/* Periods */}
-        <View style={{ flexDirection: "row", paddingHorizontal: 12, paddingBottom: 8 }}>
-          <FlatList
-            horizontal
-            data={periods}
-            keyExtractor={(p) => p.id}
-            showsHorizontalScrollIndicator={false}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                onPress={() => { setSelectedPeriod(item.id); setPage(0); }}
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 18,
-                  marginRight: 8,
-                  backgroundColor: selectedPeriod === item.id ? "#3B82F6" : "#F3F4F6",
-                }}
-              >
-                <Text style={{ color: selectedPeriod === item.id ? "#FFF" : "#374151", fontWeight: selectedPeriod === item.id ? "700" : "600" }}>
-                  {t(item.titleKey)}
-                </Text>
-              </TouchableOpacity>
-            )}
-          />
-        </View>
-
-        {/* Top-3 */}
-        <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 8 }}>
+        {/* Top 3 Podium */}
+        <View style={{ paddingHorizontal: 12, paddingVertical: 12, backgroundColor: "#F9FAFB", borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
           {top3Query.isLoading ? (
-            <ActivityIndicator />
+            <ActivityIndicator size="small" />
+          ) : Array.isArray(top3Query.data) && top3Query.data.length >= 3 ? (
+            <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end", height: 200 }}>
+              {/* Position 2 (Silver) */}
+              {renderPodiumEntry(top3Query.data[1], 2)}
+              {/* Position 1 (Gold) */}
+              {renderPodiumEntry(top3Query.data[0], 1)}
+              {/* Position 3 (Bronze) */}
+              {renderPodiumEntry(top3Query.data[2], 3)}
+            </View>
           ) : (
-            Array.isArray(top3Query.data) && top3Query.data.length >= 3 && (
-              <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end" }}>
-                {[1, 0, 2].map((pos) => {
-                  const p = top3Query.data[pos];
-                  if (!p) return null;
-                  const placeColor = pos === 0 ? "#F59E0B" : pos === 1 ? "#9CA3AF" : "#CD7C2F";
-                  return (
-                    <TouchableOpacity key={pos} onPress={() => onPressUser(p)} style={{ flex: 1, alignItems: "center", marginHorizontal: 6, padding: 8 }}>
-                      <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: placeColor, justifyContent: "center", alignItems: "center" }}>
-                        <Text style={{ color: "#FFF", fontWeight: "700" }}>{pos + 1}</Text>
-                      </View>
-                      <Image source={{ uri: p.avatarUrl }} style={{ width: 56, height: 56, borderRadius: 28, marginTop: 8, backgroundColor: "#E5E7EB" }} />
-                      <Text
-                        numberOfLines={1}
-                        ellipsizeMode="tail"
-                        style={{ marginTop: 6, fontWeight: "600", maxWidth: 100 }}
-                      >
-                        {p.fullname}
-                        {p.nickname ? ` (${p.nickname})` : ""}
-                      </Text>
-                      <Text style={{ color: "#6B7280", fontSize: 12 }}>
-                        {t("leaderboard.level")} {typeof p.level !== "undefined" ? p.level : "-"}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )
+            <Text style={{ color: "#9CA3AF", textAlign: "center", paddingVertical: 12 }}>
+              {t("leaderboard.noData")}
+            </Text>
           )}
         </View>
 
-        {/* Entries list */}
+        {/* Entries list (4+) */}
         <View style={{ flex: 1 }}>
           {(leaderboardsLoading || entriesLoading) && page === 0 ? (
             <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
@@ -335,17 +369,24 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
             <View style={{ padding: 20 }}>
               <Text style={{ color: "red" }}>{t("leaderboard.error")}</Text>
             </View>
+          ) : resolvedEntries.length === 0 ? (
+            <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+              <Text style={{ color: "#9CA3AF" }}>{t("leaderboard.noMoreEntries")}</Text>
+            </View>
           ) : (
             <FlatList
               data={resolvedEntries}
               renderItem={renderItem}
-              keyExtractor={(it: any, idx: number) => String(it?.leaderboardEntryId?.userId ?? it.userId ?? it.id ?? idx)}
+              keyExtractor={(it: any, idx: number) =>
+                String(it?.leaderboardEntryId?.userId ?? it.userId ?? it.id ?? idx)
+              }
               onEndReached={() => loadMore()}
               onEndReachedThreshold={0.5}
               ListFooterComponent={() => (entriesLoading ? <ActivityIndicator style={{ padding: 12 }} /> : null)}
             />
           )}
         </View>
+
       </Animated.View>
     </View>
   );

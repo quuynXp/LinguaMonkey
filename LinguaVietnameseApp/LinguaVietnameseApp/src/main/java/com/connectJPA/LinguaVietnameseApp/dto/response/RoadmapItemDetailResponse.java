@@ -1,19 +1,17 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class RoadmapItemResponse {
-    private UUID id;
-    private String name;
+public class RoadmapItemDetailResponse {
+    private UUID itemId;
+    private String title;
     private String description;
     private String type;
     private Integer level;
@@ -21,4 +19,8 @@ public class RoadmapItemResponse {
     private Integer expReward;
     private String difficulty;
     private String category;
+    private UUID contentId;
+    private List<String> skills;
+    private List<ResourceResponse> resources;
+    private List<RoadmapGuidanceResponse> guidances;
 }

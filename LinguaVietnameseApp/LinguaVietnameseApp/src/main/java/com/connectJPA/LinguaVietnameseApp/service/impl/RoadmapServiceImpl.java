@@ -3,25 +3,29 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateRoadmapRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.GenerateRoadmapRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
-import com.connectJPA.LinguaVietnameseApp.entity.*;
-import com.connectJPA.LinguaVietnameseApp.entity.id.UserRoadmapId;
+        import com.connectJPA.LinguaVietnameseApp.entity.*;
+        import com.connectJPA.LinguaVietnameseApp.entity.id.UserRoadmapId;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
-import com.connectJPA.LinguaVietnameseApp.service.RoadmapService;
+        import com.connectJPA.LinguaVietnameseApp.service.RoadmapService;
 import lombok.RequiredArgsConstructor;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.ExecutionException;
+import java.util.*;
+        import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class RoadmapServiceImpl implements RoadmapService {
 
     private final RoadmapRepository roadmapRepository;
@@ -36,21 +40,34 @@ public class RoadmapServiceImpl implements RoadmapService {
     private final GrpcClientService grpcClientService;
     private final InterestRepository interestRepository;
     private final RoadmapSuggestionRepository roadmapSuggestionRepository;
+    private final RoadmapRatingRepository roadmapRatingRepository;
+
+    // ==================== USER ROADMAPS ====================
 
     @Override
-    public List<RoadmapResponse> getAllRoadmaps(String language) {
-        return roadmapRepository.findByLanguageCodeAndIsDeletedFalse(language).stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList());
+    public List<RoadmapUserResponse> getUserRoadmaps(UUID userId, String language) {
+        List<UserRoadmap> urs = userRoadmapRepository.findByUserRoadmapIdUserIdAndLanguage(userId, language);
+        return urs.stream().map(this::mapToUserResponse).collect(Collectors.toList());
+    }
+
+    @Override
+    public RoadmapUserResponse getRoadmapWithUserProgress(UUID roadmapId, UUID userId) {
+        UserRoadmap ur = userRoadmapRepository
+                .findByUserRoadmapIdRoadmapIdAndUserRoadmapIdUserId(roadmapId, userId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+        return mapToUserResponse(ur);
     }
 
     @Transactional
     @Override
     public void assignRoadmapToUser(UUID userId, UUID roadmapId) {
         if (userId == null) throw new AppException(ErrorCode.USER_NOT_FOUND);
+
         Roadmap roadmap = roadmapRepository.findById(roadmapId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
-        User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         UserRoadmapId urId = new UserRoadmapId(userId, roadmapId);
         UserRoadmap ur = userRoadmapRepository.findById(urId).orElse(null);
@@ -59,142 +76,32 @@ public class RoadmapServiceImpl implements RoadmapService {
             ur = new UserRoadmap();
             ur.setUserRoadmapId(urId);
             ur.setCurrentLevel(0);
-            ur.setTargetLevel(10); // default, change if you want
+            ur.setTargetLevel(10);
             ur.setTargetProficiency(null);
-            int studyTimePerDay = 0;
-            try {
-                studyTimePerDay = (int) (user.getClass().getMethod("getStudyTimePerDay").invoke(user) == null ? 0 : user.getClass().getMethod("getStudyTimePerDay").invoke(user));
-            } catch (Exception ignored) {}
-            int estimatedDays = (studyTimePerDay > 0 && roadmap.getTotalItems() != null)
-                    ? (roadmap.getTotalItems() * 60 / studyTimePerDay)
-                    : 0;
+
+            List<RoadmapItem> items = roadmapItemRepository.findByRoadmapIdOrderByOrderIndexAsc(roadmapId);
+            int totalItems = items.size();
+            int studyTimePerDay = 60;
+
+            int estimatedDays = studyTimePerDay > 0 && totalItems > 0
+                    ? (totalItems * 60 / studyTimePerDay)
+                    : totalItems;
+
             ur.setEstimatedCompletionTime(estimatedDays);
             ur.setCompletedItems(0);
             ur.setStatus("active");
+            ur.setIsPublic(false);
+            ur.setLanguage(roadmap.getLanguageCode());
+            ur.setCreatedAt(OffsetDateTime.now());
         } else {
             ur.setStatus("active");
         }
+
         userRoadmapRepository.save(ur);
+        log.info("Assigned roadmap {} to user {}", roadmapId, userId);
     }
 
-
-    @Override
-    public RoadmapResponse getRoadmapWithDetails(UUID roadmapId) {
-        Roadmap r = roadmapRepository.findById(roadmapId).orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
-        List<RoadmapItemResponse> items = roadmapItemRepository.findByRoadmapIdOrderByOrderIndexAsc(roadmapId).stream()
-                .map(i -> RoadmapItemResponse.builder().id(i.getItemId()).name(i.getTitle()).description(i.getDescription()).build())
-                .collect(Collectors.toList());
-        List<MilestoneResponse> milestones = roadmapMilestoneRepository.findByRoadmapIdOrderByOrderIndexAsc(roadmapId).stream()
-                .map(m -> MilestoneResponse.builder().id(m.getMilestoneId()).name(m.getTitle()).description(m.getDescription()).build())
-                .collect(Collectors.toList());
-        List<ResourceResponse> resources = roadmapResourceRepository.findByRoadmapId(roadmapId).stream()
-                .map(res -> ResourceResponse.builder().type(res.getType()).url(res.getUrl()).description(res.getDescription()).build())
-                .collect(Collectors.toList());
-        return RoadmapResponse.builder()
-                .id(r.getRoadmapId())
-                .title(r.getTitle())
-                .description(r.getDescription())
-                .language(r.getLanguageCode())
-                .items(items)
-                .milestones(milestones)
-                .resources(resources)
-                .build();
-    }
-
-    @Override
-    public List<RoadmapUserResponse> getUserRoadmaps(UUID userId, String language) {
-        List<UserRoadmap> urs = userRoadmapRepository.findByUserRoadmapIdUserIdAndLanguage(userId, language);
-        return urs.stream()
-                .map(ur -> mapToUserResponse(ur))
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public RoadmapUserResponse getRoadmapWithUserProgress(UUID roadmapId, UUID userId) {
-        UserRoadmap ur = userRoadmapRepository.findByUserRoadmapIdRoadmapIdAndUserRoadmapIdUserId(roadmapId, userId).orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
-        return mapToUserResponse(ur);
-    }
-
-    private RoadmapUserResponse mapToUserResponse(UserRoadmap ur) {
-        Roadmap r = roadmapRepository.findById(ur.getUserRoadmapId().getRoadmapId())
-                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
-
-        List<RoadmapItem> itemsEnt = roadmapItemRepository.findByRoadmapIdOrderByOrderIndexAsc(
-                ur.getUserRoadmapId().getRoadmapId()
-        );
-
-        List<RoadmapItemUserResponse> items = itemsEnt.stream()
-                .map(i -> RoadmapItemUserResponse.builder()
-                        .id(i.getItemId())
-                        .name(i.getTitle())
-                        .description(i.getDescription())
-                        .completed(i.getOrderIndex() <= ur.getCompletedItems())
-                        .build())
-                .collect(Collectors.toList());
-
-        List<RoadmapMilestone> milestonesEnt = roadmapMilestoneRepository
-                .findByRoadmapIdOrderByOrderIndexAsc(ur.getUserRoadmapId().getRoadmapId());
-
-        List<MilestoneUserResponse> milestones = milestonesEnt.stream()
-                .map(m -> MilestoneUserResponse.builder()
-                        .id(m.getMilestoneId())
-                        .name(m.getTitle())
-                        .description(m.getDescription())
-                        .achieved(m.getLevel() <= ur.getCurrentLevel())
-                        .build())
-                .collect(Collectors.toList());
-
-        int totalItems = r.getTotalItems() != null ? r.getTotalItems() : itemsEnt.size();
-        int completedItems = ur.getCompletedItems();
-        int progress = totalItems > 0 ? (completedItems * 100 / totalItems) : 0;
-
-        int estimatedCompletionTime = ur.getEstimatedCompletionTime();
-        if (estimatedCompletionTime == 0 && totalItems > 0) {
-            int avgDaysPerItem = 1; // fallback nếu chưa có logic chi tiết
-            estimatedCompletionTime = (totalItems - completedItems) * avgDaysPerItem;
-        }
-
-        return RoadmapUserResponse.builder()
-                .roadmapId(ur.getUserRoadmapId().getRoadmapId())
-                .userId(ur.getUserRoadmapId().getUserId())
-                .title(r.getTitle())
-                .description(r.getDescription())
-                .language(r.getLanguageCode())
-                .progressPercentage(progress)
-                .totalItems(totalItems)
-                .completedItems(completedItems)
-                .estimatedCompletionTime(estimatedCompletionTime)
-                .items(items)
-                .milestones(milestones)
-                .build();
-    }
-
-
-    private RoadmapResponse mapToResponse(Roadmap r) {
-        return RoadmapResponse.builder()
-                .id(r.getRoadmapId())
-                .title(r.getTitle())
-                .description(r.getDescription())
-                .language(r.getLanguageCode())
-                .build();
-    }
-
-    @Transactional
-    @Override
-    public RoadmapResponse create(CreateRoadmapRequest request) {
-        Roadmap roadmap = new Roadmap();
-        roadmap.setTitle(request.getTitle());
-        roadmap.setDescription(request.getDescription());
-        roadmap.setLanguageCode(request.getLanguageCode());
-        roadmap.setTotalItems(0); // update later if items added
-        roadmapRepository.save(roadmap);
-        return mapToResponse(roadmap);
-    }
-
-    @Override
-    public List<RoadmapSuggestion> getSuggestions(UUID roadmapId) {
-        return roadmapSuggestionRepository.findByRoadmapRoadmapId(roadmapId);
-    }
+    // ==================== PUBLIC ROADMAPS ====================
 
     @Override
     public List<RoadmapResponse> getPublicRoadmaps(String language) {
@@ -203,33 +110,118 @@ public class RoadmapServiceImpl implements RoadmapService {
                 .collect(Collectors.toList());
     }
 
+    @Override
+    public Page<RoadmapPublicResponse> getPublicRoadmapsWithStats(String language, int page, int size) {
+        PageRequest pageRequest = PageRequest.of(page, size);
+
+        Page<UserRoadmap> publicRoadmaps = userRoadmapRepository
+                .findByIsPublicTrueAndLanguageOrderByCreatedAtDesc(language, pageRequest);
+
+        return publicRoadmaps.map(ur -> {
+            Roadmap roadmap = ur.getRoadmap();
+
+            long suggestionCount = roadmapSuggestionRepository
+                    .countByRoadmapRoadmapIdAndAppliedFalse(roadmap.getRoadmapId());
+
+            double avgRating = calculateRoadmapRating(roadmap.getRoadmapId());
+
+            return RoadmapPublicResponse.builder()
+                    .roadmapId(roadmap.getRoadmapId())
+                    .title(roadmap.getTitle())
+                    .description(roadmap.getDescription())
+                    .language(roadmap.getLanguageCode())
+                    .creator(ur.getUser().getFullname())
+                    .creatorId(ur.getUser().getUserId())
+                    .creatorAvatar(ur.getUser().getAvatarUrl())
+                    .totalItems(roadmap.getTotalItems())
+                    .suggestionCount((int) suggestionCount)
+                    .averageRating(avgRating)
+                    .difficulty(roadmap.getType())
+                    .type(roadmap.getType())
+                    .createdAt(ur.getCreatedAt())
+                    .viewCount(0) // Add view tracking later
+                    .favoriteCount(0) // Add favorite tracking later
+                    .build();
+        });
+    }
 
     @Transactional
     @Override
     public void setPublic(UUID userId, UUID roadmapId, boolean isPublic) {
         UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, roadmapId))
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+
         if (!ur.getUserRoadmapId().getUserId().equals(userId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED); // Chỉ owner mới set public
+            throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        ur.setPublic(isPublic); // Giả định thêm trường isPublic
+
+        ur.setIsPublic(isPublic);
         userRoadmapRepository.save(ur);
+        log.info("Set roadmap {} visibility to {}", roadmapId, isPublic);
+    }
+
+    // ==================== ROADMAP SUGGESTIONS ====================
+
+    @Override
+    public List<RoadmapSuggestion> getSuggestions(UUID roadmapId) {
+        return roadmapSuggestionRepository.findByRoadmapRoadmapId(roadmapId);
+    }
+
+    @Override
+    public List<RoadmapSuggestionResponse> getSuggestionsWithDetails(UUID roadmapId) {
+        List<RoadmapSuggestion> suggestions = roadmapSuggestionRepository
+                .findByRoadmapRoadmapIdOrderByCreatedAtDesc(roadmapId);
+
+        return suggestions.stream()
+                .map(suggestion -> RoadmapSuggestionResponse.builder()
+                        .suggestionId(suggestion.getSuggestionId())
+                        .userId(suggestion.getUser().getUserId())
+                        .userName(suggestion.getUser().getFullname())
+                        .userAvatar(suggestion.getUser().getAvatarUrl())
+                        .itemId(suggestion.getItemId())
+                        .suggestedOrderIndex(suggestion.getSuggestedOrderIndex())
+                        .reason(suggestion.getReason())
+                        .appliedCount(0)
+                        .likeCount(0)
+                        .applied(suggestion.getApplied())
+                        .createdAt(suggestion.getCreatedAt())
+                        .appliedAt(suggestion.getAppliedAt())
+                        .build())
+                .collect(Collectors.toList());
     }
 
     @Transactional
     @Override
-    public RoadmapSuggestion addSuggestion(UUID userId, UUID roadmapId, UUID itemId, Integer suggestedOrderIndex, String reason) {
+    public RoadmapSuggestion addSuggestion(UUID userId, UUID roadmapId, UUID itemId,
+                                           Integer suggestedOrderIndex, String reason) {
         UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, roadmapId))
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
-        if (!ur.isPublic()) {
+
+        if (!ur.getIsPublic()) {
             throw new AppException(ErrorCode.ROADMAP_NOT_PUBLIC);
         }
-        RoadmapSuggestion suggestion = new RoadmapSuggestion();
-        suggestion.setUser(userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
-        suggestion.setRoadmap(roadmapRepository.findById(roadmapId).orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND)));
-        suggestion.setItemId(itemId);
-        suggestion.setSuggestedOrderIndex(suggestedOrderIndex);
-        suggestion.setReason(reason);
+
+        RoadmapItem item = roadmapItemRepository.findById(itemId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
+
+        // Check for duplicate
+        if (roadmapSuggestionRepository.existsByUserAndRoadmapAndItem(userId, roadmapId, itemId)) {
+            throw new AppException(ErrorCode.DUPLICATE_SUGGESTION);
+        }
+
+        RoadmapSuggestion suggestion = RoadmapSuggestion.builder()
+                .suggestionId(UUID.randomUUID())
+                .user(userRepository.findById(userId)
+                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)))
+                .roadmap(roadmapRepository.findById(roadmapId)
+                        .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND)))
+                .itemId(itemId)
+                .suggestedOrderIndex(suggestedOrderIndex)
+                .reason(reason)
+                .applied(false)
+                .build();
+
+        log.info("Added suggestion from user {} for roadmap {}", userId, roadmapId);
         return roadmapSuggestionRepository.save(suggestion);
     }
 
@@ -238,41 +230,159 @@ public class RoadmapServiceImpl implements RoadmapService {
     public void applySuggestion(UUID userId, UUID suggestionId) {
         RoadmapSuggestion suggestion = roadmapSuggestionRepository.findById(suggestionId)
                 .orElseThrow(() -> new AppException(ErrorCode.SUGGESTION_NOT_FOUND));
-        UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, suggestion.getRoadmap().getRoadmapId()))
+
+        UserRoadmap ur = userRoadmapRepository
+                .findById(new UserRoadmapId(userId, suggestion.getRoadmap().getRoadmapId()))
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+
         if (!ur.getUserRoadmapId().getUserId().equals(userId)) {
-            throw new AppException(ErrorCode.UNAUTHORIZED); // Chỉ owner áp dụng
+            throw new AppException(ErrorCode.UNAUTHORIZED);
         }
+
         if (suggestion.getItemId() != null && suggestion.getSuggestedOrderIndex() != null) {
             RoadmapItem item = roadmapItemRepository.findById(suggestion.getItemId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
+
             item.setOrderIndex(suggestion.getSuggestedOrderIndex());
             roadmapItemRepository.save(item);
-            // Có thể thêm logic điều chỉnh orderIndex của các item khác để tránh xung đột
+
+            reorderRoadmapItems(suggestion.getRoadmap().getRoadmapId());
         }
+
         suggestion.setApplied(true);
+        suggestion.setAppliedAt(OffsetDateTime.now());
         roadmapSuggestionRepository.save(suggestion);
+        log.info("Applied suggestion {} for roadmap {}", suggestionId, suggestion.getRoadmap().getRoadmapId());
+    }
+
+    // ==================== ROADMAP CRUD ====================
+
+    @Override
+    public List<RoadmapResponse> getAllRoadmaps(String language) {
+        return roadmapRepository.findByLanguageCodeAndIsDeletedFalse(language).stream()
+                .map(this::mapToResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public RoadmapResponse getRoadmapWithDetails(UUID roadmapId) {
+        Roadmap r = roadmapRepository.findById(roadmapId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+
+        List<RoadmapItemResponse> items = roadmapItemRepository
+                .findByRoadmapIdOrderByOrderIndexAsc(roadmapId).stream()
+                .map(i -> RoadmapItemResponse.builder()
+                        .id(i.getItemId())
+                        .name(i.getTitle())
+                        .description(i.getDescription())
+                        .type(i.getType())
+                        .level(i.getLevel())
+                        .estimatedTime(i.getEstimatedTime())
+                        .expReward(i.getExpReward())
+                        .difficulty(i.getDifficulty())
+                        .build())
+                .collect(Collectors.toList());
+
+        List<MilestoneResponse> milestones = roadmapMilestoneRepository
+                .findByRoadmapIdOrderByOrderIndexAsc(roadmapId).stream()
+                .map(m -> MilestoneResponse.builder()
+                        .id(m.getMilestoneId())
+                        .name(m.getTitle())
+                        .description(m.getDescription())
+                        .level(m.getLevel())
+                        .build())
+                .collect(Collectors.toList());
+
+        return RoadmapResponse.builder()
+                .id(r.getRoadmapId())
+                .title(r.getTitle())
+                .description(r.getDescription())
+                .language(r.getLanguageCode())
+                .items(items)
+                .milestones(milestones)
+                .createdAt(r.getCreatedAt())
+                .build();
+    }
+
+    @Transactional
+    @Override
+    public RoadmapResponse create(CreateRoadmapRequest request) {
+        Roadmap roadmap = Roadmap.builder()
+                .roadmapId(UUID.randomUUID())
+                .title(request.getTitle())
+                .description(request.getDescription())
+                .languageCode(request.getLanguageCode())
+                .totalItems(0)
+                .isDeleted(false)
+                .createdAt(OffsetDateTime.now())
+                .build();
+
+        roadmapRepository.save(roadmap);
+        log.info("Created roadmap: {}", roadmap.getRoadmapId());
+        return mapToResponse(roadmap);
     }
 
     @Transactional
     @Override
     public RoadmapResponse update(UUID id, CreateRoadmapRequest request) {
-        Roadmap roadmap = roadmapRepository.findById(id).orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+        Roadmap roadmap = roadmapRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+
         roadmap.setTitle(request.getTitle());
         roadmap.setDescription(request.getDescription());
         roadmap.setLanguageCode(request.getLanguageCode());
         roadmap.setUpdatedAt(OffsetDateTime.now());
         roadmapRepository.save(roadmap);
+
+        log.info("Updated roadmap: {}", id);
         return mapToResponse(roadmap);
     }
 
     @Transactional
     @Override
     public void delete(UUID id) {
-        Roadmap roadmap = roadmapRepository.findById(id).orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+        Roadmap roadmap = roadmapRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
+
         roadmap.setDeleted(true);
         roadmap.setDeletedAt(OffsetDateTime.now());
         roadmapRepository.save(roadmap);
+
+        log.info("Deleted roadmap: {}", id);
+    }
+
+    @Transactional
+    @Override
+    public void startItem(UUID userId, UUID itemId) {
+        RoadmapItem item = roadmapItemRepository.findById(itemId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
+
+        UserRoadmap ur = userRoadmapRepository
+                .findById(new UserRoadmapId(userId, item.getRoadmapId()))
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_ASSIGNED));
+
+        ur.setStatus("in-progress");
+        userRoadmapRepository.save(ur);
+    }
+
+    @Transactional
+    @Override
+    public void completeItem(UUID userId, UUID itemId) {
+        RoadmapItem item = roadmapItemRepository.findById(itemId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
+
+        UserRoadmap ur = userRoadmapRepository
+                .findById(new UserRoadmapId(userId, item.getRoadmapId()))
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_ASSIGNED));
+
+        ur.setCompletedItems(ur.getCompletedItems() + 1);
+        userRoadmapRepository.save(ur);
+    }
+
+    @Override
+    public RoadmapItem getRoadmapItemDetail(UUID itemId) {
+        return roadmapItemRepository.findById(itemId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
     }
 
     @Transactional
@@ -393,7 +503,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                         guidance.setStage(String.valueOf(gProto.getStage()));
                         guidance.setTitle(gProto.getTitle());
                         guidance.setDescription(gProto.getDescription());
-                        guidance.setTips(gProto.getTipsList().toArray(new String[0]));
+                        guidance.setTips(List.of(gProto.getTipsList().toArray(new String[0])));
                         guidance.setEstimatedTime(gProto.getEstimatedTime());
                         guidance.setOrderIndex(gProto.getOrderIndex());
                         roadmapGuidanceRepository.save(guidance);
@@ -414,8 +524,8 @@ public class RoadmapServiceImpl implements RoadmapService {
                         m.setTitle(mProto.getTitle());
                         m.setDescription(mProto.getDescription());
                         m.setLevel(mProto.getLevel());
-                        m.setRequirements(mProto.getRequirementsList().toArray(new String[0]));
-                        m.setRewards(mProto.getRewardsList().toArray(new String[0]));
+                        m.setRequirements(List.of(mProto.getRequirementsList().toArray(new String[0])));
+                        m.setRewards(List.of(mProto.getRewardsList().toArray(new String[0])));
                         m.setOrderIndex(mProto.getOrderIndex());
                         roadmapMilestoneRepository.save(m);
                     } catch (Exception ex) {
@@ -445,55 +555,68 @@ public class RoadmapServiceImpl implements RoadmapService {
         }
     }
 
-    @Override
-    public RoadmapItem getRoadmapItemDetail(UUID itemId) {
-        RoadmapItem item = roadmapItemRepository.findById(itemId)
-                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
 
-        List<ResourceResponse> resources = roadmapResourceRepository.findByItemId(itemId).stream()
-                .map(res -> ResourceResponse.builder()
-                        .type(res.getType())
-                        .url(res.getUrl())
-                        .description(res.getDescription())
+    private RoadmapUserResponse mapToUserResponse(UserRoadmap ur) {
+        Roadmap r = ur.getRoadmap();
+        List<RoadmapItem> itemsEnt = roadmapItemRepository
+                .findByRoadmapIdOrderByOrderIndexAsc(r.getRoadmapId());
+
+        List<RoadmapItemUserResponse> items = itemsEnt.stream()
+                .map(i -> RoadmapItemUserResponse.builder()
+                        .id(i.getItemId())
+                        .name(i.getTitle())
+                        .description(i.getDescription())
+                        .completed(i.getOrderIndex() <= ur.getCompletedItems())
                         .build())
                 .collect(Collectors.toList());
 
-        return RoadmapItem.builder()
-                .roadmapId(item.getItemId())
-                .title(item.getTitle())
-                .description(item.getDescription())
-                .type(item.getType())
-                .level(item.getLevel())
-                .estimatedTime(item.getEstimatedTime())
-                .difficulty(item.getDifficulty())
-                .expReward(item.getExpReward())
+        int totalItems = r.getTotalItems() != null ? r.getTotalItems() : itemsEnt.size();
+        int completedItems = ur.getCompletedItems();
+        int progress = totalItems > 0 ? (completedItems * 100 / totalItems) : 0;
+
+        int estimatedCompletionTime = ur.getEstimatedCompletionTime();
+        if (estimatedCompletionTime == 0 && totalItems > 0) {
+            estimatedCompletionTime = (totalItems - completedItems);
+        }
+
+        return RoadmapUserResponse.builder()
+                .roadmapId(r.getRoadmapId())
+                .userId(ur.getUserRoadmapId().getUserId())
+                .title(r.getTitle())
+                .description(r.getDescription())
+                .language(r.getLanguageCode())
+                .progressPercentage(progress)
+                .totalItems(totalItems)
+                .completedItems(completedItems)
+                .estimatedCompletionTime(estimatedCompletionTime)
+                .items(items)
+                .createdAt(ur.getCreatedAt())
                 .build();
     }
 
-    @Transactional
-    @Override
-    public void startItem(UUID userId, UUID itemId) {
-        RoadmapItem item = roadmapItemRepository.findById(itemId)
-                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
-
-        UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, item.getRoadmapId()))
-                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_ASSIGNED));
-
-        ur.setStatus("in-progress");
-        userRoadmapRepository.save(ur);
+    private RoadmapResponse mapToResponse(Roadmap r) {
+        return RoadmapResponse.builder()
+                .id(r.getRoadmapId())
+                .title(r.getTitle())
+                .description(r.getDescription())
+                .language(r.getLanguageCode())
+                .createdAt(r.getCreatedAt())
+                .updatedAt(r.getUpdatedAt())
+                .build();
     }
 
-    @Transactional
-    @Override
-    public void completeItem(UUID userId, UUID itemId) {
-        RoadmapItem item = roadmapItemRepository.findById(itemId)
-                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
+    private void reorderRoadmapItems(UUID roadmapId) {
+        List<RoadmapItem> items = roadmapItemRepository
+                .findByRoadmapIdOrderByOrderIndexAsc(roadmapId);
 
-        UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, item.getRoadmapId()))
-                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_ASSIGNED));
-
-        ur.setCompletedItems(ur.getCompletedItems() + 1);
-        userRoadmapRepository.save(ur);
+        for (int i = 0; i < items.size(); i++) {
+            items.get(i).setOrderIndex(i);
+            roadmapItemRepository.save(items.get(i));
+        }
     }
 
+    private double calculateRoadmapRating(UUID roadmapId) {
+        // Implementation to calculate average rating
+        return 4.5; // Placeholder
+    }
 }

@@ -8,12 +8,14 @@ import lombok.NoArgsConstructor;
 import java.util.UUID;
 
 @Data
-@Builder
-@AllArgsConstructor
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class RoadmapItemUserResponse {
     private UUID id;
     private String name;
     private String description;
-    private boolean completed;   // trạng thái theo user
+    private Boolean completed;
+    private Integer progress;
+    private String status;
 }

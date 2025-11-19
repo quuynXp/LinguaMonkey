@@ -114,8 +114,8 @@
     }
   },
   "auth": {
-    "phoneNumber":"Phone number",
-    "enterPhoneNumber":"Enter your phone number",
+    "phoneNumber": "Phone number",
+    "enterPhoneNumber": "Enter your phone number",
     "phoneHint": "We'll send a verification code to this number.",
     "emailAddress": "Email address",
     "password": "Password",
@@ -1791,5 +1791,15 @@
       "QUIZ_COMPLETED": "Quiz",
       "DEFAULT": "Activity"
     }
-  }
+  },
+  "home.roadmap.loading": "Loading your roadmap...",
+  "home.roadmap.error": "Failed to load roadmap",
+  "home.roadmap.selectDefault": "Select a default roadmap to get started",
+  "home.roadmap.browsePublic": "Browse Public Roadmaps",
+  "roadmap.publicRoadmaps": "Public Roadmaps",
+  "roadmap.suggest": "Suggest",
+  "roadmap.addSuggestion": "Add Your Suggestion",
+  "roadmap.suggestionPlaceholder": "Share your idea to improve this roadmap...",
+  "home.challenge.error": "Failed to load challenges",
+  "home.dailyGoal.complete": "Complete {total} lessons today"
 }

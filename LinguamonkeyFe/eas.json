@@ -12,7 +12,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "API_URL": "http://10.0.2.2:8080/api/v1"
+        "EXPO_PUBLIC_API_BASE_URL": "http://10.0.2.2:8080"
       }
     },
     "preview": {
@@ -22,7 +22,7 @@
       },
       "distribution": "internal",
       "env": {
-        "API_URL": "http://192.168.65.1:8080/api/v1"
+        "EXPO_PUBLIC_API_BASE_URL": "http://192.168.65.1:8080"
       }
     },
     "production": {
@@ -33,7 +33,7 @@
         "ndk": "25.2.9519653"
       },
       "env": {
-        "API_URL": "https://api.yourdomain.com/api/v1"
+        "EXPO_PUBLIC_API_BASE_URL": "http://192.168.65.1:8080"
       }
     }
   },

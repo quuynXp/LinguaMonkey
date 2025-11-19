@@ -142,7 +142,6 @@ const VideoCallManagerScreen = ({ route }) => {
     };
 
     const renderParticipant = ({ item }) => {
-        const { t } = useTranslation();
         const getStatusLabel = (status) => {
             switch (status) {
                 case "CONNECTED": return t("statusConnected");

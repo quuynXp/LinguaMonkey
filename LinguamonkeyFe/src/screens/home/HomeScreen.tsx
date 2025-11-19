@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react"
-import { Animated, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View, ActivityIndicator, Modal, TextInput } from "react-native"
+import { Animated, Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, Modal, TextInput } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import useTopThreeUsers from "../../hooks/useTopThreeUsers"
+import { useLeaderboards as useLeaderboardsHooksFactory } from "../../hooks/useLeaderboards"
 import { useUserStore } from "../../stores/UserStore"
 import { useRoadmap } from "../../hooks/useRoadmap"
 import { getGreetingTime } from "../../utils/timeHelper"
@@ -19,8 +19,10 @@ const HomeScreen = ({ navigation }) => {
   const bounceAnim = useRef(new Animated.Value(1)).current
   const fadeAnim = useRef(new Animated.Value(0)).current
 
-  const { topThreeUsers, isLoading, isError } = useTopThreeUsers()
-  const { useUserRoadmap, useDefaultRoadmaps, useGenerateRoadmap } = useRoadmap()
+  const { useLeaderboardTopThree } = useLeaderboardsHooksFactory()
+  const { data: topThreeUsers, isLoading, isError } = useLeaderboardTopThree()
+
+  const { useUserRoadmap, useDefaultRoadmaps } = useRoadmap()
   const {
     name = "",
     streak = 0,
@@ -31,22 +33,21 @@ const HomeScreen = ({ navigation }) => {
     user,
   } = useUserStore()
 
-  const { data: dailyChallenges, isLoading: dailyLoading } = useDailyChallenges(user?.userId)
+  const { data: dailyChallenges, isLoading: dailyLoading, error: dailyError } = useDailyChallenges(user?.userId)
   const assignMutation = useAssignChallenge(user?.userId)
   const completeMutation = useCompleteChallenge(user?.userId)
 
   const mainLanguage = languages[0] || "en"
-  const { data: roadmap, isLoading: roadmapLoading } = useUserRoadmap(mainLanguage)
-  const { data: defaultRoadmaps } = useDefaultRoadmaps(mainLanguage)
+  const { data: roadmap, isLoading: roadmapLoading, error: roadmapError } = useUserRoadmap(mainLanguage)
+  const { data: defaultRoadmaps, isLoading: defaultLoading } = useDefaultRoadmaps(mainLanguage)
 
-  const generateMutation = useGenerateRoadmap()
   const [showGenerateDialog, setShowGenerateDialog] = useState(false)
   const [preferences, setPreferences] = useState({
     language_code: mainLanguage,
     target_proficiency: "",
     target_date: "",
     focus_areas: [],
-    study_time_per_day: 0,
+    study_time_per_day: 1,
     is_custom: true,
     additional_prompt: "",
   })
@@ -62,26 +63,17 @@ const HomeScreen = ({ navigation }) => {
     bounceAnimation()
   }, [])
 
-  const handleGenerate = () => {
-    generateMutation.mutate(preferences, {
-      onSuccess: () => setShowGenerateDialog(false),
-    })
-  }
-
-  const selectDefault = (defaultId) => {
-    instance.post("/roadmaps/assign", { roadmapId: defaultId }).then(() => {
-      queryClient.invalidateQueries({ queryKey: ["userRoadmap"] })
-    })
-  }
-
   const handleLeaderboardPress = () => navigation.navigate("EnhancedLeaderboard")
   const handleRoadmapPress = () => navigation.navigate("RoadmapScreen")
+  const handlePublicRoadmapsPress = () => navigation.navigate("PublicRoadmaps")
+
   const goalProgress = dailyGoal?.totalLessons ? (dailyGoal.completedLessons / dailyGoal.totalLessons) * 100 : 0
   const greeting = getGreetingTime(undefined, undefined, undefined, t)
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
+
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerContent}>
@@ -90,7 +82,7 @@ const HomeScreen = ({ navigation }) => {
           </View>
           <TouchableOpacity style={styles.streakContainer} onPress={() => gotoTab('DailyWelcome')}>
             <Icon name="local-fire-department" size={20} color="#FF6B35" />
-            <Text style={styles.streakText}>{t("home.progress.streak")}: {t("home.days", { count: streak })}</Text>
+            <Text style={styles.streakText}>{t("home.progress.streak")}: {streak} {t("home.days")}</Text>
           </TouchableOpacity>
         </View>
 
@@ -102,35 +94,16 @@ const HomeScreen = ({ navigation }) => {
           <TouchableOpacity style={styles.leaderboardSection} onPress={handleLeaderboardPress}>
             <Text style={styles.sectionTitle}>{t("home.leaderboard.title")}</Text>
             <View style={styles.podiumContainer}>
-              {/* Silver */}
-              <View style={[styles.podiumItem, styles.secondPlace]}>
-                <View style={[styles.medal, styles.silverMedal]}><Text style={styles.medalText}>2</Text></View>
-                <Image source={{ uri: topThreeUsers[1].avatarUrl }} style={styles.podiumAvatar} />
-                <Text style={styles.podiumName}>{topThreeUsers[1].fullname} ({topThreeUsers[1].nickname})</Text>
-                <Text style={styles.podiumScore}>{t("home.progress.level")}: {topThreeUsers[1].level}</Text>
-              </View>
-
-              {/* Gold */}
-              <View style={[styles.podiumItem, styles.firstPlace]}>
-                <Icon name="emoji-events" size={24} color="#FFD700" style={styles.crownAnimation} />
-                <View style={[styles.medal, styles.goldMedal]}><Text style={styles.medalText}>1</Text></View>
-                <Image source={{ uri: topThreeUsers[0].avatarUrl }} style={styles.podiumAvatar} />
-                <Text style={styles.podiumName}>{topThreeUsers[0].fullname} ({topThreeUsers[0].nickname})</Text>
-                <Text style={styles.podiumScore}>{t("home.progress.level")}: {topThreeUsers[0].level}</Text>
-              </View>
-
-              {/* Bronze */}
-              <View style={[styles.podiumItem, styles.thirdPlace]}>
-                <View style={[styles.medal, styles.bronzeMedal]}><Text style={styles.medalText}>3</Text></View>
-                <Image source={{ uri: topThreeUsers[2].avatarUrl }} style={styles.podiumAvatar} />
-                <Text style={styles.podiumName}>{topThreeUsers[2].fullname} ({topThreeUsers[2].nickname})</Text>
-                <Text style={styles.podiumScore}>{t("home.progress.level")}: {topThreeUsers[2].level}</Text>
-              </View>
-            </View>
-
-            <View style={styles.viewMoreContainer}>
-              <Text style={styles.viewMoreText}>{t("home.leaderboard.viewMore")}</Text>
-              <Icon name="chevron-right" size={16} color="#6B7280" />
+              {topThreeUsers.map((user, idx) => (
+                <View key={idx} style={[styles.podiumItem, idx === 0 ? styles.firstPlace : idx === 1 ? styles.secondPlace : styles.thirdPlace]}>
+                  <View style={[styles.medal, idx === 0 ? styles.goldMedal : idx === 1 ? styles.silverMedal : styles.bronzeMedal]}>
+                    <Text style={styles.medalText}>{idx + 1}</Text>
+                  </View>
+                  <Image source={{ uri: user.avatarUrl }} style={styles.podiumAvatar} />
+                  <Text style={styles.podiumName}>{user.fullname}</Text>
+                  <Text style={styles.podiumScore}>{t("home.progress.level")}: {user.level}</Text>
+                </View>
+              ))}
             </View>
           </TouchableOpacity>
         )}
@@ -148,9 +121,7 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.sectionTitle}>{t("home.progress.title")}</Text>
           <View style={styles.progressCard}>
             <Icon name="star" size={24} color="#F59E0B" />
-            <Text style={styles.progressNumber}>
-              {user?.exp || 0} / {user?.expToNextLevel || 0}
-            </Text>
+            <Text style={styles.progressNumber}>{user?.exp || 0} / {user?.expToNextLevel || 0}</Text>
             <View style={styles.progressBar}>
               <View style={[
                 styles.progressFill,
@@ -161,65 +132,88 @@ const HomeScreen = ({ navigation }) => {
           </View>
         </View>
 
-        {/* Status */}
-        <View style={styles.statusSection}>
-          <Text style={styles.statusText}>{statusMessage || t("home.status.default")}</Text>
-        </View>
+        {/* Roadmap Section */}
+        <View style={styles.roadmapSection}>
+          <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
 
-        {/* Roadmap */}
-        {roadmapLoading ? (
-          <ActivityIndicator />
-        ) : roadmap ? (
-          <TouchableOpacity style={styles.roadmapSection} onPress={handleRoadmapPress}>
-            <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
-            <View style={styles.roadmapCard}>
+          {roadmapLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#3B82F6" />
+              <Text style={styles.loadingText}>{t("home.roadmap.loading")}</Text>
+            </View>
+          ) : roadmapError ? (
+            <View style={styles.errorContainer}>
+              <Icon name="error" size={40} color="#EF4444" />
+              <Text style={styles.errorText}>{t("home.roadmap.error")}</Text>
+            </View>
+          ) : roadmap ? (
+            <TouchableOpacity style={styles.roadmapCard} onPress={handleRoadmapPress}>
               <View style={styles.roadmapHeader}>
                 <View style={styles.roadmapInfo}>
-                  <Text style={styles.roadmapTitle}>{t("home.roadmap.personal")}</Text>
-                  <Text style={styles.roadmapSubtitle}>{t("home.roadmap.completed", { count: roadmap.totalItems })}</Text>
+                  <Text style={styles.roadmapTitle}>{roadmap.title || t("home.roadmap.personal")}</Text>
+                  <Text style={styles.roadmapSubtitle}>
+                    {t("home.roadmap.completed", { count: roadmap.completedItems })}
+                  </Text>
                 </View>
-                <View style={styles.roadmapProgress}><Text style={styles.roadmapPercentage}>{Math.round(roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0)}%</Text></View>
+                <View style={styles.roadmapProgress}>
+                  <Text style={styles.roadmapPercentage}>
+                    {Math.round(roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0)}%
+                  </Text>
+                </View>
               </View>
-              <View style={styles.roadmapProgressBar}><View style={[styles.roadmapProgressFill, { width: `${roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0}%` }]} /></View>
-              <View style={styles.roadmapFooter}><Text style={styles.roadmapEstimate}>{t("home.roadmap.estimate", { days: roadmap.estimatedCompletionTime })}</Text><Icon name="arrow-forward" size={16} color="#4ECDC4" /></View>
+              <View style={styles.roadmapProgressBar}>
+                <View style={[
+                  styles.roadmapProgressFill,
+                  { width: `${roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0}%` }
+                ]} />
+              </View>
+              <View style={styles.roadmapFooter}>
+                <Text style={styles.roadmapEstimate}>
+                  {t("home.roadmap.estimate", { days: roadmap.estimatedCompletionTime })}
+                </Text>
+                <Icon name="arrow-forward" size={16} color="#4ECDC4" />
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.noRoadmapContainer}>
+              {defaultLoading ? (
+                <ActivityIndicator size="large" color="#3B82F6" />
+              ) : defaultRoadmaps && defaultRoadmaps.length > 0 ? (
+                <>
+                  <Text style={styles.noRoadmapText}>{t("home.roadmap.selectDefault")}</Text>
+                  <ScrollView horizontal style={{ marginVertical: 10 }}>
+                    {defaultRoadmaps.map((def) => (
+                      <TouchableOpacity
+                        key={def.id}
+                        onPress={() => instance.post("/api/v1/roadmaps/assign", { roadmapId: def.id }).then(() => {
+                          queryClient.invalidateQueries({ queryKey: ["userRoadmap"] })
+                        })}
+                        style={styles.defaultCard}
+                      >
+                        <Text style={{ fontWeight: "600" }}>{def.title}</Text>
+                        <Text style={{ fontSize: 12, color: "#6B7280" }}>{def.language}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : (
+                <Text style={styles.noRoadmapText}>{t("home.roadmap.notFound")}</Text>
+              )}
+              <TouchableOpacity style={styles.generateButton} onPress={() => setShowGenerateDialog(true)}>
+                <Icon name="add" size={20} color="#fff" />
+                <Text style={{ color: "#fff", marginLeft: 8, fontWeight: "600" }}>
+                  {t("home.roadmap.createCustom")}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.browseButton} onPress={handlePublicRoadmapsPress}>
+                <Icon name="public" size={20} color="#4ECDC4" />
+                <Text style={{ color: "#4ECDC4", marginLeft: 8, fontWeight: "600" }}>
+                  {t("home.roadmap.browsePublic")}
+                </Text>
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.roadmapSection}>
-            <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
-            {defaultRoadmaps && defaultRoadmaps.length > 0 ? (
-              <>
-                <Text>{t("home.roadmap.noPersonal", { language: mainLanguage })}</Text>
-                <ScrollView horizontal style={{ marginVertical: 10 }}>
-                  {defaultRoadmaps.map((def) => (
-                    <TouchableOpacity key={def.roadmapId} onPress={() => selectDefault(def.roadmapId)} style={styles.defaultCard}>
-                      <Text style={{ fontWeight: "600" }}>{def.title}</Text>
-                      <Text style={{ fontSize: 12, color: "#6B7280" }}>{def.languageCode}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </>
-            ) : (
-              <Text>{t("home.roadmap.notFound")}</Text>
-            )}
-            <TouchableOpacity style={styles.generateButton} onPress={() => setShowGenerateDialog(true)}>
-              <Text>{t("home.roadmap.createCustom")}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Generate Dialog */}
-        <Modal visible={showGenerateDialog} animationType="slide">
-          <View style={styles.dialog}>
-            <Text>{t("home.roadmap.dialogTitle")}</Text>
-            <TextInput placeholder={t("home.roadmap.targetProficiency")} onChangeText={(tVal) => setPreferences({ ...preferences, target_proficiency: tVal })} />
-            <TextInput placeholder={t("home.roadmap.targetDate")} onChangeText={(tVal) => setPreferences({ ...preferences, target_date: tVal })} />
-            <TouchableOpacity onPress={handleGenerate} disabled={generateMutation.isPending}>
-              {generateMutation.isPending ? <ActivityIndicator /> : <Text>{t("home.roadmap.createCustom")}</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowGenerateDialog(false)}><Text>{t("home.roadmap.cancel")}</Text></TouchableOpacity>
-          </View>
-        </Modal>
+          )}
+        </View>
 
         {/* Daily Goal */}
         <View style={styles.dailyGoal}>
@@ -228,11 +222,13 @@ const HomeScreen = ({ navigation }) => {
             <View style={styles.goalHeader}>
               <View style={styles.goalInfo}>
                 <Text style={styles.goalText}>{t("home.dailyGoal.complete", { total: dailyGoal.totalLessons })}</Text>
-                <Text style={styles.goalProgress}>{dailyGoal.completedLessons}/{dailyGoal.totalLessons} {t("home.dailyGoal.lesson")}</Text>
+                <Text style={styles.goalProgress}>{dailyGoal.completedLessons}/{dailyGoal.totalLessons}</Text>
               </View>
-              <View style={styles.goalIcon}><Icon name="flag" size={24} color="#4ECDC4" /></View>
+              <Icon name="flag" size={24} color="#4ECDC4" />
             </View>
-            <View style={styles.progressBar}><View style={[styles.progressFill, { width: `${goalProgress}%` }]} /></View>
+            <View style={styles.progressBar}>
+              <View style={[styles.progressFill, { width: `${goalProgress}%` }]} />
+            </View>
           </View>
         </View>
 
@@ -240,48 +236,73 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>🎮 {t("home.challenge.title")}</Text>
           {dailyLoading ? (
-            <ActivityIndicator />
+            <ActivityIndicator size="large" color="#3B82F6" style={{ padding: 20 }} />
+          ) : dailyError ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>{t("home.challenge.error")}</Text>
+            </View>
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.challengeScroll}>
               {dailyChallenges?.map((challenge) => (
-                <TouchableOpacity key={challenge.challengeId} style={[styles.challengeCard, { backgroundColor: challenge.isCompleted ? "#4ECDC4" : "#F59E0B" }]}
+                <TouchableOpacity
+                  key={challenge.challengeId}
+                  style={[
+                    styles.challengeCard,
+                    { backgroundColor: challenge.isCompleted ? "#10B981" : "#F59E0B" }
+                  ]}
                   onPress={() => {
                     if (!challenge.isCompleted) {
-                      console.log("Completing challenge:", challenge.challengeId);
-                      completeMutation.mutate(challenge.challengeId);
+                      completeMutation.mutate(challenge.challengeId)
                     }
-                  }} disabled={challenge.isCompleted}>
-                  <View style={styles.challengeIcon}><Icon name="sports-esports" size={32} color="#FFFFFF" /></View>
-                  <Text style={styles.challengeTitle}>{challenge.dailyChallenge?.title || t("home.challenge.challenge")}</Text>
+                  }}
+                  disabled={challenge.isCompleted}
+                >
+                  <Icon name="sports-esports" size={32} color="#fff" />
+                  <Text style={styles.challengeTitle}>{challenge.dailyChallenge?.title || "Challenge"}</Text>
                   <Text style={styles.challengeDescription}>{challenge.expReward} XP</Text>
-                  <Text style={styles.challengeDescription}>{challenge.isCompleted ? `(${t("home.challenge.completed")})` : `(${t("home.challenge.pending")})`}</Text>
+                  <Text style={styles.challengeDescription}>
+                    {challenge.isCompleted ? "✓ Done" : "Pending"}
+                  </Text>
                 </TouchableOpacity>
               ))}
-              <TouchableOpacity style={[styles.challengeCard, { backgroundColor: "#3B82F6" }]} onPress={() => assignMutation.mutate()}>
-                <Icon name="add" size={32} color="#FFF" />
+              <TouchableOpacity
+                style={[styles.challengeCard, { backgroundColor: "#3B82F6" }]}
+                onPress={() => assignMutation.mutate()}
+              >
+                <Icon name="add" size={32} color="#fff" />
                 <Text style={styles.challengeTitle}>{t("home.challenge.add")}</Text>
               </TouchableOpacity>
             </ScrollView>
           )}
         </View>
 
-        {/* Recent Lessons */}
-        {recentLessons.length > 0 && (
-          <View style={styles.recentLessons}>
-            <Text style={styles.sectionTitle}>📚 {t("home.recentLessons.title")}</Text>
-            {recentLessons.map((lesson) => (
-              <TouchableOpacity key={lesson.lessonId} style={styles.lessonCard}>
-                <View style={styles.lessonIcon}><Icon name="quiz" size={20} color="#4F46E5" /></View>
-                <View style={styles.lessonInfo}>
-                  <Text style={styles.lessonTitle}>{lesson.title}</Text>
-                  <CountryFlag isoCode={languageToCountry[lesson.languageCode] || "US"} size={20} style={{ marginRight: 8 }} />
-                  <Text style={styles.lessonSubtitle}>{lesson.languageCode} • {t("home.recentLessons.lesson")} {lesson.lessonName}</Text>
-                </View>
-                <Icon name="chevron-right" size={20} color="#9CA3AF" />
-              </TouchableOpacity>
-            ))}
+        {/* Generate Dialog */}
+        <Modal visible={showGenerateDialog} animationType="slide" transparent>
+          <View style={styles.dialog}>
+            <View style={styles.dialogContent}>
+              <Text style={styles.dialogTitle}>{t("home.roadmap.dialogTitle")}</Text>
+              <TextInput
+                placeholder={t("home.roadmap.targetProficiency")}
+                style={styles.input}
+                onChangeText={(val) => setPreferences({ ...preferences, target_proficiency: val })}
+              />
+              <TextInput
+                placeholder={t("home.roadmap.targetDate")}
+                style={styles.input}
+                onChangeText={(val) => setPreferences({ ...preferences, target_date: val })}
+              />
+              <View style={styles.dialogActions}>
+                <TouchableOpacity style={[styles.dialogButton, { backgroundColor: "#4ECDC4" }]}>
+                  <Text style={styles.dialogButtonText}>{t("home.roadmap.create")}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.dialogButton, { backgroundColor: "#9CA3AF" }]} onPress={() => setShowGenerateDialog(false)}>
+                  <Text style={styles.dialogButtonText}>{t("home.roadmap.cancel")}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
-        )}
+        </Modal>
+
       </Animated.View>
     </ScrollView>
   )
@@ -300,28 +321,21 @@ const styles = createScaledSheet({
     justifyContent: "space-between",
     alignItems: "flex-start",
     paddingHorizontal: 24,
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 20,
-    backgroundColor: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
+    backgroundColor: "#fff",
   },
   headerContent: {
     flex: 1,
   },
   greeting: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#6B7280",
-    marginBottom: 4,
   },
   userName: {
-    fontSize: 28,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#1F2937",
-    marginBottom: 4,
-  },
-  motivationText: {
-    fontSize: 14,
-    color: "#9CA3AF",
-    fontStyle: "italic",
   },
   streakContainer: {
     flexDirection: "row",
@@ -330,17 +344,16 @@ const styles = createScaledSheet({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   streakText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
     color: "#FF6B35",
     marginLeft: 4,
+  },
+  leaderboardSection: {
+    paddingHorizontal: 24,
+    marginBottom: 32,
   },
   podiumContainer: {
     flexDirection: "row",
@@ -351,113 +364,22 @@ const styles = createScaledSheet({
   podiumItem: {
     alignItems: "center",
     flex: 1,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     borderRadius: 12,
     paddingVertical: 12,
     marginHorizontal: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   firstPlace: {
-    marginTop: -20, // cao nhất
+    marginTop: -20,
     paddingTop: 32,
   },
   secondPlace: {
-    marginTop: -10, // cao hơn bronze một chút
+    marginTop: -10,
     paddingTop: 24,
   },
   thirdPlace: {
     marginTop: 0,
     paddingTop: 20,
-  },
-  characterSection: {
-    alignItems: "center",
-    paddingHorizontal: 24,
-    marginBottom: 32,
-  },
-  characterContainer: {
-    alignItems: "center",
-  },
-  characterCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: "#E0F2FE",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  speechBubble: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    position: "relative",
-  },
-  speechText: {
-    fontSize: 16,
-    color: "#374151",
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  progressOverview: {
-    paddingHorizontal: 24,
-    marginBottom: 32,
-  },
-  progressCards: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  progressCard: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  progressNumber: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  progressLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    textAlign: "center",
-  },
-  leaderboardSection: {
-    paddingHorizontal: 24,
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 16,
-  },
-  crownAnimation: {
-    position: "absolute",
-    top: -12,
   },
   medal: {
     width: 24,
@@ -479,9 +401,8 @@ const styles = createScaledSheet({
   medalText: {
     fontSize: 12,
     fontWeight: "bold",
-    color: "#FFFFFF",
+    color: "#fff",
   },
-
   podiumAvatar: {
     width: 50,
     height: 50,
@@ -492,107 +413,108 @@ const styles = createScaledSheet({
     fontSize: 11,
     fontWeight: "600",
     color: "#1F2937",
-    marginBottom: 2,
   },
   podiumScore: {
     fontSize: 9,
     color: "#6B7280",
-    fontWeight: "500",
   },
-  dialogTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    marginBottom: 20,
-    textAlign: "center",
-    color: "#1F2937",
+  characterSection: {
+    alignItems: "center",
+    paddingHorizontal: 24,
+    marginBottom: 32,
   },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 6,
-    marginTop: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 14,
-    backgroundColor: "#FFF",
-  },
-  chipContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  chip: {
-    borderWidth: 1,
-    borderColor: "#9CA3AF",
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  chipSelected: {
-    backgroundColor: "#4ECDC4",
-    borderColor: "#4ECDC4",
-  },
-  chipText: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  chipTextSelected: {
-    color: "#FFF",
-  },
-  dialogActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginTop: 24,
-  },
-  dialogButton: {
-    flex: 1,
-    marginHorizontal: 8,
-    borderRadius: 8,
-    paddingVertical: 12,
+  characterContainer: {
     alignItems: "center",
   },
-  dialogButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFF",
-  },
-
-  viewMoreContainer: {
-    flexDirection: "row",
+  characterCircle: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: "#E0F2FE",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
+    marginBottom: 16,
   },
-  viewMoreText: {
+  speechBubble: {
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    maxWidth: "80%",
+  },
+  speechText: {
+    fontSize: 14,
+    color: "#374151",
+    textAlign: "center",
+  },
+  progressOverview: {
+    paddingHorizontal: 24,
+    marginBottom: 32,
+  },
+  progressCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 20,
+    alignItems: "center",
+  },
+  progressNumber: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginTop: 8,
+  },
+  progressLabel: {
     fontSize: 12,
     color: "#6B7280",
-    marginRight: 4,
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 4,
+    overflow: "hidden",
+    marginVertical: 12,
+    width: "100%",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#4ECDC4",
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 16,
   },
   roadmapSection: {
     paddingHorizontal: 24,
     marginBottom: 32,
   },
+  loadingContainer: {
+    alignItems: "center",
+    padding: 20,
+  },
+  loadingText: {
+    color: "#6B7280",
+    marginTop: 10,
+  },
+  errorContainer: {
+    alignItems: "center",
+    padding: 20,
+    backgroundColor: "#FEE2E2",
+    borderRadius: 12,
+  },
+  errorText: {
+    color: "#DC2626",
+    textAlign: "center",
+  },
   roadmapCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   roadmapHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
-    alignItems: "center",
     marginBottom: 12,
   },
   roadmapInfo: {
@@ -602,10 +524,9 @@ const styles = createScaledSheet({
     fontSize: 16,
     fontWeight: "600",
     color: "#1F2937",
-    marginBottom: 4,
   },
   roadmapSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#6B7280",
   },
   roadmapProgress: {
@@ -617,16 +538,15 @@ const styles = createScaledSheet({
     color: "#4ECDC4",
   },
   roadmapProgressBar: {
-    height: 8,
+    height: 6,
     backgroundColor: "#F3F4F6",
-    borderRadius: 4,
+    borderRadius: 3,
     overflow: "hidden",
     marginBottom: 12,
   },
   roadmapProgressFill: {
     height: "100%",
     backgroundColor: "#4ECDC4",
-    borderRadius: 4,
   },
   roadmapFooter: {
     flexDirection: "row",
@@ -637,50 +557,54 @@ const styles = createScaledSheet({
     fontSize: 12,
     color: "#9CA3AF",
   },
-  quickActions: {
-    paddingHorizontal: 24,
-    marginBottom: 32,
-  },
-  actionGrid: {
-    flexDirection: "row",
-    gap: 12,
-  },
-  actionCard: {
-    flex: 1,
+  noRoadmapContainer: {
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 20,
     alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
-  actionTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#FFFFFF",
+  noRoadmapText: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 12,
+  },
+  defaultCard: {
+    padding: 12,
+    marginRight: 10,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 8,
+    minWidth: 150,
+  },
+  generateButton: {
+    backgroundColor: "#4ECDC4",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 12,
+  },
+  browseButton: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     marginTop: 8,
-    marginBottom: 4,
-    textAlign: "center",
-  },
-  actionSubtitle: {
-    fontSize: 12,
-    color: "rgba(255, 255, 255, 0.8)",
+    borderWidth: 1,
+    borderColor: "#4ECDC4",
   },
   dailyGoal: {
     paddingHorizontal: 24,
     marginBottom: 32,
   },
   goalCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#fff",
     borderRadius: 16,
     padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   goalHeader: {
     flexDirection: "row",
@@ -695,26 +619,10 @@ const styles = createScaledSheet({
     fontSize: 16,
     fontWeight: "600",
     color: "#1F2937",
-    marginBottom: 4,
   },
   goalProgress: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#6B7280",
-    fontWeight: "500",
-  },
-  goalIcon: {
-    padding: 8,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#10B981",
-    borderRadius: 4,
   },
   section: {
     paddingHorizontal: 24,
@@ -730,93 +638,61 @@ const styles = createScaledSheet({
     alignItems: "center",
     marginRight: 16,
     width: 160,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  challengeIcon: {
-    marginBottom: 12,
   },
   challengeTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
-    color: "#FFFFFF",
-    marginBottom: 4,
+    color: "#fff",
+    marginTop: 8,
     textAlign: "center",
   },
   challengeDescription: {
     fontSize: 12,
     color: "rgba(255, 255, 255, 0.8)",
     textAlign: "center",
-  },
-  recentLessons: {
-    paddingHorizontal: 24,
-    marginBottom: 32,
-  },
-  lessonCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    marginBottom: 12,
-  },
-  lessonIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#EEF2FF",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  lessonInfo: {
-    flex: 1,
-  },
-  lessonTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  lessonSubtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  statusSection: {
-    paddingHorizontal: 24,
-    marginBottom: 20,
-  },
-  statusText: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 20,
-    fontStyle: "italic",
-  },
-  defaultCard: {
-    padding: 10,
-    marginRight: 10,
-    backgroundColor: "#EEE",
-    borderRadius: 8,
-  },
-  generateButton: {
-    padding: 12,
-    backgroundColor: "#4ECDC4",
-    borderRadius: 8,
-    alignItems: "center",
+    marginTop: 4,
   },
   dialog: {
     flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  dialogContent: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     padding: 20,
-    justifyContent: "center",
+    paddingBottom: 30,
+  },
+  dialogTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 20,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: "#D1D5DB",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+    fontSize: 14,
+  },
+  dialogActions: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 20,
+  },
+  dialogButton: {
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  dialogButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
   },
 })
 

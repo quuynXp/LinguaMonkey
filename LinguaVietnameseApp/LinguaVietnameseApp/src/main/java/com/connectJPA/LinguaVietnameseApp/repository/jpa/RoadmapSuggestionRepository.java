@@ -8,4 +8,9 @@ import java.util.UUID;
 
 public interface RoadmapSuggestionRepository extends JpaRepository<RoadmapSuggestion, UUID> {
     List<RoadmapSuggestion> findByRoadmapRoadmapId(UUID roadmapId);
+
+    List<RoadmapSuggestion> findByRoadmapRoadmapIdOrderByCreatedAtDesc(UUID roadmapId);
+
+    boolean existsByUserAndRoadmapAndItem(UUID userId, UUID roadmapId, UUID itemId);
+    long countByRoadmapRoadmapIdAndAppliedFalse(UUID roadmapId);
 }

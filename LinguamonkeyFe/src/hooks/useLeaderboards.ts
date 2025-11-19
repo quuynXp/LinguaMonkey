@@ -4,9 +4,9 @@ import instance from "../api/axiosInstance";
 import type { Leaderboard, LeaderboardEntry } from "../types/api";
 
 export const useLeaderboards = () => {
-  const useLeaderboards = (params?: { period?: string; tab?: string; page?: number; limit?: number }) => {
+  const useLeaderboards = (params?: { tab?: string; page?: number; limit?: number }) => {
     const queryParams = new URLSearchParams();
-    if (params?.period) queryParams.append("period", params.period);
+
     if (params?.tab) queryParams.append("tab", params.tab);
     if (params?.page !== undefined) queryParams.append("page", String(params.page));
     if (params?.limit !== undefined) queryParams.append("limit", String(params.limit));
@@ -33,13 +33,13 @@ export const useLeaderboards = () => {
       enabled: !!leaderboardId,
     });
 
-  // IMPORTANT: only fetch entries when leaderboardId exists
+  // Fetch entries for given leaderboard
   const useLeaderboardEntries = (
     leaderboardId: string | null,
     params?: { page?: number; limit?: number; sort?: string | string[] }
   ) => {
     const queryParams = new URLSearchParams();
-    // leaderboardId MUST be provided
+
     if (leaderboardId) queryParams.append("leaderboardId", leaderboardId);
     if (params?.page !== undefined) queryParams.append("page", String(params.page));
     if (params?.limit !== undefined) queryParams.append("size", String(params.limit));
@@ -57,11 +57,27 @@ export const useLeaderboards = () => {
     return useQuery<LeaderboardEntry[]>({
       queryKey: ["leaderboardEntries", leaderboardId, params],
       queryFn: async () => {
-        if (!leaderboardId) return []; // defensive, but enabled will be false anyway
+        if (!leaderboardId) return [];
         const res = await instance.get(url);
         return res.data.result;
       },
-      enabled: !!leaderboardId, // <-- CRITICAL: only run when we have an id
+      enabled: !!leaderboardId,
+    });
+  };
+
+  // [NEW] Fetch top 3 for global leaderboard or specific leaderboard
+  const useLeaderboardTopThree = (leaderboardId?: string | null) => {
+    const url = leaderboardId
+      ? `/api/v1/leaderboards/${leaderboardId}/top-3`
+      : `/api/v1/leaderboards/top-3`;
+
+    return useQuery<LeaderboardEntry[]>({
+      queryKey: ["leaderboardTopThree", leaderboardId],
+      queryFn: async () => {
+        const res = await instance.get(url);
+        return res.data.result;
+      },
+      staleTime: 1000 * 60, // 1 minute
     });
   };
 
@@ -76,5 +92,11 @@ export const useLeaderboards = () => {
       enabled: !!leaderboardId,
     });
 
-  return { useLeaderboards, useLeaderboard, useLeaderboardEntries, useUserLeaderboardPosition };
+  return {
+    useLeaderboards,
+    useLeaderboard,
+    useLeaderboardEntries,
+    useLeaderboardTopThree,
+    useUserLeaderboardPosition,
+  };
 };

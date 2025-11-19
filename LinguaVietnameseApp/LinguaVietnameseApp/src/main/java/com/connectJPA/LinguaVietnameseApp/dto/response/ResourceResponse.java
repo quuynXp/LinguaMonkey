@@ -3,13 +3,13 @@ package com.connectJPA.LinguaVietnameseApp.dto.response;
 import lombok.*;
 
 @Data
-@Builder
-@AllArgsConstructor
 @NoArgsConstructor
-@Getter
-@Setter
+@AllArgsConstructor
+@Builder
 public class ResourceResponse {
-    private String type;  // VIDEO, ARTICLE, QUIZ...
+    private String type;
     private String url;
     private String description;
+    private String title;
+    private Integer duration;
 }

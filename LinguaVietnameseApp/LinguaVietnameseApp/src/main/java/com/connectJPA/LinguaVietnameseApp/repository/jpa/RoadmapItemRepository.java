@@ -13,6 +13,11 @@ import java.util.UUID;
 public interface RoadmapItemRepository extends JpaRepository<RoadmapItem, UUID> {
     List<RoadmapItem> findByRoadmapIdOrderByOrderIndexAsc(UUID roadmapId);
 
+    List<RoadmapItem> findByRoadmapId(UUID roadmapId);
+
+    @Query("SELECT COUNT(ri) FROM RoadmapItem ri WHERE ri.roadmapId = :roadmapId AND ri.isDeleted = false")
+    int countByRoadmapId(@Param("roadmapId") UUID roadmapId);
+
     @Modifying
     @Query("UPDATE RoadmapItem i SET i.isDeleted = true, i.deletedAt = CURRENT_TIMESTAMP " +
             "WHERE i.roadmapId = :roadmapId AND i.isDeleted = false")

@@ -4,6 +4,50 @@ export interface ApiResponse<T> {
   message?: string;
 }
 
+export interface ComprehensionQuestion {
+  id: string;
+  languageCode: string;
+  question: string;
+  options: string[];
+  correctOption: string; // Thường sẽ bị ẩn nếu là bài kiểm tra, nhưng API trả về để hiển thị kết quả
+}
+
+export interface ListeningResponse {
+  transcription: string;
+  questions: ComprehensionQuestion[];
+}
+
+export interface PronunciationResponse {
+  score: number;
+  feedback: string; // Chuỗi JSON hoặc text feedback chi tiết từng từ
+  phonemes: any[]; // Nếu BE trả về chi tiết âm vị
+}
+
+export interface SpellingResponse {
+  corrections: string[]; // Danh sách gợi ý sửa lỗi
+}
+
+export interface ReadingResponse {
+  passage: string;
+  questions: ComprehensionQuestion[];
+}
+
+export interface WritingResponse {
+  score: number;
+  feedback: string;
+  correctedText?: string;
+}
+
+export interface SpellingRequest {
+  text: string;
+  language: string;
+}
+
+export interface TranslationRequest {
+  translatedText: string;
+  targetLanguage: string;
+}
+
 // Cấu hình một bài test (Lấy từ /api/v1/tests/available)
 // Maps to: proficiency_test_configs
 export interface TestConfig {

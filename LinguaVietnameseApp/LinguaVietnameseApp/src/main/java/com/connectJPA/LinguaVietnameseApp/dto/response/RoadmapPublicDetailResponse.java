@@ -1,11 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
-import com.connectJPA.LinguaVietnameseApp.entity.Roadmap;
-import com.connectJPA.LinguaVietnameseApp.enums.RoadmapType;
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+
+import lombok.*;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -15,14 +11,22 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class RoadmapResponse {
-    private UUID id;
+public class RoadmapPublicDetailResponse {
+    private UUID roadmapId;
     private String title;
     private String description;
     private String language;
+    private String creator;
+    private UUID creatorId;
+    private String creatorAvatar;
+    private Integer totalItems;
     private List<RoadmapItemResponse> items;
     private List<MilestoneResponse> milestones;
-    private List<ResourceResponse> resources;
+    private Double averageRating;
+    private Integer viewCount;
+    private Integer favoriteCount;
+    private Boolean isPublic;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+    private List<RoadmapSuggestionResponse> suggestions;
 }

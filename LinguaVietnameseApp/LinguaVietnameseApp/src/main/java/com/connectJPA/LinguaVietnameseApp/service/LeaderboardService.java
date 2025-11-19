@@ -10,10 +10,17 @@ import java.util.List;
 import java.util.UUID;
 
 public interface LeaderboardService {
-    Page<LeaderboardResponse> getAllLeaderboards(String period, String tab, Pageable pageable);
-    LeaderboardResponse getLeaderboardById(UUID id);
-    LeaderboardResponse createLeaderboard(LeaderboardRequest request);
-    LeaderboardResponse updateLeaderboard(UUID id, LeaderboardRequest request);
-    void deleteLeaderboard(UUID id);
+    Page<LeaderboardResponse> getAllLeaderboards(String tab, Pageable pageable);
+
     List<LeaderboardEntryResponse> getGlobalTopThree();
+
+    List<LeaderboardEntryResponse> getLeaderboardTopThreeById(UUID leaderboardId);
+
+    LeaderboardResponse getLeaderboardById(UUID id);
+
+    LeaderboardResponse createLeaderboard(LeaderboardRequest request);
+
+    LeaderboardResponse updateLeaderboard(UUID id, LeaderboardRequest request);
+
+    void deleteLeaderboard(UUID id);
 }
