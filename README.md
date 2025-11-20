@@ -17,6 +17,17 @@
 </p>
 
 <p align="center">
+  <a href="https://monkey-lingua-landing.lovable.app/"><strong>🌐 Official Website</strong></a> •
+  <a href="https://thaingocquyen.vercel.app"><strong>👨‍💻 Developer Portfolio</strong></a>
+</p>
+
+<p align="center">
+  <a href="#">
+    <img alt="Get it on Google Play" height="80" src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" />
+  </a>
+  </p>
+
+<p align="center">
   <em>"Learning by Connection. Powered by Intelligence."</em>
 </p>
 
@@ -184,4 +195,15 @@ Copyright © 2025 MonkeyLingua Team. All Rights Reserved.
 
 This software and its associated documentation are the proprietary intellectual property of the MonkeyLingua Team. Unauthorized reproduction, distribution, or reverse engineering of the core business logic or AI models is strictly prohibited without a formal commercial license.
 
-For commercial inquiries, enterprise licensing, or partnership opportunities, please contact: **contact@monkeylingua.com**
+<div align="center">
+  <br/>
+  <strong>Get in touch with the Creator</strong>
+  <br/>
+  <br/>
+  <a href="mailto:quyen10924@gmail.com">
+    <img src="https://img.shields.io/badge/Email-quyen10924%40gmail.com-D14836?style=for-the-badge&logo=gmail&logoColor=white" alt="Email" />
+  </a>
+  <a href="https://thaingocquyen.vercel.app">
+    <img src="https://img.shields.io/badge/Portfolio-thaingocquyen.vercel.app-000000?style=for-the-badge&logo=vercel&logoColor=white" alt="Portfolio" />
+  </a>
+</div>
