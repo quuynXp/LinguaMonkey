@@ -18,6 +18,15 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     Page<Room> findByRoomNameContainingAndCreatorIdAndIsDeletedFalse(
             @Param("roomName") String roomName, @Param("creatorId") UUID creatorId, Pageable pageable);
 
+    @Query("SELECT r FROM Room r " +
+            "JOIN RoomMember m1 ON r.roomId = m1.id.roomId " +
+            "JOIN RoomMember m2 ON r.roomId = m2.id.roomId " +
+            "WHERE r.roomType = 'PRIVATE' " +
+            "AND r.isDeleted = false " +
+            "AND m1.id.userId = :userId1 " +
+            "AND m2.id.userId = :userId2")
+    Optional<Room> findPrivateRoomBetweenUsers(@Param("userId1") UUID userId1, @Param("userId2") UUID userId2);
+
     @Query("SELECT r FROM Room r WHERE r.roomId = :id AND r.isDeleted = false")
     Optional<Room> findByRoomIdAndIsDeletedFalse(@Param("id") UUID id);
 

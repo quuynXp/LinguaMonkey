@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -24,8 +25,10 @@ public class RoadmapMilestone extends BaseEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID milestoneId;
 
-    @Column(name = "roadmap_id", nullable = false)
-    private UUID roadmapId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "roadmap_id", nullable = false)
+    @JsonIgnore
+    private Roadmap roadmap;
 
     @Column(name = "title", nullable = false)
     private String title;

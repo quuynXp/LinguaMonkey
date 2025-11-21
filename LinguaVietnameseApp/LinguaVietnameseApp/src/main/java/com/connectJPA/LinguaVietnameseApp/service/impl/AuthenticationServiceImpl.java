@@ -416,7 +416,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         try {
             if (isPhone) {
                 smsService.sendSms(key, code); 
-                log.warn("SMS service not configured. OTP for {} is {}", key, code);
                 return true;
             } else {
                 emailService.sendOtpEmail(key, code, Locale.getDefault());
@@ -934,16 +933,10 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     }
 
     private User findByIdentifier(String identifier) {
-        // Bạn cần thêm phương thức này vào UserRepository:
-        // @Query("SELECT u FROM User u WHERE (u.email = :identifier OR u.phone = :identifier) AND u.isDeleted = false")
-        // Optional<User> findByIdentifier(@Param("identifier") String identifier);
-        //
-        // Tạm thời giả định bạn đã có
         if (identifier.contains("@")) {
             return userRepository.findByEmailAndIsDeletedFalse(identifier)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         } else {
-            // Nên chuẩn hoá SĐT trước khi tìm
             String normalizedPhone = normalizePhone(identifier);
             return userRepository.findByPhoneAndIsDeletedFalse(normalizedPhone)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));

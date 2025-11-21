@@ -22,6 +22,8 @@ public interface LessonService {
 
     QuizResponse generateSoloQuiz(String token, UUID userId);
 
+    Lesson saveLessonForVersion(Lesson lesson, UUID versionId, Integer lessonIndex);
+
     QuizResponse generateTeamQuiz(String token, String topic);
 
     List<Lesson> getLessonsByIds(List<UUID> ids);

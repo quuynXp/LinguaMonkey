@@ -1,6 +1,6 @@
 // navigation/stack/HomeStack.tsx
 import AccountChoiceScreen from '../../screens/home/AccountChoiceScreen';
-import EnhancedAccountCreationScreen from '../../screens/home/EnhancedAccountCreationScreen';
+// import EnhancedAccountCreationScreen from '../../screens/home/EnhancedAccountCreationScreen';
 import EnhancedLeaderboardScreen from '../../screens/home/EnhancedLeaderboardScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
@@ -15,7 +15,7 @@ export default function HomeStack() {
   return (
     <Stack.Navigator initialRouteName="HomeMain" screenOptions={{ headerShown: false }} id={undefined}>
       <Stack.Screen name="HomeMain" component={HomeScreen} />
-      <Stack.Screen name="EnhancedAccountCreation" component={EnhancedAccountCreationScreen} />
+      {/* <Stack.Screen name="EnhancedAccountCreation" component={EnhancedAccountCreationScreen} /> */}
       <Stack.Screen name="EnhancedLeaderboard" component={EnhancedLeaderboardScreen} />
       <Stack.Screen name="AccountChoice" component={AccountChoiceScreen} />
       <Stack.Screen name="RoadmapItemDetailScreen" component={RoadmapItemDetailScreen} />

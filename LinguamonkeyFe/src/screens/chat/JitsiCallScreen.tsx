@@ -1,12 +1,14 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList } from 'react-native';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
+import { View, Text, TouchableOpacity, Modal, FlatList, StyleSheet, PermissionsAndroid, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useRoute, RouteProp } from '@react-navigation/native';
-
-import { useChatStore } from '../../stores/ChatStore';
 import { useAppStore } from '../../stores/appStore';
+import { useUserStore } from '../../stores/UserStore'; // Giả định có store này lấy token
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { useTokenStore } from '../../stores/tokenStore';
+import { API_BASE_URL } from '../../api/apiConfig';
+import LiveAudioStream from 'react-native-live-audio-stream';
 
 const LANGUAGES = [
   { code: 'en', name: 'English' },
@@ -22,89 +24,171 @@ type JitsiParams = {
   };
 };
 
+type SubtitleData = {
+  original: string;
+  originalLang: string;
+  translated: string;
+  translatedLang: string;
+  senderId: string;
+};
+
 const JitsiWebView = () => {
   const { t } = useTranslation();
   const route = useRoute<RouteProp<JitsiParams, 'JitsiCall'>>();
-  const { roomId = 'test-room' } = route.params || {};
+  const { roomId } = route.params;
+
+  const { user } = useUserStore();
+  const accessToken = useTokenStore.getState().accessToken;
 
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
-  
-  // --- STATE CỤC BỘ CHO UI ---
+
   const [nativeLang, setNativeLang] = useState(defaultNativeLangCode);
   const [showSettings, setShowSettings] = useState(false);
+  const [subtitle, setSubtitle] = useState<SubtitleData | null>(null);
+  const [isMicOn, setIsMicOn] = useState(true);
 
-  // --- STATE TỪ ZUSTAND STORE ---
-  const subtitles = useChatStore(s => s.currentVideoSubtitles);
-  
-  // --- ACTIONS TỪ ZUSTAND STORE ---
-  const connectVideoSubtitles = useChatStore(s => s.connectVideoSubtitles);
-  const disconnectVideoSubtitles = useChatStore(s => s.disconnectVideoSubtitles);
-  const updateSubtitleLanguage = useChatStore(s => s.updateSubtitleLanguage);
-  
-  // Xóa bỏ hoàn toàn logic WebSocket và VoiceStream cũ
-  // const ws = useRef<WebSocketService | null>(null);
-  // const voiceStream = useRef<VoiceStreamService | null>(null);
+  const ws = useRef<WebSocket | null>(null);
 
-  useEffect(() => {
-    // Kết nối service phụ đề khi vào màn hình
-    connectVideoSubtitles(roomId, nativeLang);
-    
-    // Cleanup khi component unmount
-    return () => {
-      disconnectVideoSubtitles();
-    };
-  }, [roomId, nativeLang, connectVideoSubtitles, disconnectVideoSubtitles]);
+  const audioOptions = {
+    sampleRate: 16000,
+    channels: 1,
+    bitsPerSample: 16,
+    audioSource: 6,
+    bufferSize: 4096,
+    wavFile: 'temp_stream.wav'
+  };
 
-  // Xử lý khi đổi ngôn ngữ
   const handleLanguageChange = (langCode: string) => {
     setNativeLang(langCode);
     setShowSettings(false);
-    
-    // Gửi yêu cầu đổi ngôn ngữ qua store
-    updateSubtitleLanguage(langCode);
+  };
+
+  useEffect(() => {
+    if (!roomId || !accessToken) return;
+
+    const wsUrl = `ws://${API_BASE_URL}/ws/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}`;
+    ws.current = new WebSocket(wsUrl);
+
+    ws.current.onopen = () => {
+      console.log('✅ Connected to Realtime Subtitle Service');
+      startAudioStreaming(); // Kết nối xong thì bắt đầu stream audio
+    };
+
+    ws.current.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === 'subtitle') {
+          setSubtitle({
+            original: data.original,
+            originalLang: data.originalLang,
+            translated: data.translated,
+            translatedLang: data.translatedLang,
+            senderId: data.senderId
+          });
+          // Clear sau 5s để màn hình không bị rác
+          setTimeout(() => setSubtitle(null), 5000);
+        }
+      } catch (err) {
+        console.error('WS Error', err);
+      }
+    };
+
+    ws.current.onclose = () => {
+      console.log('⚠️ WS Closed');
+      stopAudioStreaming();
+    };
+
+    return () => {
+      stopAudioStreaming();
+      ws.current?.close();
+    };
+  }, [roomId, nativeLang, accessToken]);
+
+  // 3. Logic xử lý Mic & Stream Base64
+  const startAudioStreaming = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
+    }
+
+    LiveAudioStream.init(audioOptions);
+
+    // Sự kiện nhận data từ Mic (Base64 PCM)
+    LiveAudioStream.on('data', (base64Data) => {
+      if (ws.current?.readyState === WebSocket.OPEN && isMicOn) {
+        // Bắn thẳng chunk Base64 sang Python
+        ws.current.send(JSON.stringify({
+          audio_chunk: base64Data,
+          seq: Date.now() // Timestamp để Python sort nếu cần
+        }));
+      }
+    });
+
+    LiveAudioStream.start();
+  };
+
+  const stopAudioStreaming = () => {
+    LiveAudioStream.stop();
+  };
+
+  const toggleMic = () => {
+    setIsMicOn(!isMicOn);
+    if (!isMicOn) LiveAudioStream.start();
+    else LiveAudioStream.stop();
   };
 
   return (
     <View style={styles.container}>
       <WebView
-        source={{ uri: `https://meet.jit.si/${roomId}` }}
+        source={{ uri: `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false` }}
         style={styles.webview}
         allowsFullscreenVideo
         javaScriptEnabled
-        mediaPlaybackRequiresUserAction={false}
-        // Quyền media cho React Native WebView
-        mediaCapturePermissionGrantType="grant" 
+        domStorageEnabled
+        mediaCapturePermissionGrantType="grant"
         allowsInlineMediaPlayback
       />
 
-      {/* Vùng hiển thị phụ đề kép */}
+      {/* Subtitle UI - Hiển thị Realtime */}
       <View style={styles.subtitleContainer}>
-        {subtitles ? ( // Dùng state 'subtitles' từ store
+        {subtitle ? (
           <>
-            {/* Phụ đề gốc */}
             <Text style={styles.subtitleTextOriginal}>
-              {`[${subtitles.originalLang}] ${subtitles.original}`}
+              {subtitle.senderId === user?.userId ? 'You: ' : 'Partner: '}
+              {subtitle.original}
             </Text>
-            {/* Phụ đề dịch */}
             <Text style={styles.subtitleTextTranslated}>
-              {`[${subtitles.translatedLang}] ${subtitles.translated}`}
+              {subtitle.translated}
             </Text>
           </>
         ) : (
-          <Text style={styles.subtitleTextOriginal}>{t('listening')}</Text>
+          <Text style={styles.subtitlePlaceholder}>
+            {isMicOn ? t('listening') : t('mic_off')}...
+          </Text>
         )}
       </View>
 
-      {/* Nút cài đặt (Giữ nguyên) */}
-      <TouchableOpacity style={styles.menuButton} onPress={() => setShowSettings(true)}>
-        <Text style={styles.menuText}>⚙️</Text>
-      </TouchableOpacity>
+      {/* Controls Real */}
+      <View style={styles.controls}>
+        <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
+          <Text style={styles.iconText}>🌐</Text>
+        </TouchableOpacity>
 
-      {/* Modal chọn ngôn ngữ (Giữ nguyên) */}
+        <TouchableOpacity
+          style={[styles.iconButton, { backgroundColor: isMicOn ? '#ef4444' : '#22c55e' }]}
+          onPress={toggleMic}
+        >
+          <Text style={styles.iconText}>{isMicOn ? '🎙️ On' : '🔇 Off'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Modal chọn ngôn ngữ */}
       <Modal visible={showSettings} transparent animationType="slide">
         <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
         <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>{t('selectLanguage')}</Text>
+          <Text style={styles.modalTitle}>{t('selectTargetLanguage')}</Text>
           <FlatList
             data={LANGUAGES}
             keyExtractor={(item) => item.code}
@@ -126,68 +210,88 @@ const JitsiWebView = () => {
   );
 };
 
-
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
   webview: { flex: 1 },
   subtitleContainer: {
     position: 'absolute',
-    bottom: 80,
-    width: '90%',
-    alignSelf: 'center',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    borderRadius: 12,
+    padding: 12,
     alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
   },
   subtitleTextOriginal: {
-    color: 'white',
+    color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+    marginBottom: 4,
   },
   subtitleTextTranslated: {
-    color: '#a5b4fc', // Màu khác để phân biệt
-    fontSize: 15,
+    color: '#fbbf24', // Màu vàng amber
+    fontSize: 16,
+    fontWeight: '700',
     textAlign: 'center',
-    marginTop: 4,
   },
-  menuButton: {
+  subtitlePlaceholder: {
+    color: '#9ca3af',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  controls: {
     position: 'absolute',
     top: 50,
     right: 20,
-    padding: 10,
+    flexDirection: 'column',
+    gap: 10
   },
-  menuText: { fontSize: 24, color: 'white' },
+  iconButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    padding: 10,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 40,
+    height: 40,
+    marginBottom: 8
+  },
+  iconText: { fontSize: 20, color: 'white' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
   modalContainer: {
-    height: '50%',
-    backgroundColor: '#333',
+    height: '40%',
+    backgroundColor: '#1f2937',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
+    marginTop: 'auto',
   },
   modalTitle: {
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: 'bold',
     color: 'white',
     textAlign: 'center',
-    marginBottom: 15,
+    marginBottom: 16,
   },
   langItem: {
-    backgroundColor: '#555',
-    marginVertical: 5,
-    padding: 15,
+    backgroundColor: '#374151',
+    padding: 14,
     borderRadius: 8,
+    marginBottom: 8,
   },
   langItemActive: {
     backgroundColor: '#4f46e5',
   },
-  langText: { fontSize: 16, textAlign: 'center', color: 'white' },
+  langText: {
+    color: 'white',
+    textAlign: 'center',
+    fontSize: 16,
+  },
 });
 
 export default JitsiWebView;

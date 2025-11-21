@@ -1,179 +1,188 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, RefreshControl, TouchableOpacity } from 'react-native';
-import { useWallet } from '../../hooks/useWallet';
-import { useUserStore } from '../../stores/UserStore';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-
-// (Cần import các Modal/Component con)
-// import DepositModal from '../../components/DepositModal';
-// import WithdrawModal from '../../components/WithdrawModal';
-// import TransferModal from '../../components/TransferModal';
+import { useUserStore } from '../../stores/UserStore';
+import { useWallet } from '../../hooks/useWallet';
+import { formatCurrency } from '../../utils/currency';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const WalletScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
-  const { useWalletBalance, useTransactionHistory } = useWallet();
+  const [page, setPage] = useState(0);
 
-  const [isDepositVisible, setDepositVisible] = useState(false);
-  const [isWithdrawVisible, setWithdrawVisible] = useState(false);
-  const [isTransferVisible, setTransferVisible] = useState(false);
+  const {
+    data: walletData,
+    isLoading: loadingBalance,
+    refetch: refetchWallet
+  } = useWallet().useWalletBalance(user?.userId);
 
-  const { data: wallet, isLoading: balanceLoading, refetch: refetchBalance } = useWalletBalance(user?.userId);
-  const { data: historyData, isLoading: historyLoading, refetch: refetchHistory } = useTransactionHistory(user?.userId);
+  const {
+    data: historyData,
+    isLoading: loadingHistory,
+    refetch: refetchHistory,
+    hasNextPage,
+    fetchNextPage
+  } = useWallet().useTransactionHistory(user?.userId, page, 10);
 
-  const transactions = historyData?.data || [];
-  const isLoading = balanceLoading || historyLoading;
-  
-  const [isRefreshing, setIsRefreshing] = useState(false);
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    await Promise.all([refetchBalance(), refetchHistory()]);
-    setIsRefreshing(false);
+  const onRefresh = async () => {
+    await Promise.all([
+      refetchWallet(),
+      refetchHistory()
+    ]);
   };
 
-  const renderTransactionItem = (tx) => (
-    <View key={tx.transactionId} style={styles.txItem}>
-      <View>
-        <Text style={styles.txType}>{t(`wallet.types.${tx.type}`)}</Text>
-        <Text style={styles.txDate}>{new Date(tx.createdAt).toLocaleString()}</Text>
+  const handleLoadMore = () => {
+    if (hasNextPage && !loadingHistory) {
+      setPage(prev => prev + 1);
+      fetchNextPage?.();
+    }
+  };
+
+  const renderTransactionItem = ({ item }) => {
+    const isIncome = ['DEPOSIT', 'REFUND', 'TRANSFER_RECEIVE'].includes(item.type);
+    const statusColor =
+      item.status === 'SUCCESS' ? '#10B981' :
+        item.status === 'PENDING' ? '#F59E0B' :
+          '#EF4444';
+
+    return (
+      <TouchableOpacity
+        style={styles.txnCard}
+        onPress={() => navigation.navigate('TransactionDetails', { transactionId: item.transactionId })}
+      >
+        <View style={styles.txnLeft}>
+          <View style={[styles.txnIcon, { backgroundColor: isIncome ? '#D1FAE5' : '#FEE2E2' }]}>
+            <Icon
+              name={isIncome ? 'add-circle' : 'remove-circle'}
+              size={24}
+              color={isIncome ? '#10B981' : '#EF4444'}
+            />
+          </View>
+          <View style={styles.txnInfo}>
+            <Text style={styles.txnType}>{t(`transaction.type.${item.type}`)}</Text>
+            <Text style={styles.txnDate}>
+              {new Date(item.createdAt).toLocaleDateString('vi-VN')}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.txnRight}>
+          <Text style={[styles.txnAmount, { color: isIncome ? '#10B981' : '#EF4444' }]}>
+            {isIncome ? '+' : '-'}{formatCurrency(item.amount)}
+          </Text>
+          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusText}>
+              {t(`transaction.status.${item.status}`)}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loadingBalance) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4F46E5" />
       </View>
-      <Text style={[
-        styles.txAmount,
-        tx.type === 'DEPOSIT' || tx.type === 'REFUND' ? styles.txAmountCredit : styles.txAmountDebit
-      ]}>
-        {tx.type === 'DEPOSIT' || tx.type === 'REFUND' ? '+' : '-'}${tx.amount.toFixed(2)}
-      </Text>
-    </View>
-  );
+    );
+  }
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('wallet.title')}</Text>
-        <View style={{ width: 24 }} />
-      </View>
-
       {/* Balance Card */}
       <View style={styles.balanceCard}>
-        <Text style={styles.balanceLabel}>{t('wallet.currentBalance')}</Text>
-        {balanceLoading ? (
-          <ActivityIndicator color="#FFFFFF" />
-        ) : (
-          <Text style={styles.balanceAmount}>${wallet?.balance.toFixed(2) || '0.00'}</Text>
-        )}
-      </View>
+        <Text style={styles.balanceLabel}>{t('wallet.availableBalance')}</Text>
+        <Text style={styles.balanceAmount}>
+          {formatCurrency(walletData?.balance || 0)}
+        </Text>
 
-      {/* Action Buttons */}
-      <View style={styles.actionsContainer}>
-        <TouchableOpacity style={styles.actionButton} onPress={() => setDepositVisible(true)}>
-          <Icon name="account-balance-wallet" size={24} color="#4F46E5" />
-          <Text style={styles.actionText}>{t('wallet.deposit')}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => setWithdrawVisible(true)}>
-          <Icon name="request-quote" size={24} color="#4F46E5" />
-          <Text style={styles.actionText}>{t('wallet.withdraw')}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={() => setTransferVisible(true)}>
-          <Icon name="send" size={24} color="#4F46E5" />
-          <Text style={styles.actionText}>{t('wallet.transfer')}</Text>
-        </TouchableOpacity>
+        <View style={styles.actionRow}>
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => navigation.navigate('TopUp')}
+          >
+            <Icon name="add" size={20} color="#fff" />
+            <Text style={styles.actionText}>{t('wallet.topup')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => navigation.navigate('Withdraw')}
+          >
+            <Icon name="arrow-downward" size={20} color="#fff" />
+            <Text style={styles.actionText}>{t('wallet.withdraw')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.actionBtn}
+            onPress={() => navigation.navigate('Transfer')}
+          >
+            <Icon name="compare-arrows" size={20} color="#fff" />
+            <Text style={styles.actionText}>{t('wallet.transfer')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Transaction History */}
-      <Text style={styles.historyTitle}>{t('wallet.history')}</Text>
-      <ScrollView
-        style={styles.historyList}
-        refreshControl={
-          <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
-        }
-      >
-        {isLoading && transactions.length === 0 ? (
-          <ActivityIndicator style={{ marginTop: 20 }} />
-        ) : transactions.length === 0 ? (
-          <Text style={styles.emptyHistory}>{t('wallet.noTransactions')}</Text>
-        ) : (
-          transactions.map(renderTransactionItem)
-        )}
-      </ScrollView>
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('wallet.transactionHistory')}</Text>
 
-      {/* Modals */}
-      {/* <DepositModal visible={isDepositVisible} onClose={() => setDepositVisible(false)} /> */}
-      {/* <WithdrawModal visible={isWithdrawVisible} onClose={() => setWithdrawVisible(false)} /> */}
-      {/* <TransferModal visible={isTransferVisible} onClose={() => setTransferVisible(false)} /> */}
+        {loadingHistory && page === 0 ? (
+          <ActivityIndicator size="small" color="#4F46E5" />
+        ) : historyData?.data?.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Icon name="receipt" size={48} color="#D1D5DB" />
+            <Text style={styles.emptyText}>{t('wallet.noTransactions')}</Text>
+          </View>
+        ) : (
+          <ScrollView
+            refreshControl={
+              <RefreshControl
+                refreshing={loadingHistory}
+                onRefresh={onRefresh}
+                tintColor="#4F46E5"
+              />
+            }
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.5}
+          >
+            {historyData?.data?.map(item => (
+              <View key={item.transactionId}>
+                {renderTransactionItem({ item })}
+              </View>
+            ))}
+          </ScrollView>
+        )}
+      </View>
     </View>
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  balanceCard: {
-    backgroundColor: '#4F46E5',
-    margin: 24,
-    padding: 24,
-    borderRadius: 16,
-    alignItems: 'center',
-  },
-  balanceLabel: { fontSize: 16, color: '#E0E7FF', marginBottom: 8 },
-  balanceAmount: { fontSize: 36, fontWeight: 'bold', color: '#FFFFFF' },
-  actionsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginHorizontal: 24,
-    marginBottom: 24,
-  },
-  actionButton: {
-    alignItems: 'center',
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    flex: 1,
-    marginHorizontal: 8,
-    elevation: 2,
-  },
-  actionText: { marginTop: 8, fontSize: 14, fontWeight: '600', color: '#4F46E5' },
-  historyTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginHorizontal: 24,
-    marginBottom: 16,
-  },
-  historyList: { flex: 1, paddingHorizontal: 24 },
-  txItem: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  txType: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
-  txDate: { fontSize: 12, color: '#6B7280', marginTop: 4 },
-  txAmount: { fontSize: 16, fontWeight: 'bold' },
-  txAmountCredit: { color: '#10B981' },
-  txAmountDebit: { color: '#EF4444' },
-  emptyHistory: { textAlign: 'center', marginTop: 32, color: '#6B7280' },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  balanceCard: { backgroundColor: '#4F46E5', margin: 16, padding: 24, borderRadius: 16, elevation: 4 },
+  balanceLabel: { color: '#E0E7FF', fontSize: 14, marginBottom: 8 },
+  balanceAmount: { color: '#FFFFFF', fontSize: 32, fontWeight: 'bold', marginBottom: 24 },
+  actionRow: { flexDirection: 'row', gap: 12 },
+  actionBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  actionText: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 4 },
+  section: { paddingHorizontal: 16, paddingBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 12 },
+  txnCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  txnLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  txnIcon: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  txnInfo: { flex: 1 },
+  txnType: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
+  txnDate: { fontSize: 12, color: '#6B7280', marginTop: 4 },
+  txnRight: { alignItems: 'flex-end' },
+  txnAmount: { fontSize: 16, fontWeight: 'bold', marginBottom: 6 },
+  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
+  statusText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+  emptyState: { alignItems: 'center', paddingVertical: 32 },
+  emptyText: { fontSize: 14, color: '#6B7280', marginTop: 12 },
 });
 
 export default WalletScreen;

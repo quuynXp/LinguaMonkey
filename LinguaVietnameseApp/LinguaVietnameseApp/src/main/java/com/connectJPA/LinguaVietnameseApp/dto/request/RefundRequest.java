@@ -7,6 +7,7 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class RefundRequest {
     @NotNull
     private UUID originalTransactionId; // Giao dịch P2P (mua course)
@@ -16,4 +17,6 @@ public class RefundRequest {
 
     @NotNull
     private String reason;
+
+    private Integer watchTimePercentage;
 }

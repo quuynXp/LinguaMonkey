@@ -1,627 +1,1033 @@
-import { useEffect, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useEffect, useMemo } from "react"
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  Modal,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  ActivityIndicator,
+  RefreshControl,
+  Image,
 } from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
-import { useLesson, useLessonQuestions, useLessonProgress, useSubmitLesson, useCompleteLesson } from "../../hooks/useLessons";
-import type { LessonQuestion, UserLearningActivity } from "../../types/api";
-import { createScaledSheet } from "../../utils/scaledStyles";
-import { useUserStore } from "../../stores/UserStore";
+import { useTranslation } from "react-i18next"
+import { useUserStore } from "../../stores/UserStore"
+import { useCourses } from "../../hooks/useCourses"
+import { useCertifications } from "../../hooks/useCertifications"
+import { useGetLessonsBySkillType } from "../../hooks/useLessons"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
-const { width } = Dimensions.get("window")
+// Helper để map dữ liệu từ BE (CourseResponse) sang định dạng FE cần dùng
+// Logic: Ưu tiên lấy trực tiếp từ course (nếu DTO đã flatten), nếu không thì lấy từ latestPublicVersion
+const mapCourseFields = (course: any) => {
+  if (!course) return null
 
-const LessonScreen = ({ navigation, route }: any) => {
-  const { lessonId } = route.params
+  // Backend DTO thường trả về các trường này ở root
+  const version = course.latestPublicVersion || {}
+
+  return {
+    id: course.courseId || course.id, // BE dùng courseId
+    title: course.title || course.courseName || "Untitled Course",
+    // Ưu tiên ảnh ở root (CourseResponse), fallback vào version
+    image: course.thumbnailUrl || version.thumbnailUrl || null,
+    // BE trả về creatorName hoặc thông qua object creator
+    instructor: course.creatorName || course.creator?.fullname || "Unknown Teacher",
+    isFree:
+      course.type === "FREE" ||
+      course.price === 0 ||
+      (course.price === undefined && course.isFree),
+    price: course.price ?? 0,
+    originalPrice: course.originalPrice, // Có thể null
+    rating: course.averageRating ?? 0, // BE: averageRating
+    students: course.studentsCount ?? course.students ?? 0, // BE: studentsCount
+    level: course.difficultyLevel || course.level || "BEGINNER",
+    duration: course.duration || "0h", // Có thể cần format lại từ seconds nếu BE trả về int
+
+    // Tiến độ (chỉ có nếu là purchased course/enrollment)
+    progress: course.progress ?? 0,
+    completedLessons: course.completedLessons ?? 0,
+
+    // Tổng số bài học: Lấy từ root nếu có, không thì đếm trong version
+    totalLessons: course.totalLessons ?? version.lessons?.length ?? 0,
+
+    discount: course.discount,
+  }
+}
+
+const LearnScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
-  const { user } = useUserStore()
+  const { user, isAuthenticated } = useUserStore()
 
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
-  const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({})
-  const [showResults, setShowResults] = useState(false)
-  const [results, setResults] = useState<{
-    score: number
-    correct: number
-    total: number
-    exp_gained: number
-  } | null>(null)
+  const {
+    useEnrolledCourses,
+    useAllCourses,
+    useRecommendedCourses,
+    useBilingualVideos,
+  } = useCourses()
 
-  const { data: lesson, isLoading: lessonLoading, error: lessonError } = useLesson(lessonId)
-  const { data: questions = [], isLoading: questionsLoading } = useLessonQuestions(lessonId)
-  const { data: progress } = useLessonProgress(lessonId)
-  const { submitLesson, isSubmitting } = useSubmitLesson()
-  const { completeLesson, isCompleting } = useCompleteLesson()
+  // 1. Khóa học đã mua
+  const {
+    data: purchasedCoursesData,
+    isLoading: purchasedLoading,
+    refetch: refetchPurchased,
+  } = useEnrolledCourses({
+    userId: user?.userId,
+    page: 0,
+    size: 5,
+  })
 
-  const currentQuestion = questions[currentQuestionIndex]
-  const isLastQuestion = currentQuestionIndex === questions.length - 1
-  const canProceed = currentQuestion && selectedAnswers[currentQuestion.lessonQuestionId]
+  // 2. Khóa học miễn phí
+  const {
+    data: freeCoursesData,
+    isLoading: freeLoading,
+    refetch: refetchFree,
+  } = useAllCourses({
+    type: "FREE",
+    page: 0,
+    size: 5,
+  })
 
-  
-  const startTimeRef = useRef<number | null>(null);
+  // 3. Khóa học đề xuất
+  const {
+    data: recommendedCoursesData,
+    isLoading: recommendedLoading,
+    refetch: refetchRecommended,
+  } = useRecommendedCourses(user?.userId, 5)
 
-  useEffect(() => {
-    // === BẮT ĐẦU ===
-    // Ghi lại thời điểm bắt đầu
-    startTimeRef.current = Date.now();
-    
-    // Gọi API /start
-    UserLearningActivity.logStart({
-      userId: user.userId,
-      activityType: 'LESSON_START', // Lấy từ Enum ở BE
-      relatedEntityId: lessonId,
-    }).catch(err => console.error("Failed to log start:", err));
+  // 4. Video song ngữ
+  const {
+    data: videosData,
+    isLoading: videosLoading,
+    refetch: refetchVideos,
+  } = useBilingualVideos({
+    page: 0,
+    size: 5,
+  })
 
-    // === KẾT THÚC ===
-    // Trả về một cleanup function, được gọi khi component unmount
-    return () => {
-      if (startTimeRef.current) {
-        // Tính thời gian
-        const endTime = Date.now();
-        const durationMs = endTime - startTimeRef.current;
-        const durationSeconds = Math.round(durationMs / 1000);
+  // 5. Chứng chỉ
+  const {
+    data: certifications,
+    isLoading: certificationsLoading,
+    refetch: refetchCertifications,
+  } = useCertifications().useAvailableCertifications(user?.languages)
 
-        // Chỉ log nếu thời gian > 5 giây (tránh spam)
-        if (durationSeconds > 5) {
-          // Gọi API /end
-          UserLearningActivity.logEnd({
-            userId: user.userId,
-            activityType: 'LESSON_END',
-            relatedEntityId: lessonId,
-            durationInSeconds: durationSeconds,
-          }).catch(err => console.error("Failed to log end:", err));
-        }
+  // --- Xử lý dữ liệu (Memoization) ---
+
+  const purchasedCourses = useMemo(() => {
+    // API EnrolledCourses trả về danh sách Enrollment
+    // Cấu trúc: { course: {...}, progress: number, completedLessons: number }
+    const list = purchasedCoursesData?.data || []
+    return list.map((enrollment: any) => {
+      // Gộp thông tin tiến độ vào object course để tiện map
+      const courseWithProgress = {
+        ...enrollment.course,
+        progress: enrollment.progress ?? 0, // BE: progress hoặc progressPercent
+        completedLessons: enrollment.completedLessons ?? 0,
       }
-    };
-    
-    // Dependencies: chỉ chạy 1 lần khi vào màn hình
-  }, [lessonId, user.userId]);
-  
-  useEffect(() => {
-    if (progress?.completedAt) {
-      Alert.alert(
-        t("lessons.alreadyCompleted"),
-        t("lessons.alreadyCompletedMessage"),
-        [
-          { text: t("common.back"), onPress: () => navigation.goBack() },
-          { text: t("lessons.reviewAnswers"), onPress: () => {} },
-        ]
-      )
+      return mapCourseFields(courseWithProgress)
+    }).filter(Boolean)
+  }, [purchasedCoursesData])
+
+  const freeCourses = useMemo(() => {
+    const list = freeCoursesData?.data || []
+    return list.map(mapCourseFields).filter(Boolean)
+  }, [freeCoursesData])
+
+  const recommendedCourses = useMemo(() => {
+    // Recommended API trả về List<CourseResponse> trực tiếp (không phân trang)
+    const list = Array.isArray(recommendedCoursesData) ? recommendedCoursesData : []
+    return list.map(mapCourseFields).filter(Boolean)
+  }, [recommendedCoursesData])
+
+  const videos = useMemo(() => {
+    return videosData?.data || []
+  }, [videosData])
+
+  // --- Fetch Lessons theo Skill ---
+  const { data: listeningData, isLoading: loadListen } = useGetLessonsBySkillType("LISTENING", { page: 0, size: 3 })
+  const { data: speakingData, isLoading: loadSpeak } = useGetLessonsBySkillType("SPEAKING", { page: 0, size: 3 })
+  const { data: readingData, isLoading: loadRead } = useGetLessonsBySkillType("READING", { page: 0, size: 3 })
+  const { data: writingData, isLoading: loadWrite } = useGetLessonsBySkillType("WRITING", { page: 0, size: 3 })
+
+  const learningTools = [
+    {
+      name: t("learn.interactiveQuiz"),
+      icon: "quiz",
+      screen: "InteractiveQuiz",
+    },
+    {
+      name: t("learn.vocabularyFlashcards"),
+      icon: "style",
+      screen: "VocabularyFlashcards",
+    },
+    {
+      name: t("learn.ipaPronunciation"),
+      icon: "record-voice-over",
+      screen: "IPAScreen",
+    },
+    {
+      name: t("learn.quizLearning"),
+      icon: "question-answer",
+      screen: "QuizLearning",
+    },
+    { name: t("learn.notes"), icon: "notes", screen: "NotesScreen" },
+  ]
+
+  const listeningLessons = useMemo(() => listeningData?.data || [], [listeningData])
+  const speakingLessons = useMemo(() => speakingData?.data || [], [speakingData])
+  const readingLessons = useMemo(() => readingData?.data || [], [readingData])
+  const writingLessons = useMemo(() => writingData?.data || [], [writingData])
+
+  const isLoading =
+    purchasedLoading ||
+    freeLoading ||
+    recommendedLoading ||
+    videosLoading ||
+    certificationsLoading ||
+    loadListen ||
+    loadSpeak ||
+    loadRead ||
+    loadWrite
+
+  // --- Handlers ---
+
+  const handleRefresh = () => {
+    refetchPurchased()
+    refetchFree()
+    refetchRecommended()
+    refetchVideos()
+    refetchCertifications()
+  }
+
+  const handleCoursePress = (rawCourse: any, isPurchased = false) => {
+    // Cần đảm bảo truyền object course gốc (raw) hoặc object đã map nhưng đủ ID
+    // Ở đây ta truyền course đã map bởi mapCourseFields
+    navigation.navigate("CourseDetailsScreen", {
+      course: rawCourse, // rawCourse ở đây là item đã qua hàm mapCourseFields
+      isPurchased,
+    })
+  }
+
+  const handleVideoPress = (video: any, mode = "bilingual") => {
+    navigation.navigate("BilingualVideoScreen", { selectedVideo: video, mode })
+  }
+
+  const handleViewAllCourses = () => navigation.navigate("StudentCoursesScreen")
+  const handleViewAllVideos = () => navigation.navigate("BilingualVideoScreen")
+  const handleViewAllCertifications = () => navigation.navigate("CertificationLearning")
+
+  const handleViewAllLessons = (skillType: string) => {
+    // Điều hướng tới màn hình list bài học tương ứng
+    // Bạn cần đảm bảo các màn hình này đã được khai báo trong Navigator
+    const screens: Record<string, string> = {
+      LISTENING: "ListeningScreen", // Hoặc màn hình danh sách bài nghe
+      SPEAKING: "SpeakingScreen",
+      READING: "ReadingScreen",
+      WRITING: "WritingScreen"
     }
-  }, [progress])
-
-  const handleAnswerSelect = (questionId: string, answer: string) => {
-    setSelectedAnswers(prev => ({
-      ...prev,
-      [questionId]: answer
-    }))
+    // Nếu chưa có màn hình list riêng, có thể dẫn tới một màn hình chung kèm param
+    navigation.navigate(screens[skillType] || "FreeLessonScreen", { skillType })
   }
 
-  const handleNext = () => {
-    if (isLastQuestion) {
-      handleSubmitLesson()
-    } else {
-      setCurrentQuestionIndex(prev => prev + 1)
-    }
+  const handleNavigation = (screenName: string) => {
+    navigation.navigate(screenName)
   }
 
-  const handlePrevious = () => {
-    if (currentQuestionIndex > 0) {
-      setCurrentQuestionIndex(prev => prev - 1)
-    }
-  }
+  // --- Render Items ---
 
-  const handleSubmitLesson = async () => {
-    if (!lesson || Object.keys(selectedAnswers).length !== questions.length) {
-      Alert.alert(t("common.error"), t("lessons.pleaseAnswerAll"))
-      return
-    }
-
-    try {
-      const result = await submitLesson(lesson.lessonId, selectedAnswers)
-      setResults(result)
-      setShowResults(true)
-
-      // Complete the lesson if score is good enough
-      if (result.score >= 70) {
-        await completeLesson(lesson.lessonId, result.score)
-      }
-    } catch (error: any) {
-      Alert.alert(t("common.error"), error.message || t("errors.unknown"))
-    }
-  }
-
-  const handleRetry = () => {
-    setCurrentQuestionIndex(0)
-    setSelectedAnswers({})
-    setShowResults(false)
-    setResults(null)
-  }
-
-  const handleFinish = () => {
-    navigation.goBack()
-  }
-
-  const renderQuestion = (question: LessonQuestion) => {
-    const options = [
-      { key: 'A', value: question.optionA },
-      { key: 'B', value: question.optionB },
-      { key: 'C', value: question.optionB },
-      { key: 'D', value: question.optionD },
-    ].filter(option => option.value)
-
+  const renderCourseCardItem = (course: any, isPurchased = false) => {
+    if (!course) return null;
     return (
-      <View style={styles.questionContainer}>
-        <View style={styles.questionHeader}>
-          <Text style={styles.questionNumber}>
-            {t("lessons.questionNumber", { current: currentQuestionIndex + 1, total: questions.length })}
-          </Text>
-          <Text style={styles.skillType}>{question.skillType}</Text>
-        </View>
+      <TouchableOpacity
+        key={course.id}
+        style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
+        onPress={() => handleCoursePress(course, isPurchased)}
+      >
+        {course.image ? (
+          <Image source={{ uri: course.image }} style={styles.courseImage} resizeMode="cover" />
+        ) : (
+          <View style={[styles.courseImage, { justifyContent: "center", alignItems: "center" }]}>
+            <Icon name="menu-book" size={40} color="#9CA3AF" />
+          </View>
+        )}
 
-        <Text style={styles.questionText}>{question.question}</Text>
+        {isPurchased && (
+          <View style={styles.purchasedBadge}>
+            <Icon name="check-circle" size={16} color="#FFFFFF" />
+            <Text style={styles.purchasedText}>{t("courses.purchased")}</Text>
+          </View>
+        )}
 
-        <View style={styles.optionsContainer}>
-          {options.map((option) => (
-            <TouchableOpacity
-              key={option.key}
-              style={[
-                styles.optionButton,
-                selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedOption
-              ]}
-              onPress={() => handleAnswerSelect(question.lessonQuestionId, option.value)}
-            >
-              <View style={styles.optionContent}>
-                <View style={[
-                  styles.optionIndicator,
-                  selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedIndicator
-                ]}>
-                  <Text style={[
-                    styles.optionKey,
-                    selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedOptionKey
-                  ]}>
-                    {option.key}
-                  </Text>
-                </View>
-                <Text style={[
-                  styles.optionText,
-                  selectedAnswers[question.lessonQuestionId] === option.value && styles.selectedOptionText
-                ]}>
-                  {option.value}
+        {course.isFree && !isPurchased && (
+          <View style={styles.freeBadge}>
+            <Text style={styles.freeText}>{t("courses.free")}</Text>
+          </View>
+        )}
+
+        <View style={styles.courseContent}>
+          <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
+          <Text style={styles.courseInstructor} numberOfLines={1}>by {course.instructor}</Text>
+
+          <View style={styles.courseStats}>
+            <View style={styles.ratingContainer}>
+              <Icon name="star" size={14} color="#F59E0B" />
+              <Text style={styles.ratingText}>{course.rating.toFixed(1)}</Text>
+              <Text style={styles.studentsText}>
+                ({(course.students || 0).toLocaleString()})
+              </Text>
+            </View>
+            <View style={styles.courseMeta}>
+              <Text style={styles.levelText}>{course.level}</Text>
+              {/* <Text style={styles.durationText}>{course.duration}</Text> */}
+            </View>
+          </View>
+
+          {isPurchased ? (
+            <View style={styles.progressSection}>
+              <View style={styles.progressInfo}>
+                <Text style={styles.progressText}>
+                  {t("courses.progress")}: {Math.round(course.progress)}%
+                </Text>
+                <Text style={styles.lessonsText}>
+                  {course.completedLessons}/{course.totalLessons} {t("courses.lessons")}
                 </Text>
               </View>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-    )
-  }
-
-  const renderResults = () => {
-    if (!results) return null
-
-    const percentage = Math.round((results.correct / results.total) * 100)
-    const passed = percentage >= 70
-
-    return (
-      <View style={styles.resultsContainer}>
-        <View style={styles.resultsHeader}>
-          <Icon 
-            name={passed ? "check-circle" : "cancel"} 
-            size={64} 
-            color={passed ? "#10B981" : "#EF4444"} 
-          />
-          <Text style={styles.resultsTitle}>
-            {passed ? t("lessons.congratulations") : t("lessons.tryAgain")}
-          </Text>
-          <Text style={styles.resultsSubtitle}>
-            {t("lessons.scoreMessage", { score: percentage })}
-          </Text>
-        </View>
-
-        <View style={styles.resultsStats}>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{results.correct}</Text>
-            <Text style={styles.statLabel}>{t("lessons.correct")}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{results.total - results.correct}</Text>
-            <Text style={styles.statLabel}>{t("lessons.incorrect")}</Text>
-          </View>
-          <View style={styles.statItem}>
-            <Text style={styles.statNumber}>+{results.exp_gained}</Text>
-            <Text style={styles.statLabel}>{t("lessons.expGained")}</Text>
-          </View>
-        </View>
-
-        <View style={styles.resultsActions}>
-          {!passed && (
-            <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-              <Icon name="refresh" size={20} color="#fff" />
-              <Text style={styles.retryButtonText}>{t("lessons.retry")}</Text>
-            </TouchableOpacity>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${course.progress}%` }]} />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.priceSection}>
+              {course.originalPrice && course.originalPrice > course.price && (
+                <Text style={styles.originalPrice}>${course.originalPrice}</Text>
+              )}
+              <Text style={styles.price}>
+                {course.isFree ? t("courses.free") : `$${course.price ?? 0}`}
+              </Text>
+            </View>
           )}
-          <TouchableOpacity style={styles.finishButton} onPress={handleFinish}>
-            <Text style={styles.finishButtonText}>{t("lessons.finish")}</Text>
-          </TouchableOpacity>
         </View>
+      </TouchableOpacity>
+    )
+  }
+
+  const renderVideoCard = (rawVideo: any) => {
+    const video = {
+      id: rawVideo.videoId || rawVideo.id,
+      title: rawVideo.title,
+      thumbnail: rawVideo.thumbnailUrl || rawVideo.thumbnail || null,
+      duration: rawVideo.duration || "",
+      description: rawVideo.description || "",
+      level: rawVideo.level,
+      category: rawVideo.category,
+      progress: rawVideo.progress,
+    }
+
+    return (
+      <TouchableOpacity
+        key={video.id}
+        style={styles.videoCard}
+        onPress={() => handleVideoPress(rawVideo, "bilingual")}
+      >
+        <View style={styles.videoThumbnail}>
+          {video.thumbnail ? (
+            <Image source={{ uri: video.thumbnail }} style={styles.thumbnailImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.thumbnailPlaceholder}>
+              <Icon name="play-circle-filled" size={48} color="rgba(255,255,255,0.9)" />
+            </View>
+          )}
+
+          <View style={styles.durationBadge}>
+            <Text style={styles.durationText}>{video.duration}</Text>
+          </View>
+
+          {/* Control overlay */}
+          <View style={{ position: "absolute", top: 8, left: 8, flexDirection: "row", gap: 6 }}>
+            {/* Nút này có thể gây khó bấm trên card nhỏ, cân nhắc bỏ hoặc làm to hơn */}
+          </View>
+        </View>
+
+        <View style={styles.videoInfo}>
+          <Text style={styles.videoTitle} numberOfLines={1}>{video.title}</Text>
+          <Text style={styles.videoDescription} numberOfLines={1}>{video.category}</Text>
+          <View style={[styles.levelBadge, { backgroundColor: getLevelColor(video.level), alignSelf: 'flex-start', marginTop: 4 }]}>
+            <Text style={[styles.levelText, { color: '#fff', fontSize: 10 }]}>
+              {video.level}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    )
+  }
+
+  const getLevelColor = (level: string) => {
+    switch ((level || "").toLowerCase()) {
+      case "beginner": return "#4CAF50"
+      case "intermediate": return "#FF9800"
+      case "advanced": return "#F44336"
+      default: return "#757575"
+    }
+  }
+
+  const renderLessonCard = (lesson: any) => {
+    return (
+      <TouchableOpacity
+        key={lesson.lessonId}
+        style={styles.lessonCard}
+        onPress={() => navigation.navigate("LessonScreen", { lesson })} // Fix tên màn hình
+      >
+        <View style={styles.lessonImagePlaceholder}>
+          {/* Nếu có ảnh bài học thì hiện, không thì hiện icon */}
+          <Icon name="auto-stories" size={40} color="#9CA3AF" />
+        </View>
+        <View style={styles.lessonContent}>
+          <Text style={styles.lessonTitle} numberOfLines={2}>
+            {lesson.title || lesson.lessonName}
+          </Text>
+          <View style={styles.lessonStats}>
+            <View style={styles.expContainer}>
+              <Icon name="star" size={14} color="#F59E0B" />
+              <Text style={styles.expText}>{lesson.expReward} EXP</Text>
+            </View>
+            <Text style={styles.skillText}>{lesson.skillType}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    )
+  }
+
+  const renderLearningToolCard = (tool: any) => (
+    <TouchableOpacity
+      key={tool.screen}
+      style={styles.toolCard}
+      onPress={() => handleNavigation(tool.screen)}
+    >
+      <View style={styles.toolIconContainer}>
+        <Icon name={tool.icon} size={24} color="#4F46E5" />
       </View>
-    )
-  }
+      <Text style={styles.toolName}>{tool.name}</Text>
+    </TouchableOpacity>
+  )
 
-  if (lessonError) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.errorContainer}>
-          <Icon name="error" size={64} color="#F44336" />
-          <Text style={styles.errorText}>{t("errors.networkError")}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => navigation.goBack()}>
-            <Text style={styles.retryButtonText}>{t("common.back")}</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    )
-  }
+  // --- Main Render ---
 
-  if (lessonLoading || questionsLoading || !lesson || !currentQuestion) {
+  if (isLoading && !purchasedCourses.length && !freeCourses.length && !listeningLessons.length) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#3B82F6" />
-          <Text style={styles.loadingText}>{t("common.loading")}</Text>
-        </View>
-      </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4F46E5" />
+        <Text style={styles.loadingText}>{t("common.loading")}</Text>
+      </View>
     )
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{lesson.title}</Text>
-        <View style={styles.headerRight}>
-          <Text style={styles.expReward}>+{lesson.expReward} XP</Text>
-        </View>
-      </View>
-
-      <View style={styles.progressBar}>
-        <View 
-          style={[
-            styles.progressFill, 
-            { width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }
-          ]} 
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={false} // Có thể bind với isRefetching của react-query
+          onRefresh={handleRefresh}
+          colors={["#4F46E5"]}
+          tintColor="#4F46E5"
         />
+      }
+    >
+      <View style={styles.header}>
+        <Text style={styles.title}>{t("learn.title")}</Text>
       </View>
 
-      <ScrollView style={styles.content}>
-        {renderQuestion(currentQuestion)}
-      </ScrollView>
-
-      <View style={styles.navigationContainer}>
-        <TouchableOpacity
-          style={[styles.navButton, currentQuestionIndex === 0 && styles.disabledButton]}
-          onPress={handlePrevious}
-          disabled={currentQuestionIndex === 0}
-        >
-          <Icon name="chevron-left" size={24} color={currentQuestionIndex === 0 ? "#ccc" : "#333"} />
-          <Text style={[styles.navButtonText, currentQuestionIndex === 0 && styles.disabledText]}>
-            {t("common.back")}
+      {/* Welcome Section */}
+      {isAuthenticated && user && (
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcomeText}>
+            {t("learn.welcome", {
+              name: user.fullname || user.nickname || t("learn.defaultName"),
+            })}
           </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.nextButton, !canProceed && styles.disabledButton]}
-          onPress={handleNext}
-          disabled={!canProceed || isSubmitting}
-        >
-          {isSubmitting ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <>
-              <Text style={styles.nextButtonText}>
-                {isLastQuestion ? t("lessons.submit") : t("common.next")}
+          <View style={styles.userStats}>
+            <View style={styles.statItem}>
+              <Icon name="trending-up" size={16} color="#10B981" />
+              <Text style={styles.statText}>
+                {t("learn.level")} {user.level || 1}
               </Text>
-              <Icon name="chevron-right" size={24} color="#fff" />
-            </>
-          )}
-        </TouchableOpacity>
-      </View>
-
-      {/* Results Modal */}
-      <Modal
-        visible={showResults}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => {}}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {renderResults()}
+            </View>
+            <View style={styles.statItem}>
+              <Icon name="local-fire-department" size={16} color="#F59E0B" />
+              <Text style={styles.statText}>
+                {user.streak || 0} {t("learn.dayStreak")}
+              </Text>
+            </View>
           </View>
         </View>
-      </Modal>
-    </SafeAreaView>
+      )}
+
+      {/* My Courses (Purchased) */}
+      {purchasedCourses.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
+            <TouchableOpacity onPress={handleViewAllCourses}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {purchasedCourses.map((c: any) => renderCourseCardItem(c, true))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Learning Tools */}
+      <View style={styles.section}>
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
+        </View>
+        <View style={styles.toolGrid}>
+          {learningTools.map(renderLearningToolCard)}
+        </View>
+      </View>
+
+      {/* Skill Lessons: Listening */}
+      {listeningLessons.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.listeningLessons")}</Text>
+            <TouchableOpacity onPress={() => handleViewAllLessons("LISTENING")}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {listeningLessons.map(renderLessonCard)}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Skill Lessons: Speaking */}
+      {speakingLessons.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.speakingLessons")}</Text>
+            <TouchableOpacity onPress={() => handleViewAllLessons("SPEAKING")}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {speakingLessons.map(renderLessonCard)}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Recommended Courses */}
+      {recommendedCourses.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
+          </View>
+          {/* Render Vertical List cho Recommended */}
+          <View style={{ gap: 16 }}>
+            {recommendedCourses.map((c: any) => renderCourseCardItem(c, false))}
+          </View>
+        </View>
+      )}
+
+      {/* Free Courses */}
+      {freeCourses.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.freeCourses")}</Text>
+            <TouchableOpacity onPress={handleViewAllCourses}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {freeCourses.map((c: any) => renderCourseCardItem(c, false))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Videos */}
+      {videos.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.bilingualVideos")}</Text>
+            <TouchableOpacity onPress={handleViewAllVideos}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {videos.map(renderVideoCard)}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Certifications */}
+      {certifications && certifications.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("learn.certifications")}</Text>
+            <TouchableOpacity onPress={handleViewAllCertifications}>
+              <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+            {certifications.map((c: any) => (
+              <View key={c.id} style={styles.certificationCard}>
+                <Text style={styles.certificationName}>{c.name}</Text>
+                <Text style={styles.certificationLanguage}>{c.languageCode}</Text>
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      <View style={{ height: 50 }} />
+    </ScrollView>
   )
 }
 
+// Styles giữ nguyên như cũ, chỉ đảm bảo createScaledSheet hoạt động
 const styles = createScaledSheet({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: "#fff",
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#333",
-    flex: 1,
-    textAlign: "center",
-  },
-  headerRight: {
-    minWidth: 60,
-    alignItems: "flex-end",
-  },
-  expReward: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#10B981",
-  },
-  progressBar: {
-    height: 4,
-    backgroundColor: "#e0e0e0",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#3B82F6",
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  questionContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 20,
-  },
-  questionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  questionNumber: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "500",
-  },
-  skillType: {
-    fontSize: 12,
-    color: "#3B82F6",
-    backgroundColor: "#EBF8FF",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    fontWeight: "500",
-  },
-  questionText: {
-    fontSize: 18,
-    color: "#333",
-    lineHeight: 26,
-    marginBottom: 24,
-    fontWeight: "500",
-  },
-  optionsContainer: {
-    gap: 12,
-  },
-  optionButton: {
-    borderWidth: 2,
-    borderColor: "#e0e0e0",
-    borderRadius: 12,
-    padding: 16,
-    backgroundColor: "#fff",
-  },
-  selectedOption: {
-    borderColor: "#3B82F6",
-    backgroundColor: "#EBF8FF",
-  },
-  optionContent: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  optionIndicator: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#f0f0f0",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  selectedIndicator: {
-    backgroundColor: "#3B82F6",
-  },
-  optionKey: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#666",
-  },
-  selectedOptionKey: {
-    color: "#fff",
-  },
-  optionText: {
-    fontSize: 16,
-    color: "#333",
-    flex: 1,
-  },
-  selectedOptionText: {
-    color: "#3B82F6",
-    fontWeight: "500",
-  },
-  navigationContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    backgroundColor: "#fff",
-    borderTopWidth: 1,
-    borderTopColor: "#e0e0e0",
-  },
-  navButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  navButtonText: {
-    fontSize: 16,
-    color: "#333",
-    marginLeft: 4,
-  },
-  nextButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#3B82F6",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-  },
-  nextButtonText: {
-    fontSize: 16,
-    color: "#fff",
-    fontWeight: "bold",
-    marginRight: 4,
-  },
-  disabledButton: {
-    opacity: 0.5,
-  },
-  disabledText: {
-    color: "#ccc",
+    backgroundColor: "#F8FAFC",
   },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#F8FAFC",
   },
   loadingText: {
+    marginTop: 16,
     fontSize: 16,
-    color: "#666",
-    marginTop: 12,
+    color: "#6B7280",
   },
-  errorContainer: {
-    flex: 1,
+  header: {
+    flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 20,
   },
-  errorText: {
-    fontSize: 16,
-    color: "#666",
-    textAlign: "center",
-    marginVertical: 20,
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: "#1F2937",
   },
-  retryButton: {
+  welcomeSection: {
+    paddingHorizontal: 20,
+    marginBottom: 20,
+  },
+  welcomeText: {
+    fontSize: 18,
+    color: "#1F2937",
+    marginBottom: 12,
+  },
+  userStats: {
+    flexDirection: "row",
+    gap: 16,
+  },
+  statItem: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#3B82F6",
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    gap: 8,
+    gap: 4,
   },
-  retryButtonText: {
-    color: "#fff",
+  statText: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  section: {
+    paddingHorizontal: 20,
+    marginBottom: 30,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  viewAllText: {
+    fontSize: 14,
+    color: "#4F46E5",
+    fontWeight: "600",
+  },
+  horizontalScroll: {
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+  },
+  certificationCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginRight: 16,
+    width: 200,
+    padding: 16,
+    borderLeftWidth: 4,
+    borderColor: "#4F46E5",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  certificationName: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  certificationLanguage: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  courseCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    marginRight: 16,
+    width: 260, // Fixed width for horizontal scroll
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: "hidden",
+    marginBottom: 8, // add margin bottom for shadow visibility
+  },
+  purchasedCourseCard: {
+    borderWidth: 2,
+    borderColor: "#10B981",
+  },
+  courseImage: {
+    width: "100%",
+    height: 140,
+    backgroundColor: "#E5E7EB",
+  },
+  purchasedBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "#10B981",
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 1,
+  },
+  purchasedText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+    fontWeight: "600",
+    marginLeft: 4,
+  },
+  freeBadge: {
+    position: "absolute",
+    top: 12,
+    left: 12,
+    backgroundColor: "#F59E0B",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    zIndex: 1,
+  },
+  freeText: {
+    fontSize: 12,
+    color: "#FFFFFF",
     fontWeight: "bold",
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  courseContent: {
+    padding: 16,
+  },
+  courseTitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 4,
+    height: 44, // limit height for 2 lines
+  },
+  courseInstructor: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 12,
+  },
+  courseStats: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  ratingContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  ratingText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginLeft: 4,
+  },
+  studentsText: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginLeft: 4,
+  },
+  courseMeta: {
+    alignItems: "flex-end",
+  },
+  levelText: {
+    fontSize: 12,
+    color: "#4F46E5",
+    fontWeight: "600",
+  },
+  durationText: {
+    fontSize: 12,
+    color: "#FFFFFF",
+  },
+  progressSection: {
+    marginTop: 8,
+  },
+  progressInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  },
+  progressText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  lessonsText: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 3,
+    overflow: "hidden",
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#10B981",
+    borderRadius: 3,
+  },
+  priceSection: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  originalPrice: {
+    fontSize: 14,
+    color: "#6B7280",
+    textDecorationLine: "line-through",
+  },
+  price: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+  },
+  videoCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginRight: 16,
+    width: 240,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    overflow: "hidden",
+    marginBottom: 5,
+  },
+  videoThumbnail: {
+    height: 135,
+    backgroundColor: "#000",
+    position: "relative",
     justifyContent: "center",
     alignItems: "center",
   },
-  modalContent: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 30,
-    width: width - 40,
-    maxWidth: 400,
+  thumbnailImage: {
+    width: "100%",
+    height: "100%",
   },
-  resultsContainer: {
+  thumbnailPlaceholder: {
+    width: "100%",
+    height: "100%",
+    justifyContent: "center",
     alignItems: "center",
+    backgroundColor: "#1F2937",
   },
-  resultsHeader: {
-    alignItems: "center",
-    marginBottom: 30,
+  durationBadge: {
+    position: "absolute",
+    bottom: 8,
+    right: 8,
+    backgroundColor: "rgba(0,0,0,0.7)",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
   },
-  resultsTitle: {
-    fontSize: 24,
+  videoProgressIndicator: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: "rgba(255,255,255,0.3)",
+  },
+  videoProgressBar: {
+    height: "100%",
+    backgroundColor: "#EF4444", // Youtube red style
+  },
+  videoInfo: {
+    padding: 12,
+  },
+  videoTitle: {
+    fontSize: 14,
     fontWeight: "bold",
-    color: "#333",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  videoDescription: {
+    fontSize: 12,
+    color: "#6B7280",
+    lineHeight: 16,
+    marginBottom: 4,
+  },
+  levelBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  categoryText: {
+    fontSize: 10,
+    color: "#9CA3AF",
+  },
+  viewAllCoursesButton: {
+    backgroundColor: "#4F46E5",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  viewAllCoursesText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#FFFFFF",
+  },
+  emptyState: {
+    alignItems: "center",
+    paddingHorizontal: 32,
+    paddingVertical: 48,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1F2937",
     marginTop: 16,
     marginBottom: 8,
   },
-  resultsSubtitle: {
+  emptyMessage: {
     fontSize: 16,
-    color: "#666",
+    color: "#6B7280",
     textAlign: "center",
+    marginBottom: 24,
   },
-  resultsStats: {
-    flexDirection: "row",
-    justifyContent: "space-around",
+  lessonCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    marginRight: 16,
+    width: 200,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: "hidden",
+    marginBottom: 8,
+  },
+  lessonImagePlaceholder: {
     width: "100%",
-    marginBottom: 30,
-  },
-  statItem: {
+    height: 100,
+    backgroundColor: "#F3F4F6",
+    justifyContent: "center",
     alignItems: "center",
   },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#333",
+  lessonContent: {
+    padding: 12,
   },
-  statLabel: {
+  lessonTitle: {
+    fontSize: 14,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 8,
+    height: 40, // fixed height for title
+  },
+  lessonStats: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  expContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  expText: {
     fontSize: 12,
-    color: "#666",
-    marginTop: 4,
+    color: "#6B7280",
+    fontWeight: '600'
   },
-  resultsActions: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-  },
-  finishButton: {
-    flex: 1,
-    backgroundColor: "#10B981",
-    paddingVertical: 16,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  finishButtonText: {
-    color: "#fff",
-    fontSize: 16,
+  skillText: {
+    fontSize: 10,
+    color: "#4F46E5",
     fontWeight: "bold",
+    textTransform: 'uppercase',
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4
+  },
+  toolGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "space-between",
+  },
+  toolCard: {
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    width: "48%", // 2 cột
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  toolIconContainer: {
+    width: 48,
+    height: 48,
+    backgroundColor: "#EEF2FF",
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 8,
+  },
+  toolName: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1F2937",
+    textAlign: "center",
   },
 })
 
-export default LessonScreen
+export default LearnScreen

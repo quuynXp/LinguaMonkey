@@ -1,7 +1,323 @@
+import { ImageSourcePropType } from "react-native";
+
+// =============================================================================
+// 1. CORE & GENERIC TYPES
+// =============================================================================
+
 export interface ApiResponse<T> {
   code: number;
-  result?: T;
-  message?: string;
+  message: string;
+  result: T;
+}
+
+export interface PaginatedResponse<T> {
+  content: T[];
+  pageable: {
+    pageNumber: number;
+    pageSize: number;
+  };
+  totalPages: number;
+  totalElements: number;
+  last: boolean;
+  size: number;
+  number: number;
+  numberOfElements: number;
+  first: boolean;
+  empty: boolean;
+}
+
+// =============================================================================
+// 2. ENUMS (Mapping exact Java Enums)
+// =============================================================================
+
+export enum AuthProvider {
+  LOCAL = "LOCAL",
+  GOOGLE = "GOOGLE",
+  FACEBOOK = "FACEBOOK",
+}
+
+export enum RoleName {
+  ADMIN = "ADMIN",
+  USER = "USER",
+  TEACHER = "TEACHER",
+  STUDENT = "STUDENT",
+}
+
+export enum CourseType {
+  SYSTEM = "SYSTEM",      // Khóa học của hệ thống
+  COMMUNITY = "COMMUNITY" // Khóa học P2P do người dùng tạo
+}
+
+export enum CourseApprovalStatus {
+  DRAFT = "DRAFT",
+  PENDING = "PENDING",
+  APPROVED = "APPROVED",
+  REJECTED = "REJECTED"
+}
+
+export enum VersionStatus {
+  DRAFT = "DRAFT",
+  PENDING_APPROVAL = "PENDING_APPROVAL",
+  PUBLIC = "PUBLIC",
+  ARCHIVED = "ARCHIVED"
+}
+
+export enum TransactionProvider {
+  VNPAY = "VNPAY",
+  STRIPE = "STRIPE",
+  PAYPAL = "PAYPAL",
+  MOMO = "MOMO",
+  INTERNAL = "INTERNAL" // Cho các giao dịch nội bộ như P2P transfer
+}
+
+export enum TransactionStatus {
+  PENDING = "PENDING",
+  SUCCESS = "SUCCESS",
+  FAILED = "FAILED",
+  REFUNDED = "REFUNDED",
+  CANCELLED = "CANCELLED"
+}
+
+export enum TransactionType {
+  DEPOSIT = "DEPOSIT",    // Nạp tiền
+  WITHDRAW = "WITHDRAW",  // Rút tiền
+  PURCHASE = "PURCHASE",  // Mua khóa học
+  TRANSFER = "TRANSFER",  // Chuyển tiền P2P
+  REFUND = "REFUND"       // Hoàn tiền
+}
+
+export enum FriendshipStatus {
+  PENDING = "PENDING",
+  ACCEPTED = "ACCEPTED",
+  DECLINED = "DECLINED",
+  BLOCKED = "BLOCKED"
+}
+
+export enum NotificationType {
+  SYSTEM = "SYSTEM",
+  TRANSACTION = "TRANSACTION",
+  COURSE = "COURSE",
+  SOCIAL = "SOCIAL",
+  REMINDER = "REMINDER"
+}
+
+export enum ActivityType {
+  LESSON_COMPLETION = "LESSON_COMPLETION",
+  DAILY_LOGIN = "DAILY_LOGIN",
+  STREAK = "STREAK",
+  QUIZ_SCORE = "QUIZ_SCORE"
+}
+
+// =============================================================================
+// 3. DOMAIN MODELS (DTOs Matching Java Responses)
+// =============================================================================
+
+export interface UserProfileResponse {
+  userId: string;
+  fullname: string;
+  nickname?: string;
+  avatarUrl?: string;
+  flag?: string;
+  country?: string;
+  level: number;
+  exp: number;
+  bio?: string;
+  character3d?: Character3dResponse;
+  stats?: UserStatsResponse;
+  badges: BadgeResponse[];
+
+  // Social Status
+  isFriend: boolean;
+  friendRequestStatus?: {
+    status: "NONE" | "SENT" | "RECEIVED" | "BLOCKED";
+    hasSentRequest: boolean;
+    hasReceivedRequest: boolean;
+  };
+  canSendFriendRequest: boolean;
+
+  // Teacher Info
+  isTeacher: boolean;
+  teacherCourses?: CourseSummaryResponse[];
+}
+
+export interface UserStatsResponse {
+  totalStudyTime: number;
+  lessonsCompleted: number;
+  wordsLearned: number;
+  testsCompleted: number;
+  averageScore: number;
+}
+
+// --- WALLET & TRANSACTIONS (P2P Payment) ---
+
+export interface WalletResponse {
+  walletId: string;
+  userId: string;
+  balance: number; // BigDecimal -> number
+  currency: string;
+  isActive: boolean;
+}
+
+export interface TransactionResponse {
+  transactionId: string;
+  userId: string;
+  amount: number;
+  status: TransactionStatus;
+  type: TransactionType;
+  provider: TransactionProvider;
+  description?: string;
+  paymentGatewayTransactionId?: string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// --- COURSES & LEARNING (P2P Content) ---
+
+export interface CourseResponse {
+  courseId: string;
+  title: string;
+  creatorId: string; // ID của giáo viên/người tạo
+  price: number;
+  languageCode?: string;
+  approvalStatus: CourseApprovalStatus;
+  createdAt: string;
+  updatedAt: string;
+
+  // Quan trọng: Java trả về version mới nhất
+  latestPublicVersion?: CourseVersionResponse;
+}
+
+export interface CourseVersionResponse {
+  versionId: string;
+  courseId: string;
+  versionNumber: number;
+  status: VersionStatus;
+  description?: string;
+  thumbnailUrl?: string;
+  reasonForChange?: string;
+  publishedAt?: string;
+  createdAt: string;
+
+  // Danh sách bài học trong version này
+  lessons?: CourseLessonResponse[];
+}
+
+export interface CourseSummaryResponse {
+  courseId: string;
+  title: string;
+  thumbnailUrl?: string;
+  price?: number;
+  averageRating?: number;
+}
+
+export interface CourseLessonResponse {
+  lessonId: string;
+  title: string;
+  orderIndex: number;
+  isFree: boolean; // Cho học thử
+  durationSeconds?: number;
+}
+
+export interface LessonResponse {
+  lessonId: string;
+  lessonName: string;
+  title: string;
+  languageCode: string;
+  expReward: number;
+  description?: string;
+  difficultyLevel?: string;
+  skillTypes?: string; // "LISTENING,SPEAKING"
+  isFree: boolean;
+  creatorId?: string;
+
+  // Tài nguyên đi kèm
+  videoUrls?: string[];
+  flashcardCount?: number;
+}
+
+export interface CourseEnrollmentResponse {
+  enrollmentId: string;
+  courseVersion: {
+    courseId: string;
+    title: string;
+    versionId: string;
+  };
+  userId: string;
+  status: "ACTIVE" | "COMPLETED" | "EXPIRED";
+  enrolledAt: string;
+  completedAt?: string;
+  progressPercent: number;
+}
+
+// --- CHARACTER & BADGES ---
+export interface Character3dResponse {
+  character3dId: string;
+  character3dName: string;
+  description?: string;
+  modelUrl: string;
+}
+
+export interface BadgeResponse {
+  badgeId: string;
+  badgeName: string;
+  description?: string;
+  imageUrl: string;
+  criteriaType: string;
+  criteriaThreshold: number;
+}
+
+// =============================================================================
+// 4. REQUEST PAYLOADS (Input for APIs)
+// =============================================================================
+
+// --- PAYMENT REQUESTS (Web Payment Logic) ---
+export interface DepositRequest {
+  userId: string;
+  amount: number;
+  provider: TransactionProvider; // VNPAY hoặc STRIPE
+  returnUrl: string; // URL deep link để app mở lại sau khi thanh toán trên web
+  currency: string; // "VND" hoặc "USD"
+  description?: string;
+}
+
+export interface PaymentRequest extends DepositRequest {
+  // Dùng chung cấu trúc với Deposit, nhưng có thể mở rộng
+  courseId?: string; // Nếu thanh toán trực tiếp khóa học (tùy logic BE)
+}
+
+export interface WithdrawRequest {
+  userId: string;
+  amount: number;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountName?: string;
+}
+
+// --- COURSE CREATION (P2P) ---
+export interface CreateCourseRequest {
+  creatorId: string;
+  title: string;
+  price: number;
+  languageCode: string; // "vi", "en"
+  difficultyLevel: string;
+}
+
+export interface UpdateCourseVersionRequest {
+  description?: string;
+  thumbnailUrl?: string;
+  lessonIds: string[]; // Danh sách ID bài học theo thứ tự
+}
+
+export interface PublishVersionRequest {
+  reasonForChange: string;
+}
+
+// --- INTERACTION ---
+export interface CreateReviewRequest {
+  userId: string;
+  rating: number;
+  comment: string;
 }
 
 export interface ComprehensionQuestion {
@@ -303,17 +619,6 @@ export interface UserMedia {
   createdAt?: string | null; // SQL: created_at
 }
 
-// Maps to: badges
-export interface BadgeResponse {
-  badgeId: string; // SQL: badge_id
-  badgeName: string; // SQL: badge_name
-  description: string | null; // SQL: description
-  imageUrl: string | null; // SQL: image_url
-  createdAt?: string; // SQL: created_at
-  updatedAt?: string; // SQL: updated_at
-  isDeleted?: boolean; // SQL: is_deleted
-  deletedAt?: string | null; // SQL: deleted_at
-}
 
 // DTO - No direct table
 export interface MindMapNode {
@@ -540,31 +845,6 @@ export interface RegisterResult {
   refreshToken: string;
 }
 
-/* Generic responses / DTOs */
-// DTO based on lesson_categories
-export interface LessonCategoryResponse {
-  lessonCategoryId: string; // SQL: lesson_category_id
-  lessonCategoryName?: string | null; // SQL: lesson_category_name
-}
-
-// DTO based on lessons
-export interface LessonResponse {
-  lessonId: string; // SQL: lesson_id
-  lessonName?: string; // SQL: lesson_name
-}
-
-// DTO based on lesson_questions
-export interface LessonQuestionResponse {
-  lessonQuestionId: string; // SQL: lesson_question_id
-  lessonId: string; // SQL: lesson_id
-  question: string; // SQL: question
-  optiona?: string | null; // Changed from optionA. SQL: optiona
-  optionb?: string | null; // Changed from optionB. SQL: optionb
-  optionc?: string | null; // Changed from optionC. SQL: optionc
-  optiond?: string | null; // Changed from optionD. SQL: optiond
-  correctOption?: string | null; // SQL: correct_option
-}
-
 // Maps to: lesson_progress_wrong_items (as Request DTO)
 export interface LessonProgressWrongItemRequest {
   lessonId: string; // SQL: lesson_id
@@ -734,16 +1014,6 @@ export interface SubmitExerciseResponse {
   details: Record<string, boolean> | Record<string, boolean>;
 }
 
-// DTO - No direct table
-export interface PaginatedResponse<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-  };
-}
 
 /* --- User related types --- */
 // Maps to: users
@@ -951,17 +1221,6 @@ export interface UserGoalResponse {
   updatedAt?: string; // SQL: updated_at
   isDeleted?: boolean; // SQL: is_deleted
   deletedAt?: string | null; // SQL: deleted_at
-}
-
-// DTO based on lesson_progress
-export interface LessonProgressResponse {
-  lessonId: string; // SQL: lesson_id
-  userId: string; // SQL: user_id
-  score?: number; // SQL: score
-  completedAt?: string | null; // SQL: completed_at
-  isDeleted: boolean; // SQL: is_deleted
-  createdAt?: string; // SQL: created_at
-  updatedAt?: string; // SQL: updated_at
 }
 
 // Maps to: lesson_categories
@@ -1652,12 +1911,6 @@ export interface VideoCall {
   deletedAt?: string | null; // SQL: deleted_at
 }
 
-// DTO - No direct table
-export interface CreateReviewRequest {
-  userId: string;
-  rating: number;
-  content: string;
-}
 
 // DTO based on video_reviews
 export interface VideoReviewResponse {
@@ -1806,25 +2059,6 @@ export interface LessonQuestionResponse {
   isDeleted: boolean; // SQL: is_deleted
   createdAt?: string; // SQL: created_at
   updatedAt?: string; // SQL: updated_at
-}
-
-// DTO based on lessons
-export interface LessonResponse {
-  lessonId: string; // SQL: lesson_id
-  lessonName?: string; // SQL: lesson_name
-  title?: string; // SQL: title
-  languageCode?: string | null; // SQL: language_code
-  expReward?: number; // SQL: exp_reward
-  // courseId?: string; // Removed, not in schema
-  lessonSeriesId?: string | null; // SQL: lesson_series_id
-  lessonCategoryId?: string | null; // SQL: lesson_category_id
-  lessonSubCategoryId?: string | null; // SQL: lesson_sub_category_id
-  lessonType?: string | null; // SQL: lesson_type
-  skillTypes?: string | null; // SQL: skill_types
-  // DTO fields
-  flashcardCount?: number;
-  dueFlashcardsCount?: number;
-  videoUrls?: string[];
 }
 
 // DTO based on lesson_reviews

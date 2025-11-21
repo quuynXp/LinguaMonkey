@@ -1,108 +1,140 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import instance from "../api/axiosInstance"
-import type { ApiResponse, PaginatedResponse } from "../types/api"
-import { Wallet, Transaction } from "../types/api"
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import instance from '../api/axiosInstance';
+import type { ApiResponse, PaginatedResponse } from '../types/api';
 
-
-// --- DTOs cho các request ---
-interface DepositRequest {
-  userId: string
-  amount: number
-  provider: "VNPAY" | "STRIPE"
-  currency: string
-  returnUrl: string
+interface Wallet {
+  walletId: string;
+  userId: string;
+  balance: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-interface TransferRequest {
-  senderId: string
-  receiverId: string
-  amount: number
-  description?: string
-  idempotencyKey: string
-}
-
-interface WithdrawRequest {
-  userId: string
-  amount: number
-  provider: "PAYMENT_GATEWAY_NAME"
-  // ... (Thêm các trường info bank account của PG)
+interface Transaction {
+  transactionId: string;
+  userId: string;
+  amount: number;
+  type: 'DEPOSIT' | 'WITHDRAW' | 'TRANSFER' | 'REFUND' | 'TRANSFER_RECEIVE';
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'PENDING_REFUND' | 'REFUNDED';
+  provider: string;
+  description: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const useWallet = () => {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   // === QUERIES ===
-
   const useWalletBalance = (userId?: string) => {
     return useQuery<Wallet>({
-      queryKey: ["walletBalance", userId],
+      queryKey: ['wallet', userId],
       queryFn: async () => {
-        if (!userId) throw new Error("User ID is required")
-        const response = await instance.get<ApiResponse<Wallet>>(`/api/v1/wallet/balance?userId=${userId}`)
-        return response.data.result!
+        if (!userId) throw new Error('User ID required');
+        const res = await instance.get<ApiResponse<Wallet>>(
+          `/api/v1/wallet/balance?userId=${userId}`
+        );
+        return res.data.result!;
       },
       enabled: !!userId,
-    })
-  }
+      staleTime: 60000,
+    });
+  };
 
-  const useTransactionHistory = (userId?: string, page = 0, size = 20) => {
-    return useQuery<PaginatedResponse<Transaction>>({
-      queryKey: ["transactionHistory", userId, page, size],
+  const useTransactionHistory = (userId?: string, page = 0, size = 10) => {
+    return useQuery<PaginatedResponse<Transaction> & { hasNextPage?: boolean }>({
+      queryKey: ['transactions', userId, page, size],
       queryFn: async () => {
-        if (!userId) throw new Error("User ID is required")
-        const qp = new URLSearchParams()
-        qp.append("userId", userId)
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        
-        const response = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/api/v1/wallet/history?${qp.toString()}`)
-        return response.data.result || { data: [], pagination: { page, limit: size, total: 0, totalPages: 0 } }
+        if (!userId) throw new Error('User ID required');
+        const res = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(
+          `/api/v1/wallet/history?userId=${userId}&page=${page}&size=${size}`
+        );
+        const data = res.data.result!;
+        return {
+          ...data,
+          hasNextPage: page < (data.pagination?.totalPages ?? 0) - 1,
+        };
       },
       enabled: !!userId,
-    })
-  }
-  
+      staleTime: 30000,
+    });
+  };
+
   // === MUTATIONS ===
-
-  const invalidateWallet = () => {
-      queryClient.invalidateQueries({ queryKey: ["walletBalance"] })
-      queryClient.invalidateQueries({ queryKey: ["transactionHistory"] })
-  }
-
   const useDeposit = () => {
-    return useMutation<string, Error, DepositRequest>({
+    return useMutation<
+      string,
+      { message: string },
+      {
+        userId: string;
+        amount: number;
+        provider: 'VNPAY' | 'STRIPE';
+        currency: string;
+        returnUrl: string;
+      }
+    >({
       mutationFn: async (payload) => {
-        const response = await instance.post<ApiResponse<string>>("/wallet/deposit", payload)
-        return response.data.result!
+        const res = await instance.post<ApiResponse<string>>(
+          '/api/v1/wallet/deposit',
+          payload
+        );
+        return res.data.result!;
       },
-      // Không cần invalidate, vì ta sẽ mở webview
-      // Webhook sẽ cập nhật BE, và ta sẽ refetch khi user quay lại app
-    })
-  }
+    });
+  };
 
   const useWithdraw = () => {
-    return useMutation<Transaction, Error, WithdrawRequest>({
+    return useMutation<
+      Transaction,
+      { message: string },
+      {
+        userId: string;
+        amount: number;
+        provider: string;
+        bankCode: string;
+        accountNumber: string;
+        accountName: string;
+      }
+    >({
       mutationFn: async (payload) => {
-        const response = await instance.post<ApiResponse<Transaction>>("/wallet/withdraw", payload)
-        return response.data.result!
+        const res = await instance.post<ApiResponse<Transaction>>(
+          '/api/v1/wallet/withdraw',
+          payload
+        );
+        return res.data.result!;
       },
       onSuccess: () => {
-        invalidateWallet()
+        queryClient.invalidateQueries({ queryKey: ['wallet'] });
+        queryClient.invalidateQueries({ queryKey: ['transactions'] });
       },
-    })
-  }
+    });
+  };
 
   const useTransfer = () => {
-    return useMutation<Transaction, Error, TransferRequest>({
+    return useMutation<
+      Transaction,
+      { message: string },
+      {
+        senderId: string;
+        receiverId: string;
+        amount: number;
+        description?: string;
+        idempotencyKey: string;
+      }
+    >({
       mutationFn: async (payload) => {
-        const response = await instance.post<ApiResponse<Transaction>>("/wallet/transfer", payload)
-        return response.data.result!
+        const res = await instance.post<ApiResponse<Transaction>>(
+          '/api/v1/wallet/transfer',
+          payload
+        );
+        return res.data.result!;
       },
       onSuccess: () => {
-        invalidateWallet()
+        queryClient.invalidateQueries({ queryKey: ['wallet'] });
+        queryClient.invalidateQueries({ queryKey: ['transactions'] });
       },
-    })
-  }
+    });
+  };
 
   return {
     useWalletBalance,
@@ -110,5 +142,5 @@ export const useWallet = () => {
     useDeposit,
     useWithdraw,
     useTransfer,
-  }
-}
+  };
+};

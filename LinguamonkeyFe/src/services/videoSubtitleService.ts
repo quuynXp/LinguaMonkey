@@ -1,69 +1,69 @@
-import { useTokenStore } from '../stores/tokenStore';
+import { useTokenStore } from "../stores/tokenStore";
 
 const KONG_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.0.2.2:8000";
-const KONG_WS_URL = KONG_BASE_URL.replace(/^http/, 'ws');
+const WS_URL = KONG_BASE_URL.replace(/^http/, 'ws');
 
 export interface DualSubtitle {
   original: string;
-  originalLang: string;
   translated: string;
+  originalLang: string;
   translatedLang: string;
-  speakerId?: string;
 }
-
-interface SubtitleWsMessage {
-  type: 'config' | 'subtitle_chunk';
-  data: DualSubtitle | { targetLang: string };
-}
-
-export type SubtitleCallback = (subtitle: DualSubtitle) => void;
 
 export class VideoSubtitleService {
   private ws: WebSocket | null = null;
-  private url: string;
-  private token: string;
+  private onSubtitle?: (subtitle: DualSubtitle) => void;
 
-  constructor() {
-    // Giả định endpoint này cho phụ đề video call, trỏ tới Python ASR
-    this.url = `${KONG_WS_URL}/ws/py/video-subtitle`; 
-    this.token = useTokenStore.getState().accessToken || "";
-  }
+  public connect(
+    roomId: string,
+    targetLang: string,
+    onSubtitle: (sub: DualSubtitle) => void
+  ) {
+    const token = useTokenStore.getState().accessToken;
+    if (!token) return;
 
-  public connect(roomId: string, targetLang: string, onSubtitle: SubtitleCallback): void {
-    if (!this.token) {
-      console.error("Subtitle WS: No token, connection aborted.");
-      return;
-    }
-    
-    // Gửi token, roomId và ngôn ngữ đích qua query param
-    const connectUrl = `${this.url}/${roomId}?token=${encodeURIComponent(this.token)}&targetLang=${targetLang}`;
-    this.ws = new WebSocket(connectUrl);
+    // Connect tới endpoint Python: /ws/live-subtitles
+    // (Lưu ý: route này phải được define trong main.py của Python)
+    const url = `${WS_URL}/ws/py/live-subtitles?token=${encodeURIComponent(token)}&roomId=${roomId}&nativeLang=${targetLang}`;
 
-    this.ws.onopen = () => console.log('✅ Subtitle WS connected');
-    this.ws.onmessage = (e) => {
+    this.ws = new WebSocket(url);
+    this.onSubtitle = onSubtitle;
+
+    this.ws.onopen = () => console.log("🎙️ Subtitle WS Connected");
+
+    this.ws.onmessage = (event) => {
       try {
-        const msg = JSON.parse(e.data) as SubtitleWsMessage;
-        if (msg.type === 'subtitle_chunk') {
-          onSubtitle(msg.data as DualSubtitle);
+        const data = JSON.parse(event.data);
+        if (data.type === 'subtitle' && this.onSubtitle) {
+          this.onSubtitle({
+            original: data.original,
+            translated: data.translated,
+            originalLang: data.originalLang,
+            translatedLang: data.translatedLang
+          });
         }
-      } catch {}
+      } catch (e) {
+        console.error("Subtitle parse error", e);
+      }
     };
-    this.ws.onerror = (e: any) => console.log('❌ Subtitle WS error', e?.message || e);
-    this.ws.onclose = () => console.log('Subtitle WS disconnected');
+
+    this.ws.onerror = (e) => console.error("Subtitle WS Error", e);
   }
 
-  public updateTargetLanguage(lang: string): void {
-    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify({
-        type: 'config',
-        data: { targetLang: lang }
-      }));
+  public sendAudioChunk(base64Audio: string) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ audio_chunk: base64Audio }));
     }
   }
 
-  public disconnect(): void {
+  public updateTargetLanguage(lang: string) {
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({ type: 'config', targetLang: lang }));
+    }
+  }
+
+  public disconnect() {
     this.ws?.close();
     this.ws = null;
   }
 }
-

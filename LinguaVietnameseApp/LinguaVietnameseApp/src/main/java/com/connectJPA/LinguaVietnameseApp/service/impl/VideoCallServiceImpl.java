@@ -2,17 +2,16 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoCallRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoCallResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCall;
 import com.connectJPA.LinguaVietnameseApp.entity.VideoCallParticipant;
 import com.connectJPA.LinguaVietnameseApp.entity.id.VideoCallParticipantId;
-import com.connectJPA.LinguaVietnameseApp.enums.VideoCallParticipantStatus;
-import com.connectJPA.LinguaVietnameseApp.enums.VideoCallRole;
-import com.connectJPA.LinguaVietnameseApp.enums.VideoCallStatus;
-import com.connectJPA.LinguaVietnameseApp.enums.VideoCallType;
+import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.VideoCallMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoCallParticipantRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoCallRepository;
@@ -37,6 +36,7 @@ public class VideoCallServiceImpl implements VideoCallService {
     private final VideoCallMapper videoCallMapper;
     private final VideoCallParticipantRepository videoCallParticipantRepository;
     private final UserRepository userRepository;
+    private final RoomRepository roomRepository;
 
     @Override
     public Page<VideoCallResponse> getAllVideoCalls(String callerId, String status, Pageable pageable) {
@@ -70,15 +70,35 @@ public class VideoCallServiceImpl implements VideoCallService {
 
     @Override
     public VideoCallResponse createVideoCall(VideoCallRequest request) {
+        Room room = Room.builder()
+                .creatorId(request.getCallerId())
+                .topic(RoomTopic.WORLD)
+                .purpose(RoomPurpose.CALL)
+                .status(RoomStatus.ACTIVE)
+                .build();
+
+        var roomSaved = roomRepository.save(room);
+
         VideoCall videoCall = videoCallMapper.toEntity(request);
+        videoCall.setRoomId(roomSaved.getRoomId());
         videoCall = videoCallRepository.save(videoCall);
         return videoCallMapper.toResponse(videoCall);
     }
 
     @Override
     public VideoCallResponse createGroupVideoCall(UUID callerId, List<UUID> participantIds, VideoCallType type) {
+        Room room = Room.builder()
+                .creatorId(callerId)
+                .topic(RoomTopic.WORLD)
+                .purpose(RoomPurpose.CALL)
+                .status(RoomStatus.ACTIVE)
+                .build();
+
+        var roomSaved = roomRepository.save(room);
+
         VideoCall videoCall = VideoCall.builder()
                 .callerId(callerId)
+                .roomId(roomSaved.getRoomId())
                 .videoCallType(type)
                 .status(VideoCallStatus.INITIATED)
                 .build();

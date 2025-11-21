@@ -1,5 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.dto.BilingualSubtitleDTO;
+import com.connectJPA.LinguaVietnameseApp.dto.SubtitleItem;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoProgressRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.VideoSubtitleRequest;
@@ -8,10 +10,14 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.VideoResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.VideoSubtitleResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.VideoType;
+import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
+import com.connectJPA.LinguaVietnameseApp.service.MinioService;
 import com.connectJPA.LinguaVietnameseApp.service.VideoService;
+import com.connectJPA.LinguaVietnameseApp.utils.SubtitleUtils;
 import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,11 +25,15 @@ import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
+import java.io.ByteArrayInputStream;
+import java.time.OffsetDateTime;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class VideoServiceImpl implements VideoService {
 
     private final VideoRepository videoRepository;
@@ -31,7 +41,9 @@ public class VideoServiceImpl implements VideoService {
     private final ReviewReactionRepository reviewReactionRepository;
     private final VideoReactionRepository videoReactionRepository;
     private final VideoReviewRepository videoReviewRepository;
-
+    private final MinioService minioService;
+    private final SubtitleUtils subtitleUtils;
+    private final GrpcClientService grpcClientService;
 
     @Override
     public Page<BilingualVideoResponse> getBilingualVideos(Pageable pageable, String category, String level) {
@@ -50,8 +62,7 @@ public class VideoServiceImpl implements VideoService {
         } else {
             page = videoRepository.findAll(pageable);
         }
-
-        return page.map(this::toBilingualDto);
+        return searchVideos(pageable, null, null, category, "recent");
     }
 
     private void upsertReaction(UUID videoId, UUID userId, Short reactionValue) {
@@ -72,14 +83,15 @@ public class VideoServiceImpl implements VideoService {
         }
     }
 
+    @Override
     @Transactional
     public VideoReview createReview(UUID videoId, UUID userId, Integer rating, String content) {
-        // call moderation check before saving (see section moderation)
         VideoReview review = new VideoReview();
         review.setVideoId(videoId);
         review.setUserId(userId);
         review.setRating(rating);
         review.setContent(content);
+        review.setCreatedAt(OffsetDateTime.now());
         return videoReviewRepository.save(review);
     }
 
@@ -99,6 +111,82 @@ public class VideoServiceImpl implements VideoService {
                 existing.setReaction(reaction);
                 reviewReactionRepository.save(existing);
             }
+        }
+    }
+
+    @Override
+    @Transactional
+    public VideoSubtitleResponse generateTranslatedSubtitle(UUID videoId, String originalLang, String targetLang, String token) {
+        // 1. Tìm video và Subtitle gốc
+        videoRepository.findById(videoId).orElseThrow(() -> new RuntimeException("Video not found"));
+
+        VideoSubtitle sourceSub = subtitleRepository.findByVideoId(videoId).stream()
+                .filter(s -> s.getLanguageCode().equalsIgnoreCase(originalLang))
+                .findFirst()
+                .orElseThrow(() -> new RuntimeException("Source subtitle (" + originalLang + ") not found. Please upload it first."));
+
+        // 2. Download file gốc từ MinIO
+        byte[] sourceBytes = minioService.getFile(sourceSub.getSubtitleUrl());
+        List<SubtitleItem> sourceItems = subtitleUtils.parseSrt(new ByteArrayInputStream(sourceBytes));
+
+        // 3. Gọi gRPC Python để dịch từng dòng (Dùng Async để nhanh hơn)
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+        List<SubtitleItem> translatedItems = new ArrayList<>();
+
+        // Copy structure
+        for (SubtitleItem item : sourceItems) {
+            SubtitleItem newItem = new SubtitleItem(item.getId(), item.getStartTime(), item.getEndTime(), "");
+            translatedItems.add(newItem);
+
+            // Gọi Async Translate
+            CompletableFuture<Void> future = grpcClientService.callTranslateAsync(token, item.getText(), originalLang, targetLang)
+                    .thenAccept(response -> {
+                        if (response != null && !response.getError().isEmpty()) {
+                            System.err.println("Translation Error: " + response.getError());
+                            newItem.setText(item.getText()); // Fallback về gốc nếu lỗi
+                        } else {
+                            newItem.setText(response.getTranslatedText());
+                        }
+                    }).exceptionally(e -> {
+                        System.err.println("gRPC Fail: " + e.getMessage());
+                        newItem.setText(item.getText());
+                        return null;
+                    });
+            futures.add(future);
+        }
+
+        // Chờ tất cả các dòng dịch xong
+        CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+
+        // 4. Tạo file .srt mới từ list đã dịch
+        byte[] newSrtContent = subtitleUtils.createSrtFile(translatedItems);
+
+        // 5. Upload file mới lên MinIO
+        // Tạo MultipartFile ảo hoặc upload trực tiếp byte[] (Cần sửa MinioService xíu hoặc dùng InputStream)
+        String fileName = "subtitles/" + videoId + "_" + targetLang + "_" + System.currentTimeMillis() + ".srt";
+        String newUrl = uploadBytesToMinio(newSrtContent, fileName); // Hàm helper bên dưới
+
+        // 6. Lưu vào Database
+        VideoSubtitle newSub = new VideoSubtitle();
+        newSub.setVideoId(videoId);
+        newSub.setLanguageCode(targetLang);
+        newSub.setSubtitleUrl(newUrl); // Lưu path object
+
+        // Xóa sub cũ nếu đã tồn tại để tránh duplicate
+        subtitleRepository.findByVideoId(videoId).stream()
+                .filter(s -> s.getLanguageCode().equalsIgnoreCase(targetLang))
+                .forEach(subtitleRepository::delete);
+
+        VideoSubtitle saved = subtitleRepository.save(newSub);
+
+        return toSubtitleResponse(saved);
+    }
+
+    private String uploadBytesToMinio(byte[] data, String objectName) {
+        try {
+            return minioService.uploadStream(new ByteArrayInputStream(data), objectName, "text/plain");
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to upload translated subtitle", e);
         }
     }
 
@@ -157,12 +245,99 @@ public class VideoServiceImpl implements VideoService {
     }
 
     @Override
-    public VideoResponse getVideoById(UUID id) {
-        Video v = videoRepository.findById(id).orElseThrow(() -> new NoSuchElementException("Video not found: " + id));
+    public VideoResponse getVideoById(UUID id, String targetLang) {
+        // 1. Lấy Video
+        Video v = videoRepository.findById(id)
+                .orElseThrow(() -> new NoSuchElementException("Video not found: " + id));
+
         VideoResponse resp = toVideoResponse(v);
-        List<VideoSubtitle> subs = subtitleRepository.findByVideoId(id);
-        resp.setSubtitles(subs.stream().map(this::toSubtitleResponse).collect(Collectors.toList()));
+
+        // 2. Lấy danh sách Subtitles
+        List<VideoSubtitle> allSubs = subtitleRepository.findByVideoId(id);
+
+        // Xác định ngôn ngữ gốc (Lấy từ Video entity nếu có, hoặc mặc định 'en')
+        String originalLang = v.getLanguage() != null ? v.getLanguage() : "en";
+
+        // Tìm Record Subtitle Gốc và Đích
+        VideoSubtitle srcSubRecord = allSubs.stream()
+                .filter(s -> s.getLanguageCode().equalsIgnoreCase(originalLang))
+                .findFirst().orElse(null);
+
+        VideoSubtitle tgtSubRecord = allSubs.stream()
+                .filter(s -> s.getLanguageCode().equalsIgnoreCase(targetLang))
+                .findFirst().orElse(null);
+
+        // 3. Merge Logic
+        List<BilingualSubtitleDTO> mergedSubtitles = new ArrayList<>();
+
+        if (srcSubRecord != null) {
+            // Download & Parse Source
+            List<SubtitleItem> srcItems = downloadAndParseSrt(srcSubRecord.getSubtitleUrl());
+
+            // Download & Parse Target (nếu có)
+            List<SubtitleItem> tgtItems = (tgtSubRecord != null)
+                    ? downloadAndParseSrt(tgtSubRecord.getSubtitleUrl())
+                    : new ArrayList<>();
+
+            for (SubtitleItem item : srcItems) {
+                BilingualSubtitleDTO dto = new BilingualSubtitleDTO();
+                dto.setSubtitleId(UUID.randomUUID());
+
+                // Convert milliseconds -> seconds cho React Native
+                dto.setStartTime(item.getStartTime() / 1000.0);
+                dto.setEndTime(item.getEndTime() / 1000.0);
+                dto.setOriginalText(item.getText());
+
+                // Tìm text dịch (Match khoảng thời gian)
+                String translatedText = tgtItems.stream()
+                        .filter(t -> isTimeOverlap(t, item))
+                        .map(SubtitleItem::getText)
+                        .findFirst()
+                        .orElse("");
+
+                dto.setTranslatedText(translatedText);
+                mergedSubtitles.add(dto);
+            }
+        }
+
+        // Gán vào field 'subtitles' đúng như FE mong đợi
+        resp.setSubtitles(mergedSubtitles);
+
         return resp;
+    }
+
+    private List<SubtitleItem> downloadAndParseSrt(String minioObjectPath) {
+        try {
+            byte[] fileContent = minioService.getFile(minioObjectPath);
+            return subtitleUtils.parseSrt(new ByteArrayInputStream(fileContent));
+        } catch (Exception e) {
+            log.error("Error parsing subtitle: {}", minioObjectPath);
+            return new ArrayList<>();
+        }
+    }
+
+    private boolean isTimeOverlap(SubtitleItem t, SubtitleItem s) {
+        return t.getStartTime() >= s.getStartTime() - 500 && t.getEndTime() <= s.getEndTime() + 500;
+    }
+
+    private List<BilingualSubtitleDTO> mergeSubtitles(List<SubtitleItem> origins, List<SubtitleItem> targets) {
+        List<BilingualSubtitleDTO> result = new ArrayList<>();
+
+        for (SubtitleItem org : origins) {
+            BilingualSubtitleDTO dto = new BilingualSubtitleDTO();
+            dto.setStartTime(org.getStartTime());
+            dto.setEndTime(org.getEndTime());
+            dto.setOriginalText(org.getText());
+
+            String transText = targets.stream()
+                    .filter(tar -> tar.getStartTime() < org.getEndTime() && tar.getEndTime() > org.getStartTime())
+                    .map(SubtitleItem::getText)
+                    .collect(Collectors.joining(" ")); // Ghép nếu có nhiều câu dịch nhỏ
+
+            dto.setTranslatedText(transText);
+            result.add(dto);
+        }
+        return result;
     }
 
     @Override
@@ -278,8 +453,8 @@ public class VideoServiceImpl implements VideoService {
         r.setVideoId(v.getVideoId());
         r.setVideoUrl(v.getVideoUrl());
         r.setTitle(v.getTitle());
-        r.setType(v.getType() != null ? v.getType().name() : null);
-        r.setLevel(v.getLevel());
+        r.setType(String.valueOf(v.getType()));
+        r.setLevel(String.valueOf(v.getLevel()));
         r.setOriginalSubtitleUrl(v.getOriginalSubtitleUrl());
         r.setLessonId(v.getLessonId());
         r.setCreatedAt(v.getCreatedAt());

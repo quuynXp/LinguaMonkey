@@ -49,6 +49,23 @@ public class MinioServiceImpl implements MinioService {
         }
     }
 
+    @Override
+    public String uploadStream(InputStream inputStream, String objectName, String contentType) {
+        try {
+            minioClient.putObject(
+                    PutObjectArgs.builder()
+                            .bucket(bucket)
+                            .object(objectName)
+                            .stream(inputStream, inputStream.available(), -1)
+                            .contentType(contentType)
+                            .build()
+            );
+            return objectName;
+        } catch (Exception e) {
+            throw new RuntimeException("Upload failed", e);
+        }
+    }
+
     @Transactional
     @Override
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {

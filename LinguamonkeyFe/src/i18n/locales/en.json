@@ -361,6 +361,8 @@
     "error": "Error",
     "success": "Success",
     "cancel": "Cancel",
+    "open_settings": "Open Settings",
+    "no_internet": "No internet connection. Please check your network.",
     "save": "Save",
     "delete": "Delete",
     "edit": "Edit",
@@ -1414,6 +1416,8 @@
     "studyTime": "Study Time: {{time}}",
     "reminderFrequency": "Reminder Frequency",
     "daily": "Daily",
+    "default_title": "Notification",
+    "channel_default_name": "General Notifications",
     "weekdays": "Weekdays Only",
     "custom": "Custom Days",
     "selectDays": "Select Days",
@@ -1728,6 +1732,9 @@
     "settingsMessage": "This feature requires permission, but it has been permanently denied. Please go to app settings to enable it.",
     "goToSettings": "Go to Settings",
     "cancel": "Cancel",
+    "unavailable": "This feature is not available on your device",
+    "blocked_title": "Permission {{feature}} denied",
+    "enable_in_settings": "Please go to Settings and grant permission.",
     "overlay": {
       "title": "Overlay Permission",
       "message": "This app needs permission to display over other apps (e.g., for chat bubbles or incoming call alerts)."
@@ -1801,5 +1808,38 @@
   "roadmap.addSuggestion": "Add Your Suggestion",
   "roadmap.suggestionPlaceholder": "Share your idea to improve this roadmap...",
   "home.challenge.error": "Failed to load challenges",
-  "home.dailyGoal.complete": "Complete {total} lessons today"
+  "home.dailyGoal.complete": "Complete {total} lessons today",
+  "wallet": {
+    "availableBalance": "Số dư khả dụng",
+    "topup": "Nạp tiền",
+    "withdraw": "Rút tiền",
+    "transfer": "Chuyển tiền",
+    "transactionHistory": "Lịch sử giao dịch",
+    "noTransactions": "Chưa có giao dịch nào",
+    "topupTitle": "Nạp tiền vào ví",
+    "quickAmount": "Số tiền nhanh",
+    "customAmount": "Số tiền tùy chỉnh",
+    "enterAmount": "Nhập số tiền",
+    "minimumAmount": "Số tiền tối thiểu",
+    "paymentMethod": "Phương thức thanh toán",
+    "totalAmount": "Tổng số tiền",
+    "topupNote": "Mỗi lần nạp tối thiểu 10.000đ",
+    "proceed": "Tiến hành thanh toán"
+  },
+  "transaction": {
+    "type": {
+      "DEPOSIT": "Nạp tiền",
+      "WITHDRAW": "Rút tiền",
+      "TRANSFER": "Chuyển tiền",
+      "REFUND": "Hoàn tiền",
+      "TRANSFER_RECEIVE": "Nhận tiền"
+    },
+    "status": {
+      "PENDING": "Đang xử lý",
+      "SUCCESS": "Thành công",
+      "FAILED": "Thất bại",
+      "PENDING_REFUND": "Chờ hoàn",
+      "REFUNDED": "Đã hoàn"
+    }
+  }
 }

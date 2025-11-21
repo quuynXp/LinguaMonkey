@@ -15,6 +15,9 @@ import java.util.UUID;
 
 public interface RoomService {
     @Transactional
+    RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2);
+
+    @Transactional
     RoomResponse findOrCreateAiChatRoom(UUID userId);
 
     RoomResponse getRoomById(UUID id);

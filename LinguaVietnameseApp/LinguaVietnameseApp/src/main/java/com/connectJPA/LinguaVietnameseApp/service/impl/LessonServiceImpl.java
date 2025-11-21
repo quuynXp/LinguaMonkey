@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.CourseLessonId;
+import com.connectJPA.LinguaVietnameseApp.entity.id.CourseVersionLessonId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressId;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressWrongItemsId;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
@@ -56,7 +57,7 @@ public class LessonServiceImpl implements LessonService {
     private final LessonProgressWrongItemRepository lessonProgressWrongItemRepository;
     private final GrpcClientService grpcClientService;
     private final QuizQuestionMapper quizQuestionMapper;
-
+    private final CourseVersionLessonRepository courseVersionLessonRepository;
 
     @Override
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
@@ -353,6 +354,37 @@ public class LessonServiceImpl implements LessonService {
                 throw appEx; // Ném lại lỗi AppException từ gRPC
             }
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+        }
+    }
+
+    @Override
+    @Transactional
+    public Lesson saveLessonForVersion(Lesson lesson, UUID versionId, Integer lessonIndex) {
+        try {
+            if (lesson.getLessonName() == null) {
+                lesson.setLessonName("Untitled Lesson");
+            }
+
+            // Set default status nếu cần
+            lesson.setDeleted(false);
+
+            Lesson savedLesson = lessonRepository.save(lesson);
+
+            // B. Tạo liên kết với CourseVersion (Bảng CourseVersionLesson)
+            CourseVersionLessonId linkId = new CourseVersionLessonId(versionId, savedLesson.getLessonId());
+
+            CourseVersionLesson courseVersionLesson = CourseVersionLesson.builder()
+                    .id(linkId)
+                    .orderIndex(lessonIndex)
+                    .build();
+
+            courseVersionLessonRepository.save(courseVersionLesson);
+
+            return savedLesson;
+
+        } catch (Exception e) {
+            log.error("Error saving lesson for version: {}", e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 

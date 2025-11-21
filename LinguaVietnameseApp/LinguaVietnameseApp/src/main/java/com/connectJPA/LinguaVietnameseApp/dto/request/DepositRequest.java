@@ -1,14 +1,19 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionProvider;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+import lombok.*;
 
 import java.math.BigDecimal;
 import java.util.UUID;
 
 @Data
+@Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class DepositRequest {
     @NotNull
     private UUID userId;
@@ -18,6 +23,7 @@ public class DepositRequest {
     private BigDecimal amount;
 
     @NotNull
+    @Enumerated(EnumType.STRING)
     private TransactionProvider provider;
 
     @NotNull

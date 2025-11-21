@@ -358,7 +358,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
 
         UserRoadmap ur = userRoadmapRepository
-                .findById(new UserRoadmapId(userId, item.getRoadmapId()))
+                .findById(new UserRoadmapId(userId, item.getRoadmap().getRoadmapId()))
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_ASSIGNED));
 
         ur.setStatus("in-progress");
@@ -372,7 +372,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
 
         UserRoadmap ur = userRoadmapRepository
-                .findById(new UserRoadmapId(userId, item.getRoadmapId()))
+                .findById(new UserRoadmapId(userId, item.getRoadmap().getRoadmapId()))
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_ASSIGNED));
 
         ur.setCompletedItems(ur.getCompletedItems() + 1);
@@ -450,7 +450,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                 UUID itemId = itemProto.getItemId().isEmpty() ? UUID.randomUUID() : UUID.fromString(itemProto.getItemId());
                 RoadmapItem item = new RoadmapItem();
                 item.setItemId(itemId);
-                item.setRoadmapId(roadmapId);
+                item.setRoadmap(roadmap);
                 item.setTitle(itemProto.getTitle());
                 item.setDescription(itemProto.getDescription());
                 item.setType(itemProto.getType());
@@ -520,7 +520,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                         UUID mId = mProto.getMilestoneId().isEmpty() ? UUID.randomUUID() : UUID.fromString(mProto.getMilestoneId());
                         RoadmapMilestone m = new RoadmapMilestone();
                         m.setMilestoneId(mId);
-                        m.setRoadmapId(roadmapId);
+                        m.setRoadmap(roadmap);
                         m.setTitle(mProto.getTitle());
                         m.setDescription(mProto.getDescription());
                         m.setLevel(mProto.getLevel());

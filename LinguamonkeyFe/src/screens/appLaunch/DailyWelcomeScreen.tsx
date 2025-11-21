@@ -1,30 +1,17 @@
-import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
-import { useTranslation } from "react-i18next";
-import { useUserStore } from "../../stores/UserStore";
-import { useLearningStore } from "../../stores/LearningStore";
-import axiosInstance from "../../api/axiosInstance";
-import { useAppStore } from '../../stores/appStore';
-import { getGreetingTime } from "../../utils/timeHelper";
-import { useProgressStats } from "../../hooks/useProgressStats";
-import { User, UserGoalResponse, UserBadge } from "../../types/api";
+import React, { useEffect, useRef, useState } from "react";
+import { Animated, Text, TouchableOpacity, View, Image } from "react-native";
+import Icon from "react-native-vector-icons/MaterialIcons";
 import { StackNavigationProp } from "@react-navigation/stack";
-import { MaterialIcons } from '@expo/vector-icons';
+import { useUserStore } from "../../stores/UserStore";
+import { useProgressStats } from "../../hooks/useProgressStats";
 import { resetToTab, resetToAuth } from "../../utils/navigationRef";
-import { createScaledSheet } from '../../utils/scaledStyles';
-// import { useBadge } from '../../hooks/useBadge';
+import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
+import { getGreetingKey, getRandomQuote, getTimeBasedEmoji } from "../../utils/motivationHelper";
+import { useTranslation } from "react-i18next";
 
 type RootStackParamList = {
   DailyWelcome: undefined;
-  Main: { initialRouteName?: string; screen?: string; params?: any };
   Auth: undefined;
 };
 
@@ -33,36 +20,16 @@ type DailyWelcomeScreenProps = {
 };
 
 const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
-  const user = useUserStore((state) => state.user);
-  const addBadge = useUserStore((state) => state.badgeId);
+  const { user, nativeLanguageId } = useUserStore();
   const { t } = useTranslation();
-  const { selectedLesson, updateProgress } = useLearningStore();
-  const { nativeLanguageId, setNativeLanguage } = useUserStore();
+  const { progressStats } = useProgressStats(user?.userId);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.8)).current;
-  const fireAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
-  const [motivationalMessage, setMotivationalMessage] = useState("");
-  const [achievements, setAchievements] = useState<UserBadge[]>([]);
-  const [userGoal, setUserGoal] = useState<UserGoalResponse | null>(null);
-
-  const { progressStats, lessonProgress } = useProgressStats(user?.userId);
-
-  const motivationalMessages = {
-    en: [
-      "Every word you learn is a step closer to fluency! 🌟",
-      "Consistency is the key to mastering any language! 💪",
-    ],
-    vi: [
-      "Mỗi từ bạn học là một bước tiến gần hơn đến sự thành thạo! 🌟",
-      "Sự kiên trì là chìa khóa để làm chủ bất kỳ ngôn ngữ nào! 💪",
-    ],
-    zh: [
-      "你学的每个词都让你更接近流利！🌟",
-      "坚持不懈是掌握任何语言的关键！💪",
-    ],
-  };
+  const [quote, setQuote] = useState({ id: '0', text: '' });
+  const [greetingTime, setGreetingTime] = useState('');
 
   useEffect(() => {
     if (!user?.userId) {
@@ -70,39 +37,8 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
       return;
     }
 
-    const userId = user?.userId;
-    const fetchAchievements = async () => {
-      try {
-        if (userId) {
-          const response = await axiosInstance.get<{ data: UserBadge[] }>(`/api/v1/badge/${userId}`);
-          const badgesData = response.data.data;
-          setAchievements(badgesData.filter((badge) => badge.badgeId));
-        }
-      } catch (error) {
-        console.error("Failed to fetch achievements:", error);
-      }
-    };
-
-    const fetchUserGoal = async () => {
-      try {
-        if (userId) {
-          const response = await axiosInstance.get<{ data: UserGoalResponse[] }>(`/api/v1/user-goals`, {
-            params: { userId },
-          });
-          const goalsData = response.data.data;
-          setUserGoal(goalsData[0] || null);
-        }
-      } catch (error) {
-        console.error("Failed to fetch user goal:", error);
-      }
-    };
-
-    fetchAchievements();
-    fetchUserGoal();
-
-    const messages = motivationalMessages[nativeLanguageId || "en"];
-    const randomMessage = messages[Math.floor(Math.random() * messages.length)];
-    setMotivationalMessage(randomMessage);
+    setGreetingTime(getGreetingKey());
+    setQuote(getRandomQuote(nativeLanguageId));
 
     Animated.parallel([
       Animated.timing(fadeAnim, {
@@ -110,357 +46,284 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         duration: 800,
         useNativeDriver: true,
       }),
-      Animated.timing(scaleAnim, {
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        tension: 50,
+        friction: 7,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
         toValue: 1,
-        duration: 800,
+        tension: 50,
+        friction: 7,
         useNativeDriver: true,
       }),
     ]).start();
-
-    setTimeout(() => {
-      Animated.spring(fireAnim, {
-        toValue: 1,
-        tension: 100,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
-    }, 500);
-  }, [nativeLanguageId, user?.userId, navigation]);
-
-  const getGreeting = () => {
-    return getGreetingTime(undefined, nativeLanguageId || "en");
-  };
-
-  const getStreakMessage = () => {
-    const streak = (user as User)?.streak || 0;
-    if (streak === 1) return t("streakMessage.start");
-    if (streak < 7) return t("streakMessage.momentum");
-    if (streak < 30) return t("streakMessage.fire");
-    if (streak < 100) return t("streakMessage.unstoppable");
-    return t("streakMessage.legend");
-  };
+  }, [user?.userId, nativeLanguageId]);
 
   return (
-    <ScrollView
-      contentContainerStyle={{ ...styles.container, flexGrow: 1 }}
-      showsVerticalScrollIndicator={false}
-    >
-      <Animated.View style={{ transform: [{ scale: scaleAnim }], opacity: fadeAnim }}>
+    <ScreenLayout backgroundColor="#F8FAFC">
+      <View style={styles.headerContainer}>
+        <TouchableOpacity
+          onPress={() => resetToTab('Home')}
+          style={styles.closeButton}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Icon name="close" size={24} color="#6B7280" />
+        </TouchableOpacity>
+      </View>
 
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => resetToTab('Home')}>
-            <Icon name="close" size={24} color="#6B7280" />
-          </TouchableOpacity>
+      <Animated.ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}
+      >
+        {/* Greeting Section */}
+        <View style={styles.greetingContainer}>
+          <Text style={styles.greetingEmoji}>{getTimeBasedEmoji()}</Text>
+          <Text style={styles.greetingTitle}>
+            {t(greetingTime)}, {user?.fullname?.split(' ')[0] || user?.nickname || "Learner"}
+          </Text>
+          <Text style={styles.greetingSubtitle}>{t("welcome.subtitle")}</Text>
         </View>
 
-        {/* Greeting */}
-        <Text style={styles.greeting}>
-          {getGreeting()}, {user?.fullname || user?.nickname || ""} 🌅
-        </Text>
-
-        {/* Streak Section */}
-        <Animated.View
-          style={[styles.streakContainer, { transform: [{ scale: fireAnim }] }]}
-        >
-          <View style={styles.streakCard}>
-            <View style={styles.fireIcon}>
-              <Text style={styles.fireEmoji}>🔥</Text>
-            </View>
-            <View style={styles.streakInfo}>
-              <Text style={styles.streakCount}>
-                {t("streakTitle", { count: user?.streak || 0 })}
-              </Text>
-              <Text style={styles.streakMessage}>{getStreakMessage()}</Text>
-            </View>
+        {/* Streak Card */}
+        <Animated.View style={[styles.streakCard, { transform: [{ scale: scaleAnim }] }]}>
+          <View style={styles.streakLeft}>
+            <Text style={styles.streakCount}>{user?.streak || 0}</Text>
+            <Text style={styles.streakLabel}>{t("home.dailyStreak")}</Text>
+          </View>
+          <View style={styles.streakRight}>
+            <Icon name="local-fire-department" size={40} color="#F59E0B" />
+            <Text style={styles.streakMessage}>
+              {t("streakMessage.momentum")}
+            </Text>
           </View>
         </Animated.View>
 
-        {/* Motivational Message */}
-        <View style={styles.motivationCard}>
-          <Icon name="format-quote" size={24} color="#4F46E5" />
-          <Text style={styles.motivationText}>{motivationalMessage}</Text>
+        {/* Motivation Quote */}
+        <View style={styles.quoteContainer}>
+          <Icon name="format-quote" size={32} color="#4F46E5" style={styles.quoteIcon} />
+          <Text style={styles.quoteText}>{quote.text}</Text>
         </View>
 
-        {/* Progress Section */}
-        <View style={styles.progressSection}>
-          <Text style={styles.sectionTitle}>{t("progressSection")} 📊</Text>
-          <View style={styles.statsGrid}>
-            <View style={styles.statCard}>
-              <Icon name="school" size={24} color="#10B981" />
-              <Text style={styles.statNumber}>{progressStats.completedLessons}</Text>
+        {/* Daily Stats Grid */}
+        <View style={styles.statsContainer}>
+          <Text style={styles.sectionTitle}>{t("progressSection")}</Text>
+          <View style={styles.grid}>
+            <View style={styles.statItem}>
+              <View style={[styles.iconCircle, { backgroundColor: '#ECFDF5' }]}>
+                <Icon name="school" size={24} color="#10B981" />
+              </View>
+              <Text style={styles.statValue}>{progressStats.completedLessons}</Text>
               <Text style={styles.statLabel}>{t("stats.lessons")}</Text>
             </View>
-            <View style={styles.statCard}>
-              <Icon name="stars" size={24} color="#8B5CF6" />
-              <Text style={styles.statNumber}>{user?.exp || 0}</Text>
-              <Text style={styles.statLabel}>
-                {t("stats.xp")} / {user?.expToNextLevel || 0}
-              </Text>
+
+            <View style={styles.statItem}>
+              <View style={[styles.iconCircle, { backgroundColor: '#F5F3FF' }]}>
+                <Icon name="stars" size={24} color="#8B5CF6" />
+              </View>
+              <Text style={styles.statValue}>{user?.exp || 0}</Text>
+              <Text style={styles.statLabel}>{t("stats.xp")}</Text>
             </View>
-            <View style={styles.statCard}>
-              <Icon name="leaderboard" size={24} color="#F59E0B" />
-              <Text style={styles.statNumber}>{user?.level || 1}</Text>
-              <Text style={styles.statLabel}>{t("stats.level")}</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Icon name="schedule" size={24} color="#3B82F6" />
-              <Text style={styles.statNumber}>{progressStats.timeSpent}m</Text>
+
+            <View style={styles.statItem}>
+              <View style={[styles.iconCircle, { backgroundColor: '#EFF6FF' }]}>
+                <Icon name="schedule" size={24} color="#3B82F6" />
+              </View>
+              <Text style={styles.statValue}>{progressStats.timeSpent}m</Text>
               <Text style={styles.statLabel}>{t("stats.time")}</Text>
             </View>
           </View>
         </View>
 
-        {/* Achievements */}
-        {/* <View style={styles.achievementsList}>
-          {achievements.map((ach) => {
-            const { badge, loading } = useBadge(ach.badgeId);
+      </Animated.ScrollView>
 
-            if (loading || !badge) return null;
-
-            return (
-              <View key={ach.badgeId} style={styles.achievementCard}>
-                <Icon name="emoji-events" size={20} color="#F59E0B" />
-                <View style={styles.achievementInfo}>
-                  <Text style={styles.achievementTitle}>{badge.badgeName}</Text>
-                  <Text style={styles.achievementDescription}>{badge.description}</Text>
-                </View>
-              </View>
-            );
-          })}
-        </View> */}
-
-        {/* Continue Learning */}
+      {/* Bottom Action */}
+      <View style={styles.footer}>
         <TouchableOpacity
           style={styles.continueButton}
           onPress={() => resetToTab('Home', 'HomeMain')}
+          activeOpacity={0.8}
         >
           <Text style={styles.continueButtonText}>{t("continueButton")}</Text>
           <Icon name="arrow-forward" size={20} color="#FFFFFF" />
         </TouchableOpacity>
-      </Animated.View>
-    </ScrollView>
+      </View>
+    </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
-  container: {
-    paddingHorizontal: 16,
-    paddingVertical: 20,
-    backgroundColor: "#F8FAFC",
+  headerContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    alignItems: 'flex-end',
   },
-  header: {
-    alignItems: "flex-end",
-    marginBottom: 16,
+  closeButton: {
+    padding: 4,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 20,
   },
-  greeting: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#1F2937",
-    textAlign: "center",
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingBottom: 100,
+  },
+  greetingContainer: {
+    alignItems: 'center',
+    marginBottom: 32,
+  },
+  greetingEmoji: {
+    fontSize: 48,
     marginBottom: 8,
   },
-  streakContainer: {
-    alignItems: "center",
-    marginBottom: 16,
+  greetingTitle: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: '#1F2937',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  greetingSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
   },
   streakCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 16,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 2,
-    borderColor: "#FEF3C7",
+    flexDirection: 'row',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 24,
+    padding: 20,
+    marginBottom: 32,
+    shadowColor: "#F59E0B",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#FEF3C7',
   },
-  fireIcon: {
-    position: "relative",
-    marginRight: 16,
-  },
-  fireEmoji: {
-    fontSize: 48,
-  },
-  streakBadge: {
-    position: "absolute",
-    top: -8,
-    right: -8,
-    backgroundColor: "#10B981",
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-  },
-  streakNumber: {
-    fontSize: 12,
-    color: "#FFFFFF",
-    fontWeight: "bold",
-  },
-  streakInfo: {
+  streakLeft: {
     flex: 1,
+    justifyContent: 'center',
   },
   streakCount: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 4,
+    fontSize: 36,
+    fontWeight: '800',
+    color: '#1F2937',
+  },
+  streakLabel: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  streakRight: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFBEB',
+    padding: 12,
+    borderRadius: 16,
   },
   streakMessage: {
-    fontSize: 14,
-    color: "#F59E0B",
-    fontWeight: "600",
+    fontSize: 12,
+    color: '#D97706',
+    fontWeight: '700',
+    marginTop: 4,
   },
-  reminderContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 12,
-    padding: 8,
-    backgroundColor: "#FFF7ED",
-    borderRadius: 12,
-    width: "100%",
+  quoteContainer: {
+    backgroundColor: '#EEF2FF',
+    borderRadius: 20,
+    padding: 24,
+    marginBottom: 32,
+    position: 'relative',
   },
-  reminderText: {
-    fontSize: 14,
-    color: "#D97706",
-    marginLeft: 8,
-    fontWeight: "500",
+  quoteIcon: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    opacity: 0.2,
   },
-  motivationCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EEF2FF",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: "#4F46E5",
+  quoteText: {
+    fontSize: 18,
+    color: '#3730A3',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 28,
+    fontWeight: '500',
+    zIndex: 1,
   },
-  motivationText: {
-    flex: 1,
-    fontSize: 16,
-    color: "#1F2937",
-    fontStyle: "italic",
-    marginLeft: 12,
-    lineHeight: 24,
-  },
-  progressSection: {
-    marginBottom: 16,
+  statsContainer: {
+    marginBottom: 24,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 12,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
   },
-  statsGrid: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 4,
+  grid: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
   },
-  statCard: {
+  statItem: {
     flex: 1,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 12,
-    alignItems: "center",
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    alignItems: 'center',
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 4,
+    shadowRadius: 8,
     elevation: 2,
   },
-  statNumber: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginTop: 8,
+  iconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  statValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1F2937',
     marginBottom: 4,
   },
   statLabel: {
     fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "500",
+    color: '#6B7280',
+    fontWeight: '500',
   },
-  achievementsSection: {
-    marginBottom: 16,
-  },
-  achievementsList: {
-    gap: 8,
-  },
-  achievementCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  achievementIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "#FEF3C7",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 12,
-  },
-  achievementInfo: {
-    flex: 1,
-  },
-  achievementTitle: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 2,
-  },
-  achievementDescription: {
-    fontSize: 12,
-    color: "#6B7280",
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 24,
+    backgroundColor: 'transparent',
   },
   continueButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#4F46E5",
-    borderRadius: 16,
-    paddingVertical: 16,
-    marginBottom: 16,
-    gap: 8,
+    flexDirection: 'row',
+    backgroundColor: '#4F46E5',
+    borderRadius: 20,
+    paddingVertical: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: "#4F46E5",
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    elevation: 8,
   },
   continueButtonText: {
+    color: '#FFFFFF',
     fontSize: 18,
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  quickActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 16,
-  },
-  quickActionButton: {
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 12,
-    minWidth: 80,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  quickActionText: {
-    fontSize: 12,
-    color: "#4F46E5",
-    fontWeight: "500",
-    marginTop: 4,
+    fontWeight: '700',
+    marginRight: 8,
   },
 });
 

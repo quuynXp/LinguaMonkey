@@ -10,13 +10,21 @@ import java.util.List;
 import java.util.UUID;
 
 public interface RoadmapMilestoneRepository extends JpaRepository<RoadmapMilestone, UUID> {
-    List<RoadmapMilestone> findByRoadmapIdOrderByOrderIndexAsc(UUID roadmapId);
 
-    List<RoadmapMilestone> findByRoadmapId(UUID roadmapId);
+    List<RoadmapMilestone> findByRoadmapRoadmapIdOrderByOrderIndexAsc(UUID roadmapId);
+
+    List<RoadmapMilestone> findByRoadmapRoadmapId(UUID roadmapId);
 
     @Modifying
     @Query("UPDATE RoadmapMilestone m SET m.isDeleted = true, m.deletedAt = CURRENT_TIMESTAMP " +
-            "WHERE m.roadmapId = :roadmapId AND m.isDeleted = false")
+            "WHERE m.roadmap.roadmapId = :roadmapId AND m.isDeleted = false")
     void deleteByRoadmapIdAndIsDeletedFalse(@Param("roadmapId") UUID roadmapId);
-}
 
+    default List<RoadmapMilestone> findByRoadmapIdOrderByOrderIndexAsc(UUID roadmapId) {
+        return findByRoadmapRoadmapIdOrderByOrderIndexAsc(roadmapId);
+    }
+
+    default List<RoadmapMilestone> findByRoadmapId(UUID roadmapId) {
+        return findByRoadmapRoadmapId(roadmapId);
+    }
+}

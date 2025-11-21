@@ -1,0 +1,48 @@
+{
+    "output": {
+        "filePath": "repomix-output.xml",
+        "style": "xml",
+        "headerText": "Project: MonkeyLingua (Core Context)",
+        "instructionFilePath": "repomix-instruction.md"
+    },
+    "ignore": {
+        "useGitignore": true,
+        "customPatterns": [
+            "**/.git/**",
+            "**/.idea/**",
+            "**/.vscode/**",
+            "**/.gradle/**",
+            "**/node_modules/**",
+            "**/build/**",
+            "**/dist/**",
+            "**/target/**",
+            "**/out/**",
+            "**/.mvn/**",
+            "**/venv/**",
+            "**/__pycache__/**",
+            "**/*.pyc",
+            "**/*.lock",
+            "**/package-lock.json",
+            "**/yarn.lock",
+            "**/pnpm-lock.yaml",
+            "**/android/app/build/**",
+            "**/ios/Pods/**",
+            "**/*.log",
+            "**/*.png",
+            "**/*.jpg",
+            "**/*.jpeg",
+            "**/*.mp4",
+            "**/*.mp3",
+            "**/*.wav",
+            "**/*.pdf",
+            "**/*.zip",
+            "**/*.tar.gz",
+            "**/postgres_data/**",
+            "**/redis_data/**",
+            "**/mongo_data/**",
+            "**/kong_data/**",
+            "**/es_data/**",
+            "**/minio_data/**"
+        ]
+    }
+}

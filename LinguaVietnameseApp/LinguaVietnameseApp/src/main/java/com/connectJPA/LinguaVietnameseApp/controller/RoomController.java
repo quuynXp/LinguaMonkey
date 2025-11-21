@@ -51,6 +51,24 @@ public class RoomController {
                 .build();
     }
 
+    @Operation(summary = "Get or Create Private Room", description = "Get existing private chat room with target user or create new one")
+    @PostMapping("/private")
+    public AppApiResponse<RoomResponse> getPrivateRoom(
+            @RequestParam UUID targetUserId,
+            @AuthenticationPrincipal UserPrincipal userPrincipal, // Lấy ID người đang login
+            Locale locale) {
+
+        UUID currentUserId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
+
+        RoomResponse room = roomService.findOrCreatePrivateRoom(currentUserId, targetUserId);
+
+        return AppApiResponse.<RoomResponse>builder()
+                .code(200)
+                .message("Success")
+                .result(room)
+                .build();
+    }
+
 
     @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
     @GetMapping("/ai-chat-room")

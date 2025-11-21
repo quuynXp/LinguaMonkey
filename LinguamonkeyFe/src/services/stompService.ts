@@ -100,7 +100,7 @@ export class StompService {
       console.warn("STOMP: Client not active. Cannot publish.");
       return;
     }
-    
+
     const token = useTokenStore.getState().accessToken;
     this.client.publish({
       destination,

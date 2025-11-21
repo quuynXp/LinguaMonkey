@@ -187,15 +187,16 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     @authenticated_grpc_method
     async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
         translated_text, error = translate_text(
-            request.text, request.source_language, request.target_language
+            request.text, 
+            request.source_language, 
+            request.target_language
         )
-        detected_lang = request.source_language or "en"
-        confidence = 0.95
+        
         return learning_pb2.TranslateResponse(
             translated_text=translated_text,
-            source_language_detected=detected_lang,
-            confidence=confidence,
-            error=error,
+            source_language_detected=request.source_language,
+            confidence=1.0 if not error else 0.0,
+            error=error or ""
         )
 
     @authenticated_grpc_method

@@ -5,35 +5,43 @@
   },
   "build": {
     "development": {
-      "android": {
-        "image": "latest",
-        "ndk": "25.2.9519653"
-      },
       "developmentClient": true,
       "distribution": "internal",
-      "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "http://10.0.2.2:8080"
-      }
-    },
-    "preview": {
       "android": {
         "image": "latest",
-        "ndk": "25.2.9519653"
+        "ndk": "26.1.10909125"
       },
-      "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "http://192.168.65.1:8080"
+        "APP_VARIANT": "development"
+      }
+    },
+    "staging": {
+      "distribution": "internal",
+      "android": {
+        "image": "latest",
+        "ndk": "26.1.10909125"
+      },
+      "env": {
+        "APP_VARIANT": "staging"
       }
     },
     "production": {
       "autoIncrement": true,
+      "distribution": "store",
       "android": {
-        "buildType": "apk",
+        "buildType": "app-bundle",
         "image": "latest",
-        "ndk": "25.2.9519653"
+        "ndk": "26.1.10909125"
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "http://192.168.65.1:8080"
+        "APP_VARIANT": "production"
+      }
+    },
+    "production-apk": {
+      "extends": "production",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
       }
     }
   },

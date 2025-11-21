@@ -11,6 +11,8 @@ import java.util.UUID;
 public interface MinioService {
     String uploadTemp(MultipartFile file);
 
+    String uploadStream(InputStream inputStream, String objectName, String contentType);
+
     UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType);
 
     byte[] getFile(String objectPath);

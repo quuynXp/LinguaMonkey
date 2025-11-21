@@ -12,7 +12,6 @@ import java.util.UUID;
 @Getter
 @Builder
 public class ChatMessageRequest {
-    @NotNull(message = "Room ID is required")
     private UUID roomId;
 
     @NotNull(message = "Sender ID is required")

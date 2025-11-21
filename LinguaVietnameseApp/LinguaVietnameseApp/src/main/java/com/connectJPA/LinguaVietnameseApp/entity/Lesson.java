@@ -71,6 +71,8 @@ public class Lesson extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private DifficultyLevel difficultyLevel;
 
+    private String thumbnailUrl;
+
     @Column(name = "duration_seconds")
     private Integer durationSeconds;
 

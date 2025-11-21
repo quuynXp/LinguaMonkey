@@ -16,7 +16,7 @@ import java.util.UUID;
 public interface VideoService {
     Page<BilingualVideoResponse> getBilingualVideos(Pageable pageable, String category, String level);
     List<String> getVideoCategories();
-    VideoResponse getVideoById(UUID id);
+    VideoResponse getVideoById(UUID id, String targetLang);
     VideoResponse createVideo(VideoRequest request);
     VideoResponse updateVideo(UUID id, VideoRequest request);
     void deleteVideo(UUID id);
@@ -31,6 +31,6 @@ public interface VideoService {
     void recordProgress(UUID videoId, VideoProgressRequest progressRequest);
     VideoReview createReview(UUID videoId, UUID userId, Integer rating, String content);
     void reactReview(UUID reviewId, UUID userId, Short reaction);
-
+    VideoSubtitleResponse generateTranslatedSubtitle(UUID videoId, String originalLang, String targetLang, String token);
     Page<BilingualVideoResponse> searchVideos(Pageable pageable, String q, String language, String category, String sort);
 }

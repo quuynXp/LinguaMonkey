@@ -34,6 +34,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -60,6 +61,57 @@ public class RoomServiceImpl implements RoomService {
             log.error("Error while fetching all rooms: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Transactional
+    @Override
+    public RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2) {
+        // 1. Tìm xem đã có phòng chưa
+        Optional<Room> existingRoom = roomRepository.findPrivateRoomBetweenUsers(userId1, userId2);
+
+        if (existingRoom.isPresent()) {
+            return roomMapper.toResponse(existingRoom.get());
+        }
+
+        // 2. Nếu chưa có, tạo mới
+        User user1 = userRepository.findByUserIdAndIsDeletedFalse(userId1)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        User user2 = userRepository.findByUserIdAndIsDeletedFalse(userId2)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        Room room = Room.builder()
+                .roomName(user1.getNickname() + " & " + user2.getNickname())
+                .creatorId(userId1)
+                .maxMembers(2)
+                .purpose(RoomPurpose.PRIVATE_CHAT)
+                .roomType(RoomType.PRIVATE)
+                .isDeleted(false)
+                .createdAt(OffsetDateTime.now())
+                .build();
+
+        room = roomRepository.save(room);
+
+        // Add User 1
+        RoomMember member1 = RoomMember.builder()
+                .id(new RoomMemberId(room.getRoomId(), userId1))
+                .room(room)
+                .user(user1)
+                .role(RoomRole.ADMIN)
+                .joinedAt(OffsetDateTime.now())
+                .build();
+        roomMemberRepository.save(member1);
+
+        // Add User 2
+        RoomMember member2 = RoomMember.builder()
+                .id(new RoomMemberId(room.getRoomId(), userId2))
+                .room(room)
+                .user(user2)
+                .role(RoomRole.MEMBER)
+                .joinedAt(OffsetDateTime.now())
+                .build();
+        roomMemberRepository.save(member2);
+
+        return roomMapper.toResponse(room);
     }
 
 

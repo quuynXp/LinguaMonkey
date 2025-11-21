@@ -1,4 +1,3 @@
-// EnhancedLeaderboardScreen.tsx
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
   Animated,
@@ -23,7 +22,6 @@ type EnhancedLeaderboardScreenProps = {
   navigation: StackNavigationProp<any>;
 };
 
-// Tab simplification: Remove period, add proper categories
 const tabsStatic = [
   { id: "global", titleKey: "leaderboard.tabs.global", icon: "leaderboard", sortBy: "level" },
   { id: "friends", titleKey: "leaderboard.tabs.friends", icon: "people", sortBy: "level" },
@@ -54,7 +52,6 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     }).start();
   }, [fadeAnim]);
 
-  // Fetch leaderboard metadata for selected tab (no period parameter)
   const {
     data: leaderboardsResp,
     isLoading: leaderboardsLoading,
@@ -69,7 +66,6 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     return [d];
   }, [leaderboardsResp]);
 
-  // Reset pagination when tab changes
   useEffect(() => {
     setPage(0);
     const first = resolvedLeaderboardList[0];
@@ -83,7 +79,6 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     }
   }, [resolvedLeaderboardList, selectedTab]);
 
-  // Fetch top 3 separately
   const top3Query = useQuery({
     queryKey: ["leaderboard", leaderboardId, "top-3"],
     queryFn: async () => {
@@ -95,7 +90,6 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     staleTime: 1000 * 60,
   });
 
-  // Fetch entries from 4 onwards (NO TOP 3)
   const {
     data: entriesResp,
     isLoading: entriesLoading,
@@ -119,7 +113,6 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     else setHasMore(true);
   }, [entriesResp, page]);
 
-  // Get sorted entries skipping top 3 (start from index 3)
   const resolvedEntries = entriesAccum.slice(3);
 
   const loadMore = useCallback(() => {
@@ -133,12 +126,11 @@ const EnhancedLeaderboardScreen = ({ navigation }: EnhancedLeaderboardScreenProp
     navigation.navigate("UserProfileViewScreen", { userId: String(targetUserId) });
   };
 
-  // Render entry from position 4+ (ranks 4, 5, 6...)
   const renderItem = ({ item, index }: { item: any; index: number }) => {
     if (!item) return null;
 
     const uid = item?.leaderboardEntryId?.userId ?? item.userId ?? item.id;
-    const rank = index + 4; // Position in list starts at 4
+    const rank = index + 4;
 
     return (
       <TouchableOpacity

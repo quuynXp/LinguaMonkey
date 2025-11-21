@@ -2,13 +2,17 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.id.CourseVersionLessonId;
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor; // Thêm import này
 
 @Data
 @Entity
 @Table(name = "course_version_lessons")
-@NoArgsConstructor // JPA luôn yêu cầu một constructor không tham số
+@NoArgsConstructor
+@Builder
+@AllArgsConstructor
 public class CourseVersionLesson {
 
     @EmbeddedId
