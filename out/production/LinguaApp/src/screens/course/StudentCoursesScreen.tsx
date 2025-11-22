@@ -28,7 +28,7 @@ const StudentCoursesScreen = ({ navigation }) => {
     data: recommendedCourses,
     isLoading: recommendedLoading,
     refetch: refetchRecommended,
-  } = useRecommendedCourses("", 10) 
+  } = useRecommendedCourses("", 10)
 
   const sortField = useMemo(() => {
     switch (sortBy) {
@@ -91,7 +91,7 @@ const StudentCoursesScreen = ({ navigation }) => {
 
   const handleCoursePress = (course, isPurchased = false) => {
     const safeCourse = { ...course, courseId: course.courseId || course.id }
-    navigation.navigate("CourseDetails", { course: safeCourse, isPurchased })
+    navigation.navigate("CourseDetailsScreen", { course: safeCourse, isPurchased })
   }
 
   const mapCourseFields = (course) => ({
@@ -221,7 +221,7 @@ const StudentCoursesScreen = ({ navigation }) => {
           <Icon name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("courses.title")}</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("CourseFilters")}>
+        <TouchableOpacity onPress={() => navigation.navigate("CourseFiltersScreen")}>
           <Icon name="filter-list" size={24} color="#1F2937" />
         </TouchableOpacity>
       </View>
@@ -255,7 +255,7 @@ const StudentCoursesScreen = ({ navigation }) => {
           <Icon name="sort" size={16} color="#6B7280" />
           <Text style={styles.filterButtonText}>{t("courses.sortBy.title")}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.filterButton} onPress={() => {}}>
+        <TouchableOpacity style={styles.filterButton} onPress={() => { }}>
           <Icon name="school" size={16} color="#6B7280" />
           <Text style={styles.filterButtonText}>{t("courses.level")}</Text>
         </TouchableOpacity>

@@ -1,9 +1,29 @@
 import { createNavigationContainerRef, CommonActions } from '@react-navigation/native';
+import { useTokenStore } from '../stores/tokenStore';
 
 export const RootNavigationRef = createNavigationContainerRef();
 
+let pendingActions: (() => void)[] = [];
+
+function queuePending(fn: () => void) {
+  pendingActions.push(fn);
+}
+
+export function flushPendingActions() {
+  if (!pendingActions.length) return;
+  const copy = [...pendingActions];
+  pendingActions = [];
+  copy.forEach(fn => {
+    try {
+      fn();
+    } catch (e) {
+      console.error("[navigationRef] pending action error", e);
+    }
+  });
+}
+
 export function resetToTab(
-  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile' | 'Admin' | 'Teacher' | 'DailyWelcome',
+  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile',
   stackScreen?: string,
   stackParams?: object
 ) {
@@ -27,7 +47,7 @@ export function resetToTab(
 
   const run = () => {
     RootNavigationRef.dispatch(action);
-    console.log('[navigationRef] reset to Tab ->', tab, stackScreen || 'no stack screen');
+    console.log('[navigationRef] reset to Tab ->', tab);
   };
 
   if (RootNavigationRef.isReady()) run();
@@ -35,47 +55,50 @@ export function resetToTab(
 }
 
 export function gotoTab(
-  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile' | 'Admin' | 'Teacher' | 'Auth' | 'SetupInitScreen' | 'AppLaunchScreen' | 'ProficiencyTestScreen' | 'DailyWelcome',
-  stackScreen?: string,
-  stackParams?: object
+  screenName:
+    | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
+    | 'AdminStack' | 'LearnStack' | 'PaymentStack' | 'ChatStack' | 'ProfileStack' | 'ProgressStack' | 'RoadmapStack'
+    | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'SetupInitScreen' | 'AuthStack',
+  nestedScreen?: string,
+  nestedParams?: object
 ) {
+  if (!RootNavigationRef.isReady()) {
+    queuePending(() => gotoTab(screenName, nestedScreen, nestedParams));
+    return;
+  }
+
   let action;
 
-  if (['Home', 'Learn', 'Progress', 'Chat', 'Profile', 'Admin', 'Teacher'].includes(tab)) {
+  // 1. Nếu là Tab con của TabApp
+  if (['Home', 'Learn', 'Progress', 'Chat', 'Profile'].includes(screenName)) {
     action = CommonActions.navigate({
       name: 'TabApp',
       params: {
-        screen: tab,
-        params: stackScreen
-          ? { screen: stackScreen, params: stackParams }
+        screen: screenName,
+        params: nestedScreen
+          ? { screen: nestedScreen, params: nestedParams }
           : undefined,
       },
     });
-  } else {
+  }
+  // 2. Nếu là các Feature Stack hoặc Screen nằm ngang hàng (Siblings) trong MainStack
+  else {
     action = CommonActions.navigate({
-      name: tab,
-      params: stackScreen
-        ? { screen: stackScreen, params: stackParams }
+      name: screenName,
+      params: nestedScreen
+        ? { screen: nestedScreen, params: nestedParams }
         : undefined,
     });
   }
 
-  const run = () => {
-    RootNavigationRef.dispatch(action);
-    console.log('[navigationRef] goto ->', tab, stackScreen);
-  };
-
-  if (RootNavigationRef.isReady()) run();
-  else queuePending(run);
+  RootNavigationRef.dispatch(action);
+  console.log('[navigationRef] goto ->', screenName, nestedScreen);
 }
 
 export function goBack() {
   const run = () => {
     if (RootNavigationRef.canGoBack()) {
       RootNavigationRef.goBack();
-      console.log('[navigationRef] goBack');
-    } else {
-      console.log('[navigationRef] cant goBack (đang ở màn hình root)');
     }
   };
 
@@ -83,42 +106,7 @@ export function goBack() {
   else queuePending(run);
 }
 
-export function resetToAuth(screen: "Login" | "Register" = "Login") {
-  const action = CommonActions.reset({
-    index: 0,
-    routes: [
-      {
-        name: "Auth",  // route cấp root (đã khai báo trong MainStack)
-        state: {
-          index: 0,
-          routes: [{ name: screen }], // màn hình con trong AuthStack
-        },
-      },
-    ],
-  });
-
-  if (RootNavigationRef.isReady()) {
-    RootNavigationRef.dispatch(action);
-    console.log("[navigationRef] reset to Auth ->", screen);
-  } else {
-    console.log("[navigationRef] not ready, queueing action");
-    queuePending(() => RootNavigationRef.dispatch(action));
-  }
-}
-
-let pendingActions: (() => void)[] = [];
-function queuePending(fn: () => void) {
-  pendingActions.push(fn);
-}
-export function flushPendingActions() {
-  if (!pendingActions.length) return;
-  const copy = [...pendingActions];
-  pendingActions = [];
-  copy.forEach(fn => {
-    try {
-      fn();
-    } catch (e) {
-      console.error("[navigationRef] pending action error", e);
-    }
-  });
+export function resetToAuth(screen: "LoginScreen" | "RegisterScreen" = "LoginScreen") {
+  console.log("[navigationRef] resetToAuth triggered");
+  useTokenStore.getState().clearTokens();
 }

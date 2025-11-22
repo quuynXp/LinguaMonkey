@@ -31,6 +31,7 @@ export const courseKeys = {
   detail: (id: string) => [...courseKeys.details(), id] as const,
   recommended: (userId: string) => [...courseKeys.all, "recommended", userId] as const,
   levels: () => [...courseKeys.all, "levels"] as const,
+  categories: () => [...courseKeys.all, "categories"] as const, // NEW KEY
 
   // Sub-entities
   enrollments: (params: any) => [...courseKeys.all, "enrollments", params] as const,
@@ -53,10 +54,11 @@ export const useCourses = () => {
     title?: string;
     languageCode?: string;
     type?: CourseType;
+    categoryCode?: string; // ADDED
   }) => {
-    const { page = 0, size = 10, title, languageCode, type } = params || {};
+    const { page = 0, size = 10, title, languageCode, type, categoryCode } = params || {};
     return useQuery({
-      queryKey: courseKeys.list({ page, size, title, languageCode, type }),
+      queryKey: courseKeys.list({ page, size, title, languageCode, type, categoryCode }), // ADDED
       queryFn: async () => {
         const qp = new URLSearchParams();
         qp.append("page", page.toString());
@@ -64,6 +66,7 @@ export const useCourses = () => {
         if (title) qp.append("title", title);
         if (languageCode) qp.append("languageCode", languageCode);
         if (type) qp.append("type", type);
+        if (categoryCode) qp.append("categoryCode", categoryCode); // ADDED
 
         const { data } = await instance.get<AppApiResponse<PageResponse<CourseResponse>>>(
           `/api/v1/courses?${qp.toString()}`
@@ -127,7 +130,19 @@ export const useCourses = () => {
         const { data } = await instance.get<AppApiResponse<string[]>>("/api/v1/courses/levels");
         return data.result || [];
       },
-      staleTime: 60 * 60 * 1000, // Cache 1 hour
+      staleTime: 60 * 60 * 1000,
+    });
+  };
+
+  // GET /api/v1/courses/categories // ADDED
+  const useCourseCategories = () => {
+    return useQuery({
+      queryKey: courseKeys.categories(),
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<string[]>>("/api/v1/courses/categories");
+        return data.result || [];
+      },
+      staleTime: 60 * 60 * 1000,
     });
   };
 
@@ -573,6 +588,7 @@ export const useCourses = () => {
     useCreatorCourses,
     useRecommendedCourses,
     useCourseLevels,
+    useCourseCategories, // ADDED
     useCreateCourse,
     useUpdateCourseDetails,
     useCreateDraftVersion,

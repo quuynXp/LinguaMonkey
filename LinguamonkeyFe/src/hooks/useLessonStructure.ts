@@ -10,7 +10,9 @@ import {
     LessonSeriesResponse,
     LessonSeriesRequest,
     LessonOrderInSeriesResponse,
-    LessonOrderInSeriesRequest
+    LessonOrderInSeriesRequest,
+    LessonReviewResponse,
+    LessonReviewRequest
 } from "../types/dto";
 
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
@@ -34,7 +36,6 @@ export const useLessonStructure = () => {
     // === 1. CATEGORIES ===
     // ==========================================
 
-    // GET /api/v1/lesson-categories
     const useCategories = (params?: { name?: string; lang?: string; page?: number; size?: number }) => {
         return useQuery({
             queryKey: ["lessonCategories", params],
@@ -87,7 +88,6 @@ export const useLessonStructure = () => {
     // === 2. SUB-CATEGORIES ===
     // ==========================================
 
-    // GET /api/v1/lesson-sub-categories
     const useSubCategories = (params?: { catId?: string; lang?: string; page?: number; size?: number }) => {
         return useQuery({
             queryKey: ["lessonSubCategories", params],
@@ -140,7 +140,6 @@ export const useLessonStructure = () => {
     // === 3. SERIES & ORDER ===
     // ==========================================
 
-    // GET /api/v1/lesson-series
     const useSeries = (params?: { name?: string; lang?: string; page?: number; size?: number }) => {
         return useQuery({
             queryKey: ["lessonSeries", params],
@@ -189,7 +188,6 @@ export const useLessonStructure = () => {
         });
     };
 
-    // GET /api/v1/lesson-order-in-series
     const useSeriesOrders = (params?: { lessonId?: string; seriesId?: string; page?: number; size?: number }) => {
         return useQuery({
             queryKey: ["lessonOrderInSeries", params],
@@ -221,6 +219,75 @@ export const useLessonStructure = () => {
         });
     };
 
+    // ==========================================
+    // === 4. LESSON REVIEWS ===
+    // ==========================================
+
+    const useReviews = (params?: { lessonId?: string; page?: number; size?: number }) => {
+        return useQuery({
+            queryKey: ["lessonReviews", params],
+            queryFn: async () => {
+                const qp = new URLSearchParams();
+                if (params?.lessonId) qp.append("lessonId", params.lessonId);
+                if (params?.page !== undefined) qp.append("page", String(params.page));
+                if (params?.size !== undefined) qp.append("size", String(params.size));
+
+                const { data } = await instance.get<AppApiResponse<PageResponse<LessonReviewResponse>>>(
+                    `/api/v1/lesson-reviews?${qp.toString()}`
+                );
+                return mapPageResponse(data.result, params?.page || 0, params?.size || 20);
+            },
+            staleTime: 60 * 1000,
+        });
+    };
+
+    const useReviewById = (id: string, enabled: boolean = true) => {
+        return useQuery({
+            queryKey: ["lessonReview", id],
+            queryFn: async () => {
+                const { data } = await instance.get<AppApiResponse<LessonReviewResponse>>(`/api/v1/lesson-reviews/${id}`);
+                return data.result!;
+            },
+            enabled: enabled,
+            staleTime: 60 * 1000,
+        });
+    };
+
+    const useCreateReview = () => {
+        return useMutation({
+            mutationFn: async (req: LessonReviewRequest) => {
+                const { data } = await instance.post<AppApiResponse<LessonReviewResponse>>("/api/v1/lesson-reviews", req);
+                return data.result!;
+            },
+            onSuccess: (newReview) => {
+                queryClient.invalidateQueries({ queryKey: ["lessonReviews"] });
+                queryClient.setQueryData(["lessonReview", newReview.lessonId], newReview);
+            },
+        });
+    };
+
+    const useUpdateReview = () => {
+        return useMutation({
+            mutationFn: async ({ id, userId, req }: { id: string; userId: string; req: LessonReviewRequest }) => {
+                const { data } = await instance.put<AppApiResponse<LessonReviewResponse>>(`/api/v1/lesson-reviews/${id}?userId=${userId}`, req);
+                return data.result!;
+            },
+            onSuccess: (updatedReview) => {
+                queryClient.invalidateQueries({ queryKey: ["lessonReviews"] });
+                queryClient.setQueryData(["lessonReview", updatedReview.lessonId], updatedReview);
+            },
+        });
+    };
+
+    const useDeleteReview = () => {
+        return useMutation({
+            mutationFn: async (id: string) => {
+                await instance.delete(`/api/v1/lesson-reviews/${id}`);
+            },
+            onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lessonReviews"] }),
+        });
+    };
+
     return {
         useCategories,
         useCreateCategory,
@@ -236,5 +303,10 @@ export const useLessonStructure = () => {
         useDeleteSeries,
         useSeriesOrders,
         useUpdateSeriesOrder,
+        useReviews,
+        useReviewById,
+        useCreateReview,
+        useUpdateReview,
+        useDeleteReview,
     };
 };

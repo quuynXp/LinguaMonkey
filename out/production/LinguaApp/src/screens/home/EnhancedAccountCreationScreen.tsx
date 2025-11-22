@@ -221,10 +221,9 @@ const EnhancedAccountCreationScreen = ({ navigation }) => {
 
   const handleCreateAccount = async () => {
     try {
-      // In real app, send to API
       console.log("Creating account with profile:", userProfile)
       Alert.alert("Success", "Account created successfully!", [
-        { text: "OK", onPress: () => navigation.navigate("Home") },
+        { text: "OK", onPress: () => navigation.navigate("HomeScreen") },
       ])
     } catch (error) {
       Alert.alert("Error", "Failed to create account. Please try again.")
@@ -420,7 +419,7 @@ const EnhancedAccountCreationScreen = ({ navigation }) => {
           ]}
           onPress={() => setUserProfile({ ...userProfile, learningIntensity: "intensive" })}
         >
-          
+
           <Text style={styles.learningStyleTitle}>Intensive Learning</Text>
           <Text style={styles.learningStyleDescription}>Daily practice, challenging exercises, rapid progress</Text>
           <View style={styles.learningStyleFeatures}>
@@ -434,7 +433,7 @@ const EnhancedAccountCreationScreen = ({ navigation }) => {
           style={[styles.learningStyleCard, userProfile.learningIntensity === "stable" && styles.selectedLearningStyle]}
           onPress={() => setUserProfile({ ...userProfile, learningIntensity: "stable" })}
         >
-          
+
           <Text style={styles.learningStyleTitle}>Stable Maintenance</Text>
           <Text style={styles.learningStyleDescription}>
             Consistent practice, steady improvement, balanced approach

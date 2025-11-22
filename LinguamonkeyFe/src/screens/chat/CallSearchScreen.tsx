@@ -1,124 +1,105 @@
-import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useEffect, useRef, useState } from "react";
-import { Alert, Animated, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
-import { useTranslation } from "react-i18next";
-import { useMutation } from "@tanstack/react-query";
-import { createScaledSheet } from '../../utils/scaledStyles';
-import { useUserStore } from '../../stores/UserStore';
-import instance from '../../api/axiosInstance';
-import { useTokenStore } from '../../stores/tokenStore';
-import ScreenLayout from '../../components/layout/ScreenLayout';
+import Icon from 'react-native-vector-icons/MaterialIcons'
+import { useEffect, useRef, useState } from "react"
+import { Alert, Animated, Text, TouchableOpacity, View } from "react-native"
+import { useTranslation } from "react-i18next"
+import { createScaledSheet } from '../../utils/scaledStyles'
+import { useUserStore } from '../../stores/UserStore'
+import ScreenLayout from '../../components/layout/ScreenLayout'
+import { useVideoCalls } from '../../hooks/useVideos'
+import { FindMatchResponse } from '../../types/dto'
+import { useAppStore, CallPreferences } from '../../stores/appStore'
 
-type FoundPartner = {
-  user_id: string;
-  fullname: string;
-  avatar_url: string;
-  country: string;
-  rating: number;
-  calls_completed: number;
-  native_language: string;
-  learning_language: string;
-  common_interests: string[];
-};
 
-type FindMatchResponse = {
-  partner: FoundPartner;
-  video_call_id: string;
-  room_id: string; // Jitsi room name
-};
-
-// Map cờ
 const languageFlags: { [key: string]: string } = {
-  en: "🇺🇸",
-  zh: "🇨🇳",
-  vi: "🇻🇳",
-  ja: "🇯🇵",
-  ko: "🇰🇷",
-  fr: "🇫🇷",
-  es: "🇪🇸",
-  de: "🇩🇪",
-};
+  china: "🇨🇳",
+  tonga: "🇹🇴",
+  vietnam: "🇻🇳",
+  korea: "🇰🇷",
+  japan: "🇯🇵",
+  united_states: "🇺🇸",
+  france: "🇫🇷",
+  germany: "🇩🇪",
+  iceland: "🇮🇸",
+  italy: "🇮🇹",
+  spain: "🇪🇸",
+  south_korea: "🇰🇷",
+  india: "🇮🇳",
+}
 
-const CallSearchScreen = ({ navigation, route }) => {
-  const { preferences } = route.params;
-  const { t } = useTranslation();
-  const { user } = useUserStore();
+const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }) => {
+  const { preferences } = route.params as { preferences: CallPreferences }
+  const { t } = useTranslation()
+  const { useFindCallPartner } = useVideoCalls()
 
-  const [searchTime, setSearchTime] = useState(0);
-  const [estimatedTime, setEstimatedTime] = useState(45); // Vẫn giữ để hiển thị
+  const [searchTime, setSearchTime] = useState(0)
+  const [estimatedTime] = useState(60)
 
-  // Xóa bỏ state 'searchStatus' và 'foundPartner', thay bằng state của useMutation
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current
+  const pulseAnim = useRef(new Animated.Value(1)).current
+  const rotateAnim = useRef(new Animated.Value(0)).current
 
-  // --- THAY THẾ MOCK BẰNG API MATCHMAKING ---
   const {
     mutate: findMatch,
     data: matchData,
     isPending: isSearching,
     isSuccess: isFound,
-    isError: isFailed
-  } = useMutation<FindMatchResponse, Error, typeof preferences>({
-    mutationFn: async (prefs) => {
-      // Gọi API Java (MatchmakingController)
-      const response = await instance.post('/api/v1/matchmaking/find-call', prefs);
-      return response.data.result; // Trả về FindMatchResponse từ gRPC
-    },
-    onSuccess: (data) => {
-      pulseAnimation.stop();
-      rotateAnimation.stop();
-      // Tự động chuyển sang màn hình call sau 2s
-      setTimeout(() => {
-        startCall(data);
-      }, 2000);
-    },
-    onError: () => {
-      pulseAnimation.stop();
-      rotateAnimation.stop();
-    }
-  });
+    isError: isFailed,
+  } = useFindCallPartner()
 
   const pulseAnimation = Animated.loop(
     Animated.sequence([
       Animated.timing(pulseAnim, { toValue: 1.2, duration: 1000, useNativeDriver: true }),
       Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
     ]),
-  );
+  )
   const rotateAnimation = Animated.loop(
     Animated.timing(rotateAnim, { toValue: 1, duration: 3000, useNativeDriver: true }),
-  );
+  )
 
   useEffect(() => {
-    // Start animations
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
-    }).start();
+    }).start()
 
-    pulseAnimation.start();
-    rotateAnimation.start();
+    pulseAnimation.start()
+    rotateAnimation.start()
 
-    // Start timer
     const timer = setInterval(() => {
-      setSearchTime((prev) => prev + 1);
-    }, 1000);
+      setSearchTime((prev) => prev + 1)
+    }, 1000)
 
-    // --- BẮT ĐẦU TÌM KIẾM ---
-    findMatch(preferences);
+    findMatch({
+      interests: preferences.interests,
+      gender: preferences.gender,
+      nativeLanguage: preferences.nativeLanguage,
+      learningLanguage: preferences.learningLanguage,
+      ageRange: preferences.ageRange,
+      callDuration: preferences.callDuration,
+    })
 
     return () => {
-      clearInterval(timer);
-      pulseAnimation.stop();
-      rotateAnimation.stop();
-    };
-  }, [fadeAnim, findMatch, preferences, pulseAnimation, rotateAnimation]);
+      clearInterval(timer)
+      pulseAnimation.stop()
+      rotateAnimation.stop()
+    }
+  }, [fadeAnim, findMatch, preferences, pulseAnimation, rotateAnimation])
 
   useEffect(() => {
-    const complexity = preferences.interests.length + (preferences.gender !== "any" ? 1 : 0) + 2;
-    setEstimatedTime(Math.max(30, complexity * 8));
-  }, [preferences]);
+    if (isFound && matchData) {
+      pulseAnimation.stop()
+      rotateAnimation.stop()
+      setTimeout(() => {
+        startCall(matchData)
+      }, 2000)
+    }
+    if (isFailed) {
+      pulseAnimation.stop()
+      rotateAnimation.stop()
+      Alert.alert(t("call.searchFailed"), t("call.searchFailedMessage"))
+    }
+  }, [isFound, isFailed, matchData, pulseAnimation, rotateAnimation, t])
 
   const cancelSearch = () => {
     Alert.alert(t("call.cancelSearch"), t("call.cancelSearchMessage"), [
@@ -128,42 +109,40 @@ const CallSearchScreen = ({ navigation, route }) => {
         style: "destructive",
         onPress: () => navigation.goBack(),
       },
-    ]);
-  };
+    ])
+  }
 
   const startCall = (data: FindMatchResponse) => {
-    // Truyền Jitsi room_id và thông tin partner
     navigation.replace("JitsiCall", {
-      roomId: data.room_id,
+      roomId: data.roomId,
       partner: data.partner,
-      videoCallId: data.video_call_id,
-      preferences
-    });
-  };
+      videoCallId: data.videoCallId,
+      preferences,
+    })
+  }
 
   const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, "0")}`
+  }
 
   const getSearchStatusText = () => {
-    if (isSearching) return t("call.searching");
-    if (isFound) return t("call.found");
-    if (isFailed) return t("call.failed");
-    return t("call.connecting");
-  };
+    if (isSearching) return t("call.searching")
+    if (isFound) return t("call.found")
+    if (isFailed) return t("call.failed")
+    return t("call.connecting")
+  }
 
   const spin = rotateAnim.interpolate({
     inputRange: [0, 1],
     outputRange: ["0deg", "360deg"],
-  });
+  })
 
-  // --- MÀN HÌNH KHI ĐÃ TÌM THẤY ---
-  if (isFound && matchData) {
-    const foundPartner = matchData.partner;
+  if (isFound && matchData?.partner) {
+    const foundPartner = matchData.partner
     return (
-      <View style={styles.container}>
+      <ScreenLayout style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color="#374151" />
@@ -177,17 +156,16 @@ const CallSearchScreen = ({ navigation, route }) => {
             <Text style={styles.foundTitle}>{t("call.found")}</Text>
             <Text style={styles.foundSubtitle}>{t("call.searchTime")}: {formatTime(searchTime)}</Text>
 
-            {/* Partner Info */}
             <View style={styles.partnerCard}>
               <View style={styles.partnerHeader}>
-                {/* TODO: Thay bằng <Image source={{ uri: foundPartner.avatar_url }} /> */}
-                <Text style={styles.partnerAvatar}>👩‍🦰</Text>
+                <Text style={styles.partnerAvatar}>
+                  {foundPartner.avatarUrl ? '🖼️' : '👤'}
+                </Text>
                 <View style={styles.partnerInfo}>
-                  <Text style={styles.partnerName}>{foundPartner.fullname}</Text>
+                  <Text style={styles.partnerName}>{foundPartner.fullname || t("common.anonymousUser")}</Text>
                   <View style={styles.partnerLocation}>
                     <Text style={styles.partnerFlag}>{languageFlags[foundPartner.country.toLowerCase()] || '🌐'}</Text>
                     <Text style={styles.partnerCountry}>{foundPartner.country}</Text>
-                    {/* <Text style={styles.partnerAge}>• {foundPartner.age} tuổi</Text> */}
                   </View>
                 </View>
                 <View style={styles.partnerRating}>
@@ -201,19 +179,19 @@ const CallSearchScreen = ({ navigation, route }) => {
                   <View style={styles.languageItem}>
                     <Icon name="record-voice-over" size={16} color="#10B981" />
                     <Text style={styles.languageLabel}>{t("call.native")}:</Text>
-                    <Text style={styles.languageValue}>{foundPartner.native_language}</Text>
+                    <Text style={styles.languageValue}>{foundPartner.nativeLanguage}</Text>
                   </View>
                   <View style={styles.languageItem}>
                     <Icon name="school" size={16} color="#4F46E5" />
                     <Text style={styles.languageLabel}>{t("call.learning")}:</Text>
-                    <Text style={styles.languageValue}>{foundPartner.learning_language}</Text>
+                    <Text style={styles.languageValue}>{foundPartner.learningLanguage}</Text>
                   </View>
                 </View>
 
                 <View style={styles.interestsSection}>
                   <Text style={styles.interestsTitle}>{t("call.commonInterests")}:</Text>
                   <View style={styles.interestsList}>
-                    {foundPartner.common_interests.map((interest, index) => (
+                    {foundPartner.commonInterests.map((interest, index) => (
                       <View key={index} style={styles.interestTag}>
                         <Text style={styles.interestTagText}>{interest}</Text>
                       </View>
@@ -224,13 +202,12 @@ const CallSearchScreen = ({ navigation, route }) => {
                 <View style={styles.statsSection}>
                   <View style={styles.statItem}>
                     <Icon name="phone" size={16} color="#6B7280" />
-                    <Text style={styles.statText}>{foundPartner.calls_completed} {t("call.calls")}</Text>
+                    <Text style={styles.statText}>{foundPartner.callsCompleted} {t("call.calls")}</Text>
                   </View>
                 </View>
               </View>
             </View>
 
-            {/* Call Actions */}
             <View style={styles.callActions}>
               <TouchableOpacity style={styles.declineButton} onPress={() => navigation.goBack()}>
                 <Icon name="close" size={20} color="#EF4444" />
@@ -243,11 +220,10 @@ const CallSearchScreen = ({ navigation, route }) => {
             </View>
           </View>
         </Animated.View>
-      </View>
-    );
+      </ScreenLayout>
+    )
   }
 
-  // --- MÀN HÌNH ĐANG TÌM KIẾM (isPending) hoặc THẤT BẠI (isError) ---
   return (
     <ScreenLayout style={styles.container}>
       <View style={styles.header}>
@@ -260,7 +236,6 @@ const CallSearchScreen = ({ navigation, route }) => {
 
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <View style={styles.searchSection}>
-          {/* Search Animation */}
           {isSearching && (
             <Animated.View
               style={[
@@ -280,7 +255,6 @@ const CallSearchScreen = ({ navigation, route }) => {
 
           <Text style={styles.searchTitle}>{getSearchStatusText()}</Text>
 
-          {/* Search Stats */}
           <View style={styles.searchStats}>
             <View style={styles.statCard}>
               <Icon name="schedule" size={24} color="#4F46E5" />
@@ -294,12 +268,11 @@ const CallSearchScreen = ({ navigation, route }) => {
             </View>
             <View style={styles.statCard}>
               <Icon name="people" size={24} color="#10B981" />
-              <Text style={styles.statValue}>1,247</Text> {/* TODO: Lấy API real-time */}
+              <Text style={styles.statValue}>1,247</Text>
               <Text style={styles.statLabel}>{t("call.online")}</Text>
             </View>
           </View>
 
-          {/* Search Criteria */}
           <View style={styles.criteriaSection}>
             <Text style={styles.criteriaTitle}>{t("call.criteria")}</Text>
             <View style={styles.criteriaList}>
@@ -307,11 +280,17 @@ const CallSearchScreen = ({ navigation, route }) => {
                 <Icon name="interests" size={16} color="#6B7280" />
                 <Text style={styles.criteriaText}>{preferences.interests.length} {t("call.commonInterests")}</Text>
               </View>
-              {/* ... (Các criteria items khác) ... */}
+              <View style={styles.criteriaItem}>
+                <Icon name="person" size={16} color="#6B7280" />
+                <Text style={styles.criteriaText}>{preferences.gender === "any" ? t("call.genderAny") : preferences.gender}</Text>
+              </View>
+              <View style={styles.criteriaItem}>
+                <Icon name="schedule" size={16} color="#6B7280" />
+                <Text style={styles.criteriaText}>{preferences.callDuration} {t("call.minutes")}</Text>
+              </View>
             </View>
           </View>
 
-          {/* Progress Bar (chỉ hiển thị khi đang tìm) */}
           {isSearching && (
             <View style={styles.progressSection}>
               <Text style={styles.progressText}>{t("call.progress")}</Text>
@@ -326,7 +305,6 @@ const CallSearchScreen = ({ navigation, route }) => {
             </View>
           )}
 
-          {/* Cancel Button */}
           <TouchableOpacity style={styles.cancelButton} onPress={cancelSearch}>
             <Icon name="close" size={20} color="#EF4444" />
             <Text style={styles.cancelButtonText}>{t("call.cancelSearch")}</Text>
@@ -334,10 +312,9 @@ const CallSearchScreen = ({ navigation, route }) => {
         </View>
       </Animated.View>
     </ScreenLayout>
-  );
-};
+  )
+}
 
-// Dán styles từ file 'CallSearchScreen.ts' cũ của bạn vào đây
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -459,18 +436,11 @@ const styles = createScaledSheet({
     backgroundColor: "#E5E7EB",
     borderRadius: 4,
     overflow: "hidden",
-    marginBottom: 8,
   },
   progressFill: {
     height: "100%",
     backgroundColor: "#4F46E5",
     borderRadius: 4,
-  },
-  progressPercentage: {
-    fontSize: 12,
-    color: "#4F46E5",
-    textAlign: "center",
-    fontWeight: "600",
   },
   cancelButton: {
     flexDirection: "row",
@@ -489,14 +459,8 @@ const styles = createScaledSheet({
     color: "#EF4444",
     fontWeight: "500",
   },
-  // Found partner styles
   foundSection: {
     alignItems: "center",
-  },
-  successAnimation: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
   },
   foundTitle: {
     fontSize: 24,
@@ -550,11 +514,6 @@ const styles = createScaledSheet({
   partnerCountry: {
     fontSize: 14,
     color: "#6B7280",
-  },
-  partnerAge: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginLeft: 4,
   },
   partnerRating: {
     flexDirection: "row",
@@ -664,6 +623,6 @@ const styles = createScaledSheet({
     color: "#FFFFFF",
     fontWeight: "600",
   },
-});
+})
 
-export default CallSearchScreen;
+export default CallSearchScreen

@@ -68,7 +68,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
     return (
       <TouchableOpacity
         style={styles.roadmapCard}
-        onPress={() => navigation.navigate('RoadmapDetail', { roadmapId: r.roadmapId })}
+        onPress={() => navigation.navigate('RoadmapDetailScreen', { roadmapId: r.roadmapId })}
       >
         <View style={styles.cardHeader}>
           <View style={styles.cardInfo}>
@@ -99,7 +99,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
         <View style={styles.cardFooter}>
           <TouchableOpacity
             style={styles.viewButton}
-            onPress={() => navigation.navigate('RoadmapDetail', { roadmapId: r.roadmapId })}
+            onPress={() => navigation.navigate('RoadmapDetailScreen', { roadmapId: r.roadmapId })}
           >
             <Text style={styles.viewButtonText}>{t('common.view')}</Text>
           </TouchableOpacity>

@@ -1,22 +1,59 @@
 import { useEffect, useRef, useState } from "react"
-import { Alert, Animated, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
-import {ReadingText, Translation, QuizQuestion} from "../../types/api"
+import { useTranslation } from "react-i18next"
+import {
+  Alert,
+  Animated,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
+} from "react-native"
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useSkillLessons } from "../../hooks/useSkillLessons";
+import { ReadingResponse, ComprehensionQuestion, TranslationRequestBody } from "../../types/dto";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
+// --- TYPE DỰA TRÊN API VÀ UI (KHÔNG MOCK DATA) ---
+interface ReadingTextData {
+  lessonId: string;
+  title: string;
+  content: string;
+  languageCode: string;
+  sentences: string[];
+  vocabulary: string[];
+  level: string; // Giữ lại cho UI
+  category: string; // Giữ lại cho UI
+}
+
+// Type cho trạng thái dịch
+interface TranslationResult {
+  original: string;
+  translated: string;
+  isCorrect: boolean;
+  suggestion?: string;
+}
 
 const ReadingScreen = ({ navigation }) => {
-  const [selectedText, setSelectedText] = useState<ReadingText | null>(null)
+  const { t } = useTranslation()
+  const { mutateAsync: generateReading, isPending: isGeneratingReading } = useSkillLessons().useGenerateReading();
+  const { mutateAsync: checkTranslation, isPending: isCheckingTranslation } = useSkillLessons().useCheckTranslation();
+
+  const [selectedTextData, setSelectedTextData] = useState<ReadingTextData | null>(null)
   const [currentMode, setCurrentMode] = useState<"read" | "translate" | "quiz">("read")
-  const [selectedSentence, setSelectedSentence] = useState<number | null>(null)
-  const [translations, setTranslations] = useState<Translation[]>([])
+  const [selectedSentenceIndex, setSelectedSentenceIndex] = useState<number | null>(null)
+  const [translations, setTranslations] = useState<TranslationResult[]>([])
   const [userTranslation, setUserTranslation] = useState("")
-  const [showTranslationResult, setShowTranslationResult] = useState(false)
-  const [currentQuiz, setCurrentQuiz] = useState<QuizQuestion[]>([])
+
+  // Sử dụng DTO chuẩn: currentQuiz là mảng ComprehensionQuestion[]
+  const [currentQuiz, setCurrentQuiz] = useState<ComprehensionQuestion[]>([])
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
   const [quizScore, setQuizScore] = useState(0)
   const [showQuizResult, setShowQuizResult] = useState(false)
+  const [readingData, setReadingData] = useState<ReadingResponse | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current
 
@@ -26,149 +63,109 @@ const ReadingScreen = ({ navigation }) => {
       duration: 600,
       useNativeDriver: true,
     }).start()
-  }, [])
+  }, [fadeAnim])
 
-  const readingTexts: ReadingText[] = [
-    {
-      id: "1",
-      title: "A Day at the Coffee Shop",
-      content:
-        "Sarah walked into her favorite coffee shop on a rainy Tuesday morning. The warm aroma of freshly brewed coffee filled the air, making her feel instantly comfortable. She ordered her usual cappuccino and found a quiet corner table by the window. As she sipped her coffee, she watched people hurrying past with umbrellas, grateful to be inside where it was warm and dry.",
-      level: "beginner",
-      category: "daily-life",
-      sentences: [
-        "Sarah walked into her favorite coffee shop on a rainy Tuesday morning.",
-        "The warm aroma of freshly brewed coffee filled the air, making her feel instantly comfortable.",
-        "She ordered her usual cappuccino and found a quiet corner table by the window.",
-        "As she sipped her coffee, she watched people hurrying past with umbrellas, grateful to be inside where it was warm and dry.",
-      ],
-      vocabulary: ["aroma", "cappuccino", "umbrellas", "grateful", "comfortable"],
-    },
-    {
-      id: "2",
-      title: "The Future of Technology",
-      content:
-        "Artificial intelligence is revolutionizing the way we live and work. Machine learning algorithms can now process vast amounts of data in seconds, enabling computers to make decisions that were once exclusively human. This technological advancement has implications for various industries, from healthcare to finance. However, as we embrace these innovations, we must also consider the ethical implications and ensure that technology serves humanity rather than replacing it.",
-      level: "advanced",
-      category: "technology",
-      sentences: [
-        "Artificial intelligence is revolutionizing the way we live and work.",
-        "Machine learning algorithms can now process vast amounts of data in seconds, enabling computers to make decisions that were once exclusively human.",
-        "This technological advancement has implications for various industries, from healthcare to finance.",
-        "However, as we embrace these innovations, we must also consider the ethical implications and ensure that technology serves humanity rather than replacing it.",
-      ],
-      vocabulary: ["revolutionizing", "algorithms", "implications", "innovations", "ethical"],
-    },
-  ]
+  const loadSampleContent = async () => {
+    const MOCK_LESSON_ID = "GEN_L0001";
+    const MOCK_LANG_CODE = "EN";
+    const MOCK_TITLE = t("reading.generatedContentTitle") ?? "Generated Practice Text";
 
-  const generateQuiz = (text: ReadingText): QuizQuestion[] => {
-    const questions: QuizQuestion[] = [
-      {
-        id: "1",
-        question: "What did Sarah order at the coffee shop?",
-        options: ["Espresso", "Cappuccino", "Latte", "Americano"],
-        correctAnswer: 1,
-        explanation: 'The text states "She ordered her usual cappuccino"',
-        type: "comprehension",
-        riddle: "",
-        category: "",
-        difficulty: "easy",
-        skill: "",
-        points: 0
-      },
-      {
-        id: "2",
-        question: 'What does "aroma" mean?',
-        options: ["Sound", "Smell", "Taste", "Color"],
-        correctAnswer: 1,
-        explanation: "Aroma refers to a pleasant smell, especially from food or drink",
-        type: "vocabulary",
-        riddle: "",
-        category: "",
-        difficulty: "easy",
-        skill: "",
-        points: 0
-      },
-      {
-        id: "3",
-        question: 'Which tense is used in "Sarah walked into her favorite coffee shop"?',
-        options: ["Present", "Past", "Future", "Present Perfect"],
-        correctAnswer: 1,
-        explanation: 'The verb "walked" is in the simple past tense',
-        type: "grammar",
-        riddle: "",
-        category: "",
-        difficulty: "easy",
-        skill: "",
-        points: 0
-      },
-    ]
-    return questions
-  }
+    setSelectedTextData(null);
+    setReadingData(null);
+    setCurrentMode('read');
 
-  const translateSentence = (sentence: string, userTranslation: string) => {
-    // Mock translation evaluation
-    const mockCorrectTranslation = {
-      "Sarah walked into her favorite coffee shop on a rainy Tuesday morning.":
-        "Sarah bước vào quán cà phê yêu thích của cô vào một buổi sáng thứ Ba mưa.",
-      "The warm aroma of freshly brewed coffee filled the air, making her feel instantly comfortable.":
-        "Hương thơm ấm áp của cà phê mới pha tràn ngập không khí, khiến cô cảm thấy thoải mái ngay lập tức.",
-    }
+    try {
+      const result = await generateReading({
+        lessonId: MOCK_LESSON_ID,
+        languageCode: MOCK_LANG_CODE
+      });
 
-    const correctTranslation = mockCorrectTranslation[sentence] || "Bản dịch mẫu không có sẵn"
-    const similarity = calculateTranslationSimilarity(userTranslation, correctTranslation)
+      const passage = result.passage || t("reading.noPassageFound");
 
-    return {
-      original: sentence,
-      translated: userTranslation,
-      isCorrect: similarity > 0.7,
-      suggestion: similarity <= 0.7 ? `Gợi ý: ${correctTranslation}` : undefined,
+      // Tách passage thành sentences (client-side logic)
+      const sentences = passage.match(/[^.!?]+[.!?]/g) || [passage];
+
+      // Cập nhật state nội dung hiển thị
+      setSelectedTextData({
+        lessonId: MOCK_LESSON_ID,
+        languageCode: MOCK_LANG_CODE,
+        title: MOCK_TITLE,
+        content: passage,
+        sentences: sentences,
+        vocabulary: ["word", "phrase", "test"], // GIỮ LẠI MẢNG STRING CỨNG cho UI list
+        level: "beginner", category: "daily-life"
+      });
+
+      // Sử dụng DTO thật từ API
+      setCurrentQuiz(result.questions || []);
+      setReadingData(result);
+      setTranslations(new Array(sentences.length).fill(null));
+
+    } catch (error) {
+      Alert.alert(t("reading.errorLoadingContent") ?? "Lỗi tải nội dung", t("errors.api") ?? "Không thể tải bài đọc từ API.");
+      setSelectedTextData(null);
     }
   }
 
-  const calculateTranslationSimilarity = (user: string, correct: string): number => {
-    // Simple similarity calculation
-    const userWords = user.toLowerCase().split(" ")
-    const correctWords = correct.toLowerCase().split(" ")
-    const commonWords = userWords.filter((word) => correctWords.includes(word))
-    return commonWords.length / Math.max(userWords.length, correctWords.length)
-  }
-
-  const submitTranslation = () => {
-    if (!selectedText || selectedSentence === null || !userTranslation.trim()) {
-      Alert.alert("Lỗi", "Vui lòng nhập bản dịch")
+  const submitTranslation = async () => {
+    if (!selectedTextData || selectedSentenceIndex === null || !userTranslation.trim()) {
+      Alert.alert(t("common.error"), t("translation.errorNoInput") ?? "Vui lòng nhập bản dịch");
       return
     }
+    if (!readingData) return;
 
-    const sentence = selectedText.sentences[selectedSentence]
-    const result = translateSentence(sentence, userTranslation.trim())
+    const sentence = selectedTextData.sentences[selectedSentenceIndex]
 
-    setTranslations((prev) => {
-      const newTranslations = [...prev]
-      newTranslations[selectedSentence] = result
-      return newTranslations
-    })
+    try {
+      const apiResult = await checkTranslation({
+        lessonId: selectedTextData.lessonId,
+        req: {
+          translatedText: userTranslation.trim(),
+          targetLanguage: selectedTextData.languageCode,
+        } as TranslationRequestBody,
+      });
 
-    setShowTranslationResult(true)
-    setUserTranslation("")
+      const result: TranslationResult = {
+        original: sentence,
+        translated: userTranslation.trim(),
+        isCorrect: apiResult.score > 80,
+        suggestion: apiResult.score <= 80 ? apiResult.feedback : undefined,
+      };
+
+      setTranslations((prev) => {
+        const newTranslations = [...prev]
+        newTranslations[selectedSentenceIndex] = result
+        return newTranslations
+      })
+
+      setUserTranslation("")
+
+    } catch (error) {
+      Alert.alert(t("common.error"), t("translation.errorCheckFailed") ?? "Không thể kiểm tra bản dịch.");
+    }
   }
 
   const startQuiz = () => {
-    if (!selectedText) return
+    if (!readingData || currentQuiz.length === 0) {
+      Alert.alert(t("quiz.errorTitle") ?? "Lỗi Quiz", t("quiz.errorNoQuestions") ?? "Bài đọc chưa có bộ câu hỏi nào.");
+      return;
+    }
 
-    const quiz = generateQuiz(selectedText)
-    setCurrentQuiz(quiz)
     setCurrentQuestionIndex(0)
     setSelectedAnswer(null)
     setQuizScore(0)
     setCurrentMode("quiz")
+    setShowQuizResult(false);
   }
 
   const submitQuizAnswer = () => {
-    if (selectedAnswer === null) return
+    if (selectedAnswer === null) return Alert.alert(t("common.error"), t("quiz.selectAnswerRequired") ?? "Vui lòng chọn câu trả lời");
 
     const currentQuestion = currentQuiz[currentQuestionIndex]
-    const isCorrect = selectedAnswer === currentQuestion.correctAnswer
+
+    // So sánh đáp án được chọn (string) với đáp án đúng (correctAnswer: string DTO)
+    const selectedOptionText = currentQuestion.options[selectedAnswer];
+    const isCorrect = selectedOptionText === currentQuestion.correctAnswer;
 
     if (isCorrect) {
       setQuizScore((prev) => prev + 1)
@@ -195,48 +192,35 @@ const ReadingScreen = ({ navigation }) => {
     }
   }
 
-  const renderTextCard = (text: ReadingText) => (
-    <TouchableOpacity key={text.id} style={styles.textCard} onPress={() => setSelectedText(text)}>
-      <View style={styles.textHeader}>
-        <View style={[styles.levelBadge, { backgroundColor: `${getLevelColor(text.level)}20` }]}>
-          <Text style={[styles.levelText, { color: getLevelColor(text.level) }]}>
-            {text.level === "beginner" ? "Sơ cấp" : text.level === "intermediate" ? "Trung cấp" : "Nâng cao"}
-          </Text>
-        </View>
-        <Text style={styles.categoryText}>{text.category}</Text>
-      </View>
-      <Text style={styles.textTitle}>{text.title}</Text>
-      <Text style={styles.textPreview} numberOfLines={3}>
-        {text.content}
-      </Text>
-    </TouchableOpacity>
-  )
-
+  // BỎ renderTextCard
   const renderReadingMode = () => (
     <ScrollView style={styles.readingContent}>
-      <Text style={styles.readingTitle}>{selectedText?.title}</Text>
-      <Text style={styles.readingText}>{selectedText?.content}</Text>
+      <Text style={styles.readingTitle}>{selectedTextData?.title}</Text>
+      <Text style={styles.readingText}>{readingData?.passage || selectedTextData?.content}</Text>
 
-      <View style={styles.vocabularySection}>
-        <Text style={styles.vocabularyTitle}>Từ vựng quan trọng</Text>
-        <View style={styles.vocabularyList}>
-          {selectedText?.vocabulary.map((word, index) => (
-            <View key={index} style={styles.vocabularyItem}>
-              <Text style={styles.vocabularyWord}>{word}</Text>
-            </View>
-          ))}
+      {/* Vocabulary Section */}
+      {selectedTextData?.vocabulary && (
+        <View style={styles.vocabularySection}>
+          <Text style={styles.vocabularyTitle}>{t("reading.vocabularyTitle") ?? "Từ vựng quan trọng"}</Text>
+          <View style={styles.vocabularyList}>
+            {selectedTextData.vocabulary.map((word, index) => (
+              <View key={index} style={styles.vocabularyItem}>
+                <Text style={styles.vocabularyWord}>{word}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.modeActions}>
         <TouchableOpacity style={styles.modeButton} onPress={() => setCurrentMode("translate")}>
           <Icon name="translate" size={20} color="#4F46E5" />
-          <Text style={styles.modeButtonText}>Dịch từng câu</Text>
+          <Text style={styles.modeButtonText}>{t("reading.modeTranslate") ?? "Dịch từng câu"}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.modeButton} onPress={startQuiz}>
-          <Icon name="quiz" size={20} color="#10B981" />
-          <Text style={styles.modeButtonText}>Làm bài quiz</Text>
+        <TouchableOpacity style={styles.modeButton} onPress={startQuiz} disabled={isGeneratingReading || currentQuiz.length === 0}>
+          <Icon name="quiz" size={20} color={currentQuiz.length === 0 ? "#9CA3AF" : "#10B981"} />
+          <Text style={styles.modeButtonText}>{t("reading.modeQuiz") ?? "Làm bài quiz"}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -244,22 +228,22 @@ const ReadingScreen = ({ navigation }) => {
 
   const renderTranslationMode = () => (
     <ScrollView style={styles.translationContent}>
-      <Text style={styles.translationTitle}>Dịch từng câu</Text>
-      <Text style={styles.translationInstruction}>Chọn câu và nhập bản dịch của bạn</Text>
+      <Text style={styles.translationTitle}>{t("translation.title") ?? "Dịch từng câu"}</Text>
+      <Text style={styles.translationInstruction}>{t("translation.instruction") ?? "Chọn câu và nhập bản dịch của bạn"}</Text>
 
       <View style={styles.sentencesList}>
-        {selectedText?.sentences.map((sentence, index) => (
+        {selectedTextData?.sentences.map((sentence, index) => (
           <TouchableOpacity
             key={index}
             style={[
               styles.sentenceItem,
-              selectedSentence === index && styles.selectedSentenceItem,
-              translations[index] && styles.translatedSentenceItem,
+              selectedSentenceIndex === index && styles.selectedSentenceItem,
+              translations[index]?.isCorrect && styles.translatedSentenceItem,
             ]}
-            onPress={() => setSelectedSentence(index)}
+            onPress={() => setSelectedSentenceIndex(index)}
           >
             <View style={styles.sentenceHeader}>
-              <Text style={styles.sentenceNumber}>Câu {index + 1}</Text>
+              <Text style={styles.sentenceNumber}>{t("common.sentence")} {index + 1}</Text>
               {translations[index] && (
                 <Icon
                   name={translations[index].isCorrect ? "check-circle" : "error"}
@@ -271,7 +255,7 @@ const ReadingScreen = ({ navigation }) => {
             <Text style={styles.sentenceText}>{sentence}</Text>
             {translations[index] && (
               <View style={styles.translationResult}>
-                <Text style={styles.userTranslationText}>Bản dịch của bạn: {translations[index].translated}</Text>
+                <Text style={styles.userTranslationText}>{t("translation.yourTranslation")}: {translations[index].translated}</Text>
                 {translations[index].suggestion && (
                   <Text style={styles.suggestionText}>{translations[index].suggestion}</Text>
                 )}
@@ -281,20 +265,25 @@ const ReadingScreen = ({ navigation }) => {
         ))}
       </View>
 
-      {selectedSentence !== null && (
+      {selectedSentenceIndex !== null && (
         <View style={styles.translationInput}>
-          <Text style={styles.inputLabel}>Dịch câu {selectedSentence + 1}:</Text>
+          <Text style={styles.inputLabel}>{t("translation.translateSentence", { index: selectedSentenceIndex + 1 })}:</Text>
           <TextInput
             style={styles.textInput}
-            placeholder="Nhập bản dịch của bạn..."
+            placeholder={t("translation.inputPlaceholder") ?? "Nhập bản dịch của bạn..."}
             placeholderTextColor="#9CA3AF"
             value={userTranslation}
             onChangeText={setUserTranslation}
             multiline
             numberOfLines={3}
+            textAlignVertical="top"
           />
-          <TouchableOpacity style={styles.submitButton} onPress={submitTranslation}>
-            <Text style={styles.submitButtonText}>Kiểm tra</Text>
+          <TouchableOpacity style={styles.submitButton} onPress={submitTranslation} disabled={isCheckingTranslation || !userTranslation.trim()}>
+            {isCheckingTranslation ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.submitButtonText}>{t("common.check") ?? "Kiểm tra"}</Text>
+            )}
           </TouchableOpacity>
         </View>
       )}
@@ -306,9 +295,9 @@ const ReadingScreen = ({ navigation }) => {
       return (
         <View style={styles.quizResultContainer}>
           <Icon name="check-circle" size={64} color="#10B981" />
-          <Text style={styles.quizResultTitle}>Hoàn thành bài quiz!</Text>
+          <Text style={styles.quizResultTitle}>{t("quiz.completeTitle") ?? "Hoàn thành bài quiz!"}</Text>
           <Text style={styles.quizResultScore}>
-            Điểm số: {quizScore}/{currentQuiz.length}
+            {t("quiz.score") ?? "Điểm số"}: {quizScore}/{currentQuiz.length}
           </Text>
           <Text style={styles.quizResultPercentage}>{Math.round((quizScore / currentQuiz.length) * 100)}%</Text>
 
@@ -320,11 +309,11 @@ const ReadingScreen = ({ navigation }) => {
                 setCurrentMode("read")
               }}
             >
-              <Text style={styles.resultButtonText}>Quay lại đọc</Text>
+              <Text style={styles.resultButtonText}>{t("quiz.backToReading") ?? "Quay lại đọc"}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.resultButton} onPress={startQuiz}>
-              <Text style={styles.resultButtonText}>Làm lại</Text>
+              <Text style={styles.resultButtonText}>{t("quiz.retake") ?? "Làm lại"}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -338,7 +327,7 @@ const ReadingScreen = ({ navigation }) => {
       <ScrollView style={styles.quizContent}>
         <View style={styles.quizHeader}>
           <Text style={styles.quizProgress}>
-            Câu {currentQuestionIndex + 1}/{currentQuiz.length}
+            {t("quiz.question")} {currentQuestionIndex + 1}/{currentQuiz.length}
           </Text>
           <View style={styles.quizProgressBar}>
             <View
@@ -351,34 +340,7 @@ const ReadingScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.questionContainer}>
-          <View style={styles.questionTypeContainer}>
-            <Text
-              style={[
-                styles.questionType,
-                {
-                  backgroundColor:
-                    currentQuestion.type === "vocabulary"
-                      ? "#EEF2FF"
-                      : currentQuestion.type === "grammar"
-                        ? "#ECFDF5"
-                        : "#FEF2F2",
-                  color:
-                    currentQuestion.type === "vocabulary"
-                      ? "#4F46E5"
-                      : currentQuestion.type === "grammar"
-                        ? "#10B981"
-                        : "#EF4444",
-                },
-              ]}
-            >
-              {currentQuestion.type === "vocabulary"
-                ? "Từ vựng"
-                : currentQuestion.type === "grammar"
-                  ? "Ngữ pháp"
-                  : "Hiểu đọc"}
-            </Text>
-          </View>
-
+          {/* BỎ questionTypeContainer VÌ KHÔNG CÓ TRƯỜNG TYPE TRONG DTO */}
           <Text style={styles.questionText}>{currentQuestion.question}</Text>
 
           <View style={styles.optionsContainer}>
@@ -408,7 +370,7 @@ const ReadingScreen = ({ navigation }) => {
             disabled={selectedAnswer === null}
           >
             <Text style={styles.submitQuizButtonText}>
-              {currentQuestionIndex < currentQuiz.length - 1 ? "Câu tiếp theo" : "Hoàn thành"}
+              {currentQuestionIndex < currentQuiz.length - 1 ? t("common.nextQuestion") : t("common.finish")}
             </Text>
           </TouchableOpacity>
         </View>
@@ -416,14 +378,20 @@ const ReadingScreen = ({ navigation }) => {
     )
   }
 
-  if (selectedText) {
+  if (selectedTextData) {
     return (
       <View style={styles.container}>
+        {isGeneratingReading && (
+          <View style={styles.overlayLoading}>
+            <ActivityIndicator size="large" color="#4F46E5" />
+            <Text style={styles.loadingText}>{t("common.loadingReading") ?? "Đang tải bài đọc..."}</Text>
+          </View>
+        )}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => setSelectedText(null)}>
+          <TouchableOpacity onPress={() => setSelectedTextData(null)}>
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{selectedText.title}</Text>
+          <Text style={styles.headerTitle}>{selectedTextData.title}</Text>
           <View style={styles.modeSelector}>
             <TouchableOpacity
               style={[styles.modeTab, currentMode === "read" && styles.activeModeTab]}
@@ -439,27 +407,28 @@ const ReadingScreen = ({ navigation }) => {
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeTab, currentMode === "quiz" && styles.activeModeTab]}
-              onPress={() => setCurrentMode("quiz")}
+              onPress={startQuiz}
+              disabled={isGeneratingReading || currentQuiz.length === 0}
             >
-              <Icon name="quiz" size={16} color={currentMode === "quiz" ? "#FFFFFF" : "#6B7280"} />
+              <Icon name="quiz" size={16} color={currentMode === "quiz" || currentQuiz.length > 0 ? "#FFFFFF" : "#6B7280"} />
             </TouchableOpacity>
           </View>
         </View>
 
-        {currentMode === "read" && renderReadingMode()}
-        {currentMode === "translate" && renderTranslationMode()}
-        {currentMode === "quiz" && renderQuizMode()}
+        {currentMode === "read" && readingData && renderReadingMode()}
+        {currentMode === "translate" && readingData && renderTranslationMode()}
+        {currentMode === "quiz" && readingData && renderQuizMode()}
       </View>
     )
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Luyện đọc</Text>
+        <Text style={styles.headerTitle}>{t("reading.screenTitle") ?? "Luyện đọc"}</Text>
         <TouchableOpacity>
           <Icon name="search" size={24} color="#6B7280" />
         </TouchableOpacity>
@@ -469,17 +438,30 @@ const ReadingScreen = ({ navigation }) => {
         <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
           <View style={styles.welcomeSection}>
             <Icon name="book" size={64} color="#4F46E5" />
-            <Text style={styles.welcomeTitle}>Luyện kỹ năng đọc</Text>
-            <Text style={styles.welcomeText}>Đọc hiểu, dịch thuật và làm bài quiz để nâng cao khả năng đọc</Text>
+            <Text style={styles.welcomeTitle}>{t("reading.welcomeTitle") ?? "Luyện kỹ năng đọc"}</Text>
+            <Text style={styles.welcomeText}>{t("reading.welcomeText") ?? "Đọc hiểu, dịch thuật và làm bài quiz để nâng cao khả năng đọc"}</Text>
           </View>
 
           <View style={styles.textsSection}>
-            <Text style={styles.sectionTitle}>Chọn bài đọc</Text>
-            {readingTexts.map(renderTextCard)}
+            <Text style={styles.sectionTitle}>{t("reading.generateSample") ?? "Tạo Bài Đọc Mẫu"}</Text>
+            <TouchableOpacity
+              style={styles.generateButton}
+              onPress={loadSampleContent}
+              disabled={isGeneratingReading}
+            >
+              {isGeneratingReading ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <>
+                  <Icon name="auto-fix-high" size={24} color="#FFFFFF" />
+                  <Text style={styles.generateButtonText}>{t("reading.generateButton") ?? "Tạo Bài Đọc Mẫu"}</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   )
 }
 
@@ -530,11 +512,6 @@ const styles = createScaledSheet({
     alignItems: "center",
     marginBottom: 30,
   },
-  welcomeAnimation: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
-  },
   welcomeTitle: {
     fontSize: 20,
     fontWeight: "bold",
@@ -555,6 +532,25 @@ const styles = createScaledSheet({
     fontWeight: "600",
     color: "#1F2937",
     marginBottom: 16,
+  },
+  generateButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4F46E5",
+    paddingVertical: 15,
+    borderRadius: 12,
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  generateButtonText: {
+    fontSize: 16,
+    color: "#FFFFFF",
+    fontWeight: "600",
   },
   textCard: {
     backgroundColor: "#FFFFFF",
@@ -649,6 +645,7 @@ const styles = createScaledSheet({
   modeActions: {
     flexDirection: "row",
     gap: 12,
+    paddingBottom: 20,
   },
   modeButton: {
     flex: 1,
@@ -811,17 +808,6 @@ const styles = createScaledSheet({
     shadowRadius: 8,
     elevation: 4,
   },
-  questionTypeContainer: {
-    marginBottom: 16,
-  },
-  questionType: {
-    fontSize: 12,
-    fontWeight: "600",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: "flex-start",
-  },
   questionText: {
     fontSize: 18,
     color: "#1F2937",
@@ -896,11 +882,6 @@ const styles = createScaledSheet({
     justifyContent: "center",
     padding: 20,
   },
-  quizResultAnimation: {
-    width: 150,
-    height: 150,
-    marginBottom: 24,
-  },
   quizResultTitle: {
     fontSize: 24,
     fontWeight: "bold",
@@ -935,6 +916,23 @@ const styles = createScaledSheet({
     color: "#374151",
     fontWeight: "500",
   },
+  overlayLoading: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#4F46E5',
+    fontWeight: '600',
+  }
 })
 
 export default ReadingScreen

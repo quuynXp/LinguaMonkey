@@ -187,7 +187,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("notification.settingsTitle")}</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("NotificationHistory")}>
+        <TouchableOpacity onPress={() => navigation.navigate("NotificationHistoryScreen")}>
           <Icon name="history" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>

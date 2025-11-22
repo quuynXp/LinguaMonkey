@@ -5,7 +5,6 @@ import {
   Alert,
   Modal,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -15,23 +14,38 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useGrammar } from "../../hooks/useGrammar";
 import { useAppStore } from "../../stores/appStore";
-import type { GrammarExercise, GrammarRule, GrammarTopic, SubmitExerciseResponse } from "../../types/api";
+import type {
+  GrammarExerciseResponse,
+  GrammarRuleResponse,
+  GrammarTopicResponse,
+  SubmitExerciseResponse,
+} from "../../types/dto";
+import { SubmitExerciseRequest } from "../../types/dto";
 import { grammarExerciseSchema, validateData } from "../../utils/validation";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 
 const GrammarLearningScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
-  const { selectedGrammarTopic, setSelectedGrammarTopic } = useAppStore();
-  const [selectedRule, setSelectedRule] = useState<GrammarRule | null>(null);
+  const { selectedGrammarTopic, setSelectedGrammarTopic } =
+    useAppStore();
+  const [selectedRule, setSelectedRule] =
+    useState<GrammarRuleResponse | null>(null);
   const [showRuleModal, setShowRuleModal] = useState(false);
   const [userAnswers, setUserAnswers] = useState<Record<string, string>>({});
   const [showResults, setShowResults] = useState(false);
   const [exerciseScore, setExerciseScore] = useState<number>(0);
-  const [validationErrors, setValidationErrors] = useState<Record<string, string[]>>({});
+  const [validationErrors, setValidationErrors] = useState<
+    Record<string, string[]>
+  >({});
 
-  const { useGrammarTopics, useGrammarTopic, useGrammarRule, useSubmitGrammarExercise, useUpdateGrammarProgress } =
-    useGrammar();
+  const {
+    useGrammarTopics,
+    useGrammarTopic,
+    useGrammarRule,
+    useSubmitGrammarExercise,
+    useUpdateGrammarProgress,
+  } = useGrammar();
 
   const currentUser = useUserStore().user;
   const userId = currentUser?.userId ?? null;
@@ -39,7 +53,7 @@ const GrammarLearningScreen = ({ navigation }: any) => {
   const topicsQuery = useGrammarTopics();
   const topics = topicsQuery.data ?? [];
 
-  const topicQuery = useGrammarTopic(selectedGrammarTopic?.topicId ?? null);
+  const topicQuery = useGrammarTopic(selectedGrammarTopic?.topicId ?? null, userId ?? undefined);
   const topicData = topicQuery.data ?? null;
 
   const ruleQuery = useGrammarRule(selectedRule?.ruleId ?? null);
@@ -50,22 +64,28 @@ const GrammarLearningScreen = ({ navigation }: any) => {
 
   const getLevelColor = (level?: string) => {
     switch (level) {
-      case "beginner":
+      case "A1":
         return "#4CAF50";
-      case "intermediate":
+      case "A2":
+        return "#4CAF50";
+      case "B1":
         return "#FF9800";
-      case "advanced":
+      case "B2":
+        return "#FF9800";
+      case "C1":
+        return "#F44336";
+      case "C2":
         return "#F44336";
       default:
         return "#757575";
     }
   };
 
-  const handleTopicPress = (topic: GrammarTopic) => {
+  const handleTopicPress = (topic: GrammarTopicResponse) => {
     setSelectedGrammarTopic(topic);
   };
 
-  const handleRulePress = (rule: GrammarRule) => {
+  const handleRulePress = (rule: GrammarRuleResponse) => {
     setSelectedRule(rule);
     setShowRuleModal(true);
     setUserAnswers({});
@@ -98,14 +118,20 @@ const GrammarLearningScreen = ({ navigation }: any) => {
         answers: userAnswers,
       });
 
-      const payload = { ruleId: selectedRule.ruleId, userId, answers: userAnswers };
-      const result = (await submitMut.mutateAsync(payload)) as SubmitExerciseResponse | undefined;
+      const payload: SubmitExerciseRequest = {
+        ruleId: selectedRule.ruleId,
+        userId,
+        answers: userAnswers,
+      };
+      const result = (await submitMut.submitExercise(
+        payload,
+      )) as SubmitExerciseResponse | undefined;
 
       if (result) {
         setExerciseScore(result.score ?? 0);
         setShowResults(true);
 
-        await updateProgressMut.mutateAsync({
+        await updateProgressMut.updateProgress({
           topicId: selectedGrammarTopic?.topicId ?? "",
           ruleId: selectedRule.ruleId,
           userId,
@@ -113,7 +139,9 @@ const GrammarLearningScreen = ({ navigation }: any) => {
         });
 
         if (result.score >= 70) {
-          Alert.alert(t("common.success"), t("success.exerciseCompleted"), [{ text: t("common.confirm") }]);
+          Alert.alert(t("common.success"), t("success.exerciseCompleted"), [
+            { text: t("common.confirm") },
+          ]);
         }
       }
     } catch (err: any) {
@@ -125,23 +153,30 @@ const GrammarLearningScreen = ({ navigation }: any) => {
     }
   };
 
-  const renderTopicCard = (topic: GrammarTopic) => (
-    <TouchableOpacity key={topic.topicId} style={styles.topicCard} onPress={() => handleTopicPress(topic)}>
+  const renderTopicCard = (topic: GrammarTopicResponse) => (
+    <TouchableOpacity
+      key={topic.topicId}
+      style={[styles.topicCard, { borderLeftColor: getLevelColor(topic.languageCode) }]}
+      onPress={() => handleTopicPress(topic)}
+    >
       <View style={styles.topicHeader}>
         <Text style={styles.topicTitle}>{topic.topicName}</Text>
-        <View style={[styles.levelBadge, { backgroundColor: getLevelColor(undefined) }]}>
-          <Text style={styles.levelText}>{t("grammar.topic")}</Text>
+        <View style={[styles.levelBadge, { backgroundColor: getLevelColor(topic.languageCode) }]}>
+          <Text style={styles.levelText}>{topic.languageCode}</Text>
         </View>
       </View>
       <Text style={styles.ruleCount}>
-        {/* topic.rules may not be present in list; show placeholder */}
-        {topic.rules ? topic.rules.length : "-"} {t("grammar.rules").toLowerCase()}
+        {(topic.rules ? topic.rules.length : 0)} {t("grammar.rules").toLowerCase()}
       </Text>
     </TouchableOpacity>
   );
 
-  const renderRuleItem = (rule: GrammarRule) => (
-    <TouchableOpacity key={rule.ruleId} style={styles.ruleItem} onPress={() => handleRulePress(rule)}>
+  const renderRuleItem = (rule: GrammarRuleResponse) => (
+    <TouchableOpacity
+      key={rule.ruleId}
+      style={styles.ruleItem}
+      onPress={() => handleRulePress(rule)}
+    >
       <View style={styles.ruleIcon}>
         <Icon name="school" size={24} color="#2196F3" />
       </View>
@@ -151,14 +186,15 @@ const GrammarLearningScreen = ({ navigation }: any) => {
           {rule.explanation ?? ""}
         </Text>
         <Text style={styles.exerciseCount}>
-          {(rule.exercises?.length ?? 0)} {t("grammar.exercises").toLowerCase()}
+          {(rule.exercises?.length ?? 0)}{" "}
+          {t("grammar.exercises").toLowerCase()}
         </Text>
       </View>
       <Icon name="chevron-right" size={24} color="#ccc" />
     </TouchableOpacity>
   );
 
-  const renderExercise = (exercise: GrammarExercise, index: number) => {
+  const renderExercise = (exercise: GrammarExerciseResponse, index: number) => {
     const exId = exercise.exerciseId;
     switch (exercise.type) {
       case "fill-blank":
@@ -168,7 +204,9 @@ const GrammarLearningScreen = ({ navigation }: any) => {
               {t("grammar.exercises")} {index + 1}
             </Text>
             <Text style={styles.exerciseQuestion}>{exercise.question}</Text>
-            {validationErrors[exId] && <Text style={styles.errorText}>{validationErrors[exId][0]}</Text>}
+            {validationErrors[exId] && (
+              <Text style={styles.errorText}>{validationErrors[exId][0]}</Text>
+            )}
             <TextInput
               style={styles.textInput}
               placeholder={t("common.answer")}
@@ -182,15 +220,21 @@ const GrammarLearningScreen = ({ navigation }: any) => {
                     styles.resultText,
                     {
                       color:
-                        (userAnswers[exId] ?? "").trim().toLowerCase() === (exercise.correct ?? "").trim().toLowerCase()
+                        (userAnswers[exId] ?? "")
+                          .trim()
+                          .toLowerCase() ===
+                          (exercise.correct ?? "").trim().toLowerCase()
                           ? "#4CAF50"
                           : "#F44336",
                     },
                   ]}
                 >
-                  {(userAnswers[exId] ?? "").trim().toLowerCase() === (exercise.correct ?? "").trim().toLowerCase()
+                  {(userAnswers[exId] ?? "").trim().toLowerCase() ===
+                    (exercise.correct ?? "").trim().toLowerCase()
                     ? t("grammar.correct")
-                    : t("grammar.incorrect", { answer: exercise.correct })}
+                    : t("grammar.incorrect", {
+                      answer: exercise.correct,
+                    })}
                 </Text>
                 <Text style={styles.explanationText}>{exercise.explanation}</Text>
               </View>
@@ -205,22 +249,46 @@ const GrammarLearningScreen = ({ navigation }: any) => {
               {t("grammar.exercises")} {index + 1}
             </Text>
             <Text style={styles.exerciseQuestion}>{exercise.question}</Text>
-            {validationErrors[exId] && <Text style={styles.errorText}>{validationErrors[exId][0]}</Text>}
+            {validationErrors[exId] && (
+              <Text style={styles.errorText}>{validationErrors[exId][0]}</Text>
+            )}
             {(exercise.options ?? []).map((option) => (
               <TouchableOpacity
                 key={option}
-                style={[styles.optionButton, (userAnswers[exId] ?? "") === option && styles.selectedOption]}
+                style={[
+                  styles.optionButton,
+                  (userAnswers[exId] ?? "") === option &&
+                  styles.selectedOption,
+                ]}
                 onPress={() => handleAnswerChange(exId, option)}
               >
-                <Text style={[styles.optionText, (userAnswers[exId] ?? "") === option && styles.selectedOptionText]}>
+                <Text
+                  style={[
+                    styles.optionText,
+                    (userAnswers[exId] ?? "") === option &&
+                    styles.selectedOptionText,
+                  ]}
+                >
                   {option}
                 </Text>
               </TouchableOpacity>
             ))}
             {showResults && (
               <View style={styles.resultContainer}>
-                <Text style={[styles.resultText, { color: (userAnswers[exId] ?? "") === exercise.correct ? "#4CAF50" : "#F44336" }]}>
-                  {(userAnswers[exId] ?? "") === exercise.correct ? t("grammar.correct") : t("grammar.incorrect", { answer: exercise.correct })}
+                <Text
+                  style={[
+                    styles.resultText,
+                    {
+                      color:
+                        (userAnswers[exId] ?? "") === exercise.correct
+                          ? "#4CAF50"
+                          : "#F44336",
+                    },
+                  ]}
+                >
+                  {(userAnswers[exId] ?? "") === exercise.correct
+                    ? t("grammar.correct")
+                    : t("grammar.incorrect", { answer: exercise.correct })}
                 </Text>
                 <Text style={styles.explanationText}>{exercise.explanation}</Text>
               </View>
@@ -235,7 +303,9 @@ const GrammarLearningScreen = ({ navigation }: any) => {
               {t("grammar.exercises")} {index + 1}
             </Text>
             <Text style={styles.exerciseQuestion}>{exercise.question}</Text>
-            {validationErrors[exId] && <Text style={styles.errorText}>{validationErrors[exId][0]}</Text>}
+            {validationErrors[exId] && (
+              <Text style={styles.errorText}>{validationErrors[exId][0]}</Text>
+            )}
             <TextInput
               style={[styles.textInput, { minHeight: 80 }]}
               placeholder={t("grammar.transformationPlaceholder")}
@@ -250,15 +320,21 @@ const GrammarLearningScreen = ({ navigation }: any) => {
                     styles.resultText,
                     {
                       color:
-                        (userAnswers[exId] ?? "").trim().toLowerCase() === (exercise.correct ?? "").trim().toLowerCase()
+                        (userAnswers[exId] ?? "")
+                          .trim()
+                          .toLowerCase() ===
+                          (exercise.correct ?? "").trim().toLowerCase()
                           ? "#4CAF50"
                           : "#F44336",
                     },
                   ]}
                 >
-                  {(userAnswers[exId] ?? "").trim().toLowerCase() === (exercise.correct ?? "").trim().toLowerCase()
+                  {(userAnswers[exId] ?? "").trim().toLowerCase() ===
+                    (exercise.correct ?? "").trim().toLowerCase()
                     ? t("grammar.correct")
-                    : t("grammar.incorrect", { answer: exercise.correct })}
+                    : t("grammar.incorrect", {
+                      answer: exercise.correct,
+                    })}
                 </Text>
                 <Text style={styles.explanationText}>{exercise.explanation}</Text>
               </View>
@@ -288,7 +364,10 @@ const GrammarLearningScreen = ({ navigation }: any) => {
         <View style={styles.errorContainer}>
           <Icon name="error" size={48} color="#F44336" />
           <Text style={styles.errorText}>{t("errors.network")}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => topicsQuery.refetch()}>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => topicsQuery.refetch()}
+          >
             <Text style={styles.retryButtonText}>{t("common.retry")}</Text>
           </TouchableOpacity>
         </View>
@@ -320,7 +399,9 @@ const GrammarLearningScreen = ({ navigation }: any) => {
             <TouchableOpacity onPress={() => setSelectedGrammarTopic(null)}>
               <Icon name="arrow-back" size={24} color="#333" />
             </TouchableOpacity>
-            <Text style={styles.selectedTopicTitle}>{selectedGrammarTopic.topicName}</Text>
+            <Text style={styles.selectedTopicTitle}>
+              {selectedGrammarTopic.topicName}
+            </Text>
             <View style={styles.headerRight} />
           </View>
           {topicQuery.isPending ? (
@@ -330,13 +411,17 @@ const GrammarLearningScreen = ({ navigation }: any) => {
           ) : (
             <ScrollView>
               <Text style={styles.rulesTitle}>{t("grammar.rules")}</Text>
-              {(topicData?.rules ?? selectedGrammarTopic.rules ?? []).map(renderRuleItem)}
+              {(topicData?.rules ?? []).map(renderRuleItem)}
             </ScrollView>
           )}
         </View>
       )}
 
-      <Modal visible={showRuleModal} animationType="slide" onRequestClose={() => setShowRuleModal(false)}>
+      <Modal
+        visible={showRuleModal}
+        animationType="slide"
+        onRequestClose={() => setShowRuleModal(false)}
+      >
         <SafeAreaView style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowRuleModal(false)}>
@@ -355,12 +440,18 @@ const GrammarLearningScreen = ({ navigation }: any) => {
               ruleData && (
                 <>
                   <View style={styles.explanationSection}>
-                    <Text style={styles.explanationTitle}>{t("grammar.explanation")}</Text>
-                    <Text style={styles.explanationText}>{ruleData.explanation}</Text>
+                    <Text style={styles.explanationTitle}>
+                      {t("grammar.explanation")}
+                    </Text>
+                    <Text style={styles.explanationText}>
+                      {ruleData.explanation}
+                    </Text>
                   </View>
 
                   <View style={styles.examplesSection}>
-                    <Text style={styles.examplesTitle}>{t("grammar.examples")}</Text>
+                    <Text style={styles.examplesTitle}>
+                      {t("grammar.examples")}
+                    </Text>
                     {(ruleData.examples ?? []).map((example, index) => (
                       <View key={index} style={styles.exampleItem}>
                         <Text style={styles.exampleText}>• {example}</Text>
@@ -369,26 +460,35 @@ const GrammarLearningScreen = ({ navigation }: any) => {
                   </View>
 
                   <View style={styles.exercisesSection}>
-                    <Text style={styles.exercisesTitle}>{t("grammar.exercises")}</Text>
+                    <Text style={styles.exercisesTitle}>
+                      {t("grammar.exercises")}
+                    </Text>
                     {(ruleData.exercises ?? []).map(renderExercise)}
 
                     {!showResults && (
                       <TouchableOpacity
-                        style={[styles.checkButton, submitMut.isPending && styles.disabledButton]}
+                        style={[
+                          styles.checkButton,
+                          submitMut.isSubmitting && styles.disabledButton,
+                        ]}
                         onPress={checkAnswers}
-                        disabled={submitMut.isPending}
+                        disabled={submitMut.isSubmitting}
                       >
-                        {submitMut.isPending ? (
+                        {submitMut.isSubmitting ? (
                           <ActivityIndicator color="#fff" />
                         ) : (
-                          <Text style={styles.checkButtonText}>{t("grammar.checkAnswers")}</Text>
+                          <Text style={styles.checkButtonText}>
+                            {t("grammar.checkAnswers")}
+                          </Text>
                         )}
                       </TouchableOpacity>
                     )}
 
                     {showResults && (
                       <View style={styles.scoreContainer}>
-                        <Text style={styles.scoreText}>{t("grammar.score", { score: exerciseScore })}</Text>
+                        <Text style={styles.scoreText}>
+                          {t("grammar.score", { score: exerciseScore })}
+                        </Text>
                         <TouchableOpacity
                           style={styles.retryButton}
                           onPress={() => {
@@ -397,7 +497,9 @@ const GrammarLearningScreen = ({ navigation }: any) => {
                             setValidationErrors({});
                           }}
                         >
-                          <Text style={styles.retryButtonText}>{t("grammar.retryExercises")}</Text>
+                          <Text style={styles.retryButtonText}>
+                            {t("grammar.retryExercises")}
+                          </Text>
                         </TouchableOpacity>
                       </View>
                     )}
@@ -750,6 +852,6 @@ const styles = createScaledSheet({
     textAlign: "center",
     marginVertical: 10,
   },
-})
+});
 
-export default GrammarLearningScreen
+export default GrammarLearningScreen;

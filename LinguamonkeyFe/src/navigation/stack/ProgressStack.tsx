@@ -1,20 +1,20 @@
+import React from 'react';
 import StudyHistoryScreen from '../../screens/progress/StudyHistoryScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import React from 'react';
 import ProgressScreen from '../../screens/progress/ProgressScreen';
 
 type ProgressStackParamList = {
-  ProgressMain: undefined;
-  StudyHistory: undefined;
+  ProgressScreen: undefined;
+  StudyHistoryScreen: undefined;
 };
 
-const ProgressStack = createNativeStackNavigator<ProgressStackParamList>();
+const Stack = createNativeStackNavigator<ProgressStackParamList>();
 
-const ProgressNavigator = () => (
-  <ProgressStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="ProgressMain" id={undefined}>
-    <ProgressStack.Screen name="ProgressMain" component={ProgressScreen} />
-    <ProgressStack.Screen name="StudyHistory" component={StudyHistoryScreen} />
-  </ProgressStack.Navigator>
+const ProgressStack = () => (
+  <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName="ProgressScreen" id={undefined}>
+    <Stack.Screen name="ProgressScreen" component={ProgressScreen} />
+    <Stack.Screen name="StudyHistoryScreen" component={StudyHistoryScreen} />
+  </Stack.Navigator>
 );
 
-export default ProgressNavigator;
+export default ProgressStack;

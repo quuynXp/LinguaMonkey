@@ -6,6 +6,7 @@ import { checkResetMethods } from '../../services/authService';
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { showError } from "../../utils/toastHelper";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { gotoTab } from "../../utils/navigationRef";
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -31,7 +32,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
     setIsLoading(true);
     try {
       const methods = await checkResetMethods(identifier);
-      navigation.navigate("ResetPasswordScreen", { identifier: identifier, methods: methods });
+      gotoTab("Profile", "ResetPasswordScreen", { identifier: identifier, methods: methods });
     } catch (error: any) {
       showError(error.message || t('accountNotFound'));
     } finally {

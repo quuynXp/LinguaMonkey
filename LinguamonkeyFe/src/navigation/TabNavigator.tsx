@@ -5,7 +5,7 @@ import ChatStack from './stack/ChatStack';
 import HomeStack from './stack/HomeStack';
 import ProfileStack from './stack/ProfileStack';
 import ProgressStack from './stack/ProgressStack';
-import SkillsLearnStack from './stack/SkillsLearnStack';
+import SkillsLearnStack from './stack/LearnStack';
 
 
 const Tab = createBottomTabNavigator();

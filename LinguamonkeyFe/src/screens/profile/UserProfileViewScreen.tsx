@@ -128,7 +128,7 @@ const UserProfileViewScreen = ({ route }: { route: { params?: RouteParams } }) =
 
   const handleMessage = () => {
     if (!profileSafe?.id) return;
-    navigation.navigate("UserChatScreen", {
+    navigation.navigate("ChatRoomListScreen", {
       userId: profileSafe.id,
       userName: profileSafe.fullname,
     });

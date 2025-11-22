@@ -31,4 +31,6 @@ public class CourseResponse {
 
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+
+    private String categoryCode;
 }

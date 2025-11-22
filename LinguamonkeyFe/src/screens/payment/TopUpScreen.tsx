@@ -75,7 +75,7 @@ const TopUpScreen = ({ navigation }) => {
                     const resultType = result.type as WebBrowserResultType;
 
                     if (resultType === 'success' || resultType === 'dismiss') {
-                        navigation.navigate('Wallet');
+                        navigation.navigate('WalletScreen');
                     }
                 },
                 onError: (error: any) => {

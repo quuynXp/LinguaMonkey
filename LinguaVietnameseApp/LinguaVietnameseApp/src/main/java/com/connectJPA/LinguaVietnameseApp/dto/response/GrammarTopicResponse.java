@@ -21,4 +21,6 @@ public class GrammarTopicResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private List<GrammarRuleResponse> rules;
+    private OffsetDateTime deletedAt;
+    private boolean isDeleted;
 }

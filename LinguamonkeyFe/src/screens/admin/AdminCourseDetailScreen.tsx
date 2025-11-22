@@ -16,7 +16,6 @@ import { useTranslation } from "react-i18next";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import Toast from "../../components/Toast";
 import { useCourses } from "../../hooks/useCourses";
-import type { Course } from "../../hooks/useCourses";
 import { goBack } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -34,7 +33,6 @@ const AdminCourseDetailScreen = () => {
     const { useCourse, useUpdateCourse, useDeleteCourse } = useCourses();
 
     const { data: course, isLoading, refetch } = useCourse(courseId);
-
     const { updateCourse, isUpdating } = useUpdateCourse();
     const { deleteCourse, isDeleting } = useDeleteCourse();
 
@@ -137,7 +135,6 @@ const AdminCourseDetailScreen = () => {
 
     return (
         <ScreenLayout style={styles.container}>
-            {/* Header */}
             <View style={styles.headerArea}>
                 <TouchableOpacity style={styles.headerButton} onPress={goBack}>
                     <Icon name="arrow-back" size={24} color="#333" />
@@ -160,12 +157,10 @@ const AdminCourseDetailScreen = () => {
                 </View>
             </View>
 
-            {/* Content */}
             <ScrollView
                 contentContainerStyle={styles.contentContainer}
                 refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
             >
-                {/* Thumbnail */}
                 {isEditing ? (
                     renderField(t("admin.courseDetail.form.thumbnailUrl"), "thumbnailUrl")
                 ) : (
@@ -176,14 +171,12 @@ const AdminCourseDetailScreen = () => {
                     />
                 )}
 
-                {/* Form Fields */}
                 {renderField(t("admin.courseDetail.form.title"), "title")}
                 {renderField(t("admin.courseDetail.form.description"), "description", true)}
                 {renderField(t("admin.courseDetail.form.difficultyLevel"), "difficultyLevel")}
                 {renderField(t("admin.courseDetail.form.type"), "type")}
                 {renderField(t("admin.courseDetail.form.price"), "price", false, "numeric")}
 
-                {/* Read-only fields */}
                 <View style={styles.fieldContainer}>
                     <Text style={styles.fieldLabel}>{t("admin.courseDetail.form.courseId")}</Text>
                     <Text style={styles.fieldValue}>{course?.courseId}</Text>
@@ -198,7 +191,6 @@ const AdminCourseDetailScreen = () => {
                 </View>
             </ScrollView>
         </ScreenLayout>
-
     );
 };
 

@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from "react-native"
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useUserStore } from "../../stores/UserStore"
 import * as WebBrowser from "expo-web-browser"
@@ -77,7 +77,7 @@ const PaymentScreen = ({ navigation, route }) => {
       {
         onSuccess: async (paymentUrl) => {
           await WebBrowser.openBrowserAsync(paymentUrl)
-          navigation.navigate('Wallet');
+          navigation.navigate('WalletScreen');
         },
         onError: (error) => {
           Alert.alert(t('payment.failedTitle') ?? "Please try again or use a different method.")

@@ -204,6 +204,7 @@ export interface Course extends BaseEntity {
     languageCode?: string;
     creatorId?: string;
     approvalStatus: Enums.CourseApprovalStatus;
+    categoryCode?: string;
 }
 
 export interface CourseDiscount extends BaseEntity {

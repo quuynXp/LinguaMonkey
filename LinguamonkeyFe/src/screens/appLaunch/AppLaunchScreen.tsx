@@ -130,9 +130,9 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
     setSelectedOption(option);
     setTimeout(async () => {
       if (option === "new") {
-        gotoTab("Auth", "Register");
+        gotoTab("AuthStack", "RegisterScreen");
       } else if (option === "existing") {
-        gotoTab("Auth", "Login");
+        gotoTab("AuthStack", "LoginScreen");
       } else if (option === "quick") {
         setIsGenerating(true);
         try {

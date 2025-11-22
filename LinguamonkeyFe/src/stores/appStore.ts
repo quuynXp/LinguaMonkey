@@ -4,7 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Enums from '../types/enums';
 import * as Entities from '../types/entity';
 
-interface CallPreferences {
+export interface CallPreferences {
   interests: string[];
   gender: 'any' | 'male' | 'female';
   nativeLanguage: string;
@@ -13,7 +13,7 @@ interface CallPreferences {
   callDuration: string;
 }
 
-interface ChatSettings {
+export interface ChatSettings {
   autoTranslate: boolean;
   showOriginalButton: boolean;
   translateToVietnamese: boolean;
@@ -26,7 +26,7 @@ interface ChatSettings {
   offlineTranslation: boolean;
 }
 
-interface NotificationPreferences {
+export interface NotificationPreferences {
   studyReminders: boolean;
   streakReminders: boolean;
   messageNotifications: boolean;
@@ -45,7 +45,7 @@ interface NotificationPreferences {
   };
 }
 
-interface PrivacySettings {
+export interface PrivacySettings {
   profileVisibility: boolean;
   progressSharing: boolean;
   dataCollection: boolean;

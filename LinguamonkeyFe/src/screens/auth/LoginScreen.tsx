@@ -127,7 +127,7 @@ const LoginScreen = ({ navigation }) => {
       const success = await requestOtp(identifier);
       if (success) {
         showSuccess(t("otpSentSuccess"));
-        navigation.navigate('VerifyOtp', { identifier: identifier });
+        navigation.navigate('VerifyOtpScreen', { identifier: identifier });
       } else {
         showError(t("otpSentFailed"));
       }

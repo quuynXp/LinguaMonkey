@@ -2,10 +2,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import AboutScreen from '../../screens/profile/AboutScreen';
 import EditProfileScreen from '../../screens/profile/EditProfileScreen';
-import EnhancedUserManagementScreen from '../../screens/profile/EnhancedUserManagementScreen';
 import HelpSupportScreen from '../../screens/profile/HelpSupportScreen';
 import LanguageManagementScreen from '../../screens/profile/LanguageManagementScreen';
-import LeaderboardScreen from '../../screens/profile/LeaderboardScreen';
 import LearningGoalsScreen from '../../screens/profile/LearningGoalsScreen';
 import PrivacySettingsScreen from '../../screens/profile/PrivacySettingScreen';
 import ProfileScreen from '../../screens/profile/ProfileScreen';
@@ -15,26 +13,43 @@ import TransactionHistoryScreen from '../../screens/payment/TransactionHistorySc
 import TransactionDetailsScreen from '../../screens/payment/TransactionDetailsScreen';
 import UserProfileViewScreen from '../../screens/profile/UserProfileViewScreen';
 import SettingsScreen from '../../screens/profile/SettingsScreen';
+import ResetPasswordScreen from '../../screens/auth/ResetPasswordScreen';
 
-const Stack = createNativeStackNavigator();
+type ProfileStackParamList = {
+  ProfileScreen: undefined;
+  EditProfileScreen: undefined;
+  LearningGoalsScreen: undefined;
+  LanguageManagementScreen: undefined;
+  UserProfileViewScreen: undefined;
+  PrivacySettingsScreen: undefined;
+  HelpSupportScreen: undefined;
+  AboutScreen: undefined;
+  SettingsScreen: undefined;
+  NotificationHistoryScreen: undefined;
+  TransactionHistoryScreen: undefined;
+  NotificationSettingsScreen: undefined;
+  TransactionDetailsScreen: undefined;
+  ResetPasswordScreen: undefined;
+};
+
+const Stack = createNativeStackNavigator<ProfileStackParamList>();
 
 const ProfileStack = () => (
-  <Stack.Navigator screenOptions={{ headerShown: false }} id={undefined}>
-    <Stack.Screen name="ProfileMain" component={ProfileScreen} />
-    <Stack.Screen name="EditProfile" component={EditProfileScreen} />
-    <Stack.Screen name="LanguageManagement" component={LanguageManagementScreen} />
-    <Stack.Screen name="LearningGoals" component={LearningGoalsScreen} />
-    <Stack.Screen name="PrivacySettings" component={PrivacySettingsScreen} />
-    <Stack.Screen name="HelpSupport" component={HelpSupportScreen} />
+  <Stack.Navigator initialRouteName='ProfileScreen' screenOptions={{ headerShown: false }} id={undefined}>
+    <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+    <Stack.Screen name="EditProfileScreen" component={EditProfileScreen} />
+    <Stack.Screen name="LanguageManagementScreen" component={LanguageManagementScreen} />
+    <Stack.Screen name="LearningGoalsScreen" component={LearningGoalsScreen} />
+    <Stack.Screen name="PrivacySettingsScreen" component={PrivacySettingsScreen} />
+    <Stack.Screen name="HelpSupportScreen" component={HelpSupportScreen} />
     <Stack.Screen name="UserProfileViewScreen" component={UserProfileViewScreen} />
-    <Stack.Screen name="About" component={AboutScreen} />
-    <Stack.Screen name="Settings" component={SettingsScreen} />
-    <Stack.Screen name="EnhancedUserManagement" component={EnhancedUserManagementScreen} />
-    <Stack.Screen name="Leaderboard" component={LeaderboardScreen} />
+    <Stack.Screen name="AboutScreen" component={AboutScreen} />
+    <Stack.Screen name="SettingsScreen" component={SettingsScreen} />
     <Stack.Screen name="NotificationHistoryScreen" component={NotificationHistoryScreen} />
     <Stack.Screen name="NotificationSettingsScreen" component={NotificationSettingsScreen} />
     <Stack.Screen name="TransactionHistoryScreen" component={TransactionHistoryScreen} />
     <Stack.Screen name="TransactionDetailsScreen" component={TransactionDetailsScreen} />
+    <Stack.Screen name="ResetPasswordScreen" component={ResetPasswordScreen} />
   </Stack.Navigator>
 );
 

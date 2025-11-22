@@ -146,6 +146,7 @@ export interface CourseRequest {
     type: Enums.CourseType;
     description: string;
     thumbnailUrl: string;
+    categoryCode?: string;
 }
 
 export interface CourseReviewRequest {
@@ -159,6 +160,7 @@ export interface CreateCourseRequest {
     creatorId: string;
     title: string;
     price: number;
+    categoryCode?: string;
 }
 
 export interface UserReminderResponse {
@@ -603,6 +605,7 @@ export interface UpdateCourseDetailsRequest {
     price: number;
     languageCode: string;
     difficultyLevel: Enums.DifficultyLevel;
+    categoryCode?: string;
 }
 
 export interface UpdateCourseVersionRequest {
@@ -923,6 +926,9 @@ export interface CourseResponse {
     createdAt: string;
     updatedAt: string;
     latestPublicVersion: CourseVersionResponse;
+    categoryCode?: string;
+    languageCode?: string;
+    difficultyLevel?: Enums.DifficultyLevel;
 }
 
 export interface CourseReviewResponse {
@@ -1077,6 +1083,8 @@ export interface GrammarTopicResponse {
     createdAt: string;
     updatedAt: string;
     rules: GrammarRuleResponse[];
+    isDeleted: boolean;
+    deletedAt?: string;
 }
 
 export interface GroupAnswerResponse {

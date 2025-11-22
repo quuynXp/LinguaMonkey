@@ -9,6 +9,7 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
+    StyleSheet,
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useVideoCalls } from "../../hooks/useVideos";
@@ -17,10 +18,13 @@ import { gotoTab } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useTranslation } from "react-i18next";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import type { VideoCallResponse, VideoCallRequest, CreateGroupCallRequest, UpdateParticipantStatusRequest, PageResponse } from "../../types/dto";
+import type { VideoCallParticipant } from "../../types/entity";
+import { VideoCallParticipantStatus } from "../../types/enums";
 
-const STATUS_OPTIONS = ["CONNECTED", "MUTED", "LEFT"];
+const VALID_STATUSES = Object.values(VideoCallParticipantStatus);
 
-const Button = ({ title, onPress, disabled }) => (
+const Button = ({ title, onPress, disabled }: { title: string, onPress: () => void, disabled: boolean }) => (
     <TouchableOpacity
         style={[styles.button, disabled && styles.buttonDisabled]}
         onPress={onPress}
@@ -30,9 +34,9 @@ const Button = ({ title, onPress, disabled }) => (
     </TouchableOpacity>
 );
 
-const VideoCallManagerScreen = ({ route }) => {
+const VideoCallManagerScreen = ({ route }: any) => {
     const { t } = useTranslation();
-    const navigation = useNavigation();
+    const navigation = useNavigation<any>();
     const { userId: initialUserId = null } = route.params || {};
     const {
         useVideoCallsList,
@@ -46,8 +50,6 @@ const VideoCallManagerScreen = ({ route }) => {
         useVideoCallHistory,
     } = useVideoCalls();
 
-    const STATUS_OPTIONS = ["CONNECTED", "MUTED", "LEFT"];
-
     const createGroupCall = useCreateGroupCall();
     const createVideoCall = useCreateVideoCall();
     const addParticipant = useAddParticipant();
@@ -58,10 +60,9 @@ const VideoCallManagerScreen = ({ route }) => {
     const [videoCallId, setVideoCallId] = useState("");
     const [roomId, setRoomId] = useState("");
     const [newParticipantId, setNewParticipantId] = useState("");
-    const [videoCallType, setVideoCallType] = useState("GROUP");
-    const [historyUserId, setHistoryUserId] = useState(initialUserId || "");
     const [filterCallerId, setFilterCallerId] = useState("");
     const [filterStatus, setFilterStatus] = useState("");
+    const [historyUserId, setHistoryUserId] = useState(initialUserId || "");
 
     const videoCallQuery = useVideoCall(videoCallId);
     const participantsQuery = useGetParticipants(videoCallId);
@@ -81,33 +82,37 @@ const VideoCallManagerScreen = ({ route }) => {
     const onCreateGroup = () => {
         if (!callerId) return Alert.alert(t("enterCallerId"));
         const participantIds = newParticipantId ? [newParticipantId] : [];
+
+        const payload: CreateGroupCallRequest = { callerId, participantIds, roomId: "" };
+
         createGroupCall.mutate(
-            { callerId, participantIds, videoCallType },
+            payload,
             {
                 onSuccess: (res) => {
                     setVideoCallId(res.videoCallId);
                     setRoomId(res.roomId || "");
                     Alert.alert(t("groupCallCreated"));
                 },
-                onError: () => Alert.alert(t("groupCallError")),
+                onError: (err: any) => Alert.alert(t("groupCallError"), err.message),
             }
         );
     };
 
     const onCreateOneToOne = () => {
         if (!callerId) return Alert.alert(t("enterCallerId"));
-        const payload = {
+
+        const payload: VideoCallRequest & { calleeId?: string } = {
             callerId,
-            calleeId: newParticipantId || null,
-            videoCallType: "ONE_TO_ONE",
+            calleeId: newParticipantId || undefined,
         };
-        createVideoCall.mutate(payload, {
+
+        createVideoCall.mutate(payload as VideoCallRequest, {
             onSuccess: (res) => {
                 setVideoCallId(res.videoCallId);
                 setRoomId(res.roomId || "");
                 Alert.alert(t("oneToOneCallCreated"));
             },
-            onError: () => Alert.alert(t("oneToOneCallError")),
+            onError: (err: any) => Alert.alert(t("oneToOneCallError"), err.message),
         });
     };
 
@@ -120,7 +125,7 @@ const VideoCallManagerScreen = ({ route }) => {
         );
     };
 
-    const onRemoveParticipant = (userId) => {
+    const onRemoveParticipant = (userId: string) => {
         if (!videoCallId) return;
         Alert.alert(t("confirm"), `${t("removeUser")} ${userId}?`, [
             { text: t("cancel") },
@@ -132,53 +137,62 @@ const VideoCallManagerScreen = ({ route }) => {
         ]);
     };
 
-    const onUpdateParticipantStatus = (userId, status) => {
+    const onUpdateParticipantStatus = (userId: string, status: VideoCallParticipantStatus) => {
         if (!videoCallId) return;
-        updateParticipantStatus.mutate({ videoCallId, userId, status });
+        updateParticipantStatus.mutate({
+            videoCallId,
+            userId,
+            req: { status }
+        });
     };
 
     const onJoinJitsi = () => {
         const targetRoom = roomId || videoCallId || `call-${uuidv4().slice(0, 8)}`;
-        gotoTab("Chat", "JitsiCall", { roomId: targetRoom });
+
+        navigation.navigate("JitsiCallScreen", { roomId: targetRoom });
     };
 
-    const renderParticipant = ({ item }) => {
-        const getStatusLabel = (status) => {
-            switch (status) {
-                case "CONNECTED": return t("statusConnected");
-                case "MUTED": return t("statusMuted");
-                case "LEFT": return t("statusLeft");
-                default: return status;
-            }
-        };
+    const getStatusLabel = (status: string) => {
+        switch (status) {
+            case VideoCallParticipantStatus.CONNECTED: return t("statusConnected");
+            default: return status;
+        }
+    };
 
+    const renderParticipant = ({ item }: { item: VideoCallParticipant }) => {
         return (
             <View style={styles.partRow}>
                 <View style={{ flex: 1 }}>
-                    <Text style={styles.partText}>{t("id")}: {item.userId}</Text>
+                    <Text style={styles.partText}>{t("id")}: {item.user?.userId || item.id.userId}</Text>
                     <Text style={styles.partSmall}>{t("role")}: {item.role || "GUEST"}</Text>
                     <Text style={styles.partSmall}>{t("status")}: {getStatusLabel(item.status)}</Text>
                 </View>
                 <View style={styles.partActions}>
                     <TouchableOpacity
                         style={styles.iconButton}
-                        onPress={() => onRemoveParticipant(item.userId)}
+                        onPress={() => onRemoveParticipant(item.user?.userId || item.id.userId)}
                     >
                         <Text style={styles.iconText}>{t("remove")}</Text>
                     </TouchableOpacity>
-                    {STATUS_OPTIONS.map((s) => (
+                    {VALID_STATUSES.map((s) => (
                         <TouchableOpacity
                             key={s}
                             style={styles.iconButtonSmall}
-                            onPress={() => onUpdateParticipantStatus(item.userId, s)}
+                            onPress={() => onUpdateParticipantStatus(item.user?.userId || item.id.userId, s)}
                         >
-                            <Text style={styles.iconTextSmall}>{getStatusLabel(s)}</Text>
+                            <Text style={styles.iconTextSmall}>{s.substring(0, 3)}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
             </View>
         );
     };
+
+    // FIXED: Type assertion to correctly extract array data from PageResponse
+    const listData: VideoCallResponse[] = (filteredCallsQuery.data?.data as VideoCallResponse[]) || [];
+    const historyData: VideoCallResponse[] = historyQuery.data || [];
+    const participantsData: VideoCallParticipant[] = participantsQuery.data || [];
+
 
     return (
         <ScreenLayout>
@@ -206,9 +220,9 @@ const VideoCallManagerScreen = ({ route }) => {
                         <ActivityIndicator />
                     ) : (
                         <FlatList
-                            data={filteredCallsQuery.data?.content || []}
+                            data={listData}
                             keyExtractor={(item) => item.videoCallId}
-                            renderItem={({ item }) => (
+                            renderItem={({ item }: { item: VideoCallResponse }) => (
                                 <TouchableOpacity
                                     onPress={() => {
                                         setVideoCallId(item.videoCallId);
@@ -253,8 +267,8 @@ const VideoCallManagerScreen = ({ route }) => {
                         <Text style={styles.errorText}>{t("participantsError")}</Text>
                     ) : (
                         <FlatList
-                            data={participantsQuery.data || []}
-                            keyExtractor={(item) => item.userId}
+                            data={participantsData}
+                            keyExtractor={(item) => item.user?.userId || item.id.userId}
                             renderItem={renderParticipant}
                             ListEmptyComponent={<Text style={styles.small}>{t("noParticipants")}</Text>}
                         />
@@ -284,7 +298,7 @@ const VideoCallManagerScreen = ({ route }) => {
                             onChangeText={setHistoryUserId}
                             style={[styles.input, { flex: 1 }]}
                         />
-                        <Button title={t("view")} onPress={() => historyQuery.refetch()} disabled={undefined} />
+                        <Button title={t("view")} onPress={() => historyQuery.refetch()} disabled={historyQuery.isFetching} />
                     </View>
                     {historyQuery.isLoading ? (
                         <ActivityIndicator />
@@ -292,9 +306,9 @@ const VideoCallManagerScreen = ({ route }) => {
                         <Text style={styles.errorText}>{t("historyError")}</Text>
                     ) : (
                         <FlatList
-                            data={historyQuery.data || []}
+                            data={historyData}
                             keyExtractor={(item) => item.videoCallId}
-                            renderItem={({ item }) => (
+                            renderItem={({ item }: { item: VideoCallResponse }) => (
                                 <View style={styles.historyRow}>
                                     <Text style={styles.smallBold}>
                                         {item.videoCallType} - {item.videoCallId}
@@ -313,8 +327,6 @@ const VideoCallManagerScreen = ({ route }) => {
     );
 };
 
-export default VideoCallManagerScreen;
-
 const styles = createScaledSheet({
     container: { flex: 1 },
     inner: { padding: 12, flex: 1 },
@@ -325,23 +337,27 @@ const styles = createScaledSheet({
         borderRadius: 8,
         padding: 8,
         marginVertical: 6,
+        color: "#1F2937",
+        backgroundColor: "#F9FAFB",
     },
     row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, marginVertical: 6 },
     button: { backgroundColor: "#2563eb", padding: 10, borderRadius: 8, marginHorizontal: 4 },
     buttonDisabled: { opacity: 0.5 },
     buttonText: { color: "white", fontWeight: "600" },
-    sectionTitle: { marginTop: 12, fontWeight: "600" },
+    sectionTitle: { marginTop: 12, fontWeight: "600", color: "#1F2937" },
     partRow: { flexDirection: "row", padding: 8, borderBottomWidth: 1, borderColor: "#eee", alignItems: "center" },
-    partText: { fontWeight: "600" },
-    partSmall: { fontSize: 12, color: "#555" },
-    partActions: { flexDirection: "row", alignItems: "center" },
+    partText: { fontWeight: "600", color: "#1F2937" },
+    partSmall: { fontSize: 12, color: "#6B7280" },
+    partActions: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", maxWidth: 150 },
     iconButton: { backgroundColor: "#ef4444", padding: 6, borderRadius: 6, marginLeft: 8 },
-    iconText: { color: "white" },
-    iconButtonSmall: { backgroundColor: "#6b7280", padding: 6, borderRadius: 6, marginLeft: 6 },
-    iconTextSmall: { color: "white", fontSize: 11 },
+    iconText: { color: "white", fontSize: 12, fontWeight: "500" },
+    iconButtonSmall: { backgroundColor: "#6b7280", padding: 4, borderRadius: 6, marginLeft: 6, marginTop: 4 },
+    iconTextSmall: { color: "white", fontSize: 10, fontWeight: "500" },
     small: { color: "#666", fontSize: 13, marginVertical: 6 },
     smallBold: { fontWeight: "700", color: "#222" },
     infoBox: { padding: 8, backgroundColor: "#f3f4f6", borderRadius: 8 },
-    errorText: { color: "red" },
+    errorText: { color: "#ef4444" },
     historyRow: { padding: 8, borderBottomWidth: 1, borderColor: "#eee" },
 });
+
+export default VideoCallManagerScreen;

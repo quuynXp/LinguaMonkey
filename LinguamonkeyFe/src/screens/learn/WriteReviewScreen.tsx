@@ -3,20 +3,11 @@ import { View, Text, TextInput, TouchableOpacity, Alert, ActivityIndicator, Scro
 import { useTranslation } from "react-i18next"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useCourses } from "../../hooks/useCourses"
-import { useLessons } from "../../hooks/useLessons" // Giả định hook Lessons tồn tại
+import { useLessonStructure } from "../../hooks/useLessonStructure" // Đã đổi từ useLessons sang useLessonStructure
 import { useUserStore } from "../../stores/UserStore"
 import { createScaledSheet } from "../../utils/scaledStyles"
-import { CourseReviewRequest } from "../../types/dto" // DTO Course Review
+import { CourseReviewRequest, LessonReviewRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
-
-// --- DTO Tạm thời cho Lesson Review (Giả định Lesson API có DTO tương tự) ---
-interface LessonReviewRequest {
-  userId: string;
-  lessonId: string;
-  rating: number;
-  comment: string;
-  verified?: boolean; // Thường có trong Lesson Review
-}
 
 const WriteReviewScreen = ({ navigation, route }) => {
   const { courseId, lessonId } = route.params as { courseId?: string, lessonId?: string }
@@ -27,12 +18,9 @@ const WriteReviewScreen = ({ navigation, route }) => {
   const { useCreateReview: useCreateCourseReviewHook } = useCourses()
   const { mutateAsync: createCourseReview, isPending: isCreatingCourseReview } = useCreateCourseReviewHook();
 
-  // LESSON HOOKS (Giả định hook này tồn tại trong useLessons)
-  // TẠM THỜI: Sửa lỗi logic gọi hook bằng cách gọi useCreateReview từ Lesson hooks (nếu nó tồn tại)
-  const useCreateLessonReviewHook = useLessons().useCreateReview;
-  const { mutateAsync: createLessonReview, isPending: isCreatingLessonReview } = useCreateLessonReviewHook
-    ? useCreateLessonReviewHook()
-    : { mutateAsync: (req: any) => Promise.reject(new Error("Lesson Review API not ready.")), isPending: false };
+  // LESSON HOOKS (Sử dụng hook Lesson Review từ useLessonStructure)
+  const { useCreateReview: useCreateLessonReviewHook } = useLessonStructure();
+  const { mutateAsync: createLessonReview, isPending: isCreatingLessonReview } = useCreateLessonReviewHook();
 
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState("")
@@ -50,28 +38,28 @@ const WriteReviewScreen = ({ navigation, route }) => {
 
     try {
       if (isCourseReview && courseId) {
-        // Course Review: Sử dụng CourseReviewRequest DTO
+        // Course Review
         const payload: CourseReviewRequest = {
           userId: user.userId,
           courseId: courseId,
           rating: rating,
           comment: comment,
-          // Giả định Verified là false cho user review
-          // verified: false, // Trường này không có trong CourseReviewRequest DTO
         };
         await createCourseReview(payload);
       }
 
       else if (!isCourseReview && lessonId) {
-        // Lesson Review: Sử dụng LessonReviewRequest DTO (Giả định cấu trúc)
+        // Lesson Review: Sử dụng LessonReviewRequest DTO
         const payload: LessonReviewRequest = {
           userId: user.userId,
           lessonId: lessonId,
           rating: rating,
           comment: comment,
-          verified: false, // Giả định verified field
+          // Giả định field 'verified' là tùy chọn hoặc mặc định là false khi tạo từ user
+          // Nếu LessonReviewRequest không có verified, cần loại bỏ field này.
+          verified: false,
         };
-        await createLessonReview(payload as any); // Ép kiểu vì hook name mismatch
+        await createLessonReview(payload);
       } else {
         return Alert.alert(t('common.error'), t('errors.missingId') ?? 'Missing Course ID or Lesson ID.')
       }
@@ -80,7 +68,8 @@ const WriteReviewScreen = ({ navigation, route }) => {
       navigation.goBack()
 
     } catch (e: any) {
-      const errorMessage = e.response?.data?.message || e.message || t('errors.generic') ?? 'An unknown error occurred.';
+      // Sửa lỗi cú pháp: Thêm dấu ngoặc đơn để phân giải toán tử || và ??
+      const errorMessage = (e.response?.data?.message || e.message || t('errors.generic')) ?? 'An unknown error occurred.';
       Alert.alert(t('common.error'), errorMessage)
     }
   }

@@ -58,6 +58,9 @@ public class Course extends BaseEntity {
     @Column(name = "type")
     private CourseType type;
 
+    @Column(name = "category_code")
+    private String categoryCode;
+
     @Column(name = "price")
     private BigDecimal price;
 

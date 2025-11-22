@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Alert,
   Animated,
@@ -9,30 +9,29 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  ActivityIndicator, // Thêm ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useChatStore } from '../../stores/ChatStore';
-import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTranslation } from 'react-i18next';
+import { useNavigation } from '@react-navigation/native';
+
+import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
+import { useUserStore } from '../../stores/UserStore';
+import { useRooms } from '../../hooks/useRoom';
+import { RoomPurpose, RoomType } from '../../types/enums';
+import { RoomRequest } from '../../types/dto';
 
-type RoomPurpose =
-  | 'QUIZ_TEAM'
-  | 'CALL'
-  | 'PRIVATE_CHAT'
-  | 'GROUP_CHAT'
-  | 'AI_CHAT';
+const CreateRoomScreen = () => {
+  const { t } = useTranslation();
+  const navigation = useNavigation<any>();
+  const { user } = useUserStore();
 
-const CreateRoomScreen = ({ navigation }) => {
-  const { t } = useTranslation(); // Khởi tạo t
-  const createAndNavigateToRoom = useChatStore(
-    (state) => state.createAndNavigateToRoom,
-  );
-  const isCreating = useChatStore((state) => state.isCreatingRoom);
+  const { useCreateRoom } = useRooms();
+  const { mutate: createRoom, isPending: isCreating } = useCreateRoom();
 
   const [roomName, setRoomName] = useState('');
-  const [roomPurpose, setRoomPurpose] = useState<RoomPurpose>('QUIZ_TEAM');
+  const [roomPurpose, setRoomPurpose] = useState<RoomPurpose>(RoomPurpose.QUIZ_TEAM);
   const [maxMembers, setMaxMembers] = useState('20');
   const [isPrivate, setIsPrivate] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
@@ -40,7 +39,7 @@ const CreateRoomScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
-  React.useEffect(() => {
+  useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -53,9 +52,9 @@ const CreateRoomScreen = ({ navigation }) => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, []);
+  }, [fadeAnim, slideAnim]);
 
-  const handleCreateRoom = async () => {
+  const handleCreateRoom = () => {
     if (isCreating) return;
 
     if (!roomName.trim()) {
@@ -63,24 +62,30 @@ const CreateRoomScreen = ({ navigation }) => {
       return;
     }
 
-    if (isPrivate && !roomPassword.trim()) {
-      Alert.alert(t('common.error'), t('createRoom.errors.passwordRequired'));
+    if (!user?.userId) {
+      Alert.alert(t('common.error'), t('auth.loginRequired'));
       return;
     }
 
-    const roomPayload = {
+    const roomPayload: RoomRequest = {
       roomName: roomName.trim(),
+      creatorId: user.userId,
+      description: `Room created by ${user.nickname || user.fullname}`, // Default description
       maxMembers: parseInt(maxMembers) || 20,
-      purpose: roomPurpose, // Đã là 'QUIZ_TEAM' hoặc 'GROUP_CHAT'
-      roomType: (isPrivate ? 'PRIVATE' : 'PUBLIC') as 'PRIVATE' | 'PUBLIC',
+      purpose: roomPurpose,
+      roomType: isPrivate ? RoomType.PRIVATE : RoomType.PUBLIC,
+      isDeleted: false,
     };
 
-    try {
-      await createAndNavigateToRoom(roomPayload, navigation);
-    } catch (error) {
-      console.error(error);
-      Alert.alert(t('common.error'), t('createRoom.errors.creationFailed'));
-    }
+    createRoom(roomPayload, {
+      onSuccess: (newRoom) => {
+        navigation.replace('ChatRoom', { roomId: newRoom.roomId });
+      },
+      onError: (error) => {
+        console.error(error);
+        Alert.alert(t('common.error'), t('createRoom.errors.creationFailed'));
+      }
+    });
   };
 
   return (
@@ -119,10 +124,12 @@ const CreateRoomScreen = ({ navigation }) => {
                 placeholder={t('createRoom.roomNamePlaceholder')}
                 placeholderTextColor="#9CA3AF"
                 maxLength={50}
+                editable={!isCreating}
               />
               <Text style={styles.characterCount}>{roomName.length}/50</Text>
             </View>
 
+            {/* Room Purpose */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>
                 {t('createRoom.purposeLabel')}
@@ -131,19 +138,20 @@ const CreateRoomScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[
                     styles.purposeButton,
-                    roomPurpose === 'QUIZ_TEAM' && styles.selectedPurpose,
+                    roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurpose,
                   ]}
-                  onPress={() => setRoomPurpose('QUIZ_TEAM')}
+                  onPress={() => setRoomPurpose(RoomPurpose.QUIZ_TEAM)}
+                  disabled={isCreating}
                 >
                   <Icon
                     name="school"
                     size={20}
-                    color={roomPurpose === 'QUIZ_TEAM' ? '#FFFFFF' : '#4F46E5'}
+                    color={roomPurpose === RoomPurpose.QUIZ_TEAM ? '#FFFFFF' : '#4F46E5'}
                   />
                   <Text
                     style={[
                       styles.purposeText,
-                      roomPurpose === 'QUIZ_TEAM' && styles.selectedPurposeText,
+                      roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurposeText,
                     ]}
                   >
                     {t('createRoom.purposeLearning')}
@@ -152,19 +160,20 @@ const CreateRoomScreen = ({ navigation }) => {
                 <TouchableOpacity
                   style={[
                     styles.purposeButton,
-                    roomPurpose === 'GROUP_CHAT' && styles.selectedPurpose,
+                    roomPurpose === RoomPurpose.GROUP_CHAT && styles.selectedPurpose,
                   ]}
-                  onPress={() => setRoomPurpose('GROUP_CHAT')}
+                  onPress={() => setRoomPurpose(RoomPurpose.GROUP_CHAT)}
+                  disabled={isCreating}
                 >
                   <Icon
                     name="group"
                     size={20}
-                    color={roomPurpose === 'GROUP_CHAT' ? '#FFFFFF' : '#10B981'}
+                    color={roomPurpose === RoomPurpose.GROUP_CHAT ? '#FFFFFF' : '#10B981'}
                   />
                   <Text
                     style={[
                       styles.purposeText,
-                      roomPurpose === 'GROUP_CHAT' && styles.selectedPurposeText,
+                      roomPurpose === RoomPurpose.GROUP_CHAT && styles.selectedPurposeText,
                     ]}
                   >
                     {t('createRoom.purposeSocial')}
@@ -173,6 +182,7 @@ const CreateRoomScreen = ({ navigation }) => {
               </View>
             </View>
 
+            {/* Max Members */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>
                 {t('createRoom.maxMembersLabel')}
@@ -185,9 +195,11 @@ const CreateRoomScreen = ({ navigation }) => {
                 placeholderTextColor="#9CA3AF"
                 keyboardType="numeric"
                 maxLength={2}
+                editable={!isCreating}
               />
             </View>
 
+            {/* Privacy Setting */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>
                 {t('createRoom.privacyLabel')}
@@ -195,6 +207,7 @@ const CreateRoomScreen = ({ navigation }) => {
               <TouchableOpacity
                 style={styles.privacyToggle}
                 onPress={() => setIsPrivate(!isPrivate)}
+                disabled={isCreating}
               >
                 <View style={styles.privacyInfo}>
                   <Icon
@@ -217,6 +230,8 @@ const CreateRoomScreen = ({ navigation }) => {
                   />
                 </View>
               </TouchableOpacity>
+
+              {/* Password Input - Only show if private */}
               {isPrivate && (
                 <TextInput
                   style={[styles.textInput, styles.passwordInput]}
@@ -226,10 +241,12 @@ const CreateRoomScreen = ({ navigation }) => {
                   placeholderTextColor="#9CA3AF"
                   secureTextEntry
                   maxLength={20}
+                  editable={!isCreating}
                 />
               )}
             </View>
 
+            {/* Rules Section */}
             <View style={styles.rulesSection}>
               <Text style={styles.rulesTitle}>{t('createRoom.rulesTitle')}</Text>
               <View style={styles.rulesList}>
@@ -252,6 +269,7 @@ const CreateRoomScreen = ({ navigation }) => {
               </View>
             </View>
 
+            {/* Create Button */}
             <TouchableOpacity
               style={[
                 styles.createButton,
@@ -328,10 +346,6 @@ const styles = createScaledSheet({
     color: '#1F2937',
     backgroundColor: '#FFFFFF',
   },
-  multilineInput: {
-    height: 80,
-    textAlignVertical: 'top',
-  },
   passwordInput: {
     marginTop: 12,
   },
@@ -369,42 +383,6 @@ const styles = createScaledSheet({
   },
   selectedPurposeText: {
     color: '#FFFFFF',
-  },
-  optionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  optionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
-    gap: 6,
-  },
-  selectedOption: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
-  },
-  languageFlag: {
-    fontSize: 16,
-  },
-  levelIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-  },
-  optionText: {
-    fontSize: 14,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  selectedOptionText: {
-    color: '#4F46E5',
   },
   privacyToggle: {
     flexDirection: 'row',

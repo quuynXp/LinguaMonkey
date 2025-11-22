@@ -4,7 +4,7 @@ import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useRoute, RouteProp } from '@react-navigation/native';
 import { useAppStore } from '../../stores/appStore';
-import { useUserStore } from '../../stores/UserStore'; // Giả định có store này lấy token
+import { useUserStore } from '../../stores/UserStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTokenStore } from '../../stores/tokenStore';
 import { API_BASE_URL } from '../../api/apiConfig';
@@ -64,6 +64,38 @@ const JitsiWebView = () => {
     setShowSettings(false);
   };
 
+  const startAudioStreaming = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+      );
+      if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
+    }
+
+    LiveAudioStream.init(audioOptions);
+
+    LiveAudioStream.on('data', (base64Data) => {
+      if (ws.current?.readyState === WebSocket.OPEN && isMicOn) {
+        ws.current.send(JSON.stringify({
+          audio_chunk: base64Data,
+          seq: Date.now()
+        }));
+      }
+    });
+
+    LiveAudioStream.start();
+  };
+
+  const stopAudioStreaming = () => {
+    LiveAudioStream.stop();
+  };
+
+  const toggleMic = () => {
+    setIsMicOn(prev => !prev);
+    if (!isMicOn) LiveAudioStream.start();
+    else LiveAudioStream.stop();
+  };
+
   useEffect(() => {
     if (!roomId || !accessToken) return;
 
@@ -71,8 +103,7 @@ const JitsiWebView = () => {
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
-      console.log('✅ Connected to Realtime Subtitle Service');
-      startAudioStreaming(); // Kết nối xong thì bắt đầu stream audio
+      startAudioStreaming();
     };
 
     ws.current.onmessage = (e) => {
@@ -86,16 +117,14 @@ const JitsiWebView = () => {
             translatedLang: data.translatedLang,
             senderId: data.senderId
           });
-          // Clear sau 5s để màn hình không bị rác
           setTimeout(() => setSubtitle(null), 5000);
         }
       } catch (err) {
-        console.error('WS Error', err);
+        // Log error
       }
     };
 
     ws.current.onclose = () => {
-      console.log('⚠️ WS Closed');
       stopAudioStreaming();
     };
 
@@ -105,108 +134,72 @@ const JitsiWebView = () => {
     };
   }, [roomId, nativeLang, accessToken]);
 
-  // 3. Logic xử lý Mic & Stream Base64
-  const startAudioStreaming = async () => {
-    if (Platform.OS === 'android') {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
-      );
-      if (granted !== PermissionsAndroid.RESULTS.GRANTED) return;
-    }
-
-    LiveAudioStream.init(audioOptions);
-
-    // Sự kiện nhận data từ Mic (Base64 PCM)
-    LiveAudioStream.on('data', (base64Data) => {
-      if (ws.current?.readyState === WebSocket.OPEN && isMicOn) {
-        // Bắn thẳng chunk Base64 sang Python
-        ws.current.send(JSON.stringify({
-          audio_chunk: base64Data,
-          seq: Date.now() // Timestamp để Python sort nếu cần
-        }));
-      }
-    });
-
-    LiveAudioStream.start();
-  };
-
-  const stopAudioStreaming = () => {
-    LiveAudioStream.stop();
-  };
-
-  const toggleMic = () => {
-    setIsMicOn(!isMicOn);
-    if (!isMicOn) LiveAudioStream.start();
-    else LiveAudioStream.stop();
-  };
-
   return (
-    <ScreenLayout style={styles.container}>
-      <WebView
-        source={{ uri: `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false` }}
-        style={styles.webview}
-        allowsFullscreenVideo
-        javaScriptEnabled
-        domStorageEnabled
-        mediaCapturePermissionGrantType="grant"
-        allowsInlineMediaPlayback
-      />
+    <ScreenLayout>
+      <View style={styles.container}>
+        <WebView
+          source={{ uri: `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false` }}
+          style={styles.webview}
+          allowsFullscreenVideo
+          javaScriptEnabled
+          domStorageEnabled
+          mediaCapturePermissionGrantType="grant"
+          allowsInlineMediaPlayback
+        />
 
-      {/* Subtitle UI - Hiển thị Realtime */}
-      <View style={styles.subtitleContainer}>
-        {subtitle ? (
-          <>
-            <Text style={styles.subtitleTextOriginal}>
-              {subtitle.senderId === user?.userId ? 'You: ' : 'Partner: '}
-              {subtitle.original}
+        <View style={styles.subtitleContainer}>
+          {subtitle ? (
+            <>
+              <Text style={styles.subtitleTextOriginal}>
+                {subtitle.senderId === user?.userId ? t('you') + ': ' : t('partner') + ': '}
+                {subtitle.original}
+              </Text>
+              <Text style={styles.subtitleTextTranslated}>
+                {subtitle.translated}
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.subtitlePlaceholder}>
+              {isMicOn ? t('listening') : t('mic_off')}...
             </Text>
-            <Text style={styles.subtitleTextTranslated}>
-              {subtitle.translated}
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.subtitlePlaceholder}>
-            {isMicOn ? t('listening') : t('mic_off')}...
-          </Text>
-        )}
-      </View>
-
-      {/* Controls Real */}
-      <View style={styles.controls}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
-          <Text style={styles.iconText}>🌐</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.iconButton, { backgroundColor: isMicOn ? '#ef4444' : '#22c55e' }]}
-          onPress={toggleMic}
-        >
-          <Text style={styles.iconText}>{isMicOn ? '🎙️ On' : '🔇 Off'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Modal chọn ngôn ngữ */}
-      <Modal visible={showSettings} transparent animationType="slide">
-        <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
-        <View style={styles.modalContainer}>
-          <Text style={styles.modalTitle}>{t('selectTargetLanguage')}</Text>
-          <FlatList
-            data={LANGUAGES}
-            keyExtractor={(item) => item.code}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={[
-                  styles.langItem,
-                  item.code === nativeLang && styles.langItemActive
-                ]}
-                onPress={() => handleLanguageChange(item.code)}
-              >
-                <Text style={styles.langText}>{item.name}</Text>
-              </TouchableOpacity>
-            )}
-          />
+          )}
         </View>
-      </Modal>
+
+        <View style={styles.controls}>
+          <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
+            <Text style={styles.iconText}>🌐</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.iconButton, { backgroundColor: isMicOn ? '#ef4444' : '#22c55e' }]}
+            onPress={toggleMic}
+          >
+            <Text style={styles.iconText}>{isMicOn ? '🎙️' : '🔇'}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <Modal visible={showSettings} transparent animationType="slide">
+          <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
+          <View style={styles.modalContainer}>
+            <Text style={styles.modalTitle}>{t('selectTargetLanguage')}</Text>
+            <FlatList
+              data={LANGUAGES}
+              keyExtractor={(item) => item.code}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={[
+                    styles.langItem,
+                    item.code === nativeLang && styles.langItemActive
+                  ]}
+                  onPress={() => handleLanguageChange(item.code)}
+                >
+                  <Text style={styles.langText}>{item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+          </View>
+        </Modal>
+      </View>
     </ScreenLayout>
   );
 };
@@ -232,7 +225,7 @@ const styles = createScaledSheet({
     marginBottom: 4,
   },
   subtitleTextTranslated: {
-    color: '#fbbf24', // Màu vàng amber
+    color: '#fbbf24',
     fontSize: 16,
     fontWeight: '700',
     textAlign: 'center',
@@ -247,7 +240,8 @@ const styles = createScaledSheet({
     top: 50,
     right: 20,
     flexDirection: 'column',
-    gap: 10
+    gap: 10,
+    paddingTop: 20, // Tăng padding để tránh notch
   },
   iconButton: {
     backgroundColor: 'rgba(255,255,255,0.2)',

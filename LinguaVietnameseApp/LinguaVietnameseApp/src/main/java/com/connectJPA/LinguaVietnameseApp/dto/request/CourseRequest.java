@@ -28,4 +28,6 @@ public class CourseRequest {
     private boolean isDeleted = false;
 
     private UUID creatorId;
+
+    private String categoryCode;
 }

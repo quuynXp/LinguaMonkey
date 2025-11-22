@@ -6,18 +6,22 @@ import AdminCourseManagementScreen from "../../screens/admin/AdminCourseManageme
 import AdminRevenueAnalyticsScreen from "../../screens/admin/AdminRevenueAnalyticsScreen";
 import AdminLessonManagement from "../../screens/admin/AdminLessonManagement";
 import AdminCourseDetailScreen from "../../screens/admin/AdminCourseDetailScreen";
+import AdminCreateVideoScreen from "../../screens/admin/AdminCreateVideoScreen";
+import AdminTransactionScreen from "../../screens/admin/AdminTransactionScreen";
 
 const Stack = createNativeStackNavigator();
 
 export default function AdminStack() {
     return (
-        <Stack.Navigator screenOptions={{ headerShown: false }} id={undefined}>
+        <Stack.Navigator initialRouteName="AdminDashboardScreen" screenOptions={{ headerShown: false }} id={undefined}>
             <Stack.Screen name="AdminDashboardScreen" component={AdminDashboardScreen} />
             <Stack.Screen name="AdminUserManagementScreen" component={AdminUserManagementScreen} />
             <Stack.Screen name="AdminCourseManagementScreen" component={AdminCourseManagementScreen} />
             <Stack.Screen name="AdminRevenueAnalyticsScreen" component={AdminRevenueAnalyticsScreen} />
             <Stack.Screen name="AdminLessonManagement" component={AdminLessonManagement} />
             <Stack.Screen name="AdminCourseDetailScreen" component={AdminCourseDetailScreen} />
+            <Stack.Screen name="AdminCreateVideoScreen" component={AdminCreateVideoScreen} />
+            <Stack.Screen name="AdminTransactionScreen" component={AdminTransactionScreen} />
         </Stack.Navigator>
     );
 }

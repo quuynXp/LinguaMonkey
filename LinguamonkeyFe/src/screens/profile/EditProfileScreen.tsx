@@ -154,7 +154,7 @@ const EditProfileScreen: React.FC = () => {
       await saveProfileToServer(user.userId, payload);
 
       Alert.alert(t('profile.saved') ?? 'Saved', t('profile.savedSuccess') ?? 'Profile updated');
-      gotoTab('Profile', 'ProfileMain');
+      gotoTab('Profile', 'ProfileScreen');
 
     } catch (err: any) {
       Alert.alert(t('errors.server') ?? 'Save failed');

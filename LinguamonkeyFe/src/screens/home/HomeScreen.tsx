@@ -75,9 +75,9 @@ const HomeScreen = ({ navigation }: any) => {
     setRefreshing(false);
   }, [refetchDaily]);
 
-  const handleLeaderboardPress = () => navigation.navigate("EnhancedLeaderboard");
+  const handleLeaderboardPress = () => navigation.navigate("EnhancedLeaderboardScreen");
   const handleRoadmapPress = () => navigation.navigate("RoadmapScreen");
-  const handlePublicRoadmapsPress = () => navigation.navigate("PublicRoadmaps");
+  const handlePublicRoadmapsPress = () => navigation.navigate("PublicRoadmapsScreen");
   const greetingKey = getGreetingKey();
 
   const handleAssignDefaultRoadmap = async (roadmapId: string) => {
@@ -140,7 +140,7 @@ const HomeScreen = ({ navigation }: any) => {
               <Text style={styles.greeting}>{t(greetingKey)} 👋</Text>
               <Text style={styles.userName}>{name || t("home.student")}</Text>
             </View>
-            <TouchableOpacity style={styles.streakContainer} onPress={() => gotoTab('DailyWelcome')}>
+            <TouchableOpacity style={styles.streakContainer} onPress={() => gotoTab('DailyWelcomeScreen')}>
               <Icon name="local-fire-department" size={20} color="#FF6B35" />
               <Text style={styles.streakText}>{streak}</Text>
             </TouchableOpacity>

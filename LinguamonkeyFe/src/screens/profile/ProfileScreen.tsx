@@ -228,7 +228,7 @@ const ProfileScreen: React.FC = () => {
         <Text style={styles.userName}>
           {name || user?.nickname || user?.fullname || t('profile.noName')}
         </Text>
-        <TouchableOpacity onPress={() => gotoTab('Profile', 'EditProfile')}>
+        <TouchableOpacity onPress={() => gotoTab('Profile', 'EditProfileScreen')}>
           <Icon name="edit" size={18} color="#6B7280" />
         </TouchableOpacity>
       </View>
@@ -427,7 +427,7 @@ const ProfileScreen: React.FC = () => {
             <Text style={styles.title}>{t('profile.title')}</Text>
             <TouchableOpacity
               style={styles.settingsButton}
-              onPress={() => gotoTab('Profile', 'PrivacySettings')}>
+              onPress={() => gotoTab('Profile', 'PrivacySettingsScreen')}>
               <Icon name="settings" size={24} color="#6B7280" />
             </TouchableOpacity>
           </View>

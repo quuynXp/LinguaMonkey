@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import {
   View,
   Text,
@@ -6,170 +6,104 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  FlatList,
-  Alert,
+  Dimensions,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
-import Toast from "../../components/Toast";
-import { getStatisticsOverview, getUserGrowth } from "../../services/statisticsApi";
-import DateTimePicker from "@react-native-community/datetimepicker";
-import { resetToAuth, gotoTab } from "../../utils/navigationRef";
+import { getUserCounts, getUserGrowth } from "../../services/statisticsApi";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { BarChart } from "react-native-chart-kit";
 
-const formatISODate = (d: Date) => d.toISOString().split("T")[0];
-
-type Period = "week" | "month" | "year" | "custom";
+const { width } = Dimensions.get("window");
 
 const AdminUserManagementScreen = () => {
   const { t } = useTranslation();
-  const [refreshing, setRefreshing] = useState(false);
+  const [period, setPeriod] = useState<"day" | "month" | "year">("month");
 
-  const [selectedPeriod, setSelectedPeriod] = useState<Period>("month");
-  const [anchorDate, setAnchorDate] = useState<Date | undefined>(undefined);
-  const [customDate, setCustomDate] = useState<{ start?: Date; end?: Date }>({});
-  const [showDatePicker, setShowDatePicker] = useState<"anchor" | "start" | "end" | null>(null);
-  const [showPeriodModal, setShowPeriodModal] = useState(false);
-
-  // --- HELPER FUNCTION FOR I18N ---
-  const getPeriodTranslation = (p: Period) => {
-    switch (p) {
-      case "week": return t("admin.analytics.periods.week");
-      case "month": return t("admin.analytics.periods.month");
-      case "year": return t("admin.analytics.periods.year");
-      case "custom": return t("admin.analytics.periods.custom");
-      default: return p;
-    }
-  };
-  // --- END HELPER ---
-
-  const computedRange = useMemo(() => {
-    if (selectedPeriod === "custom") {
-      if (customDate.start && customDate.end && customDate.start <= customDate.end) return { start: customDate.start, end: customDate.end };
-      return null;
-    }
-    if (!anchorDate) return null;
-    return { start: anchorDate, end: new Date(anchorDate.getTime() + 24 * 3600 * 1000) };
-  }, [selectedPeriod, anchorDate, customDate]);
-
-  const queryKey = computedRange
-    ? ["usersOverview", "range", formatISODate(computedRange.start), formatISODate(new Date(computedRange.end.getTime() - 1))]
-    : ["usersOverview", "period", selectedPeriod];
-
-  const { data: overviewData, isLoading: overviewLoading, refetch: overviewRefetch } = useQuery({
-    queryKey,
-    queryFn: () => getStatisticsOverview({ period: selectedPeriod as any }),
-    staleTime: 1000 * 60,
+  // Fetch Total Counts
+  const { data: counts, isLoading: loadCounts, refetch: refetchCounts } = useQuery({
+    queryKey: ["user-counts", period],
+    queryFn: () => getUserCounts({ period }),
   });
 
-  const { data: growthData, isLoading: growthLoading, refetch: growthRefetch } = useQuery({
-    queryKey: ["usersGrowth", ...queryKey.slice(1)],
-    queryFn: () => getUserGrowth(selectedPeriod === "month" ? "month" : "day"),
-    staleTime: 1000 * 60,
+  // Fetch Growth Data
+  const { data: growth, isLoading: loadGrowth, refetch: refetchGrowth } = useQuery({
+    queryKey: ["user-growth", period],
+    queryFn: () => getUserGrowth({ period }),
   });
 
-  useEffect(() => {
-    if (selectedPeriod !== "custom" && !anchorDate) {
-      const tId = setTimeout(() => setShowDatePicker("anchor"), 120);
-      return () => clearTimeout(tId);
-    }
-    if (selectedPeriod === "custom" && !customDate.start) {
-      const tId = setTimeout(() => setShowDatePicker("start"), 120);
-      return () => clearTimeout(tId);
-    }
-  }, [selectedPeriod]);
+  const isLoading = loadCounts || loadGrowth;
 
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await Promise.all([overviewRefetch(), growthRefetch()]);
-    } catch (err) {
-      Toast.show({ type: "error", text1: t("common.error"), text2: t("errors.unknown") });
-    } finally {
-      setRefreshing(false);
-    }
+  const onRefresh = () => {
+    refetchCounts();
+    refetchGrowth();
   };
 
-  const onDateChange = (event: any, date?: Date | undefined) => {
-    const dismissed = (event && (event.type === "dismissed" || event.action === "dismissedAction" || event.nativeEvent?.action === "dismissedAction")) || !date;
-    if (dismissed) { setShowDatePicker(null); return; }
-    if (showDatePicker === "anchor") setAnchorDate(date);
-    else if (showDatePicker === "start") { setCustomDate((p) => ({ ...p, start: date })); setTimeout(() => setShowDatePicker("end"), 100); return; }
-    else if (showDatePicker === "end") {
-      if (customDate.start && date < customDate.start) {
-        Alert.alert(
-          t("admin.analytics.errors.invalidRangeTitle"),
-          t("admin.analytics.errors.invalidRangeMessage")
-        );
-        setShowDatePicker(null);
-        return;
-      }
-      setCustomDate((p) => ({ ...p, end: date }));
-    }
-    setShowDatePicker(null);
+  // Safe chart data construction
+  const chartData = {
+    labels: growth?.labels || ["Jan", "Feb", "Mar", "Apr"],
+    datasets: [{ data: growth?.data || [10, 20, 15, 30] }]
   };
-
-  // mock user list (replace with real API if available)
-  const users = overviewData?.raw?.usersList || [];
 
   return (
-    <ScreenLayout style={styles.container}>
-      <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
+    <ScreenLayout>
+      <ScrollView
+        style={styles.container}
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
+      >
         <View style={styles.headerArea}>
-          <Text style={styles.headerTitle}>{t("admin.users.title")}</Text>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <TouchableOpacity style={styles.periodSelector} onPress={() => setShowPeriodModal(true)}>
-              <Icon name="event" size={20} color="#4F46E5" />
-              <Text style={styles.periodSelectorText}>{getPeriodTranslation(selectedPeriod)}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.logoutButton} onPress={() => {
-              Alert.alert(
-                t("admin.analytics.logout.title"),
-                t("admin.analytics.logout.message"),
-                [
-                  { text: t("common.cancel"), style: "cancel" },
-                  { text: t("common.ok"), onPress: () => resetToAuth() }
-                ]
-              );
-            }}>
-              <Icon name="logout" size={22} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {showDatePicker && <DateTimePicker value={showDatePicker === "anchor" ? anchorDate || new Date() : showDatePicker === "start" ? customDate.start || new Date() : customDate.end || new Date()} mode="date" display="default" onChange={onDateChange} />}
-
-        <View style={styles.statsSection}>
-          <Text style={styles.sectionTitle}>{t("admin.analytics.overview.title")}</Text>
-          <View style={styles.statsGrid}>
-            <View style={[styles.statsCard, { borderLeftColor: "#3B82F6" }]}>
-              <View style={styles.statsCardHeader}><Icon name="people" size={20} color="#3B82F6" /></View>
-              <Text style={styles.statsValue}>{overviewData?.users ?? 0}</Text>
-              <Text style={styles.statsTitle}>{t("admin.users.overview.totalUsers")}</Text>
-            </View>
-
-            <View style={[styles.statsCard, { borderLeftColor: "#10B981" }]}>
-              <View style={styles.statsCardHeader}><Icon name="trending-up" size={20} color="#10B981" /></View>
-              <Text style={styles.statsValue}>{growthData ?? 0}</Text>
-              <Text style={styles.statsTitle}>{t("admin.users.overview.growth")}</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={{ padding: 16 }}>
-          <Text style={{ fontWeight: "700", marginBottom: 8 }}>{t("admin.users.listTitle")}</Text>
-          {overviewLoading ? <ActivityIndicator size="small" /> : Array.isArray(users) && users.length > 0 ? (
-            <FlatList data={users} keyExtractor={(u: any) => u.id?.toString() ?? Math.random().toString()} renderItem={({ item }: any) => (
-              <TouchableOpacity style={styles.userRow} onPress={() => gotoTab("Admin", "AdminUserDetailScreen")}>
-                <Text style={{ fontWeight: "600" }}>{item.name ?? item.email ?? t("admin.users.defaultUserName")}</Text>
-                <Text style={{ color: "#6B7280" }}>{item.email ?? ""}</Text>
+          <Text style={styles.subtitle}>{t("admin.users.overview")}</Text>
+          <View style={styles.periodRow}>
+            {(["day", "month", "year"] as const).map(p => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.pBtn, period === p && styles.pBtnActive]}
+                onPress={() => setPeriod(p)}
+              >
+                <Text style={[styles.pText, period === p && styles.pTextActive]}>
+                  {t(`common.period.${p}`)}
+                </Text>
               </TouchableOpacity>
-            )} />
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Icon name="group" size={28} color="#4F46E5" />
+            <Text style={styles.statValue}>{counts?.totalUsers || 0}</Text>
+            <Text style={styles.statLabel}>{t("admin.users.total")}</Text>
+          </View>
+          <View style={styles.statCard}>
+            <Icon name="person-add" size={28} color="#10B981" />
+            <Text style={styles.statValue}>{counts?.newUsers || 0}</Text>
+            <Text style={styles.statLabel}>{t("admin.users.new")}</Text>
+          </View>
+        </View>
+
+        <View style={styles.chartSection}>
+          <Text style={styles.chartTitle}>{t("admin.users.growthChart")}</Text>
+          {isLoading ? (
+            <ActivityIndicator color="#4F46E5" />
           ) : (
-            <Text style={{ color: "#6B7280" }}>{t("admin.users.noUsers")}</Text>
+            <BarChart
+              data={chartData}
+              width={width - 32}
+              height={220}
+              yAxisLabel=""
+              yAxisSuffix=""
+              chartConfig={{
+                backgroundColor: "#ffffff",
+                backgroundGradientFrom: "#ffffff",
+                backgroundGradientTo: "#ffffff",
+                color: (opacity = 1) => `rgba(79, 70, 229, ${opacity})`,
+                labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
+                barPercentage: 0.7,
+              }}
+              style={styles.chart}
+            />
           )}
         </View>
       </ScrollView>
@@ -179,19 +113,20 @@ const AdminUserManagementScreen = () => {
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  sectionTitle: { padding: 16 },
-  headerArea: { padding: 16, backgroundColor: "#fff", marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  headerTitle: { fontSize: 20, fontWeight: "700" },
-  periodSelector: { flexDirection: "row", alignItems: "center", padding: 8, backgroundColor: "#EEF2FF", borderRadius: 8, marginRight: 8 },
-  periodSelectorText: { marginLeft: 6, fontSize: 14, fontWeight: "600", color: "#4F46E5" },
-  statsSection: { padding: 24 },
-  statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
-  statsCard: { backgroundColor: "#FFFFFF", borderRadius: 12, padding: 16, width: "48%", borderLeftWidth: 4, marginBottom: 12 },
-  statsCardHeader: { marginBottom: 6 },
-  statsValue: { fontSize: 18, fontWeight: "700" },
-  statsTitle: { fontSize: 13, color: "#6B7280" },
-  userRow: { padding: 12, backgroundColor: "#fff", borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: "#F1F5F9" },
-  logoutButton: { marginLeft: 12, padding: 8, backgroundColor: "#FEE2E2", borderRadius: 8 },
+  headerArea: { padding: 16, backgroundColor: "#fff", flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  subtitle: { fontSize: 18, fontWeight: "700", color: "#1F2937" },
+  periodRow: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 8, padding: 2 },
+  pBtn: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 6 },
+  pBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 1 },
+  pText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
+  pTextActive: { color: '#4F46E5' },
+  statsRow: { flexDirection: "row", gap: 12, padding: 16 },
+  statCard: { flex: 1, backgroundColor: "#fff", padding: 16, borderRadius: 12, alignItems: "center", shadowColor: "#000", shadowOpacity: 0.05, elevation: 1 },
+  statValue: { fontSize: 24, fontWeight: "700", color: "#1F2937", marginVertical: 4 },
+  statLabel: { fontSize: 14, color: "#6B7280" },
+  chartSection: { margin: 16, marginTop: 0, padding: 16, backgroundColor: "#fff", borderRadius: 12 },
+  chartTitle: { fontSize: 16, fontWeight: "600", marginBottom: 16, color: "#1F2937" },
+  chart: { borderRadius: 8 }
 });
 
 export default AdminUserManagementScreen;

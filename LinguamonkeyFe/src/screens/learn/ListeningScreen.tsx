@@ -1,22 +1,141 @@
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
-import { useEffect, useRef, useState } from "react";
-import { Animated, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { VideoPlayer } from 'expo-video';
-import { Topic, Content } from '../../types/api';
-import { createScaledSheet } from '../../utils/scaledStyles';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import React, { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import {
+  ActivityIndicator,
+  Animated,
+  Modal,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import Icon from "react-native-vector-icons/MaterialIcons";
+import { useLessons } from "../../hooks/useLessons";
+import { useLessonStructure } from "../../hooks/useLessonStructure";
+import { LessonCategoryResponse, LessonResponse } from "../../types/dto";
+import { SkillType } from "../../types/enums";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
-const ListeningScreen = ({ navigation }) => {
-  const [selectedTopic, setSelectedTopic] = useState<Topic | null>(null)
-  const [selectedContent, setSelectedContent] = useState<Content | null>(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [playbackRate, setPlaybackRate] = useState(1.0)
-  const [showTranscript, setShowTranscript] = useState(false)
-  const [showSpeedModal, setShowSpeedModal] = useState(false)
+const UI_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#EF4444", "#EC4899"];
+const UI_ICONS = ["chat", "newspaper", "business", "flight", "school", "movie"];
 
-  const fadeAnim = useRef(new Animated.Value(0)).current
-  const slideAnim = useRef(new Animated.Value(30)).current
+const getCategoryStyle = (index: number) => ({
+  color: UI_COLORS[index % UI_COLORS.length],
+  icon: UI_ICONS[index % UI_ICONS.length],
+});
+
+const formatTime = (seconds: number) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+};
+
+const PlayerModal = ({
+  visible,
+  content,
+  onClose,
+}: {
+  visible: boolean;
+  content: LessonResponse | null;
+  onClose: () => void;
+}) => {
+  const videoSource = content?.videoUrls?.[0] ?? "";
+  const player = useVideoPlayer(videoSource, (player) => {
+    player.loop = false;
+    if (visible) player.play();
+    else player.pause();
+  });
+
+  const [playbackRate, setPlaybackRate] = useState(1.0);
+  const [showSpeedModal, setShowSpeedModal] = useState(false);
+
+  if (!visible || !content) return null;
+
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
+      <View style={styles.playerContainer}>
+        <View style={styles.playerHeader}>
+          <TouchableOpacity onPress={onClose}>
+            <Icon name="close" size={24} color="#374151" />
+          </TouchableOpacity>
+          <Text style={styles.playerTitle} numberOfLines={1}>{content.title}</Text>
+          <TouchableOpacity onPress={() => setShowSpeedModal(true)}>
+            <Text style={styles.speedButton}>{playbackRate}x</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.mediaContainer}>
+          {videoSource ? (
+            <VideoView
+              style={styles.videoPlayer}
+              player={player}
+              allowsFullscreen
+              allowsPictureInPicture
+            />
+          ) : (
+            <View style={styles.audioPlayer}>
+              <Icon name="music-off" size={64} color="#9CA3AF" />
+              <Text style={styles.audioTitle}>No Media Available</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.playerControls}>
+          <View style={styles.contentMeta}>
+            <Text style={styles.contentLevel}>{content.lessonType}</Text>
+            <Text style={styles.contentDuration}>{formatTime(0)}</Text>
+          </View>
+        </View>
+
+        <Modal visible={showSpeedModal} transparent animationType="fade" onRequestClose={() => setShowSpeedModal(false)}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowSpeedModal(false)}>
+            <View style={styles.speedModal}>
+              <Text style={styles.speedModalTitle}>Tốc độ phát</Text>
+              {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) => (
+                <TouchableOpacity
+                  key={speed}
+                  style={[styles.speedOption, playbackRate === speed && styles.speedOptionActive]}
+                  onPress={() => {
+                    setPlaybackRate(speed);
+                    player.playbackRate = speed;
+                    setShowSpeedModal(false);
+                  }}
+                >
+                  <Text style={[styles.speedOptionText, playbackRate === speed && styles.speedOptionTextActive]}>
+                    {speed}x
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+      </View>
+    </Modal>
+  );
+};
+
+const ListeningScreen = ({ navigation }: any) => {
+  const { t } = useTranslation();
+  const [selectedCategory, setSelectedCategory] = useState<LessonCategoryResponse | null>(null);
+  const [selectedLesson, setSelectedLesson] = useState<LessonResponse | null>(null);
+
+  const { useCategories } = useLessonStructure();
+  const { useAllLessons } = useLessons();
+
+  const categoriesQuery = useCategories({ size: 100 });
+  const categories = (categoriesQuery.data?.data ?? []) as LessonCategoryResponse[];
+
+  const lessonsQuery = useAllLessons({
+    categoryId: selectedCategory?.lessonCategoryId,
+    skillType: SkillType.LISTENING,
+    size: 50,
+  });
+
+  const lessons = (lessonsQuery.data?.data ?? []) as LessonResponse[];
+
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -30,287 +149,100 @@ const ListeningScreen = ({ navigation }) => {
         duration: 600,
         useNativeDriver: true,
       }),
-    ]).start()
-  }, [])
+    ]).start();
+  }, []);
 
-  const topics: Topic[] = [
-    {
-      id: "1",
-      title: "Hội thoại hàng ngày",
-      description: "Các cuộc trò chuyện thường ngày",
-      level: "beginner",
-      icon: "chat",
-      color: "#10B981",
-      contentCount: 24,
-    },
-    {
-      id: "2",
-      title: "Tin tức & Thời sự",
-      description: "Nghe hiểu tin tức và báo chí",
-      level: "intermediate",
-      icon: "newspaper",
-      color: "#3B82F6",
-      contentCount: 18,
-    },
-    {
-      id: "3",
-      title: "Kinh doanh",
-      description: "Tiếng Anh thương mại",
-      level: "advanced",
-      icon: "business",
-      color: "#8B5CF6",
-      contentCount: 15,
-    },
-    {
-      id: "4",
-      title: "Du lịch",
-      description: "Giao tiếp khi đi du lịch",
-      level: "beginner",
-      icon: "flight",
-      color: "#F59E0B",
-      contentCount: 20,
-    },
-    {
-      id: "5",
-      title: "Học thuật",
-      description: "Bài giảng và thuyết trình",
-      level: "advanced",
-      icon: "school",
-      color: "#EF4444",
-      contentCount: 12,
-    },
-    {
-      id: "6",
-      title: "Giải trí",
-      description: "Phim, nhạc và văn hóa",
-      level: "intermediate",
-      icon: "movie",
-      color: "#EC4899",
-      contentCount: 22,
-    },
-  ]
-
-  const mockContent: Content[] = [
-    {
-      id: "1",
-      title: "Ordering Food at a Restaurant",
-      type: "video",
-      duration: 180,
-      level: "Beginner",
-      transcript:
-        "Waiter: Good evening! Welcome to our restaurant. How many people are in your party?\nCustomer: Good evening. Table for two, please.\nWaiter: Right this way. Here are your menus. Can I start you off with something to drink?\nCustomer: I'll have a glass of water, please.\nWaiter: And for you, sir?\nCustomer 2: I'd like a coffee, please.",
-      url: "https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4",
-      thumbnail: "https://via.placeholder.com/300x200",
-    },
-    {
-      id: "2",
-      title: "Weather Conversation",
-      type: "audio",
-      duration: 120,
-      level: "Beginner",
-      transcript:
-        "Person A: What's the weather like today?\nPerson B: It's quite sunny and warm. Perfect for a walk in the park.\nPerson A: That sounds great! Should we go out?\nPerson B: Yes, let's go. Don't forget to bring your sunglasses.",
-      url: "https://sample-audio.com/sample.mp3",
-    },
-  ]
-
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = Math.floor(seconds % 60)
-    return `${mins}:${secs.toString().padStart(2, "0")}`
-  }
-
-  const getLevelColor = (level: string) => {
-    switch (level.toLowerCase()) {
-      case "beginner":
-        return "#10B981"
-      case "intermediate":
-        return "#F59E0B"
-      case "advanced":
-        return "#EF4444"
-      default:
-        return "#6B7280"
-    }
-  }
-
-  const renderTopicCard = (topic: Topic) => (
-    <TouchableOpacity key={topic.id} style={styles.topicCard} onPress={() => setSelectedTopic(topic)}>
-      <View style={[styles.topicIcon, { backgroundColor: `${topic.color}20` }]}>
-        <Icon name={topic.icon} size={24} color={topic.color} />
-      </View>
-      <View style={styles.topicInfo}>
-        <Text style={styles.topicTitle}>{topic.title}</Text>
-        <Text style={styles.topicDescription}>{topic.description}</Text>
-        <View style={styles.topicMeta}>
-          <View style={[styles.levelBadge, { backgroundColor: `${getLevelColor(topic.level)}20` }]}>
-            <Text style={[styles.levelText, { color: getLevelColor(topic.level) }]}>
-              {topic.level === "beginner" ? "Sơ cấp" : topic.level === "intermediate" ? "Trung cấp" : "Nâng cao"}
-            </Text>
-          </View>
-          <Text style={styles.contentCount}>{topic.contentCount} bài</Text>
-        </View>
-      </View>
-      <Icon name="chevron-right" size={20} color="#9CA3AF" />
-    </TouchableOpacity>
-  )
-
-  const renderContentItem = (content: Content) => (
-    <TouchableOpacity key={content.id} style={styles.contentItem} onPress={() => setSelectedContent(content)}>
-      <View style={styles.contentThumbnail}>
-        {content.type === "video" ? (
-          <Icon name="play-circle" size={32} color="#4F46E5" />
-        ) : (
-          <Icon name="headphones" size={32} color="#10B981" />
-        )}
-      </View>
-      <View style={styles.contentInfo}>
-        <Text style={styles.contentTitle}>{content.title}</Text>
-        <View style={styles.contentMeta}>
-          <Text style={styles.contentDuration}>{formatTime(content.duration)}</Text>
-          <Text style={styles.contentLevel}>{content.level}</Text>
-          <Text style={styles.contentType}>{content.type === "video" ? "Video" : "Audio"}</Text>
-        </View>
-      </View>
-    </TouchableOpacity>
-  )
-
-  const renderPlayer = () => {
-    if (!selectedContent) return null
-
+  const renderTopicCard = (category: LessonCategoryResponse, index: number) => {
+    const style = getCategoryStyle(index);
     return (
-      <Modal visible={!!selectedContent} animationType="slide">
-        <View style={styles.playerContainer}>
-          <View style={styles.playerHeader}>
-            <TouchableOpacity onPress={() => setSelectedContent(null)}>
-              <Icon name="close" size={24} color="#374151" />
-            </TouchableOpacity>
-            <Text style={styles.playerTitle}>{selectedContent.title}</Text>
-            <TouchableOpacity onPress={() => setShowSpeedModal(true)}>
-              <Text style={styles.speedButton}>{playbackRate}x</Text>
-            </TouchableOpacity>
-          </View>
-{/* 
-          <View style={styles.mediaContainer}>
-            {selectedContent.type === "video" ? (
-              <Video
-                source={{ uri: selectedContent.url }}
-                style={styles.videoPlayer}
-                controls={false}
-                resizeMode="contain"
-                paused={!isPlaying}
-                rate={playbackRate}
-                onLoad={(data) => setDuration(data.duration)}
-                onProgress={(data) => setCurrentTime(data.currentTime)}
-              />
-            ) : (
-              <View style={styles.audioPlayer}>
-                <Icon name="music-note" size={64} color="#4F46E5" />
-                <Text style={styles.audioTitle}>{selectedContent.title}</Text>
-              </View>
-            )}
-          </View> */}
-
-          <View style={styles.playerControls}>
-            <View style={styles.progressContainer}>
-              <Text style={styles.timeText}>{formatTime(currentTime)}</Text>
-              <Text style={styles.timeText}>{formatTime(duration)}</Text>
-            </View>
-
-            <View style={styles.controlButtons}>
-              <TouchableOpacity style={styles.controlButton}>
-                <Icon name="replay-10" size={24} color="#6B7280" />
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.playButton} onPress={() => setIsPlaying(!isPlaying)}>
-                <Icon name={isPlaying ? "pause" : "play-arrow"} size={32} color="#FFFFFF" />
-              </TouchableOpacity>
-
-              <TouchableOpacity style={styles.controlButton}>
-                <Icon name="forward-10" size={24} color="#6B7280" />
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.playerActions}>
-            <TouchableOpacity
-              style={[styles.actionButton, showTranscript && styles.actionButtonActive]}
-              onPress={() => setShowTranscript(!showTranscript)}
-            >
-              <Icon name="subtitles" size={20} color={showTranscript ? "#FFFFFF" : "#6B7280"} />
-              <Text style={[styles.actionButtonText, showTranscript && styles.actionButtonTextActive]}>Phụ đề</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionButton}>
-              <Icon name="bookmark-border" size={20} color="#6B7280" />
-              <Text style={styles.actionButtonText}>Lưu</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.actionButton}>
-              <Icon name="share" size={20} color="#6B7280" />
-              <Text style={styles.actionButtonText}>Chia sẻ</Text>
-            </TouchableOpacity>
-          </View>
-
-          {showTranscript && (
-            <ScrollView style={styles.transcriptContainer}>
-              <Text style={styles.transcriptTitle}>Phụ đề</Text>
-              <Text style={styles.transcriptText}>{selectedContent.transcript}</Text>
-            </ScrollView>
-          )}
+      <TouchableOpacity
+        key={category.lessonCategoryId}
+        style={styles.topicCard}
+        onPress={() => setSelectedCategory(category)}
+      >
+        <View style={[styles.topicIcon, { backgroundColor: `${style.color}20` }]}>
+          <Icon name={style.icon} size={24} color={style.color} />
         </View>
+        <View style={styles.topicInfo}>
+          <Text style={styles.topicTitle}>{category.lessonCategoryName}</Text>
+          <Text style={styles.topicDescription} numberOfLines={1}>
+            {category.description || t("common.noDescription")}
+          </Text>
+        </View>
+        <Icon name="chevron-right" size={20} color="#9CA3AF" />
+      </TouchableOpacity>
+    );
+  };
 
-        {/* Speed Modal */}
-        <Modal visible={showSpeedModal} transparent animationType="fade">
-          <View style={styles.modalOverlay}>
-            <View style={styles.speedModal}>
-              <Text style={styles.speedModalTitle}>Tốc độ phát</Text>
-              {[0.5, 0.75, 1.0, 1.25, 1.5, 2.0].map((speed) => (
-                <TouchableOpacity
-                  key={speed}
-                  style={[styles.speedOption, playbackRate === speed && styles.speedOptionActive]}
-                  onPress={() => {
-                    setPlaybackRate(speed)
-                    setShowSpeedModal(false)
-                  }}
-                >
-                  <Text style={[styles.speedOptionText, playbackRate === speed && styles.speedOptionTextActive]}>
-                    {speed}x
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+  const renderContentItem = (lesson: LessonResponse) => {
+    const hasVideo = lesson.videoUrls && lesson.videoUrls.length > 0;
+    return (
+      <TouchableOpacity
+        key={lesson.lessonId}
+        style={styles.contentItem}
+        onPress={() => setSelectedLesson(lesson)}
+      >
+        <View style={styles.contentThumbnail}>
+          <Icon
+            name={hasVideo ? "play-circle" : "headphones"}
+            size={32}
+            color={hasVideo ? "#4F46E5" : "#10B981"}
+          />
+        </View>
+        <View style={styles.contentInfo}>
+          <Text style={styles.contentTitle}>{lesson.title}</Text>
+          <View style={styles.contentMeta}>
+            <Text style={styles.contentDuration}>{formatTime(0)}</Text>
+            <Text style={styles.contentLevel}>{lesson.lessonType}</Text>
+            <Text style={styles.contentType}>{hasVideo ? "Video" : "Audio"}</Text>
           </View>
-        </Modal>
-      </Modal>
-    )
-  }
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
-  if (selectedTopic) {
+  if (selectedCategory) {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => setSelectedTopic(null)}>
+          <TouchableOpacity onPress={() => setSelectedCategory(null)}>
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{selectedTopic.title}</Text>
+          <Text style={styles.headerTitle}>{selectedCategory.lessonCategoryName}</Text>
           <View style={styles.placeholder} />
         </View>
 
-        <ScrollView style={styles.content}>
-          <View style={styles.topicHeader}>
-            <View style={[styles.topicIconLarge, { backgroundColor: `${selectedTopic.color}20` }]}>
-              <Icon name={selectedTopic.icon} size={32} color={selectedTopic.color} />
-            </View>
-            <Text style={styles.topicTitleLarge}>{selectedTopic.title}</Text>
-            <Text style={styles.topicDescriptionLarge}>{selectedTopic.description}</Text>
+        {lessonsQuery.isLoading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#4F46E5" />
           </View>
+        ) : (
+          <ScrollView style={styles.content}>
+            <View style={styles.topicHeader}>
+              <View style={[styles.topicIconLarge, { backgroundColor: "#EEF2FF" }]}>
+                <Icon name="library-music" size={32} color="#4F46E5" />
+              </View>
+              <Text style={styles.topicTitleLarge}>{selectedCategory.lessonCategoryName}</Text>
+              <Text style={styles.topicDescriptionLarge}>{selectedCategory.description}</Text>
+            </View>
 
-          <View style={styles.contentList}>{mockContent.map(renderContentItem)}</View>
-        </ScrollView>
+            <View style={styles.contentList}>
+              {lessons.length > 0 ? (
+                lessons.map(renderContentItem)
+              ) : (
+                <Text style={styles.emptyText}>{t("common.noData")}</Text>
+              )}
+            </View>
+          </ScrollView>
+        )}
 
-        {renderPlayer()}
+        <PlayerModal
+          visible={!!selectedLesson}
+          content={selectedLesson}
+          onClose={() => setSelectedLesson(null)}
+        />
       </View>
-    )
+    );
   }
 
   return (
@@ -319,37 +251,43 @@ const ListeningScreen = ({ navigation }) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Luyện nghe</Text>
+        <Text style={styles.headerTitle}>{t("listening.title")}</Text>
         <TouchableOpacity>
           <Icon name="search" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Animated.View
-          style={[
-            styles.scrollContent,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          <View style={styles.welcomeSection}>
-            <Icon name="headset" size={64} color="#4F46E5" />
-            <Text style={styles.welcomeTitle}>Luyện kỹ năng nghe</Text>
-            <Text style={styles.welcomeText}>Chọn chủ đề và luyện nghe với video hoặc audio chất lượng cao</Text>
-          </View>
+      {categoriesQuery.isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4F46E5" />
+        </View>
+      ) : (
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <Animated.View
+            style={[
+              styles.scrollContent,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            <View style={styles.welcomeSection}>
+              <Icon name="headset" size={64} color="#4F46E5" />
+              <Text style={styles.welcomeTitle}>{t("listening.welcomeTitle")}</Text>
+              <Text style={styles.welcomeText}>{t("listening.welcomeSubtitle")}</Text>
+            </View>
 
-          <View style={styles.topicsSection}>
-            <Text style={styles.sectionTitle}>Chọn chủ đề</Text>
-            {topics.map(renderTopicCard)}
-          </View>
-        </Animated.View>
-      </ScrollView>
+            <View style={styles.topicsSection}>
+              <Text style={styles.sectionTitle}>{t("listening.chooseTopic")}</Text>
+              {categories.map((cat, index) => renderTopicCard(cat, index))}
+            </View>
+          </Animated.View>
+        </ScrollView>
+      )}
     </View>
-  )
-}
+  );
+};
 
 const styles = createScaledSheet({
   container: {
@@ -361,8 +299,7 @@ const styles = createScaledSheet({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 16,
+    paddingVertical: 15,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
     borderBottomColor: "#E5E7EB",
@@ -381,20 +318,26 @@ const styles = createScaledSheet({
   scrollContent: {
     padding: 20,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  emptyText: {
+    textAlign: "center",
+    color: "#6B7280",
+    marginTop: 20,
+  },
   welcomeSection: {
     alignItems: "center",
     marginBottom: 30,
-  },
-  welcomeAnimation: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
   },
   welcomeTitle: {
     fontSize: 20,
     fontWeight: "bold",
     color: "#1F2937",
     marginBottom: 8,
+    textAlign: "center",
   },
   welcomeText: {
     fontSize: 14,
@@ -444,30 +387,11 @@ const styles = createScaledSheet({
   topicDescription: {
     fontSize: 14,
     color: "#6B7280",
-    marginBottom: 8,
-  },
-  topicMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  levelBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  levelText: {
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  contentCount: {
-    fontSize: 12,
-    color: "#9CA3AF",
   },
   topicHeader: {
     alignItems: "center",
     padding: 20,
-    marginBottom: 20,
+    marginBottom: 10,
   },
   topicIconLarge: {
     width: 64,
@@ -482,6 +406,7 @@ const styles = createScaledSheet({
     fontWeight: "bold",
     color: "#1F2937",
     marginBottom: 8,
+    textAlign: "center",
   },
   topicDescriptionLarge: {
     fontSize: 16,
@@ -490,6 +415,7 @@ const styles = createScaledSheet({
   },
   contentList: {
     gap: 12,
+    padding: 20,
   },
   contentItem: {
     flexDirection: "row",
@@ -547,8 +473,7 @@ const styles = createScaledSheet({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 16,
+    paddingVertical: 15,
     backgroundColor: "#FFFFFF",
   },
   playerTitle: {
@@ -557,6 +482,7 @@ const styles = createScaledSheet({
     color: "#1F2937",
     flex: 1,
     textAlign: "center",
+    marginHorizontal: 10,
   },
   speedButton: {
     fontSize: 14,
@@ -566,9 +492,11 @@ const styles = createScaledSheet({
   mediaContainer: {
     flex: 1,
     backgroundColor: "#000000",
+    justifyContent: "center",
   },
   videoPlayer: {
-    flex: 1,
+    width: "100%",
+    height: 300,
   },
   audioPlayer: {
     flex: 1,
@@ -576,96 +504,16 @@ const styles = createScaledSheet({
     alignItems: "center",
     backgroundColor: "#1F2937",
   },
-  audioAnimation: {
-    width: 200,
-    height: 200,
-    marginBottom: 20,
-  },
   audioTitle: {
     fontSize: 18,
-    color: "#FFFFFF",
-    textAlign: "center",
+    color: "#9CA3AF",
+    marginTop: 16,
   },
   playerControls: {
     backgroundColor: "#FFFFFF",
     paddingHorizontal: 20,
     paddingVertical: 16,
-  },
-  progressContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  timeText: {
-    fontSize: 12,
-    color: "#6B7280",
-    minWidth: 40,
-  },
-  progressSlider: {
-    flex: 1,
-    marginHorizontal: 12,
-  },
-  sliderThumb: {
-    backgroundColor: "#4F46E5",
-  },
-  controlButtons: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 30,
-  },
-  controlButton: {
-    padding: 8,
-  },
-  playButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: "#4F46E5",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  playerActions: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: "#E5E7EB",
-  },
-  actionButton: {
-    alignItems: "center",
-    gap: 4,
-  },
-  actionButtonActive: {
-    backgroundColor: "#4F46E5",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  actionButtonText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  actionButtonTextActive: {
-    color: "#FFFFFF",
-  },
-  transcriptContainer: {
-    backgroundColor: "#FFFFFF",
-    maxHeight: 200,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-  },
-  transcriptTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 12,
-  },
-  transcriptText: {
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
+    alignItems: 'center',
   },
   modalOverlay: {
     flex: 1,
@@ -703,6 +551,6 @@ const styles = createScaledSheet({
   speedOptionTextActive: {
     color: "#FFFFFF",
   },
-})
+});
 
-export default ListeningScreen
+export default ListeningScreen;

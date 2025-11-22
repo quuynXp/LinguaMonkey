@@ -1,33 +1,15 @@
-import React, { useRef, useState } from "react"
+import React, { useRef, useState, useEffect } from "react"
 import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { useAppStore } from "../../stores/appStore"
+import { useAppStore, CallPreferences } from "../../stores/appStore" // IMPORT CallPreferences type từ store
 import instance from "../../api/axiosInstance"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
-
-interface CallPreferences {
-  interests: string[]
-  gender: "any" | "male" | "female"
-  nativeLanguage: string
-  learningLanguage: string
-  ageRange: string
-  callDuration: string
-}
-
-type ApiInterest = {
-  interest_id: string;
-  interest_name: string;
-  icon: string;
-  color: string;
-};
-type ApiLanguage = {
-  language_code: string;
-  language_name: string;
-};
+import { InterestResponse, LanguageResponse } from "../../types/dto"
+import { AgeRange } from "../../types/enums"
 
 const languageFlags: { [key: string]: string } = {
   en: "🇺🇸",
@@ -38,64 +20,60 @@ const languageFlags: { [key: string]: string } = {
   fr: "🇫🇷",
   es: "🇪🇸",
   de: "🇩🇪",
-};
+}
 
 const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   const { t } = useTranslation()
-  const { user } = useUserStore();
-  const { setCallPreferences } = useAppStore();
+  const { user } = useUserStore()
+  const { callPreferences: savedPreferences, setCallPreferences } = useAppStore()
 
-  const [preferences, setPreferences] = useState<CallPreferences>({
+  const defaultPreferences: CallPreferences = {
     interests: [],
     gender: "any",
     nativeLanguage: user?.nativeLanguageCode || "en",
-    learningLanguage: "vi",
-    ageRange: "18-30",
+    learningLanguage: user?.languages?.[0] || "vi",
+    ageRange: (user?.ageRange || AgeRange.AGE_18_24) as AgeRange,
     callDuration: "15",
-  })
+  }
+
+  const [preferences, setPreferences] = useState<CallPreferences>(
+    savedPreferences || defaultPreferences
+  )
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  const { data: interestsData, isLoading: isLoadingInterests } = useQuery<ApiInterest[]>({
+  const { data: interestsData, isLoading: isLoadingInterests } = useQuery<InterestResponse[]>({
     queryKey: ["interests"],
     queryFn: async () => {
-      const response = await instance.get("/api/v1/interests");
-      return response.data.result;
+      const response = await instance.get("/api/v1/interests")
+      return response.data.result
     },
-  });
+  })
 
-  const interests = interestsData || [];
+  const interests = interestsData || []
 
-  const { data: languagesData, isLoading: isLoadingLanguages } = useQuery<ApiLanguage[]>({
+  const { data: languagesData, isLoading: isLoadingLanguages } = useQuery<LanguageResponse[]>({
     queryKey: ["languages"],
     queryFn: async () => {
-      const response = await instance.get("/api/v1/languages");
-      return response.data.result;
+      const response = await instance.get("/api/v1/languages")
+      return response.data.result
     },
-  });
+  })
 
-  const languages = languagesData || [];
+  const languages = languagesData || []
 
-  const genderOptions = [
-    { value: "any", label: t("call.genderAny"), icon: "people" },
-    { value: "male", label: t("call.genderMale"), icon: "man" },
-    { value: "female", label: t("call.genderFemale"), icon: "woman" },
-  ]
-  const ageRanges = [
-    { value: "18-25", label: t("call.age18to25") },
-    { value: "26-35", label: t("call.age26to35") },
-    { value: "36-45", label: t("call.age36to45") },
-    { value: "46+", label: t("call.age46plus") },
-  ]
-  const callDurations = [
-    { value: "5", label: t("call.duration5min") },
-    { value: "15", label: t("call.duration15min") },
-    { value: "30", label: t("call.duration30min") },
-    { value: "60", label: t("call.duration1hour") },
-  ]
-
-  React.useEffect(() => {
+  useEffect(() => {
+    if (savedPreferences) {
+      setPreferences(savedPreferences)
+    } else {
+      setPreferences((prev) => ({
+        ...prev,
+        nativeLanguage: user?.nativeLanguageCode || "en",
+        learningLanguage: user?.languages?.[0] || "vi",
+        ageRange: (user?.ageRange || AgeRange.AGE_18_24) as AgeRange,
+      }))
+    }
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -108,7 +86,26 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
         useNativeDriver: true,
       }),
     ]).start()
-  }, [])
+  }, [savedPreferences, user, fadeAnim, slideAnim])
+
+
+  const genderOptions = [
+    { value: "any", label: t("call.genderAny"), icon: "people" },
+    { value: "male", label: t("call.genderMale"), icon: "man" },
+    { value: "female", label: t("call.genderFemale"), icon: "woman" },
+  ]
+  const ageRanges = [
+    { value: AgeRange.AGE_18_24, label: t("call.age18to25") },
+    { value: AgeRange.AGE_25_34, label: t("call.age26to35") },
+    { value: AgeRange.AGE_35_44, label: t("call.age36to45") },
+    { value: AgeRange.AGE_45_54, label: t("call.age46plus") },
+  ]
+  const callDurations = [
+    { value: "5", label: t("call.duration5min") },
+    { value: "15", label: t("call.duration15min") },
+    { value: "30", label: t("call.duration30min") },
+    { value: "60", label: t("call.duration1hour") },
+  ]
 
   const toggleInterest = (interestId: string) => {
     setPreferences((prev) => ({
@@ -128,25 +125,25 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
       Alert.alert(t("call.selectInterests"), t("call.selectInterestsMessage"))
       return
     }
-    setCallPreferences(preferences);
-    navigation.navigate("CallSearch", { preferences });
+    setCallPreferences(preferences)
+    navigation.navigate("CallSearchScreen", { preferences })
   }
 
-  const renderInterestItem = (interest: ApiInterest) => {
-    const isSelected = preferences.interests.includes(interest.interest_id)
-    const color = interest.color || "#6B7280";
+  const renderInterestItem = (interest: InterestResponse) => {
+    const isSelected = preferences.interests.includes(interest.interestId)
+    const color = interest.color || "#6B7280"
     return (
       <TouchableOpacity
-        key={interest.interest_id}
+        key={interest.interestId}
         style={[
           styles.interestItem,
           isSelected && { backgroundColor: `${color}20`, borderColor: color },
         ]}
-        onPress={() => toggleInterest(interest.interest_id)}
+        onPress={() => toggleInterest(interest.interestId)}
       >
         <Icon name={(interest.icon || "star") as any} size={20} color={isSelected ? color : "#6B7280"} />
         <Text style={[styles.interestText, isSelected && { color: color, fontWeight: "600" }]}>
-          {interest.interest_name}
+          {interest.interestName}
         </Text>
         {isSelected && <Icon name="check-circle" size={16} color={color} />}
       </TouchableOpacity>
@@ -154,18 +151,18 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   }
 
   const renderLanguageOption = (
-    language: ApiLanguage,
+    language: LanguageResponse,
     selectedLanguage: string,
     onSelect: (code: string) => void,
   ) => (
     <TouchableOpacity
-      key={language.language_code}
-      style={[styles.languageOption, selectedLanguage === language.language_code && styles.selectedLanguageOption]}
-      onPress={() => onSelect(language.language_code)}
+      key={language.languageCode}
+      style={[styles.languageOption, selectedLanguage === language.languageCode && styles.selectedLanguageOption]}
+      onPress={() => onSelect(language.languageCode)}
     >
-      <Text style={styles.languageFlag}>{languageFlags[language.language_code] || '🌐'}</Text>
-      <Text style={[styles.languageText, selectedLanguage === language.language_code && styles.selectedLanguageText]}>
-        {language.language_name}
+      <Text style={styles.languageFlag}>{languageFlags[language.languageCode] || '🌐'}</Text>
+      <Text style={[styles.languageText, selectedLanguage === language.languageCode && styles.selectedLanguageText]}>
+        {language.languageName}
       </Text>
     </TouchableOpacity>
   )
@@ -196,6 +193,11 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     </View>
   )
 
+  const selectedNativeLanguageName = languages.find((l) => l.languageCode === preferences.nativeLanguage)?.languageName || preferences.nativeLanguage
+  const selectedLearningLanguageName = languages.find((l) => l.languageCode === preferences.learningLanguage)?.languageName || preferences.learningLanguage
+  const selectedGenderLabel = genderOptions.find((g) => g.value === preferences.gender)?.label
+  const selectedDurationLabel = callDurations.find((d) => d.value === preferences.callDuration)?.label
+
   return (
     <ScreenLayout style={styles.container}>
       <View style={styles.header}>
@@ -221,7 +223,6 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
             <Text style={styles.welcomeText}>{t("call.setupDescription")}</Text>
           </View>
 
-          {/* Interests */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.commonInterests")}</Text>
             <Text style={styles.sectionSubtitle}>
@@ -232,13 +233,11 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
             }
           </View>
 
-          {/* Gender Preference */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.partnerGender")}</Text>
-            {renderOptionButton(genderOptions, preferences.gender, (value) => updatePreference("gender", value as any))}
+            {renderOptionButton(genderOptions, preferences.gender, (value) => updatePreference("gender", value))}
           </View>
 
-          {/* Native Language */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.partnerNativeLanguage")}</Text>
             {isLoadingLanguages ? <ActivityIndicator /> :
@@ -252,7 +251,6 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
             }
           </View>
 
-          {/* Learning Language */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.partnerLearningLanguage")}</Text>
             {isLoadingLanguages ? <ActivityIndicator /> :
@@ -266,7 +264,6 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
             }
           </View>
 
-          {/* Age Range */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.ageRange")}</Text>
             {renderOptionButton(ageRanges, preferences.ageRange, (value) => updatePreference("ageRange", value))}
@@ -279,7 +276,6 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
             )}
           </View>
 
-          {/* Summary */}
           <View style={styles.summarySection}>
             <Text style={styles.summaryTitle}>{t("call.searchSummary")}</Text>
             <View style={styles.summaryContent}>
@@ -292,32 +288,31 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
               <View style={styles.summaryItem}>
                 <Icon name="person" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  {t("call.gender")}: {genderOptions.find((g) => g.value === preferences.gender)?.label}
+                  {t("call.gender")}: {selectedGenderLabel}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="language" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
                   {t("call.native")}:{" "}
-                  {languages.find((l) => l.language_code === preferences.nativeLanguage)?.language_name}
+                  {selectedNativeLanguageName}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="school" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  {t("call.learning")}: {languages.find((l) => l.language_code === preferences.learningLanguage)?.language_name}
+                  {t("call.learning")}: {selectedLearningLanguageName}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="schedule" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  {t("call.time")}: {callDurations.find((d) => d.value === preferences.callDuration)?.label}
+                  {t("call.time")}: {selectedDurationLabel}
                 </Text>
               </View>
             </View>
           </View>
 
-          {/* Start Search Button */}
           <TouchableOpacity
             style={[styles.startButton, preferences.interests.length === 0 && styles.startButtonDisabled]}
             onPress={startSearch}
@@ -334,7 +329,6 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   )
 }
 
-// Dán styles từ file 'CallSetupScreen.ts' cũ của bạn vào đây
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -525,6 +519,6 @@ const styles = createScaledSheet({
     fontWeight: "600",
     color: "#FFFFFF",
   },
-});
+})
 
-export default CallSetupScreen;
+export default CallSetupScreen

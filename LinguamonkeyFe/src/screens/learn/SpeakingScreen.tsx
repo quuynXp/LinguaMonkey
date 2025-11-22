@@ -8,12 +8,11 @@ import {
     PermissionsAndroid,
     Platform,
     ScrollView,
-    StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from "react-native";
-import {PronunciationResult, Sentence, WordScore } from "../../types/api"
+import { PronunciationResult, Sentence, WordScore } from "../../types/api"
 import { createScaledSheet } from '../../utils/scaledStyles';
 
 
@@ -313,7 +312,7 @@ const SpeakingScreen = ({ navigation }) => {
             await player.play();
 
             const interval = setInterval(async () => {
-                const status = player.currentStatus; 
+                const status = player.currentStatus;
                 if (status.didJustFinish) {
                     clearInterval(interval);
                     player.remove();
@@ -334,7 +333,7 @@ const SpeakingScreen = ({ navigation }) => {
             await player.play();
 
             const interval = setInterval(async () => {
-                const status = player.currentStatus; 
+                const status = player.currentStatus;
                 if (status.didJustFinish) {
                     clearInterval(interval);
                     player.remove();
@@ -494,7 +493,7 @@ const SpeakingScreen = ({ navigation }) => {
                 <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
                     <View style={styles.welcomeSection}>
                         <Icon name="mic" size={64} color="#4F46E5" />
-                        
+
                         <Text style={styles.welcomeTitle}>Luyện phát âm</Text>
                         <Text style={styles.welcomeText}>Chọn câu và luyện phát âm với AI đánh giá chính xác</Text>
                     </View>

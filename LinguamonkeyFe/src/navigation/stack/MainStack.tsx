@@ -1,55 +1,66 @@
-// navigation/MainStack.tsx
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import React from 'react';
 import DailyWelcomeScreen from '../../screens/appLaunch/DailyWelcomeScreen';
 import ProficiencyTestScreen from '../../screens/appLaunch/ProficiencyTestScreen';
 import SetupInitScreen from '../../screens/appLaunch/SetupInitScreen';
-import { createNativeStackNavigator } from '@react-navigation/native-stack'; // Sử dụng native stack
-import TabNavigator from '../TabNavigator';
-import AuthStack from './AuthStack';
-import AdminStack from './AdminStack';
-import TeacherStack from './TeacherStack';
-import withRoleGuard from '../../utils/withRoleGuard';
 import TransactionHistoryScreen from '../../screens/payment/TransactionHistoryScreen';
-import PaymentScreen from '../../screens/payment/PaymentScreen';
-import AppLaunchScreen from '../../screens/appLaunch/AppLaunchScreen';
+import TabNavigator from '../TabNavigator';
+import AdminStack from './AdminStack';
+import LearnStack from './LearnStack';
+import PaymentStack from './PaymentStack';
+import ChatStack from './ChatStack';
+import ProfileStack from './ProfileStack';
+import ProgressStack from './ProgressStack';
+import CourseStack from './CourseStack';
+import RoadmapStack from './RoadmapStack';
 
-export type RootStackParamList = {
-  Auth: undefined;
-  DailyWelcome: undefined;
+export type MainStackParamList = {
+  TabApp: undefined;
+  LearnStack: { screen?: string; params?: any } | undefined;
+  AdminStack: undefined;
+  Teacher: undefined;
+  DailyWelcomeScreen: undefined;
   ProficiencyTestScreen: undefined;
   SetupInitScreen: undefined;
-  AppLaunchScreen: { initialParams?: any } | undefined;
-  TabApp: undefined;
-  PaymentScreen: undefined;
-  Admin: undefined;
-  Teacher: undefined;
+  PaymentStack: undefined;
+  ChatStack: undefined;
+  ProfileStack: undefined;
+  ProgressStack: undefined;
+  CourseStack: undefined;
+  RoadmapStack: undefined;
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Stack = createNativeStackNavigator<MainStackParamList>();
 
-const MainStack = ({ initialRouteName, initialParams }: any) => (
-  <Stack.Navigator
-    {...({
-      screenOptions: { headerShown: false },
-      initialRouteName,
-    } as any)}
-  >
-    <Stack.Screen name="Auth" component={AuthStack} />
-    <Stack.Screen name="DailyWelcome" component={DailyWelcomeScreen} />
-    <Stack.Screen name="ProficiencyTestScreen" component={ProficiencyTestScreen} />
-    <Stack.Screen name="SetupInitScreen" component={SetupInitScreen} />
-    <Stack.Screen name="AppLaunchScreen" component={AppLaunchScreen} initialParams={initialParams} />
-    <Stack.Screen name="TabApp" component={TabNavigator} />
-    <Stack.Screen name="PaymentScreen" component={PaymentScreen} />
-    <Stack.Screen
-      name="Admin"
-      component={AdminStack}
-    />
-    <Stack.Screen
-      name="Teacher"
-      component={TeacherStack}
-    />
+interface MainStackProps {
+  initialRouteName?: keyof MainStackParamList;
+}
 
-  </Stack.Navigator>
-);
+const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName} id={undefined}>
+      {/* 1. Main Tabs */}
+      <Stack.Screen name="TabApp" component={TabNavigator} />
+
+      {/* 2. Feature Stacks (Nằm ngoài Tab để hiển thị Full Screen) */}
+      <Stack.Screen name="LearnStack" component={LearnStack} />
+      <Stack.Screen name="AdminStack" component={AdminStack} />
+      <Stack.Screen name="ChatStack" component={ChatStack} />
+      <Stack.Screen name="ProfileStack" component={ProfileStack} />
+      <Stack.Screen name="ProgressStack" component={ProgressStack} />
+      <Stack.Screen name="CourseStack" component={CourseStack} />
+      <Stack.Screen name="RoadmapStack" component={RoadmapStack} />
+
+      {/* 3. Onboarding / Setup Flows */}
+      <Stack.Screen name="DailyWelcomeScreen" component={DailyWelcomeScreen} />
+      <Stack.Screen name="ProficiencyTestScreen" component={ProficiencyTestScreen} />
+      <Stack.Screen name="SetupInitScreen" component={SetupInitScreen} />
+
+      {/* 4. Payment & Transactions */}
+      <Stack.Screen name="PaymentStack" component={PaymentStack} />
+
+    </Stack.Navigator>
+  );
+};
 
 export default MainStack;

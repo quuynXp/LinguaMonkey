@@ -185,7 +185,7 @@ const CourseManagerScreen = () => {
                     <TouchableOpacity
                         style={styles.actionButton}
                         onPress={() =>
-                            navigation.navigate("EditCourseDetails", { courseId })
+                            navigation.navigate("EditCourseDetailsScreen", { courseId })
                         }
                         disabled={isLoading}
                     >
@@ -210,7 +210,7 @@ const CourseManagerScreen = () => {
                     <TouchableOpacity
                         style={styles.actionButton}
                         onPress={() =>
-                            navigation.navigate("CurriculumManager", {
+                            navigation.navigate("CurriculumManagerScreen", {
                                 courseId,
                                 versionId: currentVersion?.versionId,
                             })

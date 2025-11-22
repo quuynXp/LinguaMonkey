@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Platform, View, Text } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
@@ -6,80 +6,41 @@ import NetInfo from "@react-native-community/netinfo";
 import messaging, {
   getInitialNotification,
   onMessage,
-  onNotificationOpenedApp,
 } from "@react-native-firebase/messaging";
 import {
   RootNavigationRef,
   flushPendingActions,
-  resetToTab,
   gotoTab,
-  resetToAuth,
 } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
 import notificationService from "./services/notificationService";
-import MainStack from "./navigation/stack/MainStack";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
 import * as Localization from "expo-localization";
 import instance from "./api/axiosInstance";
 import SplashScreen from "./screens/Splash/SplashScreen";
-import { API_BASE_URL } from "./api/apiConfig";
 import * as Linking from "expo-linking";
 import permissionService from "./services/permissionService";
 import i18n from "./i18n";
 
-console.log("API_URL:", API_BASE_URL);
-
-type InitialRoute =
-  | "Auth"
-  | "DailyWelcome"
-  | "TabApp"
-  | "AppLaunchScreen"
-  | "ProficiencyTestScreen"
-  | "SetupInitScreen"
-  | "Admin";
-
-const handleNotificationNavigation = (remoteMessage: any) => {
-  if (!remoteMessage || !remoteMessage.data) {
-    console.log("No data payload in notification.");
-    return;
-  }
-
-  const { accessToken } = useTokenStore.getState();
-  const { data } = remoteMessage;
-  const { screen, stackScreen, ...params } = data;
-
-  if (screen) {
-    if (!accessToken) {
-      console.log("User not authenticated, redirecting to Auth.");
-      resetToAuth("Login");
-      return;
-    }
-
-    console.log(
-      `Navigating to: ${screen} -> ${stackScreen} with params:`,
-      params
-    );
-    gotoTab(screen as any, stackScreen, params);
-  }
-};
+import AuthStack from "./navigation/stack/AuthStack";
+import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [initialScreenName, setInitialScreenName] =
-    useState<InitialRoute>("AppLaunchScreen");
-
-  const { user, setUser } = useUserStore.getState();
-
-  const [initialRouteParams, setInitialRouteParams] = useState<
-    object | undefined
-  >(undefined);
   const [isConnected, setIsConnected] = useState(true);
 
-  const initializeTokens = useTokenStore((s) => s.initializeTokens);
+  const accessToken = useTokenStore((state) => state.accessToken);
+  const initializeTokens = useTokenStore((state) => state.initializeTokens);
+  const clearTokens = useTokenStore((state) => state.clearTokens);
 
-  const linking = {
+  const { user, setUser, setLocalNativeLanguage } = useUserStore();
+
+  const [initialMainRoute, setInitialMainRoute] = useState<keyof MainStackParamList>("TabApp");
+  const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
+
+  const linking = useMemo(() => ({
     prefixes: [
       Linking.createURL("/"),
       "monkeylingua://",
@@ -87,32 +48,35 @@ const RootNavigation = () => {
     ],
     config: {
       screens: {
-        Auth: {
-          screens: {
-            Login: "login",
-            Register: "register",
-            ForgotPassword: "forgot-password",
-          },
-        },
+        AppLaunchScreen: "welcome",
+        LoginScreen: "login",
+        RegisterScreen: "register",
+        ForgotPasswordScreen: "forgot-password",
+
         TabApp: {
           screens: {
             Home: "home",
             Learn: "learn",
             Progress: "progress",
-            Chat: {
-              screens: {
-                ChatList: "chats",
-                ChatDetail: "chat/:chatId",
-              },
-            },
+            Chat: "chats",
             Profile: "profile",
           },
         },
-        DailyWelcome: "daily-welcome",
+
+        LearnStack: {
+          screens: {
+            Lesson: "lesson/:id",
+            CourseDetails: "course/:id",
+          }
+        },
+        AdminStack: "admin",
+        ChatStack: "chat-full",
+        ProfileStack: "profile-stack",
+        PaymentStack: "payment",
+
+        DailyWelcomeScreen: "daily-welcome",
         ProficiencyTestScreen: "proficiency-test",
         SetupInitScreen: "setup",
-        Admin: "admin",
-        Teacher: "teacher",
       },
     },
     subscribe(listener: (url: string) => void) {
@@ -131,16 +95,13 @@ const RootNavigation = () => {
         unsubscribeNotification();
       };
     },
-  };
+  }), []);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
       setIsConnected(state.isConnected ?? false);
     });
-
-    return () => {
-      unsubscribe();
-    };
+    return () => unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -151,21 +112,15 @@ const RootNavigation = () => {
   }, [user?.userId]);
 
   useEffect(() => {
-    const unsubscribeOnMessage = onMessage(
-      messaging(),
-      async (remoteMessage) => {
-        console.log("Foreground Notification (FCM):", remoteMessage);
-        notificationService.sendLocalNotification(
-          remoteMessage.notification?.title || i18n.t("notification.default_title"),
-          remoteMessage.notification?.body || "",
-          remoteMessage.data
-        );
-      }
-    );
-
-    return () => {
-      unsubscribeOnMessage();
-    };
+    const unsubscribeOnMessage = onMessage(messaging(), async (remoteMessage) => {
+      console.log("Foreground Notification (FCM):", remoteMessage);
+      notificationService.sendLocalNotification(
+        remoteMessage.notification?.title || i18n.t("notification.default_title"),
+        remoteMessage.notification?.body || "",
+        remoteMessage.data
+      );
+    });
+    return () => unsubscribeOnMessage();
   }, []);
 
   useEffect(() => {
@@ -175,44 +130,13 @@ const RootNavigation = () => {
       try {
         const hasValidToken = await initializeTokens();
 
-        const hasDonePlacementTest =
-          (await AsyncStorage.getItem("hasDonePlacementTest")) === "true";
-        const hasLoggedIn =
-          (await AsyncStorage.getItem("hasLoggedIn")) === "true";
-
-        const hasFinishedOnboarding =
-          (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
-
-        const hasFinishedSetup =
-          (await AsyncStorage.getItem("hasFinishedSetup")) === "true";
-
-        console.log("Boot flags:", {
-          hasValidToken,
-          hasDonePlacementTest,
-          hasLoggedIn,
-          hasFinishedOnboarding,
-          hasFinishedSetup,
-        });
-
-        if (!hasValidToken && hasLoggedIn) {
-          console.log("Token invalid but hasLoggedIn=true, cleaning up");
-          await useTokenStore.getState().clearTokens();
-          await AsyncStorage.setItem("hasLoggedIn", "false");
-          setInitialScreenName("AppLaunchScreen");
-          setInitialRouteParams({ skipToAuth: true });
-          return;
-        }
-
-        const userStore = useUserStore.getState();
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
           savedLanguage = locales[0].languageCode || "en";
           await AsyncStorage.setItem("userLanguage", savedLanguage);
-          console.log("Saved default language:", savedLanguage);
         }
-        userStore.setLocalNativeLanguage(savedLanguage);
-
+        setLocalNativeLanguage(savedLanguage);
         if (i18n.language !== savedLanguage) {
           await i18n.changeLanguage(savedLanguage);
         }
@@ -220,84 +144,52 @@ const RootNavigation = () => {
         const currentDate = new Date().toLocaleDateString("en-CA");
         const lastAppOpenDate = await AsyncStorage.getItem("lastAppOpenDate");
         const isFirstOpenToday = lastAppOpenDate !== currentDate;
-
         await AsyncStorage.setItem("lastAppOpenDate", currentDate);
-        console.log(
-          "Last app open date updated:",
-          currentDate,
-          "First open today:",
-          isFirstOpenToday
-        );
 
-        const state = useTokenStore.getState();
-        const accessToken = state.accessToken;
+        if (hasValidToken) {
+          const currentToken = useTokenStore.getState().accessToken;
+          if (currentToken) {
+            try {
+              const payload = decodeToken(currentToken);
+              if (payload?.userId) {
+                const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
+                const rawUser = userRes.data.result || {};
+                const normalizedUser = {
+                  ...rawUser,
+                  userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id,
+                  roles: getRoleFromToken(currentToken),
+                };
+                setUser(normalizedUser, savedLanguage);
+                await AsyncStorage.setItem("hasLoggedIn", "true");
 
-        if (hasValidToken && accessToken) {
-          try {
-            const payload = decodeToken(accessToken);
-            if (payload?.userId) {
-              setUser({ ...user, userId: payload.userId });
-              const userRes = await instance.get(
-                `/api/v1/users/${payload.userId}`
-              );
-              const rawUser = userRes.data.result || {};
-              const normalizedUser = {
-                ...rawUser,
-                userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id,
-                roles: getRoleFromToken(accessToken),
-              };
-              userStore.setUser(normalizedUser, savedLanguage);
-              await AsyncStorage.setItem("hasLoggedIn", "true");
+                const roles = normalizedUser.roles || [];
+                const hasFinishedSetup = (await AsyncStorage.getItem("hasFinishedSetup")) === "true";
+                const hasDonePlacementTest = (await AsyncStorage.getItem("hasDonePlacementTest")) === "true";
 
-              const roles = getRoleFromToken(accessToken);
-              console.log("User roles from token:", roles);
-
-              if (roles.includes("ROLE_ADMIN")) {
-                setInitialScreenName("Admin");
-                setInitialRouteParams(undefined);
-                return;
-              }
-
-              if (!hasFinishedSetup) {
-                setInitialScreenName("SetupInitScreen");
-                setInitialRouteParams(undefined);
-                return;
-              }
-
-              if (!hasDonePlacementTest) {
-                setInitialScreenName("ProficiencyTestScreen");
-              } else {
-                setInitialScreenName(
-                  isFirstOpenToday ? "DailyWelcome" : "TabApp"
-                );
-                setInitialRouteParams(undefined);
-                if (!isFirstOpenToday) {
-                  resetToTab("Home");
+                if (roles.includes("ROLE_ADMIN")) {
+                  setInitialMainRoute("AdminStack");
+                } else if (!hasFinishedSetup) {
+                  setInitialMainRoute("SetupInitScreen");
+                } else if (!hasDonePlacementTest) {
+                  setInitialMainRoute("ProficiencyTestScreen");
+                } else {
+                  setInitialMainRoute(isFirstOpenToday ? "DailyWelcomeScreen" : "TabApp");
                 }
               }
+            } catch (e) {
+              console.error("Boot user fetch failed:", e);
+              await clearTokens();
             }
-          } catch (e) {
-            console.error("Boot fetch user failed:", e);
-            await useTokenStore.getState().clearTokens();
-            setInitialScreenName("AppLaunchScreen");
-            setInitialRouteParams({ skipToAuth: true });
-            return false;
           }
         } else {
+          const hasFinishedOnboarding = (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
           if (hasFinishedOnboarding) {
-            setInitialScreenName("AppLaunchScreen");
-            setInitialRouteParams({ skipToAuth: true });
-          } else {
-            setInitialScreenName("AppLaunchScreen");
-            setInitialRouteParams(undefined);
+            setInitialAuthParams({ skipToAuth: true });
           }
         }
-        return false;
       } catch (e) {
-        console.error("RootNavigation boot error:", e);
-        setInitialScreenName("AppLaunchScreen");
-        setInitialRouteParams({ skipToAuth: true });
-        return false;
+        console.error("Boot error:", e);
+        await clearTokens();
       } finally {
         if (mounted) setIsLoading(false);
       }
@@ -305,12 +197,6 @@ const RootNavigation = () => {
 
     boot();
 
-    return () => {
-      mounted = false;
-    };
-  }, [initializeTokens, user, setUser]);
-
-  useEffect(() => {
     const initPermissions = async () => {
       if (Platform.OS === 'android') {
         await Notifications.setNotificationChannelAsync("default", {
@@ -320,35 +206,27 @@ const RootNavigation = () => {
           lightColor: '#FF231F7C',
         });
       }
-
-      const hasNotiPermission = await permissionService.checkNotificationPermission();
-      if (!hasNotiPermission) {
-        console.log("User denied notification permission");
-      }
+      await permissionService.checkNotificationPermission();
     };
-
     initPermissions();
-  }, []);
+
+    return () => { mounted = false; };
+  }, [initializeTokens, setUser, clearTokens, setLocalNativeLanguage]);
+
+  const handleNotificationNavigation = (remoteMessage: any) => {
+    if (!remoteMessage?.data) return;
+    const { accessToken: token } = useTokenStore.getState();
+    const { screen, stackScreen, ...params } = remoteMessage.data;
+
+    if (screen && token) {
+      gotoTab(screen as any, stackScreen, params);
+    }
+  };
 
   if (!isConnected) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: 20,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 16,
-            color: "red",
-            textAlign: "center",
-          }}
-        >
-          {i18n.t("common.no_internet")}
-        </Text>
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ fontSize: 16, color: "red" }}>{i18n.t("common.no_internet")}</Text>
       </View>
     );
   }
@@ -363,19 +241,19 @@ const RootNavigation = () => {
       linking={linking}
       fallback={<SplashScreen />}
       onReady={async () => {
-        console.log("Navigation is ready");
+        console.log("Navigation Ready");
         const initialMessage = await getInitialNotification(messaging());
         if (initialMessage) {
-          console.log("Handling Quit State Notification onReady:");
           handleNotificationNavigation(initialMessage);
         }
         flushPendingActions();
       }}
     >
-      <MainStack
-        initialRouteName={initialScreenName}
-        initialParams={initialRouteParams}
-      />
+      {accessToken ? (
+        <MainStack initialRouteName={initialMainRoute} />
+      ) : (
+        <AuthStack initialParams={initialAuthParams} />
+      )}
     </NavigationContainer>
   );
 };

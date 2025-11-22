@@ -43,7 +43,7 @@ const AccountChoiceScreen = ({ navigation }) => {
         <View style={styles.optionsContainer}>
           <TouchableOpacity
             style={[styles.optionButton, styles.loginButton]}
-            onPress={() => navigation.navigate("Login")}
+            onPress={() => navigation.navigate("LoginScreen")}
             activeOpacity={0.8}
           >
             <View style={styles.optionIcon}>
@@ -58,7 +58,7 @@ const AccountChoiceScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={[styles.optionButton, styles.registerButton]}
-            onPress={() => navigation.navigate("RegisterAccount")}
+            onPress={() => navigation.navigate("RegisterScreen")}
             activeOpacity={0.8}
           >
             <View style={[styles.optionIcon, styles.registerIcon]}>
@@ -75,7 +75,7 @@ const AccountChoiceScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={[styles.optionButton, styles.quickStartButton]}
-            onPress={() => navigation.navigate("QuickStart")}
+            onPress={() => navigation.navigate("SetupInitScreen")}
             activeOpacity={0.8}
           >
             <View style={[styles.optionIcon, styles.quickStartIcon]}>

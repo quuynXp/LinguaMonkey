@@ -15,7 +15,7 @@ import { createScaledSheet } from "../../utils/scaledStyles"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CourseResponse } from "../../types/dto"
 
-const CreatorDashboard = ({ navigation }: any) => {
+const CreatorDashboardScreen = ({ navigation }: any) => {
     const { t } = useTranslation()
     const user = useUserStore((state) => state.user)
 
@@ -370,4 +370,4 @@ const styles = createScaledSheet({
     },
 })
 
-export default CreatorDashboard
+export default CreatorDashboardScreen;

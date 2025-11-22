@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { ActivityIndicator, Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Svg, { Line } from "react-native-svg"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useGrammar } from "../../hooks/useGrammar";
 import { MindMapNode } from "../../types/api"
 import { createScaledSheet } from "../../utils/scaledStyles"
@@ -119,7 +119,7 @@ const GrammarMindMapScreen = ({ navigation }: any) => {
           <Icon name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.title}>Grammar Mind Map</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("Notes")}>
+        <TouchableOpacity onPress={() => navigation.navigate("NotesScreen")}>
           <Icon name="note" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>

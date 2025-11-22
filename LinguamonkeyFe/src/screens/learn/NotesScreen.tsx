@@ -1,27 +1,29 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useRef, useState, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import {
-    Alert,
-    Animated,
-    FlatList,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  FlatList,
+  Modal,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations"
-import { useAppStore } from "../../stores/appStore"
-import type { UserMemorization } from "../../types/api"
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { MemorizationResponse, MemorizationRequest } from "../../types/dto"; // SỬ DỤNG DTO THẬT
+import * as Enums from "../../types/enums"; // Import Enums
+
 
 const NotesScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
 
+  // Sử dụng string literals để đại diện cho các loại ghi chú UI
   const [selectedContentType, setSelectedContentType] = useState<string>("all")
   const [showAddModal, setShowAddModal] = useState(false)
   const [newNote, setNewNote] = useState("")
@@ -39,21 +41,37 @@ const NotesScreen = ({ navigation }: any) => {
     useToggleFavorite,
   } = useMemorizations()
 
+  // Lấy dữ liệu
   const {
-    data: memorizations = [],
+    data: memorizationsPage, // Data là PageResponse<MemorizationResponse>
     isLoading: memorizationsLoading,
     error: memorizationsError,
     refetch: refetchMemorizations,
   } = useUserMemorizations({
     content_type: selectedContentType === "all" ? undefined : selectedContentType,
-    is_favorite: showFavoritesOnly ? true : undefined,
-    search: searchQuery || undefined,
-  })
+  });
 
   const { mutate: createMemorization, isPending: isCreating } = useCreateMemorization()
-  const { mutate: updateMemorization, isPending: isUpdating } = useUpdateMemorization()
   const { mutate: deleteMemorization, isPending: isDeleting } = useDeleteMemorization()
   const { mutate: toggleFavorite, isPending: isToggling } = useToggleFavorite()
+
+  const allMemorizations: MemorizationResponse[] = (memorizationsPage?.data as MemorizationResponse[]) || [];
+
+  const filteredMemorizations = useMemo(() => {
+    let results = allMemorizations;
+
+    if (showFavoritesOnly) {
+      results = results.filter(n => n.isFavorite);
+    }
+
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      results = results.filter(n => n.noteText?.toLowerCase().includes(query) || n.contentId?.toLowerCase().includes(query));
+    }
+
+    return results;
+  }, [allMemorizations, showFavoritesOnly, searchQuery]);
+
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -61,62 +79,96 @@ const NotesScreen = ({ navigation }: any) => {
       duration: 600,
       useNativeDriver: true,
     }).start()
-  }, [])
+  }, [fadeAnim])
+
+  const mapNoteTypeToContentType = (type: string): Enums.ContentType => {
+    switch (type) {
+      case "word":
+      case "phrase":
+      case "sentence":
+        return Enums.ContentType.VOCABULARY;
+      case "lesson":
+        return Enums.ContentType.LESSON;
+      case "video":
+        return Enums.ContentType.VIDEO;
+      case "grammar":
+        return Enums.ContentType.FORMULA;
+      default:
+        return Enums.ContentType.NOTE;
+    }
+  };
 
   const contentTypes = [
-    { key: "all", label: t("notes.contentTypes.all") },
-    { key: "lesson", label: t("notes.contentTypes.lesson") },
-    { key: "video", label: t("notes.contentTypes.video") },
-    { key: "vocabulary", label: t("notes.contentTypes.vocabulary") },
-    { key: "grammar", label: t("notes.contentTypes.grammar") },
-  ]
+    { key: "all", label: t("notes.contentTypes.all") ?? "All" },
+    { key: "LESSON", label: t("notes.contentTypes.lesson") ?? "Lesson" }, // Dùng Enum key
+    { key: "VIDEO", label: t("notes.contentTypes.video") ?? "Video" },
+    { key: "VOCABULARY", label: t("notes.contentTypes.vocabulary") ?? "Vocabulary" },
+    { key: "NOTE", label: t("notes.contentTypes.grammar") ?? "Grammar" }, // Tạm dùng NOTE
+  ];
 
   const addNote = async () => {
     if (newNote.trim() === "") return
 
     try {
-      await createMemorization({
-        content_type: selectedNoteType,
-        note_text: newNote.trim(),
-        is_favorite: false,
-      })
+      const payload: MemorizationRequest = {
+        contentType: mapNoteTypeToContentType(selectedNoteType),
+        contentId: "manual_user_note",
+        noteText: newNote.trim(),
+        isFavorite: false,
+        userId: "N/A"
+      };
+
+      await createMemorization(payload);
 
       setNewNote("")
       setShowAddModal(false)
       refetchMemorizations()
     } catch (error: any) {
-      Alert.alert(t("common.error"), error.message || t("errors.unknown"))
+      Alert.alert(t("common.error") ?? t("errors.unknown") ?? "An unknown error occurred.");
     }
   }
 
-  const handleDeleteNote = (memorization: UserMemorization) => {
-    Alert.alert(t("notes.deleteConfirm"), "", [
-      { text: t("common.cancel"), style: "cancel" },
+  const handleDeleteNote = (memorization: MemorizationResponse) => {
+    Alert.alert(t("notes.deleteConfirm") ?? "Delete Note", t("notes.deleteConfirmMessage") ?? "Are you sure you want to delete this note?", [
+      { text: t("common.cancel") ?? "Cancel", style: "cancel" },
       {
-        text: t("common.delete"),
+        text: t("common.delete") ?? "Delete",
         style: "destructive",
         onPress: async () => {
           try {
             await deleteMemorization(memorization.memorizationId)
             refetchMemorizations()
           } catch (error: any) {
-            Alert.alert(t("common.error"), error.message || t("errors.unknown"))
+            Alert.alert(t("common.error") ?? t("errors.unknown") ?? "Failed to delete.")
           }
         },
       },
     ])
   }
 
-  const handleToggleFavorite = async (memorization: UserMemorization) => {
+  const handleToggleFavorite = async (memorization: MemorizationResponse) => {
+    // TẠO PAYLOAD REQUEST TỪ RESPONSE ĐỂ ĐẢM BẢO TÍNH TOÀN VẸN
+    const requestPayload: MemorizationRequest = {
+      userId: memorization.userId,
+      contentType: memorization.contentType as Enums.ContentType,
+      contentId: memorization.contentId ?? 'N/A',
+      noteText: memorization.noteText,
+      isFavorite: memorization.isFavorite, // API hook sẽ lật giá trị này
+    };
+
     try {
-      await toggleFavorite(memorization.memorizationId)
-      refetchMemorizations()
+      // DTO hook useToggleFavorite yêu cầu { id, currentReq }
+      await toggleFavorite({
+        id: memorization.memorizationId,
+        currentReq: requestPayload
+      });
+      refetchMemorizations();
     } catch (error: any) {
-      Alert.alert(t("common.error"), error.message || t("errors.unknown"))
+      Alert.alert(t("common.error") ?? "Failed to toggle favorite.");
     }
   }
 
-  const renderNote = ({ item: memorization }: { item: UserMemorization }) => (
+  const renderNote = ({ item: memorization }: { item: MemorizationResponse }) => (
     <View style={styles.noteCard}>
       <View style={styles.noteHeader}>
         <View style={[styles.noteTypeIndicator, { backgroundColor: getTypeColor(memorization.contentType) }]}>
@@ -144,20 +196,24 @@ const NotesScreen = ({ navigation }: any) => {
 
       <View style={styles.noteFooter}>
         <Text style={styles.noteDate}>{new Date(memorization.createdAt).toLocaleDateString()}</Text>
-        <Text style={styles.noteType}>{t(`notes.contentTypes.${memorization.contentType}`)}</Text>
+        <Text style={styles.noteType}>{t(`notes.contentTypes.${memorization.contentType.toLowerCase()}`)}</Text>
       </View>
     </View>
   )
 
   const getTypeColor = (type: string) => {
-    switch (type) {
+    switch (type.toLowerCase()) {
       case "lesson":
         return "#10B981"
       case "video":
         return "#F59E0B"
       case "vocabulary":
+      case "word":
+      case "phrase":
+      case "sentence":
         return "#3B82F6"
-      case "grammar":
+      case "grammar": // Map grammar UI type sang màu
+      case "formula":
         return "#8B5CF6"
       default:
         return "#6B7280"
@@ -169,9 +225,9 @@ const NotesScreen = ({ navigation }: any) => {
       <SafeAreaView style={styles.container}>
         <View style={styles.errorContainer}>
           <Icon name="error" size={64} color="#F44336" />
-          <Text style={styles.errorText}>{t("errors.networkError")}</Text>
+          <Text style={styles.errorText}>{t("errors.networkError") ?? "Network Error."}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={() => refetchMemorizations()}>
-            <Text style={styles.retryText}>{t("common.retry")}</Text>
+            <Text style={styles.retryText}>{t("common.retry") ?? "Retry"}</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -184,7 +240,7 @@ const NotesScreen = ({ navigation }: any) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.title}>{t("notes.title")}</Text>
+        <Text style={styles.title}>{t("notes.title") ?? "My Notes"}</Text>
         <TouchableOpacity onPress={() => setShowFavoritesOnly(!showFavoritesOnly)}>
           <Icon name={showFavoritesOnly ? "favorite" : "favorite-border"} size={24} color="#F59E0B" />
         </TouchableOpacity>
@@ -196,7 +252,7 @@ const NotesScreen = ({ navigation }: any) => {
           <Icon name="search" size={20} color="#6B7280" />
           <TextInput
             style={styles.searchInput}
-            placeholder={t("notes.searchPlaceholder")}
+            placeholder={t("notes.searchPlaceholder") ?? "Search words, phrases, or topics"}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
@@ -224,11 +280,12 @@ const NotesScreen = ({ navigation }: any) => {
         {/* Notes List */}
         {memorizationsLoading ? (
           <View style={styles.loadingContainer}>
-            <Text style={styles.loadingText}>{t("common.loading")}</Text>
+            <ActivityIndicator size="large" color="#3B82F6" />
+            <Text style={styles.loadingText}>{t("common.loading") ?? "Loading..."}</Text>
           </View>
         ) : (
           <FlatList
-            data={memorizations}
+            data={filteredMemorizations}
             renderItem={renderNote}
             keyExtractor={(item) => item.memorizationId}
             style={styles.notesList}
@@ -236,8 +293,8 @@ const NotesScreen = ({ navigation }: any) => {
             ListEmptyComponent={
               <View style={styles.emptyState}>
                 <Icon name="note-add" size={64} color="#D1D5DB" />
-                <Text style={styles.emptyTitle}>{t("notes.emptyTitle")}</Text>
-                <Text style={styles.emptyDescription}>{t("notes.emptyDescription")}</Text>
+                <Text style={styles.emptyTitle}>{t("notes.emptyTitle") ?? "No Notes Yet"}</Text>
+                <Text style={styles.emptyDescription}>{t("notes.emptyDescription") ?? "Start adding your vocabulary, phrases, or grammar rules here."}</Text>
               </View>
             }
           />
@@ -258,7 +315,7 @@ const NotesScreen = ({ navigation }: any) => {
           <View style={styles.modalOverlay}>
             <View style={styles.modalContent}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t("notes.addNoteModal.title")}</Text>
+                <Text style={styles.modalTitle}>{t("notes.addNoteModal.title") ?? "Add New Note"}</Text>
                 <TouchableOpacity onPress={() => setShowAddModal(false)}>
                   <Icon name="close" size={24} color="#6B7280" />
                 </TouchableOpacity>
@@ -276,7 +333,7 @@ const NotesScreen = ({ navigation }: any) => {
                     onPress={() => setSelectedNoteType(type)}
                   >
                     <Text style={[styles.typeButtonText, selectedNoteType === type && styles.selectedTypeButtonText]}>
-                      {t(`notes.noteTypes.${type}`)}
+                      {t(`notes.noteTypes.${type}`) ?? type}
                     </Text>
                   </TouchableOpacity>
                 ))}
@@ -284,7 +341,7 @@ const NotesScreen = ({ navigation }: any) => {
 
               <TextInput
                 style={styles.noteInput}
-                placeholder={t("notes.addNoteModal.placeholder", { type: t(`notes.noteTypes.${selectedNoteType}`) })}
+                placeholder={t("notes.addNoteModal.placeholder", { type: t(`notes.noteTypes.${selectedNoteType}`) ?? selectedNoteType })}
                 value={newNote}
                 onChangeText={setNewNote}
                 multiline
@@ -297,7 +354,7 @@ const NotesScreen = ({ navigation }: any) => {
                 disabled={isCreating || newNote.trim() === ""}
               >
                 <Text style={styles.addNoteButtonText}>
-                  {isCreating ? t("common.loading") : t("notes.addNoteModal.addButton")}
+                  {isCreating ? t("common.loading") : t("notes.addNoteModal.addButton") ?? "Add Note"}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -572,4 +629,4 @@ const styles = createScaledSheet({
   },
 })
 
-export default NotesScreen
+export default NotesScreen;

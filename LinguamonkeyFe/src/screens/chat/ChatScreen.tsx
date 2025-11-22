@@ -5,80 +5,50 @@ import { useTranslation } from "react-i18next"
 import { useQuery } from "@tanstack/react-query"
 import { useUserStore } from "../../stores/UserStore"
 import { useChatStore } from "../../stores/ChatStore"
-import { useTokenStore } from "../../stores/tokenStore"
-import { gotoTab } from "../../utils/navigationRef"
 import { createScaledSheet } from "../../utils/scaledStyles"
-import instance from "../../api/axiosInstance" // Import axios
+import instance from "../../api/axiosInstance"
 import ScreenLayout from "../../components/layout/ScreenLayout"
+import { AppApiResponse, ChatStatsResponse, UserLearningActivityResponse, PageResponse } from "../../types/dto"
 
-type ChatStats = {
-  totalMessages: number;
-  translationsUsed: number;
-  videoCalls: number;
-  lastActiveAt?: string;
-  online?: boolean;
-  level?: number;
-  exp?: number;
-  streak?: number;
-};
-
-// Kiểu dữ liệu cho Activity (từ user_learning_activities)
-type Activity = {
-  activity_id: string;
-  activity_type: string; // 'CHAT', 'LESSON', 'CALL'
-  details: string; // "Đã chat trong phòng X"
-  created_at: string;
-};
-
-const ChatScreen = ({ navigation }) => {
+const ChatScreen = ({ navigation }: { navigation: any }) => {
   const { t } = useTranslation()
   const user = useUserStore((state) => state.user)
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  // Lấy hàm connect/disconnect từ store mới
-  const connectAllServices = useChatStore((state) => state.connectAllServices);
-  const disconnectAllServices = useChatStore((state) => state.disconnectAllServices);
+  const initChatService = useChatStore((state) => state.initChatService);
+  const disconnectChatService = useChatStore((state) => state.disconnect);
 
-  // --- THAY THẾ STATE MOCK BẰNG API ---
-  // Lấy stats từ API (GET /api/v1/chat/stats/{userId})
-  const { data: stats, isLoading: isLoadingStats } = useQuery<ChatStats>({
+  const { data: stats, isLoading: isLoadingStats } = useQuery<ChatStatsResponse>({
     queryKey: ['chatStats', user?.userId],
     queryFn: async () => {
-      const response = await instance.get(`/api/v1/chat/stats/${user?.userId}`);
-      return response.data.result; // Dựa theo AppApiResponse
+      const response = await instance.get<AppApiResponse<ChatStatsResponse>>(`/api/v1/chat/stats/${user?.userId}`);
+      return response.data.result;
     },
     enabled: !!user?.userId,
   });
 
-  // Lấy activities từ API (Giả định endpoint /api/v1/activities)
-  const { data: activities = [], isLoading: isLoadingActivities } = useQuery<Activity[]>({
+  const { data: activities = [], isLoading: isLoadingActivities } = useQuery<UserLearningActivityResponse[]>({
     queryKey: ['chatActivities', user?.userId],
     queryFn: async () => {
-      // Giả định bạn có API này để lấy activities
-      const response = await instance.get(`/api/v1/activities/${user?.userId}`, {
-        params: { page: 0, size: 5, sort: 'created_at,desc' }
+      const response = await instance.get<AppApiResponse<PageResponse<UserLearningActivityResponse>>>(`/api/v1/users/${user?.userId}/activities`, {
+        params: { page: 0, size: 5, sort: 'createdAt,desc', type: 'CHAT' }
       });
       return response.data.result.content;
     },
     enabled: !!user?.userId,
   });
 
-  // Kết nối/Ngắt kết nối WebSocket/STOMP
   useEffect(() => {
     if (!user) return;
-    
-    // Gọi hàm connect mới
-    connectAllServices(); 
-    
-    // TODO: Logic updateLastActive (có thể đã được xử lý trong connectAllServices)
+
+    initChatService();
 
     return () => {
-      // Gọi hàm disconnect mới
-      disconnectAllServices();
+      disconnectChatService();
     }
-  }, [user, connectAllServices, disconnectAllServices]);
+  }, [user, initChatService, disconnectChatService]);
 
   useEffect(() => {
     Animated.parallel([
@@ -93,7 +63,7 @@ const ChatScreen = ({ navigation }) => {
         useNativeDriver: true,
       }),
     ]).start()
-  }, [])
+  }, [fadeAnim, slideAnim])
 
   const chatOptions = [
     {
@@ -102,7 +72,7 @@ const ChatScreen = ({ navigation }) => {
       subtitle: t("chat.aiChatDescription"),
       icon: "smart-toy",
       color: "#4F46E5",
-      onPress: () => navigation.navigate("ChatAI"), // Sửa: Dùng navigation
+      onPress: () => navigation.navigate("ChatAIScreen"),
     },
     {
       id: "user-chat",
@@ -110,7 +80,7 @@ const ChatScreen = ({ navigation }) => {
       subtitle: t("chat.userChatDescription"),
       icon: "group",
       color: "#10B981",
-      onPress: () => navigation.navigate("ChatRoomList"), // Sửa: Đi đến Room List
+      onPress: () => navigation.navigate("ChatRoomListScreen"),
     },
   ]
 
@@ -120,21 +90,21 @@ const ChatScreen = ({ navigation }) => {
       title: t("chat.callSetup"),
       icon: "settings-phone",
       color: "#3B82F6",
-      onPress: () => navigation.navigate("CallSetup"), // Sửa: Dùng navigation
+      onPress: () => navigation.navigate("CallSetupScreen"),
     },
     {
       id: "join-room",
       title: t("chat.joinRoom"),
       icon: "meeting-room",
       color: "#F59E0B",
-      onPress: () => navigation.navigate("ChatRoomList"), // Sửa: Dùng navigation
+      onPress: () => navigation.navigate("ChatRoomListScreen"),
     },
     {
       id: "create-room",
       title: t("chat.createRoom"),
       icon: "add-circle",
       color: "#4F46E5",
-      onPress: () => navigation.navigate("CreateRoom"), // Sửa: Dùng navigation
+      onPress: () => navigation.navigate("CreateRoomScreen"),
     },
   ]
 
@@ -161,28 +131,28 @@ const ChatScreen = ({ navigation }) => {
       <Text style={styles.quickActionText}>{action.title}</Text>
     </TouchableOpacity>
   )
-  
-  const renderActivity = (activity: Activity) => (
-     <View key={activity.activity_id} style={styles.activityItem}>
-        <View style={styles.activityIcon}>
-          <Icon
-            name={activity.activity_type === "AI_CHAT" ? "smart-toy" : "group"}
-            size={20}
-            color={activity.activity_type === "AI_CHAT" ? "#4F46E5" : "#10B981"}
-          />
-        </View>
-        <View style={styles.activityInfo}>
-          <Text style={styles.activityTitle}>{activity.details || t("chat.recentActivity")}</Text>
-          <Text style={styles.activityTime}>{new Date(activity.created_at).toLocaleString()}</Text>
-        </View>
+
+  const renderActivity = (activity: UserLearningActivityResponse) => (
+    <View key={activity.activityId} style={styles.activityItem}>
+      <View style={styles.activityIcon}>
+        <Icon
+          name={activity.activityType === "AI_CHAT" ? "smart-toy" : "group"}
+          size={20}
+          color={activity.activityType === "AI_CHAT" ? "#4F46E5" : "#10B981"}
+        />
       </View>
+      <View style={styles.activityInfo}>
+        <Text style={styles.activityTitle}>{activity.activityType} - {t("chat.activityDetails")}</Text>
+        <Text style={styles.activityTime}>{new Date(activity.createdAt).toLocaleString()}</Text>
+      </View>
+    </View>
   );
 
   return (
     <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t("chat.title")}</Text>
-        <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate("ChatSettings")}>
+        <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate("ChatSettingsScreen")}>
           <Icon name="settings" size={24} color="#6B7280" />
         </TouchableOpacity>
       </View>
@@ -197,15 +167,13 @@ const ChatScreen = ({ navigation }) => {
             },
           ]}
         >
-          {/* Welcome Section */}
           <View style={styles.welcomeSection}>
             <Icon name="chat" size={120} color="#4F46E5" />
             <Text style={styles.welcomeTitle}>{t("chat.welcome")}</Text>
             <Text style={styles.welcomeText}>{t("chat.welcomeDescription")}</Text>
           </View>
 
-          {/* Chat Statistics */}
-          {isLoadingStats ? <ActivityIndicator/> : stats && (
+          {isLoadingStats ? <ActivityIndicator /> : stats && (
             <View style={styles.statsSection}>
               <Text style={styles.sectionTitle}>{t("chat.yourStats")}</Text>
               <View style={styles.statsGrid}>
@@ -228,23 +196,20 @@ const ChatScreen = ({ navigation }) => {
             </View>
           )}
 
-          {/* Chat Options */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("chat.chooseType")}</Text>
             {chatOptions.map(renderChatOption)}
           </View>
 
-          {/* Quick Actions */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("chat.quickActions")}</Text>
             <View style={styles.quickActionsGrid}>{quickActions.map(renderQuickAction)}</View>
           </View>
 
-          {/* Recent Activity */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("chat.recentActivity")}</Text>
             <View style={styles.activityCard}>
-              {isLoadingActivities ? <ActivityIndicator/> : activities.length > 0 ? (
+              {isLoadingActivities ? <ActivityIndicator /> : activities.length > 0 ? (
                 activities.map(renderActivity)
               ) : (
                 <View style={styles.activityItem}>
@@ -259,15 +224,12 @@ const ChatScreen = ({ navigation }) => {
               )}
             </View>
           </View>
-
-          {/* ... (Tips Section) ... */}
         </Animated.View>
       </ScrollView>
     </ScreenLayout>
   )
 }
 
-// Dán styles từ file 'ChatScreen.ts' cũ của bạn vào đây
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -301,11 +263,6 @@ const styles = createScaledSheet({
   welcomeSection: {
     alignItems: "center",
     marginBottom: 30,
-  },
-  welcomeAnimation: {
-    width: 120,
-    height: 120,
-    marginBottom: 16,
   },
   welcomeTitle: {
     fontSize: 20,
@@ -380,10 +337,6 @@ const styles = createScaledSheet({
     alignItems: "center",
     justifyContent: "center",
     marginRight: 16,
-  },
-  chatAnimation: {
-    width: 40,
-    height: 40,
   },
   chatInfo: {
     flex: 1,
@@ -465,29 +418,6 @@ const styles = createScaledSheet({
     fontSize: 12,
     color: "#9CA3AF",
     marginTop: 2,
-  },
-  tipsSection: {
-    backgroundColor: "#FFFBEB",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: "#FED7AA",
-  },
-  tipsHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  tipsTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#92400E",
-    marginLeft: 8,
-  },
-  tipsText: {
-    fontSize: 14,
-    color: "#92400E",
-    lineHeight: 20,
   },
 })
 

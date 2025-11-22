@@ -101,7 +101,7 @@ const EditCourseScreen = ({ navigation, route }: any) => {
       {
         onSuccess: (newCourse: any) => {
           Alert.alert(t("common.success"), t("courses.createSuccess"))
-          navigation.replace("EditCourse", { courseId: newCourse.courseId })
+          navigation.replace("EditCourseScreen", { courseId: newCourse.courseId })
         },
         onError: (error: any) => {
           const errorMessage =

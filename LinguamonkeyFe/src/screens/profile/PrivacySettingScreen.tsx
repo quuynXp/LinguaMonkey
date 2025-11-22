@@ -241,7 +241,7 @@ const PrivacySettingsScreen = ({ navigation }) => {
                 <TouchableOpacity
                   key={item.id}
                   style={styles.settingItem}
-                  onPress={() => navigation.navigate('WebView', { url: item.url })}
+                  onPress={() => navigation.navigate('WebViewScreen', { url: item.url })}
                 >
                   <View style={styles.settingIcon}>
                     <Icon name={item.icon} size={20} color="#4F46E5" />

@@ -84,7 +84,7 @@ const WalletScreen = ({ navigation }) => {
     return (
       <TouchableOpacity
         style={styles.txnCard}
-        onPress={() => navigation.navigate('TransactionDetails', { transactionId: transaction.transactionId })}
+        onPress={() => navigation.navigate('TransactionDetailsScreen', { transactionId: transaction.transactionId })}
       >
         <View style={styles.txnLeft}>
           <View style={[styles.txnIcon, { backgroundColor: isIncome ? '#D1FAE5' : '#FEE2E2' }]}>
@@ -165,7 +165,7 @@ const WalletScreen = ({ navigation }) => {
         <View style={styles.actionRow}>
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => navigation.navigate('TopUp')}
+            onPress={() => navigation.navigate('TopUpScreen')}
           >
             <Icon name="add" size={20} color="#fff" />
             <Text style={styles.actionText}>{t('wallet.topup')}</Text>
@@ -173,7 +173,7 @@ const WalletScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => navigation.navigate('Withdraw')}
+            onPress={() => navigation.navigate('WithdrawScreen')}
           >
             <Icon name="arrow-downward" size={20} color="#fff" />
             <Text style={styles.actionText}>{t('wallet.withdraw')}</Text>
@@ -181,7 +181,7 @@ const WalletScreen = ({ navigation }) => {
 
           <TouchableOpacity
             style={styles.actionBtn}
-            onPress={() => navigation.navigate('Transfer')}
+            onPress={() => navigation.navigate('TransferScreen')}
           >
             <Icon name="compare-arrows" size={20} color="#fff" />
             <Text style={styles.actionText}>{t('wallet.transfer')}</Text>

@@ -121,7 +121,7 @@ const RoadmapScreen = ({ navigation, route }: any) => {
       )
       return
     }
-    navigation.navigate('RoadmapItemDetail', {
+    navigation.navigate('RoadmapItemDetailScreen', {
       itemId: item.id,
       roadmapId: roadmap?.roadmapId
     })
