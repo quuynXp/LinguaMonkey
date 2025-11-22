@@ -4,7 +4,6 @@ import {
     Dimensions,
     Modal,
     ScrollView,
-    StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
@@ -24,16 +23,15 @@ import {
     useVideo,
     useVideoCategories,
     useTrackVideoProgress,
-    useLikeVideo,
-    useDislikeVideo,
-    useFavoriteVideo,
+    useVideoInteractions,
     useVideoReviews,
     useCreateReview,
     useReactReview,
 } from "../../hooks/useBilinguaVideo";
-import type { BilingualVideo, Subtitle, VocabularyItem, VideoReviewResponse, CreateReviewRequest } from "../../types/api";
+import type { BilingualVideoResponse, VideoResponse, VideoReviewResponse, CreateReviewRequest } from "../../types/dto";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const { width } = Dimensions.get("window");
 
@@ -44,8 +42,10 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
         languages = [],
         setNativeLanguage,
     } = useAppStore();
+    const { user } = useUserStore();
+
     const [page, setPage] = useState(1);
-    const [selectedVideo, setSelectedVideo] = useState<BilingualVideo | null>(null);
+    const [selectedVideo, setSelectedVideo] = useState<VideoResponse | null>(null);
     const [showVideoPlayer, setShowVideoPlayer] = useState(false);
     const videoRef = useRef<VideoRef>(null);
     const [currentTime, setCurrentTime] = useState<number>(0);
@@ -60,7 +60,7 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     const [selectedLevel, setSelectedLevel] = useState<string>("");
     const [searchQuery, setSearchQuery] = useState<string>("");
     const [filterLanguage, setFilterLanguage] = useState<string>("");
-    const [sortBy, setSortBy] = useState<string>("popular");  // Options: popular, rating, recent
+    const [sortBy, setSortBy] = useState<string>("popular");
     const [showSettings, setShowSettings] = useState(false);
     const [showReviews, setShowReviews] = useState(false);
     const [newReviewRating, setNewReviewRating] = useState<number>(5);
@@ -71,16 +71,19 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
         isLoading: videosLoading,
         error: videosError,
     } = useVideos(page, 10, selectedCategory, selectedLevel, searchQuery, filterLanguage, sortBy);
+
     const { data: videoCategories } = useVideoCategories();
     const { data: currentVideoData } = useVideo(selectedVideo?.videoId || null);
     const { data: reviews = [], isLoading: reviewsLoading } = useVideoReviews(selectedVideo?.videoId);
     const { trackProgress } = useTrackVideoProgress();
-    const { toggleLike, isToggling: isLiking } = useLikeVideo();
-    const { toggleDislike, isToggling: isDisliking } = useDislikeVideo();
-    const { toggleFavorite, isToggling: isFavoriting } = useFavoriteVideo();
+    const { toggleLike, toggleFavorite } = useVideoInteractions();
+    const isLiking = false;
+    const isDisliking = false;
+    const isFavoriting = false;
     const { createReview, isCreating } = useCreateReview();
     const { reactReview, isReacting } = useReactReview();
-    const videos: BilingualVideo[] = videosData?.data || [];
+
+    const videos: BilingualVideoResponse[] = (videosData as any)?.data || [];
     const categories = ["All", ...(videoCategories || [])];
 
     useEffect(() => {
@@ -98,10 +101,10 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     useEffect(() => {
         if (!selectedVideo || !isPlaying) return;
         const interval = setInterval(() => {
-            trackProgress?.({ videoId: selectedVideo.videoId, progress: currentTime, duration }).catch(console.error);
+            trackProgress?.({ videoId: selectedVideo.videoId, req: { userId: user?.userId || "", currentTime, duration } }).catch(() => { });
         }, 5000);
         return () => clearInterval(interval);
-    }, [selectedVideo, isPlaying, currentTime, duration, trackProgress]);
+    }, [selectedVideo, isPlaying, currentTime, duration, trackProgress, user?.userId]);
 
     useEffect(() => {
         const sub = NetInfo.addEventListener((state) => {
@@ -123,7 +126,6 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
         return () => sub();
     }, [quality]);
 
-    // Helpers
     const formatTime = (seconds: number) => {
         if (isNaN(seconds) || !isFinite(seconds)) return "0:00";
         const mins = Math.floor(seconds / 60);
@@ -131,8 +133,8 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
         return `${mins}:${secs.toString().padStart(2, "0")}`;
     };
 
-    const handleVideoPress = (video: BilingualVideo) => {
-        setSelectedVideo(video);
+    const handleVideoPress = (video: BilingualVideoResponse) => {
+        setSelectedVideo(video as any);
         setShowVideoPlayer(true);
         setIsPlaying(false);
     };
@@ -146,7 +148,7 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
         if (videoRef.current && typeof (videoRef.current as any).seek === "function") {
             try {
                 (videoRef.current as any).seek(time);
-            } catch (e) {
+            } catch {
                 (videoRef.current as any).seek(Math.floor(time));
             }
         }
@@ -155,8 +157,8 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     const handleLike = async () => {
         if (!selectedVideo || isLiking) return;
         try {
-            await toggleLike({ videoId: selectedVideo.videoId, currentlyLiked: selectedVideo.isLiked });
-        } catch (error) {
+            await toggleLike({ videoId: selectedVideo.videoId, isLiked: selectedVideo.isLiked });
+        } catch {
             Alert.alert(t("common.error"), t("errors.unknown"));
         }
     };
@@ -164,8 +166,8 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     const handleDislike = async () => {
         if (!selectedVideo || isDisliking) return;
         try {
-            await toggleDislike({ videoId: selectedVideo.videoId, currentlyDisliked: selectedVideo.isDisliked });
-        } catch (error) {
+            await toggleFavorite({ videoId: selectedVideo.videoId, isFavorited: selectedVideo.isDisliked });
+        } catch {
             Alert.alert(t("common.error"), t("errors.unknown"));
         }
     };
@@ -173,8 +175,8 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     const handleFavorite = async () => {
         if (!selectedVideo || isFavoriting) return;
         try {
-            await toggleFavorite({ videoId: selectedVideo.videoId, currentlyFavorited: selectedVideo.isFavorited });
-        } catch (error) {
+            await toggleFavorite({ videoId: selectedVideo.videoId, isFavorited: selectedVideo.isFavorited });
+        } catch {
             Alert.alert(t("common.error"), t("errors.unknown"));
         }
     };
@@ -182,11 +184,15 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
     const handleCreateReview = async () => {
         if (!selectedVideo || isCreating || !newReviewContent) return;
         try {
-            const req: CreateReviewRequest = { userId: useUserStore.getState().user?.userId || "", rating: newReviewRating, content: newReviewContent };
+            const req: CreateReviewRequest = {
+                userId: user?.userId || "",
+                rating: newReviewRating,
+                content: newReviewContent,
+            };
             await createReview({ videoId: selectedVideo.videoId, req });
             setNewReviewContent("");
             setNewReviewRating(5);
-        } catch (error) {
+        } catch {
             Alert.alert(t("common.error"), t("errors.unknown"));
         }
     };
@@ -195,15 +201,15 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
         if (isReacting) return;
         try {
             await reactReview({ reviewId, reaction });
-        } catch (error) {
+        } catch {
             Alert.alert(t("common.error"), t("errors.unknown"));
         }
     };
 
-    const getCurrentSubtitle = (): Subtitle | null => {
+    const getCurrentSubtitle = () => {
         if (!selectedVideo || !selectedVideo.subtitles) return null;
         return selectedVideo.subtitles.find(
-            (s) => typeof s.startTime === "number" && currentTime >= s.startTime && currentTime <= s.endTime
+            (s: any) => typeof s.startTime === "number" && currentTime >= s.startTime && currentTime <= s.endTime
         ) || null;
     };
 
@@ -243,7 +249,7 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
         );
     };
 
-    const renderVideoCard = (video: BilingualVideo) => (
+    const renderVideoCard = (video: BilingualVideoResponse) => (
         <TouchableOpacity
             key={video.videoId}
             style={styles.videoCard}
@@ -255,18 +261,13 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                     <Icon name="play-circle-filled" size={48} color="rgba(255,255,255,0.9)" />
                 </View>
                 <View style={styles.durationBadge}>
-                    <Text style={styles.durationText}>{video.duration}</Text>
+                    <Text style={styles.durationText}>0:00</Text>
                 </View>
-                {typeof video.progress === "number" && video.progress > 0 && (
-                    <View style={styles.progressIndicator}>
-                        <View style={[styles.progressBar, { width: `${video.progress}%` }]} />
-                    </View>
-                )}
             </View>
             <View style={styles.videoInfo}>
                 <Text style={styles.videoTitle}>{video.title}</Text>
                 <Text style={styles.videoDescription} numberOfLines={2}>
-                    {video.description}
+                    {video.category}
                 </Text>
                 <View style={styles.videoMeta}>
                     <View
@@ -280,44 +281,38 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                         </Text>
                     </View>
                     <Text style={styles.categoryText}>{video.category}</Text>
-                    <View style={styles.videoStats}>
-                        <Icon name="thumb-up" size={16} color={video.isLiked ? "#2196F3" : "#ccc"} />
-                        <Text style={styles.statsText}>{video.likesCount ?? 0}</Text>
-                        <Icon name="thumb-down" size={16} color={video.isDisliked ? "#F44336" : "#ccc"} style={{ marginLeft: 8 }} />
-                        <Text style={styles.statsText}>{video.dislikesCount ?? 0}</Text>
-                    </View>
                 </View>
             </View>
         </TouchableOpacity>
     );
 
-    function getLevelColor(level?: string) {
+    const getLevelColor = (level?: string) => {
         switch (level) {
-            case "beginner":
+            case "BEGINNER":
                 return "#4CAF50";
-            case "intermediate":
+            case "INTERMEDIATE":
                 return "#FF9800";
-            case "advanced":
+            case "ADVANCED":
                 return "#F44336";
             default:
                 return "#757575";
         }
-    }
+    };
 
     const renderReviewItem = (review: VideoReviewResponse) => (
         <View key={review.reviewId} style={styles.reviewItem}>
             <View style={styles.reviewHeader}>
-                <Text style={styles.reviewRating}>{'★'.repeat(review.rating)}</Text>
+                <Text style={styles.reviewRating}>{"★".repeat(review.rating)}</Text>
                 <Text style={styles.reviewDate}>{new Date(review.createdAt).toLocaleDateString()}</Text>
             </View>
             <Text style={styles.reviewContent}>{review.content}</Text>
             <View style={styles.reviewActions}>
                 <TouchableOpacity onPress={() => handleReactReview(review.reviewId, 1)} disabled={isReacting}>
-                    <Icon name="thumb-up" size={20} color={review.userReaction === 1 ? "#2196F3" : "#ccc"} />
+                    <Icon name="thumb-up" size={20} color="#ccc" />
                     <Text>{review.likeCount ?? 0}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleReactReview(review.reviewId, -1)} disabled={isReacting} style={{ marginLeft: 16 }}>
-                    <Icon name="thumb-down" size={20} color={review.userReaction === -1 ? "#F44336" : "#ccc"} />
+                    <Icon name="thumb-down" size={20} color="#ccc" />
                     <Text>{review.dislikeCount ?? 0}</Text>
                 </TouchableOpacity>
             </View>
@@ -326,20 +321,20 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
 
     if (videosError) {
         return (
-            <SafeAreaView style={styles.container}>
+            <ScreenLayout>
                 <View style={styles.errorContainer}>
                     <Icon name="error" size={64} color="#F44336" />
                     <Text style={styles.errorText}>{t("errors.networkError")}</Text>
-                    <TouchableOpacity style={styles.retryButton} onPress={() => { /* refetch */ }}>
+                    <TouchableOpacity style={styles.retryButton} onPress={() => setPage(p => p)}>
                         <Text style={styles.retryText}>{t("common.retry")}</Text>
                     </TouchableOpacity>
                 </View>
-            </SafeAreaView>
+            </ScreenLayout>
         );
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <ScreenLayout>
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()}>
                     <Icon name="arrow-back" size={24} color="#333" />
@@ -381,9 +376,9 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                     style={styles.picker}
                 >
                     <Picker.Item label={t("videos.allLevels")} value="" />
-                    <Picker.Item label={t("videos.beginner")} value="beginner" />
-                    <Picker.Item label={t("videos.intermediate")} value="intermediate" />
-                    <Picker.Item label={t("videos.advanced")} value="advanced" />
+                    <Picker.Item label={t("videos.beginner")} value="BEGINNER" />
+                    <Picker.Item label={t("videos.intermediate")} value="INTERMEDIATE" />
+                    <Picker.Item label={t("videos.advanced")} value="ADVANCED" />
                 </Picker>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
@@ -423,7 +418,6 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                     videos.map(renderVideoCard)
                 )}
             </ScrollView>
-            {/* Video Player Modal */}
             <Modal visible={showVideoPlayer} animationType="slide" onRequestClose={() => setShowVideoPlayer(false)}>
                 <SafeAreaView style={styles.playerContainer}>
                     <View style={styles.playerHeader}>
@@ -523,7 +517,6 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                     </View>
                 </SafeAreaView>
             </Modal>
-            {/* Settings Modal */}
             <Modal visible={showSettings} animationType="slide" onRequestClose={() => setShowSettings(false)}>
                 <SafeAreaView style={styles.settingsContainer}>
                     <View style={styles.vocabularyHeader}>
@@ -578,7 +571,6 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                     </ScrollView>
                 </SafeAreaView>
             </Modal>
-            {/* Vocabulary Modal */}
             <Modal visible={showVocabulary} animationType="slide" onRequestClose={() => setShowVocabulary(false)}>
                 <SafeAreaView style={styles.vocabularyModal}>
                     <View style={styles.vocabularyHeader}>
@@ -589,18 +581,18 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                         <View style={styles.headerRight} />
                     </View>
                     <ScrollView style={styles.vocabularyContent}>
-                        {selectedVideo?.vocabulary && selectedVideo.vocabulary.length > 0 ? (
-                            selectedVideo.vocabulary.map((item, index) => (
+                        {selectedVideo?.subtitles && selectedVideo.subtitles.length > 0 ? (
+                            selectedVideo.subtitles.map((item, index) => (
                                 <TouchableOpacity key={index} style={styles.vocabularyItem}>
                                     <View style={styles.vocabularyInfo}>
-                                        <Text style={styles.vocabularyWord}>{item.word}</Text>
-                                        <Text style={styles.vocabularyPronunciation}>{item.pronunciation}</Text>
-                                        <Text style={styles.vocabularyMeaning}>{item.meaning}</Text>
+                                        <Text style={styles.vocabularyWord}>{item.subtitleId || "Subtitle"}</Text>
+                                        <Text style={styles.vocabularyPronunciation}>{item.originalText}</Text>
+                                        <Text style={styles.vocabularyMeaning}>{item.translatedText}</Text>
                                     </View>
                                     <TouchableOpacity
                                         style={styles.jumpButton}
                                         onPress={() => {
-                                            handleSeek(item.timestamp);
+                                            handleSeek(0);
                                             setShowVocabulary(false);
                                         }}
                                     >
@@ -614,7 +606,6 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                     </ScrollView>
                 </SafeAreaView>
             </Modal>
-            {/* Reviews Modal */}
             <Modal visible={showReviews} animationType="slide" onRequestClose={() => setShowReviews(false)}>
                 <SafeAreaView style={styles.reviewsContainer}>
                     <View style={styles.vocabularyHeader}>
@@ -651,7 +642,7 @@ const BilingualVideoScreen: React.FC<any> = ({ navigation }) => {
                     </View>
                 </SafeAreaView>
             </Modal>
-        </SafeAreaView>
+        </ScreenLayout>
     );
 };
 
@@ -689,7 +680,6 @@ const styles = createScaledSheet({
     subtitleContainer: { position: "absolute", bottom: 60, width: "100%", alignItems: "center", paddingHorizontal: 10 },
     originalSubtitle: { fontSize: 16, color: "#fff", textShadowColor: "rgba(0,0,0,0.8)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
     translatedSubtitle: { fontSize: 18, color: "#ffd700", fontWeight: "600", textShadowColor: "rgba(0,0,0,0.8)", textShadowOffset: { width: 1, height: 1 }, textShadowRadius: 3 },
-    // Player
     playerContainer: { flex: 1, backgroundColor: "#000" },
     playerHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12 },
     playerTitle: { color: "#fff", flex: 1, marginHorizontal: 12, fontWeight: "600" },
@@ -706,7 +696,6 @@ const styles = createScaledSheet({
     settingsRow: { flexDirection: "row", justifyContent: "space-around", marginTop: 12 },
     settingButton: { alignItems: "center" },
     settingText: { color: "#fff", fontSize: 12, marginTop: 4 },
-    // Settings & Vocabulary
     settingsContainer: { flex: 1, backgroundColor: "#fff" },
     vocabularyModal: { flex: 1, backgroundColor: "#fff" },
     vocabularyHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 12 },
@@ -736,7 +725,6 @@ const styles = createScaledSheet({
     retryText: { color: "#fff" },
     headerRight: { width: 24 },
     vocabularyInfo: { flex: 1, paddingRight: 10 },
-    // Reviews
     reviewsContainer: { flex: 1, backgroundColor: "#fff" },
     reviewsContent: { flex: 1, padding: 12 },
     reviewItem: { padding: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },

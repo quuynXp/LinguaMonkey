@@ -15,6 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useChatStore } from '../../stores/ChatStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTranslation } from 'react-i18next';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 type RoomPurpose =
   | 'QUIZ_TEAM'
@@ -83,196 +84,198 @@ const CreateRoomScreen = ({ navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#374151" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('createRoom.title')}</Text>
-        <View style={styles.placeholder} />
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Animated.View
-          style={[
-            styles.form,
-            {
-              opacity: fadeAnim,
-              transform: [{ translateY: slideAnim }],
-            },
-          ]}
-        >
-          {/* Room Name */}
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>
-              {t('createRoom.roomNameLabel')} *
-            </Text>
-            <TextInput
-              style={styles.textInput}
-              value={roomName}
-              onChangeText={setRoomName}
-              placeholder={t('createRoom.roomNamePlaceholder')}
-              placeholderTextColor="#9CA3AF"
-              maxLength={50}
-            />
-            <Text style={styles.characterCount}>{roomName.length}/50</Text>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>
-              {t('createRoom.purposeLabel')}
-            </Text>
-            <View style={styles.purposeContainer}>
-              <TouchableOpacity
-                style={[
-                  styles.purposeButton,
-                  roomPurpose === 'QUIZ_TEAM' && styles.selectedPurpose,
-                ]}
-                onPress={() => setRoomPurpose('QUIZ_TEAM')}
-              >
-                <Icon
-                  name="school"
-                  size={20}
-                  color={roomPurpose === 'QUIZ_TEAM' ? '#FFFFFF' : '#4F46E5'}
-                />
-                <Text
-                  style={[
-                    styles.purposeText,
-                    roomPurpose === 'QUIZ_TEAM' && styles.selectedPurposeText,
-                  ]}
-                >
-                  {t('createRoom.purposeLearning')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.purposeButton,
-                  roomPurpose === 'GROUP_CHAT' && styles.selectedPurpose,
-                ]}
-                onPress={() => setRoomPurpose('GROUP_CHAT')}
-              >
-                <Icon
-                  name="group"
-                  size={20}
-                  color={roomPurpose === 'GROUP_CHAT' ? '#FFFFFF' : '#10B981'}
-                />
-                <Text
-                  style={[
-                    styles.purposeText,
-                    roomPurpose === 'GROUP_CHAT' && styles.selectedPurposeText,
-                  ]}
-                >
-                  {t('createRoom.purposeSocial')}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>
-              {t('createRoom.maxMembersLabel')}
-            </Text>
-            <TextInput
-              style={styles.textInput}
-              value={maxMembers}
-              onChangeText={setMaxMembers}
-              placeholder="20"
-              placeholderTextColor="#9CA3AF"
-              keyboardType="numeric"
-              maxLength={2}
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>
-              {t('createRoom.privacyLabel')}
-            </Text>
-            <TouchableOpacity
-              style={styles.privacyToggle}
-              onPress={() => setIsPrivate(!isPrivate)}
-            >
-              <View style={styles.privacyInfo}>
-                <Icon
-                  name={isPrivate ? 'lock' : 'public'}
-                  size={20}
-                  color="#6B7280"
-                />
-                <Text style={styles.privacyText}>
-                  {isPrivate
-                    ? t('createRoom.privacyPrivate')
-                    : t('createRoom.privacyPublic')}
-                </Text>
-              </View>
-              <View style={[styles.toggle, isPrivate && styles.toggleActive]}>
-                <View
-                  style={[
-                    styles.toggleThumb,
-                    isPrivate && styles.toggleThumbActive,
-                  ]}
-                />
-              </View>
-            </TouchableOpacity>
-            {isPrivate && (
-              <TextInput
-                style={[styles.textInput, styles.passwordInput]}
-                value={roomPassword}
-                onChangeText={setRoomPassword}
-                placeholder={t('createRoom.passwordPlaceholder')}
-                placeholderTextColor="#9CA3AF"
-                secureTextEntry
-                maxLength={20}
-              />
-            )}
-          </View>
-
-          <View style={styles.rulesSection}>
-            <Text style={styles.rulesTitle}>{t('createRoom.rulesTitle')}</Text>
-            <View style={styles.rulesList}>
-              <View style={styles.ruleItem}>
-                <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>{t('createRoom.rule1')}</Text>
-              </View>
-              <View style={styles.ruleItem}>
-                <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>{t('createRoom.rule2')}</Text>
-              </View>
-              <View style={styles.ruleItem}>
-                <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>{t('createRoom.rule3')}</Text>
-              </View>
-              <View style={styles.ruleItem}>
-                <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.ruleText}>{t('createRoom.rule4')}</Text>
-              </View>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.createButton,
-              (!roomName.trim() || isCreating) &&
-              styles.createButtonDisabled,
-            ]}
-            onPress={handleCreateRoom}
-            disabled={!roomName.trim() || isCreating}
-          >
-            {isCreating ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <>
-                <Icon name="add-circle" size={20} color="#FFFFFF" />
-                <Text style={styles.createButtonText}>
-                  {t('createRoom.createButton')}
-                </Text>
-              </>
-            )}
+    <ScreenLayout>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
-        </Animated.View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <Text style={styles.headerTitle}>{t('createRoom.title')}</Text>
+          <View style={styles.placeholder} />
+        </View>
+
+        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <Animated.View
+            style={[
+              styles.form,
+              {
+                opacity: fadeAnim,
+                transform: [{ translateY: slideAnim }],
+              },
+            ]}
+          >
+            {/* Room Name */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('createRoom.roomNameLabel')} *
+              </Text>
+              <TextInput
+                style={styles.textInput}
+                value={roomName}
+                onChangeText={setRoomName}
+                placeholder={t('createRoom.roomNamePlaceholder')}
+                placeholderTextColor="#9CA3AF"
+                maxLength={50}
+              />
+              <Text style={styles.characterCount}>{roomName.length}/50</Text>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('createRoom.purposeLabel')}
+              </Text>
+              <View style={styles.purposeContainer}>
+                <TouchableOpacity
+                  style={[
+                    styles.purposeButton,
+                    roomPurpose === 'QUIZ_TEAM' && styles.selectedPurpose,
+                  ]}
+                  onPress={() => setRoomPurpose('QUIZ_TEAM')}
+                >
+                  <Icon
+                    name="school"
+                    size={20}
+                    color={roomPurpose === 'QUIZ_TEAM' ? '#FFFFFF' : '#4F46E5'}
+                  />
+                  <Text
+                    style={[
+                      styles.purposeText,
+                      roomPurpose === 'QUIZ_TEAM' && styles.selectedPurposeText,
+                    ]}
+                  >
+                    {t('createRoom.purposeLearning')}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.purposeButton,
+                    roomPurpose === 'GROUP_CHAT' && styles.selectedPurpose,
+                  ]}
+                  onPress={() => setRoomPurpose('GROUP_CHAT')}
+                >
+                  <Icon
+                    name="group"
+                    size={20}
+                    color={roomPurpose === 'GROUP_CHAT' ? '#FFFFFF' : '#10B981'}
+                  />
+                  <Text
+                    style={[
+                      styles.purposeText,
+                      roomPurpose === 'GROUP_CHAT' && styles.selectedPurposeText,
+                    ]}
+                  >
+                    {t('createRoom.purposeSocial')}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('createRoom.maxMembersLabel')}
+              </Text>
+              <TextInput
+                style={styles.textInput}
+                value={maxMembers}
+                onChangeText={setMaxMembers}
+                placeholder="20"
+                placeholderTextColor="#9CA3AF"
+                keyboardType="numeric"
+                maxLength={2}
+              />
+            </View>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('createRoom.privacyLabel')}
+              </Text>
+              <TouchableOpacity
+                style={styles.privacyToggle}
+                onPress={() => setIsPrivate(!isPrivate)}
+              >
+                <View style={styles.privacyInfo}>
+                  <Icon
+                    name={isPrivate ? 'lock' : 'public'}
+                    size={20}
+                    color="#6B7280"
+                  />
+                  <Text style={styles.privacyText}>
+                    {isPrivate
+                      ? t('createRoom.privacyPrivate')
+                      : t('createRoom.privacyPublic')}
+                  </Text>
+                </View>
+                <View style={[styles.toggle, isPrivate && styles.toggleActive]}>
+                  <View
+                    style={[
+                      styles.toggleThumb,
+                      isPrivate && styles.toggleThumbActive,
+                    ]}
+                  />
+                </View>
+              </TouchableOpacity>
+              {isPrivate && (
+                <TextInput
+                  style={[styles.textInput, styles.passwordInput]}
+                  value={roomPassword}
+                  onChangeText={setRoomPassword}
+                  placeholder={t('createRoom.passwordPlaceholder')}
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry
+                  maxLength={20}
+                />
+              )}
+            </View>
+
+            <View style={styles.rulesSection}>
+              <Text style={styles.rulesTitle}>{t('createRoom.rulesTitle')}</Text>
+              <View style={styles.rulesList}>
+                <View style={styles.ruleItem}>
+                  <Icon name="check-circle" size={16} color="#10B981" />
+                  <Text style={styles.ruleText}>{t('createRoom.rule1')}</Text>
+                </View>
+                <View style={styles.ruleItem}>
+                  <Icon name="check-circle" size={16} color="#10B981" />
+                  <Text style={styles.ruleText}>{t('createRoom.rule2')}</Text>
+                </View>
+                <View style={styles.ruleItem}>
+                  <Icon name="check-circle" size={16} color="#10B981" />
+                  <Text style={styles.ruleText}>{t('createRoom.rule3')}</Text>
+                </View>
+                <View style={styles.ruleItem}>
+                  <Icon name="check-circle" size={16} color="#10B981" />
+                  <Text style={styles.ruleText}>{t('createRoom.rule4')}</Text>
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.createButton,
+                (!roomName.trim() || isCreating) &&
+                styles.createButtonDisabled,
+              ]}
+              onPress={handleCreateRoom}
+              disabled={!roomName.trim() || isCreating}
+            >
+              {isCreating ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <>
+                  <Icon name="add-circle" size={20} color="#FFFFFF" />
+                  <Text style={styles.createButtonText}>
+                    {t('createRoom.createButton')}
+                  </Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </Animated.View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </ScreenLayout>
   );
 };
 

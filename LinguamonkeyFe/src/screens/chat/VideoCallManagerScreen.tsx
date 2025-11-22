@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from "uuid";
 import { gotoTab } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useTranslation } from "react-i18next";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const STATUS_OPTIONS = ["CONNECTED", "MUTED", "LEFT"];
 
@@ -180,133 +181,135 @@ const VideoCallManagerScreen = ({ route }) => {
     };
 
     return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === "ios" ? "padding" : undefined}
-            style={styles.container}
-        >
-            <View style={styles.inner}>
-                <Text style={styles.title}>{t("videoCallManager")}</Text>
+        <ScreenLayout>
+            <KeyboardAvoidingView
+                behavior={Platform.OS === "ios" ? "padding" : undefined}
+                style={styles.container}
+            >
+                <View style={styles.inner}>
+                    <Text style={styles.title}>{t("videoCallManager")}</Text>
 
-                <TextInput
-                    placeholder={t("filterCallerId")}
-                    value={filterCallerId}
-                    onChangeText={setFilterCallerId}
-                    style={styles.input}
-                />
-                <TextInput
-                    placeholder={t("filterStatus")}
-                    value={filterStatus}
-                    onChangeText={setFilterStatus}
-                    style={styles.input}
-                />
-
-                {filteredCallsQuery.isLoading ? (
-                    <ActivityIndicator />
-                ) : (
-                    <FlatList
-                        data={filteredCallsQuery.data?.content || []}
-                        keyExtractor={(item) => item.videoCallId}
-                        renderItem={({ item }) => (
-                            <TouchableOpacity
-                                onPress={() => {
-                                    setVideoCallId(item.videoCallId);
-                                    setRoomId(item.roomId || "");
-                                }}
-                            >
-                                <Text>
-                                    {item.videoCallType} - {item.videoCallId} [{item.status}]
-                                </Text>
-                            </TouchableOpacity>
-                        )}
-                    />
-                )}
-
-                <TextInput
-                    placeholder={t("callerId")}
-                    value={callerId}
-                    onChangeText={setCallerId}
-                    style={styles.input}
-                />
-                <TextInput
-                    placeholder={t("participantId")}
-                    value={newParticipantId}
-                    onChangeText={setNewParticipantId}
-                    style={styles.input}
-                />
-
-                <View style={styles.row}>
-                    <Button title={t("createGroupCall")} onPress={onCreateGroup} disabled={isCreating} />
-                    <Button title={t("createOneToOne")} onPress={onCreateOneToOne} disabled={isCreating} />
-                </View>
-
-                <View style={styles.row}>
-                    <Button title={t("addParticipant")} onPress={onAddParticipant} disabled={!videoCallId} />
-                    <Button title={t("joinJitsi")} onPress={onJoinJitsi} disabled={!videoCallId && !roomId} />
-                </View>
-
-                <Text style={styles.sectionTitle}>{t("participants")}</Text>
-                {participantsQuery.isLoading ? (
-                    <ActivityIndicator />
-                ) : participantsQuery.isError ? (
-                    <Text style={styles.errorText}>{t("participantsError")}</Text>
-                ) : (
-                    <FlatList
-                        data={participantsQuery.data || []}
-                        keyExtractor={(item) => item.userId}
-                        renderItem={renderParticipant}
-                        ListEmptyComponent={<Text style={styles.small}>{t("noParticipants")}</Text>}
-                    />
-                )}
-
-                <Text style={styles.sectionTitle}>{t("callInfo")}</Text>
-                {videoCallQuery.isLoading ? (
-                    <ActivityIndicator />
-                ) : videoCallQuery.isError ? (
-                    <Text style={styles.errorText}>{t("callError")}</Text>
-                ) : videoCallQuery.data ? (
-                    <View style={styles.infoBox}>
-                        <Text>{t("id")}: {videoCallQuery.data.videoCallId}</Text>
-                        <Text>{t("room")}: {videoCallQuery.data.roomId || " — "}</Text>
-                        <Text>{t("type")}: {videoCallQuery.data.videoCallType || " — "}</Text>
-                        <Text>{t("status")}: {videoCallQuery.data.status || " — "}</Text>
-                    </View>
-                ) : (
-                    <Text style={styles.small}>{t("noCallSelected")}</Text>
-                )}
-
-                <Text style={styles.sectionTitle}>{t("historyUser")}</Text>
-                <View style={styles.row}>
                     <TextInput
-                        placeholder={t("enterUserIdHistory")}
-                        value={historyUserId}
-                        onChangeText={setHistoryUserId}
-                        style={[styles.input, { flex: 1 }]}
+                        placeholder={t("filterCallerId")}
+                        value={filterCallerId}
+                        onChangeText={setFilterCallerId}
+                        style={styles.input}
                     />
-                    <Button title={t("view")} onPress={() => historyQuery.refetch()} disabled={undefined} />
+                    <TextInput
+                        placeholder={t("filterStatus")}
+                        value={filterStatus}
+                        onChangeText={setFilterStatus}
+                        style={styles.input}
+                    />
+
+                    {filteredCallsQuery.isLoading ? (
+                        <ActivityIndicator />
+                    ) : (
+                        <FlatList
+                            data={filteredCallsQuery.data?.content || []}
+                            keyExtractor={(item) => item.videoCallId}
+                            renderItem={({ item }) => (
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setVideoCallId(item.videoCallId);
+                                        setRoomId(item.roomId || "");
+                                    }}
+                                >
+                                    <Text>
+                                        {item.videoCallType} - {item.videoCallId} [{item.status}]
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                        />
+                    )}
+
+                    <TextInput
+                        placeholder={t("callerId")}
+                        value={callerId}
+                        onChangeText={setCallerId}
+                        style={styles.input}
+                    />
+                    <TextInput
+                        placeholder={t("participantId")}
+                        value={newParticipantId}
+                        onChangeText={setNewParticipantId}
+                        style={styles.input}
+                    />
+
+                    <View style={styles.row}>
+                        <Button title={t("createGroupCall")} onPress={onCreateGroup} disabled={isCreating} />
+                        <Button title={t("createOneToOne")} onPress={onCreateOneToOne} disabled={isCreating} />
+                    </View>
+
+                    <View style={styles.row}>
+                        <Button title={t("addParticipant")} onPress={onAddParticipant} disabled={!videoCallId} />
+                        <Button title={t("joinJitsi")} onPress={onJoinJitsi} disabled={!videoCallId && !roomId} />
+                    </View>
+
+                    <Text style={styles.sectionTitle}>{t("participants")}</Text>
+                    {participantsQuery.isLoading ? (
+                        <ActivityIndicator />
+                    ) : participantsQuery.isError ? (
+                        <Text style={styles.errorText}>{t("participantsError")}</Text>
+                    ) : (
+                        <FlatList
+                            data={participantsQuery.data || []}
+                            keyExtractor={(item) => item.userId}
+                            renderItem={renderParticipant}
+                            ListEmptyComponent={<Text style={styles.small}>{t("noParticipants")}</Text>}
+                        />
+                    )}
+
+                    <Text style={styles.sectionTitle}>{t("callInfo")}</Text>
+                    {videoCallQuery.isLoading ? (
+                        <ActivityIndicator />
+                    ) : videoCallQuery.isError ? (
+                        <Text style={styles.errorText}>{t("callError")}</Text>
+                    ) : videoCallQuery.data ? (
+                        <View style={styles.infoBox}>
+                            <Text>{t("id")}: {videoCallQuery.data.videoCallId}</Text>
+                            <Text>{t("room")}: {videoCallQuery.data.roomId || " — "}</Text>
+                            <Text>{t("type")}: {videoCallQuery.data.videoCallType || " — "}</Text>
+                            <Text>{t("status")}: {videoCallQuery.data.status || " — "}</Text>
+                        </View>
+                    ) : (
+                        <Text style={styles.small}>{t("noCallSelected")}</Text>
+                    )}
+
+                    <Text style={styles.sectionTitle}>{t("historyUser")}</Text>
+                    <View style={styles.row}>
+                        <TextInput
+                            placeholder={t("enterUserIdHistory")}
+                            value={historyUserId}
+                            onChangeText={setHistoryUserId}
+                            style={[styles.input, { flex: 1 }]}
+                        />
+                        <Button title={t("view")} onPress={() => historyQuery.refetch()} disabled={undefined} />
+                    </View>
+                    {historyQuery.isLoading ? (
+                        <ActivityIndicator />
+                    ) : historyQuery.isError ? (
+                        <Text style={styles.errorText}>{t("historyError")}</Text>
+                    ) : (
+                        <FlatList
+                            data={historyQuery.data || []}
+                            keyExtractor={(item) => item.videoCallId}
+                            renderItem={({ item }) => (
+                                <View style={styles.historyRow}>
+                                    <Text style={styles.smallBold}>
+                                        {item.videoCallType} - {item.videoCallId}
+                                    </Text>
+                                    <Text style={styles.small}>
+                                        {item.startTime} → {item.endTime}
+                                    </Text>
+                                </View>
+                            )}
+                            ListEmptyComponent={<Text style={styles.small}>{t("noHistory")}</Text>}
+                        />
+                    )}
                 </View>
-                {historyQuery.isLoading ? (
-                    <ActivityIndicator />
-                ) : historyQuery.isError ? (
-                    <Text style={styles.errorText}>{t("historyError")}</Text>
-                ) : (
-                    <FlatList
-                        data={historyQuery.data || []}
-                        keyExtractor={(item) => item.videoCallId}
-                        renderItem={({ item }) => (
-                            <View style={styles.historyRow}>
-                                <Text style={styles.smallBold}>
-                                    {item.videoCallType} - {item.videoCallId}
-                                </Text>
-                                <Text style={styles.small}>
-                                    {item.startTime} → {item.endTime}
-                                </Text>
-                            </View>
-                        )}
-                        ListEmptyComponent={<Text style={styles.small}>{t("noHistory")}</Text>}
-                    />
-                )}
-            </View>
-        </KeyboardAvoidingView>
+            </KeyboardAvoidingView>
+        </ScreenLayout>
     );
 };
 

@@ -1,105 +1,95 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
-  Dimensions,
+  ActivityIndicator,
   Image,
   ScrollView,
   Text,
   TouchableOpacity,
   View,
-  ActivityIndicator
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation } from "@react-navigation/native";
 
 import { useUserStore } from "../../stores/UserStore";
-
-import {
-  useUser,
-  useSendFriendRequest,
-  useAcceptFriendRequest,
-  useFriendRequestStatus,
-  useCheckIfFriends,
-} from "../../hooks/useUsers";
+import { useUsers } from "../../hooks/useUsers";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import type { UserProfileResponse } from "../../types/dto";
+import type { User } from "../../types/entity";
 
-const { width } = Dimensions.get("window");
+interface RouteParams {
+  userId: string;
+}
 
-const UserProfileViewScreen = ({ route }: any) => {
+const UserProfileViewScreen = ({ route }: { route: { params?: RouteParams } }) => {
   const { userId } = route?.params ?? {};
   const { t } = useTranslation();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
 
-  // BƯỚC 2: Sửa lại hook
-  const { user: currentUser } = useUserStore(); // Sửa
+  const { user: currentUser } = useUserStore();
 
-  const [showAchievements, setShowAchievements] = useState(false); // kept if you add later
+  const {
+    useUserProfile,
+    useFriendRequestStatus,
+    useCheckIfFriends,
+    useSendFriendRequest,
+    useAcceptFriendRequest,
+  } = useUsers();
 
-  // --- Hooks (from hooks/useUsers)
-  const userQuery = useUser(userId);
-  const { data: userProfile, isLoading: profileLoading, error: profileError, refetch: refetchProfile } = userQuery;
+  const {
+    data: userProfile,
+    isLoading: profileLoading,
+    error: profileError,
+    refetch: refetchProfile,
+  } = useUserProfile(userId) as {
+    data: UserProfileResponse | undefined;
+    isLoading: boolean;
+    error: any;
+    refetch: () => void;
+  };
 
-
-  // Friend-related
   const friendStatusQuery = useFriendRequestStatus(currentUser?.userId, userId);
   const areFriendsQuery = useCheckIfFriends(currentUser?.userId, userId);
 
-  const sendRequest = useSendFriendRequest(); // mutation
-  const acceptRequest = useAcceptFriendRequest(); // mutation
+  const sendRequest = useSendFriendRequest();
+  const acceptRequest = useAcceptFriendRequest();
 
   useEffect(() => {
-    if (!userId) {
-      // invalid route param: go back
-      (navigation as any).goBack();
-    }
-  }, [userId]);
+    if (!userId) navigation.goBack();
+  }, [userId, navigation]);
 
   const profileSafe = useMemo(() => {
     if (!userProfile) return null;
 
-    const source = (currentUser?.userId === userId) ? { ...userProfile, ...currentUser } : userProfile;
+    const source: UserProfileResponse & Partial<User> =
+      currentUser?.userId === userId ? { ...userProfile, ...currentUser } : userProfile;
 
-    const id = source.user_id ?? source.userId ?? source.id ?? userId;
-    const avatar =
-      source.avatar_url ?? source.avatarUrl ?? source.avatar ?? null;
-    const fullname = source.fullname ?? source.name ?? "";
-    const nickname = source.nickname ?? "";
-    const email = source.email ?? "";
-    const bio = source.bio ?? ""; 
-    const country = source.country ?? source.location ?? "";
-    const level = source.level ?? null;
-    const exp = source.exp ?? 0;
-    const streak = source.streak ?? 0;
-    const badges = source.badges ?? [];
+    const sent = friendStatusQuery.data?.sent ?? false;
+    const incoming = friendStatusQuery.data?.incoming ?? false;
 
-    const isFriend = !!(source.isFriend || areFriendsQuery.data);
-    const friendRequestSent = !!(friendStatusQuery.data?.sent ?? source.friendRequestSent);
-    const incomingFriendRequest = !!(friendStatusQuery.data?.incoming ?? source.incomingFriendRequest);
-    const stats = source.stats ?? {};
     return {
-      id,
-      avatar,
-      fullname,
-      nickname,
-      email,
-      bio, // <-- Thêm
-      country,
-      level,
-      exp,
-      streak,
-      badges, // <-- Thêm
-      isFriend,
-      friendRequestSent,
-      incomingFriendRequest,
-      stats,
+      id: source.userId ?? userId,
+      avatar: source.avatarUrl ?? null,
+      fullname: source.fullname ?? "",
+      nickname: source.nickname ?? "",
+      email: source.email ?? "",
+      bio: source.bio ?? "",
+      country: source.country ?? "",
+      level: source.level ?? null,
+      exp: source.exp ?? 0,
+      streak: source.streak ?? 0,
+      badges: source.badges ?? [],
+      isFriend: !!(source.isFriend || areFriendsQuery.data),
+      friendRequestSent: sent,
+      incomingFriendRequest: incoming,
     };
-  }, [userProfile, friendStatusQuery.data, areFriendsQuery.data, userId, currentUser]); // Thêm currentUser vào dependency
+  }, [userProfile, friendStatusQuery.data, areFriendsQuery.data, currentUser, userId]);
 
-  // Handlers
   const handleAddFriend = () => {
     if (!profileSafe?.id || sendRequest.isPending) return;
+
     Alert.alert(
       t("profile.addFriend"),
       t("profile.addFriendConfirm", { name: profileSafe.fullname }),
@@ -111,9 +101,9 @@ const UserProfileViewScreen = ({ route }: any) => {
             try {
               await sendRequest.mutateAsync(String(profileSafe.id));
               Alert.alert(t("common.success"), t("profile.requestSent"));
-              refetchProfile && refetchProfile();
-            } catch (err: any) {
-              Alert.alert(t("common.error"), err?.message ?? t("errors.unknown"));
+              refetchProfile();
+            } catch {
+              Alert.alert(t("common.error"), t("errors.unknown"));
             }
           },
         },
@@ -123,71 +113,59 @@ const UserProfileViewScreen = ({ route }: any) => {
 
   const handleAcceptFriend = async () => {
     if (!profileSafe?.id || acceptRequest.isPending) return;
+
     try {
       await acceptRequest.mutateAsync({
         currentUserId: String(currentUser?.userId),
         otherUserId: String(profileSafe.id),
       });
       Alert.alert(t("common.success"), t("profile.friendAccepted"));
-      refetchProfile && refetchProfile();
-    } catch (err: any) {
-      Alert.alert(t("common.error"), err?.message ?? t("errors.unknown"));
+      refetchProfile();
+    } catch {
+      Alert.alert(t("common.error"), t("errors.unknown"));
     }
   };
 
   const handleMessage = () => {
     if (!profileSafe?.id) return;
-    // cast navigation to any to avoid strict typed navigation param errors
-    (navigation as any).navigate("UserChatScreen", {
+    navigation.navigate("UserChatScreen", {
       userId: profileSafe.id,
       userName: profileSafe.fullname,
     });
   };
 
-  const handleViewRoadmap = () => {
-    if (!userProfile) return;
-    const primaryLanguage =
-      userProfile.learningLanguages?.[0]?.language_code ??
-      userProfile.learningLanguages?.[0]?.language?.language_code ??
-      userProfile.primaryLanguage ??
-      null;
-    (navigation as any).navigate("RoadmapScreen", {
-      userId: profileSafe?.id,
-      languageCode: primaryLanguage,
-    });
-  };
+  // Không còn primaryLearningLanguage → tạm thời loại bỏ nút Roadmap
+  // Khi backend bổ sung field này, sẽ bật lại
 
-  // Error / loading UI
   if (profileError) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenLayout>
         <View style={styles.errorContainer}>
           <Icon name="error" size={64} color="#F44336" />
           <Text style={styles.errorText}>{t("errors.networkError")}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => refetchProfile && refetchProfile()}>
+          <TouchableOpacity style={styles.retryButton} onPress={refetchProfile}>
             <Text style={styles.retryText}>{t("common.retry")}</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </ScreenLayout>
     );
   }
 
   if (profileLoading || !profileSafe) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenLayout>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2196f3" />
+          <ActivityIndicator size="large" color="#2196F3" />
           <Text style={styles.loadingText}>{t("common.loading")}</Text>
         </View>
-      </SafeAreaView>
+      </ScreenLayout>
     );
   }
 
-  // Render
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenLayout>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => (navigation as any).goBack()}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("profile.title")}</Text>
@@ -196,19 +174,14 @@ const UserProfileViewScreen = ({ route }: any) => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content}>
-        {/* Profile Header */}
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.profileHeader}>
           <Image
-            source={{
-              uri: profileSafe.avatar ?? "https://via.placeholder.com/120",
-            }}
+            source={{ uri: profileSafe.avatar ?? "https://via.placeholder.com/120" }}
             style={styles.avatar}
           />
           <Text style={styles.name}>{profileSafe.fullname}</Text>
           <Text style={styles.username}>{profileSafe.nickname || profileSafe.email}</Text>
-
-          {/* BƯỚC 4: Cập nhật UI để hiển thị bio (thay vì country) */}
           <Text style={styles.bio}>
             {profileSafe.bio || profileSafe.country || t("profile.bioDefault")}
           </Text>
@@ -237,7 +210,7 @@ const UserProfileViewScreen = ({ route }: any) => {
 
               {profileSafe.incomingFriendRequest && (
                 <TouchableOpacity
-                  style={[styles.addFriendButton, styles.roadmapButton]}
+                  style={[styles.addFriendButton, styles.acceptButton]}
                   onPress={handleAcceptFriend}
                   disabled={acceptRequest.isPending}
                 >
@@ -254,25 +227,19 @@ const UserProfileViewScreen = ({ route }: any) => {
               </TouchableOpacity>
             </View>
           )}
-
-          {(currentUser?.userId === profileSafe.id || profileSafe.isFriend) && (
-            <TouchableOpacity style={styles.roadmapButton} onPress={handleViewRoadmap}>
-              <Icon name="map" size={20} color="#FFFFFF" />
-              <Text style={styles.roadmapButtonText}>{t("profile.viewRoadmap")}</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
-        {/* Stats Overview */}
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>
               {t("profile.stats.currentLevel")} {profileSafe.level ?? "-"}
             </Text>
-            <Text style={styles.statLabel}>{t("profile.stats.currentLevel")}</Text>
+            <Text style={styles.statLabel}>{t("profile.stats.level")}</Text>
           </View>
           <View style={styles.statItem}>
-            <Text style={styles.statNumber}>{(profileSafe.exp ?? 0).toLocaleString?.() ?? profileSafe.exp ?? 0}</Text>
+            <Text style={styles.statNumber}>
+              {(profileSafe.exp ?? 0).toLocaleString?.() ?? profileSafe.exp}
+            </Text>
             <Text style={styles.statLabel}>{t("profile.stats.totalXP")}</Text>
           </View>
           <View style={styles.statItem}>
@@ -281,7 +248,6 @@ const UserProfileViewScreen = ({ route }: any) => {
           </View>
         </View>
 
-        {/* BƯỚC 5: Thêm section "Bio" (nếu có) */}
         {profileSafe.bio && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("profile.bio")}</Text>
@@ -289,96 +255,40 @@ const UserProfileViewScreen = ({ route }: any) => {
           </View>
         )}
 
-        {/* Languages */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("profile.languages")}</Text>
-          <View style={styles.languageContainer}>
-            <View style={styles.languageItem}>
-              <Text style={styles.languageLabel}>{t("profile.native")}</Text>
-              <Text style={styles.languageValue}>
-                {userProfile?.native_language_code ?? userProfile?.nativeLanguage ?? t("profile.notSpecified")}
-              </Text>
-            </View>
-            <View style={styles.languageItem}>
-              <Text style={styles.languageLabel}>{t("profile.learning")}</Text>
-              <Text style={styles.languageValue}>
-                {userProfile?.learningLanguages?.map((lang: any) => lang.language?.language_name ?? lang.language_name ?? lang).join(", ") || t("profile.none")}
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        {/* BƯỚC 6: Thêm section "Badges" (nếu có) */}
-        {profileSafe.badges && profileSafe.badges.length > 0 && (
+        {profileSafe.badges?.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("profile.badges")}</Text>
             <View style={styles.badgeContainer}>
-              {profileSafe.badges.map((badge: any, index: number) => (
-                <View key={index} style={styles.badgeItem}>
-                  {/* Giả sử badge là string (URL) hoặc object { imageUrl, name } */}
+              {profileSafe.badges.map((badge, i) => (
+                <View key={i} style={styles.badgeItem}>
                   <Image
-                    source={{ uri: typeof badge === 'string' ? badge : (badge.imageUrl ?? "https://via.placeholder.com/50") }}
+                    source={{ uri: badge.imageUrl ?? "https://via.placeholder.com/50" }}
                     style={styles.badgeImage}
                   />
-                  {typeof badge === 'object' && badge.name && (
-                    <Text style={styles.badgeName}>{badge.name}</Text>
+                  {badge.badgeName && (
+                    <Text style={styles.badgeName}>{badge.badgeName}</Text>
                   )}
                 </View>
               ))}
             </View>
           </View>
         )}
-
-        {/* Detailed Stats */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t("profile.stats.title")}</Text>
-          <View style={styles.detailedStats}>
-            <View style={styles.detailedStatItem}>
-              <Icon name="schedule" size={24} color="#4CAF50" />
-              <View style={styles.detailedStatInfo}>
-                <Text style={styles.detailedStatNumber}>
-                  {Math.floor((profileSafe.stats?.totalStudyTime ?? 0) / 60)}h {(profileSafe.stats?.totalStudyTime ?? 0) % 60}m
-                </Text>
-                <Text style={styles.detailedStatLabel}>{t("profile.stats.totalStudyTime")}</Text>
-              </View>
-            </View>
-
-            <View style={styles.detailedStatItem}>
-              <Icon name="book" size={24} color="#2196F3" />
-              <View style={styles.detailedStatInfo}>
-                <Text style={styles.detailedStatNumber}>{profileSafe.stats?.lessonsCompleted ?? 0}</Text>
-                <Text style={styles.detailedStatLabel}>{t("profile.stats.lessonsCompleted")}</Text>
-              </View>
-            </View>
-
-            <View style={styles.detailedStatItem}>
-              <Icon name="translate" size={24} color="#FF9800" />
-              <View style={styles.detailedStatInfo}>
-                <Text style={styles.detailedStatNumber}>{profileSafe.stats?.wordsLearned ?? 0}</Text>
-                <Text style={styles.detailedStatLabel}>{t("profile.stats.wordsLearned")}</Text>
-              </View>
-            </View>
-
-            <View style={styles.detailedStatItem}>
-              <Icon name="quiz" size={24} color="#9C27B0" />
-              <View style={styles.detailedStatInfo}>
-                <Text style={styles.detailedStatNumber}>{profileSafe.stats?.averageScore ?? 0}%</Text>
-                <Text style={styles.detailedStatLabel}>{t("profile.stats.averageScore")}</Text>
-              </View>
-            </View>
-          </View>
-        </View>
-
-        {/* Note: Achievements and Effort Map removed since backend doesn't support them */}
       </ScrollView>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 };
 
-// BƯỚC 7: Thêm style cho các element mới
 const styles = createScaledSheet({
-  container: { flex: 1, backgroundColor: "#f5f5f5" },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 15, backgroundColor: "#fff", borderBottomWidth: 1, borderBottomColor: "#e0e0e0" },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
   headerTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
   loadingText: { fontSize: 16, color: "#666", marginTop: 8 },
@@ -386,67 +296,71 @@ const styles = createScaledSheet({
   errorText: { fontSize: 16, color: "#666", textAlign: "center", marginVertical: 20 },
   retryButton: { backgroundColor: "#2196F3", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   retryText: { color: "#fff", fontWeight: "bold" },
-  content: { flex: 1 },
-  profileHeader: { backgroundColor: "#fff", alignItems: "center", paddingVertical: 30, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: "#e0e0e0" },
+  content: { paddingBottom: 40 },
+  profileHeader: {
+    backgroundColor: "#fff",
+    alignItems: "center",
+    paddingVertical: 30,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
   avatar: { width: 120, height: 120, borderRadius: 60, marginBottom: 15 },
   name: { fontSize: 24, fontWeight: "bold", color: "#333", marginBottom: 5 },
   username: { fontSize: 16, color: "#666", marginBottom: 10 },
   bio: { fontSize: 14, color: "#666", textAlign: "center", lineHeight: 20, marginBottom: 20, paddingHorizontal: 15 },
   actionButtons: { flexDirection: "row", gap: 15, marginBottom: 15 },
-  addFriendButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#2196F3", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 25, gap: 8 },
-  addFriendText: { color: "#fff", fontSize: 14, fontWeight: "bold", marginLeft: 8 },
-  pendingButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#f0f0f0", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 25, gap: 8 },
-  pendingText: { color: "#666", fontSize: 14, fontWeight: "bold", marginLeft: 8 },
-  messageButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#fff", borderWidth: 1, borderColor: "#2196F3", paddingHorizontal: 20, paddingVertical: 10, borderRadius: 25, gap: 8 },
-  messageText: { color: "#2196F3", fontSize: 14, fontWeight: "bold", marginLeft: 8 },
-  roadmapButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#10B981", paddingHorizontal: 20, paddingVertical: 12, borderRadius: 25, gap: 8, marginTop: 8 },
-  roadmapButtonText: { color: "#FFFFFF", fontSize: 14, fontWeight: "bold" },
+  addFriendButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#2196F3",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+    gap: 8,
+  },
+  acceptButton: { backgroundColor: "#10B981" },
+  addFriendText: { color: "#fff", fontSize: 14, fontWeight: "bold" },
+  pendingButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+    gap: 8,
+  },
+  pendingText: { color: "#666", fontSize: 14, fontWeight: "bold" },
+  messageButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#2196F3",
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 25,
+    gap: 8,
+  },
+  messageText: { color: "#2196F3", fontSize: 14, fontWeight: "bold" },
   disabledButton: { backgroundColor: "#D1D5DB" },
-  statsContainer: { flexDirection: "row", backgroundColor: "#fff", paddingVertical: 20, borderBottomWidth: 1, borderBottomColor: "#e0e0e0" },
+  statsContainer: {
+    flexDirection: "row",
+    backgroundColor: "#fff",
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e0e0e0",
+  },
   statItem: { flex: 1, alignItems: "center" },
   statNumber: { fontSize: 20, fontWeight: "bold", color: "#333", marginBottom: 5 },
   statLabel: { fontSize: 12, color: "#666" },
   section: { backgroundColor: "#fff", marginTop: 10, paddingHorizontal: 20, paddingVertical: 20 },
-  bioText: { fontSize: 14, color: "#4B5563", lineHeight: 20 }, // Style cho bio
-  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 15 },
-  sectionTitle: { fontSize: 18, fontWeight: "bold", color: "#333", marginBottom: 10 }, // Thêm marginBottom
-  viewAllText: { fontSize: 14, color: "#2196F3", fontWeight: "500" },
-  languageContainer: { gap: 10 },
-  languageItem: { flexDirection: "row", alignItems: "center" },
-  languageLabel: { fontSize: 14, color: "#666", fontWeight: "500", minWidth: 70 },
-  languageValue: { fontSize: 14, color: "#333" },
-  detailedStats: { gap: 15 },
-  detailedStatItem: { flexDirection: "row", alignItems: "center", gap: 15 },
-  detailedStatInfo: { flex: 1 },
-  detailedStatNumber: { fontSize: 18, fontWeight: "bold", color: "#333" },
-  detailedStatLabel: { fontSize: 12, color: "#666" },
-  // Styles cho Badges
-  badgeContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 10,
-    gap: 15,
-  },
-  badgeItem: {
-    alignItems: "center",
-    width: 60,
-  },
-  badgeImage: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "#F3F4F6",
-  },
-  badgeName: {
-    fontSize: 10,
-    color: "#6B7280",
-    marginTop: 4,
-    textAlign: "center",
-  },
-  modalContainer: { flex: 1, backgroundColor: "#fff" },
-  modalHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: "#e0e0e0" },
-  modalTitle: { fontSize: 18, fontWeight: "bold", color: "#333" },
-  headerRight: { width: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: "bold", color: "#333", marginBottom: 10 },
+  bioText: { fontSize: 14, color: "#4B5563", lineHeight: 20 },
+  badgeContainer: { flexDirection: "row", flexWrap: "wrap", marginTop: 10, gap: 15 },
+  badgeItem: { alignItems: "center", width: 60 },
+  badgeImage: { width: 50, height: 50, borderRadius: 25, backgroundColor: "#F3F4F6" },
+  badgeName: { fontSize: 10, color: "#6B7280", marginTop: 4, textAlign: "center" },
 });
 
 export default UserProfileViewScreen;

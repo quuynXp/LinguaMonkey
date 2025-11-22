@@ -1,13 +1,10 @@
 import { AppState, AppStateStatus } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
 
-const KONG_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
-const KONG_WS_URL = KONG_BASE_URL.replace(/^http/, 'ws');
-
-export interface AiChatMessage {
+interface AiChatMessage {
   type: 'chat_request' | 'chat_response_chunk' | 'chat_response_complete' | 'error';
   prompt?: string;
-  history?: { role: 'user' | 'assistant', content: string }[];
+  history?: Array<{ role: 'user' | 'assistant'; content: string }>;
   content?: string;
   is_final?: boolean;
   roomId?: string;
@@ -16,6 +13,9 @@ export interface AiChatMessage {
 
 export type AiMessageCallback = (message: AiChatMessage) => void;
 
+const KONG_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'localhost:8080';
+const KONG_WS_URL = `wss://${KONG_BASE_URL}`;
+
 export class PythonAiWsService {
   private ws: WebSocket | null = null;
   private url: string;
@@ -23,21 +23,26 @@ export class PythonAiWsService {
   private reconnectInterval?: ReturnType<typeof setTimeout>;
   private isConnecting: boolean = false;
   private shouldReconnect: boolean = true;
+  private appStateSubscription: any;
 
   constructor() {
     this.url = `${KONG_WS_URL}/ws/py/chat-stream`;
-    AppState.addEventListener('change', this.handleAppStateChange);
+    this.setupAppStateListener();
+  }
+
+  private setupAppStateListener(): void {
+    this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
   }
 
   public connect(onMessage: AiMessageCallback): void {
     if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
-      console.log("AI WS: Connecting or Already connected.");
+      console.log('🤖 AI WS: Already connected or connecting');
       return;
     }
 
     const token = useTokenStore.getState().accessToken;
     if (!token) {
-      console.error("AI WS: No token found, aborting connection.");
+      console.error('🤖 AI WS: No token found');
       return;
     }
 
@@ -46,7 +51,7 @@ export class PythonAiWsService {
     this.onMessageCallback = onMessage;
 
     const connectUrl = `${this.url}?token=${encodeURIComponent(token)}`;
-    console.log(`AI WS: Connecting to ${this.url}...`);
+    console.log(`🤖 AI WS: Connecting...`);
 
     this.ws = new WebSocket(connectUrl);
 
@@ -62,13 +67,13 @@ export class PythonAiWsService {
           const msg = JSON.parse(e.data) as AiChatMessage;
           this.onMessageCallback(msg);
         } catch (err) {
-          console.error("AI WS Parse Error:", err);
+          console.error('🤖 AI WS Parse Error:', err);
         }
       }
     };
 
     this.ws.onerror = (e: any) => {
-      console.log('❌ AI WS Error:', e?.message || "Unknown error");
+      console.log('❌ AI WS Error:', e?.message || 'Unknown error');
       this.isConnecting = false;
     };
 
@@ -76,14 +81,9 @@ export class PythonAiWsService {
       this.isConnecting = false;
       console.log(`⚠️ AI WS Closed. Code: ${e.code}, Reason: ${e.reason}`);
 
-      // QUAN TRỌNG: Kiểm tra mã lỗi để quyết định có reconnect không
-      // 1000: Normal Closure
-      // 1008: Policy Violation (Thường là lỗi Auth/Token sai)
-      // 1011: Internal Error (Lỗi Server Python)
       if (e.code === 1008) {
-        console.error("🛑 AI WS Auth Failed. Stopping reconnect. Please login again.");
+        console.error('🛑 AI WS Auth Failed. Stopping reconnect.');
         this.shouldReconnect = false;
-        // Có thể trigger logout ở đây nếu cần
       } else if (this.shouldReconnect) {
         this.reconnect();
       }
@@ -92,10 +92,8 @@ export class PythonAiWsService {
 
   private reconnect(): void {
     if (this.reconnectInterval) clearTimeout(this.reconnectInterval);
-
-    // Tăng thời gian retry lên 5s để tránh spam server
     this.reconnectInterval = setTimeout(() => {
-      console.log('♻️ Reconnecting AI WS...');
+      console.log('♻️ AI WS: Reconnecting...');
       if (this.onMessageCallback && this.shouldReconnect) {
         this.connect(this.onMessageCallback);
       }
@@ -103,11 +101,13 @@ export class PythonAiWsService {
   }
 
   private handleAppStateChange = (state: AppStateStatus): void => {
-    if (state === 'active' && this.shouldReconnect) {
+    if (state === 'active' && this.shouldReconnect && !this.isConnected) {
+      console.log('♻️ App resumed, reconnecting AI WS...');
       if (this.onMessageCallback) {
         this.connect(this.onMessageCallback);
       }
     } else if (state === 'background') {
+      console.log('App backgrounded, disconnecting AI WS');
       this.disconnect();
     }
   };
@@ -116,8 +116,10 @@ export class PythonAiWsService {
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(msg));
     } else {
-      console.warn("AI WS: Not connected. Message dropped:", msg);
-      if (this.onMessageCallback) this.connect(this.onMessageCallback);
+      console.warn('🤖 AI WS: Not connected. Message dropped:', msg);
+      if (this.onMessageCallback && this.shouldReconnect) {
+        this.connect(this.onMessageCallback);
+      }
     }
   }
 
@@ -127,6 +129,13 @@ export class PythonAiWsService {
     this.ws?.close();
     this.ws = null;
     this.isConnecting = false;
+  }
+
+  public destroy(): void {
+    this.disconnect();
+    if (this.appStateSubscription) {
+      this.appStateSubscription.remove();
+    }
   }
 
   public get isConnected(): boolean {

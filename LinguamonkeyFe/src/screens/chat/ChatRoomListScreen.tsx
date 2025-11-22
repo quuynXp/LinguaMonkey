@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import instance from '../../api/axiosInstance'; // Import axios instance
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 // Kiểu dữ liệu trả về từ API /api/v1/rooms (RoomResponse)
 interface ApiRoom {
@@ -26,7 +27,7 @@ interface ApiRoom {
   creatorId: string;
   memberCount: number;
   maxMembers: number;
-  createdAt: string; 
+  createdAt: string;
   // ... (Thêm các trường khác nếu bạn cần, vd: language, level)
 }
 
@@ -61,7 +62,7 @@ const mapApiRoomToComponent = (apiRoom: ApiRoom): Room => ({
 
 const ChatRoomListScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'GROUP_CHAT' | 'AI_CHAT'>('all');
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -96,7 +97,7 @@ const ChatRoomListScreen = ({ navigation }) => {
     if (!apiRooms) return [];
     return apiRooms.map(mapApiRoomToComponent);
   }, [apiRooms]);
-  
+
   // Logic filter cũ không cần nữa vì API đã filter
   // const filteredRooms = rooms; 
 
@@ -105,11 +106,11 @@ const ChatRoomListScreen = ({ navigation }) => {
       Alert.alert(t('room.full'), t('room.full.message'));
       return;
     }
-    
+
     // Sửa navigation: Chuyển sang GroupChatScreen (file bạn vừa sửa)
-    navigation.navigate('GroupChat', { 
-      roomId: room.id, 
-      roomName: room.name 
+    navigation.navigate('GroupChat', {
+      roomId: room.id,
+      roomName: room.name
     });
   };
 
@@ -191,7 +192,7 @@ const ChatRoomListScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -219,7 +220,7 @@ const ChatRoomListScreen = ({ navigation }) => {
         <View style={styles.filtersContainer}>
           {renderFilterButton('all', t('all'))}
           {renderFilterButton('GROUP_CHAT', t('learning'))}
-          {renderFilterButton('AI_CHAT', t('social'))} 
+          {renderFilterButton('AI_CHAT', t('social'))}
         </View>
 
         {/* Room List */}
@@ -300,7 +301,7 @@ const ChatRoomListScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
-    </View>
+    </ScreenLayout>
   );
 };
 

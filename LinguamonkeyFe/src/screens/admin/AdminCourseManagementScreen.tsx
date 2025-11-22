@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -19,6 +18,7 @@ import { getStatisticsOverview, getActivities } from "../../services/statisticsA
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { gotoTab, resetToAuth } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const formatISODate = (d: Date) => d.toISOString().split("T")[0];
 
@@ -114,7 +114,7 @@ const AdminCourseManagementScreen = () => {
   const courses = coursesActivities?.items || [];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View style={styles.headerArea}>
           <Text style={styles.headerTitle}>{t("admin.courses.title")}</Text>
@@ -170,7 +170,7 @@ const AdminCourseManagementScreen = () => {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 };
 

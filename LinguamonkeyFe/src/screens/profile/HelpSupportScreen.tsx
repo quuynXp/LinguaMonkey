@@ -4,7 +4,6 @@ import {
   Animated,
   Linking,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
@@ -13,6 +12,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 interface FAQItem {
   id: string;
@@ -42,7 +42,7 @@ const HelpSupportScreen = ({ navigation }) => {
       duration: 600,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
 
   const faqData: FAQItem[] = [
     {
@@ -103,7 +103,7 @@ const HelpSupportScreen = ({ navigation }) => {
       id: 'video',
       title: t('help.support.video.title'),
       description: t('help.support.video.desc'),
-      icon: 'play-circle',
+      icon: 'play-circle-outline', // Changed icon to a more fitting one
       action: () => Alert.alert(t('help.support.video.title'), t('help.support.video.redirect')),
     },
   ];
@@ -125,6 +125,7 @@ const HelpSupportScreen = ({ navigation }) => {
         t('help.feedback.sent'),
         [{ text: 'OK', onPress: () => setFeedbackText('') }]
       );
+      // Thực tế: Gửi feedbackText lên API ở đây
     }
   };
 
@@ -159,7 +160,7 @@ const HelpSupportScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -172,7 +173,7 @@ const HelpSupportScreen = ({ navigation }) => {
         <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
           {/* Welcome Section */}
           <View style={styles.welcomeSection}>
-            <Icon name="help-outline" size={50} color="#4F46E5" style={styles.welcomeAnimation} />
+            <Icon name="help-outline" size={50} color="#4F46E5" />
             <Text style={styles.welcomeTitle}>{t('help.welcome.title')}</Text>
             <Text style={styles.welcomeText}>{t('help.welcome.subtitle')}</Text>
           </View>
@@ -195,6 +196,9 @@ const HelpSupportScreen = ({ navigation }) => {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t('help.faq.title')}</Text>
             <View style={styles.faqContainer}>{filteredFAQ.map(renderFAQItem)}</View>
+            {filteredFAQ.length === 0 && (
+              <Text style={styles.noResultsText}>{t('help.search.noResults')}</Text>
+            )}
           </View>
 
           {/* Support Options */}
@@ -253,7 +257,7 @@ const HelpSupportScreen = ({ navigation }) => {
           </View>
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   );
 };
 
@@ -274,8 +278,9 @@ const styles = createScaledSheet({
   placeholder: { width: 24 },
   content: { flex: 1 },
   scrollContent: { padding: 20 },
-  welcomeSection: { alignItems: 'center', marginBottom: 30 },
-  welcomeAnimation: { width: 120, height: 120, marginBottom: 16 },
+  welcomeSection: { alignItems: 'center', marginBottom: 30, paddingVertical: 20 },
+  // Giữ nguyên style welcomeAnimation để phù hợp với Icon
+  welcomeAnimation: { marginBottom: 16 },
   welcomeTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -298,7 +303,7 @@ const styles = createScaledSheet({
     shadowRadius: 2,
     elevation: 2,
   },
-  searchInput: { flex: 1, fontSize: 16, color: '#1F2937', marginLeft: 12 },
+  searchInput: { flex: 1, fontSize: 16, color: '#1F2937', marginLeft: 12, paddingVertical: 0 },
   section: { marginBottom: 30 },
   sectionTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937', marginBottom: 16 },
   faqContainer: {
@@ -309,6 +314,7 @@ const styles = createScaledSheet({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    overflow: 'hidden', // Quan trọng để bo góc dưới cùng
   },
   faqItem: { borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   faqHeader: {
@@ -324,8 +330,9 @@ const styles = createScaledSheet({
     color: '#1F2937',
     marginRight: 12,
   },
-  faqAnswer: { paddingHorizontal: 16, paddingBottom: 16 },
+  faqAnswer: { paddingHorizontal: 16, paddingBottom: 16, backgroundColor: '#FAFBFF' },
   faqAnswerText: { fontSize: 14, color: '#6B7280', lineHeight: 20 },
+  noResultsText: { fontSize: 16, color: '#6B7280', textAlign: 'center', marginTop: 10 },
   supportContainer: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -334,6 +341,7 @@ const styles = createScaledSheet({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    overflow: 'hidden',
   },
   supportOption: {
     flexDirection: 'row',
@@ -384,7 +392,18 @@ const styles = createScaledSheet({
   feedbackButtonDisabled: { backgroundColor: '#E5E7EB' },
   feedbackButtonText: { fontSize: 16, fontWeight: '600', color: '#FFFFFF' },
   feedbackButtonTextDisabled: { color: '#9CA3AF' },
-  appInfoSection: { backgroundColor: '#F9FAFB', borderRadius: 12, padding: 16 },
+  appInfoSection: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 16,
+    marginTop: 10,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
   appInfoTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937', marginBottom: 12 },
   appInfoItem: {
     flexDirection: 'row',

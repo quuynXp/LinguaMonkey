@@ -1,18 +1,18 @@
 import React, { useRef, useState } from 'react';
 import {
-    Alert,
-    Animated,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  ScrollView,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 interface SettingItem {
   id: string;
@@ -49,7 +49,7 @@ const ChatSettingsScreen = ({ navigation }) => {
       t('chat.clearHistoryConfirmMessage'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.delete'), style: 'destructive', onPress: () => {} },
+        { text: t('common.delete'), style: 'destructive', onPress: () => { } },
       ]
     );
   };
@@ -183,14 +183,14 @@ const ChatSettingsScreen = ({ navigation }) => {
           color={isDangerous ? '#EF4444' : '#4F46E5'}
         />
       </View>
-      
+
       <View style={styles.settingContent}>
         <Text style={[styles.settingTitle, isDangerous && styles.dangerousText]}>
           {item.title}
         </Text>
         <Text style={styles.settingDescription}>{item.description}</Text>
       </View>
-      
+
       {item.type === 'toggle' ? (
         <Switch
           value={item.value}
@@ -215,7 +215,7 @@ const ChatSettingsScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -310,7 +310,7 @@ const ChatSettingsScreen = ({ navigation }) => {
           </View>
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   );
 };
 

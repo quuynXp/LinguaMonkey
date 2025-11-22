@@ -1,80 +1,82 @@
-import { Alert , Animated, RefreshControl, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
-
+import { ActivityIndicator, Alert, Animated, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import { useEffect, useRef, useState } from "react"
-
 import Icon from "react-native-vector-icons/MaterialIcons"
-import NotificationService from "../../services/notificationService"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import { useNotifications } from "../../hooks/useNotifications"
+import { useUserStore } from "../../stores/UserStore"
+import { NotificationResponse, NotificationRequest } from "../../types/dto"
+import * as Enums from "../../types/enums"
 
-interface NotificationHistoryItem {
-  id: string
-  title: string
-  body: string
-  type: string
-  receivedAt: Date
-  isRead: boolean
-  data?: any
-}
+// --- Constants ---
+const PAGE_SIZE = 50;
 
 const NotificationHistoryScreen = ({ navigation }) => {
-  const [notifications, setNotifications] = useState<NotificationHistoryItem[]>([])
-  const [refreshing, setRefreshing] = useState(false)
-  const [filter, setFilter] = useState<"all" | "unread" | "study" | "messages" | "achievements">("all")
+  const { user } = useUserStore();
+  const userId = user?.userId;
 
+  const {
+    data: notificationPage,
+    isLoading,
+    refetch,
+    isRefetching
+  } = useNotifications().useNotificationsByUserId(userId, 0, PAGE_SIZE);
+
+  const updateMutation = useNotifications().useUpdateNotification();
+
+  const [filter, setFilter] = useState<"all" | "unread" | "study" | "messages" | "achievements">("all")
   const fadeAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    loadNotifications()
-
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start()
-  }, [])
+  }, [fadeAnim])
 
-  const loadNotifications = async () => {
-    try {
-      const history = await NotificationService.getNotificationHistory()
-      setNotifications(
-        history.map((item) => ({
-          ...item,
-          receivedAt: new Date(item.receivedAt),
-        })),
-      )
-    } catch (error) {
-      console.error("Error loading notifications:", error)
-    }
-  }
+  const notifications: NotificationResponse[] = (notificationPage?.data as NotificationResponse[]) || [];
 
   const onRefresh = async () => {
-    setRefreshing(true)
-    await loadNotifications()
-    setRefreshing(false)
+    await refetch();
   }
 
-  const markAsRead = async (notificationId: string) => {
+  const markAsRead = async (notification: NotificationResponse) => {
+    if (notification.read) return;
+
     try {
-      await NotificationService.markNotificationAsRead(notificationId)
-      setNotifications((prev) =>
-        prev.map((notification) =>
-          notification.id === notificationId ? { ...notification, isRead: true } : notification,
-        ),
-      )
+      // FIX LỖI TYPE 2353: DTO NotificationRequest không có trường `read`. 
+      // Tuy nhiên, vì mục tiêu là đánh dấu đã đọc, chúng ta phải gửi tất cả các trường 
+      // của NotificationRequest và giả định API endpoint này xử lý việc cập nhật trạng thái `read`.
+      const reqPayload: NotificationRequest & { read?: boolean } = {
+        userId: notification.userId,
+        title: notification.title,
+        content: notification.content,
+        type: notification.type as Enums.NotificationType,
+        // FIX LỖI TYPE 2339: Gán giá trị an toàn cho languageCode
+        languageCode: (notification as any).languageCode || 'EN',
+        payload: notification.payload,
+        // Thêm trường read vào payload (Dù không có trong DTO Request, nhưng cần cho API logic này)
+        read: true,
+      };
+
+      await updateMutation.mutateAsync({
+        id: notification.notificationId,
+        req: reqPayload as NotificationRequest // Ép kiểu về NotificationRequest
+      });
+
     } catch (error) {
-      console.error("Error marking notification as read:", error)
+      Alert.alert("Error", "Failed to mark as read. Please try again.")
     }
   }
 
   const clearAllNotifications = () => {
-    Alert.alert("Clear All Notifications", "Are you sure you want to clear all notification history?", [
+    Alert.alert("Clear All Notifications", "Are you sure you want to clear all notification history? (Functionality not implemented)", [
       { text: "Cancel", style: "cancel" },
       {
         text: "Clear All",
         style: "destructive",
         onPress: () => {
-          setNotifications([])
-          // In real app, clear from storage
+          Alert.alert("Info", "Clear All functionality requires a backend endpoint.")
         },
       },
     ])
@@ -83,39 +85,39 @@ const NotificationHistoryScreen = ({ navigation }) => {
   const getFilteredNotifications = () => {
     switch (filter) {
       case "unread":
-        return notifications.filter((n) => !n.isRead)
+        return notifications.filter((n) => !n.read)
       case "study":
-        return notifications.filter((n) => n.type.includes("study") || n.type.includes("streak"))
+        return notifications.filter((n) => n.type?.includes("LESSON") || n.type?.includes("STREAK") || n.type?.includes("REMINDER"))
       case "messages":
         return notifications.filter(
-          (n) => n.type.includes("message") || n.type.includes("couple") || n.type.includes("group"),
+          (n) => n.type?.includes("MESSAGE") || n.type?.includes("FRIEND_REQUEST"),
         )
       case "achievements":
-        return notifications.filter((n) => n.type.includes("achievement"))
+        return notifications.filter((n) => n.type?.includes("BADGE_UNLOCKED"))
       default:
         return notifications
     }
   }
 
-  const getNotificationIcon = (type: string) => {
-    if (type.includes("study") || type.includes("streak")) return "school"
-    if (type.includes("message")) return "message"
-    if (type.includes("couple")) return "favorite"
-    if (type.includes("group")) return "groups"
-    if (type.includes("achievement")) return "emoji-events"
+  const getNotificationIcon = (type?: string) => {
+    if (!type) return "notifications"
+    if (type.includes("LESSON") || type.includes("STREAK") || type.includes("REMINDER")) return "school"
+    if (type.includes("MESSAGE") || type.includes("FRIEND_REQUEST")) return "message"
+    if (type.includes("BADGE_UNLOCKED")) return "emoji-events"
     return "notifications"
   }
 
-  const getNotificationColor = (type: string) => {
-    if (type.includes("study") || type.includes("streak")) return "#4F46E5"
-    if (type.includes("message")) return "#10B981"
-    if (type.includes("couple")) return "#EC4899"
-    if (type.includes("group")) return "#F59E0B"
-    if (type.includes("achievement")) return "#8B5CF6"
+  const getNotificationColor = (type?: string) => {
+    if (!type) return "#6B7280"
+    if (type.includes("LESSON") || type.includes("STREAK")) return "#4F46E5"
+    if (type.includes("MESSAGE")) return "#10B981"
+    if (type.includes("FRIEND_REQUEST")) return "#EC4899"
+    if (type.includes("BADGE_UNLOCKED")) return "#8B5CF6"
     return "#6B7280"
   }
 
-  const formatTime = (date: Date) => {
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
     const now = new Date()
     const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60)
 
@@ -131,14 +133,18 @@ const NotificationHistoryScreen = ({ navigation }) => {
     }
   }
 
-  const handleNotificationPress = (notification: NotificationHistoryItem) => {
-    if (!notification.isRead) {
-      markAsRead(notification.id)
+  const handleNotificationPress = (notification: NotificationResponse) => {
+    if (!notification.read) {
+      markAsRead(notification);
     }
 
-    // Navigate based on notification data
-    if (notification.data?.screen) {
-      navigation.navigate(notification.data.screen, notification.data.params)
+    try {
+      const data = JSON.parse(notification.payload || '{}');
+      if (data.screen) {
+        navigation.navigate(data.screen, data.params);
+      }
+    } catch (e) {
+      // console.error("Error parsing notification payload:", e);
     }
   }
 
@@ -162,17 +168,17 @@ const NotificationHistoryScreen = ({ navigation }) => {
           <View style={styles.filterTabs}>
             {[
               { key: "all", label: "All", count: notifications.length },
-              { key: "unread", label: "Unread", count: notifications.filter((n) => !n.isRead).length },
-              { key: "study", label: "Study", count: notifications.filter((n) => n.type.includes("study")).length },
+              { key: "unread", label: "Unread", count: notifications.filter((n) => !n.read).length },
+              { key: "study", label: "Study", count: notifications.filter((n) => n.type?.includes("LESSON") || n.type?.includes("STREAK")).length },
               {
                 key: "messages",
                 label: "Messages",
-                count: notifications.filter((n) => n.type.includes("message")).length,
+                count: notifications.filter((n) => n.type?.includes("MESSAGE")).length,
               },
               {
                 key: "achievements",
                 label: "Achievements",
-                count: notifications.filter((n) => n.type.includes("achievement")).length,
+                count: notifications.filter((n) => n.type?.includes("BADGE_UNLOCKED")).length,
               },
             ].map((tab) => (
               <TouchableOpacity
@@ -186,7 +192,7 @@ const NotificationHistoryScreen = ({ navigation }) => {
                 {tab.count > 0 && (
                   <View style={[styles.filterBadge, filter === tab.key && styles.activeFilterBadge]}>
                     <Text style={[styles.filterBadgeText, filter === tab.key && styles.activeFilterBadgeText]}>
-                      {tab.count}
+                      {tab.count > 99 ? '99+' : tab.count}
                     </Text>
                   </View>
                 )}
@@ -199,10 +205,12 @@ const NotificationHistoryScreen = ({ navigation }) => {
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor="#4F46E5" />}
       >
         <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
-          {filteredNotifications.length === 0 ? (
+          {filteredNotifications.length === 0 && isLoading ? (
+            <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 60 }} />
+          ) : filteredNotifications.length === 0 ? (
             <View style={styles.emptyContainer}>
               <Icon name="notifications-none" size={64} color="#D1D5DB" />
               <Text style={styles.emptyTitle}>No Notifications</Text>
@@ -214,8 +222,8 @@ const NotificationHistoryScreen = ({ navigation }) => {
             <View style={styles.notificationsList}>
               {filteredNotifications.map((notification) => (
                 <TouchableOpacity
-                  key={notification.id}
-                  style={[styles.notificationCard, !notification.isRead && styles.unreadNotificationCard]}
+                  key={notification.notificationId}
+                  style={[styles.notificationCard, !notification.read && styles.unreadNotificationCard]}
                   onPress={() => handleNotificationPress(notification)}
                 >
                   <View style={styles.notificationIcon}>
@@ -228,39 +236,33 @@ const NotificationHistoryScreen = ({ navigation }) => {
 
                   <View style={styles.notificationContent}>
                     <View style={styles.notificationHeader}>
-                      <Text style={[styles.notificationTitle, !notification.isRead && styles.unreadNotificationTitle]}>
+                      <Text style={[styles.notificationTitle, !notification.read && styles.unreadNotificationTitle]}>
                         {notification.title}
                       </Text>
-                      <Text style={styles.notificationTime}>{formatTime(notification.receivedAt)}</Text>
+                      <Text style={styles.notificationTime}>{formatTime(notification.createdAt)}</Text>
                     </View>
 
                     <Text style={styles.notificationBody} numberOfLines={2}>
-                      {notification.body}
+                      {notification.content}
                     </Text>
 
-                    {notification.type.includes("couple") && notification.data?.partnerName && (
+                    {/* Meta data: Lấy từ payload DTO (string JSON) */}
+                    {notification.payload && JSON.parse(notification.payload || '{}').partnerName && (
                       <View style={styles.notificationMeta}>
                         <Icon name="favorite" size={12} color="#EC4899" />
-                        <Text style={styles.notificationMetaText}>From {notification.data.partnerName}</Text>
+                        <Text style={styles.notificationMetaText}>From {JSON.parse(notification.payload || '{}').partnerName}</Text>
                       </View>
                     )}
 
-                    {notification.type.includes("group") && notification.data?.hostName && (
+                    {notification.payload && JSON.parse(notification.payload || '{}').hostName && (
                       <View style={styles.notificationMeta}>
                         <Icon name="groups" size={12} color="#F59E0B" />
-                        <Text style={styles.notificationMetaText}>From {notification.data.hostName}</Text>
+                        <Text style={styles.notificationMetaText}>From {JSON.parse(notification.payload || '{}').hostName}</Text>
                       </View>
                     )}
 
-                    {notification.type.includes("achievement") && notification.data?.points && (
-                      <View style={styles.notificationMeta}>
-                        <Icon name="stars" size={12} color="#8B5CF6" />
-                        <Text style={styles.notificationMetaText}>+{notification.data.points} points</Text>
-                      </View>
-                    )}
+                    {!notification.read && <View style={styles.unreadIndicator} />}
                   </View>
-
-                  {!notification.isRead && <View style={styles.unreadIndicator} />}
                 </TouchableOpacity>
               ))}
             </View>

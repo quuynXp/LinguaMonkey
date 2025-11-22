@@ -15,6 +15,7 @@ import { useUserStore } from "../../stores/UserStore";
 import { useTokenStore } from "../../stores/tokenStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 
 type SetupInitScreenProps = {
@@ -920,7 +921,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   )
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <Animated.View
         style={[
           styles.content,
@@ -955,7 +956,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
           </TouchableOpacity>
         </View>
       </Animated.View>
-    </View>
+    </ScreenLayout>
   )
 }
 

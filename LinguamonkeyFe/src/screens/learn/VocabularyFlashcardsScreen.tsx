@@ -2,408 +2,486 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Dimensions,
-  FlatList,
-  Image,
-  Modal,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
+  FlatList,
+  Image,
+  Modal,
+  ScrollView,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useFlashcards } from "../../hooks/useFlashcard";
-import {Flashcard} from "../../types/api" 
-import { useTranslation } from 'react-i18next'; 
+import { useTranslation } from 'react-i18next';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { FlashcardResponse, CreateFlashcardRequest } from '../../types/dto';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 const { width } = Dimensions.get("window")
 
 const categories = ["All", "General", "Academic", "Business", "Travel", "Technology"];
 
-const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
-  const { t } = useTranslation(); 
-  const lessonIdFromRoute: string | null = route?.params?.lessonId ?? null;
-  const limit = 50;
+type Flashcard = FlashcardResponse & {
+  author?: string;
+  isFavorite?: boolean;
+  isLiked?: boolean;
+  likes?: number;
+  difficulty?: string;
+  category?: string;
+  word?: string;
+  definition?: string;
+  image?: string;
+  example?: string;
+};
 
-  const { useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
-  const dueQuery = useGetDue(lessonIdFromRoute, limit);
-  const { reviewFlashcard, isReviewing } = useReviewFlashcard();
-  const { createFlashcard } = useCreateFlashcard ? useCreateFlashcard() : { createFlashcard: undefined };
-
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All")
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [studyMode, setStudyMode] = useState<"definition" | "image">("definition")
-  const [currentCardIndex, setCurrentCardIndex] = useState(0)
-  const [showAnswer, setShowAnswer] = useState(false)
-  const [isStudying, setIsStudying] = useState(false)
-
-  const [newCard, setNewCard] = useState({
-    word: "",
-    definition: "",
-    example: "",
-    image: "",
-    isPublic: true,
-    difficulty: "beginner" as "beginner" | "intermediate" | "advanced",
-    category: "General",
-  })
-
-  const apiFlashcards: Flashcard[] = dueQuery.data ?? [];
-
-  const filteredFlashcards = useMemo(() => {
-    return apiFlashcards.filter((card) => {
-      const matchesSearch =
-        card.word?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (card.definition ?? "").toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesCategory = selectedCategory === "All" || (card.category ?? "General") === selectedCategory
-      return matchesSearch && matchesCategory
-    })
-  }, [apiFlashcards, searchQuery, selectedCategory])
-
-  useEffect(() => {
-    if (currentCardIndex >= filteredFlashcards.length && filteredFlashcards.length > 0) {
-      setCurrentCardIndex(0)
-    }
-  }, [filteredFlashcards.length])
-
-  const startStudySession = (mode: "definition" | "image") => {
-    if (filteredFlashcards.length === 0) {
-      Alert.alert(t("flashcards.noCardsTitle"), t("flashcards.noCardsMessage")) // <-- DỊCH
-      return
-    }
-    setStudyMode(mode)
-    setCurrentCardIndex(0)
-    setShowAnswer(false)
-    setIsStudying(true)
-  }
-
-  const nextCard = () => {
-    if (currentCardIndex < filteredFlashcards.length - 1) {
-      setCurrentCardIndex((prev) => prev + 1)
-      setShowAnswer(false)
-    } else {
-      setIsStudying(false)
-      Alert.alert(t("flashcards.studyCompleteTitle"), t("flashcards.studyCompleteMessage")) // <-- DỊCH
-    }
-  }
-
-  const handleCreateCardLocal = () => {
-    if (!newCard.word || !newCard.definition) {
-      Alert.alert(t("common.error"), t("flashcards.fillWordAndDefinition")) // <-- DỊCH
-      return
-    }
-    Alert.alert(t("common.success"), t("flashcards.createLocalSuccess")) // <-- DỊCH
-    setShowCreateModal(false)
-  }
-
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(t("flashcards.permissionDenied")); 
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 1,
-    });
-
-    if (!result.canceled) {
-      setNewCard((prev) => ({ ...prev, image: result.assets[0].uri }));
-    }
-  };
-
-  const onPressQuality = async (flashcard: Flashcard, q: number) => {
-    try {
-      await reviewFlashcard({ flashcardId: flashcard.id, quality: q });
-      await dueQuery.refetch();
-      if (isStudying) {
-        if (currentCardIndex < filteredFlashcards.length - 1) {
-          setCurrentCardIndex((prev) => prev + 1);
-          setShowAnswer(false);
-        } else {
-          setIsStudying(false);
-          Alert.alert(t("flashcards.reviewDoneTitle"), t("flashcards.reviewDoneMessage")); // <-- DỊCH
-        }
-      }
-    } catch (err) {
-      console.error(err);
-      Alert.alert(t("common.error"), t("flashcards.reviewFailed")); // <-- DỊCH
-    }
-  }
-
-  const renderFlashcard = ({ item }: { item: Flashcard }) => (
-    <View style={styles.flashcardItem}>
-      <View style={styles.cardHeader}>
-        <View>
-          <Text style={styles.cardWord}>{item.word}</Text>
-          <Text style={styles.cardAuthor}>by {item.author ?? t("common.unknown")}</Text> 
-        </View>
-        <View style={styles.cardActions}>
-          <TouchableOpacity onPress={() => Alert.alert(t("flashcards.favorite"), t("flashcards.implementFavorite"))}> 
-            <Icon
-              name={item.isFavorite ? "favorite" : "favorite-border"}
-              size={24}
-              color={item.isFavorite ? "#FF6B6B" : "#666"}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => Alert.alert(t("flashcards.like"), t("flashcards.implementLike"))} style={styles.likeButton}> 
-            <Icon
-              name={item.isLiked ? "thumb-up" : "thumb-up-off-alt"}
-              size={20}
-              color={item.isLiked ? "#4ECDC4" : "#666"}
-            />
-            <Text style={styles.likeCount}>{item.likes ?? 0}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {item.image && <Image source={{ uri: item.image }} style={styles.cardImage} />}
-
-      <Text style={styles.cardDefinition}>{item.definition}</Text>
-      {item.example && <Text style={styles.cardExample}>{t("flashcards.exampleLabel")} {item.example}</Text>} 
-
-      <View style={styles.cardFooter}>
-        <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(item.difficulty ?? "beginner") }]}>
-          <Text style={styles.difficultyText}>{item.difficulty ?? "beginner"}</Text> 
-        </View>
-        <Text style={styles.categoryText}>{item.category ?? "General"}</Text> 
-      </View>
-    </View>
-  )
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "beginner":
-        return "#4CAF50"
-      case "intermediate":
-        return "#FF9800"
-      case "advanced":
-        return "#F44336"
-      default:
-        return "#9E9E9E"
-    }
-  }
-
-  if (isStudying) {
-    if (dueQuery.isLoading) {
-      return (
-        <SafeAreaView style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-          <ActivityIndicator size="large" />
-        </SafeAreaView>
-      );
-    }
-
-    const currentCard = filteredFlashcards[currentCardIndex];
-    if (!currentCard) {
-      return (
-        <SafeAreaView style={styles.container}>
-          <View style={styles.studyHeader}>
-            <TouchableOpacity onPress={() => setIsStudying(false)}>
-              <Icon name="close" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.studyProgress}>0 / 0</Text> 
-            <View />
-          </View>
-          <View style={styles.studyCard}>
-            <Text>{t("flashcards.noCardsAvailable")}</Text> 
-          </View>
-        </SafeAreaView>
-      );
-    }
-
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.studyHeader}>
-          <TouchableOpacity onPress={() => setIsStudying(false)}>
-            <Icon name="close" size={24} color="#333" />
-          </TouchableOpacity>
-          <Text style={styles.studyProgress}>
-            {t("flashcards.proprogress_flashcardgress", { current: currentCardIndex + 1, total: filteredFlashcards.length })} 
-          </Text>
-          <View />
-        </View>
-
-        <View style={styles.studyCard}>
-          {studyMode === "image" && currentCard.image ? (
-            <View>
-              <Image source={{ uri: currentCard.image }} style={styles.studyImage} />
-              <Text style={styles.studyPrompt}>{t("flashcards.imagePrompt")}</Text> 
-            </View>
-          ) : (
-            <View>
-              <Text style={styles.studyWord}>{currentCard.word}</Text>
-              <Text style={styles.studyPrompt}>{t("flashcards.definitionPrompt")}</Text> 
-            </View>
-          )}
-
-          {showAnswer && (
-            <View style={styles.answerSection}>
-              <Text style={styles.answerLabel}>{t("flashcards.answerLabel")}</Text> 
-              {studyMode === "image" ? (
-                <Text style={styles.answerText}>{currentCard.word}</Text>
-              ) : (
-                <Text style={styles.answerText}>{currentCard.definition}</Text>
-              )}
-              {currentCard.example && <Text style={styles.exampleText}>{t("flashcards.exampleLabel")} {currentCard.example}</Text>} 
-            </View>
-          )}
-        </View>
-
-        <View style={styles.studyActions}>
-          {!showAnswer ? (
-            <TouchableOpacity style={styles.showAnswerButton} onPress={() => setShowAnswer(true)}>
-              <Text style={styles.showAnswerText}>{t("flashcards.showAnswer")}</Text> 
-            </TouchableOpacity>
-          ) : (
-            <>
-              <View style={styles.qualityButtonsRow}>
-                {[0, 1, 2, 3, 4, 5].map(q => (
-                  <TouchableOpacity
-                    key={q}
-                    style={styles.qualityButton}
-                    disabled={isReviewing}
-                    onPress={() => onPressQuality(currentCard, q)}
-                  >
-                    <Text style={styles.qualityText}>{q}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <TouchableOpacity style={styles.nextButton} onPress={nextCard}>
-                <Text style={styles.nextButtonText}>{t("common.skip")}</Text> 
-              </TouchableOpacity>
-            </>
-          )}
-        </View>
-      </SafeAreaView>
-    )
-  }
-
-  // MAIN LIST VIEW
-  return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#333" />
-        </TouchableOpacity>
-        <Text style={styles.title}>{t("flashcards.title")}</Text> 
-        <TouchableOpacity onPress={() => setShowCreateModal(true)}>
-          <Icon name="add" size={24} color="#4ECDC4" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.searchSection}>
-        <View style={styles.searchBar}>
-          <Icon name="search" size={20} color="#666" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder={t("flashcards.searchPlaceholder")} 
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
-
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-        {categories.map((category) => ( 
-          <TouchableOpacity
-            key={category}
-            style={[styles.categoryChip, selectedCategory === category && styles.selectedCategoryChip]}
-            onPress={() => setSelectedCategory(category)}
-          >
-            <Text style={[styles.categoryChipText, selectedCategory === category && styles.selectedCategoryChipText]}>
-              {t(`flashcards.categories.${category.toLowerCase()}`)} 
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
-      <View style={styles.studyModeSection}>
-        <Text style={styles.sectionTitle}>{t("flashcards.studyModes")}</Text> 
-        <View style={styles.studyModeButtons}>
-          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("definition")}>
-            <Icon name="quiz" size={24} color="#4ECDC4" />
-            <Text style={styles.studyModeText}>{t("flashcards.definitionStudy")}</Text> 
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("image")}>
-            <Icon name="image" size={24} color="#FF6B6B" />
-            <Text style={styles.studyModeText}>{t("flashcards.imageStudy")}</Text> 
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {dueQuery.isLoading ? (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-          <ActivityIndicator size="large" />
-        </View>
-      ) : dueQuery.isError ? (
-        <View style={{ padding: 20 }}>
-          <Text>{t("flashcards.loadError")}</Text> 
-        </View>
-      ) : (
-        <FlatList
-          data={filteredFlashcards}
-          renderItem={renderFlashcard}
-          keyExtractor={(item) => item.id}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.flashcardsList}
-        />
-      )}
-
-      <Modal visible={showCreateModal} animationType="slide">
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <Icon name="close" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>{t("flashcards.createTitle")}</Text> 
-            <TouchableOpacity onPress={handleCreateCardLocal}>
-              <Text style={styles.saveButton}>{t("common.save")}</Text> 
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            {/* ... same inputs as before ... */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t("flashcards.form.word")} *</Text> 
-              <TextInput
-                style={styles.textInput}
-                value={newCard.word}
-                onChangeText={(text) => setNewCard((prev) => ({ ...prev, word: text }))}
-                placeholder={t("flashcards.form.wordPlaceholder")} 
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t("flashcards.form.definition")} *</Text> 
-              <TextInput
-                style={[styles.textInput, styles.multilineInput]}
-                value={newCard.definition}
-                onChangeText={(text) => setNewCard((prev) => ({ ...prev, definition: text }))}
-                placeholder={t("flashcards.form.definitionPlaceholder")} 
-                multiline
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t("flashcards.form.image")} ({t("common.optional")})</Text> 
-              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                <Icon name="add-a-photo" size={24} color="#666" />
-                <Text style={styles.imageButtonText}>{t("flashcards.form.addImage")}</Text> 
-              </TouchableOpacity>
-              {newCard.image && <Image source={{ uri: newCard.image }} style={styles.previewImage} />}
-            </View>
-          </ScrollView>
-        </SafeAreaView>
-      </Modal>
-    </SafeAreaView>
-  )
+interface NewCardState {
+  front: string;
+  back: string;
+  exampleSentence: string;
+  imageUrl: string;
+  tags: string;
 }
 
+const initialNewCardState: NewCardState = {
+  front: "",
+  back: "",
+  exampleSentence: "",
+  imageUrl: "",
+  tags: "",
+};
+
+
+const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
+  const { t } = useTranslation();
+  const lessonIdFromRoute: string | null = route?.params?.lessonId ?? null;
+  const limit = 50;
+
+  const { useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
+
+  const { mutateAsync: createFlashcard, isPending: isCreating } = useCreateFlashcard();
+  const dueQuery = useGetDue(lessonIdFromRoute, limit);
+  const { mutateAsync: reviewFlashcard, isPending: isReviewing } = useReviewFlashcard();
+
+
+  const [searchQuery, setSearchQuery] = useState("")
+  const [selectedCategory, setSelectedCategory] = useState("All")
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [studyMode, setStudyMode] = useState<"definition" | "image">("definition")
+  const [currentCardIndex, setCurrentCardIndex] = useState(0)
+  const [showAnswer, setShowAnswer] = useState(false)
+  const [isStudying, setIsStudying] = useState(false)
+
+  const [newCard, setNewCard] = useState<NewCardState>(initialNewCardState)
+
+  const apiFlashcards: Flashcard[] = useMemo(() => {
+    return (dueQuery.data || []).map(card => ({
+      ...card,
+      word: card.front,
+      definition: card.back,
+      image: card.imageUrl,
+      example: card.exampleSentence,
+      author: "User",
+      isFavorite: false,
+      isLiked: false,
+      likes: 0,
+      difficulty: 'beginner',
+      category: 'General'
+    })) as Flashcard[];
+  }, [dueQuery.data]);
+
+  const filteredFlashcards: Flashcard[] = useMemo(() => {
+    return apiFlashcards.filter((card) => {
+      const matchesSearch =
+        card.word?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (card.definition ?? "").toLowerCase().includes(searchQuery.toLowerCase())
+
+      const matchesCategory = selectedCategory === "All" || (card.tags ?? "General").includes(selectedCategory);
+
+      return matchesSearch && matchesCategory;
+    })
+  }, [apiFlashcards, searchQuery, selectedCategory])
+
+  useEffect(() => {
+    if (currentCardIndex >= filteredFlashcards.length && filteredFlashcards.length > 0) {
+      setCurrentCardIndex(0)
+    }
+  }, [filteredFlashcards.length])
+
+  const startStudySession = (mode: "definition" | "image") => {
+    if (filteredFlashcards.length === 0) {
+      Alert.alert(t("flashcards.noCardsTitle") ?? "No Cards", t("flashcards.noCardsMessage") ?? "No cards available for study.");
+      return
+    }
+    setStudyMode(mode)
+    setCurrentCardIndex(0)
+    setShowAnswer(false)
+    setIsStudying(true)
+  }
+
+  const nextCard = () => {
+    if (currentCardIndex < filteredFlashcards.length - 1) {
+      setCurrentCardIndex((prev) => prev + 1)
+      setShowAnswer(false)
+    } else {
+      setIsStudying(false)
+      Alert.alert(t("flashcards.studyCompleteTitle") ?? "Study Complete", t("flashcards.studyCompleteMessage") ?? "You have finished this study session!")
+    }
+  }
+
+  const handleCreateCard = async () => {
+    if (!createFlashcard) return Alert.alert(t("common.error"), "Create API not available.");
+    if (!lessonIdFromRoute) return Alert.alert(t("common.error"), t("flashcards.lessonIdMissing") ?? "Lesson ID is missing.");
+
+    if (!newCard.front || !newCard.back) {
+      Alert.alert(t("common.error"), t("flashcards.fillWordAndDefinition") ?? "Please fill in the word and definition.");
+      return
+    }
+
+    try {
+      const payload: CreateFlashcardRequest = {
+        lessonId: lessonIdFromRoute,
+        front: newCard.front,
+        back: newCard.back,
+        exampleSentence: newCard.exampleSentence,
+        imageUrl: newCard.imageUrl,
+        tags: newCard.tags,
+        audioUrl: "",
+      };
+
+      await createFlashcard({ lessonId: lessonIdFromRoute, payload });
+      Alert.alert(t("common.success"), t("flashcards.createSuccess") ?? "Flashcard created successfully!");
+      setNewCard(initialNewCardState);
+      setShowCreateModal(false);
+      dueQuery.refetch();
+    } catch (err) {
+      Alert.alert(t("common.error"), t("flashcards.createFailed") ?? "Failed to create flashcard.");
+    }
+  }
+
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(t("flashcards.permissionDenied") ?? "Permission denied.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setNewCard((prev) => ({ ...prev, imageUrl: result.assets[0].uri }));
+    }
+  };
+
+  const onPressQuality = async (flashcard: Flashcard, q: number) => {
+    if (!lessonIdFromRoute) return Alert.alert(t("common.error"), t("flashcards.lessonIdMissing") ?? "Lesson ID is missing.");
+
+    try {
+      await reviewFlashcard({ lessonId: lessonIdFromRoute, flashcardId: flashcard.flashcardId, quality: q });
+
+      if (currentCardIndex < filteredFlashcards.length - 1) {
+        setCurrentCardIndex((prev) => prev + 1);
+        setShowAnswer(false);
+      } else {
+        setIsStudying(false);
+        Alert.alert(t("flashcards.reviewDoneTitle") ?? "Review Done", t("flashcards.reviewDoneMessage") ?? "All due cards reviewed!");
+      }
+    } catch (err) {
+      console.error(err);
+      Alert.alert(t("common.error"), t("flashcards.reviewFailed") ?? "Review failed.");
+    }
+  }
+
+  const renderFlashcard = ({ item }: { item: Flashcard }) => {
+    const difficulty = item.difficulty ?? "beginner";
+    const category = item.category ?? "General";
+    const image = item.image;
+
+    return (
+      <View style={styles.flashcardItem}>
+        <View style={styles.cardHeader}>
+          <View>
+            <Text style={styles.cardWord}>{item.word}</Text>
+            <Text style={styles.cardAuthor}>by {item.author ?? t("common.unknown")}</Text>
+          </View>
+          <View style={styles.cardActions}>
+            <TouchableOpacity onPress={() => Alert.alert(t("flashcards.favorite"), t("flashcards.implementFavorite"))}>
+              <Icon
+                name={item.isFavorite ? "favorite" : "favorite-border"}
+                size={24}
+                color={item.isFavorite ? "#FF6B6B" : "#666"}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => Alert.alert(t("flashcards.like"), t("flashcards.implementLike"))} style={styles.likeButton}>
+              <Icon
+                name={item.isLiked ? "thumb-up" : "thumb-up-off-alt"}
+                size={20}
+                color={item.isLiked ? "#4ECDC4" : "#666"}
+              />
+              <Text style={styles.likeCount}>{item.likes ?? 0}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {image && <Image source={{ uri: image }} style={styles.cardImage} />}
+
+        <Text style={styles.cardDefinition}>{item.definition}</Text>
+        {item.example && <Text style={styles.cardExample}>{t("flashcards.exampleLabel") ?? "Example:"} {item.example}</Text>}
+
+        <View style={styles.cardFooter}>
+          <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(difficulty) }]}>
+            <Text style={styles.difficultyText}>{difficulty}</Text>
+          </View>
+          <Text style={styles.categoryText}>{category}</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const getDifficultyColor = (difficulty: string) => {
+    switch (difficulty) {
+      case "beginner":
+        return "#4CAF50"
+      case "intermediate":
+        return "#FF9800"
+      case "advanced":
+        return "#F44336"
+      default:
+        return "#9E9E9E"
+    }
+  }
+
+  if (isStudying) {
+    if (dueQuery.isLoading) {
+      // FIX LỖI STYLE ARRAY: Trả về View thay vì ScreenLayout
+      return (
+        <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+        </View>
+      );
+    }
+
+    const currentCard = filteredFlashcards[currentCardIndex];
+    if (!currentCard) {
+      return (
+        <ScreenLayout style={styles.container}>
+          <View style={styles.studyHeader}>
+            <TouchableOpacity onPress={() => setIsStudying(false)}>
+              <Icon name="close" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.studyProgress}>0 / 0</Text>
+            <View />
+          </View>
+          <View style={styles.studyCard}>
+            <Text>{t("flashcards.noCardsAvailable") ?? "No cards available."}</Text>
+          </View>
+        </ScreenLayout>
+      );
+    }
+
+    return (
+      <ScreenLayout style={styles.container}>
+        <View style={styles.studyHeader}>
+          <TouchableOpacity onPress={() => setIsStudying(false)}>
+            <Icon name="close" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.studyProgress}>
+            {t("flashcards.progress", { current: currentCardIndex + 1, total: filteredFlashcards.length })}
+          </Text>
+          <View style={{ width: 24 }} />
+        </View>
+
+        <View style={styles.studyCard}>
+          {studyMode === "image" && currentCard.image ? (
+            <View style={styles.studyContentWrap}>
+              <Image source={{ uri: currentCard.image }} style={styles.studyImage} />
+              <Text style={styles.studyPrompt}>{t("flashcards.imagePrompt") ?? "What is this word?"}</Text>
+            </View>
+          ) : (
+            <View style={styles.studyContentWrap}>
+              <Text style={styles.studyWord}>{currentCard.word}</Text>
+              <Text style={styles.studyPrompt}>{t("flashcards.definitionPrompt") ?? "What is the definition?"}</Text>
+            </View>
+          )}
+
+          {showAnswer && (
+            <View style={styles.answerSection}>
+              <Text style={styles.answerLabel}>{t("flashcards.answerLabel") ?? "Answer:"}</Text>
+              {studyMode === "image" ? (
+                <Text style={styles.answerText}>{currentCard.word}</Text>
+              ) : (
+                <Text style={styles.answerText}>{currentCard.definition}</Text>
+              )}
+              {currentCard.example && <Text style={styles.exampleText}>{t("flashcards.exampleLabel") ?? "Example:"} {currentCard.example}</Text>}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.studyActions}>
+          {!showAnswer ? (
+            <TouchableOpacity style={styles.showAnswerButton} onPress={() => setShowAnswer(true)}>
+              <Text style={styles.showAnswerText}>{t("flashcards.showAnswer") ?? "Show Answer"}</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <View style={styles.qualityButtonsRow}>
+                {[0, 1, 2, 3, 4, 5].map(q => (
+                  <TouchableOpacity
+                    key={q}
+                    style={[styles.qualityButton, isReviewing && styles.qualityButtonDisabled]}
+                    disabled={isReviewing}
+                    onPress={() => onPressQuality(currentCard, q)}
+                  >
+                    <Text style={styles.qualityText}>{q}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+      </ScreenLayout>
+    )
+  }
+
+  // MAIN LIST VIEW
+  return (
+    <ScreenLayout style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color="#333" />
+        </TouchableOpacity>
+        <Text style={styles.title}>{t("flashcards.title") ?? "Flashcards"}</Text>
+        <TouchableOpacity onPress={() => setShowCreateModal(true)}>
+          <Icon name="add" size={24} color="#4ECDC4" />
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.searchSection}>
+        <View style={styles.searchBar}>
+          <Icon name="search" size={20} color="#666" />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t("flashcards.searchPlaceholder") ?? "Search vocabulary"}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
+        {categories.map((category) => (
+          <TouchableOpacity
+            key={category}
+            style={[styles.categoryChip, selectedCategory === category && styles.selectedCategoryChip]}
+            onPress={() => setSelectedCategory(category)}
+          >
+            <Text style={[styles.categoryChipText, selectedCategory === category && styles.selectedCategoryChipText]}>
+              {t(`flashcards.categories.${category.toLowerCase()}`) ?? category}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
+      <View style={styles.studyModeSection}>
+        <Text style={styles.sectionTitle}>{t("flashcards.studyModes") ?? "Study Modes"}</Text>
+        <View style={styles.studyModeButtons}>
+          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("definition")}>
+            <Icon name="quiz" size={24} color="#4ECDC4" />
+            <Text style={styles.studyModeText}>{t("flashcards.definitionStudy") ?? "Definition Study"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("image")}>
+            <Icon name="image" size={24} color="#FF6B6B" />
+            <Text style={styles.studyModeText}>{t("flashcards.imageStudy") ?? "Image Study"}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {dueQuery.isLoading ? (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+          <ActivityIndicator size="large" color="#4ECDC4" />
+        </View>
+      ) : dueQuery.isError ? (
+        <View style={{ padding: 20 }}>
+          <Text style={{ color: '#F44336' }}>{t("flashcards.loadError") ?? "Failed to load due flashcards."}</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={filteredFlashcards}
+          renderItem={renderFlashcard}
+          keyExtractor={(item) => item.flashcardId}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.flashcardsList}
+        />
+      )}
+
+      {/* Create Modal */}
+      <Modal visible={showCreateModal} animationType="slide">
+        <SafeAreaView style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+              <Icon name="close" size={24} color="#333" />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>{t("flashcards.createTitle") ?? "Create Flashcard"}</Text>
+            <TouchableOpacity onPress={handleCreateCard} disabled={isCreating}>
+              {isCreating ? (
+                <ActivityIndicator size="small" color="#4ECDC4" />
+              ) : (
+                <Text style={styles.saveButton}>{t("common.save") ?? "Save"}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalContent}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t("flashcards.form.word") ?? "Word"} *</Text>
+              <TextInput
+                style={styles.textInput}
+                value={newCard.front}
+                onChangeText={(text) => setNewCard((prev) => ({ ...prev, front: text }))}
+                placeholder={t("flashcards.form.wordPlaceholder") ?? "Enter new word"}
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t("flashcards.form.definition") ?? "Definition"} *</Text>
+              <TextInput
+                style={[styles.textInput, styles.multilineInput]}
+                value={newCard.back}
+                onChangeText={(text) => setNewCard((prev) => ({ ...prev, back: text }))}
+                placeholder={t("flashcards.form.definitionPlaceholder") ?? "Enter definition"}
+                multiline
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t("flashcards.form.example") ?? "Example Sentence"} ({t("common.optional")})</Text>
+              <TextInput
+                style={[styles.textInput, styles.multilineInput]}
+                value={newCard.exampleSentence}
+                onChangeText={(text) => setNewCard((prev) => ({ ...prev, exampleSentence: text }))}
+                placeholder={t("flashcards.form.examplePlaceholder") ?? "Enter example sentence"}
+                multiline
+              />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t("flashcards.form.image")} ({t("common.optional")})</Text>
+              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                <Icon name="add-a-photo" size={24} color="#666" />
+                <Text style={styles.imageButtonText}>{t("flashcards.form.addImage") ?? "Add Image"}</Text>
+              </TouchableOpacity>
+              {newCard.imageUrl && <Image source={{ uri: newCard.imageUrl }} style={styles.previewImage} />}
+            </View>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+    </ScreenLayout>
+  );
+}
 
 const styles = createScaledSheet({
   container: {
@@ -471,6 +549,7 @@ const styles = createScaledSheet({
     backgroundColor: "#FFFFFF",
     padding: 20,
     marginTop: 10,
+    marginBottom: 10,
   },
   sectionTitle: {
     fontSize: 16,
@@ -488,6 +567,8 @@ const styles = createScaledSheet({
     padding: 20,
     borderRadius: 12,
     flex: 0.45,
+    borderWidth: 1,
+    borderColor: '#E0E0E0'
   },
   studyModeText: {
     marginTop: 8,
@@ -505,8 +586,11 @@ const styles = createScaledSheet({
     marginHorizontal: 4,
     paddingVertical: 12,
     borderRadius: 8,
-    backgroundColor: "#F0F0F0",
+    backgroundColor: "#E5E7EB",
     alignItems: "center",
+  },
+  qualityButtonDisabled: {
+    opacity: 0.5,
   },
   qualityText: {
     fontSize: 16,
@@ -615,6 +699,10 @@ const styles = createScaledSheet({
     alignItems: "center",
     padding: 30,
   },
+  studyContentWrap: {
+    alignItems: 'center',
+    width: '100%',
+  },
   studyImage: {
     width: width - 60,
     height: 200,
@@ -667,17 +755,6 @@ const styles = createScaledSheet({
     alignItems: "center",
   },
   showAnswerText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  nextButton: {
-    backgroundColor: "#45B7D1",
-    paddingVertical: 15,
-    borderRadius: 25,
-    alignItems: "center",
-  },
-  nextButtonText: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
@@ -755,89 +832,6 @@ const styles = createScaledSheet({
     borderRadius: 8,
     marginTop: 10,
   },
-  difficultyButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  difficultyButton: {
-    flex: 0.3,
-    backgroundColor: "#F0F0F0",
-    paddingVertical: 10,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  selectedDifficultyButton: {
-    backgroundColor: "#4ECDC4",
-  },
-  difficultyButtonText: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "500",
-  },
-  selectedDifficultyButtonText: {
-    color: "#FFFFFF",
-  },
-  categoryButtons: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  categoryButton: {
-    backgroundColor: "#F0F0F0",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-    marginBottom: 8,
-    minWidth: "30%",
-    alignItems: "center",
-  },
-  selectedCategoryButton: {
-    backgroundColor: "#4ECDC4",
-  },
-  categoryButtonText: {
-    fontSize: 12,
-    color: "#666",
-    fontWeight: "500",
-  },
-  selectedCategoryButtonText: {
-    color: "#FFFFFF",
-  },
-  switchGroup: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 20,
-  },
-  switchLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-  },
-  switch: {
-    width: 50,
-    height: 30,
-    backgroundColor: "#E0E0E0",
-    borderRadius: 15,
-    justifyContent: "center",
-    paddingHorizontal: 2,
-  },
-  switchActive: {
-    backgroundColor: "#4ECDC4",
-  },
-  switchThumb: {
-    width: 26,
-    height: 26,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 13,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  switchThumbActive: {
-    alignSelf: "flex-end",
-  },
-})
+});
 
 export default VocabularyFlashcardsScreen

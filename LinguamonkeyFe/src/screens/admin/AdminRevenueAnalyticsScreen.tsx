@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -21,6 +20,7 @@ import { LineChart, BarChart, PieChart } from "react-native-chart-kit";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { resetToAuth } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const { width } = Dimensions.get("window");
 type Period = "week" | "month" | "year" | "custom";
@@ -229,7 +229,7 @@ const AdminRevenueAnalyticsScreen = () => {
   }));
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <ScrollView
         style={styles.content}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
@@ -381,7 +381,7 @@ const AdminRevenueAnalyticsScreen = () => {
           </View>
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 };
 

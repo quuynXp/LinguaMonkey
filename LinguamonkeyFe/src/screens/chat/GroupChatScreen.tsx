@@ -21,6 +21,7 @@ import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import instance from "../../api/axiosInstance";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 // --- Kiểu dữ liệu từ API (Dựa trên schema và controller) ---
 type ApiRoomInfo = {
@@ -65,10 +66,10 @@ const GroupChatScreen = () => {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<ChatRoomParams, 'ChatRoom'>>();
   const queryClient = useQueryClient();
-  
+
   const { roomId, roomName: initialRoomName } = route.params;
   const { user } = useUserStore();
-  
+
   // --- STATE CỤC BỘ CHO UI ---
   const [inputText, setInputText] = useState("");
   const [showRoomSettings, setShowRoomSettings] = useState(false);
@@ -111,7 +112,7 @@ const GroupChatScreen = () => {
     queryFn: async () => {
       // GET /api/v1/rooms/{roomId}/members (API bạn vừa thêm ở bước 1)
       const response = await instance.get(`/api/v1/rooms/${roomId}/members`);
-      return response.data.result; 
+      return response.data.result;
     },
     enabled: !!roomId, // Chỉ chạy khi có roomId
   });
@@ -119,9 +120,9 @@ const GroupChatScreen = () => {
   // --- API DỊCH (GIỮ NGUYÊN) ---
   const { mutate: translateMutate, isPending: isTranslating } = useMutation({
     mutationFn: async ({ text, targetLanguage, messageId }: { text: string, targetLanguage: string, messageId: string }) => {
-      const response = await instance.post('/api/py/translate', { 
-        text, 
-        target_lang: targetLanguage 
+      const response = await instance.post('/api/py/translate', {
+        text,
+        target_lang: targetLanguage
       });
       return { translated_text: response.data.translated_text, messageId };
     },
@@ -146,12 +147,12 @@ const GroupChatScreen = () => {
       return instance.put(`/api/v1/rooms/${roomId}`, payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['roomInfo', roomId] }); 
+      queryClient.invalidateQueries({ queryKey: ['roomInfo', roomId] });
       setEditingRoomName(false);
     },
     onError: () => { Alert.alert(t('error'), t('group.nameUpdateError')); }
   });
-  
+
   // --- API KICK THÀNH VIÊN (THAY CHO TODO) ---
   const { mutate: kickMemberMutate, isPending: isKicking } = useMutation({
     mutationFn: (userIdToKick: string) => {
@@ -181,7 +182,7 @@ const GroupChatScreen = () => {
       translatedText: localTranslation || msg.translatedText,
       translated: !!(localTranslation || msg.translatedText),
       user: senderInfo?.username || msg.senderId,
-      avatar: senderInfo?.avatarUrl || '👩', 
+      avatar: senderInfo?.avatarUrl || '👩',
     };
   });
 
@@ -223,7 +224,7 @@ const GroupChatScreen = () => {
     const reaction = "👍";
     reactToMessage(messageId, reaction);
   };
-  
+
   // --- UI Handlers (Đã kết nối API) ---
   const shareRoomId = async () => {
     if (!roomInfo) return;
@@ -253,7 +254,7 @@ const GroupChatScreen = () => {
       },
     ]);
   };
-  
+
   const isUserAdmin = roomInfo?.creatorId === user?.id; // Logic check admin
 
   // --- RENDER ---
@@ -318,179 +319,181 @@ const GroupChatScreen = () => {
   );
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
-    >
-      <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Icon name="arrow-back" size={24} color="#374151" />
-          </TouchableOpacity>
-          <View style={styles.roomInfo}>
-            <Text style={styles.roomName}>{roomInfo?.roomName || initialRoomName}</Text>
-            {typingStatus?.isTyping && typingStatus.userId !== user?.id ? (
-               <Text style={styles.memberCount} numberOfLines={1}>{typingStatus.userId} {t("is typing...")}</Text>
-            ) : (
-               <Text style={styles.memberCount}>{roomInfo?.memberCount || 0} {t("group.members")}</Text>
-            )}
-          </View>
-          <TouchableOpacity style={styles.headerButton} onPress={() => setShowRoomSettings(true)}>
-            <Icon name="settings-outline" size={22} color="#6B7280" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Messages */}
-        {(isLoadingMessages || isLoadingRoomInfo) && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
-        <FlatList
-          ref={flatListRef}
-          data={messages}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          style={styles.messagesContainer}
-          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-          showsVerticalScrollIndicator={false}
-        />
-
-        {/* Input */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder={t("group.input.placeholder")}
-            value={inputText}
-            onChangeText={handleTyping}
-            onSubmitEditing={handleSendMessage}
-            returnKeyType="send"
-            multiline
-          />
-          <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
-            <Icon name="send" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
-
-        {/* Room Settings Modal */}
-        <Modal
-          visible={showRoomSettings}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowRoomSettings(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t("group.settings")}</Text>
-                <TouchableOpacity onPress={() => setShowRoomSettings(false)}>
-                  <Icon name="close" size={24} color="#374151" />
-                </TouchableOpacity>
-              </View>
-              {isLoadingRoomInfo || !roomInfo ? <ActivityIndicator style={{ padding: 20 }} /> : (
-              <View style={styles.settingsContent}>
-                {/* Room Name */}
-                <View style={styles.settingItem}>
-                  <Icon name="chatbubbles-outline" size={20} color="#6B7280" />
-                  <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>{t("group.name")}</Text>
-                    {editingRoomName ? (
-                      <View style={styles.editNameContainer}>
-                        <TextInput
-                          style={styles.editNameInput}
-                          value={newRoomName}
-                          onChangeText={setNewRoomName}
-                          onSubmitEditing={handleUpdateRoomName}
-                          autoFocus
-                        />
-                        <TouchableOpacity onPress={handleUpdateRoomName} disabled={isUpdatingRoom}>
-                          {isUpdatingRoom ? <ActivityIndicator size="small" /> : <Icon name="checkmark" size={20} color="#10B981" />}
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity onPress={() => setEditingRoomName(isUserAdmin)}>
-                        <Text style={styles.settingValue}>{roomInfo.roomName}</Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-                {/* Members */}
-                <TouchableOpacity style={styles.settingItem} onPress={() => setShowMembersList(true)}>
-                  <Icon name="people-outline" size={20} color="#6B7280" />
-                  <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>{t("group.members")}</Text>
-                    <Text style={styles.settingValue}>
-                      {roomInfo.memberCount} {t("people")}
-                    </Text>
-                  </View>
-                  <Icon name="chevron-forward" size={16} color="#9CA3AF" />
-                </TouchableOpacity>
-                {/* Room ID */}
-                <View style={styles.settingItem}>
-                  <Icon name="key-outline" size={20} color="#6B7280" />
-                  <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>{t("group.id")}</Text>
-                    <Text style={styles.settingValue}>{roomInfo.roomId}</Text>
-                  </View>
-                  <TouchableOpacity onPress={shareRoomId} style={styles.shareButton}>
-                    <Icon name="share-outline" size={18} color="#3B82F6" />
-                  </TouchableOpacity>
-                </View>
-                {/* Description */}
-                <View style={styles.settingItem}>
-                  <Icon name="document-text-outline" size={20} color="#6B7280" />
-                  <View style={styles.settingInfo}>
-                    <Text style={styles.settingLabel}>{t("group.desc")}</Text>
-                    <Text style={styles.settingValue}>{roomInfo.description}</Text>
-                  </View>
-                </View>
-                {/* Action Buttons */}
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity style={styles.actionButton} onPress={shareRoomId}>
-                    <Icon name="share-outline" size={20} color="#3B82F6" />
-                    <Text style={styles.actionButtonText}>{t("group.share")}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.actionButton}>
-                    <Icon name="notifications-outline" size={20} color="#3B82F6" />
-                    <Text style={styles.actionButtonText}>{t("group.notifications")}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.actionButton, styles.dangerButton]}>
-                    <Icon name="exit-outline" size={20} color="#EF4444" />
-                    <Text style={[styles.actionButtonText, styles.dangerButtonText]}>{t("group.leave")}</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+    <ScreenLayout>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+      >
+        <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Icon name="arrow-back" size={24} color="#374151" />
+            </TouchableOpacity>
+            <View style={styles.roomInfo}>
+              <Text style={styles.roomName}>{roomInfo?.roomName || initialRoomName}</Text>
+              {typingStatus?.isTyping && typingStatus.userId !== user?.id ? (
+                <Text style={styles.memberCount} numberOfLines={1}>{typingStatus.userId} {t("is typing...")}</Text>
+              ) : (
+                <Text style={styles.memberCount}>{roomInfo?.memberCount || 0} {t("group.members")}</Text>
               )}
             </View>
+            <TouchableOpacity style={styles.headerButton} onPress={() => setShowRoomSettings(true)}>
+              <Icon name="settings-outline" size={22} color="#6B7280" />
+            </TouchableOpacity>
           </View>
-        </Modal>
 
-        {/* Members List Modal */}
-        <Modal
-          visible={showMembersList}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowMembersList(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t("group.members.list")}</Text>
-                <TouchableOpacity onPress={() => setShowMembersList(false)}>
-                  <Icon name="close" size={24} color="#374151" />
-                </TouchableOpacity>
-              </View>
-              {isLoadingMembers ? <ActivityIndicator style={{ padding: 20 }}/> :
-              <FlatList
-                data={members}
-                renderItem={renderMember}
-                keyExtractor={(item) => item.userId}
-                style={styles.membersList}
-              />
-              }
-            </View>
+          {/* Messages */}
+          {(isLoadingMessages || isLoadingRoomInfo) && <ActivityIndicator size="large" style={{ marginTop: 20 }} />}
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            style={styles.messagesContainer}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            showsVerticalScrollIndicator={false}
+          />
+
+          {/* Input */}
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder={t("group.input.placeholder")}
+              value={inputText}
+              onChangeText={handleTyping}
+              onSubmitEditing={handleSendMessage}
+              returnKeyType="send"
+              multiline
+            />
+            <TouchableOpacity style={styles.sendButton} onPress={handleSendMessage}>
+              <Icon name="send" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
           </View>
-        </Modal>
-      </View>
-    </KeyboardAvoidingView>
+
+          {/* Room Settings Modal */}
+          <Modal
+            visible={showRoomSettings}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowRoomSettings(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("group.settings")}</Text>
+                  <TouchableOpacity onPress={() => setShowRoomSettings(false)}>
+                    <Icon name="close" size={24} color="#374151" />
+                  </TouchableOpacity>
+                </View>
+                {isLoadingRoomInfo || !roomInfo ? <ActivityIndicator style={{ padding: 20 }} /> : (
+                  <View style={styles.settingsContent}>
+                    {/* Room Name */}
+                    <View style={styles.settingItem}>
+                      <Icon name="chatbubbles-outline" size={20} color="#6B7280" />
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>{t("group.name")}</Text>
+                        {editingRoomName ? (
+                          <View style={styles.editNameContainer}>
+                            <TextInput
+                              style={styles.editNameInput}
+                              value={newRoomName}
+                              onChangeText={setNewRoomName}
+                              onSubmitEditing={handleUpdateRoomName}
+                              autoFocus
+                            />
+                            <TouchableOpacity onPress={handleUpdateRoomName} disabled={isUpdatingRoom}>
+                              {isUpdatingRoom ? <ActivityIndicator size="small" /> : <Icon name="checkmark" size={20} color="#10B981" />}
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <TouchableOpacity onPress={() => setEditingRoomName(isUserAdmin)}>
+                            <Text style={styles.settingValue}>{roomInfo.roomName}</Text>
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                    </View>
+                    {/* Members */}
+                    <TouchableOpacity style={styles.settingItem} onPress={() => setShowMembersList(true)}>
+                      <Icon name="people-outline" size={20} color="#6B7280" />
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>{t("group.members")}</Text>
+                        <Text style={styles.settingValue}>
+                          {roomInfo.memberCount} {t("people")}
+                        </Text>
+                      </View>
+                      <Icon name="chevron-forward" size={16} color="#9CA3AF" />
+                    </TouchableOpacity>
+                    {/* Room ID */}
+                    <View style={styles.settingItem}>
+                      <Icon name="key-outline" size={20} color="#6B7280" />
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>{t("group.id")}</Text>
+                        <Text style={styles.settingValue}>{roomInfo.roomId}</Text>
+                      </View>
+                      <TouchableOpacity onPress={shareRoomId} style={styles.shareButton}>
+                        <Icon name="share-outline" size={18} color="#3B82F6" />
+                      </TouchableOpacity>
+                    </View>
+                    {/* Description */}
+                    <View style={styles.settingItem}>
+                      <Icon name="document-text-outline" size={20} color="#6B7280" />
+                      <View style={styles.settingInfo}>
+                        <Text style={styles.settingLabel}>{t("group.desc")}</Text>
+                        <Text style={styles.settingValue}>{roomInfo.description}</Text>
+                      </View>
+                    </View>
+                    {/* Action Buttons */}
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity style={styles.actionButton} onPress={shareRoomId}>
+                        <Icon name="share-outline" size={20} color="#3B82F6" />
+                        <Text style={styles.actionButtonText}>{t("group.share")}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.actionButton}>
+                        <Icon name="notifications-outline" size={20} color="#3B82F6" />
+                        <Text style={styles.actionButtonText}>{t("group.notifications")}</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.actionButton, styles.dangerButton]}>
+                        <Icon name="exit-outline" size={20} color="#EF4444" />
+                        <Text style={[styles.actionButtonText, styles.dangerButtonText]}>{t("group.leave")}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
+              </View>
+            </View>
+          </Modal>
+
+          {/* Members List Modal */}
+          <Modal
+            visible={showMembersList}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowMembersList(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("group.members.list")}</Text>
+                  <TouchableOpacity onPress={() => setShowMembersList(false)}>
+                    <Icon name="close" size={24} color="#374151" />
+                  </TouchableOpacity>
+                </View>
+                {isLoadingMembers ? <ActivityIndicator style={{ padding: 20 }} /> :
+                  <FlatList
+                    data={members}
+                    renderItem={renderMember}
+                    keyExtractor={(item) => item.userId}
+                    style={styles.membersList}
+                  />
+                }
+              </View>
+            </View>
+          </Modal>
+        </View>
+      </KeyboardAvoidingView>
+    </ScreenLayout>
   );
 };
 

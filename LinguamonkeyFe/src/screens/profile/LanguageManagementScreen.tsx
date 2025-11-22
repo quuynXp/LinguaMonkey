@@ -1,96 +1,58 @@
-import Icon from 'react-native-vector-icons/MaterialIcons'; 
-import React, { useRef, useState } from 'react';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import React, { useRef, useMemo, useCallback } from 'react';
 import {
-    Alert,
-    Animated,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  Animated,
+  ScrollView,
+  Switch,
+  Text,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import ScreenLayout from '../../components/layout/ScreenLayout';
+import { useLanguages } from '../../hooks/useLanguages';
+import { LanguageResponse } from '../../types/dto'; // Import PageResponse
+import { showToast } from '../../components/Toast';
+import { useUserStore } from '../../stores/UserStore'; // Sửa lỗi đường dẫn store
 
-interface Language {
-  id: string;
-  name: string;
-  nativeName: string;
-  flag: string;
-  level: string;
-  progress: number;
-  isActive: boolean;
-  lessonsCompleted: number;
-  totalLessons: number;
-  wordsLearned: number;
-}
+// Giả định hàm helper để thêm cờ
+const getFlagEmoji = (code: string) => {
+  const flags: { [key: string]: string } = {
+    ZH: '🇨🇳', EN: '🇺🇸', JA: '🇯🇵', KO: '🇰🇷', FR: '🇫🇷', VI: '🇻🇳', ES: '🇪🇸'
+  };
+  return flags[code.toUpperCase()] || '🌐';
+};
 
 const LanguageManagementScreen = ({ navigation }) => {
-  const [languages, setLanguages] = useState<Language[]>([
-    {
-      id: 'chinese',
-      name: 'Tiếng Trung',
-      nativeName: '中文',
-      flag: '🇨🇳',
-      level: 'Sơ cấp',
-      progress: 65,
-      isActive: true,
-      lessonsCompleted: 24,
-      totalLessons: 50,
-      wordsLearned: 156,
-    },
-    {
-      id: 'english',
-      name: 'Tiếng Anh',
-      nativeName: 'English',
-      flag: '🇺🇸',
-      level: 'Trung cấp',
-      progress: 45,
-      isActive: true,
-      lessonsCompleted: 18,
-      totalLessons: 40,
-      wordsLearned: 98,
-    },
-  ]);
+  const { t } = useTranslation();
+  const { useAllLanguages } = useLanguages();
+  const { languages: userLanguageCodes, setProfileData } = useUserStore();
 
-  const [availableLanguages] = useState<Language[]>([
-    {
-      id: 'japanese',
-      name: 'Tiếng Nhật',
-      nativeName: '日本語',
-      flag: '🇯🇵',
-      level: 'Chưa bắt đầu',
-      progress: 0,
-      isActive: false,
-      lessonsCompleted: 0,
-      totalLessons: 45,
-      wordsLearned: 0,
-    },
-    {
-      id: 'korean',
-      name: 'Tiếng Hàn',
-      nativeName: '한국어',
-      flag: '🇰🇷',
-      level: 'Chưa bắt đầu',
-      progress: 0,
-      isActive: false,
-      lessonsCompleted: 0,
-      totalLessons: 42,
-      wordsLearned: 0,
-    },
-    {
-      id: 'french',
-      name: 'Tiếng Pháp',
-      nativeName: 'Français',
-      flag: '🇫🇷',
-      level: 'Chưa bắt đầu',
-      progress: 0,
-      isActive: false,
-      lessonsCompleted: 0,
-      totalLessons: 38,
-      wordsLearned: 0,
-    },
-  ]);
+  // rawData có kiểu PageResponse<LanguageResponse> | undefined
+  const { data: rawData, isLoading } = useAllLanguages({ size: 100 });
+
+  const { learningLanguages, availableLanguages } = useMemo(() => {
+    // Ép kiểu data thành LanguageResponse[] an toàn hơn
+    const allLanguages: LanguageResponse[] = (rawData?.data || []) as LanguageResponse[];
+    const learningSet = new Set(userLanguageCodes);
+
+    const learning: LanguageResponse[] = [];
+    const available: LanguageResponse[] = [];
+
+    // Lỗi Typescript được giải quyết bằng cách đảm bảo allLanguages có kiểu LanguageResponse[]
+    allLanguages.forEach(lang => {
+      if (learningSet.has(lang.languageCode)) {
+        learning.push(lang);
+      } else {
+        available.push(lang);
+      }
+    });
+
+    return { learningLanguages: learning, availableLanguages: available };
+  }, [rawData, userLanguageCodes]);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
@@ -100,180 +62,180 @@ const LanguageManagementScreen = ({ navigation }) => {
       duration: 600,
       useNativeDriver: true,
     }).start();
-  }, []);
+  }, [fadeAnim]);
 
-  const toggleLanguage = (languageId: string) => {
-    setLanguages(prev =>
-      prev.map(lang =>
-        lang.id === languageId
-          ? { ...lang, isActive: !lang.isActive }
-          : lang
-      )
-    );
-  };
+  // Giả định API/Store có mutation để cập nhật trạng thái hoạt động (Dù không có trong schema hiện tại)
+  const toggleLanguage = useCallback(async (languageCode: string, currentStatus: boolean) => {
+    // Logic thực tế: Cần call API PATCH /api/v1/users/{userId}/languages/{languageCode}/status
+    showToast({ message: t('management.toggleLanguageMock'), type: 'info' });
+  }, [t]);
 
-  const addLanguage = (language: Language) => {
+  const addLanguage = useCallback(async (language: LanguageResponse) => {
     Alert.alert(
-      'Thêm ngôn ngữ',
-      `Bạn có muốn bắt đầu học ${language.name}?`,
+      t('management.addLanguageTitle'),
+      t('management.addLanguageConfirm', { name: language.languageName }),
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Thêm',
-          onPress: () => {
-            setLanguages(prev => [...prev, { ...language, isActive: true }]);
+          text: t('common.add'),
+          onPress: async () => {
+            try {
+              // Cập nhật local store languages (code only)
+              setProfileData({ languages: [...userLanguageCodes, language.languageCode] });
+
+              // Thực tế: Cần call API POST /api/v1/users/{userId}/languages
+              showToast({ message: t('management.addLanguageSuccess', { name: language.languageName }), type: 'success' });
+            } catch (error) {
+              showToast({ message: t('errors.addLanguageFailed'), type: 'error' });
+            }
           },
         },
       ]
     );
-  };
+  }, [userLanguageCodes, setProfileData, t]);
 
-  const removeLanguage = (languageId: string) => {
-    const language = languages.find(lang => lang.id === languageId);
+  const removeLanguage = useCallback(async (languageCode: string) => {
+    const language = learningLanguages.find(lang => lang.languageCode === languageCode);
+    if (!language) return;
+
     Alert.alert(
-      'Xóa ngôn ngữ',
-      `Bạn có chắc chắn muốn xóa ${language?.name}? Tất cả tiến độ sẽ bị mất.`,
+      t('management.removeLanguageTitle'),
+      t('management.removeLanguageConfirm', { name: language.languageName }),
       [
-        { text: 'Hủy', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: 'Xóa',
+          text: t('common.remove'),
           style: 'destructive',
-          onPress: () => {
-            setLanguages(prev => prev.filter(lang => lang.id !== languageId));
+          onPress: async () => {
+            try {
+              // Cập nhật local store languages (code only)
+              setProfileData({ languages: userLanguageCodes.filter(code => code !== languageCode) });
+
+              // Thực tế: Cần call API DELETE /api/v1/users/{userId}/languages/{languageCode}
+              showToast({ message: t('management.removeLanguageSuccess'), type: 'success' });
+            } catch (error) {
+              showToast({ message: t('errors.removeLanguageFailed'), type: 'error' });
+            }
           },
         },
       ]
     );
-  };
+  }, [learningLanguages, userLanguageCodes, setProfileData, t]);
 
-  const renderLanguageCard = (language: Language, isLearning: boolean = true) => (
-    <View key={language.id} style={styles.languageCard}>
-      <View style={styles.languageHeader}>
-        <View style={styles.languageInfo}>
-          <Text style={styles.languageFlag}>{language.flag}</Text>
-          <View style={styles.languageDetails}>
-            <Text style={styles.languageName}>{language.name}</Text>
-            <Text style={styles.languageNative}>{language.nativeName}</Text>
-            <Text style={styles.languageLevel}>{language.level}</Text>
+  const renderLanguageCard = useCallback((language: LanguageResponse, isLearning: boolean = true) => {
+    const languageCode = language.languageCode;
+
+    // Giả định isActive là true nếu đang trong danh sách Learning
+    const isActive = isLearning;
+
+    return (
+      <View key={languageCode} style={styles.languageCard}>
+        <View style={styles.languageHeader}>
+          <View style={styles.languageInfo}>
+            <Text style={styles.languageFlag}>{getFlagEmoji(languageCode)}</Text>
+            <View style={styles.languageDetails}>
+              <Text style={styles.languageName}>{language.languageName}</Text>
+              <Text style={styles.languageNative}>{language.languageCode}</Text>
+              {isLearning && <Text style={styles.languageLevel}>{t('level.inProgress')}</Text>}
+            </View>
           </View>
-        </View>
-        
-        {isLearning ? (
-          <View style={styles.languageActions}>
-            <Switch
-              value={language.isActive}
-              onValueChange={() => toggleLanguage(language.id)}
-              trackColor={{ false: '#E5E7EB', true: '#4F46E5' }}
-              thumbColor="#FFFFFF"
-            />
+
+          {isLearning ? (
+            <View style={styles.languageActions}>
+              <Switch
+                value={isActive}
+                onValueChange={(value) => toggleLanguage(languageCode, value)}
+                trackColor={{ false: '#E5E7EB', true: '#4F46E5' }}
+                thumbColor="#FFFFFF"
+              />
+              <TouchableOpacity
+                onPress={() => removeLanguage(languageCode)}
+                style={styles.removeButton}
+              >
+                <Icon name="delete" size={20} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          ) : (
             <TouchableOpacity
-              onPress={() => removeLanguage(language.id)}
-              style={styles.removeButton}
+              onPress={() => addLanguage(language)}
+              style={styles.addButton}
             >
-              <Icon name="delete" size={20} color="#EF4444" />
+              <Icon name="add" size={24} color="#4F46E5" />
             </TouchableOpacity>
-          </View>
-        ) : (
-          <TouchableOpacity
-            onPress={() => addLanguage(language)}
-            style={styles.addButton}
-          >
-            <Icon name="add" size={24} color="#4F46E5" />
-          </TouchableOpacity>
-        )}
+          )}
+        </View>
       </View>
+    );
+  }, [addLanguage, removeLanguage, toggleLanguage, t]);
 
-      {isLearning && language.progress > 0 && (
-        <View style={styles.progressSection}>
-          <View style={styles.progressBar}>
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${language.progress}%` },
-              ]}
-            />
-          </View>
-          <Text style={styles.progressText}>{language.progress}%</Text>
+  if (isLoading) {
+    return (
+      <ScreenLayout>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4F46E5" />
+          <Text style={styles.loadingText}>{t('common.loadingLanguages')}</Text>
         </View>
-      )}
-
-      {isLearning && (
-        <View style={styles.statsSection}>
-          <View style={styles.statItem}>
-            <Icon name="school" size={16} color="#6B7280" />
-            <Text style={styles.statText}>
-              {language.lessonsCompleted}/{language.totalLessons} bài
-            </Text>
-          </View>
-          <View style={styles.statItem}>
-            <Icon name="book" size={16} color="#6B7280" />
-            <Text style={styles.statText}>{language.wordsLearned} từ</Text>
-          </View>
-        </View>
-      )}
-    </View>
-  );
+      </ScreenLayout>
+    );
+  }
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Ngôn ngữ học</Text>
+        <Text style={styles.headerTitle}>{t('management.screenTitle')}</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
-          {/* Current Languages */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Đang học ({languages.length})</Text>
+            <Text style={styles.sectionTitle}>{t('management.learningTitle', { count: learningLanguages.length })}</Text>
             <Text style={styles.sectionSubtitle}>
-              Quản lý các ngôn ngữ bạn đang học
+              {t('management.learningSubtitle')}
             </Text>
-            {languages.map(language => renderLanguageCard(language, true))}
+            {learningLanguages.map(language => renderLanguageCard(language, true))}
           </View>
 
-          {/* Available Languages */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Ngôn ngữ khác</Text>
+            <Text style={styles.sectionTitle}>{t('management.availableTitle')}</Text>
             <Text style={styles.sectionSubtitle}>
-              Thêm ngôn ngữ mới để bắt đầu học
+              {t('management.availableSubtitle')}
             </Text>
             {availableLanguages.map(language => renderLanguageCard(language, false))}
           </View>
 
-          {/* Learning Tips */}
           <View style={styles.tipsSection}>
             <View style={styles.tipsHeader}>
               <Icon name="lightbulb" size={24} color="#4F46E5" style={styles.tipsIcon} />
-              <Text style={styles.tipsTitle}>Mẹo học tập</Text>
+              <Text style={styles.tipsTitle}>{t('management.tipsTitle')}</Text>
             </View>
             <View style={styles.tipsList}>
               <View style={styles.tipItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
                 <Text style={styles.tipText}>
-                  Tập trung vào 1-2 ngôn ngữ để đạt hiệu quả tốt nhất
+                  {t('management.tip1')}
                 </Text>
               </View>
               <View style={styles.tipItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
                 <Text style={styles.tipText}>
-                  Học đều đặn mỗi ngày, dù chỉ 10-15 phút
+                  {t('management.tip2')}
                 </Text>
               </View>
               <View style={styles.tipItem}>
                 <Icon name="check-circle" size={16} color="#10B981" />
                 <Text style={styles.tipText}>
-                  Thực hành với người bản xứ để cải thiện phát âm
+                  {t('management.tip3')}
                 </Text>
               </View>
             </View>
           </View>
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   );
 };
 
@@ -281,6 +243,16 @@ const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#4F46E5',
   },
   header: {
     flexDirection: 'row',
@@ -336,7 +308,6 @@ const styles = createScaledSheet({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 12,
   },
   languageInfo: {
     flexDirection: 'row',

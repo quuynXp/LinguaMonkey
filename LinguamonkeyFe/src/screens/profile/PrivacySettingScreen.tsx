@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Alert, Animated, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';
@@ -44,7 +44,7 @@ const PrivacySettingsScreen = ({ navigation }) => {
       t('privacy.deleteDataConfirmMessage'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.delete'), style: 'destructive', onPress: () => {} },
+        { text: t('common.delete'), style: 'destructive', onPress: () => { } },
       ]
     );
   };

@@ -2,7 +2,6 @@ import { useEffect, useState, useCallback } from "react";
 import {
     View,
     Text,
-    StyleSheet,
     ScrollView,
     TouchableOpacity,
     ActivityIndicator,
@@ -20,6 +19,7 @@ import { useCourses } from "../../hooks/useCourses";
 import type { Course } from "../../hooks/useCourses";
 import { goBack } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const AdminCourseDetailScreen = () => {
     const { t } = useTranslation();
@@ -136,7 +136,7 @@ const AdminCourseDetailScreen = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <ScreenLayout style={styles.container}>
             {/* Header */}
             <View style={styles.headerArea}>
                 <TouchableOpacity style={styles.headerButton} onPress={goBack}>
@@ -197,7 +197,8 @@ const AdminCourseDetailScreen = () => {
                     <Text style={styles.fieldValue}>{course?.createdAt ? new Date(course.createdAt).toLocaleString() : t("common.notAvailable")}</Text>
                 </View>
             </ScrollView>
-        </SafeAreaView>
+        </ScreenLayout>
+
     );
 };
 

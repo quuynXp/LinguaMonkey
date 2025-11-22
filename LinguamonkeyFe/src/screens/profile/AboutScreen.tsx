@@ -3,7 +3,6 @@ import {
   Animated,
   Linking,
   ScrollView,
-  StyleSheet,
   Text,
   TouchableOpacity,
   View,
@@ -11,6 +10,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 const AboutScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -33,10 +33,7 @@ const AboutScreen = ({ navigation }) => {
   }, []);
 
   const teamMembers = [
-    { name: 'Nguyễn Văn A', role: t('about.team.roles.ceo'), avatar: '👨‍💼' },
-    { name: 'Trần Thị B', role: t('about.team.roles.cto'), avatar: '👩‍💻' },
-    { name: 'Lê Văn C', role: t('about.team.roles.designer'), avatar: '👨‍🎨' },
-    { name: 'Phạm Thị D', role: t('about.team.roles.languageExpert'), avatar: '👩‍🏫' },
+    { name: 'Thai Ngoc Quyen', role: t('about.team.roles.ceo'), avatar: '👨‍💼' },
   ];
 
   const features = [
@@ -72,7 +69,7 @@ const AboutScreen = ({ navigation }) => {
   const openLink = (url: string) => Linking.openURL(url);
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -203,7 +200,7 @@ const AboutScreen = ({ navigation }) => {
           </View>
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   );
 };
 

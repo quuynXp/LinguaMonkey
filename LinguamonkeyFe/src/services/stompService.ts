@@ -4,8 +4,6 @@ import { useTokenStore } from '../stores/tokenStore'; // Giả sử bạn có st
 
 // Lấy URL của Kong từ .env
 const KONG_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.0.2.2:8000";
-// Chuyển đổi http:// thành ws:// (hoặc https:// thành wss://)
-const KONG_WS_URL = KONG_BASE_URL.replace(/^http/, 'ws');
 
 // Định nghĩa các kiểu callback
 export type StompMessageCallback = (message: any) => void;
@@ -19,7 +17,8 @@ export class StompService {
     this.client = new Client({
       // Dùng SockJS vì BE Java (WebSocketConfig) đang dùng .withSockJS()
       webSocketFactory: () => {
-        // Trỏ đến route /ws/ của Kong mà ta đã cấu hình
+        // SỬA: Dùng KONG_BASE_URL/ws/ để gọi qua Kong.
+        // SockJS sẽ tự động chọn WebSocket hoặc fallback.
         return new SockJS(`${KONG_BASE_URL}/ws/`);
       },
       reconnectDelay: 10000,
@@ -41,6 +40,7 @@ export class StompService {
     }
 
     this.client.configure({
+      // Gửi Authorization Header trong STOMP CONNECT frame
       connectHeaders: {
         Authorization: `Bearer ${token}`,
       },
@@ -105,9 +105,10 @@ export class StompService {
     this.client.publish({
       destination,
       body: JSON.stringify(body),
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
+      // KHÔNG CẦN GỬI HEADER NÀY KHI PUBLISH VÌ ĐÃ CÓ PRINCIPAL TỪ CONNECT
+      // headers: {
+      //   Authorization: `Bearer ${token}`
+      // }
     });
   }
 

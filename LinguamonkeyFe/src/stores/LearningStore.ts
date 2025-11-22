@@ -6,13 +6,14 @@ import type { Course, Lesson, UserGoal } from '../types/entity';
 interface LearningState {
   selectedCourse: Course | null;
   selectedLesson: Lesson | null;
-  progress: { [lessonId: string]: number }; // lesson_id to score
+  progress: { [lessonId: string]: number };
   goals: UserGoal[];
 
   setSelectedCourse: (course: Course | null) => void;
   setSelectedLesson: (lesson: Lesson | null) => void;
   updateProgress: (lessonId: string, score: number) => void;
   addGoal: (goal: UserGoal) => void;
+  removeGoal: (goalId: string) => void;
   clearProgress: () => void;
 }
 
@@ -31,6 +32,10 @@ export const useLearningStore = create<LearningState>()(
           progress: { ...state.progress, [lessonId]: score },
         })),
       addGoal: (goal) => set((state) => ({ goals: [...state.goals, goal] })),
+      removeGoal: (goalId) =>
+        set((state) => ({
+          goals: state.goals.filter((g) => g.goalId !== goalId),
+        })),
       clearProgress: () => set({ progress: {}, selectedLesson: null }),
     }),
     {

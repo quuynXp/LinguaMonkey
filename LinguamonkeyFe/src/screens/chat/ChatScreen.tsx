@@ -9,6 +9,7 @@ import { useTokenStore } from "../../stores/tokenStore"
 import { gotoTab } from "../../utils/navigationRef"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import instance from "../../api/axiosInstance" // Import axios
+import ScreenLayout from "../../components/layout/ScreenLayout"
 
 type ChatStats = {
   totalMessages: number;
@@ -178,7 +179,7 @@ const ChatScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{t("chat.title")}</Text>
         <TouchableOpacity style={styles.settingsButton} onPress={() => navigation.navigate("ChatSettings")}>
@@ -262,7 +263,7 @@ const ChatScreen = ({ navigation }) => {
           {/* ... (Tips Section) ... */}
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   )
 }
 

@@ -20,6 +20,7 @@ import { getTransactions } from "../../services/statisticsApi";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { resetToAuth } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const { width } = Dimensions.get("window");
 type Period = "week" | "month" | "year" | "custom";
@@ -120,7 +121,7 @@ const AdminTransactionScreen = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View style={styles.headerArea}>
           <Text style={styles.headerTitle}>{t("admin.transactions.title")}</Text>
@@ -177,7 +178,7 @@ const AdminTransactionScreen = () => {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 };
 

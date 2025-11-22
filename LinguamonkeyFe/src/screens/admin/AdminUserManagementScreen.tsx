@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -19,6 +18,7 @@ import { getStatisticsOverview, getUserGrowth } from "../../services/statisticsA
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { resetToAuth, gotoTab } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const formatISODate = (d: Date) => d.toISOString().split("T")[0];
 
@@ -116,7 +116,7 @@ const AdminUserManagementScreen = () => {
   const users = overviewData?.raw?.usersList || [];
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <ScrollView refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
         <View style={styles.headerArea}>
           <Text style={styles.headerTitle}>{t("admin.users.title")}</Text>
@@ -173,13 +173,13 @@ const AdminUserManagementScreen = () => {
           )}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  sectionTitle: {padding: 16},
+  sectionTitle: { padding: 16 },
   headerArea: { padding: 16, backgroundColor: "#fff", marginBottom: 8, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   headerTitle: { fontSize: 20, fontWeight: "700" },
   periodSelector: { flexDirection: "row", alignItems: "center", padding: 8, backgroundColor: "#EEF2FF", borderRadius: 8, marginRight: 8 },

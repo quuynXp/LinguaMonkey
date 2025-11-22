@@ -320,6 +320,7 @@ export const useRoadmap = () => {
     useRoadmapDetail,
     useRoadmapWithProgress,
     useSuggestions,
+    usePublicRoadmaps,
 
     // Mutations (General CRUD)
     useCreateRoadmap,

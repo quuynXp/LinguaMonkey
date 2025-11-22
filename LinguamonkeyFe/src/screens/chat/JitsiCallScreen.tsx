@@ -9,6 +9,7 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import { useTokenStore } from '../../stores/tokenStore';
 import { API_BASE_URL } from '../../api/apiConfig';
 import LiveAudioStream from 'react-native-live-audio-stream';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 const LANGUAGES = [
   { code: 'en', name: 'English' },
@@ -140,7 +141,7 @@ const JitsiWebView = () => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <WebView
         source={{ uri: `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false` }}
         style={styles.webview}
@@ -206,7 +207,7 @@ const JitsiWebView = () => {
           />
         </View>
       </Modal>
-    </View>
+    </ScreenLayout>
   );
 };
 

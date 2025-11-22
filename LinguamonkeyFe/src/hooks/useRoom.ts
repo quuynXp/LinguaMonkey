@@ -10,7 +10,7 @@ import {
 } from "../types/dto";
 
 import { RoomPurpose, RoomType } from "../types/enums";
-import { VideoCallParticipant } from "../types/entity"; // Dùng Entity
+// import { VideoCallParticipant } from "../types/entity"; // Dùng Entity
 
 // --- Keys Factory ---
 export const roomKeys = {

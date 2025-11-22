@@ -1,50 +1,35 @@
-import React, { useEffect, useRef, useState } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useNavigation } from "@react-navigation/native"
 import { useTranslation } from "react-i18next"
-import { useStudyHistory } from "../../hooks/useStudyHistory"
 import { formatDuration } from "../../utils/timeHelper"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import ScreenLayout from "../../components/layout/ScreenLayout"
+import { StudySessionResponse } from "../../types/dto"
+import { ActivityType } from "../../types/enums"
+import { useUserStore } from "../../stores/UserStore"
+import { useUserLearningActivities } from "../../hooks/useUserActivity"
 
-// Các type này nên được import từ file types, định nghĩa dựa trên DTOs của backend
-interface StudySession {
-    id: string
-    type: string // e.g., "LESSON_COMPLETED", "DAILY_CHALLENGE_COMPLETED"
-    title: string
-    date: string // ISO string from backend
-    duration: number // in seconds
-    score?: number
-    maxScore?: number
-    experience: number
-    skills: string[]
-    completed: boolean
-}
-
-// interface TestResult { ... } // (Tương tự nếu có)
-
-interface StudyStats {
-    totalSessions: number
-    totalTime: number // in seconds
-    totalExperience: number
-    averageScore: number // percentage
-}
-
-const StudyHistoryScreen = () => {
+const ProgressScreen = () => {
     const navigation = useNavigation()
     const { t } = useTranslation()
+    const userId = useUserStore((state) => state.user?.userId)
     const [currentTab, setCurrentTab] = useState<"sessions" | "tests" | "stats">("sessions")
     const [timeFilter, setTimeFilter] = useState<"week" | "month" | "year">("month")
     const fadeAnim = useRef(new Animated.Value(0)).current
 
-    // Giả định useStudyHistory trả về cấu trúc mới
-    const { data: studyHistory, isLoading, error } = useStudyHistory(timeFilter)
-    const studySessions: StudySession[] = studyHistory?.sessions || []
-    const testResults: any[] = studyHistory?.tests || [] // Tạm thời
-    const stats: StudyStats | null = studyHistory?.stats || null
+    // Sửa lỗi: Gọi factory function trước (0 arguments), sau đó gọi hook cụ thể (useGetStudyHistory)
+    const { useGetStudyHistory } = useUserLearningActivities()
+    const { data: studyHistory, isLoading, error } = useGetStudyHistory(
+        userId || "",
+        timeFilter
+    )
+    const studySessions: StudySessionResponse[] = studyHistory?.sessions || []
+    const stats = studyHistory?.stats || null
 
     useEffect(() => {
-        fadeAnim.setValue(0) // Reset
+        fadeAnim.setValue(0)
         Animated.timing(fadeAnim, {
             toValue: 1,
             duration: 500,
@@ -55,32 +40,30 @@ const StudyHistoryScreen = () => {
     const getActivityTypeTranslation = (type: string) => {
         const key = `history.types.${type}`
         const translated = t(key)
-        // Fallback nếu không có key
         return translated === key ? t("history.types.DEFAULT") : translated
     }
 
     const getTypeIcon = (type: string) => {
-        // Dựa trên schema.sql và logic nghiệp vụ
-        if (type.includes("COURSE")) return "school"
-        if (type.includes("LESSON")) return "menu-book"
-        if (type.includes("QUIZ")) return "quiz"
-        if (type.includes("DAILY_CHALLENGE")) return "today"
+        if (type.includes(ActivityType.COURSE_ENROLL)) return "school"
+        if (type.includes(ActivityType.LESSON_COMPLETION)) return "menu-book"
+        if (type.includes(ActivityType.QUIZ_COMPLETE)) return "quiz"
+        if (type.includes(ActivityType.DAILY_CHALLENGE_COMPLETED)) return "today"
         if (type.includes("EVENT")) return "emoji-events"
-        if (type.includes("FLASHCARD")) return "style"
+        if (type.includes(ActivityType.FLASHCARD)) return "style"
         return "book"
     }
 
     const getTypeColor = (type: string) => {
-        if (type.includes("COURSE")) return "#10B981"
-        if (type.includes("LESSON")) return "#8B5CF6"
-        if (type.includes("QUIZ")) return "#EF4444"
-        if (type.includes("DAILY_CHALLENGE")) return "#F59E0B"
+        if (type.includes(ActivityType.COURSE_ENROLL)) return "#10B981"
+        if (type.includes(ActivityType.LESSON_COMPLETION)) return "#8B5CF6"
+        if (type.includes(ActivityType.QUIZ_COMPLETE)) return "#EF4444"
+        if (type.includes(ActivityType.DAILY_CHALLENGE_COMPLETED)) return "#F59E0B"
         if (type.includes("EVENT")) return "#3B82F6"
-        if (type.includes("FLASHCARD")) return "#6366F1"
+        if (type.includes(ActivityType.FLASHCARD)) return "#6366F1"
         return "#6B7280"
     }
 
-    const renderSessionCard = (session: StudySession) => (
+    const renderSessionCard = (session: StudySessionResponse) => (
         <TouchableOpacity key={session.id} style={styles.sessionCard}>
             <View style={styles.sessionHeader}>
                 <View style={[styles.typeIcon, { backgroundColor: `${getTypeColor(session.type)}20` }]}>
@@ -134,10 +117,6 @@ const StudyHistoryScreen = () => {
         </TouchableOpacity>
     )
 
-    // const renderTestCard = (test: TestResult) => ( ... )
-    // Giữ nguyên logic renderTestCard của bạn, chỉ cần thay text cứng bằng i18n
-    // ví dụ: <Text style={styles.scoreLabel}>Overall</Text> -> <Text style={styles.scoreLabel}>{t('history.stats.overall')}</Text>
-
     const renderStatsTab = () => {
         if (!stats) return null
 
@@ -171,14 +150,22 @@ const StudyHistoryScreen = () => {
 
                 <View style={styles.chartSection}>
                     <Text style={styles.chartTitle}>{t("history.stats.progressChart")}</Text>
-                    {/* Bạn có thể thêm component biểu đồ ở đây */}
-                    <Text style={styles.skillText}>(Chart component goes here)</Text>
+                    <Text style={styles.skillText}>({t("common.chartComponent")})</Text>
                 </View>
             </View>
         )
     }
 
     const renderContent = () => {
+        if (!userId) {
+            return (
+                <View style={styles.centerScreen}>
+                    <Icon name="lock-outline" size={48} color="#6B7280" />
+                    <Text style={styles.errorText}>{t("common.authRequired")}</Text>
+                </View>
+            )
+        }
+
         if (isLoading) {
             return (
                 <View style={styles.centerScreen}>
@@ -200,11 +187,21 @@ const StudyHistoryScreen = () => {
         return (
             <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
                 {currentTab === "sessions" && (
-                    <View style={styles.sessionsList}>{studySessions.map(renderSessionCard)}</View>
+                    <View style={styles.sessionsList}>
+                        {studySessions.length > 0 ? (
+                            studySessions.map(renderSessionCard)
+                        ) : (
+                            <View style={styles.centerScreen}>
+                                <Icon name="sentiment-dissatisfied" size={48} color="#6B7280" />
+                                <Text style={styles.loadingText}>{t("history.noSessions")}</Text>
+                            </View>
+                        )}
+                    </View>
                 )}
                 {currentTab === "tests" && (
-                    <View>
-                        <Text>{t("history.tests.notImplemented", "Test results UI (Not implemented in this refactor)")}</Text>
+                    <View style={styles.centerScreen}>
+                        <Icon name="build-circle" size={48} color="#6B7280" />
+                        <Text style={styles.loadingText}>{t("history.tests.notImplemented")}</Text>
                     </View>
                 )}
                 {currentTab === "stats" && renderStatsTab()}
@@ -213,61 +210,61 @@ const StudyHistoryScreen = () => {
     }
 
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Icon name="arrow-back" size={24} color="#374151" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{t("history.title")}</Text>
-                <TouchableOpacity>
-                    <Icon name="file-download" size={24} color="#6B7280" />
-                    <Text style={{ fontSize: 10, color: "#6B7280" }}>{t("history.export")}</Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Tab Navigation */}
-            <View style={styles.tabContainer}>
-                {[
-                    { key: "sessions", label: t("history.tabs.sessions"), icon: "history" },
-                    { key: "tests", label: t("history.tabs.tests"), icon: "assignment" },
-                    { key: "stats", label: t("history.tabs.stats"), icon: "analytics" },
-                ].map((tab) => (
-                    <TouchableOpacity
-                        key={tab.key}
-                        style={[styles.tab, currentTab === tab.key && styles.activeTab]}
-                        onPress={() => setCurrentTab(tab.key as any)}
-                    >
-                        <Icon name={tab.icon} size={18} color={currentTab === tab.key ? "#FFFFFF" : "#6B7280"} />
-                        <Text style={[styles.tabText, currentTab === tab.key && styles.activeTabText]}>{tab.label}</Text>
+        <ScreenLayout>
+            <View style={styles.container}>
+                <View style={styles.header}>
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <Icon name="arrow-back" size={24} color="#374151" />
                     </TouchableOpacity>
-                ))}
-            </View>
+                    <Text style={styles.headerTitle}>{t("history.title")}</Text>
+                    <TouchableOpacity>
+                        <Icon name="file-download" size={24} color="#6B7280" />
+                        <Text style={{ fontSize: 10, color: "#6B7280" }}>{t("history.export")}</Text>
+                    </TouchableOpacity>
+                </View>
 
-            {/* Time Filter */}
-            {currentTab !== "stats" && (
-                <View style={styles.filterContainer}>
+                <View style={styles.tabContainer}>
                     {[
-                        { key: "week", label: t("history.filters.week") },
-                        { key: "month", label: t("history.filters.month") },
-                        { key: "year", label: t("history.filters.year") },
-                    ].map((filter) => (
+                        { key: "sessions", label: t("history.tabs.sessions"), icon: "history" },
+                        { key: "tests", label: t("history.tabs.tests"), icon: "assignment" },
+                        { key: "stats", label: t("history.tabs.stats"), icon: "analytics" },
+                    ].map((tab) => (
                         <TouchableOpacity
-                            key={filter.key}
-                            style={[styles.filterButton, timeFilter === filter.key && styles.activeFilter]}
-                            onPress={() => setTimeFilter(filter.key as any)}
+                            key={tab.key}
+                            style={[styles.tab, currentTab === tab.key && styles.activeTab]}
+                            onPress={() => setCurrentTab(tab.key as any)}
                         >
-                            <Text style={[styles.filterText, timeFilter === filter.key && styles.activeFilterText]}>
-                                {filter.label}
-                            </Text>
+                            <Icon name={tab.icon} size={18} color={currentTab === tab.key ? "#FFFFFF" : "#6B7280"} />
+                            <Text style={[styles.tabText, currentTab === tab.key && styles.activeTabText]}>{tab.label}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
-            )}
 
-            <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-                {renderContent()}
-            </ScrollView>
-        </View>
+                {currentTab !== "stats" && (
+                    <View style={styles.filterContainer}>
+                        {[
+                            { key: "week", label: t("history.filters.week") },
+                            { key: "month", label: t("history.filters.month") },
+                            { key: "year", label: t("history.filters.year") },
+                        ].map((filter) => (
+                            <TouchableOpacity
+                                key={filter.key}
+                                style={[styles.filterButton, timeFilter === filter.key && styles.activeFilter]}
+                                onPress={() => setTimeFilter(filter.key as any)}
+                            >
+                                <Text style={[styles.filterText, timeFilter === filter.key && styles.activeFilterText]}>
+                                    {filter.label}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+
+                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                    {renderContent()}
+                </ScrollView>
+            </View>
+        </ScreenLayout>
     )
 }
 
@@ -438,18 +435,18 @@ const styles = createScaledSheet({
     },
     experienceText: {
         fontSize: 10,
-        color: "#D97706", // Đổi màu cho dễ đọc hơn
+        color: "#D97706",
         fontWeight: "600",
     },
     skillsRow: {
         flexDirection: "row",
-        flexWrap: "wrap", // Cho phép xuống dòng
+        flexWrap: "wrap",
         gap: 6,
         marginBottom: 12,
         borderTopWidth: 1,
         borderTopColor: "#F3F4F6",
         paddingTop: 12,
-        marginLeft: 52, // Căn lề với title
+        marginLeft: 52,
     },
     skillTag: {
         backgroundColor: "#F3F4F6",
@@ -467,9 +464,8 @@ const styles = createScaledSheet({
         backgroundColor: "#E5E7EB",
         borderRadius: 2,
         overflow: "hidden",
-        marginLeft: 52, // Căn lề
+        marginLeft: 52,
     },
-    // ... (giữ các style cũ của test và stats) ...
     statsContainer: {
         gap: 24,
     },
@@ -519,4 +515,4 @@ const styles = createScaledSheet({
     },
 })
 
-export default StudyHistoryScreen
+export default ProgressScreen;

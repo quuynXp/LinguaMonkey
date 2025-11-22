@@ -17,8 +17,8 @@ import { useUserStore } from '../../stores/UserStore';
 import { gotoTab, resetToAuth } from '../../utils/navigationRef';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useShallow } from 'zustand/react/shallow';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
-/* ────────────────────── Helpers ────────────────────── */
 const ccToFlag = (code?: string | null) => {
   if (!code) return '🏳️';
   const cc = code.toUpperCase();
@@ -63,7 +63,6 @@ const handleLogout = () => {
   ]);
 };
 
-/* ────────────────────── Component ────────────────────── */
 const ProfileScreen: React.FC = () => {
   const { t } = useTranslation();
 
@@ -85,18 +84,15 @@ const ProfileScreen: React.FC = () => {
   const expToNextLevel = useUserStore((state) => state.expToNextLevel);
   const exp = useUserStore((state) => state.exp);
 
-  // Select methods - these are stable references
   const uploadTemp = useUserStore((state) => state.uploadTemp);
   const updateUserAvatar = useUserStore((state) => state.updateUserAvatar);
   const deleteTempFile = useUserStore((state) => state.deleteTempFile);
 
-  /* ────── Local UI state ────── */
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
   const [previewUrl, setPreviewUrl] = useState<string | null>(user?.avatarUrl ?? null);
   const [uploading, setUploading] = useState(false);
 
-  /* ────── Avatar picker ────── */
   const pickImage = useCallback(async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -136,7 +132,6 @@ const ProfileScreen: React.FC = () => {
     }
   }, [user?.userId, uploadTemp, updateUserAvatar, deleteTempFile, user?.avatarUrl, t]);
 
-  /* ────── Entrance animation (run once) ────── */
   useEffect(() => {
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }),
@@ -144,14 +139,12 @@ const ProfileScreen: React.FC = () => {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
-  /* ────── Sync previewUrl with avatarUrl from store ────── */
   useEffect(() => {
     if (user?.avatarUrl && !uploading && previewUrl !== user.avatarUrl) {
       setPreviewUrl(user.avatarUrl);
     }
   }, [user?.avatarUrl, uploading, previewUrl]);
 
-  /* ────── Computed values ────── */
   const expCurrent = useMemo(() => Number(exp ?? 0), [exp]);
   const expNext = useMemo(() => Number(expToNextLevel ?? 0), [expToNextLevel]);
   const expRatio = useMemo(() => {
@@ -159,7 +152,6 @@ const ProfileScreen: React.FC = () => {
     return denom > 0 ? Math.min(1, Math.max(0, expCurrent / denom)) : 0;
   }, [expCurrent, expNext]);
 
-  /* ────── Details list (memoized) ────── */
   const details = useMemo(
     () =>
       [
@@ -211,7 +203,6 @@ const ProfileScreen: React.FC = () => {
     [t],
   );
 
-  /* ────── Render functions ────── */
   const renderProfileHeader = useCallback(() => (
     <View style={styles.profileHeader}>
       <View style={styles.avatarContainer}>
@@ -424,42 +415,42 @@ const ProfileScreen: React.FC = () => {
     </View>
   ), [t]);
 
-  /* ────── JSX ────── */
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <Animated.View
-        style={[
-          styles.content,
-          { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
-        ]}>
-        <View style={styles.header}>
-          <Text style={styles.title}>{t('profile.title')}</Text>
-          <TouchableOpacity
-            style={styles.settingsButton}
-            onPress={() => gotoTab('Profile', 'PrivacySettings')}>
-            <Icon name="settings" size={24} color="#6B7280" />
-          </TouchableOpacity>
-        </View>
+    <ScreenLayout>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <Animated.View
+          style={[
+            styles.content,
+            { opacity: fadeAnim, transform: [{ translateY: slideAnim }] },
+          ]}>
+          <View style={styles.header}>
+            <Text style={styles.title}>{t('profile.title')}</Text>
+            <TouchableOpacity
+              style={styles.settingsButton}
+              onPress={() => gotoTab('Profile', 'PrivacySettings')}>
+              <Icon name="settings" size={24} color="#6B7280" />
+            </TouchableOpacity>
+          </View>
 
-        {renderProfileHeader()}
-        {renderDetails()}
-        {renderBadges()}
-        {renderNavigationButtons()}
-        {renderSettingsSummary()}
-        {renderInfoNotices()}
+          {renderProfileHeader()}
+          {renderDetails()}
+          {renderBadges()}
+          {renderNavigationButtons()}
+          {renderSettingsSummary()}
+          {renderInfoNotices()}
 
-        <View style={styles.actionSection}>
-          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-            <Icon name="logout" size={20} color="#EF4444" />
-            <Text style={styles.logoutText}>{t('profile.logout')}</Text>
-          </TouchableOpacity>
-        </View>
-      </Animated.View>
-    </ScrollView>
+          <View style={styles.actionSection}>
+            <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+              <Icon name="logout" size={20} color="#EF4444" />
+              <Text style={styles.logoutText}>{t('profile.logout')}</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </ScrollView>
+    </ScreenLayout>
   );
 };
 
-/* ────── Styles ────── */
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { padding: 20 },

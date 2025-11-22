@@ -1,19 +1,27 @@
 import DateTimePicker from "@react-native-community/datetimepicker"
 import { useEffect, useRef, useState } from "react"
-import { Alert, Animated, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native"
+import { Alert, Animated, ScrollView, Switch, Text, TouchableOpacity, View } from "react-native"
 import Icon from '@expo/vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';
 import NotificationService, { type NotificationPreferences } from "../../services/notificationService"
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useReminders } from "../../hooks/useReminders";
+import { UserReminderRequest } from "../../types/dto";
+import { useUserStore } from "../../stores/UserStore";
+import * as Enums from "../../types/enums";
+import ScreenLayout from "../../components/layout/ScreenLayout";
+
+
+const notificationServiceInstance = NotificationService;
 
 const NotificationSettingsScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const { notificationPreferences, setNotificationPreferences } = useAppStore();
+  const { user } = useUserStore();
 
-  useEffect(() => {
-    NotificationService.requestPermissions();
-  }, []);
+  const { useCreateReminder } = useReminders();
+  const createReminder = useCreateReminder();
 
   const [showTimePicker, setShowTimePicker] = useState(false)
   const [showQuietStartPicker, setShowQuietStartPicker] = useState(false)
@@ -23,31 +31,24 @@ const NotificationSettingsScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    loadPreferences()
+    notificationServiceInstance.requestPermissions();
 
     Animated.timing(fadeAnim, {
       toValue: 1,
       duration: 600,
       useNativeDriver: true,
     }).start()
-  }, [])
-
-  const loadPreferences = async () => {
-    try {
-      const prefs = await NotificationService.getNotificationPreferences()
-      setNotificationPreferences(prefs)
-    } catch (error) {
-      console.error("Error loading preferences:", error)
-    }
-  }
+  }, [fadeAnim])
 
   const savePreferences = async (newPreferences: NotificationPreferences) => {
     try {
-      await NotificationService.saveNotificationPreferences(newPreferences)
-      setNotificationPreferences(newPreferences)
+      notificationServiceInstance.setPreferences(newPreferences);
+
+      setNotificationPreferences(newPreferences);
+
     } catch (error) {
       console.error("Error saving preferences:", error)
-      Alert.alert(t("notification.errorSavingPreferences"), t("notification.errorSavingPreferences"))
+      Alert.alert(t("notification.errorSavingPreferences") ?? "Error", t("notification.errorSavingPreferences") ?? "Failed to save preferences.")
     }
   }
 
@@ -55,7 +56,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
     if (!notificationPreferences) return
 
     const newPreferences = { ...notificationPreferences, [key]: value }
-    savePreferences(newPreferences)
+    savePreferences(newPreferences as NotificationPreferences)
   }
 
   const updateQuietHours = (key: "enabled" | "start" | "end", value: any) => {
@@ -68,7 +69,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
         [key]: value,
       },
     }
-    savePreferences(newPreferences)
+    savePreferences(newPreferences as NotificationPreferences)
   }
 
   const toggleCustomDay = (day: number) => {
@@ -106,21 +107,26 @@ const NotificationSettingsScreen = ({ navigation }) => {
   }
 
   const sendTestNotification = async () => {
+    if (!user?.userId) {
+      Alert.alert(t("common.error"), t("errors.userNotFound"));
+      return;
+    }
+
     try {
-      await NotificationService.sendMessageNotification(
-        "Test User",
-        t("notification.testNotificationMessage"),
-        "test_chat",
+      await notificationServiceInstance.sendLocalNotification(
+        t("notification.testNotificationTitle") ?? "Test Notification",
+        t("notification.testNotificationMessage") ?? "This is a local test message.",
+        { type: 'test' }
       )
       setTestNotificationSent(true)
       setTimeout(() => setTestNotificationSent(false), 3000)
     } catch (error) {
-      Alert.alert(t("notification.errorSendingTest"), t("notification.errorSendingTest"))
+      Alert.alert(t("notification.errorSendingTest"), t("notification.errorSendingTest"));
     }
   }
 
   const requestPermissions = async () => {
-    const granted = await NotificationService.requestPermissions()
+    const granted = await notificationServiceInstance.requestPermissions()
     if (granted) {
       Alert.alert(t("notification.permissionsSuccess"), t("notification.permissionsSuccessMessage"))
     } else {
@@ -143,7 +149,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
   const getStudyTimeDate = () => {
     if (!notificationPreferences) return new Date()
-    const [hours, minutes] = notificationPreferences.studyTime.split(":").map(Number)
+    const [hours, minutes] = (notificationPreferences.studyTime || "00:00").split(":").map(Number)
     const date = new Date()
     date.setHours(hours, minutes, 0, 0)
     return date
@@ -151,7 +157,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
   const getQuietStartDate = () => {
     if (!notificationPreferences) return new Date()
-    const [hours, minutes] = notificationPreferences.quietHours.start.split(":").map(Number)
+    const [hours, minutes] = (notificationPreferences.quietHours.start || "00:00").split(":").map(Number)
     const date = new Date()
     date.setHours(hours, minutes, 0, 0)
     return date
@@ -159,7 +165,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
 
   const getQuietEndDate = () => {
     if (!notificationPreferences) return new Date()
-    const [hours, minutes] = notificationPreferences.quietHours.end.split(":").map(Number)
+    const [hours, minutes] = (notificationPreferences.quietHours.end || "00:00").split(":").map(Number)
     const date = new Date()
     date.setHours(hours, minutes, 0, 0)
     return date
@@ -175,7 +181,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -489,7 +495,7 @@ const NotificationSettingsScreen = ({ navigation }) => {
           onChange={handleQuietEndChange}
         />
       )}
-    </View>
+    </ScreenLayout>
   )
 }
 

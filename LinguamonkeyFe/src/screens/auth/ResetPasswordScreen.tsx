@@ -5,6 +5,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { requestPasswordResetOtp, verifyPasswordResetOtp, resetPassword } from '../../services/authService';
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { showError, showSuccess } from "../../utils/toastHelper";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const ResetPasswordScreen = ({ navigation, route }) => {
     const { t } = useTranslation();
@@ -168,7 +169,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
     );
 
     return (
-        <View style={styles.container}>
+        <ScreenLayout style={styles.container}>
             <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
                 <View style={styles.header}>
                     <TouchableOpacity onPress={() => {
@@ -183,7 +184,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
                 {currentStep === 'OTP' && renderOtpInput()}
                 {currentStep === 'NEW_PASSWORD' && renderNewPasswordInput()}
             </Animated.View>
-        </View>
+        </ScreenLayout>
     );
 };
 

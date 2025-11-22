@@ -22,6 +22,7 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import { RoomResponse } from "../../types/api";
 import { queryClient } from "../../services/queryClient";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 type AiMessage = {
   id: string;
@@ -230,155 +231,154 @@ const ChatAIScreen = () => {
 
   // Chỉ render UI chat khi đã có roomId
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
-    >
-      <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Icon name="arrow-back" size={24} color="#374151" />
-          </TouchableOpacity>
-          <View style={styles.aiInfo}>
-            <Text style={styles.aiName}>{t("assistant.name")}</Text>
-            <Text style={styles.aiStatus}>
-              {environments.find((env) => env.id === currentEnvironment)?.name || t("environment.general")}
-            </Text>
-          </View>
-          <View style={styles.headerActions}>
-            <TouchableOpacity style={styles.headerButton} onPress={() => setShowEnvironmentModal(true)}>
-              <Icon name="workspaces-outline" size={20} color="#6B7280" />
+    <ScreenLayout>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+      >
+        <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => navigation.goBack()}>
+              <Icon name="arrow-back" size={24} color="#374151" />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.headerButton} onPress={() => setShowTopicsModal(true)}>
-              <Icon name="bulb-outline" size={20} color="#6B7280" />
-            </TouchableOpacity>
-            <View style={styles.languageSwitcher}>
-              <TouchableOpacity onPress={() => changeLanguage("vi")}>
-                <Text style={i18n.language === "vi" ? styles.activeLang : styles.lang}>VI</Text>
+            <View style={styles.aiInfo}>
+              <Text style={styles.aiName}>{t("assistant.name")}</Text>
+              <Text style={styles.aiStatus}>
+                {environments.find((env) => env.id === currentEnvironment)?.name || t("environment.general")}
+              </Text>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.headerButton} onPress={() => setShowEnvironmentModal(true)}>
+                <Icon name="workspaces-outline" size={20} color="#6B7280" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => changeLanguage("en")}>
-                <Text style={i18n.language === "en" ? styles.activeLang : styles.lang}>EN</Text>
+              <TouchableOpacity style={styles.headerButton} onPress={() => setShowTopicsModal(true)}>
+                <Icon name="bulb-outline" size={20} color="#6B7280" />
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => changeLanguage("zh")}>
-                <Text style={i18n.language === "zh" ? styles.activeLang : styles.lang}>ZH</Text>
-              </TouchableOpacity>
+              <View style={styles.languageSwitcher}>
+                <TouchableOpacity onPress={() => changeLanguage("vi")}>
+                  <Text style={i18n.language === "vi" ? styles.activeLang : styles.lang}>VI</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => changeLanguage("en")}>
+                  <Text style={i18n.language === "en" ? styles.activeLang : styles.lang}>EN</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => changeLanguage("zh")}>
+                  <Text style={i18n.language === "zh" ? styles.activeLang : styles.lang}>ZH</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
 
-        {/* Chat List */}
-        <FlatList
-          ref={scrollViewRef}
-          data={aiHistory}
-          renderItem={renderMessage}
-          keyExtractor={(item) => item.id}
-          style={styles.chatContainer}
-          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
-        />
-
-        {/* Loading Indicator (Streaming) */}
-        {isAiStreaming && (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="small" color="#6B7280" />
-            <Text style={styles.loadingText}>{t("loading.ai")}</Text>
-          </View>
-        )}
-
-        {/* Input Container */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            placeholder={t("input.placeholder")}
-            value={inputText}
-            onChangeText={setInputText}
-            onSubmitEditing={() => handleSendMessage()}
-            returnKeyType="send"
-            multiline
-            editable={!isAiStreaming}
+          {/* Chat List */}
+          <FlatList
+            ref={scrollViewRef}
+            data={aiHistory}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            style={styles.chatContainer}
+            onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
           />
-          <TouchableOpacity
-            style={[styles.sendButton, isAiStreaming && styles.sendButtonDisabled]}
-            onPress={() => handleSendMessage()}
-            disabled={isAiStreaming}
+
+          {/* Loading Indicator (Streaming) */}
+          {isAiStreaming && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="small" color="#6B7280" />
+              <Text style={styles.loadingText}>{t("loading.ai")}</Text>
+            </View>
+          )}
+
+          {/* Input Container */}
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              placeholder={t("input.placeholder")}
+              value={inputText}
+              onChangeText={setInputText}
+              onSubmitEditing={() => handleSendMessage()}
+              returnKeyType="send"
+              multiline
+              editable={!isAiStreaming}
+            />
+            <TouchableOpacity
+              style={[styles.sendButton, isAiStreaming && styles.sendButtonDisabled]}
+              onPress={() => handleSendMessage()}
+              disabled={isAiStreaming}
+            >
+              <Icon name="send" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Modals */}
+          <Modal
+            visible={showEnvironmentModal}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowEnvironmentModal(false)}
           >
-            <Icon name="send" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("modal.environment.title")}</Text>
+                  <TouchableOpacity onPress={() => setShowEnvironmentModal(false)}>
+                    <Icon name="close" size={24} color="#374151" />
+                  </TouchableOpacity>
+                </View>
+                http://10.0.2.2:8000/api/v1/rooms/ai-chat-room           <FlatList
+                  data={environments}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      style={[styles.environmentItem, currentEnvironment === item.id && styles.selectedEnvironment]}
+                      onPress={() => selectEnvironment(item)}
+                    >
+                      <Icon name={item.icon} size={24} color="#6B7280" />
+                      <View style={styles.environmentInfo}>
+                        <Text style={styles.environmentName}>{item.name}</Text>
+                        <Text style={styles.environmentDescription}>{item.description}</Text>
+                      </View>
+                      {currentEnvironment === item.id && <Icon name="checkmark-circle" size={20} color="#10B981" />}
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </View>
+          </Modal>
+
+          <Modal
+            visible={showTopicsModal}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowTopicsModal(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>{t("modal.topics.title")}</Text>
+                  <TouchableOpacity onPress={() => setShowTopicsModal(false)}>
+                    <Icon name="close" size={24} color="#374151" />
+                  </TouchableOpacity>
+                </View>
+                <FlatList
+                  data={conversationTopics}
+                  keyExtractor={(item) => item.id}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity style={styles.topicItem} onPress={() => selectTopic(item)}>
+                      <Text style={styles.topicTitle}>{item.title}</Text>
+                      <Icon name="arrow-forward" size={16} color="#6B7280" />
+                    </TouchableOpacity>
+                  )}
+                />
+              </View>
+            </View>
+          </Modal>
         </View>
-
-        {/* Modals */}
-        <Modal
-          visible={showEnvironmentModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowEnvironmentModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t("modal.environment.title")}</Text>
-                <TouchableOpacity onPress={() => setShowEnvironmentModal(false)}>
-                  <Icon name="close" size={24} color="#374151" />
-                </TouchableOpacity>
-              </View>
-              http://10.0.2.2:8000/api/v1/rooms/ai-chat-room           <FlatList
-                data={environments}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={[styles.environmentItem, currentEnvironment === item.id && styles.selectedEnvironment]}
-                    onPress={() => selectEnvironment(item)}
-                  >
-                    <Icon name={item.icon} size={24} color="#6B7280" />
-                    <View style={styles.environmentInfo}>
-                      <Text style={styles.environmentName}>{item.name}</Text>
-                      <Text style={styles.environmentDescription}>{item.description}</Text>
-                    </View>
-                    {currentEnvironment === item.id && <Icon name="checkmark-circle" size={20} color="#10B981" />}
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
-          </View>
-        </Modal>
-
-        <Modal
-          visible={showTopicsModal}
-          transparent={true}
-          animationType="slide"
-          onRequestClose={() => setShowTopicsModal(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t("modal.topics.title")}</Text>
-                <TouchableOpacity onPress={() => setShowTopicsModal(false)}>
-                  <Icon name="close" size={24} color="#374151" />
-                </TouchableOpacity>
-              </View>
-              <FlatList
-                data={conversationTopics}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => (
-                  <TouchableOpacity style={styles.topicItem} onPress={() => selectTopic(item)}>
-                    <Text style={styles.topicTitle}>{item.title}</Text>
-                    <Icon name="arrow-forward" size={16} color="#6B7280" />
-                  </TouchableOpacity>
-                )}
-              />
-            </View>
-          </View>
-        </Modal>
-      </View>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </ScreenLayout>
   );
 };
 
-// Sử dụng StyleSheet.create thay vì createScaledSheet cho các style mới
-// và hợp nhất các style cũ/mới
-const styles = StyleSheet.create({
-  // Style cũ từ createScaledSheet
+const styles = createScaledSheet({
   header: {
     flexDirection: "row",
     alignItems: "center",

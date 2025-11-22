@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { checkResetMethods } from '../../services/authService';
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { showError } from "../../utils/toastHelper";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -39,7 +40,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -71,7 +72,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </Animated.View>
-    </View>
+    </ScreenLayout>
   )
 }
 

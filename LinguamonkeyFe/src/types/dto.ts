@@ -1892,6 +1892,10 @@ export interface UserResponse {
     authProvider?: string;
     country?: Enums.Country;
 
+    certificationIds?: string[] | null;
+    interestestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
+    goalIds?: string[] | null;
+
     // Synced Enum Fields
     ageRange?: Enums.AgeRange;
     proficiency?: Enums.ProficiencyLevel;
@@ -2125,4 +2129,33 @@ export interface MilestoneUserResponse {
     milestoneId: string;
     title: string;
     completed: boolean;
+}
+
+
+//python
+
+export interface PythonTranslateRequest {
+    text: string;
+    sourceLang: string;
+    targetLang: string;
+}
+
+export interface PythonTranslateResponse {
+    translatedText: string;
+    error?: string;
+}
+
+export interface ChatMessageHistory {
+    role: 'user' | 'assistant';
+    content: string;
+}
+
+export interface PythonChatRequest {
+    message: string;
+    history: ChatMessageHistory[];
+}
+
+export interface PythonChatResponse {
+    reply: string;
+    error?: string;
 }

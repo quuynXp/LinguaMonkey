@@ -39,6 +39,11 @@ public class UserResponse {
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
 
+
+    private List<String> certificationIds;
+    private List<UUID> interestIds;        // ĐÃ SỬA TÊN: interestestIds → interestIds (fix typo)
+    private List<String> goalIds;
+
     private int level;
     private int exp;
     private int expToNextLevel;

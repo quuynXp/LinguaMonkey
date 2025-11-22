@@ -1,29 +1,46 @@
 import instance from "../api/axiosInstance";
 
+// Hàm tiện ích để chuyển Date object thành chuỗi yyyy-MM-dd
+const formatDateParam = (date?: Date): string | undefined => {
+  if (date instanceof Date && !isNaN(date.getTime())) {
+    return date.toISOString().split("T")[0];
+  }
+  // Trả về undefined nếu không hợp lệ, để axios không gửi param
+  return undefined;
+};
 
-export const getStatisticsOverview = async (params: {
-  period?: "week" | "month" | "year";
+// Định nghĩa kiểu chung cho các tham số thời gian
+interface DateRangeParams {
+  period?: "day" | "week" | "month" | "year";
   startDate?: Date;
   endDate?: Date;
-  aggregate?: "day" | "week" | "month";
-} = {}) => {
+  aggregate?: "day" | "week" | "month" | "year"; // Controller hỗ trợ day/week/month/year cho aggregate
+}
+
+// ---------------------------------------------
+// 1. Endpoint: GET /api/v1/statistics/overview
+// ---------------------------------------------
+export const getStatisticsOverview = async (
+  params: DateRangeParams & { userId?: string } = {}
+) => {
+  const formattedParams: any = {
+    userId: params.userId,
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  // Lọc bỏ các giá trị undefined để Axios không gửi chúng
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
   try {
-    const formattedParams: any = {};
+    const res = await instance.get(`/api/v1/statistics/overview`, {
+      params: filteredParams,
+    });
 
-    if (params.period) formattedParams.period = params.period;
-
-    if (params.startDate instanceof Date) {
-      formattedParams.startDate = params.startDate.toISOString().split("T")[0];
-    }
-    if (params.endDate instanceof Date) {
-      formattedParams.endDate = params.endDate.toISOString().split("T")[0];
-    }
-    if (params.aggregate) formattedParams.aggregate = params.aggregate;
-
-    console.log("Fetching statistics overview with params: ", formattedParams);
-    const res = await instance.get(`/api/v1/statistics/overview`, { params: formattedParams });
-
-    // adjust depending on your backend structure: here we expect res.data.result
     const result = res.data.result || res.data || {};
 
     return {
@@ -32,55 +49,255 @@ export const getStatisticsOverview = async (params: {
       lessons: result.totalLessons || 0,
       revenue: result.totalRevenue ? Number(result.totalRevenue) : 0,
       transactions: result.totalTransactions || 0,
-      raw: result, // keep raw so component can use result.timeSeries if present
+      raw: result,
     };
   } catch (error: any) {
-    console.error("Error fetching statistics overview:", error?.response?.data || error.message);
+    console.error(
+      "Error fetching statistics overview:",
+      error?.response?.data || error.message
+    );
     throw error;
   }
 };
 
-
-// Lấy user count theo kỳ
-export const getUserCounts = async (period: "day" | "month" | "year") => {
-  const res = await instance.get(`/api/v1/statistics/users/count`, { params: { period } });
-  return res.data.result;
-};
-
-// Lấy user growth
-export const getUserGrowth = async (period: "day" | "month" | "year") => {
-  const res = await instance.get(`/api/v1/statistics/users/growth`, { params: { period } });
-  return res.data.result;
-};
-
-// Lấy activity statistics
-export const getActivities = async (
-  params: { status?: string; provider?: string; startDate?: string; endDate?: string; aggregate?: "day" | "week" | "month" } = {}
+// ---------------------------------------------
+// 2. Endpoint: GET /api/v1/statistics/user/{userId}/dashboard (NEW)
+// ---------------------------------------------
+export const getDashboardStatistics = async (
+  userId: string,
+  params: DateRangeParams = {}
 ) => {
-  const res = await instance.get(`/api/v1/statistics/activities`, { params });
+  const formattedParams: any = {
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(`/api/v1/statistics/user/${userId}/dashboard`, {
+    params: filteredParams,
+  });
   return res.data.result;
 };
 
-// Lấy transaction statistics
-export const getTransactions = async (
-  params: { status?: string; provider?: string; startDate?: string; endDate?: string; aggregate?: "day" | "week" | "month" } = {}
+// ---------------------------------------------
+// 3. Endpoint: GET /api/v1/statistics/user/{userId}
+// ---------------------------------------------
+export const getUserStatistics = async (
+  userId: string,
+  params: DateRangeParams = {}
 ) => {
-  const res = await instance.get(`/api/v1/statistics/transactions`, { params });
+  const formattedParams: any = {
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(`/api/v1/statistics/user/${userId}`, {
+    params: filteredParams,
+  });
   return res.data.result;
 };
 
-export const getUserStatistics = async (userId: string, params: {
-  period?: "week" | "month" | "year",
-  startDate?: Date,
-  endDate?: Date,
-  aggregate?: "day" | "week" | "month"
-} = {}) => {
-  const formattedParams: any = {};
-  if (params.period) formattedParams.period = params.period;
-  if (params.startDate instanceof Date) formattedParams.startDate = params.startDate.toISOString().split("T")[0];
-  if (params.endDate instanceof Date) formattedParams.endDate = params.endDate.toISOString().split("T")[0];
-  if (params.aggregate) formattedParams.aggregate = params.aggregate;
 
-  const res = await instance.get(`/api/v1/statistics/user/${userId}`, { params: formattedParams });
+// ---------------------------------------------
+// 4. Endpoint: GET /api/v1/statistics/users/count (Cập nhật params)
+// ---------------------------------------------
+// Controller yêu cầu period, nhưng startDate/endDate là optional.
+export const getUserCounts = async (
+  params: { period: "day" | "month" | "year" } & Omit<DateRangeParams, 'aggregate'>
+) => {
+  const formattedParams: any = {
+    period: params.period,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(`/api/v1/statistics/users/count`, {
+    params: filteredParams,
+  });
+  return res.data.result;
+};
+
+// ---------------------------------------------
+// 5. Endpoint: GET /api/v1/statistics/users/growth (Cập nhật params)
+// ---------------------------------------------
+export const getUserGrowth = async (
+  params: { period: "day" | "month" | "year" } & Omit<DateRangeParams, 'aggregate'>
+) => {
+  const formattedParams: any = {
+    period: params.period,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(`/api/v1/statistics/users/growth`, {
+    params: filteredParams,
+  });
+  return res.data.result;
+};
+
+// ---------------------------------------------
+// 6. Endpoint: GET /api/v1/statistics/activities
+// ---------------------------------------------
+export const getActivityStatistics = async (
+  params: DateRangeParams & { activityType?: string } = {}
+) => {
+  const formattedParams: any = {
+    activityType: params.activityType,
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(`/api/v1/statistics/activities`, {
+    params: filteredParams,
+  });
+  return res.data.result;
+};
+
+// ---------------------------------------------
+// 7. Endpoint: GET /api/v1/statistics/transactions
+// ---------------------------------------------
+export const getTransactionStatistics = async (
+  params: DateRangeParams & { status?: string; provider?: string } = {}
+) => {
+  const formattedParams: any = {
+    status: params.status,
+    provider: params.provider,
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(`/api/v1/statistics/transactions`, {
+    params: filteredParams,
+  });
+  return res.data.result;
+};
+
+// ---------------------------------------------
+// 8. Endpoint: GET /api/v1/statistics/teacher/overview (NEW)
+// ---------------------------------------------
+export const getTeacherOverview = async (
+  params: DateRangeParams & { teacherId?: string } = {}
+) => {
+  const formattedParams: any = {
+    teacherId: params.teacherId,
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(`/api/v1/statistics/teacher/overview`, {
+    params: filteredParams,
+  });
+  return res.data.result;
+};
+
+
+// ---------------------------------------------
+// 9. Endpoint: GET /api/v1/statistics/teacher/courses/performance (NEW)
+// ---------------------------------------------
+export const getTeacherCoursesPerformance = async (
+  params: DateRangeParams & { teacherId?: string } = {}
+) => {
+  const formattedParams: any = {
+    teacherId: params.teacherId,
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(
+    `/api/v1/statistics/teacher/courses/performance`,
+    { params: filteredParams }
+  );
+  return res.data.result;
+};
+
+// ---------------------------------------------
+// 10. Endpoint: GET /api/v1/statistics/teacher/courses/{courseId}/lessons (NEW)
+// ---------------------------------------------
+export const getTeacherCourseLessonStats = async (
+  courseId: string,
+  params: Omit<DateRangeParams, 'period' | 'aggregate'> & { teacherId?: string } = {}
+) => {
+  const formattedParams: any = {
+    teacherId: params.teacherId,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(
+    `/api/v1/statistics/teacher/courses/${courseId}/lessons`,
+    { params: filteredParams }
+  );
+  return res.data.result;
+};
+
+// ---------------------------------------------
+// 11. Endpoint: GET /api/v1/statistics/teacher/courses/{courseId}/revenue (NEW)
+// ---------------------------------------------
+export const getTeacherCourseRevenue = async (
+  courseId: string,
+  params: Omit<DateRangeParams, 'period'> & { teacherId?: string } = {}
+) => {
+  const formattedParams: any = {
+    teacherId: params.teacherId,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  const res = await instance.get(
+    `/api/v1/statistics/teacher/courses/${courseId}/revenue`,
+    { params: filteredParams }
+  );
   return res.data.result;
 };

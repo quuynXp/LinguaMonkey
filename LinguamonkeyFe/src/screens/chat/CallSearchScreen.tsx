@@ -7,6 +7,7 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import { useUserStore } from '../../stores/UserStore';
 import instance from '../../api/axiosInstance';
 import { useTokenStore } from '../../stores/tokenStore';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 type FoundPartner = {
   user_id: string;
@@ -45,19 +46,19 @@ const CallSearchScreen = ({ navigation, route }) => {
 
   const [searchTime, setSearchTime] = useState(0);
   const [estimatedTime, setEstimatedTime] = useState(45); // Vẫn giữ để hiển thị
-  
+
   // Xóa bỏ state 'searchStatus' và 'foundPartner', thay bằng state của useMutation
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
   // --- THAY THẾ MOCK BẰNG API MATCHMAKING ---
-  const { 
-    mutate: findMatch, 
-    data: matchData, 
-    isPending: isSearching, 
-    isSuccess: isFound, 
-    isError: isFailed 
+  const {
+    mutate: findMatch,
+    data: matchData,
+    isPending: isSearching,
+    isSuccess: isFound,
+    isError: isFailed
   } = useMutation<FindMatchResponse, Error, typeof preferences>({
     mutationFn: async (prefs) => {
       // Gọi API Java (MatchmakingController)
@@ -132,11 +133,11 @@ const CallSearchScreen = ({ navigation, route }) => {
 
   const startCall = (data: FindMatchResponse) => {
     // Truyền Jitsi room_id và thông tin partner
-    navigation.replace("JitsiCall", { 
+    navigation.replace("JitsiCall", {
       roomId: data.room_id,
-      partner: data.partner, 
+      partner: data.partner,
       videoCallId: data.video_call_id,
-      preferences 
+      preferences
     });
   };
 
@@ -180,7 +181,7 @@ const CallSearchScreen = ({ navigation, route }) => {
             <View style={styles.partnerCard}>
               <View style={styles.partnerHeader}>
                 {/* TODO: Thay bằng <Image source={{ uri: foundPartner.avatar_url }} /> */}
-                <Text style={styles.partnerAvatar}>👩‍🦰</Text> 
+                <Text style={styles.partnerAvatar}>👩‍🦰</Text>
                 <View style={styles.partnerInfo}>
                   <Text style={styles.partnerName}>{foundPartner.fullname}</Text>
                   <View style={styles.partnerLocation}>
@@ -248,7 +249,7 @@ const CallSearchScreen = ({ navigation, route }) => {
 
   // --- MÀN HÌNH ĐANG TÌM KIẾM (isPending) hoặc THẤT BẠI (isError) ---
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={cancelSearch}>
           <Icon name="close" size={24} color="#374151" />
@@ -270,10 +271,10 @@ const CallSearchScreen = ({ navigation, route }) => {
               <Icon name="search" size={150} color="#4F46E5" style={styles.searchAnimation} />
             </Animated.View>
           )}
-          
+
           {isFailed && (
-             <Animated.View style={[styles.searchAnimationContainer, { transform: [{ scale: fadeAnim }] }]}>
-               <Icon name="error-outline" size={150} color="#EF4444" style={styles.searchAnimation} />
+            <Animated.View style={[styles.searchAnimationContainer, { transform: [{ scale: fadeAnim }] }]}>
+              <Icon name="error-outline" size={150} color="#EF4444" style={styles.searchAnimation} />
             </Animated.View>
           )}
 
@@ -332,7 +333,7 @@ const CallSearchScreen = ({ navigation, route }) => {
           </TouchableOpacity>
         </View>
       </Animated.View>
-    </View>
+    </ScreenLayout>
   );
 };
 

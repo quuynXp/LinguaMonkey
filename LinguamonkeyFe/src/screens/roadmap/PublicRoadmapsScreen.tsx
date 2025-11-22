@@ -1,107 +1,125 @@
-import React, { useState, useCallback } from 'react'
-import { View, ScrollView, StyleSheet, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Modal, Image } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import React, { useState, useCallback, useMemo } from 'react'
+import { View, ScrollView, StyleSheet, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Modal, Alert } from 'react-native'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { useTranslation } from 'react-i18next'
 import { useRoadmap } from '../../hooks/useRoadmap'
 import { useUserStore } from '../../stores/UserStore'
+import { Roadmap } from '../../types/entity'
+import ScreenLayout from '../../components/layout/ScreenLayout'
+// import { RoadmapResponse } from '../../types/dto' // Import DTO type
+
 
 const PublicRoadmapsScreen = ({ navigation }) => {
   const { t } = useTranslation()
   const { user } = useUserStore()
-  const { usePublicRoadmaps, useSuggestions, useAddSuggestion } = useRoadmap()
+  const { usePublicRoadmaps, useAddSuggestion } = useRoadmap()
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedRoadmap, setSelectedRoadmap] = useState(null)
+  const [selectedRoadmap, setSelectedRoadmap] = useState<Roadmap | null>(null)
   const [showSuggestionModal, setShowSuggestionModal] = useState(false)
   const [suggestionText, setSuggestionText] = useState('')
-  const [language, setLanguage] = useState('en')
-  const [page, setPage] = useState(0)
 
-  const { data: publicRoadmaps, isLoading } = usePublicRoadmaps(language, page)
-  const { data: suggestions } = useSuggestions(selectedRoadmap?.roadmapId)
+
+  const { data: rawPublicRoadmaps, isLoading } = usePublicRoadmaps()
+
   const addSuggestionMutation = useAddSuggestion()
 
-  const filteredRoadmaps = publicRoadmaps?.filter(roadmap =>
-    roadmap.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    roadmap.description.toLowerCase().includes(searchQuery.toLowerCase())
-  ) || []
+  const publicRoadmaps: Roadmap[] = useMemo(() => {
+    return (rawPublicRoadmaps as unknown as Roadmap[]) || [];
+  }, [rawPublicRoadmaps]);
 
-  const handleAddSuggestion = async () => {
-    if (suggestionText.trim() && selectedRoadmap) {
-      try {
-        await addSuggestionMutation.mutateAsync({
-          roadmapId: selectedRoadmap.roadmapId,
-          itemId: selectedRoadmap.id,
-          suggestedOrderIndex: 0,
-          reason: suggestionText,
-        })
-        setSuggestionText('')
-        setShowSuggestionModal(false)
-      } catch (error) {
-        console.error('Error adding suggestion:', error)
-      }
+  const filteredRoadmaps = useMemo(() =>
+    publicRoadmaps.filter((roadmap: Roadmap) =>
+      roadmap.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      roadmap.description?.toLowerCase().includes(searchQuery.toLowerCase() || "")
+    )
+    , [publicRoadmaps, searchQuery])
+
+  const handleAddSuggestion = useCallback(async () => {
+    if (!suggestionText.trim() || !selectedRoadmap) {
+      Alert.alert(t('common.error'), t('roadmap.suggestionEmpty'));
+      return;
     }
-  }
 
-  const renderRoadmapCard = ({ item: roadmap }) => (
-    <TouchableOpacity
-      style={styles.roadmapCard}
-      onPress={() => setSelectedRoadmap(roadmap)}
-    >
-      <View style={styles.cardHeader}>
-        <View style={styles.cardInfo}>
-          <Text style={styles.cardTitle}>{roadmap.title}</Text>
-          <Text style={styles.cardCreator}>by {roadmap.creator}</Text>
-        </View>
-        <View style={styles.ratingContainer}>
-          <Icon name="star" size={16} color="#F59E0B" />
-          <Text style={styles.rating}>{roadmap.averageRating.toFixed(1)}</Text>
-        </View>
-      </View>
+    try {
+      await addSuggestionMutation.mutateAsync({
+        roadmapId: selectedRoadmap.roadmapId,
+        itemId: selectedRoadmap.items?.[0]?.itemId || selectedRoadmap.roadmapId,
+        suggestedOrderIndex: 0,
+        reason: suggestionText,
+      })
+      setSuggestionText('')
+      setShowSuggestionModal(false)
+      Alert.alert(t('common.success'), t('roadmap.suggestionAdded'));
+    } catch (error: any) {
+      console.error('Error adding suggestion:', error)
+      Alert.alert(t('common.error'), error.message || t('errors.unknown'));
+    }
+  }, [suggestionText, selectedRoadmap, addSuggestionMutation, t])
 
-      <Text style={styles.cardDescription} numberOfLines={2}>
-        {roadmap.description}
-      </Text>
+  const renderRoadmapCard = useCallback(({ item: roadmap }) => {
+    const r = roadmap as Roadmap;
 
-      <View style={styles.cardStats}>
-        <View style={styles.stat}>
-          <Icon name="list" size={14} color="#6B7280" />
-          <Text style={styles.statText}>{roadmap.totalItems} items</Text>
-        </View>
-        <View style={styles.stat}>
-          <Icon name="lightbulb" size={14} color="#6B7280" />
-          <Text style={styles.statText}>{roadmap.suggestionCount} suggestions</Text>
-        </View>
-        <View style={styles.stat}>
-          <Icon name="flag" size={14} color="#6B7280" />
-          <Text style={styles.statText}>{roadmap.language}</Text>
-        </View>
-      </View>
+    const displayCreator = t('common.community');
+    const displayRating = 'N/A';
+    const displayTotalItems = r.totalItems || 0;
+    const displayLanguage = r.languageCode || 'N/A';
 
-      <View style={styles.cardFooter}>
-        <TouchableOpacity
-          style={styles.viewButton}
-          onPress={() => navigation.navigate('RoadmapDetail', { roadmapId: roadmap.roadmapId })}
-        >
-          <Text style={styles.viewButtonText}>{t('common.view')}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.suggestButton}
-          onPress={() => {
-            setSelectedRoadmap(roadmap)
-            setShowSuggestionModal(true)
-          }}
-        >
-          <Icon name="add" size={18} color="#4ECDC4" />
-          <Text style={styles.suggestButtonText}>{t('roadmap.suggest')}</Text>
-        </TouchableOpacity>
-      </View>
-    </TouchableOpacity>
-  )
+    return (
+      <TouchableOpacity
+        style={styles.roadmapCard}
+        onPress={() => navigation.navigate('RoadmapDetail', { roadmapId: r.roadmapId })}
+      >
+        <View style={styles.cardHeader}>
+          <View style={styles.cardInfo}>
+            <Text style={styles.cardTitle}>{r.title}</Text>
+            <Text style={styles.cardCreator}>by {displayCreator}</Text>
+          </View>
+          <View style={styles.ratingContainer}>
+            <Icon name="star" size={16} color="#9CA3AF" />
+            <Text style={styles.rating}>{displayRating}</Text>
+          </View>
+        </View>
+
+        <Text style={styles.cardDescription} numberOfLines={2}>
+          {r.description}
+        </Text>
+
+        <View style={styles.cardStats}>
+          <View style={styles.stat}>
+            <Icon name="list" size={14} color="#6B7280" />
+            <Text style={styles.statText}>{displayTotalItems} {t('roadmap.items')}</Text>
+          </View>
+          <View style={styles.stat}>
+            <Icon name="flag" size={14} color="#6B7280" />
+            <Text style={styles.statText}>{displayLanguage.toUpperCase()}</Text>
+          </View>
+        </View>
+
+        <View style={styles.cardFooter}>
+          <TouchableOpacity
+            style={styles.viewButton}
+            onPress={() => navigation.navigate('RoadmapDetail', { roadmapId: r.roadmapId })}
+          >
+            <Text style={styles.viewButtonText}>{t('common.view')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.suggestButton}
+            onPress={() => {
+              setSelectedRoadmap(r)
+              setShowSuggestionModal(true)
+            }}
+          >
+            <Icon name="add" size={18} color="#4ECDC4" />
+            <Text style={styles.suggestButtonText}>{t('roadmap.suggest')}</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    )
+  }, [navigation, t])
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#1F2937" />
@@ -110,7 +128,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
         <View style={styles.headerRight} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <View style={styles.content}>
         {/* Search & Filter */}
         <View style={styles.filterSection}>
           <View style={styles.searchContainer}>
@@ -129,13 +147,15 @@ const PublicRoadmapsScreen = ({ navigation }) => {
                 key={lang}
                 style={[
                   styles.languageChip,
-                  language === lang && styles.languageChipActive
+                  // Language filter không hoạt động, giữ UI hiển thị mặc định
+                  lang === (user?.nativeLanguageCode || 'en') && styles.languageChipActive
                 ]}
-                onPress={() => setLanguage(lang)}
+                // setLanguage(lang) đã bị xóa
+                onPress={() => Alert.alert(t('common.info'), t('roadmap.filterNotSupported'))}
               >
                 <Text style={[
                   styles.languageChipText,
-                  language === lang && styles.languageChipTextActive
+                  lang === (user?.nativeLanguageCode || 'en') && styles.languageChipTextActive
                 ]}>
                   {lang.toUpperCase()}
                 </Text>
@@ -154,7 +174,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
             data={filteredRoadmaps}
             renderItem={renderRoadmapCard}
             keyExtractor={(item) => item.roadmapId}
-            scrollEnabled={false}
+            showsVerticalScrollIndicator={false}
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Icon name="inbox" size={64} color="#D1D5DB" />
@@ -163,23 +183,14 @@ const PublicRoadmapsScreen = ({ navigation }) => {
             }
           />
         )}
-
-        {/* Load More */}
-        {publicRoadmaps && publicRoadmaps.length > 0 && (
-          <TouchableOpacity
-            style={styles.loadMoreButton}
-            onPress={() => setPage(page + 1)}
-          >
-            <Text style={styles.loadMoreText}>{t('common.loadMore')}</Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
+      </View>
 
       {/* Suggestion Modal */}
       <Modal
         visible={showSuggestionModal}
         transparent
         animationType="slide"
+        onRequestClose={() => setShowSuggestionModal(false)}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -212,7 +223,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
                 <Text style={styles.cancelButtonText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalButton, styles.submitButton]}
+                style={[styles.modalButton, styles.submitButton, addSuggestionMutation.isPending && styles.disabledLoadMoreButton]}
                 onPress={handleAddSuggestion}
                 disabled={addSuggestionMutation.isPending}
               >
@@ -226,7 +237,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </ScreenLayout>
   )
 }
 
@@ -255,10 +266,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    padding: 16,
+    paddingHorizontal: 16,
   },
   filterSection: {
-    marginBottom: 20,
+    paddingVertical: 16,
   },
   searchContainer: {
     flexDirection: 'row',
@@ -278,6 +289,7 @@ const styles = StyleSheet.create({
   },
   languageFilter: {
     flexDirection: 'row',
+    paddingBottom: 10,
   },
   languageChip: {
     paddingHorizontal: 12,
@@ -327,7 +339,7 @@ const styles = StyleSheet.create({
   ratingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEF3C7',
+    backgroundColor: '#F3F4F6',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -335,7 +347,7 @@ const styles = StyleSheet.create({
   rating: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#F59E0B',
+    color: '#6B7280',
     marginLeft: 4,
   },
   cardDescription: {
@@ -412,6 +424,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     alignItems: 'center',
     marginVertical: 20,
+    marginHorizontal: 0,
+  },
+  disabledLoadMoreButton: {
+    backgroundColor: '#9CA3AF',
   },
   loadMoreText: {
     fontSize: 14,

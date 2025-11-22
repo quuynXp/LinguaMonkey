@@ -1,127 +1,373 @@
-import React from "react"
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, FlatList, RefreshControl } from "react-native"
-import { useTranslation } from "react-i18next"
+import { useCallback, useMemo } from "react"
+import {
+    View,
+    Text,
+    FlatList,
+    TouchableOpacity,
+    Alert,
+    RefreshControl,
+} from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useCourses } from "../../hooks/useCourses" // (Đảm bảo đường dẫn đúng)
-import { useUserStore } from "../../stores/UserStore" // (Đảm bảo đường dẫn đúng)
-import { createScaledSheet } from "../../utils/scaledStyles" // (Đảm bảo đường dẫn đúng)
-import type { Course } from "../../hooks/useCourses"
+import { useTranslation } from "react-i18next"
+import { useCourses } from "../../hooks/useCourses"
+import { useUserStore } from "../../stores/UserStore"
+import { createScaledSheet } from "../../utils/scaledStyles"
+import ScreenLayout from "../../components/layout/ScreenLayout"
+import type { CourseResponse } from "../../types/dto"
 
-const CreatorDashboardScreen = ({ navigation }) => {
-  const { t } = useTranslation()
-  const { user } = useUserStore()
-  const { useTeacherCourses } = useCourses()
+const CreatorDashboard = ({ navigation }: any) => {
+    const { t } = useTranslation()
+    const user = useUserStore((state) => state.user)
 
-  const { 
-    data: coursesData, 
-    isLoading, 
-    refetch,
-    isRefetching,
-  } = useTeacherCourses(user?.userId, 0, 50) // Tăng size
+    const {
+        useCreatorCourses,
+        useCreateDraftVersion,
+        usePublishVersion,
+    } = useCourses()
 
-  const allCourses = coursesData?.data || []
+    const {
+        data: coursesData,
+        isLoading: coursesLoading,
+        refetch: refetchCourses,
+    } = useCreatorCourses(user?.userId, 0, 20)
 
-  // Phân loại khóa học
-  const publicCourses = allCourses.filter(c => c.latestPublicVersion?.status === 'PUBLIC')
-  const draftCourses = allCourses.filter(c => c.latestPublicVersion?.status === 'DRAFT')
-  const pendingCourses = allCourses.filter(c => c.latestPublicVersion?.status === 'PENDING_APPROVAL')
+    const { mutate: createDraft, isPending: isCreatingDraft } = useCreateDraftVersion()
+    const { mutate: publishVersion, isPending: isPublishing } = usePublishVersion()
 
-  const handleEditCourse = (course: Course) => {
-    navigation.navigate("EditCourse", { courseId: course.courseId })
-  }
+    const courses: CourseResponse[] = useMemo(() => {
+        return (coursesData?.data as CourseResponse[]) || []
+    }, [coursesData])
 
-  const renderCourseItem = ({ item }: { item: Course }) => {
-    const version = item.latestPublicVersion
-    let statusText = "New (No Version)"
-    let statusColor = "#6B7280"
-    
-    if (version) {
-        if (version.status === 'PUBLIC') {
-            statusText = `v${version.versionNumber} - Public`
-            statusColor = "#10B981"
-        } else if (version.status === 'PENDING_APPROVAL') {
-            statusText = `v${version.versionNumber} - Pending`
-            statusColor = "#F59E0B"
-        } else if (version.status === 'DRAFT') {
-            statusText = `v${version.versionNumber} - Draft`
-            statusColor = "#3B82F6"
-        }
+    const isLoading = coursesLoading || isCreatingDraft || isPublishing
+
+    const handleCreateDraft = useCallback(
+        (courseId: string) => {
+            createDraft(courseId, {
+                onSuccess: () => {
+                    Alert.alert(t("success"), t("course.draftCreatedSuccessfully"))
+                    refetchCourses()
+                },
+                onError: (error: any) => {
+                    const errorMessage =
+                        error?.response?.data?.message ||
+                        error?.message ||
+                        t("course.failedCreateDraft")
+                    Alert.alert(t("error"), errorMessage)
+                },
+            })
+        },
+        [createDraft, refetchCourses, t]
+    )
+
+    const handlePublish = useCallback(
+        (versionId: string) => {
+            Alert.prompt(
+                t("course.publishTitle"),
+                t("course.publishPrompt"),
+                (reason) => {
+                    if (reason?.trim()) {
+                        publishVersion(
+                            {
+                                versionId,
+                                req: { reasonForChange: reason },
+                            },
+                            {
+                                onSuccess: () => {
+                                    Alert.alert(t("success"), t("course.publishSubmitted"))
+                                    refetchCourses()
+                                },
+                                onError: (error: any) => {
+                                    const errorMessage =
+                                        error?.response?.data?.message ||
+                                        error?.message ||
+                                        t("course.failedPublish")
+                                    Alert.alert(t("error"), errorMessage)
+                                },
+                            }
+                        )
+                    }
+                }
+            )
+        },
+        [publishVersion, refetchCourses, t]
+    )
+
+    const handleEditCourse = useCallback(
+        (courseId: string) => {
+            navigation.navigate("CourseManagerScreen", { courseId })
+        },
+        [navigation]
+    )
+
+    const renderCourseItem = (info: any) => {
+        const item = info.item as CourseResponse
+        const publicVersion = item.latestPublicVersion
+        const hasPublicVersion = !!publicVersion
+
+        return (
+            <View style={styles.courseCard}>
+                <View style={styles.courseHeader}>
+                    <View style={styles.courseInfo}>
+                        <Text style={styles.courseTitle} numberOfLines={2}>
+                            {item.title}
+                        </Text>
+                        <View style={styles.courseMeta}>
+                            <Text style={styles.courseId}>{t("course.id")}: {item.courseId.substring(0, 8)}</Text>
+                            <View
+                                style={[
+                                    styles.statusBadge,
+                                    {
+                                        backgroundColor:
+                                            item.approvalStatus === "APPROVED"
+                                                ? "#10B981"
+                                                : item.approvalStatus === "REJECTED"
+                                                    ? "#F44336"
+                                                    : "#F59E0B",
+                                    },
+                                ]}
+                            >
+                                <Text style={styles.statusBadgeText}>{item.approvalStatus}</Text>
+                            </View>
+                        </View>
+                    </View>
+                    <Text style={styles.price}>
+                        {item.price === 0 ? t("courses.free") : `$${item.price}`}
+                    </Text>
+                </View>
+
+                <View style={styles.versionInfo}>
+                    {hasPublicVersion ? (
+                        <Text style={styles.versionText}>
+                            {t("course.publicVersion")}: v{publicVersion.versionNumber}
+                        </Text>
+                    ) : (
+                        <Text style={styles.noVersionText}>{t("course.noPublicVersion")}</Text>
+                    )}
+                </View>
+
+                <View style={styles.actionsContainer}>
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.draftButton]}
+                        onPress={() => handleCreateDraft(item.courseId)}
+                        disabled={isLoading}
+                    >
+                        <Icon name="add-circle-outline" size={16} color="#4F46E5" />
+                        <Text style={styles.draftButtonText}>{t("course.createDraft")}</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.actionButton, styles.editButton]}
+                        onPress={() => handleEditCourse(item.courseId)}
+                        disabled={isLoading}
+                    >
+                        <Icon name="edit" size={16} color="#FFFFFF" />
+                        <Text style={styles.editButtonText}>{t("course.editContent")}</Text>
+                    </TouchableOpacity>
+
+                    {hasPublicVersion && (
+                        <TouchableOpacity
+                            style={[styles.actionButton, styles.publishButton]}
+                            onPress={() => handlePublish(publicVersion.versionId)}
+                            disabled={isLoading}
+                        >
+                            <Icon name="cloud-upload" size={16} color="#FFFFFF" />
+                            <Text style={styles.publishButtonText}>{t("course.publish")}</Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </View>
+        )
     }
-    
-    return (
-      <TouchableOpacity style={styles.courseCard} onPress={() => handleEditCourse(item)}>
-        <View style={styles.courseInfo}>
-          <Text style={styles.courseTitle} numberOfLines={2}>{item.title}</Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-            <Text style={styles.statusText}>{statusText}</Text>
-          </View>
+
+    const renderEmpty = () => (
+        <View style={styles.emptyContainer}>
+            <Icon name="school" size={64} color="#D1D5DB" />
+            <Text style={styles.emptyText}>{t("course.noCourses")}</Text>
+            <Text style={styles.emptySubtext}>{t("course.createFirstCourse")}</Text>
         </View>
-        <Icon name="chevron-right" size={24} color="#6B7280" />
-      </TouchableOpacity>
     )
-  }
 
-  const renderSection = (title: string, data: Course[]) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title} ({data.length})</Text>
-      {data.length > 0 ? (
-         <FlatList
-            data={data}
-            renderItem={renderCourseItem}
-            keyExtractor={(item) => item.courseId}
-            scrollEnabled={false}
-         />
-      ) : (
-        <Text style={styles.emptyText}>{t('courses.noCoursesInSection')}</Text>
-      )}
-    </View>
-  )
-
-  if (isLoading && !isRefetching) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-      </View>
+        <ScreenLayout>
+            <FlatList<CourseResponse>
+                data={courses}
+                renderItem={renderCourseItem}
+                keyExtractor={(item) => item.courseId}
+                contentContainerStyle={styles.listContainer}
+                ListHeaderComponent={
+                    <View style={styles.header}>
+                        <Text style={styles.title}>{t("course.manageCoursesTitle")}</Text>
+                        <Text style={styles.subtitle}>{t("course.manageCoursesSubtitle")}</Text>
+                    </View>
+                }
+                ListEmptyComponent={renderEmpty}
+                showsVerticalScrollIndicator={false}
+                scrollEnabled={!isLoading}
+                refreshControl={
+                    <RefreshControl
+                        refreshing={coursesLoading}
+                        onRefresh={refetchCourses}
+                        colors={["#4F46E5"]}
+                        tintColor="#4F46E5"
+                    />
+                }
+            />
+        </ScreenLayout>
     )
-  }
-
-  return (
-    <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t("courses.myCourses")}</Text>
-        <TouchableOpacity onPress={() => navigation.navigate("EditCourse", { courseId: null })}>
-          <Icon name="add" size={24} color="#4F46E5" />
-        </TouchableOpacity>
-      </View>
-      <ScrollView
-        style={styles.content}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
-      >
-        {renderSection(t('courses.status.public'), publicCourses)}
-        {renderSection(t('courses.status.pending'), pendingCourses)}
-        {renderSection(t('courses.status.drafts'), draftCourses)}
-      </ScrollView>
-    </View>
-  )
 }
 
 const styles = createScaledSheet({
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
-  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingTop: 60, paddingBottom: 20, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
-  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
-  content: { flex: 1, padding: 24 },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: "bold", color: "#1F2937", marginBottom: 16 },
-  courseCard: { backgroundColor: "#FFFFFF", borderRadius: 12, padding: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12, elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2 },
-  courseInfo: { flex: 1, marginRight: 16 },
-  courseTitle: { fontSize: 16, fontWeight: "600", color: "#1F2937", marginBottom: 8 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
-  statusText: { fontSize: 12, fontWeight: "600", color: "#FFFFFF" },
-  emptyText: { fontSize: 14, color: "#6B7280", fontStyle: 'italic' },
+    listContainer: {
+        padding: 16,
+        paddingBottom: 32,
+        backgroundColor: "#F8FAFC",
+    },
+    header: {
+        marginBottom: 24,
+    },
+    title: {
+        fontSize: 28,
+        fontWeight: "700",
+        color: "#1F2937",
+        marginBottom: 8,
+    },
+    subtitle: {
+        fontSize: 14,
+        color: "#6B7280",
+    },
+    courseCard: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 16,
+        borderLeftWidth: 4,
+        borderLeftColor: "#4F46E5",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    courseHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        marginBottom: 12,
+    },
+    courseInfo: {
+        flex: 1,
+        marginRight: 12,
+    },
+    courseTitle: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: "#1F2937",
+        marginBottom: 8,
+        height: 44,
+    },
+    courseMeta: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8,
+    },
+    courseId: {
+        fontSize: 12,
+        color: "#6B7280",
+    },
+    statusBadge: {
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    statusBadgeText: {
+        fontSize: 11,
+        fontWeight: "600",
+        color: "#FFFFFF",
+    },
+    price: {
+        fontSize: 16,
+        fontWeight: "700",
+        color: "#4F46E5",
+    },
+    versionInfo: {
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        backgroundColor: "#F3F4F6",
+        borderRadius: 8,
+        marginBottom: 12,
+    },
+    versionText: {
+        fontSize: 13,
+        color: "#374151",
+        fontWeight: "500",
+    },
+    noVersionText: {
+        fontSize: 13,
+        color: "#9CA3AF",
+        fontStyle: "italic",
+    },
+    actionsContainer: {
+        flexDirection: "row",
+        gap: 8,
+        flexWrap: "wrap",
+    },
+    actionButton: {
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 8,
+        justifyContent: "center",
+        flex: 1,
+        minWidth: 100,
+    },
+    draftButton: {
+        backgroundColor: "#F0F9FF",
+        borderWidth: 1,
+        borderColor: "#4F46E5",
+    },
+    draftButtonText: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: "#4F46E5",
+        marginLeft: 4,
+    },
+    editButton: {
+        backgroundColor: "#4F46E5",
+    },
+    editButtonText: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: "#FFFFFF",
+        marginLeft: 4,
+    },
+    publishButton: {
+        backgroundColor: "#10B981",
+    },
+    publishButtonText: {
+        fontSize: 12,
+        fontWeight: "600",
+        color: "#FFFFFF",
+        marginLeft: 4,
+    },
+    emptyContainer: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        paddingVertical: 80,
+    },
+    emptyText: {
+        fontSize: 18,
+        fontWeight: "600",
+        color: "#9CA3AF",
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    emptySubtext: {
+        fontSize: 14,
+        color: "#D1D5DB",
+        textAlign: "center",
+    },
 })
 
-export default CreatorDashboardScreen
+export default CreatorDashboard

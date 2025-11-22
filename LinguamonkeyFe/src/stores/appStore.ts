@@ -1,8 +1,8 @@
-// stores/AppStore.ts
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { GrammarTopic, BilingualVideo } from '../types/api';
+import * as Enums from '../types/enums';
+import * as Entities from '../types/entity';
 
 interface CallPreferences {
   interests: string[];
@@ -55,25 +55,20 @@ interface PrivacySettings {
   locationTracking: boolean;
   contactSync: boolean;
 }
-// (Hết các interface)
-
 
 interface AppState {
-  // XÓA: user: UserProfile | null
-  // XÓA: isAuthenticated: boolean
-
-  // State điều hướng
-  selectedGrammarTopic: GrammarTopic | null;
-  selectedVideo: BilingualVideo | null;
+  // Navigation state
+  selectedGrammarTopic: Entities.GrammarTopic | null;
+  selectedVideo: Entities.Video | null;
   selectedNoteTopic: string;
   selectedChapter: any;
 
-  // Cấu hình ngôn ngữ (của app, không phải của user)
+  // Language settings
   supportLanguage: string[];
-  languages: string[]; // Ngôn ngữ user đang học (có thể đồng bộ từ UserStore nếu cần)
-  nativeLanguage: string; // Ngôn ngữ mẹ đẻ (có thể đồng bộ từ UserStore nếu cần)
-  
-  // Cài đặt app
+  languages: string[];
+  nativeLanguage: string;
+
+  // App settings
   theme: 'light' | 'dark';
   callPreferences: CallPreferences;
   chatSettings: ChatSettings;
@@ -81,11 +76,9 @@ interface AppState {
   privacySettings: PrivacySettings;
 
   // Actions
-  // XÓA: setUser: (user: UserProfile | null) => void
-  // XÓA: setAuthenticated: (authenticated: boolean) => void
-  setSelectedGrammarTopic: (topic: GrammarTopic | null) => void;
-  setSelectedVideo: (video: BilingualVideo | null) => void;
-  setSupportLanguage: (Language: string[]) => void;
+  setSelectedGrammarTopic: (topic: Entities.GrammarTopic | null) => void;
+  setSelectedVideo: (video: Entities.Video | null) => void;
+  setSupportLanguage: (languages: string[]) => void;
   setNativeLanguage: (language: string) => void;
   setLanguages: (languages: string[]) => void;
   setTheme: (theme: 'light' | 'dark') => void;
@@ -99,14 +92,12 @@ interface AppState {
   setPrivacySettings: (settings: Partial<PrivacySettings>) => void;
   resetChatSettings: () => void;
   resetPrivacySettings: () => void;
-  logout: () => void; // Chỉ logout state của AppStore
+  logout: () => void;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
     (set, get) => ({
-      // XÓA: user: null,
-      // XÓA: isAuthenticated: false,
       selectedChapter: null,
       selectedGrammarTopic: null,
       selectedVideo: null,
@@ -160,14 +151,8 @@ export const useAppStore = create<AppState>()(
         contactSync: false,
       },
 
-      // ==== actions ====
-      // XÓA: setUser: (user) => set({ user }),
-      // XÓA: setAuthenticated: (auth) => set({ isAuthenticated: auth }),
       setSelectedGrammarTopic: (topic) => set({ selectedGrammarTopic: topic }),
-      
-      // SỬA LỖI: Cập nhật đúng 'supportLanguage'
-      setSupportLanguage: (langs) => set({ supportLanguage: langs }), 
-      
+      setSupportLanguage: (langs) => set({ supportLanguage: langs }),
       setSelectedVideo: (video) => set({ selectedVideo: video }),
       setNativeLanguage: (lang) => set({ nativeLanguage: lang }),
       setLanguages: (langs) => set({ languages: langs }),
@@ -177,11 +162,12 @@ export const useAppStore = create<AppState>()(
       setChatSettings: (settings) =>
         set((state) => ({ chatSettings: { ...state.chatSettings, ...settings } })),
 
-      // notification (giữ nguyên)
       setNotificationPreferences: (prefs) => set({ notificationPreferences: prefs }),
       updateNotificationPreferences: (prefs) =>
         set((state) => ({
-          notificationPreferences: { ...state.notificationPreferences!, ...prefs },
+          notificationPreferences: state.notificationPreferences
+            ? { ...state.notificationPreferences, ...prefs }
+            : prefs as NotificationPreferences,
         })),
       toggleNotification: (field, value) =>
         set((state) => {
@@ -195,7 +181,6 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      // privacy (giữ nguyên)
       setPrivacySettings: (settings) =>
         set((state) => ({
           privacySettings: { ...state.privacySettings, ...settings },
@@ -211,7 +196,6 @@ export const useAppStore = create<AppState>()(
           };
         }),
 
-      // reset (giữ nguyên)
       resetChatSettings: () =>
         set({
           chatSettings: {
@@ -241,26 +225,17 @@ export const useAppStore = create<AppState>()(
           },
         }),
 
-      /**
-       * SỬA: Chỉ reset state của AppStore
-       */
       logout: () =>
         set({
-          // XÓA: user: null,
-          // XÓA: isAuthenticated: false,
           notificationPreferences: null,
           selectedGrammarTopic: null,
           selectedVideo: null,
           selectedNoteTopic: 'all',
-          // (Tùy chọn reset các settings khác về default nếu muốn)
-          // chatSettings: { ... } 
         }),
     }),
     {
       name: 'app-storage',
       storage: createJSONStorage(() => AsyncStorage),
-      // Cân nhắc dùng partialize để loại trừ các state tạm thời
-      // (như selectedGrammarTopic, selectedVideo) khỏi persist
       partialize: (state) => ({
         supportLanguage: state.supportLanguage,
         nativeLanguage: state.nativeLanguage,

@@ -154,6 +154,41 @@ public class UserServiceImpl implements UserService {
             response.setProgress(0.0);
         }
 
+        try {
+            List<String> certIds = userCertificateRepository.findAllByIdUserId(user.getUserId())
+                    .stream()
+                    .map(cert -> cert.getId().getCertificate()) // hoặc cert.getCertification().name()
+                    .collect(Collectors.toList());
+            response.setCertificationIds(certIds);
+        } catch (Exception e) {
+            log.warn("Failed to fetch certifications for user {}: {}", user.getUserId(), e.getMessage());
+            response.setCertificationIds(Collections.emptyList());
+        }
+
+        // 8. Lấy interestIds (sửa tên field cho đúng)
+        try {
+            List<UUID> interestIds = userInterestRepository.findByIdUserIdAndIsDeletedFalse(user.getUserId())
+                    .stream()
+                    .map(ui -> ui.getId().getInterestId())
+                    .collect(Collectors.toList());
+            response.setInterestIds(interestIds); // lưu ý: setInterestIds, không phải setInterestestIds
+        } catch (Exception e) {
+            log.warn("Failed to fetch interests for user {}: {}", user.getUserId(), e.getMessage());
+            response.setInterestIds(Collections.emptyList());
+        }
+
+        // 9. Lấy goalIds
+        try {
+            List<String> goalIds = userGoalRepository.findByUserIdAndIsDeletedFalse(user.getUserId())
+                    .stream()
+                    .map(ug -> ug.getGoalType().toString()) // hoặc ug.getGoalType().toString()
+                    .collect(Collectors.toList());
+            response.setGoalIds(goalIds);
+        } catch (Exception e) {
+            log.warn("Failed to fetch goals for user {}: {}", user.getUserId(), e.getMessage());
+            response.setGoalIds(Collections.emptyList());
+        }
+
         return response;
     }
 

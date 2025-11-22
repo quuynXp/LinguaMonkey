@@ -4,25 +4,17 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  StyleSheet,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { createScaledSheet } from '../../utils/scaledStyles';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { gotoTab } from '../../utils/navigationRef'; // Giả sử bạn dùng gotoTab
-
-// Định nghĩa kiểu cho navigation stack (thay 'Profile' bằng tên stack của bạn nếu khác)
-type ProfileStackNavigation = {
-  navigate(screen: string): void;
-  goBack(): void;
-};
+import ScreenLayout from '../../components/layout/ScreenLayout';
+import { gotoTab } from '../../utils/navigationRef';
 
 const SettingsScreen: React.FC = () => {
   const { t } = useTranslation();
-  // Hoặc dùng gotoTab nếu bạn đã cấu hình
-  const navigation = useNavigation<ProfileStackNavigation>();
+  const navigation = useNavigation<any>();
 
   const settingsItems = [
     {
@@ -58,23 +50,20 @@ const SettingsScreen: React.FC = () => {
   ];
 
   const handleNavigate = (screen: string) => {
-    // Dùng gotoTab nếu nó có thể điều hướng trong stack
-    // gotoTab('Profile', screen);
-    // Hoặc dùng navigation.navigate nếu đây là stack lồng nhau
-    navigation.navigate(screen);
+    gotoTab('Profile', screen);
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <ScreenLayout>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
         <Text style={styles.title}>{t('settings.title', 'Settings')}</Text>
-        <View style={{ width: 40 }} /> {/* Spacer */}
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={styles.container}>
+      <ScrollView contentContainerStyle={styles.container}>
         <View style={styles.card}>
           {settingsItems.map((item) => (
             <TouchableOpacity
@@ -89,15 +78,11 @@ const SettingsScreen: React.FC = () => {
           ))}
         </View>
       </ScrollView>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
-  safeArea: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -110,7 +95,7 @@ const styles = createScaledSheet({
   },
   backButton: {
     padding: 8,
-    marginLeft: -8, // Căn chỉnh cho đẹp
+    marginLeft: -8,
   },
   title: {
     fontSize: 20,
@@ -118,18 +103,18 @@ const styles = createScaledSheet({
     color: '#1F2937',
   },
   container: {
-    flex: 1,
     padding: 20,
   },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    paddingHorizontal: 16, // Chỉ padding ngang
+    overflow: 'hidden',
   },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },

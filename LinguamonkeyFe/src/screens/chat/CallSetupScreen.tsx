@@ -7,6 +7,7 @@ import { useAppStore } from "../../stores/appStore"
 import instance from "../../api/axiosInstance"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useUserStore } from "../../stores/UserStore"
+import ScreenLayout from "../../components/layout/ScreenLayout"
 
 interface CallPreferences {
   interests: string[]
@@ -196,7 +197,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   )
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -329,7 +330,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
           </TouchableOpacity>
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   )
 }
 

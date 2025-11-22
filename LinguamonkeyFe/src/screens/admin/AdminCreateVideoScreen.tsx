@@ -14,6 +14,7 @@ import { Picker } from '@react-native-picker/picker';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import instance from '../../api/axiosInstance';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 const AdminCreateVideoScreen = ({ navigation }) => {
     const { t } = useTranslation();
@@ -107,88 +108,90 @@ const AdminCreateVideoScreen = ({ navigation }) => {
     };
 
     return (
-        <ScrollView style={styles.container}>
-            <Text style={styles.header}>Upload New Video Lesson</Text>
+        <ScreenLayout>
+            <ScrollView style={styles.container}>
+                <Text style={styles.header}>Upload New Video Lesson</Text>
 
-            {/* Title Input */}
-            <View style={styles.inputGroup}>
-                <Text style={styles.label}>Video Title</Text>
-                <TextInput
-                    style={styles.input}
-                    placeholder="Ex: Basic Greeting"
-                    value={title}
-                    onChangeText={setTitle}
-                />
-            </View>
-
-            {/* Level Picker */}
-            <View style={styles.inputGroup}>
-                <Text style={styles.label}>Level</Text>
-                <View style={styles.pickerContainer}>
-                    <Picker selectedValue={level} onValueChange={setLevel}>
-                        <Picker.Item label="Beginner" value="beginner" />
-                        <Picker.Item label="Intermediate" value="intermediate" />
-                        <Picker.Item label="Advanced" value="advanced" />
-                    </Picker>
+                {/* Title Input */}
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Video Title</Text>
+                    <TextInput
+                        style={styles.input}
+                        placeholder="Ex: Basic Greeting"
+                        value={title}
+                        onChangeText={setTitle}
+                    />
                 </View>
-            </View>
 
-            {/* Languages */}
-            <View style={styles.row}>
-                <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
-                    <Text style={styles.label}>Original Lang</Text>
+                {/* Level Picker */}
+                <View style={styles.inputGroup}>
+                    <Text style={styles.label}>Level</Text>
                     <View style={styles.pickerContainer}>
-                        <Picker selectedValue={sourceLang} onValueChange={setSourceLang}>
-                            <Picker.Item label="English" value="en" />
-                            <Picker.Item label="Chinese" value="zh" />
+                        <Picker selectedValue={level} onValueChange={setLevel}>
+                            <Picker.Item label="Beginner" value="beginner" />
+                            <Picker.Item label="Intermediate" value="intermediate" />
+                            <Picker.Item label="Advanced" value="advanced" />
                         </Picker>
                     </View>
                 </View>
-                <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
-                    <Text style={styles.label}>Target Lang (Auto Translate)</Text>
-                    <View style={styles.pickerContainer}>
-                        <Picker selectedValue={targetLang} onValueChange={setTargetLang}>
-                            <Picker.Item label="Vietnamese" value="vi" />
-                            <Picker.Item label="Korean" value="ko" />
-                        </Picker>
+
+                {/* Languages */}
+                <View style={styles.row}>
+                    <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
+                        <Text style={styles.label}>Original Lang</Text>
+                        <View style={styles.pickerContainer}>
+                            <Picker selectedValue={sourceLang} onValueChange={setSourceLang}>
+                                <Picker.Item label="English" value="en" />
+                                <Picker.Item label="Chinese" value="zh" />
+                            </Picker>
+                        </View>
+                    </View>
+                    <View style={[styles.inputGroup, { flex: 1, marginLeft: 8 }]}>
+                        <Text style={styles.label}>Target Lang (Auto Translate)</Text>
+                        <View style={styles.pickerContainer}>
+                            <Picker selectedValue={targetLang} onValueChange={setTargetLang}>
+                                <Picker.Item label="Vietnamese" value="vi" />
+                                <Picker.Item label="Korean" value="ko" />
+                            </Picker>
+                        </View>
                     </View>
                 </View>
-            </View>
 
-            {/* File Pickers */}
-            <View style={styles.fileSection}>
-                <Text style={styles.label}>Video File</Text>
-                <TouchableOpacity style={styles.fileButton} onPress={handlePickVideo}>
-                    <Icon name="video-library" size={24} color="#2196F3" />
-                    <Text style={styles.fileText}>
-                        {videoFile ? videoFile.name : "Select Video (MP4)"}
-                    </Text>
+                {/* File Pickers */}
+                <View style={styles.fileSection}>
+                    <Text style={styles.label}>Video File</Text>
+                    <TouchableOpacity style={styles.fileButton} onPress={handlePickVideo}>
+                        <Icon name="video-library" size={24} color="#2196F3" />
+                        <Text style={styles.fileText}>
+                            {videoFile ? videoFile.name : "Select Video (MP4)"}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
+                <View style={styles.fileSection}>
+                    <Text style={styles.label}>Source Subtitle File (.srt)</Text>
+                    <TouchableOpacity style={styles.fileButton} onPress={handlePickSubtitle}>
+                        <Icon name="subtitles" size={24} color="#FF9800" />
+                        <Text style={styles.fileText}>
+                            {subtitleFile ? subtitleFile.name : "Select Source Subtitle"}
+                        </Text>
+                    </TouchableOpacity>
+                </View>
+
+                {/* Submit Button */}
+                <TouchableOpacity
+                    style={[styles.submitButton, loading && styles.disabledButton]}
+                    onPress={handleSubmit}
+                    disabled={loading}
+                >
+                    {loading ? (
+                        <ActivityIndicator color="#fff" />
+                    ) : (
+                        <Text style={styles.submitButtonText}>Create & Generate Subtitles</Text>
+                    )}
                 </TouchableOpacity>
-            </View>
-
-            <View style={styles.fileSection}>
-                <Text style={styles.label}>Source Subtitle File (.srt)</Text>
-                <TouchableOpacity style={styles.fileButton} onPress={handlePickSubtitle}>
-                    <Icon name="subtitles" size={24} color="#FF9800" />
-                    <Text style={styles.fileText}>
-                        {subtitleFile ? subtitleFile.name : "Select Source Subtitle"}
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {/* Submit Button */}
-            <TouchableOpacity
-                style={[styles.submitButton, loading && styles.disabledButton]}
-                onPress={handleSubmit}
-                disabled={loading}
-            >
-                {loading ? (
-                    <ActivityIndicator color="#fff" />
-                ) : (
-                    <Text style={styles.submitButtonText}>Create & Generate Subtitles</Text>
-                )}
-            </TouchableOpacity>
-        </ScrollView>
+            </ScrollView>
+        </ScreenLayout>
     );
 };
 

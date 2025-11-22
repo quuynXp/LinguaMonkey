@@ -6,6 +6,8 @@ import { gotoTab } from "../../utils/navigationRef";
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { createScaledSheet } from "../../utils/scaledStyles";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import ScreenLayout from "../../components/layout/ScreenLayout";
+import { ScrollView } from "react-native-gesture-handler";
 
 const { width, height } = Dimensions.get('window');
 
@@ -50,9 +52,9 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
   };
 
   const skipToAuth = route?.params?.skipToAuth === true;
-  
+
   const [currentIndex, setCurrentIndex] = useState(
-    skipToAuth ? onboardingData.length : 0 
+    skipToAuth ? onboardingData.length : 0
   );
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedOption, setSelectedOption] = useState<"new" | "existing" | "quick" | null>(null);
@@ -197,80 +199,82 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
   }
 
   return (
-    <View style={styles.container}>
-      <Animated.View
-        style={[
-          styles.content,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        {/* --- THAY ĐỔI Ở ĐÂY --- */}
-        <Text style={styles.appTitle}>{t('common.appName')}</Text>
-        {/* --- KẾT THÚC THAY ĐỔI --- */}
-        <Text style={styles.appSubtitle}>{t('account.choose')}</Text>
+    <ScreenLayout>
+      <ScrollView style={styles.container}>
+        <Animated.View
+          style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          {/* --- THAY ĐỔI Ở ĐÂY --- */}
+          <Text style={styles.appTitle}>{t('common.appName')}</Text>
+          {/* --- KẾT THÚC THAY ĐỔI --- */}
+          <Text style={styles.appSubtitle}>{t('account.choose')}</Text>
 
-        <View style={styles.optionsContainer}>
-          <TouchableOpacity
-            style={[styles.optionButton, styles.newAccountButton, selectedOption === "new" && styles.selectedOption]}
-            onPress={() => handleOptionSelect("new")}
-            activeOpacity={0.8}
-          >
-            <View style={styles.optionIcon}>
-              <Icon name="person-add" size={32} color="#FFFFFF" />
-            </View>
-            <View style={styles.optionContent}>
-              <Text style={styles.optionTitle}>{t('account.startFresh')}</Text>
-              <Text style={styles.optionDescription}>{t('account.startFreshDesc')}</Text>
-            </View>
-            <Icon name="arrow-forward" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
+          <View style={styles.optionsContainer}>
+            <TouchableOpacity
+              style={[styles.optionButton, styles.newAccountButton, selectedOption === "new" && styles.selectedOption]}
+              onPress={() => handleOptionSelect("new")}
+              activeOpacity={0.8}
+            >
+              <View style={styles.optionIcon}>
+                <Icon name="person-add" size={32} color="#FFFFFF" />
+              </View>
+              <View style={styles.optionContent}>
+                <Text style={styles.optionTitle}>{t('account.startFresh')}</Text>
+                <Text style={styles.optionDescription}>{t('account.startFreshDesc')}</Text>
+              </View>
+              <Icon name="arrow-forward" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.optionButton, styles.existingAccountButton, selectedOption === "existing" && styles.selectedOption]}
-            onPress={() => handleOptionSelect("existing")}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.optionIcon, styles.existingIcon]}>
-              <Icon name="login" size={32} color="#4F46E5" />
-            </View>
-            <View style={styles.optionContent}>
-              <Text style={[styles.optionTitle, styles.existingTitle]}>{t('account.welcomeBack')}</Text>
-              <Text style={[styles.optionDescription, styles.existingDescription]}>{t('account.signInDesc')}</Text>
-            </View>
-            <Icon name="arrow-forward" size={24} color="#4F46E5" />
-          </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.optionButton, styles.existingAccountButton, selectedOption === "existing" && styles.selectedOption]}
+              onPress={() => handleOptionSelect("existing")}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.optionIcon, styles.existingIcon]}>
+                <Icon name="login" size={32} color="#4F46E5" />
+              </View>
+              <View style={styles.optionContent}>
+                <Text style={[styles.optionTitle, styles.existingTitle]}>{t('account.welcomeBack')}</Text>
+                <Text style={[styles.optionDescription, styles.existingDescription]}>{t('account.signInDesc')}</Text>
+              </View>
+              <Icon name="arrow-forward" size={24} color="#4F46E5" />
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.optionButton, styles.quickStartButton, selectedOption === "quick" && styles.selectedOption, isGenerating && styles.buttonDisabled]}
-            onPress={() => handleOptionSelect("quick")}
-            disabled={isGenerating}
-            activeOpacity={0.8}
-          >
-            <View style={[styles.optionIcon, styles.quickStartIcon]}>
-              <Icon name="flash-on" size={32} color="#F59E0B" />
-            </View>
-            <View style={styles.optionContent}>
-              <Text style={[styles.optionTitle, styles.quickStartTitle]}>{t('account.quickStart')}</Text>
-              <Text style={[styles.optionDescription, styles.quickStartDescription]}>
-                {t('account.quickStartDesc')}
-              </Text>
-            </View>
-            <Icon name="arrow-forward" size={24} color="#F59E0B" />
-          </TouchableOpacity>
-        </View>
+            <TouchableOpacity
+              style={[styles.optionButton, styles.quickStartButton, selectedOption === "quick" && styles.selectedOption, isGenerating && styles.buttonDisabled]}
+              onPress={() => handleOptionSelect("quick")}
+              disabled={isGenerating}
+              activeOpacity={0.8}
+            >
+              <View style={[styles.optionIcon, styles.quickStartIcon]}>
+                <Icon name="flash-on" size={32} color="#F59E0B" />
+              </View>
+              <View style={styles.optionContent}>
+                <Text style={[styles.optionTitle, styles.quickStartTitle]}>{t('account.quickStart')}</Text>
+                <Text style={[styles.optionDescription, styles.quickStartDescription]}>
+                  {t('account.quickStartDesc')}
+                </Text>
+              </View>
+              <Icon name="arrow-forward" size={24} color="#F59E0B" />
+            </TouchableOpacity>
+          </View>
 
-        <Text style={styles.termsText}>
-          {t('terms.byContinuing')}{' '}
-          <Text style={styles.linkText}>{t('terms.termsOfService')}</Text> {t('terms.and')}{' '}
-          <Text style={styles.linkText}>{t('terms.privacyPolicy')}</Text>
-        </Text>
+          <Text style={styles.termsText}>
+            {t('terms.byContinuing')}{' '}
+            <Text style={styles.linkText}>{t('terms.termsOfService')}</Text> {t('terms.and')}{' '}
+            <Text style={styles.linkText}>{t('terms.privacyPolicy')}</Text>
+          </Text>
 
-        <Text style={styles.disclaimerText}>{t('account.disclaimer')}</Text>
-      </Animated.View>
-    </View>
+          <Text style={styles.disclaimerText}>{t('account.disclaimer')}</Text>
+        </Animated.View>
+      </ScrollView>
+    </ScreenLayout>
   );
 };
 

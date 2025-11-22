@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react"
-import { Animated, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { Animated, Text, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation, Trans } from "react-i18next"; // <-- 1. IMPORT
 import { createScaledSheet } from "../../utils/scaledStyles";

@@ -11,6 +11,7 @@ import { useUserStore } from "../../stores/UserStore"; // Import UserStore
 import { gotoTab } from "../../utils/navigationRef"; // Import gotoTab
 import { Language, languageToCountry } from "../../types/api";
 import CountryFlag from "react-native-country-flag"; // Đảm bảo import đúng file bạn đã cung cấp
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 // Giả định các kiểu dữ liệu
 type TestConfig = {
@@ -280,10 +281,10 @@ const ProficiencyTestScreen = () => {
   // === 7. Giai đoạn 3: Đang nộp bài ===
   const renderSubmittingStage = () => {
     return (
-      <View style={styles.container}>
+      <ScreenLayout style={styles.container}>
         <ActivityIndicator size="large" color="#4F46E5" />
         <Text style={styles.loadingText}>{t("proficiencyTest.submitting", "Đang nộp bài...")}</Text>
-      </View>
+      </ScreenLayout>
     );
   }
 
@@ -292,7 +293,7 @@ const ProficiencyTestScreen = () => {
     if (!result) return <View />; // Không bao giờ xảy ra nếu logic đúng
 
     return (
-      <View style={styles.container}>
+      <ScreenLayout style={styles.container}>
         <Text style={styles.title}>{t("proficiencyTest.results.title", "Kết Quả Test")}</Text>
         <Text style={styles.resultProficiency}>Trình độ: {result.proficiencyEstimate}</Text>
         <Text style={styles.resultScore}>
@@ -323,7 +324,7 @@ const ProficiencyTestScreen = () => {
         <TouchableOpacity style={styles.submitButton} onPress={handleContinueToApp}>
           <Text style={styles.submitButtonText}>{t("common.continueToApp", "Tiếp Tục Vào App")}</Text>
         </TouchableOpacity>
-      </View>
+      </ScreenLayout>
     );
   }
 

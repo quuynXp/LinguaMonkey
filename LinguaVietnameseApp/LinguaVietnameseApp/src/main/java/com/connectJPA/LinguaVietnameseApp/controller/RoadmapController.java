@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapItemDetailResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapUserResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.RoadmapItem;

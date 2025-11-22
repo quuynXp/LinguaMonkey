@@ -10,33 +10,41 @@ import { queryClient } from "../../services/queryClient";
 import { gotoTab } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import instance from "../../api/axiosInstance";
 import { getGreetingKey } from "../../utils/motivationHelper";
+import type { UserDailyChallengeResponse } from "../../types/dto";
 
 const HomeScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
-  const { useLeaderboardTopThree } = useLeaderboards();
-  const { data: topThreeUsers, isLoading: leaderboardLoading } = useLeaderboardTopThree();
+  const { useLeaderboardList } = useLeaderboards();
+  const { data: leaderboardsData, isLoading: leaderboardsLoading } = useLeaderboardList({ tab: "global", page: 0, size: 3 });
+  const topThreeUsers = leaderboardsData?.data || [];
 
-  const { useUserRoadmap, useDefaultRoadmaps } = useRoadmap();
+  const { useUserRoadmaps, useDefaultRoadmaps, useAssignDefaultRoadmap, useGenerateRoadmap } = useRoadmap();
   const {
     name = "",
     streak = 0,
     languages = [],
-    dailyGoal = { completedLessons: 0, totalLessons: 1 },
     user,
   } = useUserStore();
 
-  const { data: dailyChallenges, isLoading: dailyLoading, refetch: refetchDaily } = useDailyChallenges(user?.userId);
-  const assignMutation = useAssignChallenge(user?.userId);
-  const completeMutation = useCompleteChallenge(user?.userId);
+  const { data: dailyChallengesData, isLoading: dailyLoading, refetch: refetchDaily } = useDailyChallenges(user?.userId);
+  const dailyChallenges = dailyChallengesData || [];
+
+  const assignChallengeMutation = useAssignChallenge();
+  const completeMutation = useCompleteChallenge();
 
   const mainLanguage = languages[0] || "en";
-  const { data: roadmap, isLoading: roadmapLoading } = useUserRoadmap(mainLanguage);
-  const { data: defaultRoadmaps, isLoading: defaultLoading } = useDefaultRoadmaps(mainLanguage);
+  const { data: roadmapData, isLoading: roadmapLoading } = useUserRoadmaps(mainLanguage);
+  const roadmap = (roadmapData && roadmapData.length > 0) ? roadmapData[0] : null;
+
+  const { data: defaultRoadmapsData, isLoading: defaultLoading } = useDefaultRoadmaps(mainLanguage);
+  const defaultRoadmaps = defaultRoadmapsData || [];
+
+  const assignDefaultRoadmapMutation = useAssignDefaultRoadmap();
+  const generateRoadmapMutation = useGenerateRoadmap();
 
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,12 +63,12 @@ const HomeScreen = ({ navigation }: any) => {
       ]).start(() => setTimeout(bounceAnimation, 4000));
     };
     bounceAnimation();
-  }, []);
+  }, [fadeAnim, bounceAnim]);
 
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["userRoadmap"] }),
+      queryClient.invalidateQueries({ queryKey: ["roadmaps"] }),
       queryClient.invalidateQueries({ queryKey: ["dailyChallenges"] }),
       refetchDaily()
     ]);
@@ -70,16 +78,50 @@ const HomeScreen = ({ navigation }: any) => {
   const handleLeaderboardPress = () => navigation.navigate("EnhancedLeaderboard");
   const handleRoadmapPress = () => navigation.navigate("RoadmapScreen");
   const handlePublicRoadmapsPress = () => navigation.navigate("PublicRoadmaps");
-
-  const goalProgress = dailyGoal?.totalLessons ? (dailyGoal.completedLessons / dailyGoal.totalLessons) * 100 : 0;
   const greetingKey = getGreetingKey();
 
-  const assignDefaultRoadmap = async (roadmapId: string) => {
+  const handleAssignDefaultRoadmap = async (roadmapId: string) => {
     try {
-      await instance.post("/api/v1/roadmaps/assign", { roadmapId });
-      queryClient.invalidateQueries({ queryKey: ["userRoadmap"] });
+      await assignDefaultRoadmapMutation.mutate({ roadmapId });
     } catch (error) {
       console.error("Failed to assign roadmap", error);
+    }
+  };
+
+  const handleGenerateRoadmap = async () => {
+    if (!user?.userId) return;
+    try {
+      await generateRoadmapMutation.mutate({
+        userId: user.userId,
+        languageCode: preferences.language_code,
+        targetProficiency: preferences.target_proficiency,
+        targetDate: preferences.target_date,
+        focusAreas: [],
+        studyTimePerDay: 1,
+        isCustom: true,
+        additionalPrompt: "",
+      });
+      setShowGenerateDialog(false);
+    } catch (error) {
+      console.error("Failed to generate roadmap", error);
+    }
+  };
+
+  const handleAssignChallenge = async () => {
+    if (!user?.userId) return;
+    try {
+      await assignChallengeMutation.assignChallenge(user.userId);
+    } catch (error) {
+      console.error("Failed to assign challenge", error);
+    }
+  };
+
+  const handleCompleteChallenge = async (challengeId: string) => {
+    if (!user?.userId) return;
+    try {
+      await completeMutation.completeChallenge({ userId: user.userId, challengeId });
+    } catch (error) {
+      console.error("Failed to complete challenge", error);
     }
   };
 
@@ -105,7 +147,7 @@ const HomeScreen = ({ navigation }: any) => {
           </View>
 
           {/* Leaderboard Teaser */}
-          {leaderboardLoading ? (
+          {leaderboardsLoading ? (
             <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />
           ) : Array.isArray(topThreeUsers) && topThreeUsers.length > 0 && (
             <TouchableOpacity style={styles.leaderboardSection} onPress={handleLeaderboardPress} activeOpacity={0.9}>
@@ -114,7 +156,7 @@ const HomeScreen = ({ navigation }: any) => {
                 <Icon name="chevron-right" size={24} color="#9CA3AF" />
               </View>
               <View style={styles.podiumContainer}>
-                {topThreeUsers.slice(0, 3).map((u, idx) => (
+                {topThreeUsers.slice(0, 3).map((u: any, idx: number) => (
                   <View key={idx} style={[styles.podiumItem, idx === 0 ? styles.firstPlace : idx === 1 ? styles.secondPlace : styles.thirdPlace]}>
                     <View style={[styles.medal, idx === 0 ? styles.goldMedal : idx === 1 ? styles.silverMedal : styles.bronzeMedal]}>
                       <Text style={styles.medalText}>{idx + 1}</Text>
@@ -191,10 +233,10 @@ const HomeScreen = ({ navigation }: any) => {
                   <>
                     <Text style={styles.emptyStateText}>{t("home.roadmap.noPersonal")}</Text>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.defaultRoadmapScroll}>
-                      {defaultRoadmaps?.map((def) => (
+                      {defaultRoadmaps?.map((def: any) => (
                         <TouchableOpacity
-                          key={def.roadmapId}
-                          onPress={() => assignDefaultRoadmap(def.id)}
+                          key={def.id}
+                          onPress={() => handleAssignDefaultRoadmap(def.id)}
                           style={styles.defaultCard}
                         >
                           <Text style={styles.defaultCardTitle}>{def.title}</Text>
@@ -225,11 +267,11 @@ const HomeScreen = ({ navigation }: any) => {
               <ActivityIndicator color="#3B82F6" />
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.challengeList}>
-                {dailyChallenges?.map((item) => (
+                {dailyChallenges?.map((item: UserDailyChallengeResponse) => (
                   <TouchableOpacity
                     key={item.challengeId}
                     style={[styles.challengeCard, item.isCompleted && styles.challengeCompleted]}
-                    onPress={() => !item.isCompleted && completeMutation.mutate(item.challengeId)}
+                    onPress={() => !item.isCompleted && handleCompleteChallenge(item.challengeId)}
                     disabled={item.isCompleted}
                   >
                     <View style={[styles.challengeIcon, { backgroundColor: item.isCompleted ? 'rgba(255,255,255,0.2)' : '#FFF7ED' }]}>
@@ -240,14 +282,14 @@ const HomeScreen = ({ navigation }: any) => {
                       />
                     </View>
                     <Text style={[styles.challengeText, item.isCompleted && { color: '#fff' }]} numberOfLines={2}>
-                      {item.progress}
+                      {item.title}
                     </Text>
                     <Text style={[styles.xpBadge, item.isCompleted && { backgroundColor: 'rgba(255,255,255,0.3)', color: '#fff' }]}>
                       +{item.expReward} XP
                     </Text>
                   </TouchableOpacity>
                 ))}
-                <TouchableOpacity style={styles.addChallengeCard} onPress={() => assignMutation.mutate()}>
+                <TouchableOpacity style={styles.addChallengeCard} onPress={handleAssignChallenge}>
                   <Icon name="add-circle-outline" size={32} color="#3B82F6" />
                   <Text style={styles.addChallengeText}>{t("home.challenge.add")}</Text>
                 </TouchableOpacity>
@@ -277,7 +319,7 @@ const HomeScreen = ({ navigation }: any) => {
               <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowGenerateDialog(false)}>
                 <Text style={styles.cancelButtonText}>{t("common.cancel")}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, styles.confirmButton]}>
+              <TouchableOpacity style={[styles.modalButton, styles.confirmButton]} onPress={handleGenerateRoadmap}>
                 <Text style={styles.confirmButtonText}>{t("common.create")}</Text>
               </TouchableOpacity>
             </View>

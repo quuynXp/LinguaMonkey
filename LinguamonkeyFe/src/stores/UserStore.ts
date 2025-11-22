@@ -1,15 +1,8 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type {
-  UserProfile,
-  Language,
-  Lesson,
-  Character3D,
-  ApiResponse,
-} from '../types/api';
+import type { UserResponse, Character3dResponse } from '../types/dto';
 import instance from '../api/axiosInstance';
-import { UserResponse } from '../types/api';
 
 interface DailyGoal {
   completedLessons: number;
@@ -21,7 +14,6 @@ interface UploadFile {
   name: string;
   type: string;
 }
-
 
 interface UserState {
   user: UserResponse | null;
@@ -45,50 +37,38 @@ interface UserState {
 
   languages: string[];
   dailyGoal: DailyGoal;
-  recentLessons: Lesson[];
   statusMessage: string;
   hasDonePlacementTest?: boolean;
 
-  // ACTIONS CƠ BẢN
+  // ACTIONS
   setUser: (user: UserResponse | null, detectedLanguage?: string) => void;
   setAuthenticated: (authenticated: boolean) => void;
   setProfileData: (data: Partial<UserState>) => void;
   logout: () => void;
   setHasDonePlacementTest: (value: boolean) => void;
-
-  // ACTIONS TỪ API
-  saveProfileToServer: (
-    userId: string,
-    payload: any,
-  ) => Promise<UserResponse | any>;
-  fetchCharacter3d: () => Promise<Character3D | null>;
-
-  // ACTIONS MỚI CHO FILE UPLOAD
+  saveProfileToServer: (userId: string, payload: any) => Promise<UserResponse | any>;
+  fetchCharacter3d: () => Promise<Character3dResponse | null>;
   uploadTemp: (file: UploadFile) => Promise<string>;
   deleteTempFile: (path: string) => Promise<void>;
   updateUserAvatar: (tempPath: string) => Promise<UserResponse>;
-
-  setLocalNativeLanguage: (languageId: string) => void; // <-- MỚI
+  setLocalNativeLanguage: (languageId: string) => void;
   updateNativeLanguageOnServer: (languageId: string) => Promise<void>;
 }
 
-// --- TRẠNG THÁI MẶC ĐỊNH ---
-const defaultUserState: Omit<
-  UserState,
-  | 'setUser'
-  | 'setAuthenticated'
-  | 'setProfileData'
-  | 'logout'
-  | 'setHasDonePlacementTest'
-  | 'saveProfileToServer'
-  | 'fetchCharacter3d'
-  | 'setNativeLanguage'
-  | 'uploadTemp'
-  | 'deleteTempFile'
-  | 'updateUserAvatar'
-  | 'setLocalNativeLanguage'
-  | 'updateNativeLanguageOnServer'
-> = {
+const defaultUserState: Omit<UserState, keyof {
+  setUser: any;
+  setAuthenticated: any;
+  setProfileData: any;
+  logout: any;
+  setHasDonePlacementTest: any;
+  saveProfileToServer: any;
+  fetchCharacter3d: any;
+  uploadTemp: any;
+  deleteTempFile: any;
+  updateUserAvatar: any;
+  setLocalNativeLanguage: any;
+  updateNativeLanguageOnServer: any;
+}> = {
   user: null,
   isAuthenticated: false,
   name: '',
@@ -108,7 +88,6 @@ const defaultUserState: Omit<
   badges: [],
   languages: [],
   dailyGoal: { completedLessons: 0, totalLessons: 0 },
-  recentLessons: [],
   statusMessage: '',
   hasDonePlacementTest: undefined,
 };
@@ -127,7 +106,6 @@ export const useUserStore = create<UserState>()(
         set({
           user: user,
           isAuthenticated: true,
-
           name: user.fullname ?? user.nickname ?? '',
           streak: user.streak ?? 0,
           level: user.level,
@@ -140,16 +118,13 @@ export const useUserStore = create<UserState>()(
           progress: user.progress ? Number(user.progress) : undefined,
           nativeLanguageId: user.nativeLanguageCode,
           badgeId: user.badgeId,
-          badges: (user as any).badges ?? [],
           character3dId: user.character3dId,
           authProvider: user.authProvider,
-
           statusMessage: user.bio ?? '',
-
           languages: user.languages ?? [],
-
           hasDonePlacementTest: (user as any).hasDonePlacementTest,
         });
+
         if (user.nativeLanguageCode) {
           set({ nativeLanguageId: user.nativeLanguageCode });
         } else if (detectedLanguage) {
@@ -158,18 +133,14 @@ export const useUserStore = create<UserState>()(
             detectedLanguage
           );
           get().updateNativeLanguageOnServer(detectedLanguage);
-          set({ nativeLanguageId: detectedLanguage }); // Cập nhật local state ngay
+          set({ nativeLanguageId: detectedLanguage });
         }
       },
 
       setAuthenticated: (authenticated) => set({ isAuthenticated: authenticated }),
-
       setProfileData: (data) => set((state) => ({ ...state, ...data })),
-
       setHasDonePlacementTest: (value) => set({ hasDonePlacementTest: value }),
-
       logout: () => set(defaultUserState),
-
 
       setLocalNativeLanguage: (languageId: string) => {
         set({ nativeLanguageId: languageId });
@@ -177,7 +148,6 @@ export const useUserStore = create<UserState>()(
 
       updateNativeLanguageOnServer: async (languageId: string) => {
         set({ nativeLanguageId: languageId });
-
         const user = get().user;
         if (!user?.userId) {
           console.error('Cannot update native language, user not logged in.');
@@ -196,7 +166,7 @@ export const useUserStore = create<UserState>()(
 
       saveProfileToServer: async (userId, payload) => {
         try {
-          const res = await instance.put<ApiResponse<UserResponse>>(
+          const res = await instance.put<any>(
             `/api/v1/users/${userId}`,
             payload,
           );
@@ -217,7 +187,7 @@ export const useUserStore = create<UserState>()(
           return null;
         }
         try {
-          const res = await instance.get<ApiResponse<Character3D>>(
+          const res = await instance.get<any>(
             `/api/v1/users/${user.userId}/character3d`,
           );
           if (res.data.code === 200 && res.data.result) {
@@ -266,7 +236,7 @@ export const useUserStore = create<UserState>()(
         }
 
         try {
-          const res = await instance.patch<ApiResponse<UserResponse>>(
+          const res = await instance.patch<any>(
             `/api/v1/users/${user.userId}/avatar`,
             null,
             {
@@ -292,7 +262,6 @@ export const useUserStore = create<UserState>()(
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,
-
         name: state.name,
         streak: state.streak,
         level: state.level,
@@ -308,10 +277,8 @@ export const useUserStore = create<UserState>()(
         badges: state.badges,
         character3dId: state.character3dId,
         authProvider: state.authProvider,
-
         languages: state.languages,
         dailyGoal: state.dailyGoal,
-        recentLessons: state.recentLessons,
         statusMessage: state.statusMessage,
         hasDonePlacementTest: state.hasDonePlacementTest,
       }),

@@ -17,6 +17,7 @@ import { isValidEmail } from '../../utils/validation';
 import { gotoTab } from '../../utils/navigationRef';
 import PhoneInput from 'react-native-phone-number-input';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -158,7 +159,7 @@ const LoginScreen = ({ navigation }) => {
   };
 
   const renderEmailForm = () => (
-    <>
+    <ScreenLayout>
       <View style={styles.inputContainer}>
         <Icon name="email" size={20} color="#6B7280" style={styles.inputIcon} />
         <TextInput
@@ -215,7 +216,7 @@ const LoginScreen = ({ navigation }) => {
           </>
         )}
       </TouchableOpacity>
-    </>
+    </ScreenLayout>
   );
 
   const renderPhoneForm = () => (

@@ -1,43 +1,24 @@
 import { useEffect, useRef, useState } from "react"
 import { useTranslation } from "react-i18next"
-import {
-    Alert,
-    Animated,
-    Dimensions,
-    Modal,
-    RefreshControl,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-} from "react-native"
-import { SafeAreaView } from "react-native-safe-area-context"
+import { Alert, Animated, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useRoadmap } from "../../hooks/useRoadmap"
-import { useUsers } from "../../hooks/useUsers"
-import type { RoadmapItem, RoadmapMilestone } from "../../types/api"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import ScreenLayout from "../../components/layout/ScreenLayout"
+import type { RoadmapUserResponse, RoadmapItemUserResponse, MilestoneUserResponse } from "../../types/dto"
 
-const { width } = Dimensions.get("window")
 
 const RoadmapScreen = ({ navigation, route }: any) => {
   const { languageCode } = route.params || {}
   const { t } = useTranslation()
-  
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'available' | 'completed'>('all')
   const [showMilestones, setShowMilestones] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(50)).current
-
-  // API hooks
-  const { useUserRoadmap } = useRoadmap()
-  const { useCurrentUser } = useUsers()
-
-  const { data: roadmap, isLoading, error, mutate: mutateRoadmap } = useUserRoadmap(languageCode)
-  const { data: currentUser } = useCurrentUser()
+  const { useUserRoadmaps } = useRoadmap()
+  const { data: userRoadmaps, isLoading, error, refetch } = useUserRoadmaps(languageCode)
+  const roadmap: RoadmapUserResponse | undefined = userRoadmaps && userRoadmaps.length > 0 ? userRoadmaps[0] : undefined
 
   useEffect(() => {
     Animated.parallel([
@@ -52,17 +33,16 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         useNativeDriver: true,
       }),
     ]).start()
-  }, [])
+  }, [fadeAnim, slideAnim])
 
   const onRefresh = async () => {
     setRefreshing(true)
-    await mutateRoadmap()
+    await refetch()
     setRefreshing(false)
   }
 
   const getFilteredItems = () => {
     if (!roadmap?.items) return []
-    
     switch (selectedFilter) {
       case 'available':
         return roadmap.items.filter(item => item.status === 'available' || item.status === 'in_progress')
@@ -132,7 +112,7 @@ const RoadmapScreen = ({ navigation, route }: any) => {
     return `${hours}${t('common.hours')} ${remainingMinutes}${t('common.minutes')}`
   }
 
-  const handleItemPress = (item: RoadmapItem) => {
+  const handleItemPress = (item: RoadmapItemUserResponse) => {
     if (item.status === 'locked') {
       Alert.alert(
         t('roadmap.lockedItem'),
@@ -141,20 +121,17 @@ const RoadmapScreen = ({ navigation, route }: any) => {
       )
       return
     }
-
-    navigation.navigate('RoadmapItemDetail', { 
+    navigation.navigate('RoadmapItemDetail', {
       itemId: item.id,
-      roadmapId: roadmap?.roadmap_id 
+      roadmapId: roadmap?.roadmapId
     })
   }
 
   const renderProgressBar = () => {
     if (!roadmap) return null
-
-    const progressPercentage = roadmap.total_items > 0 
-      ? (roadmap.completed_items / roadmap.total_items) * 100 
+    const progressPercentage = roadmap.totalItems > 0
+      ? (roadmap.completedItems / roadmap.totalItems) * 100
       : 0
-
     return (
       <View style={styles.progressContainer}>
         <View style={styles.progressHeader}>
@@ -176,19 +153,18 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         </View>
         <View style={styles.progressStats}>
           <Text style={styles.progressStat}>
-            {roadmap.completed_items} / {roadmap.total_items} {t('roadmap.itemsCompleted')}
+            {roadmap.completedItems} / {roadmap.totalItems} {t('roadmap.itemsCompleted')}
           </Text>
           <Text style={styles.progressStat}>
-            {t('roadmap.estimatedTime')}: {roadmap.estimated_completion_time} {t('common.days')}
+            {t('roadmap.estimatedTime')}: {roadmap.estimatedCompletionTime} {t('common.days')}
           </Text>
         </View>
       </View>
     )
   }
 
-  const renderRoadmapItem = (item: RoadmapItem, index: number) => {
+  const renderRoadmapItem = (item: RoadmapItemUserResponse, index: number) => {
     const isEven = index % 2 === 0
-    
     return (
       <Animated.View
         key={item.id}
@@ -200,12 +176,9 @@ const RoadmapScreen = ({ navigation, route }: any) => {
           },
         ]}
       >
-        {/* Connection Line */}
         {index > 0 && (
           <View style={[styles.connectionLine, isEven ? styles.connectionLineLeft : styles.connectionLineRight]} />
         )}
-        
-        {/* Item Card */}
         <TouchableOpacity
           style={[
             styles.roadmapItem,
@@ -217,95 +190,71 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         >
           <View style={styles.itemHeader}>
             <View style={styles.itemTypeContainer}>
-              <Icon name={getTypeIcon(item.type)} size={20} color={getStatusColor(item.status)} />
+              <Icon name={getTypeIcon('lesson')} size={20} color={getStatusColor(item.status)} />
               <Text style={[styles.itemType, { color: getStatusColor(item.status) }]}>
-                {t(`roadmap.types.${item.type}`)}
+                {t(`roadmap.types.lesson`)}
               </Text>
             </View>
             <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
               <Icon name={getStatusIcon(item.status)} size={12} color="#FFFFFF" />
             </View>
           </View>
-
-          <Text style={styles.itemTitle}>{item.title}</Text>
+          <Text style={styles.itemTitle}>{item.name}</Text>
           <Text style={styles.itemDescription} numberOfLines={2}>
             {item.description}
           </Text>
-
           <View style={styles.itemDetails}>
             <View style={styles.itemDetailRow}>
               <Icon name="schedule" size={16} color="#6B7280" />
               <Text style={styles.itemDetailText}>
-                {formatEstimatedTime(item.estimatedTime)}
+                {formatEstimatedTime(0)}
               </Text>
             </View>
             <View style={styles.itemDetailRow}>
               <Icon name="star" size={16} color="#F59E0B" />
               <Text style={styles.itemDetailText}>
-                {item.exp_reward} XP
+                0 XP
               </Text>
             </View>
           </View>
-
           {item.status === 'in_progress' && (
             <View style={styles.progressIndicator}>
               <View style={styles.progressIndicatorBar}>
-                <View 
+                <View
                   style={[
-                    styles.progressIndicatorFill, 
+                    styles.progressIndicatorFill,
                     { width: `${item.progress}%` }
-                  ]} 
+                  ]}
                 />
               </View>
               <Text style={styles.progressIndicatorText}>{item.progress}%</Text>
             </View>
           )}
-
-          {item.skills.length > 0 && (
-            <View style={styles.skillsContainer}>
-              {item.skills.slice(0, 3).map((skill, skillIndex) => (
-                <View key={skillIndex} style={styles.skillChip}>
-                  <Text style={styles.skillText}>{skill}</Text>
-                </View>
-              ))}
-              {item.skills.length > 3 && (
-                <Text style={styles.moreSkills}>+{item.skills.length - 3}</Text>
-              )}
-            </View>
-          )}
         </TouchableOpacity>
-
-        {/* Level Indicator */}
         <View style={[styles.levelIndicator, isEven ? styles.levelIndicatorRight : styles.levelIndicatorLeft]}>
-          <Text style={styles.levelText}>{item.level}</Text>
+          <Text style={styles.levelText}>{index + 1}</Text>
         </View>
       </Animated.View>
     )
   }
 
-  const renderMilestone = (milestone: RoadmapMilestone) => (
-    <View key={milestone.milestone_id} style={styles.milestoneContainer}>
-      <View style={[styles.milestoneIcon, { backgroundColor: getStatusColor(milestone.status) }]}>
+  const renderMilestone = (milestone: MilestoneUserResponse) => (
+    <View key={milestone.milestoneId} style={styles.milestoneContainer}>
+      <View style={[styles.milestoneIcon, { backgroundColor: '#3B82F6' }]}>
         <Icon name="flag" size={24} color="#FFFFFF" />
       </View>
       <View style={styles.milestoneContent}>
         <Text style={styles.milestoneTitle}>{milestone.title}</Text>
-        <Text style={styles.milestoneDescription}>{milestone.description}</Text>
         <Text style={styles.milestoneLevel}>
-          {t('roadmap.level')} {milestone.level}
+          {milestone.completed ? t('roadmap.completed') : t('roadmap.incomplete')}
         </Text>
-        {milestone.status === 'completed' && milestone.completed_at && (
-          <Text style={styles.milestoneCompletedDate}>
-            {t('roadmap.completedOn')} {new Date(milestone.completed_at).toLocaleDateString()}
-          </Text>
-        )}
       </View>
     </View>
   )
 
   if (error) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenLayout>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color="#1F2937" />
@@ -320,13 +269,13 @@ const RoadmapScreen = ({ navigation, route }: any) => {
             <Text style={styles.retryText}>{t('common.retry')}</Text>
           </TouchableOpacity>
         </View>
-      </SafeAreaView>
+      </ScreenLayout>
     )
   }
 
   if (isLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <ScreenLayout>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={24} color="#1F2937" />
@@ -335,22 +284,16 @@ const RoadmapScreen = ({ navigation, route }: any) => {
           <View style={styles.headerRight} />
         </View>
         <View style={styles.loadingContainer}>
-          <LottieView
-            source={require("../../assets/animations/loading.json")}
-            autoPlay
-            loop
-            style={styles.loadingAnimation}
-          />
           <Text style={styles.loadingText}>{t('roadmap.loadingRoadmap')}</Text>
         </View>
-      </SafeAreaView>
+      </ScreenLayout>
     )
   }
 
   const filteredItems = getFilteredItems()
 
   return (
-    <SafeAreaView style={styles.container}>
+    <ScreenLayout>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#1F2937" />
@@ -360,7 +303,6 @@ const RoadmapScreen = ({ navigation, route }: any) => {
           <Icon name="flag" size={24} color="#3B82F6" />
         </TouchableOpacity>
       </View>
-
       <ScrollView
         style={styles.content}
         showsVerticalScrollIndicator={false}
@@ -368,10 +310,7 @@ const RoadmapScreen = ({ navigation, route }: any) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        {/* Progress Overview */}
         {renderProgressBar()}
-
-        {/* Filter Tabs */}
         <View style={styles.filterContainer}>
           {(['all', 'available', 'completed'] as const).map((filter) => (
             <TouchableOpacity
@@ -393,8 +332,6 @@ const RoadmapScreen = ({ navigation, route }: any) => {
             </TouchableOpacity>
           ))}
         </View>
-
-        {/* Roadmap Items */}
         <View style={styles.roadmapContainer}>
           {filteredItems.length > 0 ? (
             filteredItems.map((item, index) => renderRoadmapItem(item, index))
@@ -407,14 +344,12 @@ const RoadmapScreen = ({ navigation, route }: any) => {
           )}
         </View>
       </ScrollView>
-
-      {/* Milestones Modal */}
       <Modal
         visible={showMilestones}
         animationType="slide"
         onRequestClose={() => setShowMilestones(false)}
       >
-        <SafeAreaView style={styles.modalContainer}>
+        <ScreenLayout>
           <View style={styles.modalHeader}>
             <TouchableOpacity onPress={() => setShowMilestones(false)}>
               <Icon name="close" size={24} color="#6B7280" />
@@ -425,9 +360,9 @@ const RoadmapScreen = ({ navigation, route }: any) => {
           <ScrollView style={styles.modalContent}>
             {roadmap?.milestones?.map(renderMilestone)}
           </ScrollView>
-        </SafeAreaView>
+        </ScreenLayout>
       </Modal>
-    </SafeAreaView>
+    </ScreenLayout>
   )
 }
 

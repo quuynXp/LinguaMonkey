@@ -1,104 +1,39 @@
-import React, { useRef, useState } from "react"
-import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import React, { useRef, useMemo } from "react"
+import { Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useAppStore } from "../../stores/appStore"
+import { useTranslation } from "react-i18next"
 import { useToast } from "../../utils/useToast"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useUserStore } from "../../stores/UserStore"
+import { useUserGoalsApi } from "../../hooks/useUserGoals"
+import { UserGoalResponse } from "../../types/dto"
+import { GoalType } from "../../types/enums" // Import GoalType
+import ScreenLayout from "../../components/layout/ScreenLayout"
 
-interface Goal {
-  id: string
-  title: string
-  description: string
+// Interface cho mục tiêu hiển thị, ánh xạ từ UserGoalResponse
+interface DisplayGoal {
+  id: string // goalId
+  titleKey: string // Key for i18n
+  descriptionKey: string // Key for i18n
   target: number
   current: number
-  unit: string
+  unitKey: string // Key for i18n
   icon: string
   color: string
-  isActive: boolean
-}
-
-interface GoalPreset {
-  id: string
-  title: string
-  description: string
-  dailyMinutes: number
-  weeklyLessons: number
-  difficulty: "Dễ" | "Trung bình" | "Khó"
-  icon: string
+  goalType: string
 }
 
 const LearningGoalsScreen = ({ navigation }) => {
-  const [currentGoals, setCurrentGoals] = useState<Goal[]>([
-    {
-      id: "daily-minutes",
-      title: "Học mỗi ngày",
-      description: "Thời gian học tối thiểu mỗi ngày",
-      target: 30,
-      current: 25,
-      unit: "phút",
-      icon: "schedule",
-      color: "#4F46E5",
-      isActive: true,
-    },
-    {
-      id: "weekly-lessons",
-      title: "Bài học trong tuần",
-      description: "Số bài học hoàn thành mỗi tuần",
-      target: 10,
-      current: 7,
-      unit: "bài",
-      icon: "school",
-      color: "#10B981",
-      isActive: true,
-    },
-    {
-      id: "streak-days",
-      title: "Chuỗi ngày học",
-      description: "Học liên tục không nghỉ",
-      target: 30,
-      current: 7,
-      unit: "ngày",
-      icon: "local-fire-department",
-      color: "#F59E0B",
-      isActive: true,
-    },
-  ])
+  const { t } = useTranslation()
+  const { user } = useUserStore()
+  const { showToast } = useToast()
+  const { useAllUserGoals, useUpdateUserGoal } = useUserGoalsApi()
 
-  const [goalPresets] = useState<GoalPreset[]>([
-    {
-      id: "casual",
-      title: "Học nhẹ nhàng",
-      description: "Phù hợp cho người bận rộn",
-      dailyMinutes: 15,
-      weeklyLessons: 5,
-      difficulty: "Dễ",
-      icon: "self-improvement",
-    },
-    {
-      id: "regular",
-      title: "Học đều đặn",
-      description: "Cân bằng giữa học và nghỉ",
-      dailyMinutes: 30,
-      weeklyLessons: 10,
-      difficulty: "Trung bình",
-      icon: "trending-up",
-    },
-    {
-      id: "intensive",
-      title: "Học chuyên sâu",
-      description: "Dành cho người quyết tâm",
-      dailyMinutes: 60,
-      weeklyLessons: 20,
-      difficulty: "Khó",
-      icon: "rocket-launch",
-    },
-  ])
+  // Load user goals
+  const { data: goalData, isLoading, refetch } = useAllUserGoals({ userId: user?.userId, size: 50 })
+  const updateMut = useUpdateUserGoal()
 
   const fadeAnim = useRef(new Animated.Value(0)).current
-  const [selectedPreset, setSelectedPreset] = useState<string>("regular")
-  const { showToast } = useToast()
-  const { user } = useUserStore()
 
   React.useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -106,37 +41,79 @@ const LearningGoalsScreen = ({ navigation }) => {
       duration: 600,
       useNativeDriver: true,
     }).start()
-  }, [])
+  }, [fadeAnim])
 
-  const updateGoal = (goalId: string, newTarget: number) => {
-    setCurrentGoals((prev) => prev.map((goal) => (goal.id === goalId ? { ...goal, target: newTarget } : goal)))
-  }
+  // Map API goals to Display Goals
+  const currentGoals: DisplayGoal[] = useMemo(() => {
+    const goals = goalData?.data || [];
 
-  const applyPreset = (preset: GoalPreset) => {
-    Alert.alert("Áp dụng mục tiêu", `Bạn có muốn áp dụng gói "${preset.title}"?`, [
-      { text: "Hủy", style: "cancel" },
-      {
-        text: "Áp dụng",
-        onPress: () => {
-          setCurrentGoals((prev) =>
-            prev.map((goal) => {
-              if (goal.id === "daily-minutes") {
-                return { ...goal, target: preset.dailyMinutes }
-              }
-              if (goal.id === "weekly-lessons") {
-                return { ...goal, target: preset.weeklyLessons }
-              }
-              return goal
-            }),
-          )
-          setSelectedPreset(preset.id)
-          showToast({ message: `Applied preset "${preset.title}"`, type: "success" })
-        },
-      },
-    ])
-  }
+    return goals.map((goal: UserGoalResponse) => {
+      let titleKey = 'goals.defaultTitle';
+      let descriptionKey = 'goals.defaultDescription';
+      let icon = "task-alt";
+      let color = "#4F46E5";
+      let targetValue = goal.targetScore || 0;
+      let unitKey = 'units.general';
 
-  const renderGoalCard = (goal: Goal) => {
+      switch (goal.goalType) {
+        // Đã xóa DAILY_TIME và WEEKLY_LESSONS
+        case GoalType.CERTIFICATION:
+          titleKey = 'goals.certificationTitle';
+          descriptionKey = 'goals.certificationDesc';
+          icon = "workspace-premium";
+          color = "#F59E0B";
+          unitKey = 'units.level';
+          break;
+        case GoalType.PROFICIENCY:
+          titleKey = 'goals.proficiencyTitle';
+          descriptionKey = 'goals.proficiencyDesc';
+          icon = "star";
+          color = "#EF4444";
+          unitKey = 'units.proficiency';
+          break;
+        case GoalType.COMMUNICATION:
+          titleKey = 'goals.communicationTitle';
+          descriptionKey = 'goals.communicationDesc';
+          icon = "chat";
+          color = "#3B82F6";
+          unitKey = 'units.skill';
+          break;
+        case GoalType.WORK:
+          titleKey = 'goals.workTitle';
+          descriptionKey = 'goals.workDesc';
+          icon = "work";
+          color = "#10B981";
+          unitKey = 'units.skill';
+          break;
+        // Thêm các case khác nếu cần, hoặc để mặc định
+        default:
+          // Các mục tiêu không có trong enum sẽ rơi vào default
+          titleKey = 'goals.customTitle';
+          descriptionKey = 'goals.customDesc';
+          icon = "assignment";
+          color = "#6B7280";
+          unitKey = 'units.general';
+          break;
+      }
+
+      const currentProgress = 0;
+
+      return {
+        id: goal.goalId,
+        titleKey: titleKey,
+        descriptionKey: descriptionKey,
+        target: targetValue,
+        current: currentProgress,
+        unitKey: unitKey,
+        icon: icon,
+        color: color,
+        goalType: goal.goalType,
+      };
+    }) || [];
+  }, [goalData])
+
+  // Hàm hiển thị Goal Card (đã được làm sạch logic không cần thiết)
+  const renderGoalCard = (goal: DisplayGoal) => {
     const progress = Math.min((goal.current / goal.target) * 100, 100)
 
     return (
@@ -146,8 +123,8 @@ const LearningGoalsScreen = ({ navigation }) => {
             <Icon name={goal.icon} size={24} color={goal.color} />
           </View>
           <View style={styles.goalInfo}>
-            <Text style={styles.goalTitle}>{goal.title}</Text>
-            <Text style={styles.goalDescription}>{goal.description}</Text>
+            <Text style={styles.goalTitle}>{t(goal.titleKey)}</Text>
+            <Text style={styles.goalDescription}>{t(goal.descriptionKey, { target: goal.target, unit: t(goal.unitKey) })}</Text>
           </View>
           <TouchableOpacity style={styles.editButton}>
             <Icon name="edit" size={20} color="#6B7280" />
@@ -157,7 +134,7 @@ const LearningGoalsScreen = ({ navigation }) => {
         <View style={styles.goalProgress}>
           <View style={styles.progressInfo}>
             <Text style={styles.progressText}>
-              {goal.current}/{goal.target} {goal.unit}
+              {t('goals.progressFormat', { current: 0, target: goal.target, unit: t(goal.unitKey) })}
             </Text>
             <Text style={[styles.progressPercent, { color: goal.color }]}>{Math.round(progress)}%</Text>
           </View>
@@ -169,125 +146,85 @@ const LearningGoalsScreen = ({ navigation }) => {
         {progress >= 100 && (
           <View style={styles.completedBadge}>
             <Icon name="check-circle" size={16} color="#10B981" />
-            <Text style={styles.completedText}>Hoàn thành!</Text>
+            <Text style={styles.completedText}>{t('common.completed')}</Text>
           </View>
         )}
       </View>
     )
   }
 
-  const renderPresetCard = (preset: GoalPreset) => {
-    const isSelected = selectedPreset === preset.id
-
+  if (isLoading || updateMut.isPending) {
     return (
-      <TouchableOpacity
-        key={preset.id}
-        style={[styles.presetCard, isSelected && styles.selectedPreset]}
-        onPress={() => applyPreset(preset)}
-      >
-        <View style={styles.presetHeader}>
-          <View style={styles.presetIcon}>
-            <Icon name={preset.icon} size={24} color="#4F46E5" />
-          </View>
-          <View style={styles.presetInfo}>
-            <Text style={styles.presetTitle}>{preset.title}</Text>
-            <Text style={styles.presetDescription}>{preset.description}</Text>
-          </View>
-          <View style={[styles.difficultyBadge, getDifficultyStyle(preset.difficulty)]}>
-            <Text style={[styles.difficultyText, getDifficultyTextStyle(preset.difficulty)]}>{preset.difficulty}</Text>
-          </View>
-        </View>
-
-        <View style={styles.presetDetails}>
-          <View style={styles.presetStat}>
-            <Icon name="schedule" size={16} color="#6B7280" />
-            <Text style={styles.presetStatText}>{preset.dailyMinutes} phút/ngày</Text>
-          </View>
-          <View style={styles.presetStat}>
-            <Icon name="school" size={16} color="#6B7280" />
-            <Text style={styles.presetStatText}>{preset.weeklyLessons} bài/tuần</Text>
-          </View>
-        </View>
-
-        {isSelected && (
-          <View style={styles.selectedIndicator}>
-            <Icon name="check-circle" size={20} color="#4F46E5" />
-            <Text style={styles.selectedText}>Đang áp dụng</Text>
-          </View>
-        )}
-      </TouchableOpacity>
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4F46E5" />
+        <Text style={styles.loadingText}>{t('common.loadingGoals')}</Text>
+      </View>
     )
   }
 
-  const getDifficultyStyle = (difficulty: string) => {
-    switch (difficulty) {
-      case "Dễ":
-        return { backgroundColor: "#ECFDF5" }
-      case "Trung bình":
-        return { backgroundColor: "#FFFBEB" }
-      case "Khó":
-        return { backgroundColor: "#FEF2F2" }
-      default:
-        return { backgroundColor: "#F3F4F6" }
-    }
-  }
-
-  const getDifficultyTextStyle = (difficulty: string) => {
-    switch (difficulty) {
-      case "Dễ":
-        return { color: "#10B981" }
-      case "Trung bình":
-        return { color: "#F59E0B" }
-      case "Khó":
-        return { color: "#EF4444" }
-      default:
-        return { color: "#6B7280" }
-    }
-  }
-
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Mục tiêu học tập</Text>
+        <Text style={styles.headerTitle}>{t('goals.screenTitle')}</Text>
         <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
-          {/* Current Goals */}
+          {/* Current Goals Section */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Mục tiêu hiện tại</Text>
-            <Text style={styles.sectionSubtitle}>Theo dõi tiến độ học tập của bạn</Text>
+            <Text style={styles.sectionTitle}>{t('goals.currentGoalsTitle')}</Text>
+            <Text style={styles.sectionSubtitle}>{t('goals.currentGoalsSubtitle')}</Text>
             {currentGoals.map(renderGoalCard)}
-          </View>
 
-          {/* Goal Presets */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Gói mục tiêu</Text>
-            <Text style={styles.sectionSubtitle}>Chọn gói phù hợp với lịch trình của bạn</Text>
-            {goalPresets.map(renderPresetCard)}
+            {/* Streak Goal - Dữ liệu từ UserStore */}
+            <View key="streak-days" style={styles.goalCard}>
+              <View style={styles.goalHeader}>
+                <View style={[styles.goalIcon, { backgroundColor: `#F59E0B20` }]}>
+                  <Icon name="local-fire-department" size={24} color="#F59E0B" />
+                </View>
+                <View style={styles.goalInfo}>
+                  <Text style={styles.goalTitle}>{t('goals.streakTitle')}</Text>
+                  <Text style={styles.goalDescription}>{t('goals.streakDesc')}</Text>
+                </View>
+                <TouchableOpacity style={styles.editButton}>
+                  <Icon name="edit" size={20} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.goalProgress}>
+                <View style={styles.progressInfo}>
+                  <Text style={styles.progressText}>
+                    {t('goals.streakCurrent', { streak: user?.streak || 0 })}
+                  </Text>
+                  <Text style={[styles.progressPercent, { color: "#F59E0B" }]}>{t('goals.streakPlaceholderPercent')}</Text>
+                </View>
+                <View style={styles.progressBar}>
+                  {/* Giả định 30 ngày là target Streak */}
+                  <View style={[styles.progressFill, { width: `${Math.min(user?.streak || 0, 30) / 30 * 100}%`, backgroundColor: "#F59E0B" }]} />
+                </View>
+              </View>
+            </View>
           </View>
 
           {/* Motivation Section */}
           <View style={styles.motivationSection}>
             <View style={styles.motivationHeader}>
               <Icon name="emoji-people" size={24} color="#4F46E5" style={styles.motivationIcon} />
-              <Text style={styles.motivationTitle}>Động lực học tập</Text>
+              <Text style={styles.motivationTitle}>{t('goals.motivationTitle')}</Text>
             </View>
             <View style={styles.motivationContent}>
               <Text style={styles.motivationText}>
-                "Thành công không phải là chìa khóa của hạnh phúc. Hạnh phúc là chìa khóa của thành công. Nếu bạn yêu
-                thích những gì mình đang làm, bạn sẽ thành công."
+                {t('goals.motivationQuote')}
               </Text>
-              <Text style={styles.motivationAuthor}>- Albert Schweitzer</Text>
+              <Text style={styles.motivationAuthor}>- {t('goals.motivationAuthor')}</Text>
             </View>
           </View>
         </Animated.View>
       </ScrollView>
-    </View>
+    </ScreenLayout>
   )
 }
 
@@ -295,6 +232,17 @@ const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8FAFC",
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#F8FAFC",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#4F46E5",
   },
   header: {
     flexDirection: "row",

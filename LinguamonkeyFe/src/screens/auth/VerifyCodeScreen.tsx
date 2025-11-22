@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { verifyOtpAndLogin, requestOtp } from '../../services/authService';
 import { showError, showSuccess } from "../../utils/toastHelper";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
 const VerifyCodeScreen = ({ navigation, route }) => {
   const { t } = useTranslation();
@@ -68,7 +69,7 @@ const VerifyCodeScreen = ({ navigation, route }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
@@ -108,7 +109,7 @@ const VerifyCodeScreen = ({ navigation, route }) => {
           </Text>
         </TouchableOpacity>
       </Animated.View>
-    </View>
+    </ScreenLayout>
   );
 };
 
