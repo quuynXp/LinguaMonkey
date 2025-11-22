@@ -1,139 +1,177 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
-import type { ApiResponse, PaginatedResponse } from "../types/api";
+import {
+  AppApiResponse,
+  PageResponse,
+  TransactionResponse,
+  TransactionRequest,
+  PaymentRequest,
+  WebhookRequest,
+} from "../types/dto";
 
-export interface Transaction {
-  id: string;
-  userId: string;
-  amount: number;
-  status: string;
-  method: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface TransactionRequest {
-  userId: string;
-  amount: number;
-  status?: string;
-  method?: string;
-}
-
-export interface PaymentRequest {
-  userId: string;
-  amount: number;
-  method: "VNPAY" | "MOMO" | "STRIPE";
-  orderInfo?: string;
-}
-
-export interface WebhookRequest {
-  provider: "VNPAY" | "MOMO" | "STRIPE";
-  payload: any;
-}
-
-export const useTransaction = (id?: string) =>
-  useQuery<Transaction>({
-    queryKey: ["transaction", id],
-    queryFn: async () => {
-      if (!id) throw new Error("Transaction ID is required");
-      const res = await instance.get<ApiResponse<Transaction>>(`/api/v1/transactions/${id}`);
-      return (res.data as any)?.result ?? res.data;
-    },
-    enabled: !!id,
-    staleTime: 60 * 1000,
-  });
-
-export const useTransactions = (params?: { userId?: string; status?: string; page?: number; size?: number }) =>
-  useQuery<PaginatedResponse<Transaction>>({
-    queryKey: ["transactions", params],
-    queryFn: async () => {
-      const res = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/api/v1/transactions`, {
-        params,
-      });
-      return (res.data as any)?.result ?? res.data;
-    },
-    staleTime: 60 * 1000,
-  });
-
-export const useTransactionsByUser = (userId?: string, page?: number, size?: number) =>
-  useQuery<PaginatedResponse<Transaction>>({
-    queryKey: ["transactions", "user", userId, page, size],
-    queryFn: async () => {
-      if (!userId) throw new Error("User ID is required");
-      const res = await instance.get<ApiResponse<PaginatedResponse<Transaction>>>(`/api/v1/transactions/user/${userId}`, {
-        params: { page, size },
-      });
-      return (res.data as any)?.result ?? res.data;
-    },
-    enabled: !!userId,
-    staleTime: 60 * 1000,
-  });
-
-export const useCreateTransaction = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (payload: TransactionRequest) => {
-      const res = await instance.post<ApiResponse<Transaction>>(`/api/v1/transactions`, payload);
-      return (res.data as any)?.result ?? res.data;
-    },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-    },
-  });
+// --- Keys Factory ---
+export const transactionKeys = {
+  all: ["transactions"] as const,
+  lists: (params: any) => [...transactionKeys.all, "list", params] as const,
+  detail: (id: string) => [...transactionKeys.all, "detail", id] as const,
+  byUser: (userId: string, params: any) => [...transactionKeys.all, "user", userId, params] as const,
 };
 
-export const useUpdateTransaction = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: TransactionRequest }) => {
-      const res = await instance.put<ApiResponse<Transaction>>(`/api/v1/transactions/${id}`, data);
-      return (res.data as any)?.result ?? res.data;
-    },
-    onSuccess: (_, { id }) => {
-      qc.invalidateQueries({ queryKey: ["transaction", id] });
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-    },
-  });
-};
+// ==========================================
+// === HELPER ===
+// ==========================================
 
-export const useDeleteTransaction = () => {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await instance.delete<ApiResponse<void>>(`/api/v1/transactions/${id}`);
-      return (res.data as any)?.result ?? res.data;
-    },
-    onSuccess: (_, id) => {
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-      qc.invalidateQueries({ queryKey: ["transaction", id] });
-    },
-  });
-};
-
-// 🔥 New Hooks
-export const useCreatePayment = () =>
-  useMutation({
-    mutationFn: async (payload: PaymentRequest) => {
-      const res = await instance.post<ApiResponse<string>>(`/api/v1/transactions/create-payment`, payload);
-      return (res.data as any)?.result ?? res.data;
-    },
-  });
-
-export const useHandleWebhook = () =>
-  useMutation({
-    mutationFn: async (payload: WebhookRequest) => {
-      const res = await instance.post<ApiResponse<string>>(`/api/v1/transactions/webhook`, payload);
-      return (res.data as any)?.result ?? res.data;
-    },
-  });
-
-export const useTransactionsApi = () => ({
-  useTransaction,
-  useTransactions,
-  useTransactionsByUser,
-  useCreateTransaction,
-  useUpdateTransaction,
-  useDeleteTransaction,
-  useCreatePayment,
-  useHandleWebhook,
+const mapPageResponse = <T>(result: any, page: number, size: number) => ({
+  data: (result?.content as T[]) || [],
+  pagination: {
+    pageNumber: result?.pageNumber ?? page,
+    pageSize: result?.pageSize ?? size,
+    totalElements: result?.totalElements ?? 0,
+    totalPages: result?.totalPages ?? 0,
+    isLast: result?.isLast ?? true,
+    isFirst: result?.isFirst ?? true,
+    hasNext: result?.hasNext ?? false,
+    hasPrevious: result?.hasPrevious ?? false,
+  },
 });
+
+// ==========================================
+// === HOOK LIBRARY ===
+// ==========================================
+
+export const useTransactionsApi = () => {
+  const queryClient = useQueryClient();
+
+  // GET /api/v1/transactions/{id}
+  const useTransaction = (id?: string) =>
+    useQuery({
+      queryKey: transactionKeys.detail(id!),
+      queryFn: async () => {
+        if (!id) throw new Error("Transaction ID is required");
+        const { data } = await instance.get<AppApiResponse<TransactionResponse>>(
+          `/api/v1/transactions/${id}`
+        );
+        return data.result!;
+      },
+      enabled: !!id,
+      staleTime: 60 * 1000,
+    });
+
+  // GET /api/v1/transactions
+  const useTransactions = (params?: { userId?: string; status?: string; page?: number; size?: number }) => {
+    const { page = 0, size = 10 } = params || {};
+    return useQuery({
+      queryKey: transactionKeys.lists(params),
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<PageResponse<TransactionResponse>>>(
+          `/api/v1/transactions`,
+          { params: { ...params, page, size } }
+        );
+        return mapPageResponse(data.result, page, size);
+      },
+      staleTime: 60 * 1000,
+    });
+  };
+
+  // GET /api/v1/transactions/user/{userId}
+  const useTransactionsByUser = (userId?: string, page?: number, size?: number) => {
+    const p = { page: page || 0, size: size || 10 };
+    return useQuery({
+      queryKey: transactionKeys.byUser(userId!, p),
+      queryFn: async () => {
+        if (!userId) throw new Error("User ID is required");
+        const { data } = await instance.get<AppApiResponse<PageResponse<TransactionResponse>>>(
+          `/api/v1/transactions/user/${userId}`,
+          { params: p }
+        );
+        return mapPageResponse(data.result, p.page, p.size);
+      },
+      enabled: !!userId,
+      staleTime: 60 * 1000,
+    });
+  };
+
+  // POST /api/v1/transactions
+  const useCreateTransaction = () => {
+    return useMutation({
+      mutationFn: async (payload: TransactionRequest) => {
+        const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
+          `/api/v1/transactions`,
+          payload
+        );
+        return data.result!;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: transactionKeys.all });
+      },
+    });
+  };
+
+  // PUT /api/v1/transactions/{id}
+  const useUpdateTransaction = () => {
+    return useMutation({
+      mutationFn: async ({ id, data: req }: { id: string; data: TransactionRequest }) => {
+        const { data } = await instance.put<AppApiResponse<TransactionResponse>>(
+          `/api/v1/transactions/${id}`,
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: transactionKeys.detail(data.transactionId) });
+        queryClient.invalidateQueries({ queryKey: transactionKeys.lists({}) });
+      },
+    });
+  };
+
+  // DELETE /api/v1/transactions/{id}
+  const useDeleteTransaction = () => {
+    return useMutation({
+      mutationFn: async (id: string) => {
+        await instance.delete<AppApiResponse<void>>(`/api/v1/transactions/${id}`);
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: transactionKeys.all });
+      },
+    });
+  };
+
+  // POST /api/v1/transactions/create-payment (Returns URL string)
+  const useCreatePayment = () =>
+    useMutation({
+      mutationFn: async (payload: PaymentRequest) => {
+        const { data } = await instance.post<AppApiResponse<string>>(
+          `/api/v1/transactions/create-payment`,
+          payload
+        );
+        return data.result!;
+      },
+      onSuccess: () => {
+        // Invalidate lists as a new PENDING transaction is likely created
+        queryClient.invalidateQueries({ queryKey: transactionKeys.all });
+      },
+    });
+
+  // POST /api/v1/transactions/webhook (No invalidation needed here, scheduler handles status)
+  const useHandleWebhook = () =>
+    useMutation({
+      mutationFn: async (payload: WebhookRequest) => {
+        const { data } = await instance.post<AppApiResponse<string>>(
+          `/api/v1/transactions/webhook`,
+          payload
+        );
+        return data.result!;
+      },
+    });
+
+  return {
+    useTransaction,
+    useTransactions,
+    useTransactionsByUser,
+    useCreateTransaction,
+    useUpdateTransaction,
+    useDeleteTransaction,
+    useCreatePayment,
+    useHandleWebhook,
+  };
+};

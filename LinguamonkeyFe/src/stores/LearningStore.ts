@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { Course, Lesson, UserGoal } from '../types/api';
+import type { Course, Lesson, UserGoal } from '../types/entity';
 
 interface LearningState {
   selectedCourse: Course | null;
@@ -27,7 +27,9 @@ export const useLearningStore = create<LearningState>()(
       setSelectedCourse: (course) => set({ selectedCourse: course }),
       setSelectedLesson: (lesson) => set({ selectedLesson: lesson }),
       updateProgress: (lessonId, score) =>
-        set((state) => ({ progress: { ...state.progress, [lessonId]: score } })),
+        set((state) => ({
+          progress: { ...state.progress, [lessonId]: score },
+        })),
       addGoal: (goal) => set((state) => ({ goals: [...state.goals, goal] })),
       clearProgress: () => set({ progress: {}, selectedLesson: null }),
     }),

@@ -69,9 +69,12 @@ export interface BasicLessonRequest {
 }
 
 export interface CallPreferencesRequest {
-    userId: string;
-    allowVideo: boolean;
-    allowAudio: boolean;
+    interests?: string[];
+    gender?: string;
+    nativeLanguage?: string;
+    learningLanguage?: string;
+    ageRange?: string;
+    callDuration?: string;
 }
 
 export interface CertificateRequest {
@@ -158,6 +161,29 @@ export interface CreateCourseRequest {
     price: number;
 }
 
+export interface UserReminderResponse {
+    id: string;
+    title?: string;
+    message?: string;
+    reminderTime: string; // "HH:mm" or ISO
+    reminderDate?: string; // "YYYY-MM-DD"
+    repeatType: Enums.RepeatType; // DAILY, WEEKLY...
+    enabled: boolean;
+    targetType: Enums.TargetType;
+    targetId?: string;
+}
+
+export interface UserReminderRequest {
+    title?: string;
+    message?: string;
+    reminderTime: string;
+    reminderDate?: string;
+    repeatType?: Enums.RepeatType;
+    targetType: Enums.TargetType;
+    targetId?: string;
+    enabled?: boolean;
+}
+
 export interface CreateFlashcardRequest {
     lessonId: string;
     front: string;
@@ -213,7 +239,13 @@ export interface EmailRequest {
 }
 
 export interface EventRequest {
-    // Empty in Java
+    eventId: string;
+    eventName: string;
+    description?: string;
+    startDate?: string;
+    endDate?: string;
+    eventType: Enums.EventType;
+    maxScore: number;
 }
 
 export interface FriendRequestRequest {
@@ -295,10 +327,11 @@ export interface LeaderboardRequest {
 
 export interface LearningActivityEventRequest {
     userId: string;
-    type: Enums.ActivityType;
-    metadata: string;
+    activityType: Enums.ActivityType;
+    relatedEntityId: string;
+    durationInSeconds?: number;
+    details?: string;
 }
-
 export interface LessonCategoryRequest {
     lessonCategoryName: string;
     languageCode: string;
@@ -439,7 +472,9 @@ export interface PaymentRequest {
 }
 
 export interface PermissionRequest {
-    // Empty in Java
+    permissionId: string;
+    name: string;
+    description?: string;
 }
 
 export interface PublishVersionRequest {
@@ -1308,8 +1343,36 @@ export interface NotificationResponse {
     updatedAt: string;
 }
 
+export interface CoupleProfileSummary {
+    coupleId: string;
+    partnerId: string;
+    partnerFullname: string;
+    partnerAvatarUrl: string;
+    daysTogether: number;
+    status: Enums.CoupleStatus;
+    coupleScore: number;
+    coupleLeaderboardRank: number;
+    coupleBadges: BadgeResponse[];
+}
+
+
+export interface UserDailyChallengeResponse {
+    userId: string;
+    challengeId: string;
+    title: string;
+    description?: string;
+    progress: number;
+    isCompleted: boolean;
+    expReward: number;
+    rewardCoins: number;
+    assignedAt?: string;
+    completedAt?: string;
+}
+
 export interface PermissionResponse {
-    // Empty
+    permissionId: string;
+    name: string;
+    description?: string;
 }
 
 export interface PronunciationResponseBody {
@@ -1671,6 +1734,26 @@ export interface TestQuestionDto {
     orderIndex: number;
 }
 
+export interface FoundPartner {
+    userId: string;
+    fullname: string;
+    avatarUrl: string;
+    country: string;
+    rating: number;
+    callsCompleted: number;
+    nativeLanguage: string;
+    learningLanguage: string;
+    commonInterests: string[];
+}
+
+export interface FindMatchResponse {
+    partner?: FoundPartner;
+    videoCallId: string;
+    roomId: string;
+    error?: string;
+}
+
+
 export interface TransactionResponse {
     transactionId: string;
     userId: string;
@@ -1753,58 +1836,76 @@ export interface UserLearningActivityResponse {
 
 export interface UserProfileResponse {
     userId: string;
-    fullname: string;
-    nickname: string;
-    avatarUrl: string;
-    flag: string;
-    country: Enums.Country;
+    fullname?: string;
+    nickname?: string;
+    avatarUrl?: string;
+    flag?: string;
+    country?: Enums.Country;
+
+    ageRange?: Enums.AgeRange;
+    proficiency?: Enums.ProficiencyLevel;
+    learningPace?: Enums.LearningPace;
+
     level: number;
     exp: number;
-    bio: string;
-    character3d: Character3dResponse;
-    stats: UserStatsResponse;
+    bio?: string;
+
+    character3d?: Character3dResponse;
+    stats?: UserStatsResponse;
     badges: BadgeResponse[];
+
     isFriend: boolean;
-    friendRequestStatus: FriendRequestStatusResponse;
+    friendRequestStatus?: FriendRequestStatusResponse;
     canSendFriendRequest: boolean;
     canUnfriend: boolean;
     canBlock: boolean;
-    privateFriendRequests: FriendshipResponse[];
-    privateDatingInvites: DatingInviteSummary[];
+
+    privateFriendRequests?: FriendshipResponse[];
+    privateDatingInvites?: DatingInviteSummary[];
+
     admirationCount: number;
     hasAdmired: boolean;
+
     isTeacher: boolean;
-    teacherCourses: CourseSummaryResponse[];
-    leaderboardRanks: Record<string, number>;
-    coupleProfile: Entities.CoupleProfileSummary;
-    mutualMemories: MemorySummaryResponse[];
-    datingInviteSummary: DatingInviteSummary;
-    exploringExpiresInHuman: string;
+    teacherCourses?: CourseSummaryResponse[];
+
+    leaderboardRanks?: Record<string, number>;
+    coupleProfile?: CoupleProfileSummary;
+    mutualMemories?: MemorySummaryResponse[];
+    datingInviteSummary?: DatingInviteSummary;
+
+    exploringExpiresInHuman?: string;
     exploringExpiringSoon: boolean;
 }
 
 export interface UserResponse {
     userId: string;
     email: string;
-    fullname: string;
-    nickname: string;
-    bio: string;
-    phone: string;
-    avatarUrl: string;
-    character3dId: string;
-    badgeId: string;
-    nativeLanguageCode: string;
-    authProvider: string;
-    country: Enums.Country;
+    fullname?: string;
+    nickname?: string;
+    bio?: string;
+    phone?: string;
+    avatarUrl?: string;
+    character3dId?: string;
+    badgeId?: string;
+    nativeLanguageCode?: string;
+    authProvider?: string;
+    country?: Enums.Country;
+
+    // Synced Enum Fields
+    ageRange?: Enums.AgeRange;
+    proficiency?: Enums.ProficiencyLevel;
+    learningPace?: Enums.LearningPace;
+
     level: number;
     exp: number;
-    expToNextLevel: number;
-    progress: number;
+    expToNextLevel?: number;
+    progress?: number;
     streak: number;
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
-    languages: string[];
+    languages?: string[];
 }
 
 export interface UserRoleResponse {

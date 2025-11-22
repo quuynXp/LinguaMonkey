@@ -1,163 +1,138 @@
-// src/hooks/useCertifications.ts
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
-import type { ApiResponse, PaginatedResponse } from "../types/api";
+import {
+  AppApiResponse,
+  PageResponse,
+  CertificateResponse,
+  CertificateRequest,
+} from "../types/dto";
 
-export interface CertificationTest {
-  id: string;
-  language: string;
-  level: string;
-  name: string;
-  description: string;
-  duration: number;
-  totalQuestions: number;
-  passingScore: number;
-  icon: string;
-  color: string;
-  isAvailable: boolean;
-  userProgress?: {
-    attempts: number;
-    bestScore?: number;
-    lastAttempt?: string;
-    status: "not_started" | "in_progress" | "completed" | "failed";
-  };
-}
+// --- Keys Factory ---
+export const certificateKeys = {
+  all: ["certificates"] as const,
+  lists: () => [...certificateKeys.all, "list"] as const,
+  list: (page: number, size: number) => [...certificateKeys.lists(), { page, size }] as const,
+  details: () => [...certificateKeys.all, "detail"] as const,
+  detail: (id: string) => [...certificateKeys.details(), id] as const,
+};
 
-export interface TestQuestion {
-  id: string;
-  question: string;
-  options: string[];
-  correctAnswer: number;
-  explanation?: string;
-  skill: "reading" | "listening" | "grammar" | "vocabulary";
-}
+// ==========================================
+// === CRUD HOOKS (Based on CertificateController) ===
+// ==========================================
 
-export interface TestResult {
-  id: string;
-  testId: string;
-  score: number;
-  totalQuestions: number;
-  correctAnswers: number;
-  skillBreakdown: {
-    reading: { correct: number; total: number };
-    listening: { correct: number; total: number };
-    grammar: { correct: number; total: number };
-    vocabulary: { correct: number; total: number };
-  };
-  suggestions: string[];
-  passed: boolean;
-  completedAt: string;
-}
+// 1. GET /api/v1/certificates (Get all)
+export const useCertificates = (page = 0, size = 10) => {
+  return useQuery({
+    queryKey: certificateKeys.list(page, size),
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        size: size.toString(),
+      });
+      const { data } = await instance.get<AppApiResponse<PageResponse<CertificateResponse>>>(
+        `/api/v1/certificates?${params.toString()}`
+      );
 
-export const useCertifications = () => {
+      // Map response to Page structure standard
+      return {
+        data: data.result?.content || [],
+        pagination: {
+          pageNumber: data.result?.pageNumber || page,
+          pageSize: data.result?.pageSize || size,
+          totalElements: data.result?.totalElements || 0,
+          totalPages: data.result?.totalPages || 0,
+          isLast: data.result?.isLast || true,
+          isFirst: data.result?.isFirst || true,
+          hasNext: data.result?.hasNext || false,
+          hasPrevious: data.result?.hasPrevious || false,
+        }
+      };
+    },
+    placeholderData: (prev) => prev,
+    staleTime: 5 * 60 * 1000,
+  });
+};
+
+// 2. GET /api/v1/certificates/{id} (Get by ID)
+export const useCertificate = (id?: string | null) => {
+  return useQuery({
+    queryKey: certificateKeys.detail(id!),
+    queryFn: async () => {
+      if (!id) throw new Error("Certificate ID is required");
+      const { data } = await instance.get<AppApiResponse<CertificateResponse>>(
+        `/api/v1/certificates/${id}`
+      );
+      return data.result;
+    },
+    enabled: !!id,
+  });
+};
+
+// 3. POST /api/v1/certificates (Create - Admin)
+export const useCreateCertificate = () => {
   const queryClient = useQueryClient();
 
-  const useAvailableCertifications = (languages?: string[]) =>
-    useQuery<CertificationTest[]>({
-      queryKey: ["availableCertifications", languages ?? []],
-      queryFn: async () => {
-        const params = new URLSearchParams();
-        if (languages && languages.length > 0) languages.forEach((l) => params.append("languages", l));
-        const res = await instance.get<ApiResponse<CertificationTest[]>>(
-          `/api/v1/certifications/available?${params.toString()}`
-        );
-        return res.data.result ?? [];
-      },
-      staleTime: 10 * 60 * 1000,
-    });
-
-  const useCertificationTest = (testId: string | null) =>
-    useQuery<CertificationTest>({
-      queryKey: ["certificationTest", testId],
-      queryFn: async () => {
-        if (!testId) throw new Error("Test ID is required");
-        const res = await instance.get<ApiResponse<CertificationTest>>(`/api/v1/certifications/${testId}`);
-        return res.data.result!;
-      },
-      enabled: !!testId,
-      staleTime: 5 * 60 * 1000,
-    });
-
-  const useTestQuestions = (testId: string | null, mode: "practice" | "exam" = "practice") =>
-    useQuery<TestQuestion[]>({
-      queryKey: ["testQuestions", testId, mode],
-      queryFn: async () => {
-        if (!testId) throw new Error("Test ID is required");
-        const res = await instance.get<ApiResponse<TestQuestion[]>>(
-          `/api/v1/certifications/${testId}/questions?mode=${mode}`
-        );
-        return res.data.result ?? [];
-      },
-      enabled: !!testId,
-      staleTime: 0,
-    });
-
-  const useUserCertificationResults = (page = 1, limit = 10) =>
-    useQuery<PaginatedResponse<TestResult>>({
-      queryKey: ["userCertificationResults", page, limit],
-      queryFn: async () => {
-        const res = await instance.get<ApiResponse<PaginatedResponse<TestResult>>>(
-          `/api/v1/certifications/results?page=${page}&limit=${limit}`
-        );
-        return res.data.result ?? { data: [], pagination: { page, limit, total: 0, totalPages: 0 } };
-      },
-      staleTime: 5 * 60 * 1000,
-    });
-
-  // --- submitTest: return mutateAsync so caller receives TestResult
-  const useSubmitTest = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: {
-        testId: string;
-        answers: { [questionId: string]: number };
-        mode: "practice" | "exam";
-        timeSpent: number;
-      }) => {
-        const res = await instance.post<ApiResponse<TestResult>>(`/api/v1/certifications/${payload.testId}/submit`, {
-          answers: payload.answers,
-          mode: payload.mode,
-          timeSpent: payload.timeSpent,
-        });
-        return res.data.result!;
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["userCertificationResults"] });
-        queryClient.invalidateQueries({ queryKey: ["availableCertifications"] });
-      },
-    });
-
-    return {
-      submitTest: mutation.mutateAsync, // async fn returning TestResult
-      isSubmitting: mutation.isPending,
-      error: mutation.error,
-    };
-  };
-
-  // --- startTest: return mutateAsync so caller receives { sessionId, startTime }
-  const useStartTest = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: { testId: string; mode: "practice" | "exam" }) => {
-        const res = await instance.post<ApiResponse<{ sessionId: string; startTime: string }>>(
-          `/api/v1/certifications/${payload.testId}/start`,
-          { mode: payload.mode }
-        );
-        return res.data.result!;
-      },
-    });
-
-    return {
-      startTest: mutation.mutateAsync, // async fn returning { sessionId, startTime }
-      isStarting: mutation.isPending,
-      error: mutation.error,
-    };
-  };
+  const mutation = useMutation({
+    mutationFn: async (req: CertificateRequest) => {
+      const { data } = await instance.post<AppApiResponse<CertificateResponse>>(
+        "/api/v1/certificates",
+        req
+      );
+      return data.result!;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: certificateKeys.lists() });
+    },
+  });
 
   return {
-    useAvailableCertifications,
-    useCertificationTest,
-    useTestQuestions,
-    useUserCertificationResults,
-    useSubmitTest,
-    useStartTest,
+    createCertificate: mutation.mutateAsync,
+    isCreating: mutation.isPending,
+    error: mutation.error,
+  };
+};
+
+// 4. PUT /api/v1/certificates/{id} (Update)
+export const useUpdateCertificate = () => {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async ({ id, req }: { id: string; req: CertificateRequest }) => {
+      const { data } = await instance.put<AppApiResponse<CertificateResponse>>(
+        `/api/v1/certificates/${id}`,
+        req
+      );
+      return data.result!;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: certificateKeys.detail(data.certificateId) });
+      queryClient.invalidateQueries({ queryKey: certificateKeys.lists() });
+    },
+  });
+
+  return {
+    updateCertificate: mutation.mutateAsync,
+    isUpdating: mutation.isPending,
+    error: mutation.error,
+  };
+};
+
+// 5. DELETE /api/v1/certificates/{id} (Delete)
+export const useDeleteCertificate = () => {
+  const queryClient = useQueryClient();
+
+  const mutation = useMutation({
+    mutationFn: async (id: string) => {
+      await instance.delete(`/api/v1/certificates/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: certificateKeys.lists() });
+    },
+  });
+
+  return {
+    deleteCertificate: mutation.mutateAsync,
+    isDeleting: mutation.isPending,
+    error: mutation.error,
   };
 };

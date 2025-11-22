@@ -314,6 +314,87 @@ export enum SkillType {
     GRAMMAR = "GRAMMAR"
 }
 
+export interface BaseResponse {
+    success: boolean;
+    message?: string;
+}
+
+export interface Character3dResponse {
+    character3dId: string;
+    name: string;
+    avatarUrl: string;
+    modelUrl: string;
+}
+
+export interface BadgeResponse {
+    badgeId: string;
+    name: string;
+    description: string;
+    imageUrl: string;
+    isEarned: boolean;
+}
+
+export interface UserStatsResponse {
+    totalLessons: number;
+    totalXp: number;
+    currentStreak: number;
+    longestStreak: number;
+    wordsLearned: number;
+}
+
+export enum FriendRequestStatus {
+    NONE = 'NONE',
+    PENDING = 'PENDING',
+    ACCEPTED = 'ACCEPTED',
+    REJECTED = 'REJECTED'
+}
+
+export interface FriendRequestStatusResponse {
+    status: FriendRequestStatus;
+    senderId?: string;
+    receiverId?: string;
+}
+
+export interface FriendshipResponse {
+    friendshipId: string;
+    friendId: string;
+    friendName: string;
+    friendAvatar: string;
+    status: FriendRequestStatus;
+    createdAt: string;
+}
+
+export interface DatingInviteSummary {
+    inviteId: string;
+    senderId: string;
+    status: string;
+    createdAt: string;
+}
+
+
+export interface CourseSummaryResponse {
+    courseId: string;
+    title: string;
+    thumbnailUrl?: string;
+    level: string;
+    rating: number;
+}
+
+export interface MemorySummaryResponse {
+    memoryId: string;
+    title: string;
+    date: string;
+    imageUrl: string;
+}
+
+export interface CoupleProfileSummary {
+    coupleId: string;
+    partner1Id: string;
+    partner2Id: string;
+    anniversaryDate: string;
+    level: number;
+}
+
 export enum TargetType {
     LESSON = "LESSON",
     EXAM = "EXAM",

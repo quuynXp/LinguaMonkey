@@ -1,9 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
+import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.RepeatType;
 import com.connectJPA.LinguaVietnameseApp.enums.TargetType;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.GenericGenerator;
 
 import java.time.LocalDate;
@@ -17,8 +19,8 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class UserReminder {
+@SuperBuilder
+public class UserReminder extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -52,8 +54,4 @@ public class UserReminder {
     @Column(name = "enabled")
     private Boolean enabled = true;
 
-    private boolean isDeleted;
-
-    @Column(name = "created_at")
-    private OffsetDateTime createdAt = OffsetDateTime.now();
 }

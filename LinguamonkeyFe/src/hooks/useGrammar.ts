@@ -1,85 +1,138 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
-import type { GrammarRule, GrammarTopic, SubmitExerciseResponse, MindMapNode } from "../types/api";
+import {
+  AppApiResponse,
+  GrammarTopicResponse,
+  GrammarRuleResponse,
+  // GrammarLessonResponse, // Controller does NOT have getLessonById currently exposed properly or DTO usage is tricky, using generic if needed or skipping
+  SubmitExerciseResponse,
+  MindMapNode,
+  SubmitExerciseRequest,
+  UpdateGrammarProgressRequest
+} from "../types/dto";
+
+// --- Keys Factory ---
+export const grammarKeys = {
+  all: ["grammar"] as const,
+  topics: () => [...grammarKeys.all, "topics"] as const,
+  topic: (id: string, userId?: string) => [...grammarKeys.topics(), id, { userId }] as const,
+  rules: () => [...grammarKeys.all, "rules"] as const,
+  rule: (id: string) => [...grammarKeys.rules(), id] as const,
+  mindmap: () => [...grammarKeys.all, "mindmap"] as const,
+};
 
 export const useGrammar = () => {
   const queryClient = useQueryClient();
 
-  const useGrammarTopics = () =>
-    useQuery<GrammarTopic[]>({
-      queryKey: ["grammarTopics"],
-      queryFn: async () => {
-        const res = await instance.get("/api/v1/grammar/topics");
-        return res.data?.result ?? [];
+  // 1. GET /api/v1/grammar/topics
+  const useGrammarTopics = () => useQuery({
+    queryKey: grammarKeys.topics(),
+    queryFn: async () => {
+      const { data } = await instance.get<AppApiResponse<GrammarTopicResponse[]>>(
+        "/api/v1/grammar/topics"
+      );
+      return data.result ?? [];
+    },
+    staleTime: 60_000,
+  });
+
+  // 2. GET /api/v1/grammar/topics/{id} (Optional: ?userId=...)
+  const useGrammarTopic = (topicId: string | null, userId?: string) => useQuery({
+    queryKey: grammarKeys.topic(topicId!, userId),
+    queryFn: async () => {
+      if (!topicId) throw new Error("Topic ID required");
+      const params = userId ? { userId } : {};
+      const { data } = await instance.get<AppApiResponse<GrammarTopicResponse>>(
+        `/api/v1/grammar/topics/${topicId}`,
+        { params }
+      );
+      return data.result!;
+    },
+    enabled: !!topicId,
+    staleTime: 60_000,
+  });
+
+  // 3. GET /api/v1/grammar/rules/{id}
+  const useGrammarRule = (ruleId: string | null) => useQuery({
+    queryKey: grammarKeys.rule(ruleId!),
+    queryFn: async () => {
+      if (!ruleId) throw new Error("Rule ID required");
+      const { data } = await instance.get<AppApiResponse<GrammarRuleResponse>>(
+        `/api/v1/grammar/rules/${ruleId}`
+      );
+      return data.result!;
+    },
+    enabled: !!ruleId,
+    staleTime: 60_000,
+  });
+
+  // 4. GET /api/v1/grammar/mindmap
+  const useGrammarMindmap = () => useQuery({
+    queryKey: grammarKeys.mindmap(),
+    queryFn: async () => {
+      const { data } = await instance.get<AppApiResponse<MindMapNode[]>>(
+        "/api/v1/grammar/mindmap"
+      );
+      return data.result ?? [];
+    },
+    staleTime: 5 * 60_000, // Cache 5 mins
+  });
+
+  // 5. POST /api/v1/grammar/exercises/submit
+  const useSubmitGrammarExercise = () => {
+    const mutation = useMutation({
+      mutationFn: async (payload: SubmitExerciseRequest) => {
+        const { data } = await instance.post<AppApiResponse<SubmitExerciseResponse>>(
+          "/api/v1/grammar/exercises/submit",
+          payload
+        );
+        return data.result!;
       },
-      staleTime: 60_000,
+      onSuccess: (_, variables) => {
+        // Refresh Rule details (to show updated progress/score if API supports)
+        if (variables.ruleId) {
+          queryClient.invalidateQueries({ queryKey: grammarKeys.rule(variables.ruleId) });
+        }
+        // Refresh Topic (as topic contains list of rules with status)
+        queryClient.invalidateQueries({ queryKey: grammarKeys.topics() });
+      },
     });
 
-  const useGrammarTopic = (topicId: string | null) =>
-    useQuery<GrammarTopic | null>({
-      queryKey: ["grammarTopic", topicId],
-      queryFn: async () => {
-        if (!topicId) return null;
-        const res = await instance.get(`/api/v1/grammar/topics/${topicId}`);
-        return res.data?.result ?? null;
-      },
-      enabled: !!topicId,
-      staleTime: 60_000,
-    });
+    return {
+      submitExercise: mutation.mutateAsync,
+      isSubmitting: mutation.isPending,
+      error: mutation.error
+    };
+  };
 
-  const useGrammarRule = (ruleId: string | null) =>
-    useQuery<GrammarRule | null>({
-      queryKey: ["grammarRule", ruleId],
-      queryFn: async () => {
-        if (!ruleId) return null;
-        const res = await instance.get(`/api/v1/grammar/rules/${ruleId}`);
-        return res.data?.result ?? null;
+  // 6. POST /api/v1/grammar/progress
+  const useUpdateGrammarProgress = () => {
+    const mutation = useMutation({
+      mutationFn: async (payload: UpdateGrammarProgressRequest) => {
+        const { data } = await instance.post<AppApiResponse<void>>(
+          "/api/v1/grammar/progress",
+          payload
+        );
+        return data.result;
       },
-      enabled: !!ruleId,
-      staleTime: 60_000,
-    });
-
-  // New: Fetch grammar mindmap (hierarchical structure like roadmap)
-  const useGrammarMindmap = () =>
-    useQuery<MindMapNode[]>({
-      queryKey: ["grammarMindmap"],
-      queryFn: async () => {
-        const res = await instance.get("/api/v1/grammar/mindmap");
-        return res.data?.result ?? [];
-      },
-      staleTime: 300_000, // Longer stale time for static-like structure
-    });
-
-  const useSubmitGrammarExercise = () =>
-    useMutation({
-      mutationFn: async (payload: { ruleId: string; userId: string; answers: Record<string, string> }) => {
-        const res = await instance.post("/api/v1/grammar/exercises/submit", payload);
-        return res.data?.result as SubmitExerciseResponse;
-      },
-      onSuccess: (data, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["grammarTopics"] });
-        queryClient.invalidateQueries({ queryKey: ["grammarRule", variables.ruleId] });
-        queryClient.invalidateQueries({ queryKey: ["grammarTopic", variables.ruleId] });
+      onSuccess: (_, variables) => {
+        queryClient.invalidateQueries({ queryKey: grammarKeys.topic(variables.topicId) });
+        queryClient.invalidateQueries({ queryKey: grammarKeys.topics() });
       },
     });
 
-  const useUpdateGrammarProgress = () =>
-    useMutation({
-      mutationFn: async (payload: { topicId: string; ruleId: string; userId: string; score: number }) => {
-        const res = await instance.post("/api/v1/grammar/progress", payload);
-        return res.data?.result;
-      },
-      onSuccess: (data, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["grammarTopics"] });
-        queryClient.invalidateQueries({ queryKey: ["grammarTopic", variables.topicId] });
-      },
-    });
+    return {
+      updateProgress: mutation.mutateAsync,
+      isUpdating: mutation.isPending,
+      error: mutation.error
+    };
+  };
 
   return {
     useGrammarTopics,
     useGrammarTopic,
     useGrammarRule,
-    useGrammarMindmap, 
+    useGrammarMindmap,
     useSubmitGrammarExercise,
     useUpdateGrammarProgress,
   };

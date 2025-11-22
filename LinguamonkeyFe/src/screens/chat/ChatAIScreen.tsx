@@ -15,7 +15,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
-import { useToast } from "../../hooks/useToast";
+import { useToast } from "../../utils/useToast";
 import instance from "../../api/axiosInstance";
 import { useChatStore } from "../../stores/ChatStore";
 import { createScaledSheet } from "../../utils/scaledStyles";

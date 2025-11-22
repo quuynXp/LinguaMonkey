@@ -1,22 +1,25 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
-
-import type {
-    ApiResponse,
-    ListeningResponse,
-    PronunciationResponse,
+import {
+    AppApiResponse,
+    ListeningResponse, // <--- ĐÃ SỬA: Dùng đúng tên DTO trong Controller
+    PronunciationResponseBody,
     ReadingResponse,
-    SpellingRequest,
-    TranslationRequest,
-    WritingResponse,
-} from "../types/api";
+    WritingResponseBody,
+    SpellingRequestBody,
+    TranslationRequestBody,
+} from "../types/dto";
 
 const SKILL_API_BASE = "/api/v1/skill-lessons";
 
 export const useSkillLessons = () => {
     const queryClient = useQueryClient();
 
-    // 1. LISTENING: Upload audio -> Transcribe & Generate Questions
+    // ==========================================
+    // === 1. LISTENING ===
+    // ==========================================
+
+    // POST /listening/transcribe (Multipart/Form-Data)
     const useProcessListening = () => {
         return useMutation({
             mutationFn: async ({
@@ -31,27 +34,32 @@ export const useSkillLessons = () => {
                 const formData = new FormData();
                 formData.append("audio", {
                     uri: audioUri,
-                    name: "recording.m4a", // Hoặc .wav tùy format ghi âm
-                    type: "audio/m4a",     // Đảm bảo mime type đúng
+                    name: "recording.m4a",
+                    type: "audio/m4a",
                 } as any);
                 formData.append("lessonId", lessonId);
                 formData.append("languageCode", languageCode);
 
-                const res = await instance.post<ApiResponse<ListeningResponse>>(
+                // FIX: Sử dụng ListeningResponse
+                const { data } = await instance.post<AppApiResponse<ListeningResponse>>(
                     `${SKILL_API_BASE}/listening/transcribe`,
                     formData,
                     { headers: { "Content-Type": "multipart/form-data" } }
                 );
-                return res.data.result!;
+                return data.result!;
             },
             onSuccess: (_, variables) => {
                 // Invalidate để cập nhật tiến độ bài học
                 queryClient.invalidateQueries({ queryKey: ["lessonProgress", variables.lessonId] });
-            }
+            },
         });
     };
 
-    // 2. SPEAKING: Pronunciation Check
+    // ==========================================
+    // === 2. SPEAKING ===
+    // ==========================================
+
+    // POST /speaking/pronunciation (Multipart/Form-Data)
     const useCheckPronunciation = () => {
         return useMutation({
             mutationFn: async ({
@@ -72,36 +80,41 @@ export const useSkillLessons = () => {
                 formData.append("lessonId", lessonId);
                 formData.append("languageCode", languageCode);
 
-                const res = await instance.post<ApiResponse<PronunciationResponse>>(
+                const { data } = await instance.post<AppApiResponse<PronunciationResponseBody>>(
                     `${SKILL_API_BASE}/speaking/pronunciation`,
                     formData,
                     { headers: { "Content-Type": "multipart/form-data" } }
                 );
-                return res.data.result!;
+                return data.result!;
             },
         });
     };
 
-    // 3. SPEAKING: Spelling Check (dành cho bài tập đánh vần/viết lại từ nghe được)
+    // POST /speaking/spelling (JSON Body)
     const useCheckSpelling = () => {
         return useMutation({
             mutationFn: async ({
-                request,
-                lessonId,
+                req,
+                lessonId, // Controller expects this as @RequestParam
             }: {
-                request: SpellingRequest;
+                req: SpellingRequestBody;
                 lessonId: string;
             }) => {
-                const res = await instance.post<ApiResponse<string[]>>(
-                    `${SKILL_API_BASE}/speaking/spelling?lessonId=${lessonId}`,
-                    request
+                const { data } = await instance.post<AppApiResponse<string[]>>(
+                    `${SKILL_API_BASE}/speaking/spelling`,
+                    req,
+                    { params: { lessonId } } // Passing lessonId as query param
                 );
-                return res.data.result!;
+                return data.result!;
             },
         });
     };
 
-    // 4. READING: Generate Passage & Questions
+    // ==========================================
+    // === 3. READING ===
+    // ==========================================
+
+    // POST /reading (Query Params for Lesson & Language)
     const useGenerateReading = () => {
         return useMutation({
             mutationFn: async ({
@@ -111,15 +124,21 @@ export const useSkillLessons = () => {
                 lessonId: string;
                 languageCode: string;
             }) => {
-                const res = await instance.post<ApiResponse<ReadingResponse>>(
-                    `${SKILL_API_BASE}/reading?lessonId=${lessonId}&languageCode=${languageCode}`
+                const { data } = await instance.post<AppApiResponse<ReadingResponse>>(
+                    `${SKILL_API_BASE}/reading`,
+                    null, // No body required for this POST endpoint
+                    { params: { lessonId, languageCode } }
                 );
-                return res.data.result!;
+                return data.result!;
             },
         });
     };
 
-    // 5. WRITING: Check Writing (Text + Optional Image)
+    // ==========================================
+    // === 4. WRITING ===
+    // ==========================================
+
+    // POST /writing (Multipart/Form-Data)
     const useCheckWriting = () => {
         return useMutation({
             mutationFn: async ({
@@ -137,42 +156,46 @@ export const useSkillLessons = () => {
             }) => {
                 const formData = new FormData();
                 formData.append("text", text);
+
                 if (imageUri) {
+                    // Controller expects file part named 'image'
                     formData.append("image", {
                         uri: imageUri,
                         name: "writing_context.jpg",
                         type: "image/jpeg",
                     } as any);
                 }
+
                 formData.append("lessonId", lessonId);
                 formData.append("languageCode", languageCode);
                 formData.append("generateImage", String(generateImage));
 
-                const res = await instance.post<ApiResponse<WritingResponse>>(
+                const { data } = await instance.post<AppApiResponse<WritingResponseBody>>(
                     `${SKILL_API_BASE}/writing`,
                     formData,
                     { headers: { "Content-Type": "multipart/form-data" } }
                 );
-                return res.data.result!;
+                return data.result!;
             },
         });
     };
 
-    // 6. WRITING: Translation Check
+    // POST /writing/translation (JSON Body)
     const useCheckTranslation = () => {
         return useMutation({
             mutationFn: async ({
-                request,
+                req,
                 lessonId,
             }: {
-                request: TranslationRequest;
+                req: TranslationRequestBody;
                 lessonId: string;
             }) => {
-                const res = await instance.post<ApiResponse<WritingResponse>>(
-                    `${SKILL_API_BASE}/writing/translation?lessonId=${lessonId}`,
-                    request
+                const { data } = await instance.post<AppApiResponse<WritingResponseBody>>(
+                    `${SKILL_API_BASE}/writing/translation`,
+                    req,
+                    { params: { lessonId } }
                 );
-                return res.data.result!;
+                return data.result!;
             },
         });
     };

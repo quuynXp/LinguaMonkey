@@ -1,3 +1,4 @@
+// LinguaVietnameseApp/LinguaVietnameseApp/src/main/java/com/connectJPA/LinguaVietnameseApp/entity/Course.java
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
@@ -28,6 +29,7 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 @NoArgsConstructor
 public class Course extends BaseEntity {
+
     @org.springframework.data.annotation.Id
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -41,10 +43,9 @@ public class Course extends BaseEntity {
     @JoinColumn(name = "latest_public_version_id")
     private CourseVersion latestPublicVersion;
 
-    // THÊM: Quan hệ OneToMany tới tất cả các phiên bản của khóa học này.
     @OneToMany(
             mappedBy = "course",
-            cascade = CascadeType.ALL, // Quản lý vòng đời của version cùng với course
+            cascade = CascadeType.ALL,
             orphanRemoval = true
     )
     private List<CourseVersion> allVersions;
@@ -54,13 +55,16 @@ public class Course extends BaseEntity {
     private DifficultyLevel difficultyLevel;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "type")
     private CourseType type;
 
+    @Column(name = "price")
     private BigDecimal price;
 
     @Column(name = "language_code")
     private String languageCode;
 
+    @Column(name = "creator_id")
     private UUID creatorId;
 
     @Enumerated(EnumType.STRING)
@@ -69,15 +73,11 @@ public class Course extends BaseEntity {
 
     public List<Lesson> getLessons() {
         if (this.latestPublicVersion == null || this.latestPublicVersion.getLessons() == null) {
-            return Collections.emptyList(); // Trả về danh sách rỗng nếu không có
+            return Collections.emptyList();
         }
-
-        List<CourseVersionLesson> versionLessons = this.latestPublicVersion.getLessons();
-
-        return versionLessons.stream()
+        return this.latestPublicVersion.getLessons().stream()
                 .sorted(Comparator.comparingInt(CourseVersionLesson::getOrderIndex))
                 .map(CourseVersionLesson::getLesson)
                 .collect(Collectors.toList());
     }
 }
-

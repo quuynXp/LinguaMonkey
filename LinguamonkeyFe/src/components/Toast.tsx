@@ -1,8 +1,8 @@
 import Toast, { BaseToast, ErrorToast } from "react-native-toast-message"
 import { Alert } from "react-native"
-import { ToastOptions } from "../hooks/useToast"
+import { ToastOptions } from "../utils/useToast"
 
-export const showToast = ({message, type = "info" }: ToastOptions) => {
+export const showToast = ({ message, type = "info" }: ToastOptions) => {
   const title = type === "success" ? "Success" : type === "error" ? "Error" : type === "warning" ? "Warning" : "Info"
 
   Alert.alert(title, message)

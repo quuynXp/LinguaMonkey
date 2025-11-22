@@ -8,6 +8,7 @@ import { resetToAuth } from '../utils/navigationRef';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 import { API_BASE_URL } from './apiConfig';
+import { AppApiResponse } from '../types/dto';
 
 const userLocale = Localization.getLocales()[0]?.languageTag || 'en-US';
 let isRefreshing = false;

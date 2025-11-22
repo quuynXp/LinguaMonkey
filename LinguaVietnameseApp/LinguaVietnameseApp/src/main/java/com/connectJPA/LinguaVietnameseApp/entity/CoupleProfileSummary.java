@@ -2,14 +2,18 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.CoupleStatus;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.UUID;
 
 @Data
 @Builder
+@AllArgsConstructor
+@NoArgsConstructor
 public class CoupleProfileSummary {
     private UUID coupleId;
     private UUID partnerId;

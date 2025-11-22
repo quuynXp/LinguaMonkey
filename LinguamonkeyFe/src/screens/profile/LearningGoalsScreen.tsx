@@ -2,7 +2,7 @@ import React, { useRef, useState } from "react"
 import { Alert, Animated, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useAppStore } from "../../stores/appStore"
-import { useToast } from "../../hooks/useToast"
+import { useToast } from "../../utils/useToast"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useUserStore } from "../../stores/UserStore"
 

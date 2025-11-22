@@ -6,11 +6,11 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.FlashcardResponse;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.FlashcardService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/lessons/{lessonId}/flashcards")
@@ -26,12 +26,41 @@ public class FlashcardController {
         throw new IllegalArgumentException("Invalid Authorization header");
     }
 
+    @GetMapping
+    public AppApiResponse<Page<FlashcardResponse>> getFlashcards(
+            @PathVariable UUID lessonId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query,
+            @RequestHeader("Authorization") String authorization) {
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        Page<FlashcardResponse> result = flashcardService.getFlashcardsByLesson(userId, lessonId, query, page, size);
+        return AppApiResponse.<Page<FlashcardResponse>>builder()
+                .code(200)
+                .message("OK")
+                .result(result)
+                .build();
+    }
+
+    @GetMapping("/{id}")
+    public AppApiResponse<FlashcardResponse> getFlashcard(
+            @PathVariable UUID lessonId,
+            @PathVariable UUID id,
+            @RequestHeader("Authorization") String authorization) {
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        FlashcardResponse response = flashcardService.getFlashcard(id, userId);
+        return AppApiResponse.<FlashcardResponse>builder()
+                .code(200)
+                .message("OK")
+                .result(response)
+                .build();
+    }
+
     @GetMapping("/due")
     public AppApiResponse<List<FlashcardResponse>> getDueFlashcards(
-            @RequestParam(required = false) UUID lessonId,
+            @PathVariable UUID lessonId,
             @RequestParam(defaultValue = "20") int limit,
             @RequestHeader("Authorization") String authorization) {
-
         UUID userId = auth.extractTokenByUserId(extractToken(authorization));
         List<FlashcardResponse> list = flashcardService.getDueFlashcards(userId, lessonId, limit);
         return AppApiResponse.<List<FlashcardResponse>>builder()
@@ -56,6 +85,34 @@ public class FlashcardController {
                 .build();
     }
 
+    @PutMapping("/{id}")
+    public AppApiResponse<FlashcardResponse> updateFlashcard(
+            @PathVariable UUID lessonId,
+            @PathVariable UUID id,
+            @RequestBody CreateFlashcardRequest req,
+            @RequestHeader("Authorization") String authorization) {
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        FlashcardResponse updated = flashcardService.updateFlashcard(id, req, userId);
+        return AppApiResponse.<FlashcardResponse>builder()
+                .code(200)
+                .message("Flashcard updated")
+                .result(updated)
+                .build();
+    }
+
+    @DeleteMapping("/{id}")
+    public AppApiResponse<Void> deleteFlashcard(
+            @PathVariable UUID lessonId,
+            @PathVariable UUID id,
+            @RequestHeader("Authorization") String authorization) {
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        flashcardService.deleteFlashcard(id, userId);
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message("Flashcard deleted")
+                .build();
+    }
+
     @PostMapping("/{id}/review")
     public AppApiResponse<FlashcardResponse> review(
             @PathVariable UUID lessonId,
@@ -68,6 +125,34 @@ public class FlashcardController {
                 .code(200)
                 .message("Flashcard reviewed")
                 .result(reviewed)
+                .build();
+    }
+
+    @PostMapping("/{id}/reset")
+    public AppApiResponse<FlashcardResponse> resetProgress(
+            @PathVariable UUID lessonId,
+            @PathVariable UUID id,
+            @RequestHeader("Authorization") String authorization) {
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        FlashcardResponse response = flashcardService.resetProgress(id, userId);
+        return AppApiResponse.<FlashcardResponse>builder()
+                .code(200)
+                .message("Progress reset")
+                .result(response)
+                .build();
+    }
+
+    @PostMapping("/{id}/suspend")
+    public AppApiResponse<FlashcardResponse> toggleSuspend(
+            @PathVariable UUID lessonId,
+            @PathVariable UUID id,
+            @RequestHeader("Authorization") String authorization) {
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        FlashcardResponse response = flashcardService.toggleSuspend(id, userId);
+        return AppApiResponse.<FlashcardResponse>builder()
+                .code(200)
+                .message("Suspend status toggled")
+                .result(response)
                 .build();
     }
 

@@ -1,7 +1,11 @@
+// LinguaVietnameseApp/LinguaVietnameseApp/src/main/java/com/connectJPA/LinguaVietnameseApp/dto/response/UserProfileResponse.java
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.entity.CoupleProfileSummary;
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
+import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
+import com.connectJPA.LinguaVietnameseApp.enums.LearningPace;
+import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import lombok.Builder;
 import lombok.Data;
 
@@ -16,18 +20,23 @@ public class UserProfileResponse {
     private String fullname;
     private String nickname;
     private String avatarUrl;
-    private String flag; // iso code hoặc url cờ
+    private String flag;
     private Country country;
+
+    private AgeRange ageRange;
+    private ProficiencyLevel proficiency;
+    private LearningPace learningPace;
+
     private int level;
     private int exp;
     private String bio;
+
     private Character3dResponse character3d;
     private UserStatsResponse stats;
     private List<BadgeResponse> badges;
 
-    // friend/interaction state (relative to viewer)
     private boolean isFriend;
-    private FriendRequestStatusResponse friendRequestStatus; // NONE, SENT, RECEIVED, BLOCKED
+    private FriendRequestStatusResponse friendRequestStatus;
     private boolean canSendFriendRequest;
     private boolean canUnfriend;
     private boolean canBlock;
@@ -35,27 +44,17 @@ public class UserProfileResponse {
     private List<FriendshipResponse> privateFriendRequests;
     private List<DatingInviteSummary> privateDatingInvites;
 
-    // admiration
     private long admirationCount;
     private boolean hasAdmired;
 
-    // teacher info
     private boolean isTeacher;
     private List<CourseSummaryResponse> teacherCourses;
 
-    // leaderboard ranks
-    private Map<String, Integer> leaderboardRanks; // e.g. {"global_student": 34, "country_student": 5}
-
-    // couple info if target user is in a couple
-    private CoupleProfileSummary coupleProfile; // null nếu không
-
-    // mutual memories / events
+    private Map<String, Integer> leaderboardRanks;
+    private CoupleProfileSummary coupleProfile;
     private List<MemorySummaryResponse> mutualMemories;
-
-    // client-friendly fields for dating-invite state
     private DatingInviteSummary datingInviteSummary;
 
-    // timestamps / warnings
-    private String exploringExpiresInHuman; // "1 ngày 3 giờ"
-    private boolean exploringExpiringSoon; // true nếu < 2 ngày
+    private String exploringExpiresInHuman;
+    private boolean exploringExpiringSoon;
 }

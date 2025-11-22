@@ -1,74 +1,184 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosInstance";
-import type { ApiResponse, PaginatedResponse } from "../types/api";
+import {
+  AppApiResponse,
+  PageResponse,
+  UserLearningActivityResponse,
+  UserLearningActivityRequest,
+  StudyHistoryResponse,
+  LearningActivityEventRequest,
+} from "../types/dto";
 
+import { ActivityType } from "../types/enums";
+
+// --- Keys Factory ---
+export const activityKeys = {
+  all: ["userLearningActivities"] as const,
+  lists: (params: any) => [...activityKeys.all, "list", params] as const,
+  detail: (id: string) => [...activityKeys.all, "detail", id] as const,
+  history: (userId: string, period: string) => [...activityKeys.all, "history", userId, period] as const,
+};
+
+// --- Helper to standardize pagination return ---
+const mapPageResponse = <T>(result: any, page: number, size: number) => ({
+  data: (result?.content as T[]) || [],
+  pagination: {
+    pageNumber: result?.pageNumber ?? page,
+    pageSize: result?.pageSize ?? size,
+    totalElements: result?.totalElements ?? 0,
+    totalPages: result?.totalPages ?? 0,
+    isLast: result?.isLast ?? true,
+    isFirst: result?.isFirst ?? true,
+    hasNext: result?.hasNext ?? false,
+    hasPrevious: result?.hasPrevious ?? false,
+  },
+});
 
 export const useUserLearningActivities = () => {
   const queryClient = useQueryClient();
   const BASE = "/api/v1/user-learning-activities";
 
-  const useAllActivities = (params?: { userId?: string; page?: number; size?: number; sort?: string }) => {
+  // ==========================================
+  // === 1. QUERIES ===
+  // ==========================================
+
+  // GET /api/v1/user-learning-activities
+  const useAllActivities = (params?: { userId?: string; page?: number; size?: number }) => {
+    const { userId, page = 0, size = 10 } = params || {};
     return useQuery({
-      queryKey: ["userLearningActivities", params || {}],
+      queryKey: activityKeys.lists(params),
       queryFn: async () => {
         const qp = new URLSearchParams();
-        if (params?.userId) qp.append("userId", params.userId);
-        if (params?.page !== undefined) qp.append("page", String(params.page));
-        if (params?.size !== undefined) qp.append("size", String(params.size));
-        if (params?.sort) qp.append("sort", params.sort);
-        const url = qp.toString() ? `${BASE}?${qp.toString()}` : BASE;
-        const res = await instance.get<ApiResponse<any>>(url);
-        return res.data.result;
+        if (userId) qp.append("userId", userId);
+        qp.append("page", String(page));
+        qp.append("size", String(size));
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<UserLearningActivityResponse>>>(
+          `${BASE}?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
       },
       staleTime: 60_000,
     });
   };
 
+  // GET /api/v1/user-learning-activities/{id}
   const useGetActivity = (id: string | null) => {
     return useQuery({
-      queryKey: ["userLearningActivity", id],
+      queryKey: activityKeys.detail(id!),
       queryFn: async () => {
-        if (!id) throw new Error("id required");
-        const res = await instance.get<ApiResponse<any>>(`${BASE}/${id}`);
-        return res.data.result!;
+        if (!id) throw new Error("ID required");
+        const { data } = await instance.get<AppApiResponse<UserLearningActivityResponse>>(`${BASE}/${id}`);
+        return data.result!;
       },
       enabled: !!id,
       staleTime: 60_000,
     });
   };
 
+  // GET /api/v1/user-learning-activities/history
+  const useGetStudyHistory = (userId?: string, period: string = "month") => {
+    return useQuery({
+      queryKey: activityKeys.history(userId!, period),
+      queryFn: async () => {
+        if (!userId) throw new Error("User ID required");
+        const { data } = await instance.get<AppApiResponse<StudyHistoryResponse>>(
+          `${BASE}/history`,
+          { params: { userId, period } }
+        );
+        return data.result!;
+      },
+      enabled: !!userId,
+      staleTime: 300_000,
+    });
+  };
+
+  // ==========================================
+  // === 2. CRUD OPERATIONS (Standard) ===
+  // ==========================================
+
+  // POST /api/v1/user-learning-activities
   const useCreateActivity = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: any) => {
-        const res = await instance.post<ApiResponse<any>>(BASE, payload);
-        return res.data.result!;
+    return useMutation({
+      mutationFn: async (payload: UserLearningActivityRequest) => {
+        const { data } = await instance.post<AppApiResponse<UserLearningActivityResponse>>(BASE, payload);
+        return data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({queryKey : ["userLearningActivities"]}),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
     });
-    return { createActivity: mutation.mutateAsync, isCreating: mutation.isPending, error: mutation.error };
   };
 
+  // PUT /api/v1/user-learning-activities/{id}
   const useUpdateActivity = () => {
-    const mutation = useMutation({
-      mutationFn: async ({ id, payload }: { id: string; payload: any }) => {
-        const res = await instance.put<ApiResponse<any>>(`${BASE}/${id}`, payload);
-        return res.data.result!;
+    return useMutation({
+      mutationFn: async ({ id, payload }: { id: string; payload: UserLearningActivityRequest }) => {
+        const { data } = await instance.put<AppApiResponse<UserLearningActivityResponse>>(`${BASE}/${id}`, payload);
+        return data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({queryKey : ["userLearningActivities"]}),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
     });
-    return { updateActivity: mutation.mutateAsync, isUpdating: mutation.isPending, error: mutation.error };
   };
 
+  // DELETE /api/v1/user-learning-activities/{id}
   const useDeleteActivity = () => {
-    const mutation = useMutation({
+    return useMutation({
       mutationFn: async (id: string) => {
-        const res = await instance.delete<ApiResponse<void>>(`${BASE}/${id}`);
-        return res.data;
+        await instance.delete<AppApiResponse<void>>(`${BASE}/${id}`);
       },
-      onSuccess: () => queryClient.invalidateQueries({queryKey : ["userLearningActivities"]}),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
     });
-    return { deleteActivity: mutation.mutateAsync, isDeleting: mutation.isPending, error: mutation.error };
   };
 
-  return { useAllActivities, useGetActivity, useCreateActivity, useUpdateActivity, useDeleteActivity };
+  // ==========================================
+  // === 3. LOGGING OPERATIONS (Start/End) ===
+  // ==========================================
+
+  // POST /api/v1/user-learning-activities/start
+  const useLogActivityStart = () => {
+    return useMutation({
+      mutationFn: async (payload: LearningActivityEventRequest) => {
+        // Validation logic is on the backend, only ensure correct DTO is sent
+        const { data } = await instance.post<AppApiResponse<UserLearningActivityResponse>>(
+          `${BASE}/start`,
+          payload
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
+    });
+  };
+
+  // POST /api/v1/user-learning-activities/end
+  const useLogActivityEnd = () => {
+    return useMutation({
+      mutationFn: async (payload: LearningActivityEventRequest) => {
+        // Ensure duration is present for END events (Backend handles validation)
+        if (payload.durationInSeconds === undefined) {
+          throw new Error("DurationInSeconds is required for END events.");
+        }
+        const { data } = await instance.post<AppApiResponse<UserLearningActivityResponse>>(
+          `${BASE}/end`,
+          payload
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: activityKeys.all }),
+    });
+  };
+
+
+  return {
+    useAllActivities,
+    useGetActivity,
+    useGetStudyHistory,
+
+    // CRUD
+    useCreateActivity,
+    useUpdateActivity,
+    useDeleteActivity,
+
+    // Logging
+    useLogActivityStart,
+    useLogActivityEnd,
+  };
 };

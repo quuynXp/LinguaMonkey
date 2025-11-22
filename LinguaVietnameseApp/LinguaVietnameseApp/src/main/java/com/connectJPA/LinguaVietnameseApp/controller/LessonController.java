@@ -6,10 +6,14 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
+import com.connectJPA.LinguaVietnameseApp.entity.Video;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
+import com.connectJPA.LinguaVietnameseApp.mapper.LessonMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoRepository;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -25,9 +29,11 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.annotation.RequestHeader;
 
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/v1/lessons")
@@ -38,6 +44,9 @@ public class LessonController {
     private final MessageSource messageSource;
     private final RoomService roomService;
     private final RoomMemberRepository roomMemberRepository;
+    private final LessonMapper lessonMapper;
+    private final LessonRepository lessonRepository;
+    private final VideoRepository videoRepository;
 
     @Operation(summary = "Get all lessons", description = "Retrieve a paginated list of lessons with optional filtering by name, language, EXP reward, category, subcategory, course, or series")
     @ApiResponses({
@@ -152,9 +161,32 @@ public class LessonController {
     }
 
     @GetMapping("/creator/{creatorId}")
-    public AppApiResponse<Page<Lesson>> getByCreator(@PathVariable UUID creatorId, Pageable pageable) {
+    public AppApiResponse<Page<LessonResponse>> getByCreator(@PathVariable UUID creatorId, Pageable pageable) {
         Page<Lesson> page = lessonService.getLessonsByCreator(creatorId, pageable);
-        return AppApiResponse.<Page<Lesson>>builder().code(200).message("OK").result(page).build();
+        Page<LessonResponse> responsePage = page.map(this::toLessonResponse);
+
+        return AppApiResponse.<Page<LessonResponse>>builder()
+                .code(200)
+                .message("OK")
+                .result(responsePage)
+                .build();
+    }
+
+    private LessonResponse toLessonResponse(Lesson lesson) {
+        try {
+            SkillType skillType = lessonRepository.findSkillTypeByLessonIdAndIsDeletedFalse(lesson.getLessonId());
+            List<String> videoUrls = videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
+                    .stream()
+                    .map(Video::getVideoUrl)
+                    .collect(Collectors.toList());
+
+            LessonResponse response = lessonMapper.toResponse(lesson);
+            response.setSkillTypes(skillType != null ? skillType : SkillType.READING);
+            response.setVideoUrls(videoUrls);
+            return response;
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
     }
 
     @Operation(summary = "Update a lesson", description = "Update an existing lesson by its ID, including category and subcategory")

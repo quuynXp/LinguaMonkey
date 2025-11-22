@@ -12,7 +12,7 @@ import {
 } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { useToast } from "../../hooks/useToast"
+import { useToast } from "../../utils/useToast"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
 const { width } = Dimensions.get("window")

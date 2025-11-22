@@ -13,18 +13,21 @@ import java.util.UUID;
 
 public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
     Page<Flashcard> findByLessonIdAndIsDeletedFalse(UUID lessonId, Pageable pageable);
-    @Query("select f from Flashcard f where f.userId = :userId and f.lessonId = :lessonId and f.isDeleted = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
-    List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
+
+    @Query("select f from Flashcard f where f.userId = :userId and f.lessonId = :lessonId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
+    List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
             UUID userId, UUID lessonId, OffsetDateTime now, Pageable pageable);
 
     @Query("SELECT DISTINCT f.userId FROM Flashcard f WHERE f.isDeleted = false AND f.isSuspended = false AND f.nextReviewAt <= :now AND f.userId IS NOT NULL")
     List<UUID> findUserIdsWithPendingReviews(@Param("now") OffsetDateTime now);
 
-    @Query("select f from Flashcard f where f.userId = :userId and f.isDeleted = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
-    List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
+    @Query("select f from Flashcard f where f.userId = :userId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
+    List<Flashcard> findByUserIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
             UUID userId, OffsetDateTime now, Pageable pageable);
+
     List<Flashcard> findByLessonIdAndIsDeletedFalseAndNextReviewAtBefore(UUID lessonId, OffsetDateTime time);
+
     List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBefore(UUID userId, OffsetDateTime time);
+
     Page<Flashcard> findByLessonIdAndFrontContainingIgnoreCaseAndIsDeletedFalse(UUID lessonId, String q, Pageable p);
 }
-

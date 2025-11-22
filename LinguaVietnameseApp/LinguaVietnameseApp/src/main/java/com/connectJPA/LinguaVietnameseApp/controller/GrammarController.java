@@ -23,20 +23,35 @@ public class GrammarController {
 
     @Operation(summary = "Get all grammar topics")
     @GetMapping("/topics")
-    public AppApiResponse<List<GrammarTopicResponse>> getAllTopics(Locale locale) {
-        try {
-            List<GrammarTopicResponse> topics = grammarService.getAllTopics();
-            return AppApiResponse.<List<GrammarTopicResponse>>builder()
-                    .code(200)
-                    .message(messageSource.getMessage("grammar.topics.list.success", null, locale))
-                    .result(topics)
-                    .build();
-        } catch (AppException e) {
-            return AppApiResponse.<List<GrammarTopicResponse>>builder()
-                    .code(e.getErrorCode().getStatusCode().value())
-                    .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
-                    .build();
-        }
+    public AppApiResponse<List<GrammarTopicResponse>> getAllTopics() {
+        return AppApiResponse.<List<GrammarTopicResponse>>builder()
+                .code(200)
+                .result(grammarService.getAllTopics())
+                .build();
+    }
+
+    @GetMapping("/topics/{topicId}")
+    public AppApiResponse<GrammarTopicResponse> getTopic(@PathVariable UUID topicId) {
+        return AppApiResponse.<GrammarTopicResponse>builder()
+                .code(200)
+                .result(grammarService.getTopicById(topicId))
+                .build();
+    }
+
+    @GetMapping("/lessons/{lessonId}")
+    public AppApiResponse<GrammarLessonResponse> getLesson(@PathVariable UUID lessonId) {
+        return AppApiResponse.<GrammarLessonResponse>builder()
+                .code(200)
+                .result(grammarService.getLessonById(lessonId))
+                .build();
+    }
+
+    @GetMapping("/rules/{ruleId}")
+    public AppApiResponse<GrammarRuleResponse> getRule(@PathVariable UUID ruleId) {
+        return AppApiResponse.<GrammarRuleResponse>builder()
+                .code(200)
+                .result(grammarService.getRuleById(ruleId))
+                .build();
     }
 
     @Operation(summary = "Get grammar mindmap (hierarchical structure)")

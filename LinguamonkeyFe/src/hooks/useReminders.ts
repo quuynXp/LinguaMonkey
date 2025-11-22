@@ -1,111 +1,135 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import instance from "../api/axiosInstance"
-import type { UserReminder } from "../types/api"
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import instance from "../api/axiosInstance";
+import {
+  AppApiResponse,
+  PageResponse,
+  UserReminderResponse, // Cần đảm bảo DTO này tồn tại
+  UserReminderRequest
+} from "../types/dto";
+
+// --- Keys Factory ---
+export const reminderKeys = {
+  all: ["reminders"] as const,
+  lists: () => [...reminderKeys.all, "list"] as const,
+  list: (params: any) => [...reminderKeys.lists(), params] as const,
+  details: () => [...reminderKeys.all, "detail"] as const,
+  detail: (id: string) => [...reminderKeys.details(), id] as const,
+};
 
 export const useReminders = () => {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
-  // ===== Get all reminders =====
+  // ==========================================
+  // === QUERIES ===
+  // ==========================================
+
+  // GET /api/v1/reminders
   const useUserReminders = (params?: {
-    target_type?: string
-    enabled?: boolean
-    page?: number
-    limit?: number
+    enabled?: boolean;
+    page?: number;
+    size?: number;
   }) => {
-    const queryParams = new URLSearchParams()
-    if (params?.target_type) queryParams.append("target_type", params.target_type)
-    if (params?.enabled !== undefined) queryParams.append("enabled", params.enabled.toString())
-    if (params?.page) queryParams.append("page", params.page.toString())
-    if (params?.limit) queryParams.append("limit", params.limit.toString())
-
-    const url = `/api/v1/user/reminders${queryParams.toString() ? `?${queryParams.toString()}` : ""}`
-
-    return useQuery<UserReminder[]>({
-      queryKey: ["userReminders", params],
+    return useQuery({
+      queryKey: reminderKeys.list(params),
       queryFn: async () => {
-        const res = await instance.get(url)
-        return res.data
-      },
-    })
-  }
+        const qp = new URLSearchParams();
+        if (params?.enabled !== undefined) qp.append("enabled", String(params.enabled));
+        if (params?.page !== undefined) qp.append("page", String(params.page));
+        if (params?.size !== undefined) qp.append("size", String(params.size));
 
-  // ===== Get reminder by ID =====
-  const useReminder = (reminderId: string | null) =>
-    useQuery<UserReminder>({
-      queryKey: ["reminder", reminderId],
-      queryFn: async () => {
-        if (!reminderId) throw new Error("Invalid reminderId")
-        const res = await instance.get(`/api/v1/user/reminders/${reminderId}`)
-        return res.data
-      },
-      enabled: !!reminderId,
-    })
+        const { data } = await instance.get<AppApiResponse<PageResponse<UserReminderResponse>>>(
+          `/api/v1/reminders?${qp.toString()}`
+        );
 
-  // ===== Create reminder =====
-  const useCreateReminder = () =>
-    useMutation({
-      mutationFn: async (data: {
-        target_type: string
-        target_id?: string
-        title?: string
-        message?: string
-        reminder_time: string
-        reminder_date?: string
-        repeat_type?: string
-        enabled?: boolean
-      }) => {
-        const res = await instance.post("/user/reminders", data)
-        return res.data
+        return {
+          data: data.result?.content || [],
+          pagination: {
+            pageNumber: data.result?.pageNumber ?? (params?.page || 0),
+            pageSize: data.result?.pageSize ?? (params?.size || 10),
+            totalElements: data.result?.totalElements ?? 0,
+            totalPages: data.result?.totalPages ?? 0,
+            isLast: data.result?.isLast ?? true,
+            isFirst: data.result?.isFirst ?? true,
+            hasNext: data.result?.hasNext ?? false,
+            hasPrevious: data.result?.hasPrevious ?? false,
+          }
+        };
+      },
+      staleTime: 60_000,
+    });
+  };
+
+  // GET /api/v1/reminders/{id} (Optional if Controller supports it, usually list is enough for simple items)
+  // Controller created above DOES NOT have getById. Skipping.
+
+  // ==========================================
+  // === MUTATIONS ===
+  // ==========================================
+
+  // POST /api/v1/reminders
+  const useCreateReminder = () => {
+    return useMutation({
+      mutationFn: async (req: UserReminderRequest) => {
+        const { data } = await instance.post<AppApiResponse<UserReminderResponse>>(
+          "/api/v1/reminders",
+          req
+        );
+        return data.result!;
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["userReminders"] })
+        queryClient.invalidateQueries({ queryKey: reminderKeys.lists() });
       },
-    })
+    });
+  };
 
-  // ===== Update reminder =====
-  const useUpdateReminder = () =>
-    useMutation({
-      mutationFn: async ({ reminderId, data }: { reminderId: string; data: Partial<UserReminder> }) => {
-        const res = await instance.put(`/api/v1/user/reminders/${reminderId}`, data)
-        return res.data
-      },
-      onSuccess: (data, variables) => {
-        queryClient.invalidateQueries({ queryKey: ["userReminders"] })
-        queryClient.invalidateQueries({ queryKey: ["reminder", variables.reminderId] })
-      },
-    })
-
-  // ===== Delete reminder =====
-  const useDeleteReminder = () =>
-    useMutation({
-      mutationFn: async (reminderId: string) => {
-        const res = await instance.delete(`/api/v1/user/reminders/${reminderId}`)
-        return res.data
+  // PUT /api/v1/reminders/{id}
+  const useUpdateReminder = () => {
+    return useMutation({
+      mutationFn: async ({ id, req }: { id: string; req: UserReminderRequest }) => {
+        const { data } = await instance.put<AppApiResponse<UserReminderResponse>>(
+          `/api/v1/reminders/${id}`,
+          req
+        );
+        return data.result!;
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["userReminders"] })
+        queryClient.invalidateQueries({ queryKey: reminderKeys.lists() });
       },
-    })
+    });
+  };
 
-  // ===== Toggle reminder =====
-  const useToggleReminder = () =>
-    useMutation({
-      mutationFn: async (reminderId: string) => {
-        const res = await instance.put(`/api/v1/user/reminders/toggle`, { id: reminderId })
-        return res.data
+  // PATCH /api/v1/reminders/{id}/toggle
+  const useToggleReminder = () => {
+    return useMutation({
+      mutationFn: async (id: string) => {
+        const { data } = await instance.patch<AppApiResponse<UserReminderResponse>>(
+          `/api/v1/reminders/${id}/toggle`
+        );
+        return data.result!;
       },
-      onSuccess: (data, reminderId) => {
-        queryClient.invalidateQueries({ queryKey: ["userReminders"] })
-        queryClient.invalidateQueries({ queryKey: ["reminder", reminderId] })
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: reminderKeys.lists() });
       },
-    })
+    });
+  };
+
+  // DELETE /api/v1/reminders/{id}
+  const useDeleteReminder = () => {
+    return useMutation({
+      mutationFn: async (id: string) => {
+        await instance.delete<AppApiResponse<void>>(`/api/v1/reminders/${id}`);
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: reminderKeys.lists() });
+      },
+    });
+  };
 
   return {
     useUserReminders,
-    useReminder,
     useCreateReminder,
     useUpdateReminder,
-    useDeleteReminder,
     useToggleReminder,
-  }
-}
+    useDeleteReminder,
+  };
+};

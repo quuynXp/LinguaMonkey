@@ -1,1002 +1,629 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import instance from "../api/axiosInstance" // (Đảm bảo đường dẫn này đúng)
-import type {
-  ApiResponse,
-  BilingualVideo,
-  PaginatedResponse,
-  Video,
-  VideoSubtitle,
-} from "../types/api" // (Đảm bảo đường dẫn này đúng)
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import instance from "../api/axiosInstance";
+import {
+  AppApiResponse,
+  PageResponse,
+  CourseResponse,
+  CourseVersionResponse,
+  CourseLessonResponse,
+  LessonResponse,
+  CourseEnrollmentResponse,
+  CourseDiscountResponse,
+  CourseReviewResponse,
+  CreateCourseRequest,
+  UpdateCourseDetailsRequest,
+  UpdateCourseVersionRequest,
+  PublishVersionRequest,
+  CourseEnrollmentRequest,
+  SwitchVersionRequest,
+  CourseLessonRequest,
+  CourseDiscountRequest,
+  CourseReviewRequest,
+} from "../types/dto";
+import { CourseType } from "../types/enums";
 
-// ==========================================================
-// === INTERFACES (Cần khớp với DTOs của BE) ===
-// ==========================================================
+// --- Query Keys Factory ---
+export const courseKeys = {
+  all: ["courses"] as const,
+  lists: () => [...courseKeys.all, "list"] as const,
+  list: (params: any) => [...courseKeys.lists(), params] as const,
+  details: () => [...courseKeys.all, "detail"] as const,
+  detail: (id: string) => [...courseKeys.details(), id] as const,
+  recommended: (userId: string) => [...courseKeys.all, "recommended", userId] as const,
+  levels: () => [...courseKeys.all, "levels"] as const,
 
-export interface Lesson {
-  lessonId: string
-  lessonName: string
-  title: string
-  description?: string
-  lessonType?: "VIDEO" | "TEXT" | "QUIZ"
-  isFree: boolean // RẤT QUAN TRỌNG
-  duration?: string // (ví dụ: "10:30")
-  orderIndex: number
-}
+  // Sub-entities
+  enrollments: (params: any) => [...courseKeys.all, "enrollments", params] as const,
+  lessons: (params: any) => [...courseKeys.all, "lessons", params] as const,
+  discounts: (params: any) => [...courseKeys.all, "discounts", params] as const,
+  reviews: (params: any) => [...courseKeys.all, "reviews", params] as const,
+};
 
-export interface CourseVersion {
-  versionId: string
-  courseId: string
-  versionNumber: number
-  status: "DRAFT" | "PENDING_APPROVAL" | "PUBLIC" | "ARCHIVED"
-  reasonForChange?: string
-  description?: string
-  thumbnailUrl?: string
-  publishedAt?: string
-  lessons?: Lesson[]
-}
-
-export interface Course {
-  courseId: string
-  title: string
-  creatorId?: string
-  creatorName?: string // (Cần BE cung cấp qua Mapper)
-  price?: number
-  approvalStatus?: string
-  languageCode?: string
-  difficultyLevel?: string
-
-  // DỮ LIỆU TỪ PHIÊN BẢN MỚI NHẤT
-  latestPublicVersion: CourseVersion | null // Nơi chứa nội dung
-
-  // Dữ liệu tổng hợp (cần BE cung cấp qua Mapper/Repo)
-  rating?: number
-  students?: number // (Đếm từ CourseEnrollment)
-}
-
-export interface CourseEnrollment {
-  enrollmentId?: string
-  courseId: string
-  userId: string
-  courseVersionId: string // Biết user đang học version nào
-  status?: "ACTIVE" | "COMPLETED"
-  enrolledAt?: string
-  course: Course // BE nên trả về kèm course object (với eager loading)
-  progressPercent?: number // Cần cho logic review
-  completedLessons?: number
-}
-
-// ... (Các interface khác giữ nguyên) ...
-export interface CourseDiscount {
-  discountId: string
-  course: Course
-  discountPercentage: number
-  startDate: string
-  endDate: string
-  isActive: boolean
-}
-
-export interface Review {
-  reviewId?: string
-  courseId?: string
-  lessonId?: string
-  userId: string
-  userFullName?: string
-  userAvatarUrl?: string
-  rating: number
-  comment?: string
-  reviewedAt?: string
-  isVerified?: boolean
-}
-
-interface CreateCourseRequest {
-  creatorId: string
-  title: string
-  price: number
-}
-
-interface UpdateCourseDetailsRequest {
-  title?: string
-  price?: number
-  languageCode?: string
-  difficultyLevel?: string
-}
-
-interface UpdateCourseVersionRequest {
-  description?: string
-  thumbnailUrl?: string
-  lessonIds: string[]
-}
-
-interface PublishVersionRequest {
-  reasonForChange: string
-}
-
-interface CreateReviewRequest {
-  userId: string
-  courseId?: string
-  lessonId?: string
-  rating: number
-  comment?: string
-}
-
-interface SwitchVersionRequest {
-  enrollmentId: string
-  newVersionId: string
-}
-
-interface PurchaseRequest {
-  courseId: string
-  userId: string
-}
-
-/**
- * ==========================================================
- * === HOOK LIBRARY
- * ==========================================================
- */
 export const useCourses = () => {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
-  // ---------------------------------------------
-  // === QUERIES (LẤY DỮ LIỆU) ===
-  // ---------------------------------------------
+  // ==========================================
+  // === 1. COURSE (General, Creator & Admin) ===
+  // ==========================================
 
-  /**
-   * Lấy tất cả khóa học PUBLIC (cho Learner)
-   */
+  // GET /api/v1/courses
   const useAllCourses = (params?: {
-    page?: number
-    size?: number
-    title?: string
-    languageCode?: string
-    type?: "FREE" | "PURCHASED" | string
-    sortBy?: string
-    sortOrder?: "asc" | "desc"
+    page?: number;
+    size?: number;
+    title?: string;
+    languageCode?: string;
+    type?: CourseType;
   }) => {
-    const {
-      page = 0,
-      size = 20,
-      title,
-      languageCode,
-      type,
-      sortBy,
-      sortOrder,
-    } = params || {}
-    return useQuery<PaginatedResponse<Course>>({
-      queryKey: [
-        "allCourses",
-        page,
-        size,
-        title,
-        languageCode,
-        type,
-        sortBy,
-        sortOrder,
-      ],
+    const { page = 0, size = 10, title, languageCode, type } = params || {};
+    return useQuery({
+      queryKey: courseKeys.list({ page, size, title, languageCode, type }),
       queryFn: async () => {
-        const qp = new URLSearchParams()
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        if (title) qp.append("title", title)
-        if (languageCode) qp.append("languageCode", languageCode)
-        if (type) qp.append("type", type)
-        if (sortBy) qp.append("sort", `${sortBy},${sortOrder ?? "asc"}`)
+        const qp = new URLSearchParams();
+        qp.append("page", page.toString());
+        qp.append("size", size.toString());
+        if (title) qp.append("title", title);
+        if (languageCode) qp.append("languageCode", languageCode);
+        if (type) qp.append("type", type);
 
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<Course>>
-        >(`/api/v1/courses?${qp.toString()}`)
-        const pageResult = response.data.result as any // BE trả về Page
-        return {
-          data: pageResult.content,
-          pagination: {
-            page: pageResult.number,
-            limit: pageResult.size,
-            total: pageResult.totalElements,
-            totalPages: pageResult.totalPages,
-          },
-        }
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseResponse>>>(
+          `/api/v1/courses?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
       },
-      //
-      // =================================================================
-      // === FIX 3: Thêm staleTime để cache (5 phút) ===
-      // =================================================================
-      //
       staleTime: 5 * 60 * 1000,
-    })
-  }
+    });
+  };
 
-  /**
-   * Tìm kiếm khóa học (Elasticsearch)
-   */
-  const useSearchCourses = (
-    query: string,
-    page = 0,
-    size = 20,
-    options?: { enabled?: boolean }
-  ) => {
-    return useQuery<PaginatedResponse<Course>>({
-      queryKey: ["searchCourses", query, page, size],
-      queryFn: async () => {
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<Course>>
-        >(
-          `/api/v1/search/courses?keyword=${query}&page=${page}&size=${size}`
-        )
-        const pageResult = response.data.result as any
-        return {
-          data: pageResult.content,
-          pagination: {
-            page: pageResult.number,
-            limit: pageResult.size,
-            total: pageResult.totalElements,
-            totalPages: pageResult.totalPages,
-          },
-        }
-      },
-      enabled: options?.enabled ?? true,
-    })
-  }
-
-  /**
-   * Lấy chi tiết 1 khóa học (và version PUBLIC mới nhất)
-   */
+  // GET /api/v1/courses/{id}
   const useCourse = (courseId: string | null) => {
-    return useQuery<Course>({
-      queryKey: ["course", courseId],
+    return useQuery({
+      queryKey: courseKeys.detail(courseId!),
       queryFn: async () => {
-        if (!courseId) throw new Error("Course ID is required")
-        const response = await instance.get<ApiResponse<Course>>(
+        if (!courseId) throw new Error("Course ID required");
+        const { data } = await instance.get<AppApiResponse<CourseResponse>>(
           `/api/v1/courses/${courseId}`
-        )
-        return response.data.result!
+        );
+        return data.result!;
       },
       enabled: !!courseId,
-    })
-  }
+    });
+  };
 
-  /**
-   * Lấy các khóa học ĐÃ MUA (cho Learner)
-   */
-  const useEnrolledCourses = (params?: {
-    userId?: string
-    page?: number
-    size?: number
-  }) => {
-    const { userId, page = 0, size = 20 } = params || {}
-    return useQuery<PaginatedResponse<CourseEnrollment>>({
-      queryKey: ["enrolledCourses", userId, page, size],
+  // GET /api/v1/courses/creator/{creatorId}
+  const useCreatorCourses = (creatorId?: string, page = 0, size = 20) => {
+    return useQuery({
+      queryKey: courseKeys.list({ type: "CREATOR", creatorId, page, size }),
       queryFn: async () => {
-        const qp = new URLSearchParams()
-        if (userId) qp.append("userId", userId)
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        const url = `/api/v1/course-enrollments?${qp.toString()}`
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<CourseEnrollment>>
-        >(url)
-        const pageResult = response.data.result as any
-        return {
-          data: pageResult.content,
-          pagination: {
-            page: pageResult.number,
-            limit: pageResult.size,
-            total: pageResult.totalElements,
-            totalPages: pageResult.totalPages,
-          },
-        }
-      },
-      enabled: !!userId,
-      //
-      // =================================================================
-      // === FIX 3: Thêm staleTime (1 phút, vì đây là dữ liệu cá nhân) ===
-      // =================================================================
-      //
-      staleTime: 60 * 1000,
-    })
-  }
-
-  /**
-   * Lấy các khóa học CỦA TÔI (cho Creator P2P)
-   */
-  const useTeacherCourses = (creatorId?: string, page = 0, size = 20) => {
-    return useQuery<PaginatedResponse<Course>>({
-      queryKey: ["teacherCourses", creatorId, page, size],
-      queryFn: async () => {
-        if (!creatorId) throw new Error("creatorId is required")
-        const qp = new URLSearchParams()
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        // TODO: BE cần thêm filter status (DRAFT, PENDING, PUBLIC)
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<Course>>
-        >(`/api/v1/courses/creator/${creatorId}?${qp.toString()}`)
-        const pageResult = response.data.result as any
-        return {
-          data: pageResult.content,
-          pagination: {
-            page: pageResult.number,
-            limit: pageResult.size,
-            total: pageResult.totalElements,
-            totalPages: pageResult.totalPages,
-          },
-        }
+        if (!creatorId) throw new Error("Creator ID required");
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseResponse>>>(
+          `/api/v1/courses/creator/${creatorId}?page=${page}&size=${size}`
+        );
+        return mapPageResponse(data.result, page, size);
       },
       enabled: !!creatorId,
-    })
-  }
+    });
+  };
 
-  /**
-   * Lấy các khóa học đang GIẢM GIÁ
-   */
-  const useOnSaleCourses = (page = 0, size = 10) => {
-    return useQuery<PaginatedResponse<CourseDiscount>>({
-      queryKey: ["onSaleCourses", page, size],
-      queryFn: async () => {
-        const qp = new URLSearchParams()
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<CourseDiscount>>
-        >(`/api/v1/course-discounts?${qp.toString()}`)
-        const pageResult = response.data.result as any
-        return {
-          data: pageResult.content,
-          pagination: {
-            page: pageResult.number,
-            limit: pageResult.size,
-            total: pageResult.totalElements,
-            totalPages: pageResult.totalPages,
-          },
-        }
-      },
-      //
-      // =================================================================
-      // === FIX 3: Thêm staleTime (5 phút) ===
-      // =================================================================
-      //
-      staleTime: 5 * 60 * 1000,
-    })
-  }
-
-  // (useRecommendedCourses, useCourseCategories, useCourseLevels giữ nguyên)
-  // ...
+  // GET /api/v1/courses/recommended
   const useRecommendedCourses = (userId?: string, limit = 5) => {
-    return useQuery<Course[]>({
-      queryKey: ["recommendedCourses", userId, limit],
+    return useQuery({
+      queryKey: courseKeys.recommended(userId!),
       queryFn: async () => {
-        // if (!userId) return [] // Không cần check này vì đã có `enabled`
-        const response = await instance.get<ApiResponse<Course[]>>(
+        if (!userId) return [];
+        const { data } = await instance.get<AppApiResponse<CourseResponse[]>>(
           `/api/v1/courses/recommended?userId=${userId}&limit=${limit}`
-        )
-        return response.data.result || []
+        );
+        return data.result || [];
       },
       enabled: !!userId,
-      //
-      // =================================================================
-      // === FIX 3: Thêm staleTime (5 phút) ===
-      // =================================================================
-      //
-      staleTime: 5 * 60 * 1000,
-    })
-  }
+    });
+  };
 
-  const useCourseCategories = () => {
-    /* ... (giữ nguyên) ... */
-  }
+  // GET /api/v1/courses/levels
   const useCourseLevels = () => {
-    /* ... (giữ nguyên) ... */
-  }
-
-  /**
-   * Lấy review của 1 khóa học
-   */
-  const useCourseReviews = (courseId?: string, page = 0, size = 10) => {
-    return useQuery<PaginatedResponse<Review>>({
-      queryKey: ["courseReviews", courseId, page, size],
+    return useQuery({
+      queryKey: courseKeys.levels(),
       queryFn: async () => {
-        const qp = new URLSearchParams()
-        if (courseId) qp.append("courseId", courseId)
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<Review>>
-        >(`/api/v1/course-reviews?${qp.toString()}`)
-        const pageResult = response.data.result as any
-        return {
-          data: pageResult.content,
-          pagination: {
-            page: pageResult.number,
-            limit: pageResult.size,
-            total: pageResult.totalElements,
-            totalPages: pageResult.totalPages,
-          },
-        }
+        const { data } = await instance.get<AppApiResponse<string[]>>("/api/v1/courses/levels");
+        return data.result || [];
       },
-      enabled: !!courseId,
-    })
-  }
+      staleTime: 60 * 60 * 1000, // Cache 1 hour
+    });
+  };
 
-  /**
-   * Lấy review của 1 bài học
-   */
-  const useLessonReviews = (lessonId?: string, page = 0, size = 10) => {
-    return useQuery<PaginatedResponse<Review>>({
-      queryKey: ["lessonReviews", lessonId, page, size],
-      queryFn: async () => {
-        const qp = new URLSearchParams()
-        if (lessonId) qp.append("lessonId", lessonId)
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<Review>>
-        >(`/api/v1/lesson-reviews?${qp.toString()}`)
-        const pageResult = response.data.result as any
-        return {
-          data: pageResult.content,
-          pagination: {
-            page: pageResult.number,
-            limit: pageResult.size,
-            total: pageResult.totalElements,
-            totalPages: pageResult.totalPages,
-          },
-        }
-      },
-      enabled: !!lessonId,
-    })
-  }
-
-  // ---------------------------------------------
-  // === MUTATIONS (THAY ĐỔI DỮ LIỆU) ===
-  // ---------------------------------------------
-
-  // ... (Toàn bộ phần Mutations giữ nguyên) ...
-  const useUpdateCourseDetails = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        courseId,
-        courseData,
-      }: {
-        courseId: string
-        courseData: UpdateCourseDetailsRequest
-      }) => {
-        const response = await instance.put<ApiResponse<Course>>(
-          `/api/v1/courses/${courseId}/details`,
-          courseData
-        )
-        return response.data.result!
-      },
-      onSuccess: (data) => {
-        queryClient.setQueryData(["course", data.courseId], data)
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-        queryClient.invalidateQueries({ queryKey: ["allCourses"] })
-      },
-    })
-    return {
-      updateCourseDetails: mutation.mutateAsync,
-      isUpdating: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-
-  const useUpdateCourseVersion = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        versionId,
-        versionData,
-      }: {
-        versionId: string
-        versionData: UpdateCourseVersionRequest
-      }) => {
-        const response = await instance.put<ApiResponse<CourseVersion>>(
-          `/api/v1/courses/versions/${versionId}`,
-          versionData
-        )
-        return response.data.result!
-      },
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: ["course", data.courseId] })
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-      },
-    })
-    return {
-      updateCourseVersion: mutation.mutateAsync,
-      isUpdatingVersion: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-
-  const usePublishCourseVersion = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        versionId,
-        publishData,
-      }: {
-        versionId: string
-        publishData: PublishVersionRequest
-      }) => {
-        const response = await instance.post<ApiResponse<CourseVersion>>(
-          `/api/v1/courses/versions/${versionId}/publish`,
-          publishData
-        )
-        return response.data.result!
-      },
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: ["course", data.courseId] })
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-      },
-    })
-    return {
-      publishCourseVersion: mutation.mutateAsync,
-      isPublishing: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-
-  const useCreateNewDraftVersion = () => {
-    const mutation = useMutation({
-      mutationFn: async (courseId: string) => {
-        const response = await instance.post<ApiResponse<CourseVersion>>(
-          `/api/v1/courses/${courseId}/versions`
-        )
-        return response.data.result!
-      },
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: ["course", data.courseId] })
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-      },
-    })
-    return {
-      createNewDraftVersion: mutation.mutateAsync,
-      isCreatingDraft: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-
-  const useDeleteCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async (courseId: string) => {
-        const response = await instance.delete<ApiResponse<void>>(
-          `/api/v1/courses/${courseId}`
-        )
-        return response.data.result
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["allCourses"] })
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-      },
-    })
-    return {
-      deleteCourse: mutation.mutateAsync,
-      isDeleting: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-
-  const useSwitchCourseVersion = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: SwitchVersionRequest) => {
-        const response = await instance.put<ApiResponse<CourseEnrollment>>(
-          "/api/v1/course-enrollments/switch-version",
-          payload
-        )
-        return response.data.result!
-      },
-      onSuccess: (data) => {
-        queryClient.invalidateQueries({ queryKey: ["enrolledCourses"] })
-        queryClient.invalidateQueries({
-          queryKey: ["enrollment", data.courseId, data.userId],
-        })
-      },
-    })
-    return {
-      switchCourseVersion: mutation.mutateAsync,
-      isSwitching: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-
-  const useCreateCourseReview = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: CreateReviewRequest) => {
-        const response = await instance.post<ApiResponse<Review>>(
-          "/api/v1/course-reviews",
-          payload
-        )
-        return response.data.result!
-      },
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({
-          queryKey: ["courseReviews", variables.courseId],
-        })
-        queryClient.invalidateQueries({
-          queryKey: ["course", variables.courseId],
-        })
-      },
-    })
-    return {
-      createCourseReview: mutation.mutateAsync,
-      isCreatingReview: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-
-  const useCreateLessonReview = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: CreateReviewRequest) => {
-        const response = await instance.post<ApiResponse<Review>>(
-          "/api/v1/lesson-reviews",
-          payload
-        )
-        return response.data.result!
-      },
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({
-          queryKey: ["lessonReviews", variables.lessonId],
-        })
-      },
-    })
-    return {
-      createLessonReview: mutation.mutateAsync,
-      isCreatingReview: mutation.isPending,
-      error: mutation.error,
-      s
-    }
-  }
-
-  // ... (Video hooks remain the same) ...
-  const useBilingualVideos = (params?: {
-    page?: number
-    size?: number
-    category?: string
-    level?: string
-  }) => {
-    const { page = 0, size = 10, category, level } = params || {}
-
-    return useQuery<PaginatedResponse<BilingualVideo>>({
-      queryKey: ["bilingualVideos", page, size, category, level],
-      queryFn: async () => {
-        const qp = new URLSearchParams()
-        qp.append("page", page.toString())
-        qp.append("size", size.toString())
-        if (category && category !== "All") qp.append("category", category)
-        if (level) qp.append("level", level)
-
-        const response = await instance.get<
-          ApiResponse<PaginatedResponse<BilingualVideo>>
-        >(`/api/v1/videos/bilingual?${qp.toString()}`)
-        return (
-          response.data.result || {
-            data: [],
-            pagination: { page, limit: size, total: 0, totalPages: 0 },
-          }
-        )
-      },
-      staleTime: 5 * 60 * 1000,
-    })
-  }
-  const useVideoCategories = () => {
-    return useQuery<string[]>({
-      queryKey: ["videoCategories"],
-      queryFn: async () => {
-        const response = await instance.get<ApiResponse<string[]>>(
-          "/api/v1/videos/categories"
-        )
-        return response.data.result || []
-      },
-      staleTime: 30 * 60 * 1000,
-    })
-  }
-  const useVideo = (videoId: string | null) => {
-    return useQuery<Video>({
-      queryKey: ["video", videoId],
-      queryFn: async () => {
-        if (!videoId) throw new Error("videoId is required")
-        const response = await instance.get<ApiResponse<Video>>(
-          `/api/v1/videos/${videoId}`
-        )
-        return response.data.result!
-      },
-      enabled: !!videoId,
-      staleTime: 5 * 60 * 1000,
-    })
-  }
-  const useCreateVideo = () => {
-    const mutation = useMutation({
-      mutationFn: async (payload: Partial<Video>) => {
-        const response = await instance.post<ApiResponse<Video>>(
-          "/videos",
-          payload
-        )
-        return response.data.result!
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["bilingualVideos"] })
-        queryClient.invalidateQueries({ queryKey: ["videoCategories"] })
-      },
-    })
-
-    return {
-      createVideo: mutation.mutateAsync,
-      isCreating: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-  const useUpdateVideo = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        videoId,
-        payload,
-      }: {
-        videoId: string
-        payload: Partial<Video>
-      }) => {
-        const response = await instance.put<ApiResponse<Video>>(
-          `/api/v1/videos/${videoId}`,
-          payload
-        )
-        return response.data.result!
-      },
-      onSuccess: (data) => {
-        queryClient.setQueryData(["video", data.videoId], data)
-        queryClient.invalidateQueries({ queryKey: ["bilingualVideos"] })
-      },
-    })
-
-    return {
-      updateVideo: mutation.mutateAsync,
-      isUpdating: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-  const useDeleteVideo = () => {
-    const mutation = useMutation({
-      mutationFn: async (videoId: string) => {
-        const response = await instance.delete<ApiResponse<void>>(
-          `/api/v1/videos/${videoId}`
-        )
-        return response.data.result
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["bilingualVideos"] })
-        queryClient.invalidateQueries({ queryKey: ["videoCategories"] })
-      },
-    })
-
-    return {
-      deleteVideo: mutation.mutateAsync,
-      isDeleting: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-  const useVideoSubtitles = (videoId: string | null) => {
-    return useQuery<VideoSubtitle[]>({
-      queryKey: ["videoSubtitles", videoId],
-      queryFn: async () => {
-        if (!videoId) throw new Error("videoId is required")
-        const response = await instance.get<ApiResponse<VideoSubtitle[]>>(
-          `/api/v1/videos/${videoId}/subtitles`
-        )
-        return response.data.result || []
-      },
-      enabled: !!videoId,
-      staleTime: 10 * 60 * 1000,
-    })
-  }
-  const useAddSubtitle = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        videoId,
-        payload,
-      }: {
-        videoId: string
-        payload: Partial<VideoSubtitle>
-      }) => {
-        const response = await instance.post<ApiResponse<VideoSubtitle>>(
-          `/api/v1/videos/${videoId}/subtitles`,
-          payload
-        )
-        return response.data.result!
-      },
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({
-          queryKey: ["videoSubtitles", variables.videoId],
-        })
-      },
-    })
-
-    return {
-      addSubtitle: mutation.mutateAsync,
-      isAdding: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-  const useDeleteSubtitle = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        videoId,
-        subtitleId,
-      }: {
-        videoId: string
-        subtitleId: string
-      }) => {
-        const response = await instance.delete<ApiResponse<void>>(
-          `/api/v1/videos/${videoId}/subtitles/${subtitleId}`
-        )
-        return response.data.result
-      },
-      onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({
-          queryKey: ["videoSubtitles", variables.videoId],
-        })
-      },
-    })
-
-    return {
-      deleteSubtitle: mutation.mutateAsync,
-      isDeleting: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-  const useTrackVideoProgress = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        videoId,
-        currentTime,
-        duration,
-      }: {
-        videoId: string
-        currentTime: number
-        duration: number
-      }) => {
-        const response = await instance.post<ApiResponse<{ success: boolean }>>(
-          `/api/v1/videos/${videoId}/progress`,
-          {
-            currentTime,
-            duration,
-          }
-        )
-        return response.data.result!
-      },
-    })
-
-    return {
-      trackProgress: mutation.mutateAsync,
-      isTracking: mutation.isPending,
-    }
-  }
-
+  // POST /api/v1/courses
   const useCreateCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async (courseData: Partial<Course>) => {
-        const response = await instance.post<ApiResponse<Course>>(
-          "/api/v1/courses",
-          courseData
-        )
-        return response.data.result!
+    return useMutation({
+      mutationFn: async (req: CreateCourseRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseResponse>>("/api/v1/courses", req);
+        return data.result!;
       },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["allCourses"] })
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
-      },
-    })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
+    });
+  };
 
-    return {
-      createCourse: mutation.mutateAsync,
-      isCreating: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-  const useUpdateCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async ({
-        courseId,
-        courseData,
-      }: {
-        courseId: string
-        courseData: Partial<Course>
-      }) => {
-        const response = await instance.put<ApiResponse<Course>>(
-          `/api/v1/courses/${courseId}`,
-          courseData
-        )
-        return response.data.result!
+  // PUT /api/v1/courses/{id}/details
+  const useUpdateCourseDetails = () => {
+    return useMutation({
+      mutationFn: async ({ id, req }: { id: string; req: UpdateCourseDetailsRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseResponse>>(
+          `/api/v1/courses/${id}/details`,
+          req
+        );
+        return data.result!;
       },
       onSuccess: (data) => {
-        queryClient.setQueryData(["course", data.courseId], data)
-        queryClient.invalidateQueries({ queryKey: ["allCourses"] })
-        queryClient.invalidateQueries({ queryKey: ["teacherCourses"] })
+        queryClient.setQueryData(courseKeys.detail(data.courseId), data);
+        queryClient.invalidateQueries({ queryKey: courseKeys.lists() });
       },
-    })
+    });
+  };
 
-    return {
-      updateCourse: mutation.mutateAsync,
-      isUpdating: mutation.isPending,
-      error: mutation.error,
-    }
-  }
+  // POST /api/v1/courses/{courseId}/versions (Draft)
+  const useCreateDraftVersion = () => {
+    return useMutation({
+      mutationFn: async (courseId: string) => {
+        const { data } = await instance.post<AppApiResponse<CourseVersionResponse>>(
+          `/api/v1/courses/${courseId}/versions`
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.all }),
+    });
+  };
 
-  const useEnrollCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async (enrollmentPayload: Partial<CourseEnrollment>) => {
-        const response = await instance.post<ApiResponse<CourseEnrollment>>(
-          "/course-enrollments",
-          enrollmentPayload
-        )
-        return response.data.result!
+  // PUT /api/v1/courses/versions/{versionId}
+  const useUpdateCourseVersion = () => {
+    return useMutation({
+      mutationFn: async ({ versionId, req }: { versionId: string; req: UpdateCourseVersionRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseVersionResponse>>(
+          `/api/v1/courses/versions/${versionId}`,
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.all }),
+    });
+  };
+
+  // POST /api/v1/courses/versions/{versionId}/publish
+  const usePublishVersion = () => {
+    return useMutation({
+      mutationFn: async ({ versionId, req }: { versionId: string; req: PublishVersionRequest }) => {
+        const { data } = await instance.post<AppApiResponse<CourseVersionResponse>>(
+          `/api/v1/courses/versions/${versionId}/publish`,
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.all }),
+    });
+  };
+
+  // DELETE /api/v1/courses/{id}
+  const useDeleteCourse = () => {
+    return useMutation({
+      mutationFn: async (id: string) => {
+        await instance.delete(`/api/v1/courses/${id}`);
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
+    });
+  };
+
+  // POST /api/v1/courses/versions/{versionId}/approve (Admin)
+  const useApproveVersion = () => {
+    return useMutation({
+      mutationFn: async (versionId: string) => {
+        const { data } = await instance.post<AppApiResponse<CourseVersionResponse>>(
+          `/api/v1/courses/versions/${versionId}/approve`
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
+    });
+  };
+
+  // POST /api/v1/courses/versions/{versionId}/reject (Admin)
+  const useRejectVersion = () => {
+    return useMutation({
+      mutationFn: async ({ versionId, reason }: { versionId: string; reason: string }) => {
+        const { data } = await instance.post<AppApiResponse<CourseVersionResponse>>(
+          `/api/v1/courses/versions/${versionId}/reject`,
+          null,
+          { params: { reason } }
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lists() }),
+    });
+  };
+
+  // ==========================================
+  // === 2. ENROLLMENTS (Full CRUD) ===
+  // ==========================================
+
+  // GET All
+  const useEnrollments = (params?: { courseId?: string; userId?: string; page?: number; size?: number }) => {
+    const { courseId, userId, page = 0, size = 10 } = params || {};
+    return useQuery({
+      queryKey: courseKeys.enrollments({ courseId, userId, page, size }),
+      queryFn: async () => {
+        const qp = new URLSearchParams({ page: String(page), size: String(size) });
+        if (courseId) qp.append("courseId", courseId);
+        if (userId) qp.append("userId", userId);
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseEnrollmentResponse>>>(
+          `/api/v1/course-enrollments?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
+      },
+      enabled: !!(courseId || userId),
+    });
+  };
+
+  // GET By IDs
+  const useEnrollmentDetail = (courseId?: string, userId?: string) => {
+    return useQuery({
+      queryKey: courseKeys.enrollments({ courseId, userId, type: "detail" }),
+      queryFn: async () => {
+        if (!courseId || !userId) throw new Error("IDs required");
+        const { data } = await instance.get<AppApiResponse<CourseEnrollmentResponse>>(
+          `/api/v1/course-enrollments/${courseId}/${userId}`
+        );
+        return data.result!;
+      },
+      enabled: !!(courseId && userId),
+    });
+  };
+
+  // CREATE
+  const useCreateEnrollment = () => {
+    return useMutation({
+      mutationFn: async (req: CourseEnrollmentRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseEnrollmentResponse>>(
+          "/api/v1/course-enrollments",
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) }),
+    });
+  };
+
+  // SWITCH VERSION
+  const useSwitchVersion = () => {
+    return useMutation({
+      mutationFn: async (req: SwitchVersionRequest) => {
+        const { data } = await instance.put<AppApiResponse<CourseEnrollmentResponse>>(
+          "/api/v1/course-enrollments/switch-version",
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) }),
+    });
+  };
+
+  // UPDATE
+  const useUpdateEnrollment = () => {
+    return useMutation({
+      mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseEnrollmentRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseEnrollmentResponse>>(
+          `/api/v1/course-enrollments/${courseId}/${userId}`,
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) }),
+    });
+  };
+
+  // DELETE
+  const useDeleteEnrollment = () => {
+    return useMutation({
+      mutationFn: async ({ courseId, userId }: { courseId: string; userId: string }) => {
+        await instance.delete(`/api/v1/course-enrollments/${courseId}/${userId}`);
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) }),
+    });
+  };
+
+  // ==========================================
+  // === 3. LESSONS (Full CRUD + Upload) ===
+  // ==========================================
+
+  const useCourseLessons = (params?: { courseId?: string; lessonId?: string; page?: number; size?: number }) => {
+    const { courseId, lessonId, page = 0, size = 50 } = params || {};
+    return useQuery({
+      queryKey: courseKeys.lessons({ courseId, lessonId, page, size }),
+      queryFn: async () => {
+        const qp = new URLSearchParams({ page: String(page), size: String(size) });
+        if (courseId) qp.append("courseId", courseId);
+        if (lessonId) qp.append("lessonId", lessonId);
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseLessonResponse>>>(
+          `/api/v1/course-lessons?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
+      },
+      enabled: !!(courseId || lessonId),
+    });
+  };
+
+  // Upload with FormData
+  const useUploadLesson = () => {
+    return useMutation({
+      mutationFn: async ({
+        courseId,
+        versionId,
+        lessonIndex,
+        videoFile,
+        thumbnailFile,
+        lessonData
+      }: {
+        courseId: string;
+        versionId: string;
+        lessonIndex: number;
+        videoFile?: File | any;
+        thumbnailFile?: File | any;
+        lessonData: { title: string; description?: string; duration: string; isFree: boolean };
+      }) => {
+        const formData = new FormData();
+        formData.append("courseId", courseId);
+        formData.append("versionId", versionId);
+        formData.append("lessonIndex", String(lessonIndex));
+        if (videoFile) formData.append("videoFile", videoFile);
+        if (thumbnailFile) formData.append("thumbnailFile", thumbnailFile);
+        formData.append("lessonData", JSON.stringify(lessonData));
+
+        const { data } = await instance.post<AppApiResponse<LessonResponse>>(
+          "/api/v1/course-lessons/upload",
+          formData,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        );
+        return data.result!;
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["enrolledCourses"] })
-        queryClient.invalidateQueries({ queryKey: ["allCourses"] })
+        queryClient.invalidateQueries({ queryKey: courseKeys.lessons({}) });
+        queryClient.invalidateQueries({ queryKey: courseKeys.all });
       },
-    })
+    });
+  };
 
-    return {
-      enrollCourse: mutation.mutateAsync,
-      isEnrolling: mutation.isPending,
-      error: mutation.error,
-    }
-  }
-  const usePurchaseCourse = () => {
-    const mutation = useMutation({
-      mutationFn: async (
-        payload: Partial<CourseEnrollment> & { paymentInfo?: any }
-      ) => {
-        const response = await instance.post<ApiResponse<CourseEnrollment>>(
-          "/course-enrollments",
-          payload
-        )
-        return response.data.result!
+  const useCreateCourseLesson = () => {
+    return useMutation({
+      mutationFn: async (req: CourseLessonRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseLessonResponse>>("/api/v1/course-lessons", req);
+        return data.result!;
       },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["enrolledCourses"] })
-      },
-    })
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lessons({}) }),
+    });
+  };
 
-    return {
-      purchaseCourse: mutation.mutateAsync,
-      isPurchasing: mutation.isPending,
-      error: mutation.error,
-    }
-  }
+  const useUpdateCourseLesson = () => {
+    return useMutation({
+      mutationFn: async ({ cId, lId, req }: { cId: string; lId: string; req: CourseLessonRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseLessonResponse>>(
+          `/api/v1/course-lessons/${cId}/${lId}`,
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lessons({}) }),
+    });
+  };
+
+  const useDeleteCourseLesson = () => {
+    return useMutation({
+      mutationFn: async ({ cId, lId }: { cId: string; lId: string }) => {
+        await instance.delete(`/api/v1/course-lessons/${cId}/${lId}`);
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.lessons({}) }),
+    });
+  };
+
+  // ==========================================
+  // === 4. REVIEWS (Full CRUD) ===
+  // ==========================================
+
+  // GET All
+  const useReviews = (params?: { courseId?: string; userId?: string; rating?: number; page?: number; size?: number }) => {
+    const { courseId, userId, rating, page = 0, size = 10 } = params || {};
+    return useQuery({
+      queryKey: courseKeys.reviews({ courseId, userId, rating, page, size }),
+      queryFn: async () => {
+        const qp = new URLSearchParams({ page: String(page), size: String(size) });
+        if (courseId) qp.append("courseId", courseId);
+        if (userId) qp.append("userId", userId);
+        if (rating) qp.append("rating", String(rating));
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseReviewResponse>>>(
+          `/api/v1/course-reviews?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
+      },
+      enabled: !!(courseId || userId),
+    });
+  };
+
+  // GET By IDs
+  const useReviewDetail = (courseId?: string, userId?: string) => {
+    return useQuery({
+      queryKey: courseKeys.reviews({ courseId, userId, type: "detail" }),
+      queryFn: async () => {
+        if (!courseId || !userId) throw new Error("IDs required");
+        const { data } = await instance.get<AppApiResponse<CourseReviewResponse>>(
+          `/api/v1/course-reviews/${courseId}/${userId}`
+        );
+        return data.result!;
+      },
+      enabled: !!(courseId && userId),
+    });
+  };
+
+  // CREATE
+  const useCreateReview = () => {
+    return useMutation({
+      mutationFn: async (req: CourseReviewRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseReviewResponse>>("/api/v1/course-reviews", req);
+        return data.result!;
+      },
+      onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
+    });
+  };
+
+  // UPDATE
+  const useUpdateReview = () => {
+    return useMutation({
+      mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseReviewRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseReviewResponse>>(
+          `/api/v1/course-reviews/${courseId}/${userId}`,
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
+    });
+  };
+
+  // DELETE
+  const useDeleteReview = () => {
+    return useMutation({
+      mutationFn: async ({ courseId, userId }: { courseId: string; userId: string }) => {
+        await instance.delete(`/api/v1/course-reviews/${courseId}/${userId}`);
+      },
+      onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
+    });
+  };
+
+  // ==========================================
+  // === 5. DISCOUNTS (Full CRUD) ===
+  // ==========================================
+
+  // GET All
+  const useDiscounts = (params?: { courseId?: string; percentage?: number; page?: number; size?: number }) => {
+    const { courseId, percentage, page = 0, size = 10 } = params || {};
+    return useQuery({
+      queryKey: courseKeys.discounts({ courseId, percentage, page, size }),
+      queryFn: async () => {
+        const qp = new URLSearchParams({ page: String(page), size: String(size) });
+        if (courseId) qp.append("courseId", courseId);
+        if (percentage) qp.append("discountPercentage", String(percentage));
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseDiscountResponse>>>(
+          `/api/v1/course-discounts?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
+      },
+    });
+  };
+
+  // GET By ID
+  const useDiscountDetail = (discountId?: string) => {
+    return useQuery({
+      queryKey: courseKeys.discounts({ discountId, type: "detail" }),
+      queryFn: async () => {
+        if (!discountId) throw new Error("Discount ID required");
+        const { data } = await instance.get<AppApiResponse<CourseDiscountResponse>>(
+          `/api/v1/course-discounts/${discountId}`
+        );
+        return data.result!;
+      },
+      enabled: !!discountId,
+    });
+  };
+
+  // CREATE
+  const useCreateDiscount = () => {
+    return useMutation({
+      mutationFn: async (req: CourseDiscountRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseDiscountResponse>>("/api/v1/course-discounts", req);
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.discounts({}) }),
+    });
+  };
+
+  // UPDATE
+  const useUpdateDiscount = () => {
+    return useMutation({
+      mutationFn: async ({ id, req }: { id: string; req: CourseDiscountRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseDiscountResponse>>(
+          `/api/v1/course-discounts/${id}`,
+          req
+        );
+        return data.result!;
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.discounts({}) }),
+    });
+  };
+
+  // DELETE
+  const useDeleteDiscount = () => {
+    return useMutation({
+      mutationFn: async (id: string) => {
+        await instance.delete(`/api/v1/course-discounts/${id}`);
+      },
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.discounts({}) }),
+    });
+  };
+
   return {
-    // Queries
+    // Course Hooks
     useAllCourses,
-    useSearchCourses,
     useCourse,
-    useEnrolledCourses,
-    useTeacherCourses,
-    useOnSaleCourses,
+    useCreatorCourses,
     useRecommendedCourses,
-    useCourseCategories,
     useCourseLevels,
-    useCourseReviews,
-    useLessonReviews,
-
-    // Mutations (P2P Creator)
     useCreateCourse,
     useUpdateCourseDetails,
+    useCreateDraftVersion,
     useUpdateCourseVersion,
-    usePublishCourseVersion,
-    useCreateNewDraftVersion,
+    usePublishVersion,
     useDeleteCourse,
+    useApproveVersion,
+    useRejectVersion,
 
-    // Mutations (Learner)
-    usePurchaseCourse,
-    useSwitchCourseVersion,
+    // Enrollment Hooks
+    useEnrollments,
+    useEnrollmentDetail,
+    useCreateEnrollment,
+    useSwitchVersion,
+    useUpdateEnrollment,
+    useDeleteEnrollment,
 
-    // Mutations (Reviews)
-    useCreateCourseReview,
-    useCreateLessonReview,
+    // Lesson Hooks
+    useCourseLessons,
+    useUploadLesson,
+    useCreateCourseLesson,
+    useUpdateCourseLesson,
+    useDeleteCourseLesson,
 
-    useBilingualVideos,
-    useVideoCategories,
-    useVideo,
-    useCreateVideo,
-    useUpdateVideo,
-    useDeleteVideo,
-    useVideoSubtitles,
-    useAddSubtitle,
-    useDeleteSubtitle,
-    useTrackVideoProgress,
-  }
-}
+    // Review Hooks
+    useReviews,
+    useReviewDetail,
+    useCreateReview,
+    useUpdateReview,
+    useDeleteReview,
+
+    // Discount Hooks
+    useDiscounts,
+    useDiscountDetail,
+    useCreateDiscount,
+    useUpdateDiscount,
+    useDeleteDiscount,
+  };
+};
+
+// Helper to standardize pagination return
+const mapPageResponse = <T>(result: any, page: number, size: number) => ({
+  data: (result?.content as T[]) || [],
+  pagination: {
+    pageNumber: result?.pageNumber ?? page,
+    pageSize: result?.pageSize ?? size,
+    totalElements: result?.totalElements ?? 0,
+    totalPages: result?.totalPages ?? 0,
+    isLast: result?.isLast ?? true,
+    isFirst: result?.isFirst ?? true,
+    hasNext: result?.hasNext ?? false,
+    hasPrevious: result?.hasPrevious ?? false,
+  },
+});

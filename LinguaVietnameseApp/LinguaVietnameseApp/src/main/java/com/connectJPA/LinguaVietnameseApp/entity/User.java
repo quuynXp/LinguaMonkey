@@ -9,9 +9,7 @@ import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
 import org.springframework.data.elasticsearch.annotations.Document;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
-import java.util.Set;
 import java.util.UUID;
 
 @Data
@@ -24,6 +22,7 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 public class User extends BaseEntity {
+
     private static final long ONLINE_THRESHOLD_MINUTES = 5;
 
     @org.springframework.data.annotation.Id
@@ -44,6 +43,7 @@ public class User extends BaseEntity {
     @Column(name = "nickname")
     private String nickname;
 
+    @Column(name = "bio", columnDefinition = "text")
     private String bio;
 
     @Column(name = "phone", unique = true)
@@ -63,24 +63,30 @@ public class User extends BaseEntity {
     private Country country;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "age_range")
     private AgeRange ageRange;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "proficiency")
     private ProficiencyLevel proficiency;
 
     @Column(name = "level", nullable = false)
+    @Builder.Default
     private int level = 1;
 
     @Column(name = "exp", nullable = false)
+    @Builder.Default
     private int exp = 0;
 
     @Column(name = "streak", nullable = false)
+    @Builder.Default
     private int streak = 0;
 
     @Column(name = "last_active_at")
     private OffsetDateTime lastActiveAt;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "learning_pace")
     private LearningPace learningPace;
 
     @Transient
@@ -88,10 +94,7 @@ public class User extends BaseEntity {
         if (this.lastActiveAt == null) {
             return false;
         }
-
         OffsetDateTime onlineThreshold = OffsetDateTime.now().minusMinutes(ONLINE_THRESHOLD_MINUTES);
-
         return this.lastActiveAt.isAfter(onlineThreshold);
     }
-
 }
