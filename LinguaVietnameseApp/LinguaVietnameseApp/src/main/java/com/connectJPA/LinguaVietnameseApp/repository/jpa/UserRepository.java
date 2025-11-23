@@ -19,6 +19,13 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
 
     long countByCreatedAtBetween(OffsetDateTime startDate, OffsetDateTime endDate);
 
+    @Query("SELECT u FROM User u WHERE (" +
+            "LOWER(u.fullname) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(u.nickname) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%'))" +
+            ") AND u.isDeleted = false")
+    Page<User> searchUsersByKeyword(@Param("keyword") String keyword, Pageable pageable);
+
     Optional<User> findByEmailOrPhoneAndIsDeletedFalse(String email, String phone);
     List<User> findByCreatedAtBetween(OffsetDateTime startDate, OffsetDateTime endDate);
 

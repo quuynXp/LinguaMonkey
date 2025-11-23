@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from collections import defaultdict
 from typing import Dict, List
-
+import httpx
 # Import core services
 from src.core.session import get_db, AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,17 +24,39 @@ from src.core.user_profile_service import get_user_profile
 from src.api.translation import translate_text
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
 from src.api.speech_to_text import speech_to_text
-from src.core.kafka_producer import get_kafka_producer, stop_kafka_producer, send_chat_to_kafka
+# from src.core.kafka_producer import get_kafka_producer, stop_kafka_producer, send_chat_to_kafka
+from src.core.http_producer import send_chat_to_java_persistence, stop_http_client # <-- THAY THẾ KAFKA
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
+internal_router = APIRouter(prefix="/internal")
 audio_buffers = defaultdict(list)
 BUFFER_THRESHOLD_SECONDS = 2
 SAMPLE_RATE = 16000
 BYTES_PER_SECOND = SAMPLE_RATE * 2
 BUFFER_SIZE_LIMIT = BYTES_PER_SECOND * BUFFER_THRESHOLD_SECONDS
+
+class CacheInvalidationRequest(BaseModel): # <-- THÊM: Model nhận request từ Java
+    user_id: str
+    updated_table: str
+
+@internal_router.post("/invalidate-cache") 
+async def invalidate_user_cache(request: CacheInvalidationRequest):
+    """
+    Nhận yêu cầu vô hiệu hóa cache từ Java sau khi cập nhật User Profile.
+    """
+    cache_key = f"user_profile:{request.user_id}"
+    try:
+        # Giả định delete_from_cache là hàm xóa cache dùng Redis
+        # Vì đây là luồng nội bộ, ta chỉ cần gọi delete_from_cache
+        await redis_client.delete(cache_key) # Dùng trực tiếp redis_client
+        logger.info(f"Cache invalidated for user_id: {request.user_id} due to internal HTTP call.")
+        return {"status": "success", "key": cache_key}
+    except Exception as e:
+        logger.error(f"Failed to invalidate cache for {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to invalidate cache")
+
 
 # === CÀI ĐẶT CHUNG ===
 try:
@@ -125,7 +147,8 @@ protected_router = APIRouter(dependencies=[Depends(verify_token)])
 @app.on_event("shutdown")
 async def shutdown_event():
     await close_redis_client()
-    await stop_kafka_producer()
+    await stop_http_client()
+    # await stop_kafka_producer()
 
 class TranslationRequest(BaseModel):
     text: str
@@ -216,7 +239,17 @@ async def chat_stream(websocket: WebSocket, token: str):
                 await websocket.send_text(json.dumps({"type": "chat_response_complete"}))
                 
                 # Persist to Kafka
-                kafka_payload = {
+                # kafka_payload = {
+                #     "userId": user_id,
+                #     "roomId": room_id,
+                #     "userPrompt": prompt,
+                #     "aiResponse": full_ai_response,
+                #     "messageType": message_type,
+                #     "sentAt": datetime.now().isoformat()
+                # }
+                # await send_chat_to_kafka(kafka_payload)
+                # Persist via HTTP POST
+                http_payload = {
                     "userId": user_id,
                     "roomId": room_id,
                     "userPrompt": prompt,
@@ -224,7 +257,8 @@ async def chat_stream(websocket: WebSocket, token: str):
                     "messageType": message_type,
                     "sentAt": datetime.now().isoformat()
                 }
-                await send_chat_to_kafka(kafka_payload)
+                # Chuyển từ Kafka sang HTTP POST
+                asyncio.create_task(send_chat_to_java_persistence(http_payload))
 
     except WebSocketDisconnect:
         logging.info(f"Client {user_id} disconnected from Chat Stream")
@@ -316,6 +350,7 @@ async def chat(request: ChatRequest, user: dict = Depends(verify_token), db: Asy
         raise HTTPException(status_code=500, detail=str(e))
 
 app.include_router(protected_router, tags=["Protected API"])
+app.include_router(internal_router, tags=["Internal API"])
 
 if __name__ == "__main__":
     import uvicorn

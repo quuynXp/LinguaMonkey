@@ -18,7 +18,7 @@ import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
 import * as Localization from "expo-localization";
-import instance from "./api/axiosInstance";
+import instance from "./api/axiosClient";
 import SplashScreen from "./screens/Splash/SplashScreen";
 import * as Linking from "expo-linking";
 import permissionService from "./services/permissionService";
@@ -104,12 +104,12 @@ const RootNavigation = () => {
     return () => unsubscribe();
   }, []);
 
-  useEffect(() => {
-    notificationService.loadPreferences();
-    if (user?.userId) {
-      notificationService.registerTokenToBackend();
-    }
-  }, [user?.userId]);
+  // useEffect(() => {
+  //   notificationService.loadPreferences();
+  //   if (user?.userId) {
+  //     notificationService.registerTokenToBackend();
+  //   }
+  // }, [user?.userId]);
 
   useEffect(() => {
     const unsubscribeOnMessage = onMessage(messaging(), async (remoteMessage) => {

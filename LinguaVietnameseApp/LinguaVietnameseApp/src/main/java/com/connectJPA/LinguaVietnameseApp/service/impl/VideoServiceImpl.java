@@ -12,7 +12,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.VideoType;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
-import com.connectJPA.LinguaVietnameseApp.service.MinioService;
+import com.connectJPA.LinguaVietnameseApp.service.StorageService;
 import com.connectJPA.LinguaVietnameseApp.service.VideoService;
 import com.connectJPA.LinguaVietnameseApp.utils.SubtitleUtils;
 import jakarta.transaction.Transactional;
@@ -41,7 +41,7 @@ public class VideoServiceImpl implements VideoService {
     private final ReviewReactionRepository reviewReactionRepository;
     private final VideoReactionRepository videoReactionRepository;
     private final VideoReviewRepository videoReviewRepository;
-    private final MinioService minioService;
+    private final StorageService storageService;
     private final SubtitleUtils subtitleUtils;
     private final GrpcClientService grpcClientService;
 
@@ -126,7 +126,7 @@ public class VideoServiceImpl implements VideoService {
                 .orElseThrow(() -> new RuntimeException("Source subtitle (" + originalLang + ") not found. Please upload it first."));
 
         // 2. Download file gốc từ MinIO
-        byte[] sourceBytes = minioService.getFile(sourceSub.getSubtitleUrl());
+        byte[] sourceBytes = storageService.getFile(sourceSub.getSubtitleUrl());
         List<SubtitleItem> sourceItems = subtitleUtils.parseSrt(new ByteArrayInputStream(sourceBytes));
 
         // 3. Gọi gRPC Python để dịch từng dòng (Dùng Async để nhanh hơn)
@@ -162,7 +162,7 @@ public class VideoServiceImpl implements VideoService {
         byte[] newSrtContent = subtitleUtils.createSrtFile(translatedItems);
 
         // 5. Upload file mới lên MinIO
-        // Tạo MultipartFile ảo hoặc upload trực tiếp byte[] (Cần sửa MinioService xíu hoặc dùng InputStream)
+        // Tạo MultipartFile ảo hoặc upload trực tiếp byte[] (Cần sửa storageService xíu hoặc dùng InputStream)
         String fileName = "subtitles/" + videoId + "_" + targetLang + "_" + System.currentTimeMillis() + ".srt";
         String newUrl = uploadBytesToMinio(newSrtContent, fileName); // Hàm helper bên dưới
 
@@ -184,7 +184,7 @@ public class VideoServiceImpl implements VideoService {
 
     private String uploadBytesToMinio(byte[] data, String objectName) {
         try {
-            return minioService.uploadStream(new ByteArrayInputStream(data), objectName, "text/plain");
+            return storageService.uploadStream(new ByteArrayInputStream(data), objectName, "text/plain");
         } catch (Exception e) {
             throw new RuntimeException("Failed to upload translated subtitle", e);
         }
@@ -308,7 +308,7 @@ public class VideoServiceImpl implements VideoService {
 
     private List<SubtitleItem> downloadAndParseSrt(String minioObjectPath) {
         try {
-            byte[] fileContent = minioService.getFile(minioObjectPath);
+            byte[] fileContent = storageService.getFile(minioObjectPath);
             return subtitleUtils.parseSrt(new ByteArrayInputStream(fileContent));
         } catch (Exception e) {
             log.error("Error parsing subtitle: {}", minioObjectPath);

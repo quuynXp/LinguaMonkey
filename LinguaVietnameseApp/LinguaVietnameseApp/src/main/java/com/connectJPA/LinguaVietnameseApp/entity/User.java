@@ -2,21 +2,21 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
-import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
+// import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
-import org.springframework.data.elasticsearch.annotations.Document;
+// import org.springframework.data.elasticsearch.annotations.Document;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
-@Document(indexName = "users")
+// @Document(indexName = "users")
 @SuperBuilder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-@EntityListeners(ElasticsearchEntityListener.class)
+// @EntityListeners(ElasticsearchEntityListener.class)
 @Entity
 @Table(name = "users")
 @AllArgsConstructor

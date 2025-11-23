@@ -16,11 +16,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.springframework.security.core.context.SecurityContextHolder; // Cần thiết
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -31,6 +33,29 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     private final EventRepository eventRepository;
     private final LessonRepository lessonRepository;
     private final VideoRepository videoRepository;
+
+    // HÀM SEARCH THAY THẾ ELASTICSEARCH
+    @Override
+    public Page<UserMemorization> searchMemorizations(String keyword, int page, int size, Map<String, Object> filters) {
+        if (keyword == null || keyword.isBlank()) {
+            return Page.empty();
+        }
+        try {
+            // Lấy userId từ Security Context để lọc ghi nhớ của riêng user đó
+            String currentUserIdString = SecurityContextHolder.getContext().getAuthentication().getName();
+            UUID currentUserId = UUID.fromString(currentUserIdString);
+
+            Pageable pageable = PageRequest.of(page, size);
+            
+            // GỌI PHƯƠNG THỨC SEARCH MỚI
+            return memorizationRepository.searchMemorizationsByKeyword(currentUserId, keyword, pageable);
+            
+        } catch (IllegalArgumentException e) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
 
     @Transactional
     @CacheEvict(value = "memorizations", key = "#request.userId")

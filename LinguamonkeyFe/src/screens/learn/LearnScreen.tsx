@@ -141,7 +141,7 @@ const LearnScreen = ({ navigation }: any) => {
     writingLoading
 
   const learningTools = [
-    { name: t("learn.vocabularyFlashcards"), icon: "style", screen: "VocabularyFlashcards" },
+    { name: t("learn.vocabularyFlashcards"), icon: "style", screen: "VocabularyFlashcardsScreen" },
     { name: t("learn.listening"), icon: "volume-up", screen: "ListeningScreen" },
     { name: t("learn.speaking"), icon: "mic", screen: "SpeakingScreen" },
     { name: t("learn.reading"), icon: "menu-book", screen: "ReadingScreen" },
@@ -151,7 +151,7 @@ const LearnScreen = ({ navigation }: any) => {
     { name: t("learn.soloQuiz"), icon: "quiz", screen: "SoloQuizScreen" },
     { name: t("learn.teamQuiz"), icon: "people", screen: "TeamQuizRoom" },
     { name: t("learn.bilingual"), icon: "language", screen: "BilingualVideoScreen" },
-    { name: t("learn.certifications"), icon: "card-membership", screen: "CertificationLearning" },
+    { name: t("learn.certifications"), icon: "card-membership", screen: "CertificationLearningScreen" },
   ]
 
   const handleRefresh = () => {
@@ -463,7 +463,6 @@ const styles = createScaledSheet({
     justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 50,
     paddingBottom: 20,
   },
   title: {

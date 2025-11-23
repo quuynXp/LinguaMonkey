@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { UserProfile, Language, Lesson } from '../types/api';
-import instance from '../api/axiosInstance';
+import instance from '../api/axiosClient';
 
 interface DailyGoal {
   completedLessons: number;

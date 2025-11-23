@@ -3,19 +3,19 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.LessonType;
-import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
+// import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.springframework.data.elasticsearch.annotations.Document;
+// import org.springframework.data.elasticsearch.annotations.Document;
 
 import java.util.List;
 import java.util.UUID;
 
 @Entity
 @Data
-@Document(indexName = "lessons")
-@EntityListeners(ElasticsearchEntityListener.class)
+// @Document(indexName = "lessons")
+// @EntityListeners(ElasticsearchEntityListener.class)
 @Table(name = "lessons")
 @SuperBuilder
 @AllArgsConstructor

@@ -3,7 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.entity.UserMedia;
 import com.connectJPA.LinguaVietnameseApp.enums.MediaType;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserMediaRepository;
-import com.connectJPA.LinguaVietnameseApp.service.MinioService;
+import com.connectJPA.LinguaVietnameseApp.service.StorageService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -17,18 +17,17 @@ import java.util.UUID;
 @RequestMapping("/api/v1/files")
 public class FileController {
 
-    private final MinioService minioService;
+    private final StorageService storageService;
     private final UserMediaRepository userMediaRepository;
 
     @PostMapping("/upload-temp")
     public ResponseEntity<?> uploadTemp(@RequestPart("file") MultipartFile file) {
-        return ResponseEntity.ok(minioService.uploadTemp(file));
+        return ResponseEntity.ok(storageService.uploadTemp(file));
     }
 
     @DeleteMapping("/temp")
     public ResponseEntity<?> deleteTemp(@RequestParam String path) {
-        // Sửa: Gọi hàm deleteFile (trong impl của bạn có tên này)
-        minioService.deleteFile(path);
+        storageService.deleteFile(path);
         return ResponseEntity.ok("Deleted");
     }
 
@@ -47,7 +46,7 @@ public class FileController {
 
         // Gán URL đầy đủ cho mỗi file trước khi trả về
         mediaList.forEach(media ->
-                media.setFileUrl(minioService.getFileUrl(media.getFilePath()))
+                media.setFileUrl(storageService.getFileUrl(media.getFilePath()))
         );
 
         return ResponseEntity.ok(mediaList);

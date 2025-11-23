@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import instance from "../api/axiosInstance";
+import instance from "../api/axiosClient";
 import {
   AppApiResponse,
   PageResponse,
@@ -245,13 +245,13 @@ export const useUsers = () => {
     });
   };
 
-  const useRegisterFcmToken = () => {
-    return useMutation({
-      mutationFn: async (req: NotificationRequest) => {
-        await instance.post<AppApiResponse<void>>(`/api/v1/users/fcm-token`, req);
-      },
-    });
-  };
+  // const useRegisterFcmToken = () => {
+  //   return useMutation({
+  //     mutationFn: async (req: NotificationRequest) => {
+  //       await instance.post<AppApiResponse<void>>(`/api/v1/users/fcm-token`, req);
+  //     },
+  //   });
+  // };
 
   const useUpdateLastActive = () => {
     return useMutation({
@@ -328,7 +328,7 @@ export const useUsers = () => {
     useUpdateNativeLanguage,
     useUpdateCountry,
     useAdmireUser,
-    useRegisterFcmToken,
+    // useRegisterFcmToken,
     useUpdateLastActive,
     useSendFriendRequest,
     useAcceptFriendRequest,

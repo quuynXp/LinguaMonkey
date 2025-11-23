@@ -2,22 +2,22 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.ContentType;
-import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
+// import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.GenericGenerator;
-import org.springframework.data.elasticsearch.annotations.Document;
+// import org.springframework.data.elasticsearch.annotations.Document;
 
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "user_memorizations")
-@Document(indexName = "user_memorizations")
+// @Document(indexName = "user_memorizations")
 @Getter
 @Setter
-@EntityListeners(ElasticsearchEntityListener.class)
+// @EntityListeners(ElasticsearchEntityListener.class)
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder

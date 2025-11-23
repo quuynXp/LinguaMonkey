@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import instance from "../api/axiosInstance";
+import instance from "../api/axiosClient";
 import {
     PageResponse,
     UserResponse,

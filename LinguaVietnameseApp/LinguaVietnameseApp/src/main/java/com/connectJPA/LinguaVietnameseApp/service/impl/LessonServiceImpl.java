@@ -24,11 +24,11 @@ import learning.QuizGenerationResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 
 import java.time.OffsetDateTime;
 import java.util.*;
@@ -59,10 +59,28 @@ public class LessonServiceImpl implements LessonService {
     private final QuizQuestionMapper quizQuestionMapper;
     private final CourseVersionLessonRepository courseVersionLessonRepository;
 
+    // =================================================================
+    // === HÀM SEARCH THAY THẾ ELASTICSEARCH ===
+    // =================================================================
+    @Override
+    public Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters) {
+        if (keyword == null || keyword.isBlank()) {
+            return Page.empty();
+        }
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            // GỌI PHƯƠNG THỨC SEARCH MỚI TRONG REPOSITORY
+            return lessonRepository.searchLessonsByKeyword(keyword, pageable);
+        } catch (Exception e) {
+            // Log lỗi và ném ra SystemException (hoặc AppException nếu bạn có định nghĩa cụ thể)
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
     @Override
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
-                                              UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
-                                              Pageable pageable) {
+                                             UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
+                                             Pageable pageable) {
         try {
             // Validate pagination
             if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
@@ -396,7 +414,7 @@ public class LessonServiceImpl implements LessonService {
             QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
                     token,
                     null, // không có userId cho team
-                    30,   // 30 câu cho team
+                    30,  // 30 câu cho team
                     "team",
                     topic
             ).get(); // .get() để chờ CompletableFuture
@@ -567,7 +585,7 @@ public class LessonServiceImpl implements LessonService {
         }
     }
 
-//    helper
+//    helper
 private int computeProgressVsUserGoal(UUID userId, Lesson lesson, float percentScore) {
     Optional<UserGoal> gOpt = userGoalRepository.findTopByUserIdAndLanguageCodeOrderByCreatedAtDesc(userId, lesson.getLanguageCode());
     if (gOpt.isEmpty()) return Math.round(percentScore);

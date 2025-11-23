@@ -1,9 +1,9 @@
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
-import instance from '../api/axiosInstance';
+import instance from '../api/axiosClient';
 import { useTokenStore } from '../stores/tokenStore';
 import { useUserStore } from '../stores/UserStore';
-import {EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, EXPO_PUBLIC_FACEBOOK_APP_ID } from "react-native-dotenv"
+import { EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID, EXPO_PUBLIC_FACEBOOK_APP_ID } from "react-native-dotenv"
 
 const GOOGLE_ANDROID_CLIENT_ID = EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID;
 const FACEBOOK_APP_ID = EXPO_PUBLIC_FACEBOOK_APP_ID || process.env.EXPO_PUBLIC_FACEBOOK_APP_ID;

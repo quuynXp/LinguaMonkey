@@ -1,6 +1,7 @@
 import { AppState, AppStateStatus } from 'react-native';
+import { API_BASE_URL } from '../api/apiConfig';
 
-const API_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'localhost:8080';
+const API_URL = API_BASE_URL;
 const KONG_SECURE_WSS_URL = `wss://${API_URL}`;
 
 interface WSMessage {

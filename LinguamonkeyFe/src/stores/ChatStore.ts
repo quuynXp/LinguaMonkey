@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { stompService } from '../services/stompService';
 import { pythonAiWsService, AiMessageCallback } from '../services/pythonAiWsService';
 import { VideoSubtitleService, DualSubtitle } from '../services/videoSubtitleService';
-import instance from '../api/axiosInstance';
+import instance from '../api/axiosClient';
 import type { ChatMessage as Message, Room } from '../types/entity';
 import type { AppApiResponse } from '../types/dto';
 

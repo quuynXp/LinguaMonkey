@@ -22,9 +22,11 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.context.SecurityContextHolder; // Import cần thiết cho Security
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -43,6 +45,31 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserFcmTokenRepository userFcmTokenRepository;
     private final UserRepository userRepository;
     private final Gson gson = new Gson();
+
+    // HÀM SEARCH THAY THẾ ELASTICSEARCH
+    @Override
+    public Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters) {
+        if (keyword == null || keyword.isBlank()) {
+            return Page.empty();
+        }
+        try {
+            // Lấy userId từ Security Context để lọc notification của riêng user đó
+            String currentUserIdString = SecurityContextHolder.getContext().getAuthentication().getName();
+            UUID currentUserId = UUID.fromString(currentUserIdString);
+            
+            Pageable pageable = PageRequest.of(page, size);
+            
+            // GỌI PHƯƠNG THỨC SEARCH MỚI
+            return notificationRepository.searchNotificationsByKeyword(currentUserId, keyword, pageable);
+            
+        } catch (IllegalArgumentException e) {
+            // Nếu UUID không hợp lệ
+            throw new AppException(ErrorCode.INVALID_KEY);
+        } catch (Exception e) {
+            log.error("Error while searching notifications: {}", e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
 
     private String getUserEmailByUserId(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId)
@@ -70,6 +97,8 @@ public class NotificationServiceImpl implements NotificationService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+    
+    // [Các phương thức khác giữ nguyên]...
 
     @Override
     @Cacheable(value = "notifications", key = "#userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")

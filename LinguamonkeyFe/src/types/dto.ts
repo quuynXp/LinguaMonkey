@@ -55,6 +55,57 @@ export interface BadgeRequest {
     criteriaThreshold: number;
 }
 
+// Add these to your existing dto.ts file
+
+export interface StreamingChunk {
+    type: 'metadata' | 'chunk' | 'suggestion' | 'final' | 'error';
+    feedback: string;
+    score?: number;
+    word_analysis?: {
+        word: string;
+        spoken: string;
+        word_score: number;
+        is_correct: boolean;
+    };
+    metadata?: {
+        accuracy_score: number;
+        fluency_score: number;
+        error_count: number;
+    };
+}
+
+export interface WordFeedback {
+    word: string;
+    spoken: string;
+    score: number;
+    isCorrect: boolean;
+    suggestion?: string;
+}
+
+export interface FinalResult {
+    overall_score: number;
+    accuracy_score: number;
+    fluency_score: number;
+    error_count: number;
+    feedback: string;
+}
+
+export interface SpeakingSentence {
+    id: string;
+    text: string;
+    phonetic: string;
+    difficulty: 'easy' | 'medium' | 'hard';
+    categoryId: string;
+    audioUrl?: string;
+}
+
+export interface SpeakingCategory {
+    id: string;
+    name: string;
+    icon: string;
+    color: string;
+}
+
 export interface BasicLessonRequest {
     languageCode: string;
     lessonType: string; // Enum string?

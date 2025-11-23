@@ -12,7 +12,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import instance from '../../api/axiosInstance';
+import instance from '../../api/axiosClient';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { pickSingleDocument, PickedDocument } from '../../utils/documentPickerHelper';
 

@@ -4,7 +4,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
 import { useAppStore, CallPreferences } from "../../stores/appStore" // IMPORT CallPreferences type từ store
-import instance from "../../api/axiosInstance"
+import instance from "../../api/axiosClient"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"

@@ -1,6 +1,7 @@
 import { useTokenStore } from "../stores/tokenStore";
+import { API_BASE_URL } from "../api/apiConfig";
 
-const KONG_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.0.2.2:8000";
+const KONG_BASE_URL = API_BASE_URL;
 const WS_URL = KONG_BASE_URL.replace(/^http/, 'ws');
 
 export interface DualSubtitle {

@@ -16,11 +16,12 @@ import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.OffsetDateTime; // <-- Thêm import này
+import java.time.OffsetDateTime; 
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 
 import java.time.OffsetDateTime;
@@ -54,6 +55,22 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             });
         } catch (Exception e) {
             log.error("Error while fetching messages for room ID {}: {}", roomId, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    // THÊM: Phương thức tìm kiếm tin nhắn thay thế ES
+    @Override
+    public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
+        if (keyword == null || keyword.isBlank()) {
+            // Nếu không có keyword, trả về trang trống
+            return Page.empty();
+        }
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            return chatMessageRepository.searchMessagesByKeyword(keyword, roomId, pageable);
+        } catch (Exception e) {
+            log.error("Error while searching messages with keyword: {}", keyword, e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

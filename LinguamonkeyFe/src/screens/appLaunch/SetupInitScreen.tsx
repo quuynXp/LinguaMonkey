@@ -1,10 +1,10 @@
 import * as Localization from "expo-localization"
 import { useEffect, useRef, useState } from "react"
-import { Alert, Animated, ScrollView, Text, TextInput, TouchableOpacity, View, FlatList } from "react-native"
+import { Alert, Animated, ScrollView, Text, TextInput, TouchableOpacity, View, FlatList, Image } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Character3D, Language, Interest, Country, LearningPace, CreateUserPayload, languageToCountry } from "../../types/api"
-import instance from "../../api/axiosInstance"
-import ModelViewer from "../../components/ModelViewer"
+import instance from "../../api/axiosClient"
+// import ModelViewer from "../../components/ModelViewer" // BỎ IMPORT MODELVIEWER
 import CountryFlag from "react-native-country-flag"
 import { useTranslation } from "react-i18next"
 import { gotoTab } from "../../utils/navigationRef";
@@ -198,7 +198,8 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }, [])
 
   useEffect(() => {
-    if (characters.length && !selectedCharacter) setSelectedCharacter(characters[0])
+    // Bỏ logic tự động chọn nhân vật đầu tiên
+    // if (characters.length && !selectedCharacter) setSelectedCharacter(characters[0])
   }, [characters])
 
   useEffect(() => {
@@ -231,7 +232,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     }
 
     // Set default selections
-    if (characters.length > 0) setSelectedCharacter(characters[0])
+    // if (characters.length > 0) setSelectedCharacter(characters[0]) // BỎ: Không tự động chọn
     if (interests.length > 0) setSelectedInterests([interests[0].interestId])
     if (learningGoals.length > 0) setLearningGoalsSelected(["conversation"])
     setLearningPace("slow")
@@ -286,10 +287,11 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }
 
   const handleNext = async () => {
-    if (currentStep === 1 && !selectedCharacter) {
-      Alert.alert(t("error.title"), t("error.characterRequired"))
-      return
-    }
+    // XÓA LOGIC VALIDATION BẮT BUỘC CHỌN CHARACTER Ở STEP 1
+    // if (currentStep === 1 && !selectedCharacter) {
+    //   Alert.alert(t("error.title"), t("error.characterRequired"))
+    //   return
+    // }
     if (currentStep === 2) {
       if (!accountName.trim()) {
         Alert.alert(t("error.title"), t("error.nameRequired"))
@@ -532,26 +534,29 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
       <FlatList
         data={characters}
-        numColumns={2} // 2 nhân vật mỗi hàng
+        numColumns={2}
         keyExtractor={(item) => item.character3dId}
         columnWrapperStyle={styles.charactersRow} // căn đều 2 item mỗi row
         renderItem={({ item }) => (
-          <View
+          <TouchableOpacity
+            key={item.character3dId}
             style={[
               styles.characterCard,
               selectedCharacter?.character3dId === item.character3dId && styles.characterCardSelected
             ]}
+            onPress={() => setSelectedCharacter(item)} // Dùng TouchableOpacity để bọc card
           >
             {item.modelUrl && typeof item.modelUrl === 'string' ? (
-              <ModelViewer
-                modelUrl={item.modelUrl}
-                onTap={() => setSelectedCharacter(item)}
+              <Image
+                source={{ uri: item.modelUrl }}
+                style={styles.characterImage} // Style mới cho Image
+                resizeMode="contain"
               />
             ) : (
-              // Hiển thị một placeholder nếu không có model
+              // Hiển thị một placeholder nếu không có URL ảnh
               <View style={styles.modelPlaceholder}>
-                <Icon name="broken-image" size={40} color="#9CA3AF" />
-                <Text style={styles.modelErrorText}>No Model</Text>
+                <Icon name="image" size={40} color="#9CA3AF" />
+                <Text style={styles.modelErrorText}>No Image</Text>
               </View>
             )}
             <Text style={styles.characterName}>{item.character3dName}</Text>
@@ -562,7 +567,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
                 <Icon name="check-circle" size={20} color="#10B981" />
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         )}
         contentContainerStyle={styles.charactersGrid}
       />
@@ -1067,10 +1072,18 @@ const styles = createScaledSheet({
     borderRadius: 12,
     padding: 12,
     alignItems: "center",
+    borderWidth: 2, // Thêm border để mô phỏng trạng thái chọn
+    borderColor: "#E5E7EB",
   },
   characterCardSelected: {
     borderColor: "#10B981",
     backgroundColor: "#F0FDF4",
+  },
+  characterImage: {
+    height: 150, // Chiều cao cố định cho ảnh
+    width: '100%',
+    borderRadius: 8,
+    marginBottom: 8,
   },
   characterName: {
     fontSize: 16,
@@ -1088,10 +1101,10 @@ const styles = createScaledSheet({
     right: 8,
   },
   inputContainer: {
-    marginBottom: 18, // slightly smaller so sections don't feel too tall and reduce overlap risk
+    marginBottom: 18,
   },
   nativeContainer: {
-    marginTop: 6, // ensure native language block doesn't sit tight on the previous block
+    marginTop: 6,
   },
   inputLabel: {
     fontSize: 16,
@@ -1118,7 +1131,7 @@ const styles = createScaledSheet({
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     paddingHorizontal: 10,
-    paddingVertical: 6, // reduce vertical padding so chips are not too tall
+    paddingVertical: 6,
     marginRight: 8,
     borderWidth: 1,
     borderColor: "#D1D5DB",
@@ -1173,7 +1186,7 @@ const styles = createScaledSheet({
     width: "30%",
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 6, // reduce vertical padding to avoid text dropping
+    paddingVertical: 6,
     paddingHorizontal: 8,
     borderRadius: 8,
     borderWidth: 1,
@@ -1415,12 +1428,13 @@ const styles = createScaledSheet({
     fontWeight: "600",
   },
   modelPlaceholder: {
-    height: 150, // Đặt chiều cao tương tự ModelViewer
+    height: 150, // Đặt chiều cao tương tự cho placeholder ảnh
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#F3F4F6', // Màu nền xám nhạt
+    backgroundColor: '#F3F4F6',
     borderRadius: 8,
+    marginBottom: 8,
   },
   modelErrorText: {
     fontSize: 12,

@@ -1,4 +1,4 @@
-// import instance from "../api/axiosInstance";
+// import instance from "../api/axiosClient";
 
 // // Hàm tiện ích để chuyển Date object thành chuỗi yyyy-MM-dd
 // const formatDateParam = (date?: Date): string | undefined => {
@@ -302,7 +302,7 @@
 //   return res.data.result;
 // };
 
-import instance from "../api/axiosInstance";
+import instance from "../api/axiosClient";
 
 const formatDateParam = (date?: Date): string | undefined => {
   if (date instanceof Date && !isNaN(date.getTime())) {

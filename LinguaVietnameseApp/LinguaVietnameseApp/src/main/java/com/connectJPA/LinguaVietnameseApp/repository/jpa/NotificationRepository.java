@@ -25,4 +25,19 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Modifying
     @Query("UPDATE Notification n SET n.isDeleted = true, n.deletedAt = CURRENT_TIMESTAMP WHERE n.notificationId = :id AND n.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
+
+    /**
+     * THÊM: Phương thức tìm kiếm Notification thay thế Elasticsearch.
+     * Tìm kiếm theo keyword trong title hoặc content, có lọc theo userId.
+     */
+    @Query("SELECT n FROM Notification n WHERE " +
+            "n.userId = :userId AND " +
+            "(LOWER(n.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(n.content) LIKE LOWER(CONCAT('%', :keyword, '%'))) AND " +
+            "n.isDeleted = false " +
+            "ORDER BY n.createdAt DESC")
+    Page<Notification> searchNotificationsByKeyword(
+            @Param("userId") UUID userId, 
+            @Param("keyword") String keyword, 
+            Pageable pageable);
 }

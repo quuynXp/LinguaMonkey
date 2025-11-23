@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { UserResponse, Character3dResponse } from '../types/dto';
-import instance from '../api/axiosInstance';
+import instance from '../api/axiosClient';
 
 interface DailyGoal {
   completedLessons: number;
@@ -18,7 +18,9 @@ interface UploadFile {
 interface UserState {
   user: UserResponse | null;
   isAuthenticated: boolean;
-
+  fcmToken: string | null;
+  deviceId: string | null;
+  isTokenRegistered: boolean;
   name: string;
   streak: number;
   level?: number;
@@ -34,13 +36,14 @@ interface UserState {
   badges: string[];
   character3dId?: string;
   authProvider?: string;
-
   languages: string[];
   dailyGoal: DailyGoal;
   statusMessage: string;
   hasDonePlacementTest?: boolean;
 
-  // ACTIONS
+  setToken: (token: string) => void;
+  setDeviceId: (id: string) => void;
+  setTokenRegistered: (isRegistered: boolean) => void;
   setUser: (user: UserResponse | null, detectedLanguage?: string) => void;
   setAuthenticated: (authenticated: boolean) => void;
   setProfileData: (data: Partial<UserState>) => void;
@@ -68,9 +71,15 @@ const defaultUserState: Omit<UserState, keyof {
   updateUserAvatar: any;
   setLocalNativeLanguage: any;
   updateNativeLanguageOnServer: any;
+  setToken: any;
+  setDeviceId: any;
+  setTokenRegistered: any;
 }> = {
   user: null,
   isAuthenticated: false,
+  fcmToken: null,
+  deviceId: null,
+  isTokenRegistered: false,
   name: '',
   streak: 0,
   level: undefined,
@@ -92,14 +101,46 @@ const defaultUserState: Omit<UserState, keyof {
   hasDonePlacementTest: undefined,
 };
 
+const getInitialState = (): Partial<UserState> => ({
+  user: null,
+  isAuthenticated: false,
+  fcmToken: null,
+  deviceId: null,
+  isTokenRegistered: false,
+  name: '',
+  streak: 0,
+  level: undefined,
+  exp: undefined,
+  expToNextLevel: undefined,
+  avatarUrl: undefined,
+  bio: undefined,
+  phone: undefined,
+  country: undefined,
+  progress: undefined,
+  nativeLanguageId: undefined,
+  badgeId: undefined,
+  character3dId: undefined,
+  authProvider: undefined,
+  badges: [],
+  languages: [],
+  dailyGoal: { completedLessons: 0, totalLessons: 0 },
+  statusMessage: '',
+  hasDonePlacementTest: undefined,
+});
+
+
 export const useUserStore = create<UserState>()(
   persist(
     (set, get) => ({
       ...defaultUserState,
 
+      setToken: (token) => set({ fcmToken: token, isTokenRegistered: false }),
+      setDeviceId: (id) => set({ deviceId: id }),
+      setTokenRegistered: (isRegistered) => set({ isTokenRegistered: isRegistered }),
+
       setUser: (user, detectedLanguage) => {
         if (!user) {
-          set(defaultUserState);
+          set(getInitialState() as UserState);
           return;
         }
 
@@ -140,7 +181,7 @@ export const useUserStore = create<UserState>()(
       setAuthenticated: (authenticated) => set({ isAuthenticated: authenticated }),
       setProfileData: (data) => set((state) => ({ ...state, ...data })),
       setHasDonePlacementTest: (value) => set({ hasDonePlacementTest: value }),
-      logout: () => set(defaultUserState),
+      logout: () => set(getInitialState() as UserState),
 
       setLocalNativeLanguage: (languageId: string) => {
         set({ nativeLanguageId: languageId });
@@ -262,6 +303,8 @@ export const useUserStore = create<UserState>()(
       partialize: (state) => ({
         user: state.user,
         isAuthenticated: state.isAuthenticated,
+        fcmToken: state.fcmToken,
+        deviceId: state.deviceId,
         name: state.name,
         streak: state.streak,
         level: state.level,

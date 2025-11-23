@@ -74,7 +74,7 @@ public class UserServiceImpl implements UserService {
     private final CoupleService coupleService;
     private final EventService eventService;
     private final DatingInviteRepository datingInviteRepository;
-    private final MinioService minioService;
+    private final StorageService storageService;
     private final UserFcmTokenRepository userFcmTokenRepository;
 
     // --- CÁC DEPENDENCIES MỚI ĐỂ LẤY FULL RESPONSE ---
@@ -190,6 +190,20 @@ public class UserServiceImpl implements UserService {
         }
 
         return response;
+    }
+
+    @Override
+    public Page<User> searchUsers(String keyword, int page, int size) {
+        if (keyword == null || keyword.isBlank()) {
+            return Page.empty(); 
+        }
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            return userRepository.searchUsersByKeyword(keyword, pageable);
+        } catch (Exception e) {
+            log.error("Error while searching users with keyword: {}", keyword, e);
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
     }
 
     @Override
@@ -1019,9 +1033,9 @@ public class UserServiceImpl implements UserService {
                     timestamp,
                     originalFilename);
 
-            // 2. Gọi MinioService.commit
+            // 2. Gọi storageService.commit
             // Hàm này sẽ: Di chuyển file (temp -> newPath), Xóa temp, Lưu UserMedia
-            UserMedia committedMedia = minioService.commit(
+            UserMedia committedMedia = storageService.commit(
                     tempPath,
                     newPath,
                     userId,
@@ -1029,7 +1043,7 @@ public class UserServiceImpl implements UserService {
             );
 
             // 3. Cập nhật user
-            // committedMedia.getFileUrl() đã được set trong MinioServiceImpl
+            // committedMedia.getFileUrl() đã được set trong storageService
             user.setAvatarUrl(committedMedia.getFileUrl());
             User savedUser = userRepository.save(user);
 

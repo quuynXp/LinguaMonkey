@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.ChatMessage; // Cần import
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -20,4 +21,6 @@ public interface ChatMessageService {
     ChatStatsResponse getStatsByUser(UUID userId);
     ChatMessageResponse saveTranslation(UUID messageId, String targetLang, String translatedText);
     ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request);
+
+    Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size);
 }

@@ -2,9 +2,11 @@ package com.connectJPA.LinguaVietnameseApp.service;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.NotificationResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.Notification;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
+import java.util.Map;
 import java.util.UUID;
 
 public interface NotificationService {
@@ -24,4 +26,7 @@ public interface NotificationService {
     void sendVerifyAccountNotification(UUID userId, String verifyLink);
     void sendInactivityWarningNotification(UUID userId, int days);
     void sendStreakRewardNotification(UUID userId, int streakDays);
+    
+    // THÊM: Phương thức tìm kiếm
+    Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters);
 }

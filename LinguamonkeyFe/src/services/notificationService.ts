@@ -2,8 +2,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
-import instance from '../api/axiosInstance';
 import { useAppStore } from '../stores/appStore';
+import instance from "./../api/axiosClient";
 import messaging, {
   requestPermission,
   getToken
@@ -32,7 +32,6 @@ export interface NotificationPreferences {
 }
 
 const STORAGE_KEY = 'notification-preferences';
-// const EXPO_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID; 
 
 if (Platform.OS === 'android') {
   Notifications.setNotificationChannelAsync('default_channel_id', {
@@ -81,6 +80,24 @@ class NotificationService {
     this.loadPreferences();
   }
 
+  // KHÔNG SỬ DỤNG ASYNCSTORAGE cho deviceId/fcmToken trong service này.
+  // Chỉ lấy Device ID và lưu vào Store nếu chưa có.
+  async getDeviceId(): Promise<string> {
+    const store = useUserStore.getState();
+    let deviceId = store.deviceId;
+
+    if (!deviceId) {
+      // Lấy ID duy nhất của thiết bị, dùng fallback 'unknown_device'
+      deviceId = Device.osInternalBuildId || Device.osBuildId || 'unknown_device';
+
+      // Lưu lại vào store (GIẢ ĐỊNH useUserStore CÓ setDeviceId)
+      if (store.setDeviceId) {
+        store.setDeviceId(deviceId);
+      }
+    }
+    return deviceId;
+  }
+
   async requestFirebasePermissions(): Promise<boolean> {
     const authStatus = await requestPermission(messaging());
     const enabled =
@@ -106,21 +123,34 @@ class NotificationService {
   }
 
   async registerTokenToBackend() {
-    const fcmToken = await this.getFcmToken();
-    if (!fcmToken) {
-      console.log('Could not get FCM token, skipping registration.');
-      return;
-    }
+    const store = useUserStore.getState();
+    const userId = store.user?.userId;
 
-    const userId = useUserStore.getState().user?.userId;
     if (!userId) {
       console.log('User not logged in, skipping token registration.');
       return;
     }
 
-    try {
-      const deviceId = Device.osInternalBuildId || Device.osBuildId || 'unknown_device';
+    // Lấy token và deviceId mới nhất
+    const fcmToken = await this.getFcmToken();
+    const deviceId = await this.getDeviceId();
 
+    if (!fcmToken || !deviceId) {
+      console.log('FCM token or Device ID is missing, skipping registration.');
+      return;
+    }
+
+    // BƯỚC 1: LƯU TRỮ/CẬP NHẬT DỮ LIỆU VÀO STORE TRƯỚC
+    if (store.setToken) store.setToken(fcmToken);
+    if (store.setDeviceId) store.setDeviceId(deviceId);
+
+    // BƯỚC 2: KIỂM TRA ĐÃ ĐĂNG KÝ CHƯA ĐỂ TRÁNH GỌI API THỪA
+    if (store.fcmToken === fcmToken && store.deviceId === deviceId && store.isTokenRegistered) {
+      console.log('FCM Token already registered to backend for this device.');
+      return;
+    }
+
+    try {
       await instance.post('/api/v1/users/fcm-token', {
         fcmToken: fcmToken,
         userId: userId,
@@ -128,10 +158,40 @@ class NotificationService {
       });
 
       console.log('FCM Token registered to backend successfully.');
+      // BƯỚC 3: CẬP NHẬT FLAG THÀNH CÔNG VÀO STORE
+      if (store.setTokenRegistered) store.setTokenRegistered(true);
+
     } catch (error) {
       console.error('Error registering FCM token to backend:', error);
+      if (store.setTokenRegistered) store.setTokenRegistered(false);
     }
   }
+
+  // HÀM MỚI: XÓA TOKEN KHI LOGOUT TRÊN MỘT THIẾT BỊ
+  async deleteTokenFromBackend() {
+    const { user, deviceId } = useUserStore.getState();
+
+    if (!user?.userId || !deviceId) {
+      console.log('Cannot delete FCM token: User not logged in or Device ID missing in store.');
+      return;
+    }
+
+    try {
+      // GỌI ENDPOINT DELETE
+      await instance.delete('/api/v1/users/fcm-token', {
+        params: {
+          userId: user.userId,
+          deviceId: deviceId
+        }
+      });
+      console.log('FCM Token deleted from backend successfully for device:', deviceId);
+
+    } catch (error) {
+      console.error('Failed to delete FCM token on logout:', error);
+    }
+    // LƯU Ý: Hàm logout trong authService sẽ tự động gọi useUserStore.getState().logout() để reset state local.
+  }
+  // KẾT THÚC LOGIC FCM/DEVICE
 
 
   async sendLocalNotification(title: string, body: string, data?: object): Promise<void> {
@@ -256,17 +316,17 @@ class NotificationService {
   }
 
   // async sendMessageNotification(sender: string, message: string, chatId: string, receiverId: string): Promise<void> {
-  //   try {
-  //     await instance.post('/api/v1/notifications/send-message', { // Giả sử bạn có endpoint này
-  //       senderId: useUserStore.getState().user?.userId,
-  //       receiverId: receiverId,
-  //       title: `New Message from ${sender}`,
-  //       content: message,
-  //       payload: `{"screen":"Chat", "stackScreen":"ChatDetail", "chatId":"${chatId}"}`
-  //     });
-  //   } catch (error) {
-  //     console.error('Error triggering message notification:', error);
-  //   }
+  //   try {
+  //     await instance.post('/api/v1/notifications/send-message', { // Giả sử bạn có endpoint này
+  //       senderId: useUserStore.getState().user?.userId,
+  //       receiverId: receiverId,
+  //       title: `New Message from ${sender}`,
+  //       content: message,
+  //       payload: `{"screen":"Chat", "stackScreen":"ChatDetail", "chatId":"${chatId}"}`
+  //     });
+  //   } catch (error) {
+  //     console.error('Error triggering message notification:', error);
+  //   }
   // }
 
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {

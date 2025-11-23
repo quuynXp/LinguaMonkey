@@ -1,12 +1,12 @@
-import instance from "../api/axiosInstance";
+import instance from "../api/axiosClient";
 
 // teacher overview
 export const getTeacherOverview = async (params: {
   teacherId: string;
   startDate?: Date;
   endDate?: Date;
-  aggregate?: "day"|"week"|"month";
-  period?: "week"|"month"|"year";
+  aggregate?: "day" | "week" | "month";
+  period?: "week" | "month" | "year";
 }) => {
   const formatted: any = {};
   if (params.teacherId) formatted.teacherId = params.teacherId;
@@ -24,8 +24,8 @@ export const getTeacherCoursesPerformance = async (params: {
   teacherId: string;
   startDate?: Date;
   endDate?: Date;
-  aggregate?: "day"|"week"|"month";
-  period?: "week"|"month"|"year";
+  aggregate?: "day" | "week" | "month";
+  period?: "week" | "month" | "year";
 }) => {
   const formatted: any = {};
   if (params.teacherId) formatted.teacherId = params.teacherId;
@@ -58,7 +58,7 @@ export const getTeacherCourseRevenue = async (courseId: string, params: {
   teacherId?: string;
   startDate?: Date;
   endDate?: Date;
-  aggregate?: "day"|"week"|"month";
+  aggregate?: "day" | "week" | "month";
 }) => {
   const formatted: any = {};
   if (params.teacherId) formatted.teacherId = params.teacherId;

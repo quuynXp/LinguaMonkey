@@ -8,6 +8,7 @@ import lombok.experimental.FieldDefaults;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@Setter
 public class MoveRequest {
     private String fromPublicId;
     private String toPublicId;

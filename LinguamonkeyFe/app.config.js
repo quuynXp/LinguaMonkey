@@ -1,14 +1,14 @@
 import "dotenv/config";
 
-const getEnvVars = (env = process.env.APP_VARIANT) => {
-  return {
-    apiUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
-  };
-};
+// Tự động lấy tất cả biến EXPO_PUBLIC_* từ .env để truyền vào Constants.expoConfig.extra
+const EXPO_ENV_VARS = Object.keys(process.env)
+  .filter((key) => key.startsWith("EXPO_PUBLIC_"))
+  .reduce((acc, key) => {
+    acc[key] = process.env[key];
+    return acc;
+  }, {});
 
 export default ({ config }) => {
-  const envVars = getEnvVars();
-
   return {
     ...config,
     expo: {
@@ -101,8 +101,7 @@ export default ({ config }) => {
         eas: {
           projectId: "ed8fe959-8841-4ea7-a53e-62273a0f3b13",
         },
-        ...envVars,
-        apiUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
+        ...EXPO_ENV_VARS,
       },
     },
   };

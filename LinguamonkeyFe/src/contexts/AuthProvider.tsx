@@ -1,5 +1,5 @@
 // import React, { createContext, ReactNode, useEffect, useState } from 'react';
-// import axiosInstance from '../api/axiosInstance';
+// import axiosInstance from '../api/axiosClient';
 // import { useTokenStore } from '../stores/tokenStore';
 // interface AuthContextProps {
 //   isAuthenticated: boolean;

@@ -3,12 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Animated, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { showError, showSuccess } from "../../utils/toastHelper";
-import {
-  loginWithEmail,
-  requestOtp,
-  handleGoogleLogin as serviceHandleGoogle,
-  handleFacebookLogin as serviceHandleFacebook
-} from '../../services/authService';
+import { authService } from '../../services/authService';
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
@@ -66,14 +61,14 @@ const LoginScreen = ({ navigation }) => {
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { id_token } = googleResponse.params;
-      if (id_token) handleSocialLogin(serviceHandleGoogle(id_token));
+      if (id_token) handleSocialLogin(authService.handleGoogleLogin(id_token));
     }
   }, [googleResponse]);
 
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { access_token } = fbResponse.params;
-      if (access_token) handleSocialLogin(serviceHandleFacebook(access_token));
+      if (access_token) handleSocialLogin(authService.handleFacebookLogin(access_token));
     }
   }, [fbResponse]);
 
@@ -107,7 +102,7 @@ const LoginScreen = ({ navigation }) => {
     }
     setIsLoading(true);
     try {
-      const result = await loginWithEmail(email, password);
+      const result = await authService.loginWithEmail(email, password);
       if (result) showSuccess(t("loginSuccess"));
       else showError(t("loginFailed"));
     } catch (err) {
@@ -120,7 +115,7 @@ const LoginScreen = ({ navigation }) => {
   const handleRequestOtp = async (identifier) => {
     setIsLoading(true);
     try {
-      const success = await requestOtp(identifier);
+      const success = await authService.requestOtp(identifier);
       if (success) {
         showSuccess(t("otpSentSuccess"));
         navigation.navigate('VerifyOtpScreen', { identifier: identifier });
@@ -316,7 +311,7 @@ const LoginScreen = ({ navigation }) => {
 };
 
 const styles = createScaledSheet({
-  content: { flex: 1, paddingHorizontal: 24, paddingTop: 12 }, // Adjusted padding since ScreenLayout handles top inset
+  content: { flex: 1, paddingHorizontal: 24, paddingTop: 12 },
   header: { marginBottom: 20 },
   title: { fontSize: 28, fontWeight: "bold", color: "#1F2937", textAlign: "center", marginBottom: 8 },
   subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center", marginBottom: 30, lineHeight: 24 },

@@ -8,8 +8,8 @@ import { useTranslation } from "react-i18next"
 import { useAppStore } from "../../stores/appStore"
 import { useToast } from "../../hooks/useToast"
 import { formatDateTime } from "../../utils/timeHelper"
-import instance from "../../api/axiosInstance"
-import {} from "../../types/api"
+import instance from "../../api/axiosClient"
+import { } from "../../types/api"
 
 interface StudyRoom {
   id: string
@@ -464,9 +464,9 @@ const GroupStudyScreen = ({ navigation }) => {
                           {
                             scale: iconAnimations[icon.id]
                               ? iconAnimations[icon.id].interpolate({
-                                  inputRange: [0, 1],
-                                  outputRange: [1, 1.5],
-                                })
+                                inputRange: [0, 1],
+                                outputRange: [1, 1.5],
+                              })
                               : 1,
                           },
                         ],
@@ -528,9 +528,9 @@ const GroupStudyScreen = ({ navigation }) => {
                   selectedAnswer === index && styles.selectedQuizOption,
                   showExplanation && index === currentQuestion.correctAnswer && styles.correctQuizOption,
                   showExplanation &&
-                    selectedAnswer === index &&
-                    selectedAnswer !== currentQuestion.correctAnswer &&
-                    styles.incorrectQuizOption,
+                  selectedAnswer === index &&
+                  selectedAnswer !== currentQuestion.correctAnswer &&
+                  styles.incorrectQuizOption,
                 ]}
                 onPress={() => handleAnswerSelect(index)}
                 disabled={showExplanation}

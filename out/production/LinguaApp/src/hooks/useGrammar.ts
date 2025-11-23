@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import instance from "../api/axiosInstance"
+import instance from "../api/axiosClient"
 import type { GrammarRule, GrammarTopic } from "../types/api"
 
 export const useGrammar = () => {

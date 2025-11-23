@@ -1,65 +1,82 @@
-import instance from '../api/axiosInstance';
-import { useUserStore } from '../stores/UserStore';
-// import {EXPO_PUBLIC_CLOUDINARY_API_UPLOAD, EXPO_PUBLIC_CLOUDINARY_PRESET } from "react-native-dotenv"
-import {MediaType, UserMedia  } from "../types/api"
+// import instance from '../api/axiosClient';
+// import { useUserStore } from '../stores/UserStore';
+// import { MediaType, UserMedia } from "../types/api"
 
-// const CLOUDINARY_API_UPLOAD = EXPO_PUBLIC_CLOUDINARY_API_UPLOAD || process.env.EXPO_PUBLIC_CLOUDINARY_API_UPLOAD;
-// const CLOUDINARY_PRESET = EXPO_PUBLIC_CLOUDINARY_PRESET || process.env.EXPO_PUBLIC_CLOUDINARY_PRESET;
+// const CLOUDINARY_API_UPLOAD = process.env.EXPO_PUBLIC_CLOUDINARY_API_UPLOAD;
+// const CLOUDINARY_PRESET = process.env.EXPO_PUBLIC_CLOUDINARY_PRESET;
 
-// export async function uploadAvatarToTemp(file: { uri: string; name: string; type: string }) {
+// /**
+//  * Upload file trực tiếp lên Cloudinary.
+//  * Trả về secureUrl và publicId.
+//  */
+// export async function uploadTemp(file: { uri: string; name: string; type: string }) {
+//   if (!CLOUDINARY_API_UPLOAD || !CLOUDINARY_PRESET) {
+//     throw new Error("Missing Cloudinary API configuration.");
+//   }
+
 //   const form = new FormData();
 //   form.append("file", {
 //     uri: file.uri,
 //     type: file.type,
 //     name: file.name,
 //   } as any);
-//   form.append("upload_preset", CLOUDINARY_PRESET!);
-//   form.append("folder", "my-folder");
+//   form.append("upload_preset", CLOUDINARY_PRESET);
+//   form.append("folder", "linguaviet/temp"); // Sử dụng folder temp đã định nghĩa ở backend
 
 //   try {
 //     const res = await fetch(CLOUDINARY_API_UPLOAD, {
 //       method: "POST",
 //       body: form,
 //       headers: {
+//         // Cloudinary tự nhận diện, nhưng nên giữ Content-Type
 //         "Content-Type": "multipart/form-data",
 //       },
 //     });
 
 //     if (!res.ok) {
 //       const t = await res.text();
-//       console.log("Upload failed");
+//       console.error("Cloudinary upload failed", t);
 //       throw new Error(`Upload failed: ${res.status} ${t}`);
 //     }
 
 //     const data = await res.json();
-//     console.log("Cloudinary upload success:", data);
 
-//     return {
-//       secureUrl: data.secure_url,
-//       publicId: data.public_id,
-//     };
+//     // Trả về Public ID để backend COMMIT
+//     return data.public_id as string;
 //   } catch (err) {
 //     console.error("Upload error", err);
 //     throw err;
 //   }
 // }
 
-
-// async function saveAvatarUrl(userId: string, avatarUrl: string) {
-//   try {
-//     const res = await instance.patch(`/users/${userId}/avatar`, null, {
-//       params: { avatarUrl }, // backend đang nhận @RequestParam
-//     });
-//     return res.data;
-//   } catch (err: any) {
-//     console.error('Save avatar URL fail:', err.response?.data || err.message);
-//     throw err;
-//   }
+// /**
+//  * Gọi khi user Hủy (Cancel) hoặc sau khi Commit xong.
+//  * Xóa file khỏi thư mục temp (Cloudinary).
+//  * Backend sẽ nhận Public ID thay vì path.
+//  */
+// export async function deleteTempFile(publicId: string) {
+//   // Gọi endpoint backend để xóa file theo Public ID
+//   const res = await instance.delete("/files/temp", {
+//     params: { publicId }, // Backend phải được sửa để nhận 'publicId'
+//   });
+//   return res.data;
 // }
 
+// export async function getUserMedia(userId: string, mediaType?: MediaType) {
+//   const res = await instance.get("/files/user/" + userId, {
+//     params: mediaType ? { type: mediaType } : {},
+//   });
+//   // Frontend nhận về UserMedia, trong đó fileUrl đã là URL công cộng của Cloudinary
+//   return res.data as UserMedia[];
+// }
+
+import instance from '../api/axiosClient';
+import { useUserStore } from '../stores/UserStore';
+import { MediaType, UserMedia } from "../types/api"
+
 /**
- * Bước 1: Upload file lên server (thư mục temp).
- * Trả về string là tempPath (VD: "temp/123_avatar.jpg")
+ * Bước 1: Upload file lên Server qua API /files/upload-temp.
+ * Server (Backend) sẽ đảm nhiệm việc đẩy file lên Cloudinary và trả về Public ID.
  */
 export async function uploadTemp(file: { uri: string; name: string; type: string }) {
   const form = new FormData();
@@ -68,26 +85,31 @@ export async function uploadTemp(file: { uri: string; name: string; type: string
     type: file.type,
     name: file.name,
   } as any);
-  
-  // Endpoint này TRẢ VỀ STRING (tempPath)
-  const res = await instance.post("/files/upload-temp", form, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
-  return res.data as string;
+
+  try {
+    const res = await instance.post("/files/upload-temp", form, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    return res.data as string;
+  } catch (err) {
+    console.error("Upload via Backend failed", err);
+    throw err;
+  }
 }
 
 /**
- * (Tùy chọn) Gọi khi user Hủy (Cancel)
- * Xóa file khỏi thư mục temp
+ * Gọi khi user Hủy (Cancel) hoặc sau khi Commit xong.
+ * Xóa file trên Cloudinary bằng Public ID.
+ * Backend FileController hiện tại đang nhận tham số là 'path'.
  */
-export async function deleteTempFile(path: string) {
+export async function deleteTempFile(publicId: string) {
   const res = await instance.delete("/files/temp", {
-    params: { path },
+    params: { path: publicId },
   });
   return res.data;
 }
 
-export async function getUserMedia(userId: string, mediaType?: MediaType) { // **SỬA: userId: string**
+export async function getUserMedia(userId: string, mediaType?: MediaType) {
   const res = await instance.get("/files/user/" + userId, {
     params: mediaType ? { type: mediaType } : {},
   });

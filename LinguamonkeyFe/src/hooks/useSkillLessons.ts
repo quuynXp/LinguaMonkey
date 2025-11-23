@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import instance from "../api/axiosInstance";
+import instance from "../api/axiosClient";
 import {
     AppApiResponse,
-    ListeningResponse, // <--- ĐÃ SỬA: Dùng đúng tên DTO trong Controller
+    ListeningResponse,
     PronunciationResponseBody,
     ReadingResponse,
     WritingResponseBody,
@@ -12,6 +12,31 @@ import {
 
 const SKILL_API_BASE = "/api/v1/skill-lessons";
 
+export interface StreamingChunk {
+    type: "metadata" | "chunk" | "suggestion" | "final" | "error";
+    feedback: string;
+    score?: number;
+    word_analysis?: {
+        word: string;
+        spoken: string;
+        word_score: number;
+        is_correct: boolean;
+    };
+    metadata?: {
+        accuracy_score: number;
+        fluency_score: number;
+        error_count: number;
+    };
+}
+
+export interface WordFeedback {
+    word: string;
+    spoken: string;
+    score: number;
+    isCorrect: boolean;
+    suggestion?: string;
+}
+
 export const useSkillLessons = () => {
     const queryClient = useQueryClient();
 
@@ -19,7 +44,6 @@ export const useSkillLessons = () => {
     // === 1. LISTENING ===
     // ==========================================
 
-    // POST /listening/transcribe (Multipart/Form-Data)
     const useProcessListening = () => {
         return useMutation({
             mutationFn: async ({
@@ -40,7 +64,6 @@ export const useSkillLessons = () => {
                 formData.append("lessonId", lessonId);
                 formData.append("languageCode", languageCode);
 
-                // FIX: Sử dụng ListeningResponse
                 const { data } = await instance.post<AppApiResponse<ListeningResponse>>(
                     `${SKILL_API_BASE}/listening/transcribe`,
                     formData,
@@ -49,7 +72,6 @@ export const useSkillLessons = () => {
                 return data.result!;
             },
             onSuccess: (_, variables) => {
-                // Invalidate để cập nhật tiến độ bài học
                 queryClient.invalidateQueries({ queryKey: ["lessonProgress", variables.lessonId] });
             },
         });
@@ -59,7 +81,100 @@ export const useSkillLessons = () => {
     // === 2. SPEAKING ===
     // ==========================================
 
-    // POST /speaking/pronunciation (Multipart/Form-Data)
+    // ✅ NEW: STREAMING PRONUNCIATION
+    const useStreamPronunciation = () => {
+        return useMutation({
+            mutationFn: async ({
+                audioUri,
+                lessonId,
+                languageCode,
+                referenceText,
+                onChunk,
+            }: {
+                audioUri: string;
+                lessonId: string;
+                languageCode: string;
+                referenceText: string;
+                onChunk: (chunk: StreamingChunk) => void;
+            }) => {
+                const formData = new FormData();
+                formData.append("audio", {
+                    uri: audioUri,
+                    name: "pronunciation.m4a",
+                    type: "audio/m4a",
+                } as any);
+                formData.append("lessonId", lessonId);
+                formData.append("languageCode", languageCode);
+                formData.append("referenceText", referenceText);
+
+                // ✅ STREAMING với NDJSON format
+                const response = await fetch(
+                    `${process.env.REACT_APP_API_BASE || ""}${SKILL_API_BASE}/speaking/pronunciation-stream`,
+                    {
+                        method: "POST",
+                        body: formData,
+                        headers: {
+                            Authorization: `Bearer ${localStorage.getItem("token")}`,
+                        },
+                    }
+                );
+
+                if (!response.ok) {
+                    throw new Error(`Stream failed: ${response.statusText}`);
+                }
+
+                // ✅ NDJSON parser
+                const reader = response.body?.getReader();
+                if (!reader) throw new Error("No response body");
+
+                const decoder = new TextDecoder();
+                let buffer = "";
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split("\n");
+
+                    // Process all complete lines
+                    for (let i = 0; i < lines.length - 1; i++) {
+                        const line = lines[i].trim();
+                        if (line) {
+                            try {
+                                const chunk: StreamingChunk = JSON.parse(line);
+                                onChunk(chunk);
+                            } catch (e) {
+                                console.error("Failed to parse chunk:", line, e);
+                            }
+                        }
+                    }
+
+                    // Keep incomplete line in buffer
+                    buffer = lines[lines.length - 1];
+                }
+
+                // Process remaining buffer
+                if (buffer.trim()) {
+                    try {
+                        const chunk: StreamingChunk = JSON.parse(buffer);
+                        onChunk(chunk);
+                    } catch (e) {
+                        console.error("Failed to parse final chunk:", buffer, e);
+                    }
+                }
+
+                return { success: true };
+            },
+            onSuccess: (_, variables) => {
+                queryClient.invalidateQueries({
+                    queryKey: ["lessonProgress", variables.lessonId],
+                });
+            },
+        });
+    };
+
+    // ✅ OLD: NON-STREAMING PRONUNCIATION (KEEP for fallback)
     const useCheckPronunciation = () => {
         return useMutation({
             mutationFn: async ({
@@ -90,12 +205,11 @@ export const useSkillLessons = () => {
         });
     };
 
-    // POST /speaking/spelling (JSON Body)
     const useCheckSpelling = () => {
         return useMutation({
             mutationFn: async ({
                 req,
-                lessonId, // Controller expects this as @RequestParam
+                lessonId,
             }: {
                 req: SpellingRequestBody;
                 lessonId: string;
@@ -103,7 +217,7 @@ export const useSkillLessons = () => {
                 const { data } = await instance.post<AppApiResponse<string[]>>(
                     `${SKILL_API_BASE}/speaking/spelling`,
                     req,
-                    { params: { lessonId } } // Passing lessonId as query param
+                    { params: { lessonId } }
                 );
                 return data.result!;
             },
@@ -114,7 +228,6 @@ export const useSkillLessons = () => {
     // === 3. READING ===
     // ==========================================
 
-    // POST /reading (Query Params for Lesson & Language)
     const useGenerateReading = () => {
         return useMutation({
             mutationFn: async ({
@@ -126,7 +239,7 @@ export const useSkillLessons = () => {
             }) => {
                 const { data } = await instance.post<AppApiResponse<ReadingResponse>>(
                     `${SKILL_API_BASE}/reading`,
-                    null, // No body required for this POST endpoint
+                    null,
                     { params: { lessonId, languageCode } }
                 );
                 return data.result!;
@@ -138,7 +251,6 @@ export const useSkillLessons = () => {
     // === 4. WRITING ===
     // ==========================================
 
-    // POST /writing (Multipart/Form-Data)
     const useCheckWriting = () => {
         return useMutation({
             mutationFn: async ({
@@ -158,7 +270,6 @@ export const useSkillLessons = () => {
                 formData.append("text", text);
 
                 if (imageUri) {
-                    // Controller expects file part named 'image'
                     formData.append("image", {
                         uri: imageUri,
                         name: "writing_context.jpg",
@@ -180,7 +291,6 @@ export const useSkillLessons = () => {
         });
     };
 
-    // POST /writing/translation (JSON Body)
     const useCheckTranslation = () => {
         return useMutation({
             mutationFn: async ({
@@ -200,11 +310,20 @@ export const useSkillLessons = () => {
         });
     };
 
+    // ==========================================
+    // ✅ RETURN ALL HOOKS
+    // ==========================================
     return {
         useProcessListening,
+
+        useStreamPronunciation,
         useCheckPronunciation,
         useCheckSpelling,
+
+        // Reading
         useGenerateReading,
+
+        // Writing
         useCheckWriting,
         useCheckTranslation,
     };

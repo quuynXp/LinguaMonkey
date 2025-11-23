@@ -11,7 +11,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.VideoSubtitle;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoSubtitleRepository;
-import com.connectJPA.LinguaVietnameseApp.service.MinioService;
+import com.connectJPA.LinguaVietnameseApp.service.StorageService;
 import com.connectJPA.LinguaVietnameseApp.service.VideoService;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.http.MediaType;
@@ -30,7 +30,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class VideoController {
     private final VideoService videoService;
-    private final MinioService minioService;
+    private final StorageService storageService;
     private final VideoRepository videoRepository;
     private final VideoSubtitleRepository  VideoSubtitleRepository;
 
@@ -59,7 +59,7 @@ public class VideoController {
             @RequestParam("targetLang") String targetLang,
             @RequestHeader("Authorization") String bearerToken // e.g., "vi"
     ) {
-        String videoPath = minioService.uploadTemp(videoFile);
+        String videoPath = storageService.uploadTemp(videoFile);
         VideoRequest vReq = new VideoRequest();
         vReq.setTitle(title);
         vReq.setLevel(DifficultyLevel.valueOf(level));
@@ -67,7 +67,7 @@ public class VideoController {
         VideoResponse video = videoService.createVideo(vReq);
         UUID videoId = video.getVideoId();
 
-        String subPath = minioService.uploadTemp(subtitleFile);
+        String subPath = storageService.uploadTemp(subtitleFile);
         VideoSubtitleRequest subReq = new VideoSubtitleRequest();
         subReq.setLanguageCode(sourceLang);
         subReq.setSubtitleUrl(subPath);
@@ -90,7 +90,7 @@ public class VideoController {
             @RequestParam("subtitleFile") MultipartFile subtitleFile,
             @RequestHeader(value = "Authorization", required = false) String token
     ) {
-        String videoPath = minioService.uploadTemp(videoFile);
+        String videoPath = storageService.uploadTemp(videoFile);
 
         Video v = new Video();
         v.setTitle(title);
@@ -99,7 +99,7 @@ public class VideoController {
         v.setLessonId(UUID.fromString("...default or param..."));
         Video savedVideo = videoRepository.save(v);
 
-        String subPath = minioService.uploadTemp(subtitleFile);
+        String subPath = storageService.uploadTemp(subtitleFile);
         VideoSubtitle vs = new VideoSubtitle();
         vs.setVideoId(savedVideo.getVideoId());
         vs.setLanguageCode(sourceLang);
@@ -139,7 +139,7 @@ public class VideoController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("languageCode") String languageCode
     ) {
-        String objectPath = minioService.uploadTemp(file);
+        String objectPath = storageService.uploadTemp(file);
 
         VideoSubtitleRequest req = new VideoSubtitleRequest();
         req.setLanguageCode(languageCode);

@@ -1,6 +1,6 @@
 import { AppState, AppStateStatus } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
-
+import { API_BASE_URL } from '../api/apiConfig';
 interface AiChatMessage {
   type: 'chat_request' | 'chat_response_chunk' | 'chat_response_complete' | 'error';
   prompt?: string;
@@ -13,7 +13,7 @@ interface AiChatMessage {
 
 export type AiMessageCallback = (message: AiChatMessage) => void;
 
-const KONG_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'localhost:8080';
+const KONG_BASE_URL = API_BASE_URL;
 const KONG_WS_URL = `wss://${KONG_BASE_URL}`;
 
 export class PythonAiWsService {

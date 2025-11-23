@@ -205,12 +205,14 @@ message PronunciationChunk {
   bytes audio_chunk = 1;
   int32 sequence = 2;
   bool is_final = 3;
+  string reference_text = 4;
 }
 
 message PronunciationChunkResponse {
   float score = 1;
   string feedback = 2;
   bool is_final = 3;
+  string chunk_type = 4;
 }
 
 // =====================

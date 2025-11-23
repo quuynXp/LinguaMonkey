@@ -20,6 +20,8 @@ public interface UserService {
     UserResponse createUser(UserRequest request);
     UserResponse updateUser(UUID id, UserRequest request);
 
+    Page<User> searchUsers(String keyword, int page, int size);
+    
     UserProfileResponse getUserProfile(UUID viewerId, UUID targetId);
 
     void deleteUser(UUID id);

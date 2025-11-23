@@ -14,8 +14,8 @@ import java.util.UUID;
 
 public interface LessonService {
     Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
-                                       UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
-                                       Pageable pageable);
+                                        UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
+                                         Pageable pageable);
 
     Map<String, Object> startTest(UUID lessonId, UUID userId);
     Map<String, Object> submitTest(UUID lessonId, UUID userId, Map<String,Object> payload);
@@ -35,4 +35,7 @@ public interface LessonService {
     void completeLesson(UUID lessonId, UUID userId, Integer score);
     Page<LessonResponse> getLessonsBySkillType(SkillType skillType, Pageable pageable);
     Page<LessonResponse> getLessonsByCertificateOrTopic(UUID categoryId, UUID subCategoryId, Pageable pageable);
+
+    // THÊM: Phương thức tìm kiếm
+    Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters);
 }

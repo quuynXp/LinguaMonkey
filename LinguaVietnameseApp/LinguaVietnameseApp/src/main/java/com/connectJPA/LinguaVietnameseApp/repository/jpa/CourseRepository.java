@@ -22,7 +22,7 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     List<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId);
 
     @Query(value = """
-     SELECT * FROM courses c WHERE c.is_deleted = false AND (:languageCode IS NULL OR c.language_code = :languageCode) AND (:proficiency IS NULL OR c.difficulty_level = :proficiency) AND c.course_id NOT IN (:excluded) ORDER BY RANDOM() LIMIT :limit
+      SELECT * FROM courses c WHERE c.is_deleted = false AND (:languageCode IS NULL OR c.language_code = :languageCode) AND (:proficiency IS NULL OR c.difficulty_level = :proficiency) AND c.course_id NOT IN (:excluded) ORDER BY RANDOM() LIMIT :limit
     """, nativeQuery = true)
     List<Course> findRecommendedCourses(
             @Param("proficiency") ProficiencyLevel proficiency,
@@ -36,9 +36,19 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     Page<Course> findByTypeAndApprovalStatusAndIsDeletedFalse(CourseType type, CourseApprovalStatus approvalStatus, Pageable pageable);
 
     @Query("""
-     SELECT c FROM Course c JOIN CourseDiscount d ON c.courseId = d.courseId 
-     WHERE c.isDeleted = false AND d.isActive = true AND d.startDate <= CURRENT_TIMESTAMP AND d.endDate >= CURRENT_TIMESTAMP 
-     """)
+      SELECT c FROM Course c JOIN CourseDiscount d ON c.courseId = d.courseId 
+      WHERE c.isDeleted = false AND d.isActive = true AND d.startDate <= CURRENT_TIMESTAMP AND d.endDate >= CURRENT_TIMESTAMP 
+      """)
     Page<Course> findDiscountedCourses(Pageable pageable);
-}
 
+    /**
+     * THÊM: Phương thức tìm kiếm Course thay thế Elasticsearch.
+     * Tìm kiếm theo keyword trong title hoặc description.
+     */
+    @Query("SELECT c FROM Course c WHERE (" +
+            "LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "LOWER(c.latestPublicVersion.description) LIKE LOWER(CONCAT('%', :keyword, '%'))" +
+            ") AND c.isDeleted = false AND c.approvalStatus = com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED " +
+            "ORDER BY c.createdAt DESC")
+    Page<Course> searchCoursesByKeyword(@Param("keyword") String keyword, Pageable pageable);
+}

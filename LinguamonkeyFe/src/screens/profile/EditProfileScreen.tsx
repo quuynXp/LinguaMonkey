@@ -13,7 +13,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useUserStore } from '../../stores/UserStore';
-import instance from '../../api/axiosInstance';
+import instance from '../../api/axiosClient';
 import { gotoTab } from '../../utils/navigationRef';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';

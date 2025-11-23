@@ -6,7 +6,7 @@ import { useQuery } from "@tanstack/react-query"
 import { useUserStore } from "../../stores/UserStore"
 import { useChatStore } from "../../stores/ChatStore"
 import { createScaledSheet } from "../../utils/scaledStyles"
-import instance from "../../api/axiosInstance"
+import instance from "../../api/axiosClient"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { AppApiResponse, ChatStatsResponse, UserLearningActivityResponse, PageResponse } from "../../types/dto"
 
@@ -240,7 +240,6 @@ const styles = createScaledSheet({
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 50,
     paddingBottom: 16,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,

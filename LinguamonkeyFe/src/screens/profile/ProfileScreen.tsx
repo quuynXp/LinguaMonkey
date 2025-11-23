@@ -50,7 +50,7 @@ const logout = async () => {
   try {
     useUserStore.getState().logout();
     useAppStore.getState().logout();
-    resetToAuth('Login');
+    resetToAuth();
   } catch {
     Alert.alert('Error', 'Logout failed, please try again.');
   }
@@ -454,7 +454,7 @@ const ProfileScreen: React.FC = () => {
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
   content: { padding: 20 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 40, marginBottom: 30 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },
   title: { fontSize: 28, fontWeight: 'bold', color: '#1F2937' },
   settingsButton: { padding: 8 },
 

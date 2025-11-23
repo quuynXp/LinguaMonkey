@@ -277,7 +277,6 @@ const styles = createScaledSheet({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        paddingTop: 100,
     },
     loadingText: {
         marginTop: 10,

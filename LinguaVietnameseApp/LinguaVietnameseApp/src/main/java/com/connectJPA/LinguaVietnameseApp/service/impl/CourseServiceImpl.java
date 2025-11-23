@@ -1,7 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateCourseRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest; // THÊM IMPORT
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest; 
 import com.connectJPA.LinguaVietnameseApp.dto.request.PublishVersionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateCourseDetailsRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateCourseVersionRequest;
@@ -19,18 +19,18 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.CourseDiscountService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
-import com.connectJPA.LinguaVietnameseApp.service.NotificationService; // THÊM IMPORT
+import com.connectJPA.LinguaVietnameseApp.service.NotificationService; 
 import lombok.RequiredArgsConstructor;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.CachePut;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -57,8 +57,26 @@ public class CourseServiceImpl implements CourseService {
     private final CourseDiscountService courseDiscountService;
     private final CourseEnrollmentService courseEnrollmentService;
     private final GrpcClientService grpcClientService;
-    private final NotificationService notificationService; // THÊM SERVICE
+    private final NotificationService notificationService; 
 
+    // =================================================================
+    // === HÀM SEARCH THAY THẾ ELASTICSEARCH ===
+    // =================================================================
+    @Override
+    public Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters) {
+        if (keyword == null || keyword.isBlank()) {
+            return Page.empty();
+        }
+        try {
+            Pageable pageable = PageRequest.of(page, size);
+            // GỌI PHƯƠNG THỨC SEARCH TRONG REPOSITORY
+            return courseRepository.searchCoursesByKeyword(keyword, pageable);
+        } catch (Exception e) {
+            // Log lỗi và ném ra SystemException (hoặc AppException nếu bạn có định nghĩa cụ thể)
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+    
     // =================================================================
     // === FLOW QUẢN LÝ VERSIONING MỚI (CORE LOGIC) ===
     // =================================================================
@@ -71,21 +89,20 @@ public class CourseServiceImpl implements CourseService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         // TODO: Validate creator has TEACHER role
-        // (Giả sử bạn có logic này)
 
         // 1. Tạo Course (chỉ chứa thông tin gốc)
         Course course = new Course();
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
         course.setPrice(request.getPrice());
-        course.setApprovalStatus(CourseApprovalStatus.PENDING); // Course PENDING
+        course.setApprovalStatus(CourseApprovalStatus.PENDING); 
         course = courseRepository.save(course);
 
         // 2. Tạo CourseVersion đầu tiên (bản nháp)
         CourseVersion version = new CourseVersion();
         version.setCourse(course);
         version.setVersionNumber(1);
-        version.setStatus(VersionStatus.DRAFT); // Trạng thái DRAFT
+        version.setStatus(VersionStatus.DRAFT); 
         courseVersionRepository.save(version);
 
         return courseMapper.toResponse(course);
@@ -103,14 +120,11 @@ public class CourseServiceImpl implements CourseService {
         version.setDescription(request.getDescription());
         version.setThumbnailUrl(request.getThumbnailUrl());
 
-        // Cập nhật danh sách lessons
         if (version.getLessons() != null) {
-            version.getLessons().clear(); // Kích hoạt orphanRemoval
+            version.getLessons().clear(); 
         } else {
             version.setLessons(new ArrayList<>());
         }
-
-        // (Cách dùng cvlRepository.deleteAllBy... cũng được, nhưng cách này an toàn hơn với Cascade)
 
         int order = 0;
         for (UUID lessonId : request.getLessonIds()) {
@@ -210,7 +224,7 @@ public class CourseServiceImpl implements CourseService {
         newDraft.setDescription(publicVersion.getDescription());
         newDraft.setThumbnailUrl(publicVersion.getThumbnailUrl());
 
-        newDraft.setLessons(new ArrayList<>()); // Khởi tạo list
+        newDraft.setLessons(new ArrayList<>()); 
 
         List<CourseVersionLesson> oldLessons = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(publicVersion.getVersionId());
 
@@ -242,7 +256,7 @@ public class CourseServiceImpl implements CourseService {
             course.setLanguageCode(request.getLanguageCode());
         }
         if (request.getDifficultyLevel() != null) {
-            course.setDifficultyLevel(request.getDifficultyLevel()); // SỬA LỖI: Bỏ .valueOf()
+            course.setDifficultyLevel(request.getDifficultyLevel()); 
         }
 
         course = courseRepository.save(course);
@@ -275,13 +289,12 @@ public class CourseServiceImpl implements CourseService {
         if (oldSize == 0) return newLessonIds.size() > 0;
 
         double changePercentage = (double) totalChanges / oldSize;
-        return changePercentage > 0.3; // Hơn 30% là thay đổi lớn
+        return changePercentage > 0.3; 
     }
 
     // === CÁC HÀM HELPER GỬI THÔNG BÁO ===
 
     private void sendAdminNotification(String title, String content, String type) {
-        // Giả định RoleName.ADMIN tồn tại
         Role adminRole = roleRepository.findByRoleNameAndIsDeletedFalse(RoleName.ADMIN)
                 .orElse(null);
         if (adminRole != null) {
@@ -301,7 +314,6 @@ public class CourseServiceImpl implements CourseService {
     private void sendLearnerUpdateNotification(Course course, CourseVersion version, String content) {
         List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndIsDeletedFalse(course.getCourseId());
         for (CourseEnrollment enrollment : enrollments) {
-            // Chỉ thông báo nếu họ *không* ở version mới nhất
             if (enrollment.getCourseVersion().getVersionId() != null && !enrollment.getCourseVersion().getVersionId().equals(version.getVersionId())) {
                 NotificationRequest learnerNotif = NotificationRequest.builder()
                         .userId(enrollment.getUserId())
@@ -344,9 +356,9 @@ public class CourseServiceImpl implements CourseService {
                     if (enrollment.getCourseVersion() != null && enrollment.getCourseVersion().getCourse() != null) {
                         return enrollment.getCourseVersion().getCourse().getCourseId();
                     }
-                    return null; // An toàn nếu data bị null
+                    return null; 
                 })
-                .filter(Objects::nonNull) // Lọc bỏ các enrollment có thể bị lỗi data
+                .filter(Objects::nonNull) 
                 .collect(Collectors.toList());
 
         List<Course> recommended = courseRepository.findRecommendedCourses(
@@ -362,7 +374,6 @@ public class CourseServiceImpl implements CourseService {
     public List<CourseSummaryResponse> getCourseSummariesByTeacher(UUID teacherId, int limit) {
         List<Course> courses = courseRepository.findByCreatorIdAndIsDeletedFalse(teacherId);
 
-        // SỬA LỖI: Lấy thumbnail từ latestPublicVersion
         return courses.stream()
                 .map(c -> {
                     return new CourseSummaryResponse(c.getCourseId(), c.getTitle());

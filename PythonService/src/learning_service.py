@@ -117,29 +117,92 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     
     @authenticated_grpc_method
     async def StreamPronunciation(self, request_iterator, context, claims):
-        # Auth đã chạy, 'claims' có sẵn nếu bạn cần
+        """
+        Xử lý streaming pronunciation chunks theo thời gian thực.
+        
+        Client gửi chunks audio liên tục, server phân tích và gửi lại feedback chunks.
+        """
         full_audio_chunks = []
+        reference_text = None
+        
         try:
+            # 1. Thu thập tất cả audio chunks từ client
             async for chunk in request_iterator:
                 full_audio_chunks.append(chunk.audio_chunk)
+                
+                # Lần đầu tiên, lưu reference text
+                if reference_text is None and chunk.reference_text:
+                    reference_text = chunk.reference_text
+                
+                # Nếu là chunk cuối, dừng lại
                 if chunk.is_final:
                     break
+
+            if not full_audio_chunks:
+                yield learning_pb2.PronunciationChunkResponse(
+                    is_final=True,
+                    feedback="Lỗi: Không nhận được dữ liệu âm thanh"
+                )
+                return
+
+            if not reference_text:
+                yield learning_pb2.PronunciationChunkResponse(
+                    is_final=True,
+                    feedback="Lỗi: Chưa cung cấp văn bản tham chiếu"
+                )
+                return
+
+            # 2. Ghép tất cả chunks lại
             final_audio = b"".join(full_audio_chunks)
-            feedback, score, error = check_pronunciation(
-                final_audio, "en"
-            )
-            if error:
-                yield learning_pb2.PronunciationChunkResponse(
-                    is_final=True, feedback=f"Error: {error}"
-                )
-            else:
-                yield learning_pb2.PronunciationChunkResponse(
-                    score=score, feedback=feedback, is_final=True
-                )
+            
+            logging.info(f"Received {len(full_audio_chunks)} audio chunks, total {len(final_audio)} bytes")
+            logging.info(f"Reference text: {reference_text}")
+
+            # 3. Stream phân tích từ pronunciation_checker
+            from .api.pronunciation_checker import stream_pronunciation_analysis
+            
+            async for analysis_chunk in stream_pronunciation_analysis(final_audio, reference_text):
+                
+                if analysis_chunk["type"] == "metadata":
+                    yield learning_pb2.PronunciationChunkResponse(
+                        is_final=False,
+                        feedback=f"🎯 Bạn nói: {analysis_chunk['spoken_text']}\n📝 Chuẩn: {analysis_chunk['reference_text']}"
+                    )
+                
+                elif analysis_chunk["type"] == "chunk":
+                    ws = analysis_chunk["word_score"]
+                    feedback = f"{ws['word']}: {ws['score']}/100 {'✅' if ws['isCorrect'] else '❌'}"
+                    yield learning_pb2.PronunciationChunkResponse(
+                        is_final=False,
+                        feedback=feedback,
+                        score=ws['score']
+                    )
+                
+                elif analysis_chunk["type"] == "suggestion":
+                    feedback = f"💡 {analysis_chunk['word']}: {analysis_chunk['suggestion']}"
+                    yield learning_pb2.PronunciationChunkResponse(
+                        is_final=False,
+                        feedback=feedback
+                    )
+                
+                elif analysis_chunk["type"] == "final":
+                    yield learning_pb2.PronunciationChunkResponse(
+                        is_final=True,
+                        score=analysis_chunk["overall_score"],
+                        feedback=analysis_chunk["feedback"]
+                    )
+                
+                elif analysis_chunk["type"] == "error":
+                    yield learning_pb2.PronunciationChunkResponse(
+                        is_final=True,
+                        feedback=f"❌ {analysis_chunk['feedback']}"
+                    )
+
         except Exception as e:
-            logging.error(f"StreamPronunciation error: {e}")
+            logging.error(f"StreamPronunciation error: {e}", exc_info=True)
             yield learning_pb2.PronunciationChunkResponse(
-                is_final=True, feedback=f"Internal server error: {e}"
+                is_final=True,
+                feedback=f"Lỗi máy chủ: {str(e)}"
             )
 
 

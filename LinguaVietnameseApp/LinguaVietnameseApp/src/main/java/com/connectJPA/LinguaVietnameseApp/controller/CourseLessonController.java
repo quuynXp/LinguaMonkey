@@ -10,7 +10,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.LessonMapper;
 import com.connectJPA.LinguaVietnameseApp.service.CourseLessonService;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
-import com.connectJPA.LinguaVietnameseApp.service.MinioService;
+import com.connectJPA.LinguaVietnameseApp.service.StorageService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -37,7 +37,7 @@ import java.util.UUID;
 public class CourseLessonController {
     private final CourseLessonService courseLessonService;
     private final MessageSource messageSource;
-    private final MinioService minioService;
+    private final StorageService storageService;
     private final LessonService lessonService;
     private final LessonMapper lessonMapper;
 
@@ -95,10 +95,10 @@ public class CourseLessonController {
             // 1. Upload video thành temp
             String videoPath = null;
             if (videoFile != null && !videoFile.isEmpty()) {
-                String tempVideoPath = minioService.uploadTemp(videoFile);
+                String tempVideoPath = storageService.uploadTemp(videoFile);
                 videoPath = String.format("courses/%s/v%d/lesson-%d/video.mp4",
                         courseId, versionId, lessonIndex);
-                videoPath = minioService.uploadStream(
+                videoPath = storageService.uploadStream(
                         videoFile.getInputStream(),
                         videoPath,
                         videoFile.getContentType()
@@ -108,10 +108,10 @@ public class CourseLessonController {
             // 2. Upload thumbnail
             String thumbnailPath = null;
             if (thumbnailFile != null && !thumbnailFile.isEmpty()) {
-                String tempThumbPath = minioService.uploadTemp(thumbnailFile);
+                String tempThumbPath = storageService.uploadTemp(thumbnailFile);
                 thumbnailPath = String.format("courses/%s/v%d/lesson-%d/thumb.jpg",
                         courseId, versionId, lessonIndex);
-                thumbnailPath = minioService.uploadStream(
+                thumbnailPath = storageService.uploadStream(
                         thumbnailFile.getInputStream(),
                         thumbnailPath,
                         thumbnailFile.getContentType()

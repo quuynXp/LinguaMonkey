@@ -536,70 +536,114 @@ public class GrpcClientService {
 
     // Example of streaming pronunciation (bi-directional)
 
-    public void streamPronunciationAsync(String token, List<byte[]> audioChunks) {
+    public CompletableFuture<Void> streamPronunciationAsync(
+            String token,
+            byte[] audioData,
+            String language,
+            String referenceText,
+            String userId,
+            String lessonId) {
 
         ManagedChannel channel = createChannelWithToken(token);
-
         LearningServiceGrpc.LearningServiceStub asyncStub = LearningServiceGrpc.newStub(channel);
 
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                final boolean[] completed = {false};
+                final Exception[] streamError = {null};
 
+                StreamObserver<PronunciationChunkResponse> responseObserver = 
+                    new StreamObserver<PronunciationChunkResponse>() {
+                        @Override
+                        public void onNext(PronunciationChunkResponse response) {
+                            try {
+                                log.debug("Received pronunciation chunk: type={}, score={}, feedback={}",
+                                    response.getChunkType(),
+                                    response.getScore(),
+                                    response.getFeedback());
 
-        StreamObserver<PronunciationChunk> requestObserver = asyncStub.streamPronunciation(new StreamObserver<PronunciationChunkResponse>() {
+                                forwardChunkToClients(lessonId, response);
 
-            @Override
+                            } catch (Exception e) {
+                                log.error("Error processing chunk: {}", e.getMessage(), e);
+                            }
+                        }
 
-            public void onNext(PronunciationChunkResponse value) {
+                        @Override
+                        public void onError(Throwable t) {
+                            log.error("Stream error: {}", t.getMessage(), t);
+                            streamError[0] = new Exception(t);
+                            completed[0] = true;
+                        }
 
-                System.out.println("Chunk feedback: " + value.getFeedback());
+                        @Override
+                        public void onCompleted() {
+                            log.info("Streaming completed");
+                            completed[0] = true;
+                        }
+                    };
 
-            }
+                StreamObserver<PronunciationChunk> requestObserver = 
+                    asyncStub.streamPronunciation(responseObserver);
 
+                try {
+                    PronunciationChunk chunk = PronunciationChunk.newBuilder()
+                            .setAudioChunk(
+                                com.google.protobuf.ByteString.copyFrom(audioData)
+                            )
+                            .setReferenceText(referenceText)
+                            .setSequence(0)
+                            .setIsFinal(true)
+                            .build();
 
+                    log.info("Sending pronunciation chunk: size={}, referenceText={}, userId={}",
+                        audioData.length,
+                        referenceText,
+                        userId);
 
-            @Override
+                    requestObserver.onNext(chunk);
+                    requestObserver.onCompleted();
 
-            public void onError(Throwable t) {
+                    long startTime = System.currentTimeMillis();
+                    while (!completed[0] && System.currentTimeMillis() - startTime < 30000) { // 30s timeout
+                        Thread.sleep(100);
+                    }
 
-                System.err.println("Stream error: " + t.getMessage());
+                    if (streamError[0] != null) {
+                        throw streamError[0];
+                    }
 
-            }
+                    log.info("Stream completed successfully");
+                    return null;
 
+                } catch (Exception e) {
+                    log.error("Error during streaming: {}", e.getMessage(), e);
+                    requestObserver.onError(e);
+                    throw e;
+                }
 
-
-            @Override
-
-            public void onCompleted() {
-
-                System.out.println("Streaming completed.");
-
+            } finally {
                 channel.shutdown();
-
             }
-
+        }).handle((result, exception) -> {
+            if (exception != null) {
+                log.error("Fatal streaming error: {}", exception.getMessage(), exception);
+                throw new AppException(ErrorCode.GRPC_SERVICE_ERROR);
+            }
+            return null;
         });
+    }
 
+    private void forwardChunkToClients(String lessonId, PronunciationChunkResponse response) {
+        // Option 1: WebSocket / Server-Sent Events
+        // eventBroker.broadcast("lesson:" + lessonId, response);
 
+        // Option 2: Kafka
+        // kafkaTemplate.send("pronunciation-stream", response);
 
-        for (int i = 0; i < audioChunks.size(); i++) {
-
-            requestObserver.onNext(
-
-                    PronunciationChunk.newBuilder()
-
-                            .setAudioChunk(com.google.protobuf.ByteString.copyFrom(audioChunks.get(i)))
-
-                            .setSequence(i)
-
-                            .setIsFinal(i == audioChunks.size() - 1)
-
-                            .build()
-
-            );
-
-        }
-
-        requestObserver.onCompleted();
-
+        // Option 3: Redis Pub/Sub
+        // redisTemplate.convertAndSend("lesson:" + lessonId, response);
+        log.debug("Forwarding chunk to clients: lessonId={}", lessonId);
     }
 
 

@@ -1,9 +1,9 @@
-import instance from "../api/axiosInstance";
+import instance from "../api/axiosClient";
 import { useAppStore } from "../stores/appStore";
 
 export const translateText = async (text: string) => {
   const { callPreferences } = useAppStore.getState();
-  const targetLang = callPreferences.nativeLanguage || "en"; 
+  const targetLang = callPreferences.nativeLanguage || "en";
 
   const response = await instance.post("/translate", {
     text,

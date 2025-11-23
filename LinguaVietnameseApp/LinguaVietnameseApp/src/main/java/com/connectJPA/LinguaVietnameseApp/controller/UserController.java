@@ -62,7 +62,6 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/{userId}")
-    // === SỬA LỖI VẤN ĐỀ 2: SO SÁNH STRING VỚI STRING ===
 //     @PreAuthorize("hasAuthority('ROLE_ADMIN') or authentication.name.equals(#userId.toString())")
     public AppApiResponse<UserResponse> getUserById(
             @Parameter(description = "User ID") @PathVariable UUID userId,

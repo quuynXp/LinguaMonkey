@@ -19,7 +19,7 @@
 
 // import { useChatStore } from "../../stores/ChatStore";
 // import { useUserStore } from "../../stores/UserStore";
-// import instance from "../../api/axiosInstance";
+// import instance from "../../api/axiosClient";
 // import { createScaledSheet } from "../../utils/scaledStyles";
 // import ScreenLayout from "../../components/layout/ScreenLayout";
 

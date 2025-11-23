@@ -1,9 +1,10 @@
 import { Client, IMessage, StompSubscription } from '@stomp/stompjs';
 import SockJS from 'sockjs-client';
 import { useTokenStore } from '../stores/tokenStore'; // Giả sử bạn có store này
+import { API_BASE_URL } from '../api/apiConfig';
 
-// Lấy URL của Kong từ .env
-const KONG_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || "http://10.0.2.2:8000";
+
+const KONG_BASE_URL = API_BASE_URL;
 
 // Định nghĩa các kiểu callback
 export type StompMessageCallback = (message: any) => void;

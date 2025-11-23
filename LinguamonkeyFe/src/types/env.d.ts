@@ -1,7 +1,7 @@
 declare module "@env" {
   // Cloudinary
   export const EXPO_PUBLIC_CLOUDINARY_PRESET: string;
-  export const EXPO_PUBLIC_API_BASE_URL: string;
+  // export const EXPO_PUBLIC_API_BASE_URL: string;
   export const EXPO_PUBLIC_CLOUDINARY_API_UPLOAD: string;
   export const EXPO_PUBLIC_CLOUDINARY_API_URL: string;
   export const EXPO_PUBLIC_CLOUDINARY_URL: string;

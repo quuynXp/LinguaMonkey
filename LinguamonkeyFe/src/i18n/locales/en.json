@@ -47,6 +47,7 @@
       "public": "Public"
     }
   },
+  "anErrorOccurred": "An Error Occurred",
   "useOtpInstead": "Use OTP",
   "usePasswordInstead": "Use password instead",
   "stats": {

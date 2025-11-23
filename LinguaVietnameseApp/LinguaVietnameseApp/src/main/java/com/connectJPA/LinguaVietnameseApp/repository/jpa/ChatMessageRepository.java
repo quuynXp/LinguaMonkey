@@ -37,12 +37,23 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
             "WHERE cm.id.chatMessageId = :chatMessageId")
     void softDeleteByChatMessageId(@Param("chatMessageId") UUID chatMessageId);
 
-    // total messages where user is sender OR receiver and not deleted
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE (cm.senderId = :userId OR cm.receiverId = :userId) AND cm.isDeleted = false")
     long countMessagesForUser(@Param("userId") UUID userId);
 
-    // translationsUsed: depends on MessageType enum name; adjust if different
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.messageType = com.connectJPA.LinguaVietnameseApp.enums.MessageType.TRANSLATION AND cm.isDeleted = false")
     long countTranslationsForUser(@Param("userId") UUID userId);
-}
 
+    /**
+     * THÊM: Phương thức tìm kiếm tin nhắn thay thế Elasticsearch.
+     * Sử dụng LIKE cho nội dung và lọc tùy chọn theo RoomId.
+     */
+    @Query("SELECT cm FROM ChatMessage cm WHERE " +
+            "LOWER(cm.content) LIKE LOWER(CONCAT('%', :keyword, '%')) AND " +
+            "(:roomId IS NULL OR cm.roomId = :roomId) AND " +
+            "cm.isDeleted = false " +
+            "ORDER BY cm.id.sentAt DESC")
+    Page<ChatMessage> searchMessagesByKeyword(
+            @Param("keyword") String keyword,
+            @Param("roomId") UUID roomId,
+            Pageable pageable);
+}
