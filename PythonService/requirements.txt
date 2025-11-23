@@ -10,6 +10,7 @@ transformers==4.52.1
 sentence-transformers~=5.0.0
 librosa~=0.11.0
 sentencepiece
+torch>=2.6.0
 
 # --- Other libs ---
 soundfile==0.12.1

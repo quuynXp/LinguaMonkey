@@ -33,9 +33,9 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             @Param("leaderboardId") UUID leaderboardId,
             @Param("userId") UUID userId);
 
-    Optional<LeaderboardEntry> findById_LeaderboardIdAndId_UserIdAndIsDeletedFalse(
-            UUID leaderboardId,
-            UUID userId);
+//     Optional<LeaderboardEntry> findById_LeaderboardIdAndId_UserIdAndIsDeletedFalse(
+//             UUID leaderboardId,
+//             UUID userId);
 
     @Transactional
     @Modifying
@@ -75,11 +75,28 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             Pageable pageable
     );
 
-    @Query(value = "SELECT rank FROM (" +
-                   " SELECT user_id, RANK() OVER (ORDER BY score DESC) as rank " +
-                   " FROM leaderboard_entries WHERE leaderboard_id = (SELECT leaderboard_id FROM leaderboards WHERE tab = :tab ORDER BY created_at DESC LIMIT 1)" +
-                   ") t WHERE user_id = :userId", nativeQuery = true)
-    Integer findRankByUserAndTab(@Param("userId") UUID userId, @Param("tab") String tab, @Param("type") String type);
+    @Query(value = """
+            SELECT rank FROM (
+                SELECT user_id, RANK() OVER (ORDER BY score DESC) as rank
+                FROM leaderboard_entries
+                WHERE leaderboard_id = (
+                    SELECT id
+                    FROM leaderboards
+                    WHERE tab = :tab
+                    AND type = :type  -- ADDED: Bind the unused 'type' parameter
+                    AND is_deleted = false
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                )
+                AND is_deleted = false
+            ) t WHERE user_id = :userId
+            """, nativeQuery = true)
+    Integer findRankByUserAndTab(
+            @Param("userId") UUID userId,
+            @Param("tab") String tab,
+            @Param("type") String type
+
+    );
 
     @Query("SELECT le FROM LeaderboardEntry le " +
            "WHERE le.id.leaderboardId = :leaderboardId " +

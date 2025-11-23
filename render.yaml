@@ -21,14 +21,15 @@ services:
     plan: free
     ipAllowList: []
 
-  # === MINIO (Free) ===
+  # === MINIO (Starter - Bắt buộc vì có Disk) ===
+  # Lỗi cũ: "disks are not supported for free". Phải lên Starter ($7).
   - type: web
     name: minio
     runtime: image
     image:
       url: minio/minio:RELEASE.2023-03-20T20-16-18Z
     region: singapore
-    plan: free
+    plan: starter
     startCommand: server /data --console-address ":9001"
     envVars:
       - key: MINIO_ROOT_USER
@@ -42,14 +43,14 @@ services:
       mountPath: /data
       sizeGB: 1
 
-  # === ELASTICSEARCH (Phải trả phí - Starter $7) ===
+  # === ELASTICSEARCH (Starter - Bắt buộc) ===
   - type: pserv
     name: elasticsearch
     runtime: image
     image:
       url: docker.elastic.co/elasticsearch/elasticsearch:7.17.5
     region: singapore
-    plan: starter # Render không có Free cho pserv
+    plan: starter
     envVars:
       - key: discovery.type
         value: single-node
@@ -75,17 +76,15 @@ services:
       - key: TZ
         value: Asia/Ho_Chi_Minh
 
-  # === KAFKA KRAFT (No Zookeeper) - (Phải trả phí - Starter $7) ===
+  # === KAFKA KRAFT (Starter - Bắt buộc) ===
   - type: pserv
     name: kafka
     runtime: image
-    # Dùng image bitnami để cấu hình KRaft dễ hơn image confluent gốc
     image:
       url: bitnami/kafka:3.5
     region: singapore
     plan: starter
     envVars:
-      # Cấu hình KRaft Mode
       - key: KAFKA_ENABLE_KRAFT
         value: "yes"
       - key: KAFKA_CFG_PROCESS_ROLES
@@ -106,9 +105,8 @@ services:
         value: "yes"
       - key: TZ
         value: Asia/Ho_Chi_Minh
-      # Giới hạn RAM Java
       - key: KAFKA_HEAP_OPTS
-        value: "-Xmx256M -Xms256M"
+        value: "-Xmx400M -Xms400M"
     disk:
       name: kafka_data
       mountPath: /bitnami/kafka
@@ -165,7 +163,9 @@ services:
         value: kafka:9092
       - fromGroup: shared-app-env
 
-  # === KONG (Free) ===
+  # === KONG (Free - Đã xóa preDeployCommand) ===
+  # Lỗi cũ: "pre-deploy command not supported for free". Đã xóa.
+  # Bạn CẦN CHẠY MIGRATION THỦ CÔNG.
   - type: web
     name: kong
     runtime: image
@@ -173,7 +173,6 @@ services:
       url: kong:3.4
     region: singapore
     plan: free
-    preDeployCommand: "kong migrations bootstrap"
     envVars:
       - key: KONG_DATABASE
         value: postgres

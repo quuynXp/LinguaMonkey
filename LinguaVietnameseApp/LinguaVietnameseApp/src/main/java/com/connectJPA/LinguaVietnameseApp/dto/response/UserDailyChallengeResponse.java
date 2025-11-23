@@ -20,9 +20,7 @@ public class UserDailyChallengeResponse {
     private int expReward;
     private int rewardCoins;
 
-    @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime assignedAt;
 
-    @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime completedAt;
 }

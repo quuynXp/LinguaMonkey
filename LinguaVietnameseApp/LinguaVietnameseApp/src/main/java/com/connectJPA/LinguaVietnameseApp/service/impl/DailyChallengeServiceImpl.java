@@ -11,7 +11,7 @@ import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.Instant;
+
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.temporal.ChronoUnit;
@@ -88,7 +88,8 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .isCompleted(false)
                 .expReward(expReward)
                 .rewardCoins(coinReward)
-                .assignedAt(now.toInstant())
+                // FIX: UserDailyChallenge.assignedAt is OffsetDateTime, passed now directly
+                .assignedAt(now) 
                 .build();
 
         return userDailyChallengeRepository.save(userChallenge);
@@ -115,7 +116,8 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
 
         // Mark as completed
         challengeToComplete.setCompleted(true);
-        challengeToComplete.setCompletedAt(Instant.now());
+        // FIX: UserDailyChallenge.completedAt is OffsetDateTime
+        challengeToComplete.setCompletedAt(OffsetDateTime.now(ZoneOffset.UTC));
         userDailyChallengeRepository.save(challengeToComplete);
 
         // Update user exp

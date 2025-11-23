@@ -7,10 +7,5 @@ import org.mapstruct.Mapping;
 
 @Mapper(componentModel = "spring")
 public interface UserDailyChallengeMapper {
-
-    @Mapping(source = "id.userId", target = "userId")
-    @Mapping(source = "id.challengeId", target = "challengeId")
-    @Mapping(source = "challenge.title", target = "title")
-    @Mapping(source = "challenge.description", target = "description")
     UserDailyChallengeResponse toResponse(UserDailyChallenge entity);
 }

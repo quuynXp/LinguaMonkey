@@ -234,9 +234,9 @@ const PrivacySettingsScreen = ({ navigation }) => {
             <Text style={styles.sectionTitle}>{t('privacy.legalSection')}</Text>
             <View style={styles.sectionContent}>
               {[
-                { id: 'privacy-policy', title: t('privacy.privacyPolicy'), icon: 'policy', url: 'https://linguaviet.com/privacy' },
-                { id: 'terms-of-use', title: t('privacy.termsOfUse'), icon: 'description', url: 'https://linguaviet.com/terms' },
-                { id: 'cookie-policy', title: t('privacy.cookiePolicy'), icon: 'cookie', url: 'https://linguaviet.com/cookies' },
+                { id: 'privacy-policy', title: t('privacy.privacyPolicy'), icon: 'policy', url: 'https://monkeylingua.vercel.app/privacy' },
+                { id: 'terms-of-use', title: t('privacy.termsOfUse'), icon: 'description', url: 'https://monkeylingua.vercel.app/terms' },
+                { id: 'cookie-policy', title: t('privacy.cookiePolicy'), icon: 'cookie', url: 'https://monkeylingua.vercel.app/cookies' },
               ].map((item) => (
                 <TouchableOpacity
                   key={item.id}

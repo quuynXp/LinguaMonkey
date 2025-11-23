@@ -11,7 +11,6 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -42,17 +41,15 @@ public class UserDailyChallenge extends BaseEntity {
     @JoinColumn(name = "challenge_id")
     private DailyChallenge challenge;
 
-    // configured rewards / progress
     private int expReward;
     private int rewardCoins;
 
-    // progress and flags
-    private Integer progress; // percent 0..100 (nullable)
+    // FIX: Changed from OffsetDateTime to int to match DTO and logic
+    private int progress;
     private boolean isCompleted;
 
-    // timestamps
-    private Instant assignedAt;
-    private Instant completedAt;
+    private OffsetDateTime assignedAt;
+    private OffsetDateTime completedAt;
 
     public UserDailyChallenge(UUID userId, UUID id, LocalDate today, int i, int baseExp, boolean b, int rewardCoins, int i1) {
         OffsetDateTime assignedDateTime = (today != null) ? today.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
@@ -73,13 +70,14 @@ public class UserDailyChallenge extends BaseEntity {
 
         this.expReward = baseExp;       // 'baseExp' -> expReward
         this.rewardCoins = rewardCoins;   // 'rewardCoins' -> rewardCoins
-        this.progress = i1;             // 'i1' -> progress
+        this.progress = i1;             // 'i1' -> progress (int to int)
         this.isCompleted = b;             // 'b' -> isCompleted
 
-        this.assignedAt = (assignedDateTime != null) ? assignedDateTime.toInstant() : null;
+        // FIX: Assign OffsetDateTime directly, do not convert toInstant()
+        this.assignedAt = assignedDateTime;
 
         if (this.isCompleted) {
-            this.completedAt = Instant.now();
+            this.completedAt = OffsetDateTime.now();
         } else {
             this.completedAt = null;
         }

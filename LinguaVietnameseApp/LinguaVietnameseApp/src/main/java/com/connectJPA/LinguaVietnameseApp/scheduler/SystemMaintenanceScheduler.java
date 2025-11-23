@@ -27,10 +27,10 @@ public class SystemMaintenanceScheduler {
     public void cleanupExpiredTokens() {
         log.info("Running daily token cleanup job...");
 
-        // Xóa các token đã bị vô hiệu hóa (JWT) đã hết hạn
+        // FIX: Log lỗi báo cần OffsetDateTime, trước đó truyền Instant bị sai
         invalidatedTokenRepository.deleteByExpiryTimeBefore(OffsetDateTime.now());
 
-        // Xóa các refresh token đã hết hạn
+        // FIX: Log lỗi báo cần Instant, trước đó truyền OffsetDateTime bị sai
         refreshTokenRepository.deleteByExpiresAtBefore(Instant.now());
 
         // Xóa các refresh token đã bị thu hồi (revoked)

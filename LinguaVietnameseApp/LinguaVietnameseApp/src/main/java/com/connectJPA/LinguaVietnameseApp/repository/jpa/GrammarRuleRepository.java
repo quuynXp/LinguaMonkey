@@ -7,5 +7,5 @@ import java.util.List;
 import java.util.UUID;
 
 public interface GrammarRuleRepository extends JpaRepository<GrammarRule, UUID> {
-    List<GrammarRule> findByTopicIdAndIsDeletedFalseOrderByCreatedAtAsc(UUID topicId);
+//    List<GrammarRule> findByTopicIdAndIsDeletedFalseOrderByCreatedAtAsc(UUID topicId);
 }
