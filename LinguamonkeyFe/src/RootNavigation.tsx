@@ -104,13 +104,6 @@ const RootNavigation = () => {
     return () => unsubscribe();
   }, []);
 
-  // useEffect(() => {
-  //   notificationService.loadPreferences();
-  //   if (user?.userId) {
-  //     notificationService.registerTokenToBackend();
-  //   }
-  // }, [user?.userId]);
-
   useEffect(() => {
     const unsubscribeOnMessage = onMessage(messaging(), async (remoteMessage) => {
       console.log("Foreground Notification (FCM):", remoteMessage);
@@ -130,6 +123,7 @@ const RootNavigation = () => {
       try {
         const hasValidToken = await initializeTokens();
 
+        // 1. Initial Language Load (from Local)
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
@@ -137,14 +131,11 @@ const RootNavigation = () => {
           await AsyncStorage.setItem("userLanguage", savedLanguage);
         }
         setLocalNativeLanguage(savedLanguage);
+
+        // Initial i18n set from storage
         if (i18n.language !== savedLanguage) {
           await i18n.changeLanguage(savedLanguage);
         }
-
-        const currentDate = new Date().toLocaleDateString("en-CA");
-        const lastAppOpenDate = await AsyncStorage.getItem("lastAppOpenDate");
-        const isFirstOpenToday = lastAppOpenDate !== currentDate;
-        await AsyncStorage.setItem("lastAppOpenDate", currentDate);
 
         if (hasValidToken) {
           const currentToken = useTokenStore.getState().accessToken;
@@ -159,12 +150,38 @@ const RootNavigation = () => {
                   userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id,
                   roles: getRoleFromToken(currentToken),
                 };
+
+                // 2. Sync Language from User Profile (if different from local)
+                // If the user has a saved language in backend, it takes precedence
+                if (normalizedUser.nativeLanguageCode && normalizedUser.nativeLanguageCode !== savedLanguage) {
+                  await i18n.changeLanguage(normalizedUser.nativeLanguageCode);
+                  await AsyncStorage.setItem("userLanguage", normalizedUser.nativeLanguageCode);
+                  setLocalNativeLanguage(normalizedUser.nativeLanguageCode);
+                  savedLanguage = normalizedUser.nativeLanguageCode; // Update current ref
+                }
+
                 setUser(normalizedUser, savedLanguage);
                 await AsyncStorage.setItem("hasLoggedIn", "true");
 
                 const roles = normalizedUser.roles || [];
-                const hasFinishedSetup = (await AsyncStorage.getItem("hasFinishedSetup")) === "true";
-                const hasDonePlacementTest = (await AsyncStorage.getItem("hasDonePlacementTest")) === "true";
+
+                // 3. Check Backend Status Flags instead of AsyncStorage
+                // Note: The fields must match what UserStore extracts from 'normalizedUser'
+                const hasFinishedSetup = normalizedUser.hasFinishedSetup === true;
+                const hasDonePlacementTest = normalizedUser.hasDonePlacementTest === true;
+
+                // Daily Welcome Check
+                const today = new Date().toISOString().split('T')[0];
+                // Check against backend timestamp
+                const lastDailyWelcomeAt = normalizedUser.lastDailyWelcomeAt;
+                let isFirstOpenToday = true;
+
+                if (lastDailyWelcomeAt) {
+                  const lastDateString = new Date(lastDailyWelcomeAt).toISOString().split('T')[0];
+                  if (lastDateString === today) {
+                    isFirstOpenToday = false;
+                  }
+                }
 
                 if (roles.includes("ROLE_ADMIN")) {
                   setInitialMainRoute("AdminStack");
@@ -173,15 +190,22 @@ const RootNavigation = () => {
                 } else if (!hasDonePlacementTest) {
                   setInitialMainRoute("ProficiencyTestScreen");
                 } else {
-                  setInitialMainRoute(isFirstOpenToday ? "DailyWelcomeScreen" : "TabApp");
+                  if (isFirstOpenToday) {
+                    setInitialMainRoute("DailyWelcomeScreen");
+                    // Note: The DailyWelcomeScreen component MUST call `userStore.trackDailyWelcome()`
+                    // when it mounts or completes to update the backend.
+                  } else {
+                    setInitialMainRoute("TabApp");
+                  }
                 }
               }
             } catch (e) {
               console.error("Boot user fetch failed:", e);
-              await clearTokens();
+              // Do not clear tokens on transient network/server errors
             }
           }
         } else {
+          // Fallback for onboarding check (still local as it precedes login)
           const hasFinishedOnboarding = (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
           if (hasFinishedOnboarding) {
             setInitialAuthParams({ skipToAuth: true });
@@ -189,7 +213,6 @@ const RootNavigation = () => {
         }
       } catch (e) {
         console.error("Boot error:", e);
-        await clearTokens();
       } finally {
         if (mounted) setIsLoading(false);
       }

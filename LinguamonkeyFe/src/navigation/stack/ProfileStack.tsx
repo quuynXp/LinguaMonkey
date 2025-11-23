@@ -14,6 +14,7 @@ import TransactionDetailsScreen from '../../screens/payment/TransactionDetailsSc
 import UserProfileViewScreen from '../../screens/profile/UserProfileViewScreen';
 import SettingsScreen from '../../screens/profile/SettingsScreen';
 import ResetPasswordScreen from '../../screens/auth/ResetPasswordScreen';
+import WebViewScreen from '../../screens/profile/WebViewScreen';
 
 type ProfileStackParamList = {
   ProfileScreen: undefined;
@@ -30,6 +31,7 @@ type ProfileStackParamList = {
   NotificationSettingsScreen: undefined;
   TransactionDetailsScreen: undefined;
   ResetPasswordScreen: undefined;
+  WebViewScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<ProfileStackParamList>();
@@ -50,6 +52,7 @@ const ProfileStack = () => (
     <Stack.Screen name="TransactionHistoryScreen" component={TransactionHistoryScreen} />
     <Stack.Screen name="TransactionDetailsScreen" component={TransactionDetailsScreen} />
     <Stack.Screen name="ResetPasswordScreen" component={ResetPasswordScreen} />
+    <Stack.Screen name="WebViewScreen" component={WebViewScreen} />
   </Stack.Navigator>
 );
 

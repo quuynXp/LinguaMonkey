@@ -111,4 +111,4 @@ yarn-error.log*
 *.o
 *.so
 .DS_Store
-Thumbs.db
+Thumbs.dbbackups/

@@ -1,4 +1,3 @@
-// LinguaVietnameseApp/LinguaVietnameseApp/src/main/java/com/connectJPA/LinguaVietnameseApp/dto/response/UserResponse.java
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
@@ -39,9 +38,8 @@ public class UserResponse {
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
 
-
     private List<String> certificationIds;
-    private List<UUID> interestIds;        // ĐÃ SỬA TÊN: interestestIds → interestIds (fix typo)
+    private List<UUID> interestIds;        
     private List<String> goalIds;
 
     private int level;
@@ -53,4 +51,9 @@ public class UserResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private List<String> languages;
+
+    // --- Status Flags for Frontend Routing ---
+    private boolean hasFinishedSetup;
+    private boolean hasDonePlacementTest;
+    private OffsetDateTime lastDailyWelcomeAt;
 }

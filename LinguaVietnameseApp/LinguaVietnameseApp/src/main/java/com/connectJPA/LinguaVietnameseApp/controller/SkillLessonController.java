@@ -22,7 +22,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
@@ -45,10 +44,6 @@ public class SkillLessonController {
     private final AuthenticationService authenticationService;
     private final ObjectMapper objectMapper;
 
-    // ============================================================
-    // ✅ STREAMING PRONUNCIATION (NEW)
-    // ============================================================
-
     @PostMapping(
         value = "/speaking/pronunciation-stream",
         consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
@@ -64,9 +59,8 @@ public class SkillLessonController {
         String token = extractToken(authorization);
         UUID userId = extractUserId(token);
 
-        return Flux.create(sink -> {
+        return Flux.<String>create(sink -> {
             try {
-                // Validate
                 Lesson lesson = lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
                         .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
@@ -76,7 +70,6 @@ public class SkillLessonController {
                 byte[] audioBytes = audio.getBytes();
                 log.info("Streaming pronunciation: lesson={}, user={}, audioSize={}", lessonId, userId, audioBytes.length);
 
-                // Call gRPC streaming service
                 grpcClientService.streamPronunciationAsync(
                     token,
                     audioBytes,
@@ -84,36 +77,24 @@ public class SkillLessonController {
                     referenceText,
                     userId.toString(),
                     lessonId.toString()
-                ).subscribe(
-                    aVoid -> {
+                ).whenComplete((result, ex) -> {
+                    if (ex != null) {
+                        log.error("Streaming error: {}", ex.getMessage(), ex);
+                        sink.error(ex);
+                    } else {
                         log.info("Streaming completed for lesson: {}", lessonId);
+                        sink.next("{\"status\":\"completed\"}");
                         sink.complete();
-                        
-                        // Save progress asynchronously
                         saveLessonProgressAsync(lessonId, userId, 0);
-                    },
-                    error -> {
-                        log.error("Streaming error: {}", error.getMessage(), error);
-                        sink.error(error);
                     }
-                );
+                });
 
             } catch (Exception e) {
                 log.error("Error in streamPronunciation: {}", e.getMessage(), e);
                 sink.error(e);
             }
-        }).doOnNext(chunk -> {
-            try {
-                log.debug("Streaming chunk: {}", chunk);
-            } catch (Exception e) {
-                log.error("Error logging chunk: {}", e.getMessage());
-            }
         }).subscribeOn(Schedulers.boundedElastic());
     }
-
-    // ============================================================
-    // ✅ LISTEN - EXISTING (keep nguyên)
-    // ============================================================
 
     @PostMapping(value = "/listening/transcribe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AppApiResponse<ListeningResponse> processListening(
@@ -142,10 +123,6 @@ public class SkillLessonController {
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
-
-    // ============================================================
-    // ✅ SPEAKING - EXISTING (keep nguyên)
-    // ============================================================
 
     @PostMapping(value = "/speaking/pronunciation", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AppApiResponse<PronunciationResponseBody> processPronunciation(
@@ -204,10 +181,6 @@ public class SkillLessonController {
         }
     }
 
-    // ============================================================
-    // ✅ READING - EXISTING (keep nguyên)
-    // ============================================================
-
     @PostMapping("/reading")
     public AppApiResponse<ReadingResponse> processReading(
             @RequestHeader("Authorization") String authorization,
@@ -238,10 +211,6 @@ public class SkillLessonController {
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
-
-    // ============================================================
-    // ✅ WRITING - EXISTING (keep nguyên)
-    // ============================================================
 
     @PostMapping(value = "/writing", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public AppApiResponse<WritingResponseBody> processWriting(
@@ -325,10 +294,6 @@ public class SkillLessonController {
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
-
-    // ============================================================
-    // ✅ HELPER METHODS
-    // ============================================================
 
     private String extractToken(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {

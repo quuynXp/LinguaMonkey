@@ -8,6 +8,7 @@ import AdminLessonManagement from "../../screens/admin/AdminLessonManagement";
 import AdminCourseDetailScreen from "../../screens/admin/AdminCourseDetailScreen";
 import AdminCreateVideoScreen from "../../screens/admin/AdminCreateVideoScreen";
 import AdminTransactionScreen from "../../screens/admin/AdminTransactionScreen";
+import AdminSettingsScreen from "../../screens/admin/AdminSettingsScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -22,6 +23,7 @@ export default function AdminStack() {
             <Stack.Screen name="AdminCourseDetailScreen" component={AdminCourseDetailScreen} />
             <Stack.Screen name="AdminCreateVideoScreen" component={AdminCreateVideoScreen} />
             <Stack.Screen name="AdminTransactionScreen" component={AdminTransactionScreen} />
+            <Stack.Screen name="AdminSettingsScreen" component={AdminSettingsScreen} />
         </Stack.Navigator>
     );
 }

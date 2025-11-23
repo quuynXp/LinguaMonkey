@@ -331,13 +331,13 @@ const LearnScreen = ({ navigation }: any) => {
             </Text>
             <View style={styles.userStats}>
               <View style={styles.statItem}>
-                <Icon name="trending-up" size={16} color="#10B981" />
+                <Icon name="trending-up" size={18} color="#10B981" />
                 <Text style={styles.statText}>
                   {t("learn.level")} {user.level || 1}
                 </Text>
               </View>
               <View style={styles.statItem}>
-                <Icon name="local-fire-department" size={16} color="#F59E0B" />
+                <Icon name="local-fire-department" size={18} color="#F59E0B" />
                 <Text style={styles.statText}>
                   {user.streak || 0} {t("learn.dayStreak")}
                 </Text>
@@ -475,7 +475,7 @@ const styles = createScaledSheet({
     marginBottom: 20,
   },
   welcomeText: {
-    fontSize: 18,
+    fontSize: 22,
     color: "#1F2937",
     marginBottom: 12,
   },

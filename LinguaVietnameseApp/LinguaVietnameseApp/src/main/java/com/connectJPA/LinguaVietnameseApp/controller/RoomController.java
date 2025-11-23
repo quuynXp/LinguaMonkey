@@ -55,7 +55,6 @@ public class RoomController {
     @PostMapping("/private")
     public AppApiResponse<RoomResponse> getPrivateRoom(
             @RequestParam UUID targetUserId,
-            @AuthenticationPrincipal UserPrincipal userPrincipal, // Lấy ID người đang login
             Locale locale) {
 
         UUID currentUserId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
@@ -70,10 +69,9 @@ public class RoomController {
     }
 
 
-    @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
+   @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
     @GetMapping("/ai-chat-room")
     public AppApiResponse<RoomResponse> getAiChatRoom(
-            @AuthenticationPrincipal UserPrincipal userPrincipal,
             Locale locale) {
 
         String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();

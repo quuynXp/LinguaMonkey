@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.io.Resource;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -36,6 +37,8 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+
                 .requestMatchers(
                     "/api/v1/auth/**",
                     "/api/swagger",
@@ -48,8 +51,12 @@ public class SecurityConfig {
                     "/api/v1/languages",
                     "/api/v1/badge",
                     "/api/v1/certificates",
-                    "/ws/**" // --- Cho phép WebSocket Handshake ---
+                    "/ws/**"
                 ).permitAll()
+
+                .requestMatchers(HttpMethod.GET, "/api/v1/leaderboards/**").permitAll()
+                .requestMatchers(HttpMethod.GET, "/api/v1/leaderboard-entries/**").permitAll()
+
                 .anyRequest().authenticated()
             )
             .oauth2ResourceServer(oauth2 -> oauth2

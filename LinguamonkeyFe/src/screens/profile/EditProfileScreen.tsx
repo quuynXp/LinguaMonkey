@@ -251,7 +251,7 @@ const EditProfileScreen: React.FC = () => {
             <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={saving}>
               {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveBtnText}>{t('profile.save') ?? 'Save'}</Text>}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.cancelBtn} onPress={() => gotoTab('Profile', "ProfileMain")}>
+            <TouchableOpacity style={styles.cancelBtn} onPress={() => gotoTab('Profile', "ProfileScreen")}>
               <Text style={styles.cancelBtnText}>{t('profile.cancel') ?? 'Cancel'}</Text>
             </TouchableOpacity>
           </View>

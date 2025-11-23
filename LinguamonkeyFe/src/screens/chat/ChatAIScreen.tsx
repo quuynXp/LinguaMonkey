@@ -17,8 +17,6 @@ import { useToast } from "../../utils/useToast";
 import { useChatStore } from "../../stores/ChatStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
-import { useRooms } from "../../hooks/useRoom";
-import { RoomPurpose, RoomType } from "../../types/enums";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { translateText } from "../../services/pythonService";
 
@@ -38,7 +36,7 @@ const ChatAIScreen = () => {
 
   const [inputText, setInputText] = useState("");
   const [localTranslations, setLocalTranslations] = useState<{ [msgId: string]: string }>({});
-  const [aiChatRoomId, setAiChatRoomId] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // --- STORE SELECTORS ---
   const aiHistory = useChatStore(s => s.aiChatHistory);
@@ -46,44 +44,33 @@ const ChatAIScreen = () => {
   const sendAiPrompt = useChatStore(s => s.sendAiPrompt);
   const initChatService = useChatStore(s => s.initChatService);
   const startAiChat = useChatStore(s => s.startAiChat);
+  const activeAiRoomId = useChatStore(s => s.activeAiRoomId);
 
-  // --- INIT ROOM & WS ---
-  const { useCreateRoom } = useRooms();
-  const { mutate: createAiRoom, isPending: isCreatingRoom, error: createRoomError } = useCreateRoom();
-
+  // --- INIT CHAT ---
   useEffect(() => {
-    initChatService();
-  }, []);
-
-  useEffect(() => {
-    if (user?.userId && !aiChatRoomId) {
-      createAiRoom(
-        {
-          roomName: "AI Assistant",
-          creatorId: user.userId,
-          description: "Personal AI Chat Room",
-          maxMembers: 2,
-          purpose: RoomPurpose.AI_CHAT,
-          roomType: RoomType.PRIVATE,
-          isDeleted: false
-        },
-        {
-          onSuccess: (room) => {
-            setAiChatRoomId(room.roomId);
-            useChatStore.setState({ activeAiRoomId: room.roomId });
-            startAiChat();
-          },
-          onError: (err) => {
-            console.error("Failed to create/get AI room:", err);
-            showToast({ message: t("error.createAiRoom"), type: "error" });
-          }
+    const initialize = async () => {
+      try {
+        initChatService();
+        if (user?.userId) {
+          // Sử dụng hàm của store để gọi đúng endpoint GET /ai-chat-room của backend
+          await startAiChat();
         }
-      );
-    }
-  }, [user?.userId, createAiRoom, aiChatRoomId, t, startAiChat]);
+      } catch (error) {
+        console.error("Failed to init AI Chat:", error);
+        showToast({ message: t("error.loadAiRoom"), type: "error" });
+      } finally {
+        setIsInitializing(false);
+      }
+    };
 
+    initialize();
+  }, [user?.userId, initChatService, startAiChat]);
+
+  // Scroll to bottom when new messages arrive
   useEffect(() => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+    if (aiHistory.length > 0) {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }
   }, [aiHistory.length, aiHistory[aiHistory.length - 1]?.content]);
 
   // --- API TRANSLATE ---
@@ -107,8 +94,10 @@ const ChatAIScreen = () => {
   const handleSendMessage = (messageText = inputText) => {
     if (messageText.trim() === "" || isAiStreaming) return;
 
-    if (!aiChatRoomId) {
+    if (!activeAiRoomId) {
       showToast({ message: t("error.roomNotReady"), type: "error" });
+      // Thử khởi tạo lại nếu mất kết nối room
+      startAiChat();
       return;
     }
 
@@ -168,21 +157,11 @@ const ChatAIScreen = () => {
     );
   };
 
-  if (isCreatingRoom) {
+  if (isInitializing) {
     return (
       <View style={styles.fullScreenLoading}>
         <ActivityIndicator size="large" color="#3B82F6" />
         <Text style={styles.loadingText}>{t("loading.aiRoom")}</Text>
-      </View>
-    );
-  }
-
-  if (createRoomError) {
-    return (
-      <View style={styles.fullScreenLoading}>
-        <Icon name="error-outline" size={48} color="#EF4444" />
-        <Text style={styles.errorText}>{t("error.loadAiRoom")}</Text>
-        <Text style={styles.errorTextDetail}>{createRoomError.message}</Text>
       </View>
     );
   }
@@ -226,6 +205,7 @@ const ChatAIScreen = () => {
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
             style={styles.chatContainer}
+            contentContainerStyle={{ paddingBottom: 20 }}
             onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
           />
 
@@ -245,12 +225,12 @@ const ChatAIScreen = () => {
               onSubmitEditing={() => handleSendMessage()}
               returnKeyType="send"
               multiline
-              editable={!isAiStreaming && !!aiChatRoomId}
+              editable={!isAiStreaming && !!activeAiRoomId}
             />
             <TouchableOpacity
-              style={[styles.sendButton, (isAiStreaming || !aiChatRoomId) && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (isAiStreaming || !activeAiRoomId) && styles.sendButtonDisabled]}
               onPress={() => handleSendMessage()}
-              disabled={isAiStreaming || !aiChatRoomId}
+              disabled={isAiStreaming || !activeAiRoomId}
             >
               <Icon name="send" size={24} color="#FFFFFF" />
             </TouchableOpacity>
@@ -397,21 +377,6 @@ const styles = createScaledSheet({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
   },
-  errorText: {
-    marginTop: 16,
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#EF4444',
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  },
-  errorTextDetail: {
-    marginTop: 8,
-    fontSize: 14,
-    color: '#9CA3AF',
-    textAlign: 'center',
-    paddingHorizontal: 20,
-  }
 });
 
 export default ChatAIScreen;

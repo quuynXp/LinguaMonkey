@@ -1,22 +1,19 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
+import com.connectJPA.LinguaVietnameseApp.converter.ProficiencyLevelConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.*;
-// import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
-// import org.springframework.data.elasticsearch.annotations.Document;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Data
-// @Document(indexName = "users")
 @SuperBuilder
 @FieldDefaults(level = AccessLevel.PRIVATE)
-// @EntityListeners(ElasticsearchEntityListener.class)
 @Entity
 @Table(name = "users")
 @AllArgsConstructor
@@ -66,11 +63,11 @@ public class User extends BaseEntity {
     @Column(name = "age_range")
     private AgeRange ageRange;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = ProficiencyLevelConverter.class)
     @Column(name = "proficiency")
     private ProficiencyLevel proficiency;
 
-    @Column(name = "level", nullable = false)
+   @Column(name = "level", nullable = false)
     @Builder.Default
     private int level = 1;
 
@@ -88,6 +85,17 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "learning_pace")
     private LearningPace learningPace;
+
+    @Column(name = "has_finished_setup")
+    @Builder.Default
+    private Boolean hasFinishedSetup = false;
+
+    @Column(name = "has_done_placement_test")
+    @Builder.Default
+    private Boolean hasDonePlacementTest = false;
+
+    @Column(name = "last_daily_welcome_at")
+    private OffsetDateTime lastDailyWelcomeAt;
 
     @Transient
     public boolean isOnline() {

@@ -44,8 +44,29 @@
       "image": "Image",
       "addImage": "Add Image",
       "difficulty": "Difficulty",
-      "public": "Public"
+      "public": "Public",
+      "example": "Example",
+      "examplePlaceholder": "Enter an example sentence"
     }
+  },
+  "currency": {
+    "title": "Currency",
+    "select": "Select Currency",
+    "convert": "Convert",
+    "rate": "Exchange Rate",
+    "updatedAt": "Last updated",
+    "VND": "Vietnamese Dong",
+    "USD": "US Dollar",
+    "CNY": "Chinese Yuan",
+    "JPY": "Japanese Yen",
+    "KRW": "Korean Won",
+    "EUR": "Euro"
+  },
+  "listening": {
+    "title": "Listening Practice",
+    "welcomeTitle": "Listening Exercises",
+    "welcomeSubtitle": "Improve your listening skills with various topics",
+    "chooseTopic": "Choose a Topic"
   },
   "anErrorOccurred": "An Error Occurred",
   "useOtpInstead": "Use OTP",
@@ -88,32 +109,32 @@
     "nameMin": "Name must be at least 2 characters"
   },
   "createRoom": {
-    "title": "Tạo phòng mới",
-    "roomNameLabel": "Tên phòng",
-    "roomNamePlaceholder": "Nhập tên phòng...",
-    "descriptionLabel": "Mô tả phòng",
-    "descriptionPlaceholder": "Mô tả mục đích và nội dung của phòng...",
-    "purposeLabel": "Mục đích phòng",
-    "purposeLearning": "Học tập",
-    "purposeSocial": "Giao lưu",
-    "languageLabel": "Ngôn ngữ chính",
-    "levelLabel": "Trình độ",
-    "maxMembersLabel": "Số thành viên tối đa",
-    "privacyLabel": "Cài đặt riêng tư",
-    "privacyPrivate": "Phòng riêng tư",
-    "privacyPublic": "Phòng công khai",
-    "passwordPlaceholder": "Nhập mật khẩu phòng...",
-    "rulesTitle": "Quy tắc phòng chat",
-    "rule1": "Tôn trọng tất cả thành viên",
-    "rule2": "Không spam hoặc quảng cáo",
-    "rule3": "Sử dụng ngôn ngữ phù hợp",
-    "rule4": "Giúp đỡ lẫn nhau trong học tập",
-    "createButton": "Tạo phòng",
+    "title": "Create New Room",
+    "roomNameLabel": "Room Name",
+    "roomNamePlaceholder": "Enter room name...",
+    "descriptionLabel": "Room Description",
+    "descriptionPlaceholder": "Describe the purpose and content of the room...",
+    "purposeLabel": "Room Purpose",
+    "purposeLearning": "Learning",
+    "purposeSocial": "Socializing",
+    "languageLabel": "Main Language",
+    "levelLabel": "Level",
+    "maxMembersLabel": "Max Members",
+    "privacyLabel": "Privacy Settings",
+    "privacyPrivate": "Private Room",
+    "privacyPublic": "Public Room",
+    "passwordPlaceholder": "Enter room password...",
+    "rulesTitle": "Chat Room Rules",
+    "rule1": "Respect all members",
+    "rule2": "No spam or advertising",
+    "rule3": "Use appropriate language",
+    "rule4": "Help each other learn",
+    "createButton": "Create Room",
     "errors": {
-      "nameRequired": "Vui lòng nhập tên phòng",
-      "descriptionRequired": "Vui lòng nhập mô tả phòng",
-      "passwordRequired": "Vui lòng nhập mật khẩu cho phòng riêng tư",
-      "creationFailed": "Tạo phòng thất bại. Vui lòng thử lại."
+      "nameRequired": "Please enter room name",
+      "descriptionRequired": "Please enter room description",
+      "passwordRequired": "Please enter password for private room",
+      "creationFailed": "Failed to create room. Please try again."
     }
   },
   "auth": {
@@ -343,6 +364,14 @@
       "vocabulary": "Vocabulary",
       "grammar": "Grammar"
     },
+    "listening": "Listening",
+    "speaking": "Speaking",
+    "reading": "Reading",
+    "writing": "Writing",
+    "soloQuiz": "Solo Quiz",
+    "teamQuiz": "Team Quiz",
+    "bilingual": "Bilingual Videos",
+    "certifications": "Certifications",
     "lessonsCount": "{{count}} lessons",
     "lessonsCount_plural": "{{count}} lessons",
     "noContent": "No Courses Available",
@@ -364,6 +393,8 @@
     "error": "Error",
     "success": "Success",
     "cancel": "Cancel",
+    "create": "Create",
+    "authRequired": "Login Required",
     "open_settings": "Open Settings",
     "no_internet": "No internet connection. Please check your network.",
     "save": "Save",
@@ -393,7 +424,14 @@
     "starting": "Starting...",
     "completing": "Completing...",
     "submitting": "Submitting...",
-    "reset": "Reset"
+    "reset": "Reset",
+    "optional": "Optional",
+    "period": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "year": "Year"
+    }
   },
   "upload": {
     "inProgress": "Uploading...",
@@ -485,9 +523,9 @@
     }
   },
   "levels": {
-    "beginner": "Sơ cấp",
-    "intermediate": "Trung cấp",
-    "advanced": "Nâng cao"
+    "beginner": "Beginner",
+    "intermediate": "Intermediate",
+    "advanced": "Advanced"
   },
   "notes": {
     "title": "My Notes",
@@ -1078,10 +1116,10 @@
     "interestsAndGoals.desc": "Select your interests and set learning goals to personalize",
     "loadingModels": "Loading 3D models..."
   },
-  "loading.room": "Đang tải phòng chat...",
-  "error.aiRoomNotFound": "Không thể tạo phòng chat AI. Vui lòng thử lại.",
-  "error.roomNotReady": "Phòng chat chưa sẵn sàng.",
-  "action.retry": "Thử lại",
+  "loading.room": "Loading chat room...",
+  "error.aiRoomNotFound": "Cannot create AI chat room. Please try again.",
+  "error.roomNotReady": "Chat room is not ready.",
+  "action.retry": "Retry",
   "proficiencyTest": {
     "title": "Proficiency Test",
     "description": "Start adding vocabulary notes to build your personal dictionary",
@@ -1173,6 +1211,33 @@
   "haveAccount": "Already have an account? ",
   "facebook": "facebook",
   "admin": {
+    "section": {
+      "business" : "Business",
+      "content" : "Content"
+    },
+    "stats": {
+      "users": "Users",
+      "revenue": "Revenue",
+      "courses": "Courses",
+      "transactions": "Transactions"
+    },
+    "actions": {
+      "addUser": "Add User",
+      "addCourse": "Add Course"
+    },
+    "screens": {
+      "users": "Users",
+      "courses": "Courses",
+      "lessons": "Lessons",
+      "createVideo": "Create Video",
+      "analytics": "Analytics",
+      "transactions": "Transactions"
+    },
+    "desc": {
+      "createVideo": "Upload a new video lesson",
+      "analytics": "View system analytics and reports",
+      "transactions": "Monitor system transactions"
+    },
     "transactions": {
       "title": "Transactions",
       "defaultTitle": "Transaction",
@@ -1214,6 +1279,14 @@
       "listTitle": "Courses",
       "noCourses": "No courses"
     },
+    "menu": {
+      "appInfo": "App information"
+    },
+    "auth": {
+      "logout": "Log Out",
+      "logoutTitle": "Log Out",
+      "logoutConfirm": "Are you sure log out now?"
+    },
     "analytics": {
       "title": "Revenue Analytics",
       "logout": {
@@ -1251,6 +1324,7 @@
       "totalLessons": "Total Lessons",
       "totalRevenue": "Total Revenue",
       "revenueThisMonth": "Revenue This Month",
+      "quickActions": "Quick Actions",
       "periods": {
         "week": "This Week",
         "month": "This Month",
@@ -1279,6 +1353,9 @@
     },
     "users": {
       "title": "User Management",
+      "total": "Total Users",
+      "new": "New Users",
+      "growthChart": "Growth Chart",
       "overview": {
         "totalUsers": "Total Users",
         "growth": "Growth"
@@ -1496,13 +1573,17 @@
     "level": "Level",
     "title": "Leaderboard",
     "error": "Failed to load leaderboard. Please try again.",
+    "noData": "No data available on the leaderboard",
+    "noMoreEntries": "You have reached the end of the list",
     "tabs": {
       "top100": "Top 100",
       "thisWeek": "This Week",
       "events": "Events",
       "seasons": "Seasons",
       "friends": "Friends",
-      "couples": "Couples"
+      "couples": "Couples",
+      "global": "Global",
+      "country": "Country"
     },
     "sort": {
       "highestScore": "Highest Score",
@@ -1813,36 +1894,83 @@
   "home.challenge.error": "Failed to load challenges",
   "home.dailyGoal.complete": "Complete {total} lessons today",
   "wallet": {
-    "availableBalance": "Số dư khả dụng",
-    "topup": "Nạp tiền",
-    "withdraw": "Rút tiền",
-    "transfer": "Chuyển tiền",
-    "transactionHistory": "Lịch sử giao dịch",
-    "noTransactions": "Chưa có giao dịch nào",
-    "topupTitle": "Nạp tiền vào ví",
-    "quickAmount": "Số tiền nhanh",
-    "customAmount": "Số tiền tùy chỉnh",
-    "enterAmount": "Nhập số tiền",
-    "minimumAmount": "Số tiền tối thiểu",
-    "paymentMethod": "Phương thức thanh toán",
-    "totalAmount": "Tổng số tiền",
-    "topupNote": "Mỗi lần nạp tối thiểu 10.000đ",
-    "proceed": "Tiến hành thanh toán"
+    "availableBalance": "Available Balance",
+    "topup": "Top Up",
+    "withdraw": "Withdraw",
+    "transfer": "Transfer",
+    "transactionHistory": "Transaction History",
+    "noTransactions": "No transactions yet",
+    "topupTitle": "Top up wallet",
+    "quickAmount": "Quick Amount",
+    "customAmount": "Custom Amount",
+    "enterAmount": "Enter amount",
+    "minimumAmount": "Minimum amount",
+    "paymentMethod": "Payment Method",
+    "totalAmount": "Total Amount",
+    "topupNote": "Minimum top-up is 10,000 VND",
+    "proceed": "Proceed to payment"
   },
   "transaction": {
     "type": {
-      "DEPOSIT": "Nạp tiền",
-      "WITHDRAW": "Rút tiền",
-      "TRANSFER": "Chuyển tiền",
-      "REFUND": "Hoàn tiền",
-      "TRANSFER_RECEIVE": "Nhận tiền"
+      "DEPOSIT": "Deposit",
+      "WITHDRAW": "Withdraw",
+      "TRANSFER": "Transfer",
+      "REFUND": "Refund",
+      "TRANSFER_RECEIVE": "Receive Money"
     },
     "status": {
-      "PENDING": "Đang xử lý",
-      "SUCCESS": "Thành công",
-      "FAILED": "Thất bại",
-      "PENDING_REFUND": "Chờ hoàn",
-      "REFUNDED": "Đã hoàn"
+      "PENDING": "Pending",
+      "SUCCESS": "Success",
+      "FAILED": "Failed",
+      "PENDING_REFUND": "Pending Refund",
+      "REFUNDED": "Refunded"
+    }
+  },
+  "common": {
+    "skip": "Skip",
+    "loading": "Loading...",
+    "appName": "MonkeyLingua",
+    "error": "Error",
+    "success": "Success",
+    "cancel": "Cancel",
+    "create": "Create",
+    "authRequired": "Login Required",
+    "open_settings": "Open Settings",
+    "no_internet": "No internet connection. Please check your network.",
+    "save": "Save",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "search": "Search",
+    "retry": "Retry",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "ok": "OK",
+    "done": "Done",
+    "refresh": "Refresh",
+    "viewAll": "View All",
+    "all": "All",
+    "minutes": "min",
+    "hours": "h",
+    "days": "days",
+    "weeks": "weeks",
+    "months": "months",
+    "years": "years",
+    "starting": "Starting...",
+    "completing": "Completing...",
+    "submitting": "Submitting...",
+    "reset": "Reset",
+    "optional": "Optional",
+    "period": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "year": "Year"
     }
   }
 }

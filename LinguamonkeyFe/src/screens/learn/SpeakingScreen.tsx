@@ -23,7 +23,6 @@ import {
     WordFeedback,
     FinalResult,
     SpeakingSentence,
-    SpeakingCategory,
 } from '../../types/dto';
 
 interface SpeakingScreenProps {
@@ -40,7 +39,6 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const insets = useSafeAreaInsets();
     const lessonId = route.params?.lessonId;
 
-    // States
     const [selectedSentence, setSelectedSentence] = useState<SpeakingSentence | null>(null);
     const [isRecording, setIsRecording] = useState(false);
     const [isStreaming, setIsStreaming] = useState(false);
@@ -50,17 +48,15 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const [showResult, setShowResult] = useState(false);
     const [hasMicPermission, setHasMicPermission] = useState(false);
 
-    // Animations
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const pulseAnim = useRef(new Animated.Value(1)).current;
-    const recorder = useAudioRecorder(null);
 
-    // Hooks
+    const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
     const { useStreamPronunciation } = useSkillLessons();
     const { useLesson } = useLessons();
     const streamPronunciationMutation = useStreamPronunciation();
 
-    // Fetch lesson data
     const { data: lessonData, isLoading: isLoadingLesson } = useLesson(lessonId || null);
 
     useEffect(() => {
@@ -72,6 +68,18 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
 
         checkAndRequestMicrophonePermission();
     }, []);
+
+    useEffect(() => {
+        if (lessonData && lessonData.title) {
+            setSelectedSentence({
+                id: lessonData.id || 'default',
+                text: lessonData.title,
+                translation: '',
+                audioUrl: '',
+                ipa: ''
+            } as SpeakingSentence);
+        }
+    }, [lessonData]);
 
     const checkAndRequestMicrophonePermission = async () => {
         const granted = await PermissionService.requestMicrophonePermission();
@@ -299,7 +307,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                         { paddingTop: insets.top },
                     ]}
                 >
-                    <View>
+                    <View style={styles.resultHeader}>
                         <Text style={styles.resultTitle}>{i18n.t('speaking.result_title')}</Text>
                         <TouchableOpacity onPress={() => setShowResult(false)}>
                             <Icon name="close" size={24} color="#374151" />
@@ -307,7 +315,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                     </View>
 
                     <ScrollView style={styles.resultContent} contentContainerStyle={{ paddingBottom: insets.bottom }}>
-                        <View>
+                        <View style={styles.overallScoreCard}>
                             <Text style={styles.scoreLabel}>{i18n.t('speaking.score_overall')}</Text>
                             <Text
                                 style={[
@@ -318,14 +326,14 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                                 {finalResult.overall_score}/100
                             </Text>
 
-                            <View>
-                                <View>
+                            <View style={styles.scoreBreakdown}>
+                                <View style={styles.scoreItem}>
                                     <Text style={styles.scoreItemLabel}>{i18n.t('speaking.score_accuracy')}</Text>
                                     <Text style={styles.scoreItemValue}>
                                         {finalResult.accuracy_score.toFixed(1)}%
                                     </Text>
                                 </View>
-                                <View >
+                                <View style={styles.scoreItem}>
                                     <Text style={styles.scoreItemLabel}>{i18n.t('speaking.score_fluency')}</Text>
                                     <Text style={styles.scoreItemValue}>
                                         {finalResult.fluency_score.toFixed(1)}%
@@ -368,6 +376,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                         </View>
 
                         <TouchableOpacity
+                            style={styles.retryButton}
                             onPress={() => {
                                 setShowResult(false);
                                 setStreamingChunks([]);
@@ -407,7 +416,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
-            <View>
+            <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()}>
                     <Icon name="arrow-back" size={24} color="#374151" />
                 </TouchableOpacity>
@@ -423,7 +432,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                         </View>
                     )}
 
-                    <View>
+                    <View style={styles.recordingSection}>
                         <Text style={styles.recordingTitle}>{i18n.t('speaking.ready_title')}</Text>
                         <Text style={styles.recordingInstruction}>
                             {i18n.t('speaking.record_instruction')}
@@ -466,7 +475,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                     </View>
 
                     {isStreaming && (
-                        <View>
+                        <View style={styles.streamingContainer}>
                             <ActivityIndicator size="large" color="#4F46E5" />
                             <Text style={styles.streamingText}>{i18n.t('speaking.analyzing_status')}</Text>
                             {renderStreamingChunks()}

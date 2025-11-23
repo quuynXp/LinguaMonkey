@@ -39,7 +39,11 @@ interface UserState {
   languages: string[];
   dailyGoal: DailyGoal;
   statusMessage: string;
+
+  // Status flags synced with backend
   hasDonePlacementTest?: boolean;
+  hasFinishedSetup?: boolean;
+  lastDailyWelcomeAt?: string;
 
   setToken: (token: string) => void;
   setDeviceId: (id: string) => void;
@@ -48,7 +52,7 @@ interface UserState {
   setAuthenticated: (authenticated: boolean) => void;
   setProfileData: (data: Partial<UserState>) => void;
   logout: () => void;
-  setHasDonePlacementTest: (value: boolean) => void;
+
   saveProfileToServer: (userId: string, payload: any) => Promise<UserResponse | any>;
   fetchCharacter3d: () => Promise<Character3dResponse | null>;
   uploadTemp: (file: UploadFile) => Promise<string>;
@@ -56,6 +60,11 @@ interface UserState {
   updateUserAvatar: (tempPath: string) => Promise<UserResponse>;
   setLocalNativeLanguage: (languageId: string) => void;
   updateNativeLanguageOnServer: (languageId: string) => Promise<void>;
+
+  // New Actions for Status Tracking
+  finishSetup: () => Promise<void>;
+  finishPlacementTest: () => Promise<void>;
+  trackDailyWelcome: () => Promise<void>;
 }
 
 const defaultUserState: Omit<UserState, keyof {
@@ -63,7 +72,6 @@ const defaultUserState: Omit<UserState, keyof {
   setAuthenticated: any;
   setProfileData: any;
   logout: any;
-  setHasDonePlacementTest: any;
   saveProfileToServer: any;
   fetchCharacter3d: any;
   uploadTemp: any;
@@ -74,6 +82,9 @@ const defaultUserState: Omit<UserState, keyof {
   setToken: any;
   setDeviceId: any;
   setTokenRegistered: any;
+  finishSetup: any;
+  finishPlacementTest: any;
+  trackDailyWelcome: any;
 }> = {
   user: null,
   isAuthenticated: false,
@@ -99,6 +110,8 @@ const defaultUserState: Omit<UserState, keyof {
   dailyGoal: { completedLessons: 0, totalLessons: 0 },
   statusMessage: '',
   hasDonePlacementTest: undefined,
+  hasFinishedSetup: undefined,
+  lastDailyWelcomeAt: undefined,
 };
 
 const getInitialState = (): Partial<UserState> => ({
@@ -126,6 +139,8 @@ const getInitialState = (): Partial<UserState> => ({
   dailyGoal: { completedLessons: 0, totalLessons: 0 },
   statusMessage: '',
   hasDonePlacementTest: undefined,
+  hasFinishedSetup: undefined,
+  lastDailyWelcomeAt: undefined,
 });
 
 
@@ -143,6 +158,10 @@ export const useUserStore = create<UserState>()(
           set(getInitialState() as UserState);
           return;
         }
+
+        // Map backend fields, even if not strictly in TS interface yet (handled by 'any' cast upstream if needed)
+        // Assuming backend returns keys like 'hasFinishedSetup', 'hasDonePlacementTest' etc.
+        const rawUser = user as any;
 
         set({
           user: user,
@@ -163,7 +182,11 @@ export const useUserStore = create<UserState>()(
           authProvider: user.authProvider,
           statusMessage: user.bio ?? '',
           languages: user.languages ?? [],
-          hasDonePlacementTest: (user as any).hasDonePlacementTest,
+
+          // Map dynamic status fields from backend user object
+          hasDonePlacementTest: rawUser.hasDonePlacementTest,
+          hasFinishedSetup: rawUser.hasFinishedSetup,
+          lastDailyWelcomeAt: rawUser.lastDailyWelcomeAt,
         });
 
         if (user.nativeLanguageCode) {
@@ -180,7 +203,6 @@ export const useUserStore = create<UserState>()(
 
       setAuthenticated: (authenticated) => set({ isAuthenticated: authenticated }),
       setProfileData: (data) => set((state) => ({ ...state, ...data })),
-      setHasDonePlacementTest: (value) => set({ hasDonePlacementTest: value }),
       logout: () => set(getInitialState() as UserState),
 
       setLocalNativeLanguage: (languageId: string) => {
@@ -296,6 +318,52 @@ export const useUserStore = create<UserState>()(
           throw error;
         }
       },
+
+      // --- New Actions for Setup/Welcome/Placement ---
+
+      finishSetup: async () => {
+        const { user } = get();
+        if (!user?.userId) return;
+        try {
+          const res = await instance.patch(`/api/v1/users/${user.userId}/setup-status`, null, {
+            params: { isFinished: true },
+          });
+          if (res.data.code === 200) {
+            get().setUser(res.data.result);
+          }
+        } catch (e) {
+          console.error("Failed to update setup status", e);
+        }
+      },
+
+      finishPlacementTest: async () => {
+        const { user } = get();
+        if (!user?.userId) return;
+        try {
+          const res = await instance.patch(`/api/v1/users/${user.userId}/placement-test-status`, null, {
+            params: { isDone: true },
+          });
+          if (res.data.code === 200) {
+            get().setUser(res.data.result);
+          }
+        } catch (e) {
+          console.error("Failed to update placement test status", e);
+        }
+      },
+
+      trackDailyWelcome: async () => {
+        const { user } = get();
+        if (!user?.userId) return;
+        try {
+          const res = await instance.patch(`/api/v1/users/${user.userId}/daily-welcome`);
+          if (res.data.code === 200) {
+            get().setUser(res.data.result);
+          }
+        } catch (e) {
+          console.error("Failed to track daily welcome", e);
+        }
+      }
+
     }),
     {
       name: 'user-storage-v2',
@@ -323,7 +391,10 @@ export const useUserStore = create<UserState>()(
         languages: state.languages,
         dailyGoal: state.dailyGoal,
         statusMessage: state.statusMessage,
+        // Persist these locally for fast cold start checks before network refresh
         hasDonePlacementTest: state.hasDonePlacementTest,
+        hasFinishedSetup: state.hasFinishedSetup,
+        lastDailyWelcomeAt: state.lastDailyWelcomeAt,
       }),
     },
   ),

@@ -1,27 +1,21 @@
+# === 1. DATABASE (GỘP CHUNG ĐỂ DÙNG FREE TIER) ===
 databases:
-  - name: app-database
+  - name: shared-postgres # Tên instance trên Render
     region: singapore
     plan: free
-    databaseName: linguaviet_db
+    databaseName: linguaviet_db # Tên DB mặc định bên trong
     user: linguauser
     ipAllowList: []
 
-  - name: kong-database
-    region: singapore
-    plan: free
-    databaseName: kong
-    user: kong
-    ipAllowList: []
-
 services:
-  # === REDIS (Free) ===
+  # === 2. REDIS (FREE) ===
   - type: redis
     name: redis
     region: singapore
     plan: free
     ipAllowList: []
 
-  # === MINIO (Free - Không Disk) ===
+  # === 3. STORAGE & SEARCH (COMMENTED OUT FOR DEBUILD) ===
   # - type: web
   #   name: minio
   #   runtime: image
@@ -38,15 +32,13 @@ services:
   #     - key: TZ
   #       value: Asia/Ho_Chi_Minh
 
-  # # --- ELASTICSEARCH/KIBANA (Commented Out) ---
-  # # Dùng để dễ dàng kích hoạt lại sau này
   # - type: pserv
   #   name: elasticsearch
   #   runtime: image
   #   image:
   #     url: docker.elastic.co/elasticsearch/elasticsearch:7.17.5
   #   region: singapore
-  #   plan: starter # Phải là starter để chạy pserv
+  #   plan: starter
   #   envVars:
   #     - key: discovery.type
   #       value: single-node
@@ -71,24 +63,14 @@ services:
   #       value: http://elasticsearch:9200
   #     - key: TZ
   #       value: Asia/Ho_Chi_Minh
-  # # ----------------------------------------
 
-  # # --- KAFKA/REDPANDA (Commented Out) ---
   # - type: pserv
   #   name: kafka
   #   runtime: image
   #   image:
   #     url: redpandadata/redpanda:v23.1.1
   #   region: singapore
-  #   plan: starter # Phải là starter để chạy pserv
-  #   startCommand: |
-  #     rpk redpanda start --node-id 0 \
-  #     --node-ip kafka \
-  #     --advertise-kafka-addr kafka:9092 \
-  #     --kafka-addr 0.0.0.0:9092 \
-  #     --smp 1 \
-  #     --memory 400M \
-  #     --set redpanda.auto_create_topics_enabled=true
+  #   plan: starter
   #   envVars:
   #     - key: TZ
   #       value: Asia/Ho_Chi_Minh
@@ -96,9 +78,8 @@ services:
   #     name: kafka_data
   #     mountPath: /var/lib/redpanda/data
   #     sizeGB: 1
-  # # ----------------------------------------
 
-  # === BACKEND (Free) ===
+  # === 4. BACKEND SERVICES (ACTIVE - FREE) ===
   - type: web
     name: linguavietnameseapp
     runtime: docker
@@ -109,25 +90,24 @@ services:
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
+      # Kết nối vào Shared DB
       - key: SPRING_DATASOURCE_URL
         fromDatabase:
-          name: app-database
+          name: shared-postgres
           property: connectionString
       - key: SPRING_REDIS_HOST
         fromService:
           type: redis
           name: redis
           property: host
-      # Giữ các biến Kafka/Elastic nhưng đặt giá trị dummy để code không lỗi
+      # Dummy Values để code không lỗi khi khởi động
       - key: KAFKA_BOOTSTRAP_SERVERS
-        value: local-disabled:9092
+        value: disabled:9092
       - key: ELASTICSEARCH_URIS
-        value: http://disabled-es:9200
+        value: http://disabled:9200
       - key: MINIO_URL
-        value: http://minio:9000
-      # Biến nội bộ cho HTTP Call
-      - key: JAVA_SERVICE_URL
-        value: http://linguavietnameseapp:8080
+        value: http://disabled:9000
+      # URL nội bộ để Java gọi Python
       - key: PYTHON_SERVICE_URL
         value: http://pythonservice:8001
       - fromGroup: shared-app-env
@@ -142,9 +122,10 @@ services:
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
+      # Kết nối vào Shared DB
       - key: DB_HOST
         fromDatabase:
-          name: app-database
+          name: shared-postgres
           property: host
       - key: REDIS_HOST
         fromService:
@@ -152,18 +133,13 @@ services:
           name: redis
           property: host
       - key: KAFKA_BOOTSTRAP_SERVERS
-        value: local-disabled:9092
-      - key: ELASTICSEARCH_URIS
-        value: http://disabled-es:9200
-      - key: MINIO_URL
-        value: http://minio:9000
+        value: disabled:9092
+      # URL nội bộ để Python gọi Java
       - key: JAVA_SERVICE_URL
         value: http://linguavietnameseapp:8080
-      - key: PYTHON_SERVICE_URL
-        value: http://pythonservice:8001
       - fromGroup: shared-app-env
 
-  # === KONG GATEWAY (Free - Manual Migration) ===
+  # === 5. KONG GATEWAY (ACTIVE - FREE - SHARED DB) ===
   - type: web
     name: kong
     runtime: image
@@ -174,22 +150,21 @@ services:
     envVars:
       - key: KONG_DATABASE
         value: postgres
+      # Trỏ Kong vào Shared DB luôn
       - key: KONG_PG_HOST
         fromDatabase:
-          name: kong-database
+          name: shared-postgres
           property: host
       - key: KONG_PG_USER
         fromDatabase:
-          name: kong-database
+          name: shared-postgres
           property: user
       - key: KONG_PG_PASSWORD
         fromDatabase:
-          name: kong-database
+          name: shared-postgres
           property: password
       - key: KONG_PG_DATABASE
-        fromDatabase:
-          name: kong-database
-          property: database
+        value: linguaviet_db # Dùng chung database name
       - key: KONG_PROXY_ACCESS_LOG
         value: /dev/stdout
       - key: KONG_ADMIN_ACCESS_LOG
@@ -217,20 +192,21 @@ services:
         value: production
       - key: DB_ADAPTER
         value: postgres
+      # Trỏ Konga vào Shared DB
       - key: DB_HOST
         fromDatabase:
-          name: kong-database
+          name: shared-postgres
           property: host
       - key: DB_USER
         fromDatabase:
-          name: kong-database
+          name: shared-postgres
           property: user
       - key: DB_PASSWORD
         fromDatabase:
-          name: kong-database
+          name: shared-postgres
           property: password
       - key: DB_DATABASE
-        value: konga_db
+        value: linguaviet_db
       - key: TOKEN_SECRET
         generateValue: true
       - key: KONGA_HOOK_TIMEOUT
@@ -238,7 +214,7 @@ services:
       - key: TZ
         value: Asia/Ho_Chi_Minh
 
-  # === INIT TASKS ===
+  # === 6. INIT TASKS ===
   - type: cron
     name: kong-init-job
     region: singapore

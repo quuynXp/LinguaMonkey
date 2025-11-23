@@ -1,6 +1,7 @@
 import { AppState, AppStateStatus } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
 import { API_BASE_URL } from '../api/apiConfig';
+
 interface AiChatMessage {
   type: 'chat_request' | 'chat_response_chunk' | 'chat_response_complete' | 'error';
   prompt?: string;
@@ -13,8 +14,12 @@ interface AiChatMessage {
 
 export type AiMessageCallback = (message: AiChatMessage) => void;
 
-const KONG_BASE_URL = API_BASE_URL;
-const KONG_WS_URL = `wss://${KONG_BASE_URL}`;
+// === FIX: URL HANDLING ===
+// Loại bỏ http:// hoặc https:// nếu có trong API_BASE_URL để tránh lỗi "double protocol"
+const CLEAN_BASE_URL = API_BASE_URL.replace(/^https?:\/\//, '');
+// Nếu chạy local/dev qua Kong port 8000, dùng ws://. Nếu prod có SSL, dùng wss://
+const WS_PROTOCOL = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
+const KONG_WS_URL = `${WS_PROTOCOL}${CLEAN_BASE_URL}`;
 
 export class PythonAiWsService {
   private ws: WebSocket | null = null;
@@ -26,6 +31,9 @@ export class PythonAiWsService {
   private appStateSubscription: any;
 
   constructor() {
+    // Kong route: /ws/py/ -> Python Service: /
+    // Endpoint tại Python: @app.websocket("/chat-stream")
+    // Client cần gọi: /ws/py/chat-stream
     this.url = `${KONG_WS_URL}/ws/py/chat-stream`;
     this.setupAppStateListener();
   }
@@ -51,7 +59,7 @@ export class PythonAiWsService {
     this.onMessageCallback = onMessage;
 
     const connectUrl = `${this.url}?token=${encodeURIComponent(token)}`;
-    console.log(`🤖 AI WS: Connecting...`);
+    console.log(`🤖 AI WS: Connecting to ${this.url}...`); // Log URL để debug
 
     this.ws = new WebSocket(connectUrl);
 
@@ -73,7 +81,8 @@ export class PythonAiWsService {
     };
 
     this.ws.onerror = (e: any) => {
-      console.log('❌ AI WS Error:', e?.message || 'Unknown error');
+      // Log chi tiết lỗi hơn
+      console.log('❌ AI WS Error:', e?.message || JSON.stringify(e));
       this.isConnecting = false;
     };
 

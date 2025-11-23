@@ -191,14 +191,14 @@ const ProfileScreen: React.FC = () => {
 
   const navigationButtons = useMemo(
     () => [
-      { label: t('profile.editProfile'), icon: 'edit', screen: 'EditProfile' },
+      { label: t('profile.editProfile'), icon: 'edit', screen: 'EditProfileScreen' },
       { label: t('profile.transactionHistory'), icon: 'history', screen: 'TransactionHistoryScreen' },
       { label: t('profile.notification'), icon: 'notifications', screen: 'NotificationHistoryScreen' },
-      { label: t('profile.about'), icon: 'help', screen: 'About' },
+      { label: t('profile.about'), icon: 'help', screen: 'AboutScreen' },
       { label: t('profile.roadmap'), icon: 'map', screen: 'RoadmapScreen' },
       { label: t('profile.notes'), icon: 'note', screen: 'NotesScreen' },
-      { label: t('profile.helpSupport'), icon: 'help', screen: 'HelpSupport' },
-      { label: t('profile.privacySettings'), icon: 'lock', screen: 'PrivacySettings' },
+      { label: t('profile.helpSupport'), icon: 'help', screen: 'HelpSupportScreen' },
+      { label: t('profile.privacySettings'), icon: 'lock', screen: 'PrivacySettingsScreen' },
     ],
     [t],
   );
@@ -383,7 +383,7 @@ const ProfileScreen: React.FC = () => {
               {privacySettings.dataCollection ? t('profile.enabled') : t('profile.disabled')}
             </Text>
           </View>
-          <TouchableOpacity onPress={() => gotoTab('Profile', 'PrivacySettings')}>
+          <TouchableOpacity onPress={() => gotoTab('Profile', 'PrivacySettingsScreen')}>
             <Icon name="chevron-right" size={20} color="#9CA3AF" />
           </TouchableOpacity>
         </View>

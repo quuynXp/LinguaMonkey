@@ -1,28 +1,66 @@
-import Toast, { BaseToast, ErrorToast } from "react-native-toast-message"
-import { Alert } from "react-native"
-import { ToastOptions } from "../utils/useToast"
+import Toast, { BaseToast } from "react-native-toast-message"
 
-export const showToast = ({ message, type = "info" }: ToastOptions) => {
-  const title = type === "success" ? "Success" : type === "error" ? "Error" : type === "warning" ? "Warning" : "Info"
-
-  Alert.alert(title, message)
+export const showToast = ({ message, type = "info" }) => {
+  Toast.show({
+    type: type,
+    text1: message, // Hiển thị nội dung trực tiếp ở dòng 1
+    position: 'top',
+    visibilityTime: 4000,
+    autoHide: true,
+    topOffset: 50,
+  })
 }
+
+const commonStyle = {
+  height: 'auto',
+  paddingVertical: 12,
+  borderRadius: 8,
+  borderLeftWidth: 5,
+  width: '90%',
+  alignSelf: 'center'
+};
+
+const commonTextStyle = {
+  fontSize: 14,
+  fontWeight: "500", // Độ đậm vừa phải, không quá đậm như Title
+  color: "#374151",
+};
 
 export const toastConfig = {
   error: (props) => (
-    <ErrorToast
+    <BaseToast
       {...props}
-      style={{ borderLeftColor: "#EF4444", borderRadius: 12 }}
-      text1Style={{ fontSize: 15, fontWeight: "600", color: "#DC2626" }}
-      text2Style={{ fontSize: 13, color: "#6B7280" }}
+      style={{ ...commonStyle, borderLeftColor: "#EF4444" }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={commonTextStyle}
+      text1NumberOfLines={3} // Hỗ trợ hiển thị tối đa 3 dòng cho lỗi dài
     />
   ),
   success: (props) => (
     <BaseToast
       {...props}
-      style={{ borderLeftColor: "#10B981", borderRadius: 12 }}
-      text1Style={{ fontSize: 15, fontWeight: "600", color: "#059669" }}
-      text2Style={{ fontSize: 13, color: "#6B7280" }}
+      style={{ ...commonStyle, borderLeftColor: "#10B981" }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={commonTextStyle}
+      text1NumberOfLines={3}
+    />
+  ),
+  info: (props) => (
+    <BaseToast
+      {...props}
+      style={{ ...commonStyle, borderLeftColor: "#3B82F6" }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={commonTextStyle}
+      text1NumberOfLines={3}
+    />
+  ),
+  warning: (props) => (
+    <BaseToast
+      {...props}
+      style={{ ...commonStyle, borderLeftColor: "#F59E0B" }}
+      contentContainerStyle={{ paddingHorizontal: 15 }}
+      text1Style={commonTextStyle}
+      text1NumberOfLines={3}
     />
   ),
 }

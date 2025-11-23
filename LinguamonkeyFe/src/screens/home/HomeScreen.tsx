@@ -18,9 +18,14 @@ const HomeScreen = ({ navigation }: any) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
-  const { useLeaderboardList } = useLeaderboards();
-  const { data: leaderboardsData, isLoading: leaderboardsLoading } = useLeaderboardList({ tab: "global", page: 0, size: 3 });
-  const topThreeUsers = leaderboardsData?.data || [];
+  // --- FIX LOGIC HERE ---
+  // Sai: useLeaderboardList (Lấy danh sách các bảng đấu)
+  // Đúng: useTopThree (Lấy Top 3 user của bảng Global)
+  const { useTopThree } = useLeaderboards();
+  // Truyền null để lấy Global Top 3 (theo logic hook của bạn)
+  const { data: topThreeData, isLoading: topThreeLoading } = useTopThree(null);
+  const topThreeUsers = topThreeData || [];
+  // ----------------------
 
   const { useUserRoadmaps, useDefaultRoadmaps, useAssignDefaultRoadmap, useGenerateRoadmap } = useRoadmap();
   const {
@@ -70,6 +75,7 @@ const HomeScreen = ({ navigation }: any) => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["roadmaps"] }),
       queryClient.invalidateQueries({ queryKey: ["dailyChallenges"] }),
+      queryClient.invalidateQueries({ queryKey: ["leaderboards", "top3"] }), // Refresh cả top 3
       refetchDaily()
     ]);
     setRefreshing(false);
@@ -147,9 +153,9 @@ const HomeScreen = ({ navigation }: any) => {
           </View>
 
           {/* Leaderboard Teaser */}
-          {leaderboardsLoading ? (
+          {topThreeLoading ? (
             <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />
-          ) : Array.isArray(topThreeUsers) && topThreeUsers.length > 0 && (
+          ) : Array.isArray(topThreeUsers) && topThreeUsers.length > 0 ? (
             <TouchableOpacity style={styles.leaderboardSection} onPress={handleLeaderboardPress} activeOpacity={0.9}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>{t("home.leaderboard.title")}</Text>
@@ -162,13 +168,13 @@ const HomeScreen = ({ navigation }: any) => {
                       <Text style={styles.medalText}>{idx + 1}</Text>
                     </View>
                     <Image source={{ uri: u.avatarUrl || 'https://via.placeholder.com/50' }} style={styles.podiumAvatar} />
-                    <Text style={styles.podiumName} numberOfLines={1}>{u.fullname}</Text>
-                    <Text style={styles.podiumScore}>{u.level} XP</Text>
+                    <Text style={styles.podiumName} numberOfLines={1}>{u.fullname || u.username || "User"}</Text>
+                    <Text style={styles.podiumScore}>{u.score || u.totalExp || 0} XP</Text>
                   </View>
                 ))}
               </View>
             </TouchableOpacity>
-          )}
+          ) : null}
 
           {/* AI Character */}
           <Animated.View style={[styles.characterSection, { transform: [{ scale: bounceAnim }] }]}>
@@ -192,7 +198,7 @@ const HomeScreen = ({ navigation }: any) => {
                 <Text style={styles.progressLabel}>{t("home.progress.xp")}</Text>
               </View>
               <View style={styles.progressBarContainer}>
-                <View style={[styles.progressBarFill, { width: `${(user?.exp / user?.expToNextLevel) * 100 || 0}%` }]} />
+                <View style={[styles.progressBarFill, { width: `${(user?.exp && user?.expToNextLevel ? (user.exp / user.expToNextLevel) * 100 : 0)}%` }]} />
               </View>
               <Text style={styles.progressValue}>{user?.exp || 0} / {user?.expToNextLevel || 100}</Text>
             </View>

@@ -294,7 +294,6 @@ const styles = createScaledSheet({
         alignItems: "center",
         justifyContent: "space-between",
         paddingHorizontal: 20,
-        paddingTop: 50,
         paddingBottom: 16,
         backgroundColor: "#FFFFFF",
         borderBottomWidth: 1,

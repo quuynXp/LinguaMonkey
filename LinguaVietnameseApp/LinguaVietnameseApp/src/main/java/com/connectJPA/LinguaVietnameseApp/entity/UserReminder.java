@@ -1,15 +1,14 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
+import com.connectJPA.LinguaVietnameseApp.converter.RepeatTypeConverter;
+import com.connectJPA.LinguaVietnameseApp.converter.TargetTypeConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.RepeatType;
 import com.connectJPA.LinguaVietnameseApp.enums.TargetType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.GenericGenerator;
 
-import java.time.LocalDate;
-import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -29,8 +28,8 @@ public class UserReminder extends BaseEntity {
     private UUID userId;
 
     @Column(name = "target_type", nullable = false)
-    @Enumerated(EnumType.STRING)
-    private TargetType targetType; // LESSON, EXAM, STREAK, EVENT
+    @Convert(converter = TargetTypeConverter.class)
+    private TargetType targetType;
 
     @Column(name = "target_id")
     private UUID targetId;
@@ -48,10 +47,10 @@ public class UserReminder extends BaseEntity {
     private OffsetDateTime reminderDate;
 
     @Column(name = "repeat_type")
-    @Enumerated(EnumType.STRING)
-    private RepeatType repeatType; // ONCE, DAILY, WEEKLY, ALWAYS
+    @Convert(converter = RepeatTypeConverter.class)
+    private RepeatType repeatType;
 
     @Column(name = "enabled")
+    @Builder.Default
     private Boolean enabled = true;
-
 }

@@ -21,32 +21,57 @@ export function flushPendingActions() {
   });
 }
 
+/**
+ * Reset navigation stack.
+ * Hỗ trợ cả Tab (Home, Learn...) và Screen cấp cao (AdminStack, SetupInitScreen...)
+ */
 export function resetToTab(
-  tab: 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile',
+  destination:
+    | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
+    | 'AdminStack' | 'SetupInitScreen' | 'DailyWelcomeScreen' | 'ProficiencyTestScreen',
   stackScreen?: string,
   stackParams?: object
 ) {
-  const action = CommonActions.reset({
-    index: 0,
-    routes: [
+  const isTab = ['Home', 'Learn', 'Progress', 'Chat', 'Profile'].includes(destination);
+
+  let routes;
+
+  if (isTab) {
+    // Nếu là Tab, bọc nó trong TabApp
+    routes = [
       {
         name: 'TabApp',
         state: {
           index: 0,
           routes: [
             {
-              name: tab,
+              name: destination,
               ...(stackScreen ? { state: { index: 0, routes: [{ name: stackScreen, params: stackParams }] } } : {}),
             },
           ],
         },
       },
-    ],
+    ];
+  } else {
+    // Nếu là AdminStack hoặc các màn hình full-screen khác, reset trực tiếp
+    routes = [
+      {
+        name: destination,
+        params: stackScreen ? { screen: stackScreen, params: stackParams } : stackParams
+      }
+    ];
+  }
+
+  const action = CommonActions.reset({
+    index: 0,
+    routes: routes,
   });
 
   const run = () => {
-    RootNavigationRef.dispatch(action);
-    console.log('[navigationRef] reset to Tab ->', tab);
+    if (RootNavigationRef.isReady()) {
+      RootNavigationRef.dispatch(action);
+      console.log(`[navigationRef] reset -> ${destination} (IsTab: ${isTab})`);
+    }
   };
 
   if (RootNavigationRef.isReady()) run();
@@ -54,11 +79,7 @@ export function resetToTab(
 }
 
 export function gotoTab(
-  screenName:
-    | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
-    | 'AdminStack' | 'LearnStack' | 'PaymentStack' | 'ChatStack' | 'ProfileStack' | 'ProgressStack' | 'CourseStack' | 'RoadmapStack'
-    | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'SetupInitScreen'
-    | 'LoginScreen' | 'RegisterScreen' | 'ForgotPasswordScreen',
+  screenName: string,
   nestedScreen?: string,
   nestedParams?: object
 ) {
@@ -67,9 +88,10 @@ export function gotoTab(
     return;
   }
 
+  const isTab = ['Home', 'Learn', 'Progress', 'Chat', 'Profile'].includes(screenName);
   let action;
 
-  if (['Home', 'Learn', 'Progress', 'Chat', 'Profile'].includes(screenName)) {
+  if (isTab) {
     action = CommonActions.navigate({
       name: 'TabApp',
       params: {

@@ -5,16 +5,12 @@ import { useUserStore } from '../stores/UserStore';
 import { resetToAuth, resetToTab, gotoTab } from '../utils/navigationRef';
 import { decodeToken, getRoleFromToken } from '../utils/decodeToken';
 import eventBus from '../events/appEvents';
-import { AxiosRequestConfig } from 'axios'; // Thêm import này để type check chuẩn hơn
+import { AxiosRequestConfig } from 'axios';
 
 export const authService = {
 
-  // 🔥 SỬA ĐOẠN NÀY: Tách biệt rõ ràng logic gọi API User
   getUserProfile: async (userId: string, manuallyToken?: string) => {
     if (manuallyToken) {
-      // TRƯỜNG HỢP 1: Vừa login xong, Token chưa kịp vào Store.
-      // Dùng publicClient để tránh Interceptor của privateClient can thiệp.
-      // Tự tay gắn Header vào, chắc chắn 100% Backend sẽ nhận được.
       const config: AxiosRequestConfig = {
         headers: {
           Authorization: `Bearer ${manuallyToken}`
@@ -23,8 +19,6 @@ export const authService = {
       const res = await publicClient.get(`/api/v1/users/${userId}`, config);
       return res.data.result;
     } else {
-      // TRƯỜNG HỢP 2: App đang chạy bình thường, Token đã nằm trong Store.
-      // Dùng privateClient để tận dụng tính năng tự refresh token.
       const res = await privateClient.get(`/api/v1/users/${userId}`);
       return res.data.result;
     }
@@ -34,35 +28,26 @@ export const authService = {
     try {
       if (!accessToken || !refreshToken) throw new Error('Tokens missing');
 
-      // 1. Lưu token (Vẫn lưu để dùng cho lần sau)
-      // Không await ở đây cũng được để tăng tốc độ, hoặc await cũng không sao
       useTokenStore.getState().setTokens(accessToken, refreshToken);
 
-      // 2. Decode Token
       let payload;
       try {
         payload = decodeToken(accessToken);
       } catch (e) {
-        // Fix lỗi "nbf must be a number" nếu token format lạ
         console.warn('[AuthService] Decode token warning:', e);
       }
 
-      // Fallback nếu decode lỗi nhưng server vẫn trả về token
       const userId = payload?.userId || payload?.sub;
       if (!userId) throw new Error('Invalid Token Payload: Cannot extract UserID');
 
-      // 3. Gọi API lấy info user (Truyền accessToken trực tiếp!)
-      console.log('[AuthService] Fetching profile for:', userId);
       const userProfile = await authService.getUserProfile(userId, accessToken);
 
-      // 4. Chuẩn hóa dữ liệu User
       const normalizedUser = {
         ...userProfile,
         userId: userProfile.userId ?? userProfile.id,
         roles: getRoleFromToken(accessToken),
       };
 
-      // 5. Update Store & Navigate
       useUserStore.getState().setUser(normalizedUser);
       useUserStore.getState().setAuthenticated(true);
       await AsyncStorage.setItem('hasLoggedIn', 'true');
@@ -70,7 +55,11 @@ export const authService = {
       eventBus.emit('logged_in', { userId: normalizedUser.userId, token: accessToken });
 
       const hasFinishedSetup = (await AsyncStorage.getItem('hasFinishedSetup')) === 'true';
-      if (!hasFinishedSetup && !normalizedUser.roles.includes('ROLE_ADMIN')) {
+      const userRoles = normalizedUser.roles || [];
+
+      if (userRoles.includes('ROLE_ADMIN')) {
+        resetToTab('AdminStack');
+      } else if (!hasFinishedSetup) {
         gotoTab('SetupInitScreen');
       } else {
         resetToTab('Home');
@@ -79,15 +68,12 @@ export const authService = {
     } catch (error: any) {
       console.error('[AuthService] Handle Login Failed:', error.response?.data || error.message);
 
-      // Chỉ logout nếu lỗi là 401 thật sự từ server khi gọi getUserProfile
       if (error.response?.status === 401) {
         await authService.logout();
       }
       throw error;
     }
   },
-
-  // --- CÁC HÀM DƯỚI GIỮ NGUYÊN ---
 
   loginWithEmail: async (email: string, password: string) => {
     try {

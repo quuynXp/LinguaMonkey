@@ -1,9 +1,15 @@
 import axios, { InternalAxiosRequestConfig, AxiosError } from 'axios';
 import * as Localization from 'expo-localization';
 import * as Device from 'expo-device';
-import { API_BASE_URL } from './apiConfig';
 import { useTokenStore } from '../stores/tokenStore';
 import eventBus from '../events/appEvents';
+import { showToast } from '../components/Toast';
+
+export const API_BASE_URL = 'https://api.example.com'; // Replace with your actual Env var if needed
+
+interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
+    _retry?: boolean;
+}
 
 export async function getDeviceIdSafe() {
     try {
@@ -19,7 +25,6 @@ export async function getDeviceIdSafe() {
     }
 }
 
-// Helper function để lấy headers chung
 const getCommonHeaders = async () => {
     const deviceId = await getDeviceIdSafe();
     const userLocale = Localization.getLocales()[0]?.languageTag || 'en-US';
@@ -38,17 +43,7 @@ export const publicClient = axios.create({
 
 publicClient.interceptors.request.use(async (config) => {
     const commonHeaders = await getCommonHeaders();
-
-    // ⚠️ FIX QUAN TRỌNG: Không dùng spread operator {...config.headers}
-    // Hãy gán từng giá trị vào để bảo toàn Authorization header nếu đã có
-    if (!config.headers) {
-        config.headers = {} as any;
-    }
-
-    Object.entries(commonHeaders).forEach(([key, value]) => {
-        config.headers[key] = value;
-    });
-
+    config.headers = Object.assign({}, config.headers, commonHeaders);
     return config;
 });
 
@@ -56,24 +51,18 @@ publicClient.interceptors.request.use(async (config) => {
 export const privateClient = axios.create({
     baseURL: API_BASE_URL,
     withCredentials: true,
-    timeout: 15000,
+    timeout: 30000,
 });
 
 privateClient.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
         const commonHeaders = await getCommonHeaders();
+        config.headers = Object.assign({}, config.headers, commonHeaders);
 
-        // Merge common headers an toàn
-        Object.entries(commonHeaders).forEach(([key, value]) => {
-            config.headers[key] = value;
-        });
-
-        // Lấy token từ store nếu chưa có Authorization
         const { accessToken } = useTokenStore.getState();
         if (accessToken && !config.headers['Authorization']) {
             config.headers['Authorization'] = `Bearer ${accessToken}`;
         }
-
         return config;
     },
     (error) => Promise.reject(error)
@@ -81,23 +70,68 @@ privateClient.interceptors.request.use(
 
 // --- INTERCEPTOR REFRESH TOKEN ---
 let isRefreshing = false;
-let refreshPromise: Promise<string | null> | null = null;
+let failedQueue: any[] = [];
+
+const processQueue = (error: any, token: string | null = null) => {
+    failedQueue.forEach((prom) => {
+        if (error) {
+            prom.reject(error);
+        } else {
+            prom.resolve(token);
+        }
+    });
+    failedQueue = [];
+};
 
 privateClient.interceptors.response.use(
     (response) => response,
     async (error: AxiosError) => {
-        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+        const originalRequest = error.config as CustomAxiosRequestConfig;
+        const status = error.response?.status;
 
-        // Chỉ xử lý 401, các lỗi khác (như 500, 400 do thiếu header) reject luôn
-        if (error.response?.status !== 401 || originalRequest._retry) {
+        // Xử lý hiển thị Toast cho các lỗi API (trừ 401 sẽ xử lý riêng bên dưới)
+        if (status && status !== 401) {
+            const data: any = error.response?.data;
+            const backendMessage = data?.message || data?.error || 'Unknown error occurred';
+
+            showToast({
+                type: 'error',
+                message: `[${status}] ${backendMessage}`,
+            });
+        } else if (!status && error.message) {
+            // Lỗi mạng hoặc timeout không có status code
+            showToast({
+                type: 'error',
+                message: `[Network] ${error.message}`,
+            });
+        }
+
+        // Chỉ xử lý 401
+        if (status !== 401 || originalRequest._retry) {
             return Promise.reject(error);
         }
 
+        // Bỏ qua nếu lỗi tại login endpoint
         if (originalRequest.url?.includes('/auth/login')) {
             return Promise.reject(error);
         }
 
+        if (isRefreshing) {
+            return new Promise(function (resolve, reject) {
+                failedQueue.push({ resolve, reject });
+            })
+                .then((token) => {
+                    if (originalRequest.headers) {
+                        originalRequest.headers['Authorization'] = `Bearer ${token}`;
+                    }
+                    return privateClient(originalRequest);
+                })
+                .catch((err) => Promise.reject(err));
+        }
+
         originalRequest._retry = true;
+        isRefreshing = true;
+
         const { refreshToken, setTokens } = useTokenStore.getState();
 
         if (!refreshToken) {
@@ -105,40 +139,33 @@ privateClient.interceptors.response.use(
             return Promise.reject(error);
         }
 
-        if (!isRefreshing) {
-            isRefreshing = true;
-            refreshPromise = publicClient.post('/api/v1/auth/refresh-token', {
+        try {
+            const deviceId = await getDeviceIdSafe();
+            const res = await publicClient.post('/api/v1/auth/refresh-token', {
                 refreshToken: refreshToken,
-                deviceId: await getDeviceIdSafe()
-            })
-                .then((res) => {
-                    const newAccess = res.data?.result?.token;
-                    const newRefresh = res.data?.result?.refreshToken;
-                    if (newAccess && newRefresh) {
-                        setTokens(newAccess, newRefresh);
-                        return newAccess;
-                    }
-                    throw new Error('Invalid refresh response');
-                })
-                .catch((err) => {
-                    eventBus.emit('logout');
-                    return null;
-                })
-                .finally(() => {
-                    isRefreshing = false;
-                    refreshPromise = null;
-                });
+                deviceId: deviceId,
+            });
+
+            const newAccess = res.data?.result?.token;
+            const newRefresh = res.data?.result?.refreshToken;
+
+            if (newAccess && newRefresh) {
+                setTokens(newAccess, newRefresh);
+                if (originalRequest.headers) {
+                    originalRequest.headers['Authorization'] = `Bearer ${newAccess}`;
+                }
+                processQueue(null, newAccess);
+                return privateClient(originalRequest);
+            } else {
+                throw new Error('Invalid tokens received');
+            }
+        } catch (err) {
+            processQueue(err, null);
+            eventBus.emit('logout');
+            return Promise.reject(err);
+        } finally {
+            isRefreshing = false;
         }
-
-        const newToken = await refreshPromise;
-
-        if (newToken) {
-            // Update lại header cho request đang chờ
-            originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-            return privateClient(originalRequest);
-        }
-
-        return Promise.reject(error);
     }
 );
 

@@ -40,7 +40,7 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')") // Dòng này giờ sẽ hoạt động
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')") 
     public AppApiResponse<Page<UserResponse>> getAllUsers(
             @Parameter(description = "Email filter") @RequestParam(required = false) String email,
             @Parameter(description = "Fullname filter") @RequestParam(required = false) String fullname,
@@ -62,7 +62,6 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @GetMapping("/{userId}")
-//     @PreAuthorize("hasAuthority('ROLE_ADMIN') or authentication.name.equals(#userId.toString())")
     public AppApiResponse<UserResponse> getUserById(
             @Parameter(description = "User ID") @PathVariable UUID userId,
             Locale locale) {
@@ -89,7 +88,6 @@ public class UserController {
         }
 
         UUID senderId = UUID.fromString(principal.getName());
-
         userService.admire(senderId, targetId);
 
         return AppApiResponse.<Void>builder()
@@ -170,7 +168,6 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PutMapping("/{id}")
-//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateUser(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @RequestBody UserRequest request,
@@ -185,7 +182,6 @@ public class UserController {
 
     @GetMapping("/check-email")
     public AppApiResponse<Boolean> checkEmail(@RequestParam String email, Locale locale) {
-        // trả về result = true nếu *available* (chưa tồn tại)
         boolean exists = userService.emailExists(email);
         boolean available = !exists;
         String msgKey = available ? "user.email.available" : "user.email.exists";
@@ -203,7 +199,6 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @DeleteMapping("/{id}")
-//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<Void> deleteUser(
             @Parameter(description = "User ID") @PathVariable UUID id,
             Locale locale) {
@@ -221,16 +216,13 @@ public class UserController {
             @ApiResponse(responseCode = "400", description = "Invalid tempPath or user ID"),
             @ApiResponse(responseCode = "404", description = "User not found")
     })
-    @PatchMapping("/{id}/avatar") // Endpoint không đổi
-    public AppApiResponse<UserResponse> updateAvatar( // Đổi tên hàm
+    @PatchMapping("/{id}/avatar")
+    public AppApiResponse<UserResponse> updateAvatar(
                                                      @Parameter(description = "User ID") @PathVariable UUID id,
                                                      @Parameter(description = "Temporary file path from /files/upload-temp")
-                                                     @RequestParam String tempPath, // **QUAN TRỌNG: Đổi từ avatarUrl sang tempPath**
+                                                     @RequestParam String tempPath,
                                                      Locale locale) {
-
-        // Gọi service mới
         UserResponse user = userService.updateUserAvatar(id, tempPath);
-
         return AppApiResponse.<UserResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("user.avatar.updated.success", null, locale))
@@ -260,9 +252,7 @@ public class UserController {
             @PathVariable UUID userId,
             Principal principal,
             Locale locale) {
-
         userService.updateLastActive(userId);
-
         AppApiResponse<Void> res = AppApiResponse.<Void>builder()
                 .code(200)
                 .message(messageSource.getMessage("user.update.lastActive.success", null, locale))
@@ -292,7 +282,6 @@ public class UserController {
 
     @Operation(summary = "Get user stats (derived from existing tables)")
     @GetMapping("/{id}/stats")
-//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserStatsResponse> getUserStats(
             @PathVariable UUID id,
             Locale locale) {
@@ -312,7 +301,6 @@ public class UserController {
             @ApiResponse(responseCode = "403", description = "Access denied")
     })
     @PatchMapping("/{id}/country")
-//  @PreAuthorize("hasAuthority('ROLE_ADMIN') or T(java.util.UUID).fromString(authentication.name).equals(#userId)")
     public AppApiResponse<UserResponse> updateCountry(
             @Parameter(description = "User ID") @PathVariable UUID id,
             @Parameter(description = "Country") @RequestParam Country country,
@@ -360,6 +348,47 @@ public class UserController {
         return AppApiResponse.<UserResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("user.streak.updated.success", null, locale))
+                .result(user)
+                .build();
+    }
+
+    @Operation(summary = "Update setup completion status", description = "Mark user as having finished the initial setup")
+    @PatchMapping("/{id}/setup-status")
+    public AppApiResponse<UserResponse> updateSetupStatus(
+            @Parameter(description = "User ID") @PathVariable UUID id,
+            @RequestParam boolean isFinished,
+            Locale locale) {
+        UserResponse user = userService.updateSetupStatus(id, isFinished);
+        return AppApiResponse.<UserResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("user.setup.updated.success", null, locale))
+                .result(user)
+                .build();
+    }
+
+    @Operation(summary = "Update placement test status", description = "Mark user as having finished the placement test")
+    @PatchMapping("/{id}/placement-test-status")
+    public AppApiResponse<UserResponse> updatePlacementTestStatus(
+            @Parameter(description = "User ID") @PathVariable UUID id,
+            @RequestParam boolean isDone,
+            Locale locale) {
+        UserResponse user = userService.updatePlacementTestStatus(id, isDone);
+        return AppApiResponse.<UserResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("user.placement_test.updated.success", null, locale))
+                .result(user)
+                .build();
+    }
+
+    @Operation(summary = "Track daily welcome", description = "Update the last daily welcome timestamp to now")
+    @PatchMapping("/{id}/daily-welcome")
+    public AppApiResponse<UserResponse> trackDailyWelcome(
+            @Parameter(description = "User ID") @PathVariable UUID id,
+            Locale locale) {
+        UserResponse user = userService.trackDailyWelcome(id);
+        return AppApiResponse.<UserResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("user.daily_welcome.updated.success", null, locale))
                 .result(user)
                 .build();
     }

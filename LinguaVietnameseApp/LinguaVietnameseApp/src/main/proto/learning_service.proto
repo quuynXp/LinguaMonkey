@@ -5,7 +5,6 @@ package learning;
 option java_package = "learning";
 option java_multiple_files = true;
 
-
 message ReviewQualityRequest {
   string user_id = 1;
   string content_id = 2;   // ID cho course, lesson, hoặc video
@@ -209,12 +208,14 @@ message PronunciationChunk {
   bytes audio_chunk = 1;
   int32 sequence = 2;
   bool is_final = 3;
+  string reference_text = 4;
 }
 
 message PronunciationChunkResponse {
   float score = 1;
   string feedback = 2;
   bool is_final = 3;
+  string chunk_type = 4;
 }
 
 // =====================

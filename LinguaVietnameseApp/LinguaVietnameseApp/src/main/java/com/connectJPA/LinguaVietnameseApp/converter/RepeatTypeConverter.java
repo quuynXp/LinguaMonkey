@@ -1,4 +1,4 @@
-package com.connectJPA.LinguaVietnameseApp.converters;
+package com.connectJPA.LinguaVietnameseApp.converter;
 
 import com.connectJPA.LinguaVietnameseApp.enums.RepeatType;
 import jakarta.persistence.AttributeConverter;

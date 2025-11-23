@@ -99,6 +99,11 @@ public class UserServiceImpl implements UserService {
         // 1. Ánh xạ cơ bản (từ UserMapper)
         UserResponse response = userMapper.toResponse(user);
 
+        // 1.1 Ánh xạ bổ sung các trường mới (do UserMapper có thể chưa cập nhật kịp hoặc để chắc chắn)
+        response.setHasFinishedSetup(user.getHasFinishedSetup());
+        response.setHasDonePlacementTest(user.getHasDonePlacementTest());
+        response.setLastDailyWelcomeAt(user.getLastDailyWelcomeAt());
+
         // 2. Tính toán expToNextLevel
         int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
         response.setExpToNextLevel(nextLevelExp);
@@ -233,7 +238,7 @@ public class UserServiceImpl implements UserService {
                 .senderId(senderId)
                 .createdAt(OffsetDateTime.now())
                 .build();
-        admirationRepository.save(a);
+        admirationRepository.saveAndFlush(a);
 
         // Create notification record
         NotificationRequest notificationRequest = NotificationRequest.builder()
@@ -360,13 +365,13 @@ public class UserServiceImpl implements UserService {
             Leaderboard lb = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global", PageRequest.of(0,1))
                     .stream().findFirst()
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
-            leaderboardEntryRepository.save(LeaderboardEntry.builder()
+            leaderboardEntryRepository.saveAndFlush(LeaderboardEntry.builder()
                     .leaderboardEntryId(new LeaderboardEntryId(user.getUserId(), lb.getLeaderboardId()))
                     .user(user)
                     .leaderboard(lb)
                     .build());
 
-            userLearningActivityRepository.save(UserLearningActivity.builder()
+            userLearningActivityRepository.saveAndFlush(UserLearningActivity.builder()
                     .userId(user.getUserId())
                     .activityType(ActivityType.START_LEARNING)
                     .build());
@@ -390,7 +395,7 @@ public class UserServiceImpl implements UserService {
                         .filter(Objects::nonNull)
                         .collect(Collectors.toList());
 
-                if (!userGoals.isEmpty()) userGoalRepository.saveAll(userGoals);
+                if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
             }
 
             if (request.getCertificationIds() != null && !request.getCertificationIds().isEmpty()) {
@@ -410,7 +415,7 @@ public class UserServiceImpl implements UserService {
                         .filter(Objects::nonNull)
                         .toList();
 
-                if (!certs.isEmpty()) userCertificateRepository.saveAll(certs);
+                if (!certs.isEmpty()) userCertificateRepository.saveAllAndFlush(certs);
             }
 
             if (request.getInterestestIds() != null && !request.getInterestestIds().isEmpty()) {
@@ -419,12 +424,12 @@ public class UserServiceImpl implements UserService {
                         .map(interestId -> UserInterest.builder()
                                 .id(new UserInterestId(savedUser.getUserId(), interestId))
                                 .user(savedUser)
-                                .interest(interestRepository.findById(interestId).orElse(null))
+                                .interest(interestRepository.findByInterestId(interestId).orElse(null))
                                 .build())
                         .filter(ui -> ui.getInterest() != null)
                         .collect(Collectors.toList());
 
-                if (!interests.isEmpty()) userInterestRepository.saveAll(interests);
+                if (!interests.isEmpty()) userInterestRepository.saveAllAndFlush(interests);
             }
 
             // SỬA: Dùng hàm helper mới
@@ -468,11 +473,11 @@ public class UserServiceImpl implements UserService {
             if (request.getLevel() != null) user.setLevel(request.getLevel());
             if (request.getStreak() != null) user.setStreak(request.getStreak());
 
-            user = userRepository.save(user);
+            user = userRepository.saveAndFlush(user);
             final User savedUser = user;
 
             if (request.getGoalIds() != null) {
-                userGoalRepository.deleteAll(userGoalRepository.findByUserIdAndIsDeletedFalse(savedUser.getUserId()));
+                userGoalRepository.deleteAllInBatch(userGoalRepository.findByUserIdAndIsDeletedFalse(savedUser.getUserId()));
                 
                 List<UserGoal> userGoals = request.getGoalIds().stream()
                         .filter(Objects::nonNull)
@@ -489,11 +494,11 @@ public class UserServiceImpl implements UserService {
                         })
                         .filter(Objects::nonNull)
                         .collect(Collectors.toList());
-                if (!userGoals.isEmpty()) userGoalRepository.saveAll(userGoals);
+                if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
             }
 
             if (request.getCertificationIds() != null) {
-                userCertificateRepository.deleteAll(userCertificateRepository.findAllByIdUserId(savedUser.getUserId()));
+                userCertificateRepository.deleteAllInBatch(userCertificateRepository.findAllByIdUserId(savedUser.getUserId()));
                 
                 List<UserCertificate> certs = request.getCertificationIds().stream()
                         .filter(Objects::nonNull)
@@ -511,26 +516,26 @@ public class UserServiceImpl implements UserService {
                         })
                         .filter(Objects::nonNull)
                         .toList();
-                if (!certs.isEmpty()) userCertificateRepository.saveAll(certs);
+                if (!certs.isEmpty()) userCertificateRepository.saveAllAndFlush(certs);
             }
 
             if (request.getInterestestIds() != null) {
-                userInterestRepository.deleteAll(userInterestRepository.findByIdUserIdAndIsDeletedFalse(savedUser.getUserId()));
+                userInterestRepository.deleteAllInBatch(userInterestRepository.findByIdUserIdAndIsDeletedFalse(savedUser.getUserId()));
                 
                 List<UserInterest> interests = request.getInterestestIds().stream()
                         .filter(Objects::nonNull)
                         .map(interestId -> UserInterest.builder()
                                 .id(new UserInterestId(savedUser.getUserId(), interestId))
                                 .user(savedUser)
-                                .interest(interestRepository.findById(interestId).orElse(null))
+                                .interest(interestRepository.findByInterestId(interestId).orElse(null))
                                 .build())
                         .filter(ui -> ui.getInterest() != null) // Chỉ lưu nếu interestId hợp lệ
                         .collect(Collectors.toList());
-                if (!interests.isEmpty()) userInterestRepository.saveAll(interests);
+                if (!interests.isEmpty()) userInterestRepository.saveAllAndFlush(interests);
             }
 
             if (request.getLanguages() != null) {
-                userLanguageRepository.deleteAll(userLanguageRepository.findByIdUserId(savedUser.getUserId()));
+                userLanguageRepository.deleteAllInBatch(userLanguageRepository.findByIdUserId(savedUser.getUserId()));
 
                 List<UserLanguage> languages = request.getLanguages().stream()
                     .map(langCode -> languageRepository.findByLanguageCodeAndIsDeletedFalse(langCode).orElse(null))
@@ -548,7 +553,7 @@ public class UserServiceImpl implements UserService {
                     })
                     .collect(Collectors.toList());
                 
-                if (!languages.isEmpty()) userLanguageRepository.saveAll(languages);
+                if (!languages.isEmpty()) userLanguageRepository.saveAllAndFlush(languages);
             }
             
 
@@ -795,7 +800,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User getUserIfExists(UUID userId) {
-        return userRepository.findById(userId)
+        return userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
     }
 
@@ -845,7 +850,7 @@ public class UserServiceImpl implements UserService {
 
             // Update user
             user.setAvatarUrl(newUrl);
-            user = userRepository.save(user);
+            user = userRepository.saveAndFlush(user);
 
             // Notification
             NotificationRequest notificationRequest = NotificationRequest.builder()
@@ -878,7 +883,7 @@ public class UserServiceImpl implements UserService {
                 throw new AppException(ErrorCode.LANGUAGE_NOT_FOUND);
             }
             user.setNativeLanguageCode(nativeLanguageCode);
-            user = userRepository.save(user);
+            user = userRepository.saveAndFlush(user);
 
             // Create notification for native language update
             NotificationRequest notificationRequest = NotificationRequest.builder()
@@ -907,7 +912,7 @@ public class UserServiceImpl implements UserService {
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             user.setCountry(country);
-            user = userRepository.save(user);
+            user = userRepository.saveAndFlush(user);
 
             // Create notification for country update
             NotificationRequest notificationRequest = NotificationRequest.builder()
@@ -963,7 +968,7 @@ public class UserServiceImpl implements UserService {
                         .build();
                 notificationService.createNotification(notificationRequest);
             }
-            user = userRepository.save(user);
+            user = userRepository.saveAndFlush(user);
 
             // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(user);
@@ -1045,7 +1050,7 @@ public class UserServiceImpl implements UserService {
             // 3. Cập nhật user
             // committedMedia.getFileUrl() đã được set trong storageService
             user.setAvatarUrl(committedMedia.getFileUrl());
-            User savedUser = userRepository.save(user);
+            User savedUser = userRepository.saveAndFlush(user);
 
             // Notification
             NotificationRequest notificationRequest = NotificationRequest.builder()
@@ -1070,7 +1075,7 @@ public class UserServiceImpl implements UserService {
         User u = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         u.setLastActiveAt(OffsetDateTime.now());
-        userRepository.save(u);
+        userRepository.saveAndFlush(u);
     }
 
 
@@ -1089,7 +1094,7 @@ public class UserServiceImpl implements UserService {
                 // Increment streak if no activity recorded yet today
                 int currentStreak = user.getStreak();
                 user.setStreak(currentStreak + 1);
-                user = userRepository.save(user);
+                user = userRepository.saveAndFlush(user);
                 // Create notification for streak update
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
@@ -1123,7 +1128,7 @@ public class UserServiceImpl implements UserService {
             if (!hasActivityYesterday && user.getStreak() > 0) {
                 // Reset streak to 0 if no activity was recorded yesterday
                 user.setStreak(0);
-                user = userRepository.save(user);
+                user = userRepository.saveAndFlush(user);
                 // Create notification for streak reset
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
@@ -1191,7 +1196,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public void registerFcmToken(NotificationRequest request) {
-        if (!userRepository.existsById(request.getUserId())) {
+        if (!userRepository.existsByUserIdAndIsDeletedFalse(request.getUserId())) {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
 
@@ -1201,7 +1206,7 @@ public class UserServiceImpl implements UserService {
         if (existingToken.isPresent()) {
             UserFcmToken token = existingToken.get();
             token.setFcmToken(request.getFcmToken());
-            userFcmTokenRepository.save(token);
+            userFcmTokenRepository.saveAndFlush(token);
         } else {
             // Thêm token mới
             UserFcmToken newToken = UserFcmToken.builder()
@@ -1209,8 +1214,49 @@ public class UserServiceImpl implements UserService {
                     .fcmToken(request.getFcmToken())
                     .deviceId(request.getDeviceId())
                     .build();
-            userFcmTokenRepository.save(newToken);
+            userFcmTokenRepository.saveAndFlush(newToken);
         }
+    }
+
+    // --- New Impl Methods ---
+
+    @Override
+    @Transactional
+    public UserResponse updateSetupStatus(UUID id, boolean isFinished) {
+        if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        user.setHasFinishedSetup(isFinished);
+        user = userRepository.saveAndFlush(user);
+        
+        return mapUserToResponseWithAllDetails(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse updatePlacementTestStatus(UUID id, boolean isDone) {
+        if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        user.setHasDonePlacementTest(isDone);
+        user = userRepository.saveAndFlush(user);
+
+        return mapUserToResponseWithAllDetails(user);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse trackDailyWelcome(UUID id) {
+        if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        user.setLastDailyWelcomeAt(OffsetDateTime.now());
+        user = userRepository.saveAndFlush(user);
+        
+        return mapUserToResponseWithAllDetails(user);
     }
 
     private boolean isValidUrl(String url) {

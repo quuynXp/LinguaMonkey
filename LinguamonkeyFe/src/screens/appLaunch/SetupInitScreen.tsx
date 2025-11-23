@@ -972,7 +972,6 @@ const styles = createScaledSheet({
   },
   content: {
     flex: 1,
-    paddingTop: 50,
   },
   inputHint: {
     fontSize: 12,

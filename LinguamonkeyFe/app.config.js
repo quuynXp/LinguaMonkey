@@ -32,6 +32,9 @@ export default ({ config }) => {
         },
       },
       android: {
+        // 👇 THÊM DÒNG NÀY VÀO ĐÂY
+        usesCleartextTraffic: true,
+
         icon: "./src/assets/images/icon.png",
         adaptiveIcon: {
           foregroundImage: "./src/assets/images/icon.png",
@@ -57,6 +60,7 @@ export default ({ config }) => {
         package: "com.lingua.monkey",
         edgeToEdgeEnabled: true,
         permissions: [
+          "android.permission.INTERNET", // Nên thêm INTERNET cho chắc chắn (dù mặc định có)
           "android.permission.RECORD_AUDIO",
           "android.permission.MODIFY_AUDIO_SETTINGS",
         ],

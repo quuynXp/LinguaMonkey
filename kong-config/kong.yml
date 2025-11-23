@@ -1,0 +1,70 @@
+_format_version: "3.0"
+consumers:
+  - username: mobile-client
+
+services:
+  # 1. Java Service
+  - name: java-service
+    url: http://linguavietnameseapp:8080
+    routes:
+      - name: java-api-all
+        paths:
+          - /api/v1
+          - /api/swagger
+          - /swagger-ui
+          - /v3/api-docs
+        strip_path: false
+        methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
+      - name: java-stomp
+        paths:
+          - /ws/
+        strip_path: false
+        protocols: [http, https]
+        methods: [GET, POST, OPTIONS]
+    plugins:
+      - name: rate-limiting
+        config:
+          policy: redis
+          redis:
+            host: redis
+            password: redisPass123
+          limit_by: consumer
+          second: 20
+          minute: 500
+
+  # 2. Python Service
+  - name: python-service
+    url: http://pythonservice:8001
+    connect_timeout: 60000
+    write_timeout: 300000
+    read_timeout: 300000
+    routes:
+      - name: python-api
+        paths:
+          - /api/py/
+        strip_path: true
+        methods: [POST, OPTIONS]
+      - name: python-ws
+        paths:
+          - /ws/py/
+        strip_path: true
+        protocols: [http, https]
+        methods: [GET, OPTIONS]
+    plugins:
+      - name: jwt
+        config:
+          key_claim_name: kid
+          claims_to_verify: [exp]
+
+plugins:
+  - name: cors
+    config:
+      origins:
+        - "*"
+      methods: [GET, POST, PUT, DELETE, PATCH]
+      headers:
+        - "*"
+      exposed_headers:
+        - "*"
+      credentials: true
+      max_age: 3600

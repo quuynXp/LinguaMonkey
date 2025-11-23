@@ -45,4 +45,9 @@ public interface UserService {
     LevelInfoResponse getLevelInfo(UUID id);
 
     void registerFcmToken(NotificationRequest request);
+
+    // --- New Methods ---
+    UserResponse updateSetupStatus(UUID id, boolean isFinished);
+    UserResponse updatePlacementTestStatus(UUID id, boolean isDone);
+    UserResponse trackDailyWelcome(UUID id);
 }
