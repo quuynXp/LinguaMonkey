@@ -1,34 +1,32 @@
-# === 1. TOP-LEVEL DATABASES (Managed Postgres) ===
 databases:
   - name: app-database
     region: singapore
-    plan: free # Hoặc 'free' nếu tài khoản mới (nhưng free sẽ tắt sau 15p idle)
+    plan: starter
     databaseName: linguaviet_db
     user: linguauser
-    ipAllowList: [] # Chỉ cho phép kết nối nội bộ
+    ipAllowList: []
 
   - name: kong-database
     region: singapore
-    plan: free
+    plan: starter
     databaseName: kong
     user: kong
     ipAllowList: []
 
-# === 2. SERVICES ===
 services:
   # === MANAGED REDIS ===
-  # Render hỗ trợ type: redis trong services
   - type: redis
     name: redis
     region: singapore
-    plan: starter # Redis không có gói Free trên Render, thấp nhất là Starter
+    plan: starter
     ipAllowList: []
 
-  # === STORAGE & SEARCH (Dùng Disk) ===
+  # === STORAGE & SEARCH ===
   - type: web
     name: minio
     runtime: image
-    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    image:
+      url: minio/minio:RELEASE.2023-03-20T20-16-18Z # FIX: Dùng object url
     region: singapore
     plan: starter
     startCommand: server /data --console-address ":9001"
@@ -47,9 +45,10 @@ services:
   - type: pserv
     name: elasticsearch
     runtime: image
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.5
+    image:
+      url: docker.elastic.co/elasticsearch/elasticsearch:7.17.5 # FIX: Dùng object url
     region: singapore
-    plan: standard # ES cần RAM > 512MB, gói Starter dễ bị crash
+    plan: standard
     envVars:
       - key: discovery.type
         value: single-node
@@ -65,7 +64,8 @@ services:
   - type: web
     name: kibana
     runtime: image
-    image: docker.elastic.co/kibana/kibana:7.17.5
+    image:
+      url: docker.elastic.co/kibana/kibana:7.17.5 # FIX: Dùng object url
     region: singapore
     plan: starter
     envVars:
@@ -74,11 +74,12 @@ services:
       - key: TZ
         value: Asia/Ho_Chi_Minh
 
-  # === QUEUE (KAFKA/ZOOKEEPER) ===
+  # === QUEUE ===
   - type: pserv
     name: zookeeper
     runtime: image
-    image: confluentinc/cp-zookeeper:7.3.0
+    image:
+      url: confluentinc/cp-zookeeper:7.3.0 # FIX: Dùng object url
     region: singapore
     plan: starter
     envVars:
@@ -96,7 +97,8 @@ services:
   - type: pserv
     name: kafka
     runtime: image
-    image: confluentinc/cp-kafka:7.3.0
+    image:
+      url: confluentinc/cp-kafka:7.3.0 # FIX: Dùng object url
     region: singapore
     plan: standard
     envVars:
@@ -128,7 +130,6 @@ services:
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
-      # Render tự động inject biến DATABASE_URL, nhưng Spring Boot cần format khác
       - key: SPRING_DATASOURCE_URL
         fromDatabase:
           name: app-database
@@ -145,9 +146,7 @@ services:
       - key: MINIO_URL
         value: http://minio:9000
       - fromGroup: shared-app-env
-    secretFiles:
-      - name: lingua-firebase-key
-        mountPath: /app/config/service-account-key.json
+    # Đã xóa secretFiles vì Render Blueprint chưa hỗ trợ
 
   - type: pserv
     name: pythonservice
@@ -171,15 +170,14 @@ services:
       - key: KAFKA_BOOTSTRAP_SERVERS
         value: kafka:9092
       - fromGroup: shared-app-env
-    secretFiles:
-      - name: lingua-public-key
-        mountPath: /app/public_key.pem
+    # Đã xóa secretFiles vì Render Blueprint chưa hỗ trợ
 
   # === KONG GATEWAY ===
   - type: web
     name: kong
     runtime: image
-    image: kong:3.4
+    image:
+      url: kong:3.4 # FIX: Dùng object url
     region: singapore
     plan: standard
     preDeployCommand: "kong migrations bootstrap"
@@ -220,7 +218,8 @@ services:
   - type: web
     name: konga
     runtime: image
-    image: pantsel/konga:latest
+    image:
+      url: pantsel/konga:latest # FIX: Dùng object url
     region: singapore
     plan: starter
     envVars:
@@ -260,9 +259,7 @@ services:
     envVars:
       - key: KONG_ADMIN_URL
         value: http://kong:8001
-    secretFiles:
-      - name: lingua-public-key
-        mountPath: /keys/public_key.pem
+    # Đã xóa secretFiles
 
 envVarGroups:
   - name: shared-app-env
