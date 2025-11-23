@@ -6,6 +6,7 @@ import ForgotPasswordScreen from '../../screens/auth/ForgotPasswordScreen';
 import VerifyCodeScreen from '../../screens/auth/VerifyCodeScreen';
 import ResetPasswordScreen from '../../screens/auth/ResetPasswordScreen';
 import AppLaunchScreen from '../../screens/appLaunch/AppLaunchScreen';
+import SetupInitScreen from '../../screens/appLaunch/SetupInitScreen';
 
 export type AuthStackParamList = {
   AppLaunchScreen: { initialParams?: any } | undefined;
@@ -14,6 +15,7 @@ export type AuthStackParamList = {
   VerifyCodeScreen: { email: string };
   ForgotPasswordScreen: undefined;
   ResetPasswordScreen: undefined;
+  SetupInitScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<AuthStackParamList>();
@@ -30,6 +32,8 @@ export default function AuthStack({ initialParams }: { initialParams?: any }) {
       <Stack.Screen name="RegisterScreen" component={RegisterScreen} />
       <Stack.Screen name="ForgotPasswordScreen" component={ForgotPasswordScreen} />
       <Stack.Screen name="VerifyCodeScreen" component={VerifyCodeScreen} />
+      <Stack.Screen name="SetupInitScreen" component={SetupInitScreen} />
+      <Stack.Screen name="ResetPasswordScreen" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 }

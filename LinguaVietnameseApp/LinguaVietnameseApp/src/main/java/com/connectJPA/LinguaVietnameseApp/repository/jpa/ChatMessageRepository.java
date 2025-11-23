@@ -13,7 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMessagesId> {
-    @Query(value = "SELECT * FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND is_deleted = false LIMIT :limit OFFSET :offset",
+    @Query(value = "SELECT * FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND is_deleted = false",
             countQuery = "SELECT COUNT(*) FROM chat_messages WHERE (room_id = :roomId OR :roomId IS NULL) AND (sender_id = :senderId OR :senderId IS NULL) AND is_deleted = false",
             nativeQuery = true)
     Page<ChatMessage> findByRoomIdAndSenderIdAndIsDeletedFalse(@Param("roomId") UUID roomId, @Param("senderId") UUID senderId, Pageable pageable);
@@ -27,7 +27,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
     Page<ChatMessage> findByRoomIdAndIsDeletedFalse(UUID roomId, Pageable pageable);
 
     Page<ChatMessage> findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(UUID roomId, Pageable pageable);
-
 
 
     @Query("SELECT cm FROM ChatMessage cm WHERE cm.id.chatMessageId = :chatMessageId AND cm.isDeleted = false")
@@ -46,3 +45,4 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.messageType = com.connectJPA.LinguaVietnameseApp.enums.MessageType.TRANSLATION AND cm.isDeleted = false")
     long countTranslationsForUser(@Param("userId") UUID userId);
 }
+

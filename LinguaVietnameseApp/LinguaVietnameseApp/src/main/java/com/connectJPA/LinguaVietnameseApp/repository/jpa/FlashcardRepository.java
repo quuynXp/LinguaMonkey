@@ -14,6 +14,18 @@ import java.util.UUID;
 public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
     Page<Flashcard> findByLessonIdAndIsDeletedFalse(UUID lessonId, Pageable pageable);
 
+    List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
+            UUID userId, UUID lessonId, OffsetDateTime now, Pageable pageable);
+
+    @Query("select f from Flashcard f where f.userId = :userId and f.isDeleted = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
+    List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
+            UUID userId, OffsetDateTime now, Pageable pageable);
+
+    List<Flashcard> findByLessonIdAndIsDeletedFalseAndNextReviewAtBefore(UUID lessonId, OffsetDateTime time);
+
+    List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBefore(UUID userId, OffsetDateTime now);
+
+
     @Query("select f from Flashcard f where f.userId = :userId and f.lessonId = :lessonId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
     List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
             UUID userId, UUID lessonId, OffsetDateTime now, Pageable pageable);
@@ -24,10 +36,6 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
     @Query("select f from Flashcard f where f.userId = :userId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
     List<Flashcard> findByUserIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
             UUID userId, OffsetDateTime now, Pageable pageable);
-
-    List<Flashcard> findByLessonIdAndIsDeletedFalseAndNextReviewAtBefore(UUID lessonId, OffsetDateTime time);
-
-    List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBefore(UUID userId, OffsetDateTime time);
 
     Page<Flashcard> findByLessonIdAndFrontContainingIgnoreCaseAndIsDeletedFalse(UUID lessonId, String q, Pageable p);
 }

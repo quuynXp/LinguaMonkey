@@ -47,6 +47,8 @@
       "public": "Public"
     }
   },
+  "useOtpInstead": "Use OTP",
+  "usePasswordInstead": "Use password instead",
   "stats": {
     "lessons": "Lessons",
     "words": "Words",

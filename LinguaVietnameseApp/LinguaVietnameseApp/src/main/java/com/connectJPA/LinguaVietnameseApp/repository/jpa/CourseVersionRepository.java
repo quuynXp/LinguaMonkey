@@ -23,6 +23,23 @@ public interface CourseVersionRepository extends JpaRepository<CourseVersion, UU
 
     /**
      * Tìm phiên bản MỚI NHẤT (theo versionNumber) của một Course có trạng thái PUBLIC.
+     * Sử dụng Derived Query Method findTopBy... để đảm bảo chỉ trả về 1 kết quả (LIMIT 1).
+     */
+    Optional<CourseVersion> findTopByCourse_CourseIdAndStatusOrderByVersionNumberDesc(UUID courseId, VersionStatus status);
+
+    /**
+     * Tìm phiên bản MỚI NHẤT (theo versionNumber) của một Course, không bị xóa.
+     * Sử dụng Derived Query Method findTopBy... để đảm bảo chỉ trả về 1 kết quả (LIMIT 1).
+     */
+    Optional<CourseVersion> findTopByCourse_CourseIdAndIsDeletedFalseOrderByVersionNumberDesc(UUID courseId);
+
+    List<CourseVersion> findByCourse_CourseIdAndStatusAndIsDeletedFalse(UUID courseId, VersionStatus status);
+
+    List<CourseVersion> findByCourse_CourseIdAndIsDeletedFalse(UUID courseId);
+
+
+    /**
+     * Tìm phiên bản MỚI NHẤT (theo versionNumber) của một Course có trạng thái PUBLIC.
      * (Hàm này có thể không cần nếu Course.latestPublicVersionId được cập nhật đúng)
      * Thay vào đó, chúng ta có thể dùng hàm này để tìm phiên bản public *trước đó* để so sánh.
      */

@@ -20,9 +20,14 @@ public interface LessonProgressRepository extends JpaRepository<LessonProgress, 
     @Query("SELECT lp FROM LessonProgress lp WHERE lp.id.lessonId = :lessonId AND lp.id.userId = :userId AND lp.isDeleted = false")
     Optional<LessonProgress> findByLessonIdAndUserIdAndIsDeletedFalse(@Param("lessonId") UUID lessonId, @Param("userId") UUID userId);
 
+    Page<LessonProgress> findById_LessonIdAndId_UserIdAndIsDeletedFalse(UUID lessonId, UUID userId, Pageable pageable);
+
+    Optional<LessonProgress> findById_LessonIdAndId_UserIdAndIsDeletedFalse(UUID lessonId, UUID userId);
+
     long countByIdUserIdAndCompletedAtIsNotNullAndIsDeletedFalse(UUID userId);
 
     long countById_UserIdAndCompletedAtIsNotNull(UUID userId);
+
 
     @Modifying
     @Transactional

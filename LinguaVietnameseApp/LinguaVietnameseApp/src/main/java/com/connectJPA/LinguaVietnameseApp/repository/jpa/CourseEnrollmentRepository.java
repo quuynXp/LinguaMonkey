@@ -28,8 +28,8 @@ public interface CourseEnrollmentRepository extends JpaRepository<CourseEnrollme
     List<CourseEnrollment> findByUserIdAndEnrolledAtBetween(UUID userId, OffsetDateTime start, OffsetDateTime end);
 
     List<CourseEnrollment> findByCourseVersion_Course_CourseIdAndIsDeletedFalse(UUID courseId);
-    
-    List<CourseEnrollment> findByCourseVersion_Course_CourseIdAndEnrolledAtBetween(UUID courseIds, OffsetDateTime start, OffsetDateTime end);
+
+    List<CourseEnrollment> findByCourseVersion_Course_CourseIdAndEnrolledAtBetween(UUID courseId, OffsetDateTime start, OffsetDateTime end);
 
     List<CourseEnrollment> findByCourseVersion_Course_CourseIdIn(List<UUID> courseIds);
 
@@ -44,3 +44,4 @@ public interface CourseEnrollmentRepository extends JpaRepository<CourseEnrollme
     List<CourseEnrollment> findByCourseVersion_Course_CourseIdInAndEnrolledAtBetween(List<UUID> courseIds, OffsetDateTime start, OffsetDateTime end);
 
 }
+

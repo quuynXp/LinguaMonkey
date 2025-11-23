@@ -1,9 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Text, TouchableOpacity, View, Image } from "react-native";
+import { Animated, Text, TouchableOpacity, View } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { useUserStore } from "../../stores/UserStore";
-import { useProgressStats } from "../../hooks/useProgressStats";
 import { resetToTab, resetToAuth } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -22,7 +21,6 @@ type DailyWelcomeScreenProps = {
 const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
   const { user, nativeLanguageId } = useUserStore();
   const { t } = useTranslation();
-  const { progressStats } = useProgressStats(user?.userId);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
@@ -33,7 +31,7 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
 
   useEffect(() => {
     if (!user?.userId) {
-      resetToAuth('Login');
+      resetToAuth();
       return;
     }
 
@@ -115,7 +113,6 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
               <View style={[styles.iconCircle, { backgroundColor: '#ECFDF5' }]}>
                 <Icon name="school" size={24} color="#10B981" />
               </View>
-              <Text style={styles.statValue}>{progressStats.completedLessons}</Text>
               <Text style={styles.statLabel}>{t("stats.lessons")}</Text>
             </View>
 
@@ -131,7 +128,6 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
               <View style={[styles.iconCircle, { backgroundColor: '#EFF6FF' }]}>
                 <Icon name="schedule" size={24} color="#3B82F6" />
               </View>
-              <Text style={styles.statValue}>{progressStats.timeSpent}m</Text>
               <Text style={styles.statLabel}>{t("stats.time")}</Text>
             </View>
           </View>

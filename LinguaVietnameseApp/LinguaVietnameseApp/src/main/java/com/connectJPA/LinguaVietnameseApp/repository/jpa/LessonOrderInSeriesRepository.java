@@ -24,8 +24,17 @@ public interface LessonOrderInSeriesRepository extends JpaRepository<LessonOrder
             @Param("lessonId") UUID lessonId,
             @Param("lessonSeriesId") UUID lessonSeriesId);
 
-    @Query("UPDATE LessonOrderInSeries los SET los.isDeleted = true, los.deletedAt = CURRENT_TIMESTAMP WHERE los.id.lessonId = :lessonId AND los.id.lessonSeriesId = :lessonSeriesId AND los.isDeleted = false")
+    Page<LessonOrderInSeries> findById_LessonIdAndId_LessonSeriesIdAndIsDeletedFalse(
+            UUID lessonId,
+            UUID lessonSeriesId,
+            Pageable pageable);
+
+    Optional<LessonOrderInSeries> findById_LessonIdAndId_LessonSeriesIdAndIsDeletedFalse(
+            UUID lessonId,
+            UUID lessonSeriesId);
+
     @Modifying
+    @Query("UPDATE LessonOrderInSeries los SET los.isDeleted = true, los.deletedAt = CURRENT_TIMESTAMP WHERE los.id.lessonId = :lessonId AND los.id.lessonSeriesId = :lessonSeriesId AND los.isDeleted = false")
     void softDeleteByLessonIdAndLessonSeriesId(
             @Param("lessonId") UUID lessonId,
             @Param("lessonSeriesId") UUID lessonSeriesId);

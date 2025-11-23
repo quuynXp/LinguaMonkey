@@ -15,7 +15,6 @@ import java.util.UUID;
 
 public interface LeaderboardRepository extends JpaRepository<Leaderboard, UUID> {
 
-    // [FIXED] Get latest leaderboard by tab only (no period filter)
     @Query("SELECT l FROM Leaderboard l WHERE l.tab = :tab AND l.isDeleted = false " +
             "ORDER BY l.snapshotDate DESC, l.createdAt DESC")
     Page<Leaderboard> findLatestByTabAndIsDeletedFalse(
@@ -30,6 +29,8 @@ public interface LeaderboardRepository extends JpaRepository<Leaderboard, UUID> 
     @Query("UPDATE Leaderboard l SET l.isDeleted = true, l.deletedAt = CURRENT_TIMESTAMP " +
             "WHERE l.leaderboardId = :id AND l.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
+
+    Optional<Leaderboard> findTopByTabAndIsDeletedFalseOrderBySnapshotDateDescCreatedAtDesc(String tab);
 
     // Get latest single leaderboard by tab
     @Query("SELECT l FROM Leaderboard l WHERE l.tab = :tab AND l.isDeleted = false " +

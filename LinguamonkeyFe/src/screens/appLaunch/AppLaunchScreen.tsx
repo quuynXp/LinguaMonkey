@@ -130,14 +130,14 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
     setSelectedOption(option);
     setTimeout(async () => {
       if (option === "new") {
-        gotoTab("AuthStack", "RegisterScreen");
+        gotoTab("RegisterScreen");
       } else if (option === "existing") {
-        gotoTab("AuthStack", "LoginScreen");
+        gotoTab("LoginScreen");
       } else if (option === "quick") {
         setIsGenerating(true);
         try {
           await new Promise((resolve) => setTimeout(resolve, 1000));
-          gotoTab("SetupInitScreen", "SetupInitScreen");
+          gotoTab("SetupInitScreen");
         } catch (error) {
           console.error("Failed to generate account:", error);
         } finally {

@@ -58,7 +58,7 @@ export const logout = async () => {
     await useTokenStore.getState().clearTokens();
     useUserStore.getState().setUser(null);
     useUserStore.getState().setAuthenticated(false);
-    resetToAuth('Login');
+    resetToAuth();
   }
 };
 
@@ -173,13 +173,11 @@ async function handleLoginSuccess(token: string, refreshToken: string) {
       return;
     }
 
-    if (normalizedUser.roles.includes('ROLE_ADMIN')) resetToTab('Admin');
-    else if (normalizedUser.roles.includes('ROLE_TEACHER')) resetToTab('Teacher');
     else resetToTab('Home');
 
   } catch (e) {
     console.error('handleLoginSuccess error:', e);
-    resetToAuth('Login');
+    resetToAuth();
     throw e;
   }
 }

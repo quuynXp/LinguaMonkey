@@ -6,7 +6,6 @@ import { showError, showSuccess } from "../../utils/toastHelper";
 import {
   loginWithEmail,
   requestOtp,
-  verifyOtpAndLogin, // Import verifyOtpAndLogin để dùng nếu cần, nhưng ở đây ta navigate sang VerifyOtpScreen
   handleGoogleLogin as serviceHandleGoogle,
   handleFacebookLogin as serviceHandleFacebook
 } from '../../services/authService';
@@ -14,7 +13,7 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 import { isValidEmail } from '../../utils/validation';
-import { gotoTab } from '../../utils/navigationRef';
+import { goBack, gotoTab } from '../../utils/navigationRef';
 import PhoneInput from 'react-native-phone-number-input';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
@@ -29,21 +28,18 @@ const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
 
-  const [loginMethod, setLoginMethod] = useState<'email' | 'phone'>('email');
+  const [loginMethod, setLoginMethod] = useState('email');
   const [useOtpForEmail, setUseOtpForEmail] = useState(false);
 
-  // Phone State
   const [phoneNumber, setPhoneNumber] = useState('');
   const [formattedValue, setFormattedValue] = useState('');
   const [validPhone, setValidPhone] = useState(false);
-  const phoneInputRef = useRef<PhoneInput>(null);
+  const phoneInputRef = useRef(null);
 
-  // Email State
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // General State
   const [isLoading, setIsLoading] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -56,7 +52,7 @@ const LoginScreen = ({ navigation }) => {
   });
 
   const [fbRequest, fbResponse, fbPromptAsync] = Facebook.useAuthRequest({
-    clientId: FACEBOOK_CLIENT_ID as string,
+    clientId: FACEBOOK_CLIENT_ID,
     scopes: ['public_profile', 'email'],
   });
 
@@ -81,7 +77,7 @@ const LoginScreen = ({ navigation }) => {
     }
   }, [fbResponse]);
 
-  const safeShowError = (error: any) => {
+  const safeShowError = (error) => {
     let message = t("anErrorOccurred");
     if (typeof error === 'string') message = error;
     else if (error?.message && typeof error.message === 'string') message = error.message;
@@ -89,7 +85,7 @@ const LoginScreen = ({ navigation }) => {
     showError(message);
   };
 
-  const handleSocialLogin = (promise: Promise<any>) => {
+  const handleSocialLogin = (promise) => {
     setIsLoading(true);
     promise
       .then((result) => {
@@ -114,14 +110,14 @@ const LoginScreen = ({ navigation }) => {
       const result = await loginWithEmail(email, password);
       if (result) showSuccess(t("loginSuccess"));
       else showError(t("loginFailed"));
-    } catch (err: any) {
+    } catch (err) {
       safeShowError(err);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleRequestOtp = async (identifier: string) => {
+  const handleRequestOtp = async (identifier) => {
     setIsLoading(true);
     try {
       const success = await requestOtp(identifier);
@@ -131,7 +127,7 @@ const LoginScreen = ({ navigation }) => {
       } else {
         showError(t("otpSentFailed"));
       }
-    } catch (error: any) {
+    } catch (error) {
       safeShowError(error);
     } finally {
       setIsLoading(false);
@@ -159,7 +155,7 @@ const LoginScreen = ({ navigation }) => {
   };
 
   const renderEmailForm = () => (
-    <ScreenLayout>
+    <>
       <View style={styles.inputContainer}>
         <Icon name="email" size={20} color="#6B7280" style={styles.inputIcon} />
         <TextInput
@@ -216,7 +212,7 @@ const LoginScreen = ({ navigation }) => {
           </>
         )}
       </TouchableOpacity>
-    </ScreenLayout>
+    </>
   );
 
   const renderPhoneForm = () => (
@@ -257,10 +253,10 @@ const LoginScreen = ({ navigation }) => {
   );
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout backgroundColor="#F8FAFC">
       <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => gotoTab("AppLaunchScreen")}>
+          <TouchableOpacity onPress={() => goBack()}>
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
         </View>
@@ -315,13 +311,12 @@ const LoginScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </Animated.View>
-    </View>
+    </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
-  content: { flex: 1, paddingHorizontal: 24, paddingTop: 50 },
+  content: { flex: 1, paddingHorizontal: 24, paddingTop: 12 }, // Adjusted padding since ScreenLayout handles top inset
   header: { marginBottom: 20 },
   title: { fontSize: 28, fontWeight: "bold", color: "#1F2937", textAlign: "center", marginBottom: 8 },
   subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center", marginBottom: 30, lineHeight: 24 },

@@ -9,51 +9,40 @@ import {
     ActivityIndicator,
     Alert,
 } from 'react-native';
-import DocumentPicker, { DocumentPickerResponse } from 'react-native-document-picker';
 import { Picker } from '@react-native-picker/picker';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import instance from '../../api/axiosInstance';
 import ScreenLayout from '../../components/layout/ScreenLayout';
+import { pickSingleDocument, PickedDocument } from '../../utils/documentPickerHelper';
 
 const AdminCreateVideoScreen = ({ navigation }) => {
     const { t } = useTranslation();
     const [loading, setLoading] = useState(false);
 
-    // Form State
     const [title, setTitle] = useState('');
     const [level, setLevel] = useState('beginner');
     const [sourceLang, setSourceLang] = useState('en');
     const [targetLang, setTargetLang] = useState('vi');
 
-    // File State
-    const [videoFile, setVideoFile] = useState<DocumentPickerResponse | null>(null);
-    const [subtitleFile, setSubtitleFile] = useState<DocumentPickerResponse | null>(null);
+    const [videoFile, setVideoFile] = useState<PickedDocument | null>(null);
+    const [subtitleFile, setSubtitleFile] = useState<PickedDocument | null>(null);
 
     const handlePickVideo = async () => {
-        try {
-            const res = await DocumentPicker.pickSingle({
-                type: [DocumentPicker.types.video],
-            });
+        const res = await pickSingleDocument(['video/*']);
+        if (res) {
             setVideoFile(res);
-        } catch (err) {
-            if (!DocumentPicker.isCancel(err)) console.error(err);
         }
     };
 
     const handlePickSubtitle = async () => {
-        try {
-            const res = await DocumentPicker.pickSingle({
-                type: [DocumentPicker.types.allFiles], // .srt thường ko có mime chuẩn
-            });
-            // Check extension thủ công nếu cần
-            if (res.name?.endsWith('.srt') || res.name?.endsWith('.vtt')) {
+        const res = await pickSingleDocument(['*/*']);
+        if (res) {
+            if (res.name.endsWith('.srt') || res.name.endsWith('.vtt')) {
                 setSubtitleFile(res);
             } else {
-                Alert.alert("Invalid Format", "Please select a .srt file");
+                Alert.alert("Invalid Format", "Please select a .srt or .vtt file");
             }
-        } catch (err) {
-            if (!DocumentPicker.isCancel(err)) console.error(err);
         }
     };
 
@@ -71,26 +60,23 @@ const AdminCreateVideoScreen = ({ navigation }) => {
             formData.append('sourceLang', sourceLang);
             formData.append('targetLang', targetLang);
 
-            // Append Video
             formData.append('videoFile', {
                 uri: videoFile.uri,
-                type: videoFile.type || 'video/mp4',
+                type: videoFile.mimeType || 'video/mp4',
                 name: videoFile.name,
-            });
+            } as any);
 
-            // Append Subtitle
             formData.append('subtitleFile', {
                 uri: subtitleFile.uri,
-                type: subtitleFile.type || 'application/x-subrip', // text/plain cũng ok
+                type: subtitleFile.mimeType || 'application/x-subrip',
                 name: subtitleFile.name,
-            });
+            } as any);
 
-            // Gọi API "All-in-one" đã tạo ở Java
             const response = await instance.post('/api/v1/videos/admin/create-full', formData, {
                 headers: {
                     'Content-Type': 'multipart/form-data',
                 },
-                timeout: 60000, // Tăng timeout vì upload + dịch tốn thời gian
+                timeout: 60000,
             });
 
             if (response.data.code === 200) {
@@ -112,7 +98,6 @@ const AdminCreateVideoScreen = ({ navigation }) => {
             <ScrollView style={styles.container}>
                 <Text style={styles.header}>Upload New Video Lesson</Text>
 
-                {/* Title Input */}
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Video Title</Text>
                     <TextInput
@@ -123,7 +108,6 @@ const AdminCreateVideoScreen = ({ navigation }) => {
                     />
                 </View>
 
-                {/* Level Picker */}
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Level</Text>
                     <View style={styles.pickerContainer}>
@@ -135,7 +119,6 @@ const AdminCreateVideoScreen = ({ navigation }) => {
                     </View>
                 </View>
 
-                {/* Languages */}
                 <View style={styles.row}>
                     <View style={[styles.inputGroup, { flex: 1, marginRight: 8 }]}>
                         <Text style={styles.label}>Original Lang</Text>
@@ -157,7 +140,6 @@ const AdminCreateVideoScreen = ({ navigation }) => {
                     </View>
                 </View>
 
-                {/* File Pickers */}
                 <View style={styles.fileSection}>
                     <Text style={styles.label}>Video File</Text>
                     <TouchableOpacity style={styles.fileButton} onPress={handlePickVideo}>
@@ -178,7 +160,6 @@ const AdminCreateVideoScreen = ({ navigation }) => {
                     </TouchableOpacity>
                 </View>
 
-                {/* Submit Button */}
                 <TouchableOpacity
                     style={[styles.submitButton, loading && styles.disabledButton]}
                     onPress={handleSubmit}

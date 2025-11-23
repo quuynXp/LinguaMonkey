@@ -54,11 +54,16 @@ export function resetToTab(
   else queuePending(run);
 }
 
+// Cập nhật Type: Thêm các màn hình Auth vào danh sách hỗ trợ
 export function gotoTab(
   screenName:
+    // Tab Screens
     | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
-    | 'AdminStack' | 'LearnStack' | 'PaymentStack' | 'ChatStack' | 'ProfileStack' | 'ProgressStack' | 'RoadmapStack'
-    | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'SetupInitScreen' | 'AuthStack',
+    // Main Stack Screens
+    | 'AdminStack' | 'LearnStack' | 'PaymentStack' | 'ChatStack' | 'ProfileStack' | 'ProgressStack' | 'CourseStack' | 'RoadmapStack'
+    | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'SetupInitScreen'
+    // Auth Stack Screens (Thêm mới)
+    | 'LoginScreen' | 'RegisterScreen' | 'ForgotPasswordScreen',
   nestedScreen?: string,
   nestedParams?: object
 ) {
@@ -69,7 +74,7 @@ export function gotoTab(
 
   let action;
 
-  // 1. Nếu là Tab con của TabApp
+  // 1. Nếu là Tab con của TabApp (Navigation lồng nhau)
   if (['Home', 'Learn', 'Progress', 'Chat', 'Profile'].includes(screenName)) {
     action = CommonActions.navigate({
       name: 'TabApp',
@@ -81,13 +86,13 @@ export function gotoTab(
       },
     });
   }
-  // 2. Nếu là các Feature Stack hoặc Screen nằm ngang hàng (Siblings) trong MainStack
+  // 2. Các màn hình ngang hàng (Siblings) trong Stack hiện tại (AuthStack hoặc MainStack)
   else {
     action = CommonActions.navigate({
       name: screenName,
       params: nestedScreen
-        ? { screen: nestedScreen, params: nestedParams }
-        : undefined,
+        ? { screen: nestedScreen, params: nestedParams } // Trường hợp Stack lồng Stack (VD: LearnStack -> Lesson)
+        : nestedParams || undefined, // Trường hợp Screen thường (VD: LoginScreen)
     });
   }
 
