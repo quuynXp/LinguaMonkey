@@ -5,12 +5,16 @@ google-api-core==2.17.1
 google-generativeai==0.7.2
 googleapis-common-protos==1.63.0
 azure-cognitiveservices-speech
+
 # --- AI libraries ---
 transformers==4.52.1
 sentence-transformers~=5.0.0
 librosa~=0.11.0
 sentencepiece
-torch>=2.6.0
+# STRICT PINNING REQUIRED FOR COMPATIBILITY
+torch==2.6.0
+torchvision==0.21.0
+torchaudio==2.6.0
 
 # --- Other libs ---
 soundfile==0.12.1
