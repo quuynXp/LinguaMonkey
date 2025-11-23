@@ -22,7 +22,6 @@ services:
     ipAllowList: []
 
   # === MINIO (Free - Không Disk) ===
-  # Tiết kiệm $7. Lưu ý: Dữ liệu upload sẽ mất khi service restart.
   - type: web
     name: minio
     runtime: image
@@ -38,7 +37,6 @@ services:
         value: minioadmin
       - key: TZ
         value: Asia/Ho_Chi_Minh
-    # Đã xóa disk để được dùng gói Free
 
   # === ELASTICSEARCH (Starter $7 - Có Disk) ===
   - type: pserv
@@ -47,7 +45,7 @@ services:
     image:
       url: docker.elastic.co/elasticsearch/elasticsearch:7.17.5
     region: singapore
-    plan: starter # Render bắt buộc trả phí cho pserv
+    plan: starter
     envVars:
       - key: discovery.type
         value: single-node
@@ -73,44 +71,29 @@ services:
       - key: TZ
         value: Asia/Ho_Chi_Minh
 
-  # === KAFKA KRAFT (Starter $7 - No Zookeeper) ===
-  # Dùng tag 'latest' để chắc chắn pull được.
+  # === MESSAGE QUEUE (REDPANDA - Thay thế Kafka KRaft) ===
+  # FIX: Dùng Redpanda để tránh lỗi pull image và tối ưu RAM
   - type: pserv
     name: kafka
     runtime: image
     image:
-      url: bitnami/kafka:latest
+      url: redpandadata/redpanda:v23.1.1 # Image ổn định và nhẹ nhất
     region: singapore
     plan: starter
+    startCommand: | # Command khởi động cho 1 node KRaft trên Render
+      rpk redpanda start --node-id 0 \
+      --node-ip kafka \
+      --advertise-kafka-addr kafka:9092 \
+      --kafka-addr 0.0.0.0:9092 \
+      --smp 1 \
+      --memory 400M \
+      --set redpanda.auto_create_topics_enabled=true
     envVars:
-      # --- CẤU HÌNH KRAFT ---
-      # Process Roles: Chạy cả Controller và Broker trên cùng 1 container
-      - key: KAFKA_CFG_PROCESS_ROLES
-        value: controller,broker
-      - key: KAFKA_CFG_NODE_ID
-        value: "1"
-      # Listeners: Broker 9092 (Client), Controller 9093 (Nội bộ)
-      - key: KAFKA_CFG_LISTENERS
-        value: PLAINTEXT://:9092,CONTROLLER://:9093
-      - key: KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP
-        value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - key: KAFKA_CFG_ADVERTISED_LISTENERS
-        value: PLAINTEXT://kafka:9092
-      - key: KAFKA_CFG_CONTROLLER_LISTENER_NAMES
-        value: CONTROLLER
-      - key: KAFKA_CFG_CONTROLLER_QUORUM_VOTERS
-        value: 1@127.0.0.1:9093
-      # Cho phép tạo topic tự động khi app đẩy message (Tiện cho dev)
-      - key: KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE
-        value: "true"
       - key: TZ
         value: Asia/Ho_Chi_Minh
-      # Giới hạn RAM Java để không crash gói Starter
-      - key: KAFKA_HEAP_OPTS
-        value: "-Xmx400M -Xms400M"
     disk:
       name: kafka_data
-      mountPath: /bitnami/kafka
+      mountPath: /var/lib/redpanda/data
       sizeGB: 1
 
   # === BACKEND (Free) ===
@@ -133,6 +116,7 @@ services:
           type: redis
           name: redis
           property: host
+      # KAFKA_BOOTSTRAP_SERVERS VẪN DÙNG CHUNG: Redpanda tương thích với Kafka API
       - key: KAFKA_BOOTSTRAP_SERVERS
         value: kafka:9092
       - key: ELASTICSEARCH_URIS
