@@ -1,0 +1,13 @@
+FROM curlimages/curl:latest
+
+USER root
+WORKDIR /scripts
+
+# Copy the init script from your local context
+COPY ./kong-init/init-kong.sh /scripts/init-kong.sh
+
+# Ensure executable
+RUN chmod +x /scripts/init-kong.sh
+
+# Set entrypoint to the script
+ENTRYPOINT ["/bin/sh", "/scripts/init-kong.sh"]

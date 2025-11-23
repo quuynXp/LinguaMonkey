@@ -1,0 +1,268 @@
+services:
+  # === DATABASES (MANAGED) ===
+  - type: postgres
+    name: app-database
+    region: singapore
+    plan: starter
+    databaseName: linguaviet_db
+    user: linguauser
+    ipAllowList: [] # Allow internal connections
+
+  - type: postgres
+    name: kong-database
+    region: singapore
+    plan: starter
+    databaseName: kong
+    user: kong
+    ipAllowList: []
+
+  - type: redis
+    name: redis
+    region: singapore
+    plan: starter
+    ipAllowList: []
+
+  # === STORAGE & SEARCH ===
+  - type: web
+    name: minio
+    runtime: image
+    image: minio/minio:RELEASE.2023-03-20T20-16-18Z
+    region: singapore
+    plan: starter
+    startCommand: server /data --console-address ":9001"
+    envVars:
+      - key: MINIO_ROOT_USER
+        value: minioadmin
+      - key: MINIO_ROOT_PASSWORD
+        value: minioadmin
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+    disk:
+      name: minio_data
+      mountPath: /data
+      sizeGB: 10
+
+  - type: pserv
+    name: elasticsearch
+    runtime: image
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.5
+    region: singapore
+    plan: standard # Requires RAM
+    envVars:
+      - key: discovery.type
+        value: single-node
+      - key: ES_JAVA_OPTS
+        value: "-Xms512m -Xmx512m"
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+    disk:
+      name: es_data
+      mountPath: /usr/share/elasticsearch/data
+      sizeGB: 10
+
+  - type: web
+    name: kibana
+    runtime: image
+    image: docker.elastic.co/kibana/kibana:7.17.5
+    region: singapore
+    plan: starter
+    envVars:
+      - key: ELASTICSEARCH_HOSTS
+        value: http://elasticsearch:9200
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+
+  # === QUEUE (KAFKA/ZOOKEEPER) ===
+  - type: pserv
+    name: zookeeper
+    runtime: image
+    image: confluentinc/cp-zookeeper:7.3.0
+    region: singapore
+    plan: starter
+    envVars:
+      - key: ZOOKEEPER_CLIENT_PORT
+        value: 2181
+      - key: ZOOKEEPER_TICK_TIME
+        value: 2000
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+    disk:
+      name: zookeeper_data
+      mountPath: /var/lib/zookeeper/data
+      sizeGB: 10
+
+  - type: pserv
+    name: kafka
+    runtime: image
+    image: confluentinc/cp-kafka:7.3.0
+    region: singapore
+    plan: standard # Java heavy
+    envVars:
+      - key: KAFKA_BROKER_ID
+        value: 1
+      - key: KAFKA_ZOOKEEPER_CONNECT
+        value: zookeeper:2181
+      - key: KAFKA_ADVERTISED_LISTENERS
+        value: PLAINTEXT://kafka:9092
+      - key: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+        value: 1
+      - key: KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS
+        value: 0
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+    disk:
+      name: kafka_data
+      mountPath: /var/lib/kafka/data
+      sizeGB: 10
+
+  # === BACKEND SERVICES ===
+  - type: web
+    name: linguavietnameseapp
+    runtime: docker
+    region: singapore
+    plan: standard
+    dockerContext: .
+    dockerfilePath: ./LinguaVietnameseApp/Dockerfile
+    envVars:
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: app-database
+          property: connectionString
+      - key: SPRING_REDIS_HOST
+        fromService:
+          type: redis
+          name: redis
+          property: host
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: kafka:9092
+      - key: ELASTICSEARCH_URIS
+        value: http://elasticsearch:9200
+      - key: MINIO_URL
+        value: http://minio:9000
+      - fromGroup: shared-app-env
+    secretFiles:
+      - name: lingua-firebase-key
+        mountPath: /app/config/service-account-key.json
+
+  - type: pserv
+    name: pythonservice
+    runtime: docker
+    region: singapore
+    plan: starter
+    dockerContext: .
+    dockerfilePath: ./PythonService/Dockerfile
+    envVars:
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+      - key: DB_HOST
+        fromDatabase:
+          name: app-database
+          property: host
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: redis
+          property: host
+      - key: KAFKA_BOOTSTRAP_SERVERS
+        value: kafka:9092
+      - fromGroup: shared-app-env
+    secretFiles:
+      - name: lingua-public-key
+        mountPath: /app/public_key.pem
+
+  # === KONG GATEWAY ===
+  - type: web
+    name: kong
+    runtime: image
+    image: kong:3.4
+    region: singapore
+    plan: standard
+    preDeployCommand: "kong migrations bootstrap"
+    envVars:
+      - key: KONG_DATABASE
+        value: postgres
+      - key: KONG_PG_HOST
+        fromDatabase:
+          name: kong-database
+          property: host
+      - key: KONG_PG_USER
+        fromDatabase:
+          name: kong-database
+          property: user
+      - key: KONG_PG_PASSWORD
+        fromDatabase:
+          name: kong-database
+          property: password
+      - key: KONG_PG_DATABASE
+        fromDatabase:
+          name: kong-database
+          property: database
+      - key: KONG_PROXY_ACCESS_LOG
+        value: /dev/stdout
+      - key: KONG_ADMIN_ACCESS_LOG
+        value: /dev/stdout
+      - key: KONG_PROXY_ERROR_LOG
+        value: /dev/stderr
+      - key: KONG_ADMIN_ERROR_LOG
+        value: /dev/stderr
+      - key: KONG_ADMIN_LISTEN
+        value: 0.0.0.0:8001
+      - key: KONG_PLUGINS
+        value: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+
+  - type: web
+    name: konga
+    runtime: image
+    image: pantsel/konga:latest
+    region: singapore
+    plan: starter
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_ADAPTER
+        value: postgres
+      - key: DB_HOST
+        fromDatabase:
+          name: kong-database
+          property: host
+      - key: DB_USER
+        fromDatabase:
+          name: kong-database
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: kong-database
+          property: password
+      - key: DB_DATABASE
+        value: konga_db # Note: You may need to create this DB manually inside the kong-database instance
+      - key: TOKEN_SECRET
+        generateValue: true
+      - key: KONGA_HOOK_TIMEOUT
+        value: 120000
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+
+  # === INIT TASKS ===
+  - type: cron
+    name: kong-init-job
+    region: singapore
+    schedule: "0 0 1 1 *" # Manual trigger only (Jan 1st) or run once
+    runtime: docker
+    dockerContext: .
+    dockerfilePath: ./kong-init/Dockerfile.init
+    envVars:
+      - key: KONG_ADMIN_URL
+        value: http://kong:8001
+    secretFiles:
+      - name: lingua-public-key
+        mountPath: /keys/public_key.pem
+
+envVarGroups:
+  - name: shared-app-env
+    envVars:
+      - key: ENVIRONMENT
+        value: production
