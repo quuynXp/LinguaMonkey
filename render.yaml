@@ -22,7 +22,6 @@ services:
     ipAllowList: []
 
   # === MINIO (Starter - Bắt buộc vì có Disk) ===
-  # Lỗi cũ: "disks are not supported for free". Phải lên Starter ($7).
   - type: web
     name: minio
     runtime: image
@@ -80,8 +79,9 @@ services:
   - type: pserv
     name: kafka
     runtime: image
+    # FIX: Đổi sang version 3.6.0 và thêm docker.io để Render dễ tìm
     image:
-      url: bitnami/kafka:3.5
+      url: docker.io/bitnami/kafka:3.6.0
     region: singapore
     plan: starter
     envVars:
@@ -163,9 +163,7 @@ services:
         value: kafka:9092
       - fromGroup: shared-app-env
 
-  # === KONG (Free - Đã xóa preDeployCommand) ===
-  # Lỗi cũ: "pre-deploy command not supported for free". Đã xóa.
-  # Bạn CẦN CHẠY MIGRATION THỦ CÔNG.
+  # === KONG (Free - Manual Migration) ===
   - type: web
     name: kong
     runtime: image
@@ -173,6 +171,7 @@ services:
       url: kong:3.4
     region: singapore
     plan: free
+    # Đã xóa preDeployCommand để chạy free. Nhớ chạy lệnh thủ công trong Shell.
     envVars:
       - key: KONG_DATABASE
         value: postgres
