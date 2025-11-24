@@ -7,13 +7,12 @@ import {
   useStartTest,
   useSubmitTest,
 } from "../../hooks/useTesting";
-import { useUserStore } from "../../stores/UserStore"; // Import UserStore
-import { gotoTab } from "../../utils/navigationRef"; // Import gotoTab
+import { useUserStore } from "../../stores/UserStore";
+import { gotoTab } from "../../utils/navigationRef";
 import { Language, languageToCountry } from "../../types/api";
-import CountryFlag from "react-native-country-flag"; // Đảm bảo import đúng file bạn đã cung cấp
+import CountryFlag from "react-native-country-flag";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 
-// Giả định các kiểu dữ liệu
 type TestConfig = {
   testConfigId: string;
   title: string;
@@ -45,30 +44,32 @@ const ProficiencyTestScreen = () => {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [result, setResult] = useState<TestResult | null>(null);
 
-  // === 1. Lấy ngôn ngữ target từ UserStore ===
+  // Lấy các trường cần thiết từ UserStore
   const targetLanguages = useUserStore(s => s.user?.languages ?? []);
+  const hasDonePlacementTest = useUserStore(s => s.hasDonePlacementTest);
+  const finishPlacementTest = useUserStore(s => s.finishPlacementTest);
 
-  // (Giả sử bạn có 1 map hoặc fetch từ /api/v1/languages)
   const allLanguages: Record<string, { name: string, iso: string }> = {
     'en': { name: 'English', iso: 'US' },
     'vi': { name: 'Tiếng Việt', iso: 'VN' },
     'zh': { name: '中文', iso: 'CN' },
     'jp': { name: '日本語', iso: 'JP' },
     'fr': { name: 'Français', iso: 'FR' },
-    // ... Thêm các ngôn ngữ khác bạn hỗ trợ
   };
+
+  const countryMap: Record<string, string> = languageToCountry as Record<string, string>;
 
   const userTargetLanguages = useMemo(() => {
     return targetLanguages
       .map(code => ({
         code: code,
         name: allLanguages[code]?.name ?? code.toUpperCase(),
-        iso: allLanguages[code]?.iso ?? languageToCountry[code as Language] ?? code.toUpperCase().slice(0, 2)
+        // SỬA LỖI 2352/2538: Sử dụng countryMap đã ép kiểu
+        iso: allLanguages[code]?.iso ?? countryMap[code] ?? code.toUpperCase().slice(0, 2)
       }))
       .filter(lang => lang.name);
   }, [targetLanguages]);
 
-  // === 2. State cho ngôn ngữ đang được chọn ===
   const [selectedLanguageCode, setSelectedLanguageCode] = useState<string | null>(
     userTargetLanguages.length > 0 ? userTargetLanguages[0].code : null
   );
@@ -77,18 +78,27 @@ const ProficiencyTestScreen = () => {
     languageCode: selectedLanguageCode,
   });
 
-  const { startTest, isStarting } = useStartTest();
-  const { submitTest, isSubmitting } = useSubmitTest();
+  // SỬA LỖI 2339: Đổi tên thành mutateAsync và sử dụng isLoading
+  const { mutateAsync: startTestMutate, isPending: isStarting } = useStartTest();
+  const { mutateAsync: submitTestMutate, isPending: isSubmitting } = useSubmitTest();
 
-  const handleContinueToApp = () => {
+  // --- LOGIC MỚI CHO NÚT SKIP/CONTINUE ---
+  const handleContinueToApp = async () => {
+    // 1. Chỉ gọi action cập nhật trạng thái nếu user chưa làm bài test (hoặc skip)
+    if (!hasDonePlacementTest) {
+      await finishPlacementTest();
+    }
+    // 2. Điều hướng
     gotoTab("Home");
   };
+  // ----------------------------------------
 
 
   const handleSelectTest = async (testConfig: TestConfig) => {
     try {
       setCurrentTest(testConfig);
-      const response = await startTest(testConfig.testConfigId);
+      // SỬA LỖI: Gọi mutateAsync
+      const response = await startTestMutate(testConfig.testConfigId);
       if (response && response.questions) {
         setSessionId(response.sessionId);
         setQuestions(response.questions);
@@ -115,7 +125,12 @@ const ProficiencyTestScreen = () => {
     if (!sessionId) return;
     setStage("submitting");
     try {
-      const resultData = await submitTest(sessionId, answers);
+      // SỬA LỖI: Gọi mutateAsync
+      const resultData = await submitTestMutate({ sessionId, answers });
+
+      // Sau khi nộp bài thành công, gọi action set đã làm bài test
+      await finishPlacementTest();
+
       setResult(resultData);
       setStage("results");
     } catch (e: any) {
@@ -126,11 +141,16 @@ const ProficiencyTestScreen = () => {
   };
 
 
-  if (isStarting) {
+  if (isStarting || isSubmitting) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#4F46E5" />
-        <Text style={styles.loadingText}>{t("proficiencyTest.loadingTest", "Đang tải bài test...")}</Text>
+        <Text style={styles.loadingText}>
+          {isStarting
+            ? t("proficiencyTest.loadingTest", "Đang tải bài test...")
+            : t("proficiencyTest.submitting", "Đang nộp bài...")
+          }
+        </Text>
       </View>
     );
   }
@@ -151,7 +171,7 @@ const ProficiencyTestScreen = () => {
     }
 
     return (
-      <View style={styles.container}>
+      <ScreenLayout style={styles.container}>
         <Text style={styles.title}>{t("proficiencyTest.title", "Kiểm Tra Trình Độ")}</Text>
         <Text style={styles.description}>
           {t("proficiencyTest.description", "Hãy chọn ngôn ngữ bạn muốn kiểm tra. Việc này giúp chúng tôi cá nhân hóa lộ trình học cho bạn.")}
@@ -179,14 +199,11 @@ const ProficiencyTestScreen = () => {
 
         <View style={styles.divider} />
 
-        {/* === VÙNG HIỂN THỊ TEST === */}
         <ScrollView style={styles.testList}>
-          {/* 1. Đang tải */}
           {isLoadingTests && (
             <ActivityIndicator size="large" color="#4F46E5" style={styles.loadingIndicator} />
           )}
 
-          {/* 2. Không có test */}
           {!isLoadingTests && !isError && availableTests?.length === 0 && (
             <View style={styles.noTestsContainer}>
               <Text style={styles.noTestsText}>
@@ -195,7 +212,6 @@ const ProficiencyTestScreen = () => {
             </View>
           )}
 
-          {/* 3. Lỗi API */}
           {!isLoadingTests && isError && (
             <View style={styles.noTestsContainer}>
               <Text style={styles.noTestsText}>
@@ -204,7 +220,6 @@ const ProficiencyTestScreen = () => {
             </View>
           )}
 
-          {/* 4. Có test */}
           {!isLoadingTests && !isError && availableTests && availableTests.map(test => (
             <TouchableOpacity
               key={test.testConfigId}
@@ -217,11 +232,11 @@ const ProficiencyTestScreen = () => {
           ))}
         </ScrollView>
 
-        {/* === NÚT BỎ QUA === */}
+        {/* Gọi handleContinueToApp để thực hiện set status và điều hướng */}
         <TouchableOpacity style={styles.skipButton} onPress={handleContinueToApp}>
           <Text style={styles.skipButtonText}>{t("common.skip", "Bỏ qua")}</Text>
         </TouchableOpacity>
-      </View>
+      </ScreenLayout>
     );
   }
 
@@ -241,10 +256,7 @@ const ProficiencyTestScreen = () => {
     const progressPercent = ((currentQuestionIdx + 1) / questions.length) * 100;
 
     return (
-      <View style={styles.container}>
-        {/* (Bạn có thể thêm Timer ở đây) */}
-
-        {/* Progress Bar */}
+      <ScreenLayout style={styles.container}>
         <View style={styles.progressBarContainer}>
           <View style={[styles.progressBar, { width: `${progressPercent}%` }]} />
         </View>
@@ -274,11 +286,10 @@ const ProficiencyTestScreen = () => {
             <Text style={styles.submitButtonText}>{t("proficiencyTest.completeTest", "Hoàn thành bài Test")}</Text>
           </TouchableOpacity>
         )}
-      </View>
+      </ScreenLayout>
     );
   }
 
-  // === 7. Giai đoạn 3: Đang nộp bài ===
   const renderSubmittingStage = () => {
     return (
       <ScreenLayout style={styles.container}>
@@ -288,9 +299,8 @@ const ProficiencyTestScreen = () => {
     );
   }
 
-  // === 8. Giai đoạn 4: Kết quả ===
   const renderResultsStage = () => {
-    if (!result) return <View />; // Không bao giờ xảy ra nếu logic đúng
+    if (!result) return <View />;
 
     return (
       <ScreenLayout style={styles.container}>
@@ -301,7 +311,6 @@ const ProficiencyTestScreen = () => {
         </Text>
 
         <ScrollView>
-          {/* Bạn có thể .map() qua result.questions để render giải thích chi tiết */}
           {result.questions.map((q, index) => (
             <View key={q.questionId} style={[
               styles.resultQuestionCard,
@@ -328,7 +337,6 @@ const ProficiencyTestScreen = () => {
     );
   }
 
-  // === Main Render ===
   if (stage === "selection") return renderSelectionStage();
   if (stage === "testing") return renderTestingStage();
   if (stage === "submitting") return renderSubmittingStage();
@@ -337,14 +345,12 @@ const ProficiencyTestScreen = () => {
   return <View style={styles.container}><Text>Đã xảy ra lỗi.</Text></View>;
 };
 
-// === PHẦN SỬA STYLE ===
-// Đã đổi tất cả '12@s' thành 12 (dạng số)
 const styles = createScaledSheet({
   container: {
     flex: 1,
     padding: 20,
     backgroundColor: "#F8FAFC",
-    justifyContent: 'center', // Center loading text by default
+    justifyContent: 'center',
   },
   loadingText: {
     fontSize: 16,
@@ -405,7 +411,7 @@ const styles = createScaledSheet({
     marginBottom: 20,
   },
   testList: {
-    flex: 1, // Allows this part to scroll independently
+    flex: 1,
   },
   loadingIndicator: {
     marginTop: 40,
@@ -449,16 +455,15 @@ const styles = createScaledSheet({
     marginTop: 16,
     paddingVertical: 12,
     borderRadius: 12,
-    backgroundColor: '#F3F4F6', // Lighter grey
+    backgroundColor: '#F3F4F6',
   },
   skipButtonText: {
     fontSize: 16,
-    color: '#4B5563', // Darker grey text
+    color: '#4B5563',
     fontWeight: '600',
     textAlign: 'center',
   },
 
-  // Styles cho màn hình làm bài
   progressBarContainer: {
     height: 8,
     backgroundColor: '#E5E7EB',
@@ -516,11 +521,10 @@ const styles = createScaledSheet({
     textAlign: 'center',
   },
 
-  // Styles cho màn hình kết quả
   resultProficiency: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#10B981', // Màu xanh
+    color: '#10B981',
     textAlign: 'center',
     marginVertical: 16,
   },
@@ -538,12 +542,12 @@ const styles = createScaledSheet({
     borderWidth: 2,
   },
   resultCorrect: {
-    borderColor: '#D1FAE5', // Green border
-    backgroundColor: '#F0FDF4', // Light green bg
+    borderColor: '#D1FAE5',
+    backgroundColor: '#F0FDF4',
   },
   resultIncorrect: {
-    borderColor: '#FEE2E2', // Red border
-    backgroundColor: '#FEF2F2', // Light red bg
+    borderColor: '#FEE2E2',
+    backgroundColor: '#FEF2F2',
   },
   resultQuestionText: {
     fontSize: 16,

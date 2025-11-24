@@ -22,7 +22,7 @@ import type { LeaderboardEntryResponse, LeaderboardResponse } from "../../types/
 const tabsStatic = [
   { id: "global", titleKey: "leaderboard.tabs.global", icon: "leaderboard" },
   { id: "friends", titleKey: "leaderboard.tabs.friends", icon: "people" },
-  { id: "couples", titleKey: "leaderboard.tabs.couples", icon: "favorite" },
+  { id: "couple", titleKey: "leaderboard.tabs.couples", icon: "favorite" },
   { id: "country", titleKey: "leaderboard.tabs.country", icon: "location-on" },
 ];
 
@@ -243,7 +243,6 @@ const EnhancedLeaderboardScreen = () => {
           justifyContent: "space-between",
           alignItems: "center",
           padding: 12,
-          paddingTop: Platform.OS === "android" ? StatusBar.currentHeight ?? 12 : 12,
         }}
       >
         <TouchableOpacity onPress={() => navigation.goBack()}>

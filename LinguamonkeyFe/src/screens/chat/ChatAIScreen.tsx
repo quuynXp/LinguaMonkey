@@ -52,12 +52,15 @@ const ChatAIScreen = () => {
       try {
         initChatService();
         if (user?.userId) {
-          // Sử dụng hàm của store để gọi đúng endpoint GET /ai-chat-room của backend
           await startAiChat();
         }
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : t("error.unknown");
         console.error("Failed to init AI Chat:", error);
-        showToast({ message: t("error.loadAiRoom"), type: "error" });
+        showToast({
+          message: `${t("error.loadAiRoom")}: ${errorMessage}`,
+          type: "error"
+        });
       } finally {
         setIsInitializing(false);
       }
@@ -170,8 +173,6 @@ const ChatAIScreen = () => {
     <ScreenLayout>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
       >
         <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
           <View style={styles.header}>
@@ -246,7 +247,6 @@ const styles = createScaledSheet({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingTop: 50,
     paddingBottom: 12,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,

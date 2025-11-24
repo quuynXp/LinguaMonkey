@@ -6,6 +6,7 @@ import { resetToAuth, resetToTab, gotoTab } from '../utils/navigationRef';
 import { decodeToken, getRoleFromToken } from '../utils/decodeToken';
 import eventBus from '../events/appEvents';
 import { AxiosRequestConfig } from 'axios';
+import NotificationService from './notificationService';
 
 export const authService = {
 
@@ -51,6 +52,9 @@ export const authService = {
       useUserStore.getState().setUser(normalizedUser);
       useUserStore.getState().setAuthenticated(true);
       await AsyncStorage.setItem('hasLoggedIn', 'true');
+
+      // Register FCM Token if not already in store
+      NotificationService.registerTokenToBackend();
 
       eventBus.emit('logged_in', { userId: normalizedUser.userId, token: accessToken });
 

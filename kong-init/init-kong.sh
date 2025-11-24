@@ -80,8 +80,8 @@ curl -s -X POST $KONG_ADMIN/plugins \
 curl -s -X POST $KONG_ADMIN/services/java-service/plugins \
     -d "name=rate-limiting" \
     -d "config.policy=redis" \
-    -d "config.redis.host=redis" \
-    -d "config.redis.password=redisPass123" \
+    -d "config.redis_host=redis" \
+    -d "config.redis_password=redisPass123" \
     -d "config.limit_by=consumer" \
     -d "config.second=20" \
     -d "config.minute=500" || true

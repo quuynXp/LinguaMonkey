@@ -50,7 +50,7 @@ public class UserRoadmap extends BaseEntity {
     private String status;
 
     @Column(name = "is_public", nullable = false)
-    private Boolean isPublic;
+    private boolean isPublic;
 
     @Column(name = "language")
     private String language;

@@ -14,18 +14,23 @@ import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
-// Thêm các import cho Repository mới
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.*;
 import com.connectJPA.LinguaVietnameseApp.utils.CloudinaryHelper;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.orm.ObjectOptimisticLockingFailureException; // <-- NEW IMPORT
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
@@ -41,7 +46,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class UserServiceImpl implements UserService {
 
-    // --- Các Dependencies Gốc ---
     private final LeaderboardEntryRepository leaderboardEntryRepository;
     private final LeaderboardRepository leaderboardRepository;
     private final InterestRepository interestRepository;
@@ -54,14 +58,14 @@ public class UserServiceImpl implements UserService {
     private final Character3dRepository character3dRepository;
     private final NotificationService notificationService;
     private final CloudinaryService cloudinaryService;
-    private final UserGoalRepository  userGoalRepository;
+    private final UserGoalRepository userGoalRepository;
     private final UserInterestRepository userInterestRepository;
     private final CloudinaryHelper cloudinaryHelper;
     private final LeaderboardEntryService leaderboardEntryService;
     private static final int EXP_PER_LEVEL = 1000;
     private final UserLearningActivityService userLearningActivityService;
     private final UserCertificateRepository userCertificateRepository;
-    private final PasswordEncoder  passwordEncoder;
+    private final PasswordEncoder passwordEncoder;
     private final ChatMessageRepository chatMessageRepository;
     private final VideoCallRepository videoCallRepository;
     private final AuthenticationServiceImpl authenticationService;
@@ -76,39 +80,28 @@ public class UserServiceImpl implements UserService {
     private final DatingInviteRepository datingInviteRepository;
     private final StorageService storageService;
     private final UserFcmTokenRepository userFcmTokenRepository;
-
-    // --- CÁC DEPENDENCIES MỚI ĐỂ LẤY FULL RESPONSE ---
+    @PersistenceContext
+    private EntityManager entityManager;
     private final UserLanguageRepository userLanguageRepository;
     private final UserBadgeRepository userBadgeRepository;
     private final UserAuthAccountRepository userAuthAccountRepository;
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonRepository lessonRepository;
 
-    /**
-     * =================================================================
-     * HÀM HELPER TRUNG TÂM (MỚI)
-     * Ánh xạ User entity sang UserResponse DTO, bao gồm tất cả
-     * logic tính toán (expToNextLevel) và truy vấn (languages, progress, v.v.).
-     * =================================================================
-     */
     private UserResponse mapUserToResponseWithAllDetails(User user) {
         if (user == null) {
             return null;
         }
 
-        // 1. Ánh xạ cơ bản (từ UserMapper)
         UserResponse response = userMapper.toResponse(user);
 
-        // 1.1 Ánh xạ bổ sung các trường mới (do UserMapper có thể chưa cập nhật kịp hoặc để chắc chắn)
-        response.setHasFinishedSetup(user.getHasFinishedSetup());
-        response.setHasDonePlacementTest(user.getHasDonePlacementTest());
+        response.setHasFinishedSetup(user.isHasFinishedSetup());
+        response.setHasDonePlacementTest(user.isHasDonePlacementTest());
         response.setLastDailyWelcomeAt(user.getLastDailyWelcomeAt());
 
-        // 2. Tính toán expToNextLevel
         int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
         response.setExpToNextLevel(nextLevelExp);
 
-        // 3. Lấy và thêm danh sách languages (từ user_languages)
         try {
             List<String> languages = userLanguageRepository.findLanguageCodesByUserId(user.getUserId());
             response.setLanguages(languages);
@@ -117,7 +110,6 @@ public class UserServiceImpl implements UserService {
             response.setLanguages(Collections.emptyList());
         }
 
-        // 4. Lấy badgeId (ví dụ: lấy badge mới nhất)
         try {
             Optional<UserBadge> latestBadge = userBadgeRepository.findFirstByIdUserIdAndIsDeletedFalseOrderByCreatedAtDesc(user.getUserId());
             latestBadge.ifPresent(userBadge -> response.setBadgeId(userBadge.getId().getBadgeId()));
@@ -125,14 +117,11 @@ public class UserServiceImpl implements UserService {
             log.warn("Failed to fetch badgeId for user {}: {}", user.getUserId(), e.getMessage());
         }
 
-        // 5. Lấy authProvider (ví dụ: lấy provider "primary" hoặc đầu tiên)
         try {
-            // Ưu tiên tìm provider 'primary'
             Optional<UserAuthAccount> primaryAuth = userAuthAccountRepository.findByUser_UserIdAndIsPrimaryTrue(user.getUserId());
             if (primaryAuth.isPresent()) {
                 response.setAuthProvider(String.valueOf(primaryAuth.get().getProvider()));
             } else {
-                // Nếu không có, lấy bất kỳ provider nào (ví dụ: provider đầu tiên)
                 Optional<UserAuthAccount> anyAuth = userAuthAccountRepository.findFirstByUser_UserIdOrderByLinkedAtAsc(user.getUserId());
                 anyAuth.ifPresent(auth -> response.setAuthProvider(String.valueOf(auth.getProvider())));
             }
@@ -140,16 +129,12 @@ public class UserServiceImpl implements UserService {
             log.warn("Failed to fetch authProvider for user {}: {}", user.getUserId(), e.getMessage());
         }
 
-        // 6. Tính toán progress (ví dụ: % bài học đã hoàn thành)
         try {
-            // Đếm số bài học user đã hoàn thành (completedAt != null)
             long completedLessons = lessonProgressRepository.countByIdUserIdAndCompletedAtIsNotNullAndIsDeletedFalse(user.getUserId());
-            // Đếm tổng số bài học
-            long totalLessons = lessonRepository.countByIsDeletedFalse(); // (Bạn có thể cần lọc theo ngôn ngữ hoặc khóa học)
+            long totalLessons = lessonRepository.countByIsDeletedFalse();
 
             if (totalLessons > 0) {
                 double progressCalc = ((double) completedLessons / totalLessons) * 100.0;
-                // Làm tròn đến 2 chữ số thập phân nếu cần
                 response.setProgress(Math.round(progressCalc * 100.0) / 100.0);
             } else {
                 response.setProgress(0.0);
@@ -162,7 +147,7 @@ public class UserServiceImpl implements UserService {
         try {
             List<String> certIds = userCertificateRepository.findAllByIdUserId(user.getUserId())
                     .stream()
-                    .map(cert -> cert.getId().getCertificate()) // hoặc cert.getCertification().name()
+                    .map(cert -> cert.getId().getCertificate())
                     .collect(Collectors.toList());
             response.setCertificationIds(certIds);
         } catch (Exception e) {
@@ -170,23 +155,21 @@ public class UserServiceImpl implements UserService {
             response.setCertificationIds(Collections.emptyList());
         }
 
-        // 8. Lấy interestIds (sửa tên field cho đúng)
         try {
-            List<UUID> interestIds = userInterestRepository.findByIdUserIdAndIsDeletedFalse(user.getUserId())
+            List<UUID> interestIds = userInterestRepository.findById_UserIdAndIsDeletedFalse(user.getUserId())
                     .stream()
                     .map(ui -> ui.getId().getInterestId())
                     .collect(Collectors.toList());
-            response.setInterestIds(interestIds); // lưu ý: setInterestIds, không phải setInterestestIds
+            response.setInterestIds(interestIds);
         } catch (Exception e) {
             log.warn("Failed to fetch interests for user {}: {}", user.getUserId(), e.getMessage());
             response.setInterestIds(Collections.emptyList());
         }
 
-        // 9. Lấy goalIds
         try {
             List<String> goalIds = userGoalRepository.findByUserIdAndIsDeletedFalse(user.getUserId())
                     .stream()
-                    .map(ug -> ug.getGoalType().toString()) // hoặc ug.getGoalType().toString()
+                    .map(ug -> ug.getGoalType().toString())
                     .collect(Collectors.toList());
             response.setGoalIds(goalIds);
         } catch (Exception e) {
@@ -240,7 +223,6 @@ public class UserServiceImpl implements UserService {
                 .build();
         admirationRepository.saveAndFlush(a);
 
-        // Create notification record
         NotificationRequest notificationRequest = NotificationRequest.builder()
                 .userId(targetId)
                 .title("Bạn vừa được ngưỡng mộ")
@@ -248,14 +230,11 @@ public class UserServiceImpl implements UserService {
                 .type("ADMIRE")
                 .build();
 
-        // persist notification (DB)
         notificationService.createNotification(notificationRequest);
 
-        // push notification (FCM / websocket etc)
         try {
             notificationService.createPushNotification(notificationRequest);
         } catch (Exception ex) {
-            // push failing không làm hỏng luồng admire; log để debug
             log.warn("Push notification failed for admire: sender={}, target={}, error={}", senderId, targetId, ex.getMessage());
         }
     }
@@ -274,7 +253,6 @@ public class UserServiceImpl implements UserService {
             }
             Page<User> users = userRepository.findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(email, fullname, nickname, pageable);
 
-            // SỬA: Dùng hàm helper mới
             return users.map(this::mapUserToResponseWithAllDetails);
         } catch (Exception e) {
             log.error("Error while fetching all users: {}", e.getMessage());
@@ -292,7 +270,6 @@ public class UserServiceImpl implements UserService {
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while fetching user by ID {}: {}", id, e.getMessage());
@@ -329,7 +306,6 @@ public class UserServiceImpl implements UserService {
             if (request.getPassword() != null && !request.getPassword().isBlank()) {
                 user.setPassword(passwordEncoder.encode(request.getPassword()));
             } else {
-                // Nếu không có password, tạo một password ngẫu nhiên (cho các luồng social login)
                 user.setPassword(passwordEncoder.encode(RandomStringUtils.randomAlphanumeric(16)));
             }
 
@@ -342,21 +318,15 @@ public class UserServiceImpl implements UserService {
             if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
             if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
 
-            // (Giả sử logic auth-account đã được xử lý ở service/controller khác,
-            // hoặc nếu tạo user từ đây thì phải tạo UserAuthAccount)
-
-            // Ví dụ: Tạo UserAuthAccount nếu đây là đăng ký 'email'
             if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
                 authenticationService.findOrCreateUserAccount(
                         request.getEmail(),
                         request.getFullname(),
                         null,
-                        AuthProvider.EMAIL, // Giả định là EMAIL
-                        request.getEmail() // providerUserId là email
+                        AuthProvider.EMAIL,
+                        request.getEmail()
                 );
             }
-            // (Bạn cần điều chỉnh logic này cho phù hợp với luồng đăng ký)
-
 
             user = userRepository.saveAndFlush(user);
 
@@ -432,7 +402,6 @@ public class UserServiceImpl implements UserService {
                 if (!interests.isEmpty()) userInterestRepository.saveAllAndFlush(interests);
             }
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(savedUser);
 
         } catch (AppException ae) {
@@ -452,116 +421,184 @@ public class UserServiceImpl implements UserService {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
 
-            User user = userRepository.findByUserIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            // Update basic user info
+            User user = updateBasicUserInfo(id, request);
+            final UUID userId = user.getUserId();
 
-            if (request.getEmail() != null) user.setEmail(request.getEmail());
-            if (request.getPassword() != null && !request.getPassword().isBlank()) {
-                user.setPassword(passwordEncoder.encode(request.getPassword()));
-            }
-            if (request.getFullname() != null) user.setFullname(request.getFullname());
-            if (request.getNickname() != null) user.setNickname(request.getNickname());
-            if (request.getBio() != null) user.setBio(request.getBio());
-            if (request.getPhone() != null) user.setPhone(request.getPhone());
-            if (request.getAvatarUrl() != null) user.setAvatarUrl(request.getAvatarUrl());
-            if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
-            if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
-            if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
-            if (request.getCountry() != null) user.setCountry(request.getCountry());
-            if (request.getNativeLanguageCode() != null) user.setNativeLanguageCode(request.getNativeLanguageCode());
-            if (request.getProficiency() != null) user.setProficiency(request.getProficiency());
-            if (request.getLevel() != null) user.setLevel(request.getLevel());
-            if (request.getStreak() != null) user.setStreak(request.getStreak());
-
-            user = userRepository.saveAndFlush(user);
-            final User savedUser = user;
-
+            // Update related entities
             if (request.getGoalIds() != null) {
-                userGoalRepository.deleteAllInBatch(userGoalRepository.findByUserIdAndIsDeletedFalse(savedUser.getUserId()));
-                
-                List<UserGoal> userGoals = request.getGoalIds().stream()
-                        .filter(Objects::nonNull)
-                        .map(goalStr -> {
-                            try {
-                                return UserGoal.builder()
-                                        .userId(savedUser.getUserId())
-                                        .goalType(GoalType.valueOf(goalStr.toUpperCase()))
-                                        .build();
-                            } catch (IllegalArgumentException ex) {
-                                log.warn("Unknown GoalType from request: {}", goalStr);
-                                return null;
-                            }
-                        })
-                        .filter(Objects::nonNull)
-                        .collect(Collectors.toList());
-                if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
-            }
-
-            if (request.getCertificationIds() != null) {
-                userCertificateRepository.deleteAllInBatch(userCertificateRepository.findAllByIdUserId(savedUser.getUserId()));
-                
-                List<UserCertificate> certs = request.getCertificationIds().stream()
-                        .filter(Objects::nonNull)
-                        .map(certStr -> {
-                            try {
-                                // Đảm bảo Certification enum tồn tại
-                                return UserCertificate.builder()
-                                        .id(new UserCertificateId(savedUser.getUserId(),
-                                                Certification.valueOf(certStr.toUpperCase()).toString()))
-                                        .build();
-                            } catch (IllegalArgumentException ex) {
-                                log.warn("Unknown Certification: {}", certStr);
-                                return null;
-                            }
-                        })
-                        .filter(Objects::nonNull)
-                        .toList();
-                if (!certs.isEmpty()) userCertificateRepository.saveAllAndFlush(certs);
-            }
-
-            if (request.getInterestestIds() != null) {
-                userInterestRepository.deleteAllInBatch(userInterestRepository.findByIdUserIdAndIsDeletedFalse(savedUser.getUserId()));
-                
-                List<UserInterest> interests = request.getInterestestIds().stream()
-                        .filter(Objects::nonNull)
-                        .map(interestId -> UserInterest.builder()
-                                .id(new UserInterestId(savedUser.getUserId(), interestId))
-                                .user(savedUser)
-                                .interest(interestRepository.findByInterestId(interestId).orElse(null))
-                                .build())
-                        .filter(ui -> ui.getInterest() != null) // Chỉ lưu nếu interestId hợp lệ
-                        .collect(Collectors.toList());
-                if (!interests.isEmpty()) userInterestRepository.saveAllAndFlush(interests);
-            }
-
-            if (request.getLanguages() != null) {
-                userLanguageRepository.deleteAllInBatch(userLanguageRepository.findByIdUserId(savedUser.getUserId()));
-
-                List<UserLanguage> languages = request.getLanguages().stream()
-                    .map(langCode -> languageRepository.findByLanguageCodeAndIsDeletedFalse(langCode).orElse(null))
-                    .filter(Objects::nonNull)
-                    .map(lang -> {
-                        UserLanguageId userLangId = UserLanguageId.builder()
-                                .languageCode(lang.getLanguageCode())
-                                .userId(savedUser.getUserId())
-                                .build();
-                        
-                        return UserLanguage.builder()
-                                .id(userLangId)
-                                .proficiencyLevel(null)
-                                .build();
-                    })
-                    .collect(Collectors.toList());
-                
-                if (!languages.isEmpty()) userLanguageRepository.saveAllAndFlush(languages);
+                updateUserGoals(userId, request.getGoalIds());
             }
             
-
-            return mapUserToResponseWithAllDetails(savedUser); 
+            if (request.getCertificationIds() != null) {
+                updateUserCertifications(userId, request.getCertificationIds());
+            }
+            
+            if (request.getInterestestIds() != null) {
+                updateUserInterests(userId, request.getInterestestIds());
+            }
+            
+            if (request.getLanguages() != null) {
+                updateUserLanguages(userId, request.getLanguages());
+            }
+            
+            // Re-fetch for response
+            User finalUser = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            
+            return mapUserToResponseWithAllDetails(finalUser);
+            
         } catch (Exception e) {
-            log.error("Error while updating user ID {}: {}", id, e.getMessage(), e); // Thêm ", e" để in stack trace
+            log.error("Error while updating user ID {}: {}", id, e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    private User updateBasicUserInfo(UUID id, UserRequest request) {
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        if (request.getEmail() != null) user.setEmail(request.getEmail());
+        if (request.getPassword() != null && !request.getPassword().isBlank()) {
+            user.setPassword(passwordEncoder.encode(request.getPassword()));
+        }
+        if (request.getFullname() != null) user.setFullname(request.getFullname());
+        if (request.getNickname() != null) user.setNickname(request.getNickname());
+        if (request.getBio() != null) user.setBio(request.getBio());
+        if (request.getPhone() != null) user.setPhone(request.getPhone());
+        if (request.getAvatarUrl() != null) user.setAvatarUrl(request.getAvatarUrl());
+        if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
+        if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
+        if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
+        if (request.getCountry() != null) user.setCountry(request.getCountry());
+        if (request.getNativeLanguageCode() != null) user.setNativeLanguageCode(request.getNativeLanguageCode());
+        if (request.getProficiency() != null) user.setProficiency(request.getProficiency());
+        if (request.getLevel() != null) user.setLevel(request.getLevel());
+        if (request.getStreak() != null) user.setStreak(request.getStreak());
+        
+        return userRepository.saveAndFlush(user);
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateUserLanguages(UUID userId, List<String> languageCodes) {
+        // Delete old
+        userLanguageRepository.deleteAllInBatch(
+                userLanguageRepository.findByIdUserId(userId)
+        );
+        userLanguageRepository.flush();
+        entityManager.clear();
+        
+        // Create new
+        List<UserLanguage> languages = languageCodes.stream()
+                .filter(Objects::nonNull)
+                .filter(langCode -> languageRepository.existsByLanguageCodeAndIsDeletedFalse(langCode))
+                .map(langCode -> {
+                    UserLanguageId id = UserLanguageId.builder()
+                            .languageCode(langCode)
+                            .userId(userId)
+                            .build();
+                    
+                    return UserLanguage.builder()
+                            .id(id)
+                            .proficiencyLevel(null)
+                            .build();
+                })
+                .collect(Collectors.toList());
+        
+        if (!languages.isEmpty()) {
+            userLanguageRepository.saveAllAndFlush(languages);
+        }
+        entityManager.clear();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateUserInterests(UUID userId, List<UUID> interestIds) {
+        userInterestRepository.deleteAllInBatch(
+                userInterestRepository.findById_UserIdAndIsDeletedFalse(userId)
+        );
+        userInterestRepository.flush();
+        entityManager.clear();
+
+        List<UserInterest> interests = interestIds.stream()
+                .filter(Objects::nonNull)
+                .filter(interestRepository::existsById)
+                .map(interestId -> {
+                    UserInterestId id = new UserInterestId();
+                    id.setUserId(userId);
+                    id.setInterestId(interestId);
+
+                    UserInterest ui = new UserInterest();
+                    ui.setId(id);
+                    // Don't need to set user/interest - they're read-only now
+
+                    return ui;
+                })
+                .collect(Collectors.toList());
+
+        if (!interests.isEmpty()) {
+            userInterestRepository.saveAllAndFlush(interests);
+        }
+        entityManager.clear();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateUserGoals(UUID userId, List<String> goalIds) {
+        userGoalRepository.deleteAllInBatch(
+                userGoalRepository.findByUserIdAndIsDeletedFalse(userId)
+        );
+        userGoalRepository.flush();
+        entityManager.clear();
+        
+        List<UserGoal> userGoals = goalIds.stream()
+                .filter(Objects::nonNull)
+                .map(goalStr -> {
+                    try {
+                        return UserGoal.builder()
+                                .userId(userId)
+                                .goalType(GoalType.valueOf(goalStr.toUpperCase()))
+                                .build();
+                    } catch (IllegalArgumentException ex) {
+                        log.warn("Unknown GoalType: {}", goalStr);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        
+        if (!userGoals.isEmpty()) {
+            userGoalRepository.saveAllAndFlush(userGoals);
+        }
+        entityManager.clear();
+    }
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void updateUserCertifications(UUID userId, List<String> certIds) {
+        userCertificateRepository.deleteAllInBatch(
+                userCertificateRepository.findAllByIdUserId(userId)
+        );
+        userCertificateRepository.flush();
+        entityManager.clear();
+        
+        List<UserCertificate> certs = certIds.stream()
+                .filter(Objects::nonNull)
+                .map(certStr -> {
+                    try {
+                        return UserCertificate.builder()
+                                .id(new UserCertificateId(userId,
+                                        Certification.valueOf(certStr.toUpperCase()).toString()))
+                                .build();
+                    } catch (IllegalArgumentException ex) {
+                        log.warn("Unknown Certification: {}", certStr);
+                        return null;
+                    }
+                })
+                .filter(Objects::nonNull)
+                .toList();
+        
+        if (!certs.isEmpty()) {
+            userCertificateRepository.saveAllAndFlush(certs);
+        }
+        entityManager.clear();
     }
 
 
@@ -570,11 +607,9 @@ public class UserServiceImpl implements UserService {
     public UserProfileResponse getUserProfile(UUID viewerId, UUID targetId) {
         if (targetId == null) throw new AppException(ErrorCode.INVALID_KEY);
 
-        // 1) load user
         User target = userRepository.findByUserIdAndIsDeletedFalse(targetId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // basic info
         UserProfileResponse.UserProfileResponseBuilder respB = UserProfileResponse.builder()
                 .userId(target.getUserId())
                 .fullname(target.getFullname())
@@ -585,12 +620,10 @@ public class UserServiceImpl implements UserService {
                 .exp(target.getExp())
                 .bio(target.getBio());
 
-        // flag (you can customize how you return a flag; using country name/code for now)
         if (target.getCountry() != null) {
             respB.flag(target.getCountry().name());
         }
 
-        // character3d
         try {
             if (target.getCharacter3dId() != null) {
                 Character3dResponse ch = character3dMapper.toResponse(
@@ -602,14 +635,12 @@ public class UserServiceImpl implements UserService {
             log.debug("character3d mapping failed for user {}: {}", targetId, e.getMessage());
         }
 
-        // stats
         try {
             respB.stats(this.getUserStats(targetId));
         } catch (Exception e) {
             log.debug("getUserStats failed for {}: {}", targetId, e.getMessage());
         }
 
-        // badges (assume badgeService.getBadgesForUser)
         try {
             if (badgeService != null) {
                 respB.badges(badgeService.getBadgesForUser(targetId));
@@ -618,7 +649,6 @@ public class UserServiceImpl implements UserService {
             log.debug("getBadgesForUser failed: {}", e.getMessage());
         }
 
-        // friend & request status relative to viewer
         boolean isFriend = false;
         FriendRequestStatusResponse friendReqStatus = FriendRequestStatusResponse.builder().status("NONE").build();
         boolean canSendFriendRequest = true;
@@ -630,7 +660,6 @@ public class UserServiceImpl implements UserService {
                 isFriend = friendshipService.isFriends(viewerId, targetId);
                 friendReqStatus = friendshipService.getFriendRequestStatus(viewerId, targetId);
                 canUnfriend = isFriend;
-                // assume friendshipService has checks for blocked; else use friendReqStatus
                 canBlock = true;
                 canSendFriendRequest = !isFriend && (friendReqStatus == null || !"SENT".equals(friendReqStatus.getStatus()));
             } catch (Exception e) {
@@ -646,7 +675,6 @@ public class UserServiceImpl implements UserService {
                 .canUnfriend(canUnfriend)
                 .canBlock(canBlock);
 
-        // admiration
         long admirationCount = admirationRepository.countByUserId(targetId);
         boolean hasAdmired = false;
         if (viewerId != null) {
@@ -654,33 +682,28 @@ public class UserServiceImpl implements UserService {
         }
         respB.admirationCount(admirationCount).hasAdmired(hasAdmired);
 
-        // teacher info: try to detect teacher role and load top courses
         boolean isTeacher = false;
         List<CourseSummaryResponse> teacherCourses = Collections.emptyList();
         try {
-            isTeacher = roleService.userHasRole(targetId, RoleName.TEACHER); // adjust if your roleService method name differs
+            isTeacher = roleService.userHasRole(targetId, RoleName.TEACHER);
             if (isTeacher && courseService != null) {
-                teacherCourses = courseService.getCourseSummariesByTeacher(targetId, 5); // implement service to return CourseSummaryResponse
+                teacherCourses = courseService.getCourseSummariesByTeacher(targetId, 5);
             }
         } catch (Exception e) {
             log.debug("teacher check or courses load failed: {}", e.getMessage());
         }
         respB.isTeacher(isTeacher).teacherCourses(teacherCourses);
 
-        // leaderboard ranks - try to get from leaderboard snapshot via leaderboardEntryService
         Map<String, Integer> leaderboardRanks = new HashMap<>();
         try {
-            // global student
             Integer globalRank = leaderboardEntryService.getRankForUserByTab("global", "student", targetId);
             if (globalRank != null) leaderboardRanks.put("global_student", globalRank);
 
-            // country student
             if (target.getCountry() != null) {
                 Integer countryRank = leaderboardEntryService.getRankForUserByTab(target.getCountry().name(), "student", targetId);
                 if (countryRank != null) leaderboardRanks.put("country_student", countryRank);
             }
 
-            // teacher rank - optional (depends on implementation)
             Integer teacherRank = leaderboardEntryService.getRankForUserByTab("global", "teacher", targetId);
             if (teacherRank != null) leaderboardRanks.put("teacher", teacherRank);
         } catch (Exception e) {
@@ -688,19 +711,16 @@ public class UserServiceImpl implements UserService {
         }
         respB.leaderboardRanks(leaderboardRanks);
 
-        // couple info (if belongs to couple)
         try {
             CoupleProfileSummary cps = null;
             if (coupleService != null) {
-                cps = coupleService.getCoupleProfileSummaryByUser(targetId, viewerId); // implement service method to return CoupleProfileSummary
+                cps = coupleService.getCoupleProfileSummaryByUser(targetId, viewerId);
             }
             respB.coupleProfile(cps);
 
-            // exploring expiring soon flag
             boolean exploringExpiringSoon = false;
             String exploringExpiresInHuman = null;
             if (cps != null && cps.getStatus() != null && cps.getStatus().name().equals("EXPLORING") && cps.getCoupleId() != null) {
-                // find couple entity to compute remaining time
                 Couple couple = coupleService.findById(cps.getCoupleId());
                 if (couple != null && couple.getExploringExpiresAt() != null) {
                     Duration rem = Duration.between(OffsetDateTime.now(), couple.getExploringExpiresAt());
@@ -708,7 +728,7 @@ public class UserServiceImpl implements UserService {
                     long days = seconds / (24*3600);
                     long hours = (seconds % (24*3600)) / 3600;
                     exploringExpiresInHuman = days + " ngày " + hours + " giờ";
-                    exploringExpiringSoon = seconds > 0 && seconds <= (2 * 24 * 3600); // < 2 days
+                    exploringExpiringSoon = seconds > 0 && seconds <= (2 * 24 * 3600);
                 }
             }
             respB.exploringExpiringSoon(exploringExpiringSoon);
@@ -717,11 +737,9 @@ public class UserServiceImpl implements UserService {
             log.debug("couple info fetch failed: {}", e.getMessage());
         }
 
-        // dating invite summary between viewer and target (if viewer present)
         try {
             DatingInviteSummary inviteSummary = null;
             if (viewerId != null && datingInviteRepository != null) {
-                // check viewer->target
                 Optional<DatingInvite> sent = datingInviteRepository.findTopBySenderIdAndTargetIdAndStatus(viewerId, targetId, DatingInviteStatus.PENDING);
                 Optional<DatingInvite> received = datingInviteRepository.findTopBySenderIdAndTargetIdAndStatus(targetId, viewerId, DatingInviteStatus.PENDING);
 
@@ -745,21 +763,18 @@ public class UserServiceImpl implements UserService {
             log.debug("dating invite check failed: {}", e.getMessage());
         }
 
-        // mutual memories (events) between viewer and target
         try {
             List<MemorySummaryResponse> mutualMemories = Collections.emptyList();
             if (viewerId != null && eventService != null) {
-                mutualMemories = eventService.findMutualMemories(viewerId, targetId); // implement to return MemorySummaryResponse list
+                mutualMemories = eventService.findMutualMemories(viewerId, targetId);
             }
             respB.mutualMemories(mutualMemories);
         } catch (Exception e) {
             log.debug("mutual memories fetch failed: {}", e.getMessage());
         }
 
-        // if viewer == target add private info (inbox invites etc)
         if (viewerId != null && viewerId.equals(targetId)) {
             try {
-                // pending friend requests / invites / inbox summaries
                 List<FriendshipResponse> pending = friendshipService.getPendingRequestsForUser(targetId, PageRequest.of(0,10)).getContent();
                 respB.privateFriendRequests(pending);
                 List<DatingInvite> pendingInvites = datingInviteRepository.findByTargetIdAndStatus(targetId, DatingInviteStatus.PENDING);
@@ -828,14 +843,11 @@ public class UserServiceImpl implements UserService {
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            // Extract fromPublicId từ URL tạm
             String fromPublicId = cloudinaryHelper.extractPublicId(avatarUrl);
 
-            // Tạo toPublicId trong folder userId
-            String fileName = fromPublicId.substring(fromPublicId.lastIndexOf("/") + 1); // avatar123
+            String fileName = fromPublicId.substring(fromPublicId.lastIndexOf("/") + 1);
             String toPublicId = "users/" + id + "/" + fileName;
 
-            // Move bằng Cloudinary
             MoveRequest moveRequest = MoveRequest.builder()
                     .fromPublicId(fromPublicId)
                     .toPublicId(toPublicId)
@@ -845,14 +857,11 @@ public class UserServiceImpl implements UserService {
 
             Map<?, ?> result = cloudinaryService.move(moveRequest);
 
-            // Lấy URL mới sau khi move
             String newUrl = (String) result.get("secure_url");
 
-            // Update user
             user.setAvatarUrl(newUrl);
             user = userRepository.saveAndFlush(user);
 
-            // Notification
             NotificationRequest notificationRequest = NotificationRequest.builder()
                     .userId(id)
                     .title("Avatar Updated")
@@ -861,7 +870,6 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating avatar URL for user ID {}: {}", id, e.getMessage(), e);
@@ -885,7 +893,6 @@ public class UserServiceImpl implements UserService {
             user.setNativeLanguageCode(nativeLanguageCode);
             user = userRepository.saveAndFlush(user);
 
-            // Create notification for native language update
             NotificationRequest notificationRequest = NotificationRequest.builder()
                     .userId(id)
                     .title("Native Language Updated")
@@ -894,7 +901,6 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating native language for user ID {}: {}", id, e.getMessage());
@@ -914,7 +920,6 @@ public class UserServiceImpl implements UserService {
             user.setCountry(country);
             user = userRepository.saveAndFlush(user);
 
-            // Create notification for country update
             NotificationRequest notificationRequest = NotificationRequest.builder()
                     .userId(id)
                     .title("Country Updated")
@@ -923,7 +928,6 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating country for user ID {}: {}", id, e.getMessage());
@@ -944,12 +948,11 @@ public class UserServiceImpl implements UserService {
             Locale locale = getLocaleByUserId(id);
             int oldExp = user.getExp();
             int oldLevel = user.getLevel();
-            int newExp = oldExp + exp; // Add new EXP to existing EXP
+            int newExp = oldExp + exp;
             user.setExp(newExp);
             int newLevel = calculateLevel(newExp);
             if (newLevel > oldLevel) {
                 user.setLevel(newLevel);
-                // Create notification and send email if leveled up
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
                         .title("Level Up!")
@@ -959,7 +962,6 @@ public class UserServiceImpl implements UserService {
                 notificationService.createNotification(notificationRequest);
                 notificationService.sendAchievementNotification(id, "Level Up", "You have reached level " + newLevel + "!");
             } else if (exp > 0) {
-                // Create notification for EXP gain
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
                         .title("Experience Points Gained")
@@ -970,7 +972,6 @@ public class UserServiceImpl implements UserService {
             }
             user = userRepository.saveAndFlush(user);
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating exp for user ID {}: {}", id, e.getMessage());
@@ -982,16 +983,14 @@ public class UserServiceImpl implements UserService {
     public UserStatsResponse getUserStats(UUID userId) {
         if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
 
-        // 1) lấy user để có lastActiveAt, level, exp, streak
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // 2) query aggregates (repositories implement these methods)
         long totalMessages = chatMessageRepository.countMessagesForUser(userId);
         long translationsUsed = chatMessageRepository.countTranslationsForUser(userId);
         long videoCalls = videoCallRepository.countCompletedCallsForUser(userId);
 
-        OffsetDateTime lastActive = user.getLastActiveAt(); // Sử dụng trường lastActiveAt
+        OffsetDateTime lastActive = user.getLastActiveAt();
 
         boolean online = false;
         if (lastActive != null) {
@@ -1011,9 +1010,6 @@ public class UserServiceImpl implements UserService {
                 .build();
     }
 
-    /**
-     * Phương thức MỚI: Chỉ nhận URL cuối cùng (từ MinIO) và cập nhật
-     */
     @Override
     @Transactional
     public UserResponse updateUserAvatar(UUID userId, String tempPath) {
@@ -1025,21 +1021,13 @@ public class UserServiceImpl implements UserService {
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            // (Tùy chọn: Bạn có thể thêm logic xóa avatar cũ khỏi MinIO ở đây)
-            // String oldAvatarUrl = user.getAvatarUrl();
-            // if (oldAvatarUrl != null) { ... }
-
-            // 1. Tạo đường dẫn vĩnh viễn mới
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-            // Lấy tên file gốc từ path (bỏ 'temp/' và timestamp)
             String originalFilename = tempPath.substring(tempPath.indexOf("_") + 1);
             String newPath = String.format("users/%s/avatars/%s_%s",
                     userId,
                     timestamp,
                     originalFilename);
 
-            // 2. Gọi storageService.commit
-            // Hàm này sẽ: Di chuyển file (temp -> newPath), Xóa temp, Lưu UserMedia
             UserMedia committedMedia = storageService.commit(
                     tempPath,
                     newPath,
@@ -1047,12 +1035,9 @@ public class UserServiceImpl implements UserService {
                     MediaType.IMAGE
             );
 
-            // 3. Cập nhật user
-            // committedMedia.getFileUrl() đã được set trong storageService
             user.setAvatarUrl(committedMedia.getFileUrl());
             User savedUser = userRepository.saveAndFlush(user);
 
-            // Notification
             NotificationRequest notificationRequest = NotificationRequest.builder()
                     .userId(userId)
                     .title("Avatar Updated")
@@ -1061,7 +1046,6 @@ public class UserServiceImpl implements UserService {
                     .build();
             notificationService.createNotification(notificationRequest);
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(savedUser);
         } catch (Exception e) {
             log.error("Error while updating avatar (MinIO flow) for user ID {}: {}", userId, e.getMessage(), e);
@@ -1091,11 +1075,9 @@ public class UserServiceImpl implements UserService {
             LocalDate today = LocalDate.now();
             boolean hasActivityToday = userLearningActivityRepository.existsByUserIdAndDate(id, today);
             if (!hasActivityToday) {
-                // Increment streak if no activity recorded yet today
                 int currentStreak = user.getStreak();
                 user.setStreak(currentStreak + 1);
                 user = userRepository.saveAndFlush(user);
-                // Create notification for streak update
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
                         .title("Streak Updated")
@@ -1106,7 +1088,6 @@ public class UserServiceImpl implements UserService {
                 notificationService.sendStreakRewardNotification(id, currentStreak + 1);
             }
 
-            // SỬA: Dùng hàm helper mới
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating streak for user ID {}: {}", id, e.getMessage());
@@ -1126,10 +1107,8 @@ public class UserServiceImpl implements UserService {
             LocalDate yesterday = LocalDate.now().minusDays(1);
             boolean hasActivityYesterday = userLearningActivityRepository.existsByUserIdAndDate(id, yesterday);
             if (!hasActivityYesterday && user.getStreak() > 0) {
-                // Reset streak to 0 if no activity was recorded yesterday
                 user.setStreak(0);
                 user = userRepository.saveAndFlush(user);
-                // Create notification for streak reset
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
                         .title("Streak Reset")
@@ -1156,7 +1135,6 @@ public class UserServiceImpl implements UserService {
             LocalDate today = LocalDate.now();
             boolean hasActivityToday = userLearningActivityRepository.existsByUserIdAndDate(id, today);
             if (!hasActivityToday && user.getStreak() > 0) {
-                // Send push notification to remind user to maintain streak
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
                         .title("Keep Your Streak Alive!")
@@ -1208,7 +1186,6 @@ public class UserServiceImpl implements UserService {
             token.setFcmToken(request.getFcmToken());
             userFcmTokenRepository.saveAndFlush(token);
         } else {
-            // Thêm token mới
             UserFcmToken newToken = UserFcmToken.builder()
                     .userId(request.getUserId())
                     .fcmToken(request.getFcmToken())
@@ -1217,8 +1194,6 @@ public class UserServiceImpl implements UserService {
             userFcmTokenRepository.saveAndFlush(newToken);
         }
     }
-
-    // --- New Impl Methods ---
 
     @Override
     @Transactional
@@ -1260,12 +1235,10 @@ public class UserServiceImpl implements UserService {
     }
 
     private boolean isValidUrl(String url) {
-        // Basic URL validation (can be enhanced with regex or URL class)
         return url != null && (url.startsWith("http://") || url.startsWith("https://")) && url.length() <= 255;
     }
 
     private int calculateLevel(int exp) {
-        // Simple level calculation: 1000 EXP per level
         return exp / EXP_PER_LEVEL + 1;
     }
 
@@ -1275,7 +1248,7 @@ public class UserServiceImpl implements UserService {
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(()-> new AppException((ErrorCode.USER_NOT_FOUND)));
             if (user.getCharacter3dId() == null) throw new AppException(ErrorCode.CHARACTER3D_NOT_FOUND);
 
-            Character3d character =  character3dRepository.findByCharacter3dIdAndIsDeletedFalse(user.getCharacter3dId())
+            Character3d character = character3dRepository.findByCharacter3dIdAndIsDeletedFalse(user.getCharacter3dId())
                     .orElseThrow(() -> new AppException(ErrorCode.CHARACTER3D_NOT_FOUND));
 
             return character3dMapper.toResponse(character);

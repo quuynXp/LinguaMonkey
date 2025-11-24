@@ -23,7 +23,7 @@ spring:
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD}
       ssl:
-        enabled: false  # Trong Docker network, không cần SSL
+        enabled: false # Trong Docker network, không cần SSL
 
   cache:
     type: redis
@@ -50,7 +50,7 @@ spring:
 # JWT
 jwt:
   signer-key: ${JWT_SIGNER_KEY}
-  expirationTime: 3600  # 1 giờ
+  expirationTime: 3600 # 1 giờ
   header: Authorization
   key-id: ${JWT_KEY_ID}
 
@@ -108,7 +108,7 @@ exam:
 
 cloudinary:
   cloud_name: ${PROD_CLOUDINARY_CLOUD_NAME}
-  api_key: ${PROD_CLOUDINARY_API_KEY]
+  api_key: ${PROD_CLOUDINARY_API_KEY}
   api_secret: ${PROD_CLOUDINARY_API_SECRET}
 # Logging
 logging:

@@ -8,7 +8,6 @@ import {
   TestSubmissionRequest
 } from "../types/dto";
 
-// --- Keys Factory ---
 export const testKeys = {
   all: ["tests"] as const,
   available: (lang?: string) => [...testKeys.all, "available", lang] as const,
@@ -16,93 +15,65 @@ export const testKeys = {
   result: (id: string) => [...testKeys.all, "result", id] as const,
 };
 
-export const useTests = () => {
+export const useAvailableTests = (params?: { languageCode?: string | null }) => {
+  return useQuery({
+    queryKey: testKeys.available(params?.languageCode || "all"),
+    queryFn: async () => {
+      if (!params?.languageCode) return [];
+
+      const { data } = await instance.get<AppApiResponse<TestConfigResponse[]>>(
+        "/api/v1/tests/available",
+        { params: { languageCode: params.languageCode } }
+      );
+      return data.result ?? [];
+    },
+    staleTime: 5 * 60 * 1000,
+    enabled: !!params?.languageCode,
+  });
+};
+
+export const useStartTest = () => {
   const queryClient = useQueryClient();
 
-  // ==========================================
-  // === QUERIES ===
-  // ==========================================
+  return useMutation({
+    mutationFn: async (testConfigId: string) => {
+      const { data } = await instance.post<AppApiResponse<TestSessionResponse>>(
+        "/api/v1/tests/start",
+        null,
+        { params: { testConfigId } }
+      );
+      return data.result!;
+    },
+    onSuccess: (data) => {
+      if (data?.sessionId) {
+        queryClient.setQueryData(testKeys.session(data.sessionId), data);
+      }
+    },
+  });
+};
 
-  // GET /api/v1/tests/available
-  const useAvailableTests = (params?: { languageCode?: string | null }) => {
-    return useQuery({
-      queryKey: testKeys.available(params?.languageCode || "all"),
-      queryFn: async () => {
-        if (!params?.languageCode) return [];
+export const useSubmitTest = () => {
+  const queryClient = useQueryClient();
 
-        const { data } = await instance.get<AppApiResponse<TestConfigResponse[]>>(
-          "/api/v1/tests/available",
-          { params: { languageCode: params.languageCode } }
-        );
-        return data.result ?? [];
-      },
-      staleTime: 5 * 60 * 1000, // Cache 5 mins
-      enabled: !!params?.languageCode,
-    });
-  };
+  return useMutation({
+    mutationFn: async ({
+      sessionId,
+      answers
+    }: {
+      sessionId: string;
+      answers: Record<string, number>;
+    }) => {
+      const payload: TestSubmissionRequest = { answers };
 
-  // ==========================================
-  // === MUTATIONS ===
-  // ==========================================
-
-  // POST /api/v1/tests/start
-  const useStartTest = () => {
-    return useMutation({
-      mutationFn: async (testConfigId: string) => {
-        const { data } = await instance.post<AppApiResponse<TestSessionResponse>>(
-          "/api/v1/tests/start",
-          null,
-          { params: { testConfigId } } // Controller uses @RequestParam
-        );
-        return data.result!;
-      },
-      onSuccess: (data) => {
-        // FIX: Dùng 'sessionId' theo đúng TestSessionResponse trong dto.ts
-        if (data?.sessionId) {
-          queryClient.setQueryData(testKeys.session(data.sessionId), data);
-        }
-      },
-    });
-  };
-
-  // POST /api/v1/tests/sessions/{sessionId}/submit
-  const useSubmitTest = () => {
-    return useMutation({
-      mutationFn: async ({
-        sessionId,
-        answers
-      }: {
-        sessionId: string;
-        answers: Record<string, number>;
-      }) => {
-        // Construct body based on TestSubmissionRequest DTO
-        // TestSubmissionRequest trong dto.ts là: { answers: Record<string, number> }
-        const payload: TestSubmissionRequest = { answers };
-
-        const { data } = await instance.post<AppApiResponse<TestResultResponse>>(
-          `/api/v1/tests/sessions/${sessionId}/submit`,
-          payload
-        );
-        return data.result!;
-      },
-      onSuccess: (data, vars) => {
-        // Invalidate session to prevent re-taking or show completed state
-        queryClient.invalidateQueries({ queryKey: testKeys.session(vars.sessionId) });
-
-        // Invalidate user profile/level info as EXP might have changed
-        queryClient.invalidateQueries({ queryKey: ["currentUser"] });
-
-        // Cache result nếu cần (Optional)
-        // if (data.sessionId) {
-        //    queryClient.setQueryData(testKeys.result(data.sessionId), data);
-        // }
-      },
-    });
-  };
-
-  return {
-    useAvailableTests,
-    useStartTest,
-    useSubmitTest,
-  };
+      const { data } = await instance.post<AppApiResponse<TestResultResponse>>(
+        `/api/v1/tests/sessions/${sessionId}/submit`,
+        payload
+      );
+      return data.result!;
+    },
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: testKeys.session(vars.sessionId) });
+      queryClient.invalidateQueries({ queryKey: ["currentUser"] });
+    },
+  });
 };

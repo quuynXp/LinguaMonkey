@@ -4,5 +4,6 @@ public enum VersionStatus {
     DRAFT,
     PENDING_APPROVAL,
     PUBLIC,
-    ARCHIVED
+    ARCHIVED,
+    PUBLISHED
 }

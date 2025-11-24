@@ -256,11 +256,23 @@ const LearnScreen = ({ navigation }: any) => {
   const renderLessonCard = (lesson: LessonResponse) => {
     if (!lesson) return null
 
+    // Determine target screen based on skill type
+    const handlePress = () => {
+      if (lesson.skillTypes === SkillType.SPEAKING) {
+        navigation.navigate("SpeakingScreen", {
+          lessonId: lesson.lessonId,
+          lesson: lesson // Pass the full lesson object
+        })
+      } else {
+        navigation.navigate("LessonScreen", { lesson })
+      }
+    }
+
     return (
       <TouchableOpacity
         key={lesson.lessonId}
         style={styles.lessonCard}
-        onPress={() => navigation.navigate("LessonScreen", { lesson })}
+        onPress={handlePress}
       >
         <View style={styles.lessonImagePlaceholder}>
           <Icon name="auto-stories" size={40} color="#9CA3AF" />

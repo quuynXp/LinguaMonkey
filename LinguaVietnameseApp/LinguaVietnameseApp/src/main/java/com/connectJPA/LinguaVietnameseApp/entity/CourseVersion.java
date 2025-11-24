@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
+import com.connectJPA.LinguaVietnameseApp.converter.VersionStatusConverter;
 import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -36,7 +37,7 @@ public class CourseVersion {
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = VersionStatusConverter.class)
     @Column(name = "status", nullable = false)
     private VersionStatus status;
 
@@ -56,13 +57,6 @@ public class CourseVersion {
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
-    /**
-     * === SỬA LỖI 1 ===
-     * Thêm quan hệ OneToMany để liên kết đến các bài học (thông qua bảng 'course_version_lessons').
-     * 'mappedBy = "courseVersion"' trỏ đến tên trường 'courseVersion' trong entity CourseVersionLesson.
-     * CascadeType.ALL và orphanRemoval=true đảm bảo khi ta cập nhật danh sách lessons (xóa cũ, thêm mới)
-     * thì các bản ghi liên kết cũ sẽ tự động bị xóa khỏi DB.
-     */
     @OneToMany(mappedBy = "courseVersion", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<CourseVersionLesson> lessons;
 }

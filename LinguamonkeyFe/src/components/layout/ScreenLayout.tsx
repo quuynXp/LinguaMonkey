@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, StatusBar, ViewStyle, StatusBarStyle, Platform } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface ScreenLayoutProps {
     children: React.ReactNode;
@@ -45,16 +45,34 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 backgroundColor={statusBarColor}
                 translucent={Platform.OS === 'android'}
             />
-            <View style={{ height: insets.top, backgroundColor: statusBarColor }} />
 
-            {headerComponent && <View style={styles.header}>{headerComponent}</View>}
+            {headerComponent ? (
+                <View
+                    style={[
+                        styles.header,
+                        { paddingTop: insets.top, backgroundColor: statusBarColor }
+                    ]}
+                >
+                    {headerComponent}
+                </View>
+            ) : (
+                <View style={{ height: insets.top, backgroundColor: statusBarColor }} />
+            )}
 
             <View style={[styles.content, style]}>
                 {children}
             </View>
 
-            {bottomComponent}
-            <View style={{ height: insets.bottom, backgroundColor }} />
+            {bottomComponent && (
+                <View
+                    style={[
+                        styles.bottom,
+                        { paddingBottom: insets.bottom, backgroundColor: backgroundColor }
+                    ]}
+                >
+                    {bottomComponent}
+                </View>
+            )}
         </View>
     );
 };
@@ -69,6 +87,9 @@ const styles = StyleSheet.create({
     header: {
         zIndex: 10,
     },
+    bottom: {
+        zIndex: 10,
+    }
 });
 
 export default ScreenLayout;

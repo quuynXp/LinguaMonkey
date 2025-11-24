@@ -80,7 +80,7 @@ const ChatRoomListScreen = ({ navigation }: any) => {
     // If the API doesn't return current member count, we can't check 'full' status client-side accurately without another call.
     // Proceeding with navigation.
 
-    navigation.navigate('GroupChat', {
+    navigation.navigate('GroupChatScreen', {
       roomId: room.roomId,
       roomName: room.roomName
     });

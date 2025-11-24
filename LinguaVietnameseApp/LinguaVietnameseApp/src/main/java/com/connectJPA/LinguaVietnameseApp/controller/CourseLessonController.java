@@ -103,11 +103,11 @@ public class CourseLessonController {
                         videoPath,
                         videoFile.getContentType()
                 );
-            }
+                }
 
             // 2. Upload thumbnail
-            String thumbnailPath = null;
-            if (thumbnailFile != null && !thumbnailFile.isEmpty()) {
+                String thumbnailPath = null;
+                if (thumbnailFile != null && !thumbnailFile.isEmpty()) {
                 String tempThumbPath = storageService.uploadTemp(thumbnailFile);
                 thumbnailPath = String.format("courses/%s/v%d/lesson-%d/thumb.jpg",
                         courseId, versionId, lessonIndex);
@@ -116,31 +116,31 @@ public class CourseLessonController {
                         thumbnailPath,
                         thumbnailFile.getContentType()
                 );
-            }
+                }
 
             // 3. Lưu Lesson entity
-            Lesson lesson = Lesson.builder()
-                    .title((String) lessonMap.get("title"))
-                    .description((String) lessonMap.get("description"))
-                    .durationSeconds(Integer.valueOf((String) lessonMap.get("duration")))
-                    .description(videoPath)
-                    .thumbnailUrl(thumbnailPath)
-                    .isFree((Boolean) lessonMap.getOrDefault("isFree", false))
-                    .build();
+                        Lesson lesson = Lesson.builder()
+                        .title((String) lessonMap.get("title"))
+                        .description((String) lessonMap.get("description"))
+                        .durationSeconds(Integer.valueOf((String) lessonMap.get("duration")))
+                        .description(videoPath)
+                        .thumbnailUrl(thumbnailPath)
+                        .isFree((Boolean) lessonMap.getOrDefault("isFree", false))
+                        .build();
 
-            lesson = lessonService.saveLessonForVersion(lesson, versionId, lessonIndex);
+                        lesson = lessonService.saveLessonForVersion(lesson, versionId, lessonIndex);
 
-            return AppApiResponse.<LessonResponse>builder()
-                    .code(201)
-                    .message(messageSource.getMessage("lesson.upload.success", null, locale))
-                    .result(lessonMapper.toResponse(lesson))
-                    .build();
+                        return AppApiResponse.<LessonResponse>builder()
+                        .code(201)
+                        .message(messageSource.getMessage("lesson.upload.success", null, locale))
+                        .result(lessonMapper.toResponse(lesson))
+                        .build();
 
         } catch (Exception e) {
-            log.error("Lesson upload failed: {}", e.getMessage());
-            throw new AppException(ErrorCode.FILE_UPLOAD_FAILED);
+                log.error("Lesson upload failed: {}", e.getMessage());
+                throw new AppException(ErrorCode.FILE_UPLOAD_FAILED);
         }
-    }
+                }
 
     @Operation(summary = "Create a new course lesson", description = "Create a new course lesson with the provided details")
     @ApiResponses({

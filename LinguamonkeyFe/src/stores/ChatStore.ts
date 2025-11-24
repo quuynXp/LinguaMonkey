@@ -4,7 +4,8 @@ import { pythonAiWsService, AiMessageCallback } from '../services/pythonAiWsServ
 import { VideoSubtitleService, DualSubtitle } from '../services/videoSubtitleService';
 import instance from '../api/axiosClient';
 import type { ChatMessage as Message, Room } from '../types/entity';
-import type { AppApiResponse } from '../types/dto';
+import type { AppApiResponse, PageResponse } from '../types/dto';
+import { useUserStore } from "./UserStore";
 
 // Local types for UI
 type AiMessage = {
@@ -132,11 +133,19 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   startAiChat: async () => {
+    const userId = useUserStore.getState().user?.userId; // Lấy userId từ UserStore
+    if (!userId) {
+      console.error('Failed to start AI chat: User ID is missing.');
+      throw new Error('User ID is missing for AI chat initialization.');
+    }
+
     try {
-      const res = await instance.get<AppApiResponse<Room>>(`/api/v1/rooms/ai-chat-room`);
+      const res = await instance.get<AppApiResponse<Room>>(`/api/v1/rooms/ai-chat-room`, {
+        params: { userId }
+      });
       const room = res.data.result;
 
-      if (room) {
+      if (room && room.roomId) {
         set({ activeAiRoomId: room.roomId });
         await get().loadMessages(room.roomId);
 
@@ -148,18 +157,23 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           roomId: room.roomId,
         }));
         set({ aiChatHistory: aiFormatMessages });
+      } else {
+        throw new Error("AI Room API returned missing room ID.");
       }
     } catch (e) {
       console.error('Failed to start AI chat:', e);
+      throw e;
     }
   },
 
   loadMessages: async (roomId: string) => {
     try {
-      const res = await instance.get<AppApiResponse<{ content: Message[] }>>(
+      const res = await instance.get<AppApiResponse<PageResponse<Message>>>(
         `/api/v1/chat/room/${roomId}/messages`
       );
-      const messages = res.data.result.content.reverse();
+
+      const messages = (res.data.result?.content || []).reverse();
+
       set((state) => ({
         messagesByRoom: { ...state.messagesByRoom, [roomId]: messages },
       }));

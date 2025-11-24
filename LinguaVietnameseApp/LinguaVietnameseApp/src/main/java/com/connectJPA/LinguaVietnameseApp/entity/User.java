@@ -86,13 +86,13 @@ public class User extends BaseEntity {
     @Column(name = "learning_pace")
     private LearningPace learningPace;
 
-    @Column(name = "has_finished_setup")
+    @Column(name = "has_finished_setup", nullable = false)
     @Builder.Default
-    private Boolean hasFinishedSetup = false;
+    private boolean hasFinishedSetup = false;
 
-    @Column(name = "has_done_placement_test")
+    @Column(name = "has_done_placement_test", nullable = false)
     @Builder.Default
-    private Boolean hasDonePlacementTest = false;
+    private boolean hasDonePlacementTest = false;
 
     @Column(name = "last_daily_welcome_at")
     private OffsetDateTime lastDailyWelcomeAt;

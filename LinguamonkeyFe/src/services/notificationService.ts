@@ -3,7 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { useAppStore } from '../stores/appStore';
-import instance from "./../api/axiosClient";
+import instance from "../api/axiosClient";
 import messaging, {
   requestPermission,
   getToken
@@ -80,17 +80,13 @@ class NotificationService {
     this.loadPreferences();
   }
 
-  // KHÔNG SỬ DỤNG ASYNCSTORAGE cho deviceId/fcmToken trong service này.
-  // Chỉ lấy Device ID và lưu vào Store nếu chưa có.
   async getDeviceId(): Promise<string> {
     const store = useUserStore.getState();
     let deviceId = store.deviceId;
 
     if (!deviceId) {
-      // Lấy ID duy nhất của thiết bị, dùng fallback 'unknown_device'
       deviceId = Device.osInternalBuildId || Device.osBuildId || 'unknown_device';
 
-      // Lưu lại vào store (GIẢ ĐỊNH useUserStore CÓ setDeviceId)
       if (store.setDeviceId) {
         store.setDeviceId(deviceId);
       }
@@ -131,7 +127,6 @@ class NotificationService {
       return;
     }
 
-    // Lấy token và deviceId mới nhất
     const fcmToken = await this.getFcmToken();
     const deviceId = await this.getDeviceId();
 
@@ -140,11 +135,10 @@ class NotificationService {
       return;
     }
 
-    // BƯỚC 1: LƯU TRỮ/CẬP NHẬT DỮ LIỆU VÀO STORE TRƯỚC
     if (store.setToken) store.setToken(fcmToken);
     if (store.setDeviceId) store.setDeviceId(deviceId);
 
-    // BƯỚC 2: KIỂM TRA ĐÃ ĐĂNG KÝ CHƯA ĐỂ TRÁNH GỌI API THỪA
+    // Check if already registered in store to avoid redundant API calls
     if (store.fcmToken === fcmToken && store.deviceId === deviceId && store.isTokenRegistered) {
       console.log('FCM Token already registered to backend for this device.');
       return;
@@ -158,7 +152,6 @@ class NotificationService {
       });
 
       console.log('FCM Token registered to backend successfully.');
-      // BƯỚC 3: CẬP NHẬT FLAG THÀNH CÔNG VÀO STORE
       if (store.setTokenRegistered) store.setTokenRegistered(true);
 
     } catch (error) {
@@ -167,7 +160,6 @@ class NotificationService {
     }
   }
 
-  // HÀM MỚI: XÓA TOKEN KHI LOGOUT TRÊN MỘT THIẾT BỊ
   async deleteTokenFromBackend() {
     const { user, deviceId } = useUserStore.getState();
 
@@ -177,7 +169,6 @@ class NotificationService {
     }
 
     try {
-      // GỌI ENDPOINT DELETE
       await instance.delete('/api/v1/users/fcm-token', {
         params: {
           userId: user.userId,
@@ -189,10 +180,7 @@ class NotificationService {
     } catch (error) {
       console.error('Failed to delete FCM token on logout:', error);
     }
-    // LƯU Ý: Hàm logout trong authService sẽ tự động gọi useUserStore.getState().logout() để reset state local.
   }
-  // KẾT THÚC LOGIC FCM/DEVICE
-
 
   async sendLocalNotification(title: string, body: string, data?: object): Promise<void> {
     const prefs = this.getPreferences();
@@ -234,7 +222,6 @@ class NotificationService {
   }
 
   async requestPermissions(): Promise<boolean> {
-
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
 
@@ -314,20 +301,6 @@ class NotificationService {
       ? currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes
       : currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
   }
-
-  // async sendMessageNotification(sender: string, message: string, chatId: string, receiverId: string): Promise<void> {
-  //   try {
-  //     await instance.post('/api/v1/notifications/send-message', { // Giả sử bạn có endpoint này
-  //       senderId: useUserStore.getState().user?.userId,
-  //       receiverId: receiverId,
-  //       title: `New Message from ${sender}`,
-  //       content: message,
-  //       payload: `{"screen":"Chat", "stackScreen":"ChatDetail", "chatId":"${chatId}"}`
-  //     });
-  //   } catch (error) {
-  //     console.error('Error triggering message notification:', error);
-  //   }
-  // }
 
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;

@@ -90,14 +90,14 @@ public class RoadmapServiceImpl implements RoadmapService {
             ur.setEstimatedCompletionTime(estimatedDays);
             ur.setCompletedItems(0);
             ur.setStatus("active");
-            ur.setIsPublic(false);
+            ur.setPublic(false);
             ur.setLanguage(roadmap.getLanguageCode());
             ur.setCreatedAt(OffsetDateTime.now());
         } else {
             ur.setStatus("active");
         }
 
-        userRoadmapRepository.save(ur);
+        userRoadmapRepository.saveAndFlush(ur);
         log.info("Assigned roadmap {} to user {}", roadmapId, userId);
     }
 
@@ -155,7 +155,7 @@ public class RoadmapServiceImpl implements RoadmapService {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
 
-        ur.setIsPublic(isPublic);
+        ur.setPublic(isPublic);
         userRoadmapRepository.save(ur);
         log.info("Set roadmap {} visibility to {}", roadmapId, isPublic);
     }
@@ -197,7 +197,7 @@ public class RoadmapServiceImpl implements RoadmapService {
         UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, roadmapId))
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
 
-        if (!ur.getIsPublic()) {
+        if (!ur.isPublic()) {
             throw new AppException(ErrorCode.ROADMAP_NOT_PUBLIC);
         }
 
@@ -403,7 +403,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                         .map(goal -> goal.getGoalType().name())
                         .collect(Collectors.joining(", "));
 
-                String interestsStr = userInterestRepository.findByIdUserIdAndIsDeletedFalse(user.getUserId()).stream()
+                String interestsStr = userInterestRepository.findById_UserIdAndIsDeletedFalse(user.getUserId()).stream()
                         .map(ui -> ui.getInterest().getInterestName())
                         .collect(Collectors.joining(", "));
 
@@ -574,7 +574,10 @@ public class RoadmapServiceImpl implements RoadmapService {
         int completedItems = ur.getCompletedItems();
         int progress = totalItems > 0 ? (completedItems * 100 / totalItems) : 0;
 
-        int estimatedCompletionTime = ur.getEstimatedCompletionTime();
+        int estimatedCompletionTime = ur.getEstimatedCompletionTime() != null 
+                                    ? ur.getEstimatedCompletionTime() 
+                                    : 0; 
+
         if (estimatedCompletionTime == 0 && totalItems > 0) {
             estimatedCompletionTime = (totalItems - completedItems);
         }

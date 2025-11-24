@@ -4,9 +4,7 @@ import * as Device from 'expo-device';
 import { useTokenStore } from '../stores/tokenStore';
 import eventBus from '../events/appEvents';
 import { showToast } from '../components/Toast';
-
-export const API_BASE_URL = 'https://api.example.com'; // Replace with your actual Env var if needed
-
+import { API_BASE_URL } from './apiConfig';
 interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
 }

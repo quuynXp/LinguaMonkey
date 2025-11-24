@@ -7,6 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
+import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -21,6 +22,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 
 import java.nio.file.attribute.UserPrincipal;
 import java.util.List;
@@ -69,22 +71,42 @@ public class RoomController {
     }
 
 
-   @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
-    @GetMapping("/ai-chat-room")
-    public AppApiResponse<RoomResponse> getAiChatRoom(
-            Locale locale) {
+        @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
+                @GetMapping("/ai-chat-room")
+                public AppApiResponse<RoomResponse> getAiChatRoom(
+                        @RequestParam UUID userId, // <--- THÊM PARAM NÀY
+                        Locale locale) {
 
-        String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
-        UUID currentUserId = UUID.fromString(currentUserIdStr);
+                // 1. Lấy ID từ Security Context (ID đã được xác thực từ JWT)
+                String authenticatedUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
 
-        RoomResponse room = roomService.findOrCreateAiChatRoom(currentUserId);
+                // 2. Kiểm tra xác thực (Giữ nguyên check)
+                if (authenticatedUserIdStr == null || authenticatedUserIdStr.equalsIgnoreCase("anonymousUser")) {
+                        throw new AppException(ErrorCode.UNAUTHENTICATED);
+                }
+                
+                // 3. Chuyển đổi ID đã xác thực sang UUID
+                UUID currentUserId;
+                try {
+                        currentUserId = UUID.fromString(authenticatedUserIdStr);
+                } catch (IllegalArgumentException e) {
+                        throw new AppException(ErrorCode.UNAUTHENTICATED); 
+                }
+                
+                // 4. KIỂM TRA CHÉO: Đảm bảo userId từ params khớp với ID trong token
+                if (!currentUserId.equals(userId)) {
+                        throw new AppException(ErrorCode.UNAUTHENTICATED); // Hoặc một mã lỗi thích hợp
+                }
 
-        return AppApiResponse.<RoomResponse>builder()
-                .code(200)
-                .message(messageSource.getMessage("room.ai_room.success", null, locale))
-                .result(room)
-                .build();
-    }
+                // Nếu khớp, sử dụng userId đã được xác thực
+                RoomResponse room = roomService.findOrCreateAiChatRoom(currentUserId); 
+
+                return AppApiResponse.<RoomResponse>builder()
+                        .code(200)
+                        .message(messageSource.getMessage("room.ai_room.success", null, locale))
+                        .result(room)
+                        .build();
+                }
 
     @Operation(summary = "Get room members", description = "Retrieve a list of members for a specific room")
     @GetMapping("/{id}/members")

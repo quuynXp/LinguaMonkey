@@ -169,7 +169,11 @@ export enum LearningPace {
 
 export enum LessonType {
     COURSE_LESSON = "COURSE_LESSON",
-    FLASHCARD_SET = "FLASHCARD_SET"
+    FLASHCARD_SET = "FLASHCARD_SET",
+    FLASHCARD = "FLASHCARD",
+    QUIZ = "QUIZ",
+    SPEAKING = "SPEAKING",
+    VIDEO = "VIDEO"
 }
 
 export enum MediaType {
@@ -253,7 +257,11 @@ export enum QuestionType {
     ORDERING = "ORDERING",
     MATCHING = "MATCHING",
     SPEAKING = "SPEAKING",
-    WRITING = "WRITING"
+    WRITING = "WRITING",
+    MULTIPLE_CHOICE = "MULTIPLE_CHOICE",
+    FILL_IN_THE_BLANK = "FILL_IN_THE_BLANK",
+    TRUE_FALSE = "TRUE_FALSE",
+    SHORT_ANSWER = "SHORT_ANSWER"
 }
 
 export enum RepeatType {

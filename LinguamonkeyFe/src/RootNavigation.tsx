@@ -27,6 +27,54 @@ import i18n from "./i18n";
 import AuthStack from "./navigation/stack/AuthStack";
 import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 
+// Thêm logic đăng ký FCM Token
+const registerFCMToken = async (userId: string) => {
+  const { fcmToken, isTokenRegistered, setToken, setTokenRegistered } =
+    useUserStore.getState();
+
+  if (fcmToken && isTokenRegistered) {
+    console.log("FCM Token already registered.");
+    return;
+  }
+
+  try {
+    let token = fcmToken;
+    let registered = isTokenRegistered;
+
+    // 1. Lấy token mới nếu chưa có
+    if (!token) {
+      console.log("Requesting new FCM token...");
+      await messaging().requestPermission();
+      token = await messaging().getToken();
+      if (token) {
+        setToken(token); // Cập nhật vào store
+        registered = false;
+        console.log("New FCM Token obtained:", token);
+      } else {
+        console.warn("Failed to obtain FCM token.");
+        return;
+      }
+    }
+
+    // 2. Đăng ký/Cập nhật token lên server
+    if (token && !registered) {
+      const payload = {
+        userId,
+        fcmToken: token,
+        deviceId: useUserStore.getState().deviceId,
+      };
+
+      // Đã tạo API endpoint /fcm-token/register để xử lý việc đăng ký/cập nhật
+      await instance.post("/api/v1/users/fcm-token", payload);
+      setTokenRegistered(true);
+      console.log("FCM Token successfully registered on server.");
+    }
+  } catch (error) {
+    console.error("FCM Token registration failed:", error);
+    setTokenRegistered(false);
+  }
+};
+
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
@@ -35,67 +83,72 @@ const RootNavigation = () => {
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
   const clearTokens = useTokenStore((state) => state.clearTokens);
 
-  const { user, setUser, setLocalNativeLanguage } = useUserStore();
+  const { user, setUser, setLocalNativeLanguage, fcmToken, isTokenRegistered } =
+    useUserStore();
 
-  const [initialMainRoute, setInitialMainRoute] = useState<keyof MainStackParamList>("TabApp");
+  const [initialMainRoute, setInitialMainRoute] =
+    useState<keyof MainStackParamList>("TabApp");
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
 
-  const linking = useMemo(() => ({
-    prefixes: [
-      Linking.createURL("/"),
-      "monkeylingua://",
-      "https://monkeylingua.vercle.app",
-    ],
-    config: {
-      screens: {
-        AppLaunchScreen: "welcome",
-        LoginScreen: "login",
-        RegisterScreen: "register",
-        ForgotPasswordScreen: "forgot-password",
+  const linking = useMemo(
+    () => ({
+      prefixes: [
+        Linking.createURL("/"),
+        "monkeylingua://",
+        "https://monkeylingua.vercle.app",
+      ],
+      config: {
+        screens: {
+          AppLaunchScreen: "welcome",
+          LoginScreen: "login",
+          RegisterScreen: "register",
+          ForgotPasswordScreen: "forgot-password",
 
-        TabApp: {
-          screens: {
-            Home: "home",
-            Learn: "learn",
-            Progress: "progress",
-            Chat: "chats",
-            Profile: "profile",
+          TabApp: {
+            screens: {
+              Home: "home",
+              Learn: "learn",
+              Progress: "progress",
+              Chat: "chats",
+              Profile: "profile",
+            },
           },
-        },
 
-        LearnStack: {
-          screens: {
-            Lesson: "lesson/:id",
-            CourseDetails: "course/:id",
-          }
-        },
-        AdminStack: "admin",
-        ChatStack: "chat-full",
-        ProfileStack: "profile-stack",
-        PaymentStack: "payment",
+          LearnStack: {
+            screens: {
+              Lesson: "lesson/:id",
+              CourseDetails: "course/:id",
+            },
+          },
+          AdminStack: "admin",
+          ChatStack: "chat-full",
+          ProfileStack: "profile-stack",
+          PaymentStack: "payment",
 
-        DailyWelcomeScreen: "daily-welcome",
-        ProficiencyTestScreen: "proficiency-test",
-        SetupInitScreen: "setup",
+          DailyWelcomeScreen: "daily-welcome",
+          ProficiencyTestScreen: "proficiency-test",
+          SetupInitScreen: "setup",
+        },
       },
-    },
-    subscribe(listener: (url: string) => void) {
-      const onReceiveURL = ({ url }: { url: string }) => listener(url);
-      const eventListener = Linking.addEventListener("url", onReceiveURL);
+      subscribe(listener: (url: string) => void) {
+        const onReceiveURL = ({ url }: { url: string }) => listener(url);
+        const eventListener = Linking.addEventListener("url", onReceiveURL);
 
-      const unsubscribeNotification = messaging().onNotificationOpenedApp(
-        (remoteMessage) => {
-          console.log("Background Notification Tapped:", remoteMessage);
-          handleNotificationNavigation(remoteMessage);
-        }
-      );
+        const unsubscribeNotification = messaging().onNotificationOpenedApp(
+          (remoteMessage) => {
+            console.log("Background Notification Tapped:", remoteMessage);
+            handleNotificationNavigation(remoteMessage);
+          }
+        );
 
-      return () => {
-        eventListener.remove();
-        unsubscribeNotification();
-      };
-    },
-  }), []);
+        return () => {
+          eventListener.remove();
+          unsubscribeNotification();
+        };
+      },
+    }),
+    []
+  );
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
@@ -105,14 +158,18 @@ const RootNavigation = () => {
   }, []);
 
   useEffect(() => {
-    const unsubscribeOnMessage = onMessage(messaging(), async (remoteMessage) => {
-      console.log("Foreground Notification (FCM):", remoteMessage);
-      notificationService.sendLocalNotification(
-        remoteMessage.notification?.title || i18n.t("notification.default_title"),
-        remoteMessage.notification?.body || "",
-        remoteMessage.data
-      );
-    });
+    const unsubscribeOnMessage = onMessage(
+      messaging(),
+      async (remoteMessage) => {
+        console.log("Foreground Notification (FCM):", remoteMessage);
+        notificationService.sendLocalNotification(
+          remoteMessage.notification?.title ||
+          i18n.t("notification.default_title"),
+          remoteMessage.notification?.body || "",
+          remoteMessage.data
+        );
+      }
+    );
     return () => unsubscribeOnMessage();
   }, []);
 
@@ -143,7 +200,9 @@ const RootNavigation = () => {
             try {
               const payload = decodeToken(currentToken);
               if (payload?.userId) {
-                const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
+                const userId = payload.userId; // Lấy userId trước
+
+                const userRes = await instance.get(`/api/v1/users/${userId}`);
                 const rawUser = userRes.data.result || {};
                 const normalizedUser = {
                   ...rawUser,
@@ -153,9 +212,15 @@ const RootNavigation = () => {
 
                 // 2. Sync Language from User Profile (if different from local)
                 // If the user has a saved language in backend, it takes precedence
-                if (normalizedUser.nativeLanguageCode && normalizedUser.nativeLanguageCode !== savedLanguage) {
+                if (
+                  normalizedUser.nativeLanguageCode &&
+                  normalizedUser.nativeLanguageCode !== savedLanguage
+                ) {
                   await i18n.changeLanguage(normalizedUser.nativeLanguageCode);
-                  await AsyncStorage.setItem("userLanguage", normalizedUser.nativeLanguageCode);
+                  await AsyncStorage.setItem(
+                    "userLanguage",
+                    normalizedUser.nativeLanguageCode
+                  );
                   setLocalNativeLanguage(normalizedUser.nativeLanguageCode);
                   savedLanguage = normalizedUser.nativeLanguageCode; // Update current ref
                 }
@@ -163,21 +228,34 @@ const RootNavigation = () => {
                 setUser(normalizedUser, savedLanguage);
                 await AsyncStorage.setItem("hasLoggedIn", "true");
 
+                // === BỔ SUNG LOGIC KIỂM TRA & ĐĂNG KÝ FCM TOKEN SAU KHI CÓ USER ID ===
+                const isTokenMissingOrUnregistered =
+                  !useUserStore.getState().fcmToken ||
+                  !useUserStore.getState().isTokenRegistered;
+
+                if (isTokenMissingOrUnregistered) {
+                  await registerFCMToken(userId);
+                }
+                // ====================================================================
+
                 const roles = normalizedUser.roles || [];
 
                 // 3. Check Backend Status Flags instead of AsyncStorage
                 // Note: The fields must match what UserStore extracts from 'normalizedUser'
                 const hasFinishedSetup = normalizedUser.hasFinishedSetup === true;
-                const hasDonePlacementTest = normalizedUser.hasDonePlacementTest === true;
+                const hasDonePlacementTest =
+                  normalizedUser.hasDonePlacementTest === true;
 
                 // Daily Welcome Check
-                const today = new Date().toISOString().split('T')[0];
+                const today = new Date().toISOString().split("T")[0];
                 // Check against backend timestamp
                 const lastDailyWelcomeAt = normalizedUser.lastDailyWelcomeAt;
                 let isFirstOpenToday = true;
 
                 if (lastDailyWelcomeAt) {
-                  const lastDateString = new Date(lastDailyWelcomeAt).toISOString().split('T')[0];
+                  const lastDateString = new Date(lastDailyWelcomeAt)
+                    .toISOString()
+                    .split("T")[0];
                   if (lastDateString === today) {
                     isFirstOpenToday = false;
                   }
@@ -206,7 +284,8 @@ const RootNavigation = () => {
           }
         } else {
           // Fallback for onboarding check (still local as it precedes login)
-          const hasFinishedOnboarding = (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
+          const hasFinishedOnboarding =
+            (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
           if (hasFinishedOnboarding) {
             setInitialAuthParams({ skipToAuth: true });
           }
@@ -221,20 +300,29 @@ const RootNavigation = () => {
     boot();
 
     const initPermissions = async () => {
-      if (Platform.OS === 'android') {
+      if (Platform.OS === "android") {
         await Notifications.setNotificationChannelAsync("default", {
           name: i18n.t("notification.channel_default_name"),
           importance: Notifications.AndroidImportance.MAX,
           vibrationPattern: [0, 250, 250, 250],
-          lightColor: '#FF231F7C',
+          lightColor: "#FF231F7C",
         });
       }
       await permissionService.checkNotificationPermission();
     };
     initPermissions();
 
-    return () => { mounted = false; };
-  }, [initializeTokens, setUser, clearTokens, setLocalNativeLanguage]);
+    return () => {
+      mounted = false;
+    };
+  }, [
+    initializeTokens,
+    setUser,
+    clearTokens,
+    setLocalNativeLanguage,
+    fcmToken,
+    isTokenRegistered,
+  ]);
 
   const handleNotificationNavigation = (remoteMessage: any) => {
     if (!remoteMessage?.data) return;
@@ -248,8 +336,12 @@ const RootNavigation = () => {
 
   if (!isConnected) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ fontSize: 16, color: "red" }}>{i18n.t("common.no_internet")}</Text>
+      <View
+        style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+      >
+        <Text style={{ fontSize: 16, color: "red" }}>
+          {i18n.t("common.no_internet")}
+        </Text>
       </View>
     );
   }

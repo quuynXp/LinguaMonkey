@@ -159,8 +159,7 @@ export const useUserStore = create<UserState>()(
           return;
         }
 
-        // Map backend fields, even if not strictly in TS interface yet (handled by 'any' cast upstream if needed)
-        // Assuming backend returns keys like 'hasFinishedSetup', 'hasDonePlacementTest' etc.
+        // Map backend fields, even if not strictly in TS interface yet
         const rawUser = user as any;
 
         set({
@@ -319,8 +318,6 @@ export const useUserStore = create<UserState>()(
         }
       },
 
-      // --- New Actions for Setup/Welcome/Placement ---
-
       finishSetup: async () => {
         const { user } = get();
         if (!user?.userId) return;
@@ -391,7 +388,6 @@ export const useUserStore = create<UserState>()(
         languages: state.languages,
         dailyGoal: state.dailyGoal,
         statusMessage: state.statusMessage,
-        // Persist these locally for fast cold start checks before network refresh
         hasDonePlacementTest: state.hasDonePlacementTest,
         hasFinishedSetup: state.hasFinishedSetup,
         lastDailyWelcomeAt: state.lastDailyWelcomeAt,

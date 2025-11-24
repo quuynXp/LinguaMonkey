@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.LessonType;
 // import com.connectJPA.LinguaVietnameseApp.service.elasticsearch.listener.ElasticsearchEntityListener;
+import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -55,9 +56,11 @@ public class Lesson extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "lesson_type")
     private LessonType lessonType;
+    // save as CSV e.g. "LISTENING,SPEAKING"
 
-    @Column(name = "skill_types") // save as CSV e.g. "LISTENING,SPEAKING"
-    private String skillTypes;
+    @Column(name = "skill_types")
+    @Enumerated(EnumType.STRING)
+    private SkillType skillTypes;
 
     @Column(name = "lesson_series_id")
     private UUID lessonSeriesId;

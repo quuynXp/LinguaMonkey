@@ -2,7 +2,6 @@
 # 🛑 1. Quy tắc Cốt lõi & Phụ thuộc (Core & Dependencies)
 # ===============================================
 # Thư mục phụ thuộc chính cho JavaScript/Node.js/React
-node_modules/
 
 # Thư mục đầu ra của dự án Java/Spring Boot/Maven
 /target/
@@ -18,6 +17,16 @@ node_modules/
 /venv/
 __pycache__/
 *.pyc
+
+*.log
+*.sql
+*.sql.gz
+*.tar.gz
+*.zip
+
+/dist/
+/build/
+/out/
 
 # ===============================================
 # 💻 2. Quy tắc IDE (IDE-specific exclusions)
@@ -60,6 +69,15 @@ web-build/
 # Các tệp bundle, cache của Metro
 *.bundle
 .hash
+
+backups/
+
+.idea/
+
+# Dependency management
+node_modules/
+vendor/
+
 
 ### Flutter ###
 .dart_tool/

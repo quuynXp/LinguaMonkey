@@ -23,6 +23,7 @@ import {
     WordFeedback,
     FinalResult,
     SpeakingSentence,
+    LessonResponse,
 } from '../../types/dto';
 
 interface SpeakingScreenProps {
@@ -30,6 +31,7 @@ interface SpeakingScreenProps {
     route: {
         params?: {
             lessonId?: string;
+            lesson?: LessonResponse; // Added lesson object
             categoryId?: string;
         };
     };
@@ -37,7 +39,8 @@ interface SpeakingScreenProps {
 
 const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const insets = useSafeAreaInsets();
-    const lessonId = route.params?.lessonId;
+    const lessonId = route.params?.lessonId || route.params?.lesson?.lessonId;
+    const passedLesson = route.params?.lesson;
 
     const [selectedSentence, setSelectedSentence] = useState<SpeakingSentence | null>(null);
     const [isRecording, setIsRecording] = useState(false);
@@ -57,7 +60,11 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const { useLesson } = useLessons();
     const streamPronunciationMutation = useStreamPronunciation();
 
-    const { data: lessonData, isLoading: isLoadingLesson } = useLesson(lessonId || null);
+    // Fetch fresh data, but we can use passedLesson while loading
+    const { data: fetchedLessonData, isLoading: isLoadingLesson } = useLesson(lessonId || null);
+
+    // Prioritize fetched data, fallback to passed params
+    const activeLessonData = fetchedLessonData || passedLesson;
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -70,16 +77,17 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     }, []);
 
     useEffect(() => {
-        if (lessonData && lessonData.title) {
+        // Initialize sentence data from either fetched or passed lesson
+        if (activeLessonData && activeLessonData.title) {
             setSelectedSentence({
-                id: lessonData.id || 'default',
-                text: lessonData.title,
-                translation: '',
-                audioUrl: '',
+                id: activeLessonData.lessonId || activeLessonData.courseId || 'default',
+                text: activeLessonData.title,
+                translation: '', // Add translation if available in LessonResponse
+                audioUrl: '', // Add audioUrl if available
                 ipa: ''
-            } as SpeakingSentence);
+            } as unknown as SpeakingSentence);
         }
-    }, [lessonData]);
+    }, [activeLessonData]);
 
     const checkAndRequestMicrophonePermission = async () => {
         const granted = await PermissionService.requestMicrophonePermission();
@@ -171,7 +179,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                 streamPronunciationMutation.mutate({
                     audioUri: fileUri,
                     lessonId,
-                    languageCode: lessonData?.languageCode || 'en',
+                    languageCode: activeLessonData?.languageCode || 'en',
                     referenceText: selectedSentence.text,
                     onChunk: handleStreamingChunk,
                 }, {
@@ -307,7 +315,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                         { paddingTop: insets.top },
                     ]}
                 >
-                    <View style={styles.resultHeader}>
+                    <View>
                         <Text style={styles.resultTitle}>{i18n.t('speaking.result_title')}</Text>
                         <TouchableOpacity onPress={() => setShowResult(false)}>
                             <Icon name="close" size={24} color="#374151" />
@@ -315,7 +323,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                     </View>
 
                     <ScrollView style={styles.resultContent} contentContainerStyle={{ paddingBottom: insets.bottom }}>
-                        <View style={styles.overallScoreCard}>
+                        <View>
                             <Text style={styles.scoreLabel}>{i18n.t('speaking.score_overall')}</Text>
                             <Text
                                 style={[
@@ -326,14 +334,14 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                                 {finalResult.overall_score}/100
                             </Text>
 
-                            <View style={styles.scoreBreakdown}>
-                                <View style={styles.scoreItem}>
+                            <View >
+                                <View>
                                     <Text style={styles.scoreItemLabel}>{i18n.t('speaking.score_accuracy')}</Text>
                                     <Text style={styles.scoreItemValue}>
                                         {finalResult.accuracy_score.toFixed(1)}%
                                     </Text>
                                 </View>
-                                <View style={styles.scoreItem}>
+                                <View>
                                     <Text style={styles.scoreItemLabel}>{i18n.t('speaking.score_fluency')}</Text>
                                     <Text style={styles.scoreItemValue}>
                                         {finalResult.fluency_score.toFixed(1)}%
@@ -376,7 +384,6 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                         </View>
 
                         <TouchableOpacity
-                            style={styles.retryButton}
                             onPress={() => {
                                 setShowResult(false);
                                 setStreamingChunks([]);
@@ -393,7 +400,8 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
         );
     };
 
-    if (isLoadingLesson) {
+    // Only show loading if we have NO data (neither passed nor fetched)
+    if (isLoadingLesson && !activeLessonData) {
         return (
             <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
                 <ActivityIndicator size="large" color="#4F46E5" />
@@ -402,7 +410,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
         );
     }
 
-    if (!lessonData) {
+    if (!activeLessonData) {
         return (
             <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
                 <Icon name="error-outline" size={48} color="#EF4444" />
@@ -416,23 +424,23 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
 
     return (
         <View style={[styles.container, { paddingTop: insets.top }]}>
-            <View style={styles.header}>
+            <View>
                 <TouchableOpacity onPress={() => navigation.goBack()}>
                     <Icon name="arrow-back" size={24} color="#374151" />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>{lessonData.title || i18n.t('speaking.screen_title')}</Text>
+                <Text style={styles.headerTitle}>{activeLessonData.title || i18n.t('speaking.screen_title')}</Text>
                 <View style={{ width: 24 }} />
             </View>
 
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                 <Animated.View style={[{ opacity: fadeAnim }]}>
-                    {lessonData.title && (
+                    {activeLessonData.title && (
                         <View style={styles.sentenceCard}>
-                            <Text style={styles.sentenceText}>{lessonData.title}</Text>
+                            <Text style={styles.sentenceText}>{activeLessonData.title}</Text>
                         </View>
                     )}
 
-                    <View style={styles.recordingSection}>
+                    <View>
                         <Text style={styles.recordingTitle}>{i18n.t('speaking.ready_title')}</Text>
                         <Text style={styles.recordingInstruction}>
                             {i18n.t('speaking.record_instruction')}
@@ -475,7 +483,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                     </View>
 
                     {isStreaming && (
-                        <View style={styles.streamingContainer}>
+                        <View>
                             <ActivityIndicator size="large" color="#4F46E5" />
                             <Text style={styles.streamingText}>{i18n.t('speaking.analyzing_status')}</Text>
                             {renderStreamingChunks()}

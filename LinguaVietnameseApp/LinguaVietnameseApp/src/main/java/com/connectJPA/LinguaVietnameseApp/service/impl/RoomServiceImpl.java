@@ -94,8 +94,8 @@ public class RoomServiceImpl implements RoomService {
         // Add User 1
         RoomMember member1 = RoomMember.builder()
                 .id(new RoomMemberId(room.getRoomId(), userId1))
-                .room(room)
-                .user(user1)
+                .room(room) // IMPORTANT: Set the Room entity
+                .user(user1) // IMPORTANT: Set the User entity
                 .role(RoomRole.ADMIN)
                 .joinedAt(OffsetDateTime.now())
                 .build();
@@ -104,8 +104,8 @@ public class RoomServiceImpl implements RoomService {
         // Add User 2
         RoomMember member2 = RoomMember.builder()
                 .id(new RoomMemberId(room.getRoomId(), userId2))
-                .room(room)
-                .user(user2)
+                .room(room) // IMPORTANT: Set the Room entity
+                .user(user2) // IMPORTANT: Set the User entity
                 .role(RoomRole.MEMBER)
                 .joinedAt(OffsetDateTime.now())
                 .build();
@@ -135,7 +135,7 @@ public class RoomServiceImpl implements RoomService {
         }
 
         log.info("No AI room found for user {}. Creating new one.", userId);
-        
+
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -147,7 +147,7 @@ public class RoomServiceImpl implements RoomService {
                 .maxMembers(2)
                 .build();
 
-        return this.createRoom(newRoomRequest); 
+        return this.createRoom(newRoomRequest);
     }
 
     @Override
@@ -174,7 +174,7 @@ public class RoomServiceImpl implements RoomService {
             if (request == null || request.getCreatorId() == null) {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
-            userRepository.findByUserIdAndIsDeletedFalse(request.getCreatorId())
+            User creator = userRepository.findByUserIdAndIsDeletedFalse(request.getCreatorId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             Room room = roomMapper.toEntity(request);
             room = roomRepository.save(room);
@@ -182,6 +182,8 @@ public class RoomServiceImpl implements RoomService {
             // Add creator as a member
             RoomMember member = RoomMember.builder()
                     .id(new RoomMemberId(room.getRoomId(), request.getCreatorId()))
+                    .room(room) // FIX: Set the Room entity
+                    .user(creator) // FIX: Set the User entity
                     .role(RoomRole.ADMIN)
                     .joinedAt(OffsetDateTime.now())
                     .build();
@@ -241,29 +243,22 @@ public class RoomServiceImpl implements RoomService {
     }
 
     @Override
-    @Transactional(readOnly = true) // Tối ưu cho việc đọc
-    @Cacheable(value = "room_members", key = "#roomId") // Thêm cache
+    @Transactional(readOnly = true)
+    @Cacheable(value = "room_members", key = "#roomId")
     public List<MemberResponse> getRoomMembers(UUID roomId) {
         try {
-            // 1. Kiểm tra xem phòng có tồn tại không
             if (!roomRepository.existsById(roomId)) {
                 throw new AppException(ErrorCode.ROOM_NOT_FOUND);
             }
 
-            // 2. Lấy danh sách thành viên từ repository
-            // (Sử dụng tên method đã thêm ở Bước 2)
             List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId);
 
-            // 3. Map từ List<RoomMember> sang List<MemberResponse>
-            //    **GIẢ ĐỊNH**: Entity `RoomMember` của bạn có một field `User user`
-            //    (được @ManyToOne và @MapsId("userId"))
-            //    **GIẢ ĐỊNH**: Entity `User` của bạn có các method getUsername(), getAvatarUrl(), isOnline()
             return members.stream()
                     .map(member -> {
                         User user = member.getUser();
                         if (user == null || user.isDeleted()) {
                             log.warn("RoomMember with id {} references a null or deleted user {}", member.getId(), member.getId().getUserId());
-                            return null; // Bỏ qua nếu user không hợp lệ
+                            return null;
                         }
 
                         return MemberResponse.builder()
@@ -271,18 +266,16 @@ public class RoomServiceImpl implements RoomService {
                                 .username(user.getNickname())
                                 .avatarUrl(user.getAvatarUrl())
                                 .role(String.valueOf(member.getRole()))
-                                .isOnline(user.isOnline()) // Giả định user có trường isOnline
+                                .isOnline(user.isOnline())
                                 .build();
                     })
-                    .filter(Objects::nonNull) // Lọc bỏ các member có user bị null hoặc đã xóa
+                    .filter(Objects::nonNull)
                     .collect(Collectors.toList());
 
         } catch (AppException e) {
-            // Ném lại AppException đã bắt
             log.warn("Error fetching room members for room {}: {}", roomId, e.getMessage());
             throw e;
         } catch (Exception e) {
-            // Bắt các lỗi khác
             log.error("Error while fetching members for room ID {}: {}", roomId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
@@ -306,10 +299,13 @@ public class RoomServiceImpl implements RoomService {
                 throw new AppException(ErrorCode.EXCEEDS_MAX_MEMBERS);
             }
             for (RoomMemberRequest req : memberRequests) {
-                userRepository.findByUserIdAndIsDeletedFalse(req.getUserId())
+                User user = userRepository.findByUserIdAndIsDeletedFalse(req.getUserId()) // FIX: Retrieve User
                         .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                
                 RoomMember member = RoomMember.builder()
                         .id(new RoomMemberId(roomId, req.getUserId()))
+                        .room(room) // FIX: Set the Room entity
+                        .user(user) // FIX: Set the User entity
                         .role(req.getRole() != null ? RoomRole.valueOf(req.getRole()) : RoomRole.MEMBER)
                         .joinedAt(OffsetDateTime.now())
                         .build();
@@ -352,7 +348,7 @@ public class RoomServiceImpl implements RoomService {
             throw new AppException(ErrorCode.INVALID_KEY);
         }
         // Kiểm tra user tồn tại
-        userRepository.findByUserIdAndIsDeletedFalse(userId)
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         // 1. Tìm một phòng QUIZ_TEAM public còn chỗ (maxMembers được set trong DB)
@@ -396,8 +392,8 @@ public class RoomServiceImpl implements RoomService {
             log.info("Adding user {} to room {}", userId, roomToJoin.getRoomId());
             RoomMember member = RoomMember.builder()
                     .id(memberId)
-                    .room(roomToJoin)
-                    .user(userRepository.getReferenceById(userId)) // Lấy reference
+                    .room(roomToJoin) // IMPORTANT: Set the Room entity
+                    .user(user) // IMPORTANT: Set the User entity
                     .role(RoomRole.MEMBER)
                     .joinedAt(OffsetDateTime.now())
                     .build();

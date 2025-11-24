@@ -5,5 +5,6 @@ public enum TransactionType {
     WITHDRAW,   // Rút tiền
     TRANSFER,   // Chuyển khoản (P2P)
     PAYMENT,    // Thanh toán (ví dụ: mua course)
-    REFUND      // Hoàn tiền
+    REFUND,      // Hoàn tiền
+    DEFAULT_TYPE
 }

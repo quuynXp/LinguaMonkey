@@ -11,7 +11,7 @@ import ScreenLayout from "../../components/layout/ScreenLayout"
 import { InterestResponse, LanguageResponse } from "../../types/dto"
 import { AgeRange } from "../../types/enums"
 
-const languageFlags: { [key: string]: string } = {
+const languageFlags = {
   en: "🇺🇸",
   zh: "🇨🇳",
   vi: "🇻🇳",
@@ -22,7 +22,7 @@ const languageFlags: { [key: string]: string } = {
   de: "🇩🇪",
 }
 
-const CallSetupScreen = ({ navigation }: { navigation: any }) => {
+const CallSetupScreen = ({ navigation }) => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const { callPreferences: savedPreferences, setCallPreferences } = useAppStore()
@@ -32,18 +32,18 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     gender: "any",
     nativeLanguage: user?.nativeLanguageCode || "en",
     learningLanguage: user?.languages?.[0] || "vi",
-    ageRange: (user?.ageRange || AgeRange.AGE_18_24) as AgeRange,
+    ageRange: (user?.ageRange || AgeRange.AGE_18_24) as string,
     callDuration: "15",
   }
 
-  const [preferences, setPreferences] = useState<CallPreferences>(
+  const [preferences, setPreferences] = useState(
     savedPreferences || defaultPreferences
   )
 
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  const { data: interestsData, isLoading: isLoadingInterests } = useQuery<InterestResponse[]>({
+  const { data: interestsData, isLoading: isLoadingInterests } = useQuery({
     queryKey: ["interests"],
     queryFn: async () => {
       const response = await instance.get("/api/v1/interests")
@@ -53,7 +53,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
 
   const interests = interestsData || []
 
-  const { data: languagesData, isLoading: isLoadingLanguages } = useQuery<LanguageResponse[]>({
+  const { data: languagesData, isLoading: isLoadingLanguages } = useQuery({
     queryKey: ["languages"],
     queryFn: async () => {
       const response = await instance.get("/api/v1/languages")
@@ -71,7 +71,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
         ...prev,
         nativeLanguage: user?.nativeLanguageCode || "en",
         learningLanguage: user?.languages?.[0] || "vi",
-        ageRange: (user?.ageRange || AgeRange.AGE_18_24) as AgeRange,
+        ageRange: (user?.ageRange || AgeRange.AGE_18_24),
       }))
     }
     Animated.parallel([
@@ -107,7 +107,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     { value: "60", label: t("call.duration1hour") },
   ]
 
-  const toggleInterest = (interestId: string) => {
+  const toggleInterest = (interestId) => {
     setPreferences((prev) => ({
       ...prev,
       interests: prev.interests.includes(interestId)
@@ -116,7 +116,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     }))
   }
 
-  const updatePreference = (key: keyof CallPreferences, value: any) => {
+  const updatePreference = (key, value) => {
     setPreferences((prev) => ({ ...prev, [key]: value }))
   }
 
@@ -129,7 +129,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     navigation.navigate("CallSearchScreen", { preferences })
   }
 
-  const renderInterestItem = (interest: InterestResponse) => {
+  const renderInterestItem = (interest) => {
     const isSelected = preferences.interests.includes(interest.interestId)
     const color = interest.color || "#6B7280"
     return (
@@ -141,7 +141,7 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
         ]}
         onPress={() => toggleInterest(interest.interestId)}
       >
-        <Icon name={(interest.icon || "star") as any} size={20} color={isSelected ? color : "#6B7280"} />
+        <Icon name={(interest.icon || "star")} size={20} color={isSelected ? color : "#6B7280"} />
         <Text style={[styles.interestText, isSelected && { color: color, fontWeight: "600" }]}>
           {interest.interestName}
         </Text>
@@ -151,9 +151,9 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   }
 
   const renderLanguageOption = (
-    language: LanguageResponse,
-    selectedLanguage: string,
-    onSelect: (code: string) => void,
+    language,
+    selectedLanguage,
+    onSelect,
   ) => (
     <TouchableOpacity
       key={language.languageCode}
@@ -168,9 +168,9 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
   )
 
   const renderOptionButton = (
-    options: Array<{ [key: string]: any; label: string; icon?: string }>,
-    selectedValue: string,
-    onSelect: (value: string) => void,
+    options,
+    selectedValue,
+    onSelect,
     keyExtractor = "value",
   ) => (
     <View style={styles.optionsContainer}>
@@ -193,8 +193,12 @@ const CallSetupScreen = ({ navigation }: { navigation: any }) => {
     </View>
   )
 
-  const selectedNativeLanguageName = languages.find((l) => l.languageCode === preferences.nativeLanguage)?.languageName || preferences.nativeLanguage
-  const selectedLearningLanguageName = languages.find((l) => l.languageCode === preferences.learningLanguage)?.languageName || preferences.learningLanguage
+  // FIX: Safely access languages by defaulting to an empty array for the find method
+  const languageList = languagesData ?? [];
+
+  const selectedNativeLanguageName = languageList.find((l) => l.languageCode === preferences.nativeLanguage)?.languageName || preferences.nativeLanguage
+  const selectedLearningLanguageName = languageList.find((l) => l.languageCode === preferences.learningLanguage)?.languageName || preferences.learningLanguage
+
   const selectedGenderLabel = genderOptions.find((g) => g.value === preferences.gender)?.label
   const selectedDurationLabel = callDurations.find((d) => d.value === preferences.callDuration)?.label
 

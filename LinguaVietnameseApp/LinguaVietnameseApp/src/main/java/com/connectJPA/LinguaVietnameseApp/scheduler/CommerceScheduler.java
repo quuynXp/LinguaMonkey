@@ -42,8 +42,7 @@ public class CommerceScheduler {
     public void checkPendingTransactions() {
         // Kiểm tra các giao dịch PENDING được tạo hơn 10 phút trước
         OffsetDateTime tenMinutesAgo = OffsetDateTime.now().minusMinutes(10);
-        List<Transaction> pendingTransactions = transactionRepository.findByStatusAndCreatedAtBeforeAndIsDeletedFalse("PENDING", tenMinutesAgo);
-
+        List<Transaction> pendingTransactions = transactionRepository.findByStatusAndCreatedAtBeforeAndIsDeletedFalse(TransactionStatus.PENDING, tenMinutesAgo);
         if (pendingTransactions.isEmpty()) return;
 
         log.info("Checking status of {} pending transactions.", pendingTransactions.size());
@@ -105,7 +104,7 @@ public class CommerceScheduler {
         log.info("Publishing {} new course versions.", versionsToPublish.size());
 
         for (CourseVersion version : versionsToPublish) {
-            version.setStatus(VersionStatus.valueOf("PUBLISHED"));
+            version.setStatus(VersionStatus.PUBLISHED);
             version.getCourse().setLatestPublicVersion(version);
             courseVersionRepository.save(version);
 

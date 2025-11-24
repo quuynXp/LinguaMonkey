@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.UserLearningActivityReques
 import com.connectJPA.LinguaVietnameseApp.dto.response.StudyHistoryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserLearningActivityResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
+import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -18,5 +19,5 @@ public interface UserLearningActivityService {
 
     StudyHistoryResponse getAggregatedStudyHistory(UUID userId, String period);
 
-    UserLearningActivityResponse logUserActivity(UUID userId, ActivityType activityType, UUID relatedEntityId, Integer durationInSeconds, int expReward, String details, String skillTypes);
+    UserLearningActivityResponse logUserActivity(UUID userId, ActivityType activityType, UUID relatedEntityId, Integer durationInSeconds, int expReward, String details, SkillType skillTypes);
 }

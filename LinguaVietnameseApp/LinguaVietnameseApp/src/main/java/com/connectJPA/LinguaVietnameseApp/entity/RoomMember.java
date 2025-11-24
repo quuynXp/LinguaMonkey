@@ -7,7 +7,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 
 @Entity
@@ -24,10 +23,16 @@ public class RoomMember extends BaseEntity {
     @Column(name = "role")
     private RoomRole role;
 
-    @ManyToOne
+    // SỬA: Khai báo rõ ràng cột foreign key
+    @ManyToOne(fetch = FetchType.LAZY)
+    @MapsId("roomId") // Maps trường 'roomId' trong RoomMemberId
+    @JoinColumn(name = "room_id") 
     private Room room;
 
-    @ManyToOne
+    // SỬA: Khai báo rõ ràng cột foreign key
+    @ManyToOne(fetch = FetchType.LAZY)
+    @MapsId("userId") // Maps trường 'userId' trong RoomMemberId
+    @JoinColumn(name = "user_id") 
     private User user;
 
     @Column(name = "joined_at", nullable = false)
@@ -36,7 +41,9 @@ public class RoomMember extends BaseEntity {
     @Column(name = "end_at")
     private OffsetDateTime endAt;
 
-    private boolean isAdmin;
+    @Column(name = "is_admin") 
+    private boolean isAdmin; 
 
+    @Column(name = "nick_name_in_rom") 
     private String nickNameInRom;
 }

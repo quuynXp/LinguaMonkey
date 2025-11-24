@@ -14,16 +14,19 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserInterest extends BaseEntity {
+
     @EmbeddedId
     private UserInterestId id;
 
+    // Remove @MapsId - use insertable/updatable = false instead
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("userId")
-    @JoinColumn(name = "user_id")
+    @JoinColumn(name = "user_id", insertable = false, updatable = false)
     private User user;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @MapsId("interestId")
-    @JoinColumn(name = "interest_id")
+    @JoinColumn(name = "interest_id", insertable = false, updatable = false)
     private Interest interest;
+
+    @Version
+    private Long version;
 }

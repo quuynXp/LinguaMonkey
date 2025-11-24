@@ -4,7 +4,6 @@ import { Alert, Animated, ScrollView, Text, TextInput, TouchableOpacity, View, F
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Character3D, Language, Interest, Country, LearningPace, CreateUserPayload, languageToCountry } from "../../types/api"
 import instance from "../../api/axiosClient"
-// import ModelViewer from "../../components/ModelViewer" // BỎ IMPORT MODELVIEWER
 import CountryFlag from "react-native-country-flag"
 import { useTranslation } from "react-i18next"
 import { gotoTab } from "../../utils/navigationRef";
@@ -44,9 +43,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const [accountName, setAccountName] = useState("")
   const [email, setEmail] = useState("")
   const [phoneNumber, setPhoneNumber] = useState("");
-  const [country, setCountry] = useState<string | null>(null) // store country CODE (e.g. "VN", "US")
+  const [country, setCountry] = useState<string | null>(null)
   const [ageRange, setAgeRange] = useState("")
-  const [nativeLanguage, setNativeLanguage] = useState<string | null>(null) // store language CODE uppercase (e.g. "VI", "EN")
+  const [nativeLanguage, setNativeLanguage] = useState<string | null>(null)
   const [targetLanguages, setTargetLanguages] = useState<string[]>([])
   const [certificationsSelected, setCertificationsSelected] = useState<string[]>([])
   const [selectedInterests, setSelectedInterests] = useState<string[]>([])
@@ -155,7 +154,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const mapAgeRangeToEnum = (display: string | undefined) => {
     if (!display) return undefined;
-    return AGE_ENUM_MAP[display] ?? undefined; // undefined nếu không tìm thấy
+    return AGE_ENUM_MAP[display] ?? undefined;
   };
 
   useEffect(() => {
@@ -198,8 +197,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }, [])
 
   useEffect(() => {
-    // Bỏ logic tự động chọn nhân vật đầu tiên
-    // if (characters.length && !selectedCharacter) setSelectedCharacter(characters[0])
   }, [characters])
 
   useEffect(() => {
@@ -209,7 +206,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }, [interests])
 
   useEffect(() => {
-    // Initialize country and native language based on location (store codes and uppercase language codes)
     const locales = Localization.getLocales()
     if (locales && locales.length > 0) {
       const regionCode = locales[0]?.regionCode?.toUpperCase()
@@ -218,11 +214,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const foundCountry = countries.find(c => c.code === regionCode)
       if (foundCountry) {
         setCountry(foundCountry.code)
-        // set default native language from country mapping (fallback to locale)
         const defaultLang = countryToDefaultLanguage[foundCountry.code] ?? languageCode
         if (defaultLang) {
           setNativeLanguage(String(defaultLang).toUpperCase())
-          // ensure targetLanguages doesn't accidentally include native
           setTargetLanguages(prev => prev.filter(c => c !== String(defaultLang).toUpperCase()))
         }
       } else if (languageCode) {
@@ -231,8 +225,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
     }
 
-    // Set default selections
-    // if (characters.length > 0) setSelectedCharacter(characters[0]) // BỎ: Không tự động chọn
     if (interests.length > 0) setSelectedInterests([interests[0].interestId])
     if (learningGoals.length > 0) setLearningGoalsSelected(["conversation"])
     setLearningPace("slow")
@@ -245,7 +237,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const charactersArray = response.data.result?.content;
 
       if (Array.isArray(charactersArray)) {
-        setCharacters(charactersArray); // BE đã trả camelCase, giữ nguyên
+        setCharacters(charactersArray);
       } else {
         setCharacters([]);
       }
@@ -260,7 +252,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const response = await instance.get('/api/v1/languages')
       const languageArray = response.data.result?.content
       if (Array.isArray(languageArray)) {
-        // normalize language codes to uppercase to avoid mismatch
         const normalized = languageArray.map((lang: any) => ({
           languageCode: String(lang.languageCode ?? "").toLowerCase(),
           languageName: lang.languageName,
@@ -280,18 +271,13 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     try {
       const response = await instance.get('/api/v1/interests')
       const data = response.data.result || []
-      setInterests(data) // giữ nguyên camelCase từ BE
+      setInterests(data)
     } catch (error) {
       Alert.alert(t("error.title"), t("error.loadInterests"))
     }
   }
 
   const handleNext = async () => {
-    // XÓA LOGIC VALIDATION BẮT BUỘC CHỌN CHARACTER Ở STEP 1
-    // if (currentStep === 1 && !selectedCharacter) {
-    //   Alert.alert(t("error.title"), t("error.characterRequired"))
-    //   return
-    // }
     if (currentStep === 2) {
       if (!accountName.trim()) {
         Alert.alert(t("error.title"), t("error.nameRequired"))
@@ -303,8 +289,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
     }
 
-    // Optional fields can be empty, so no validation for steps 3 and 4
-
     if (currentStep < 5) {
       setCurrentStep(currentStep + 1)
     } else {
@@ -312,47 +296,57 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     }
   }
 
+  const handleSkip = async () => {
+    // Chỉ cho phép bỏ qua từ Step 3 trở đi
+    if (currentStep >= 3) {
+      // Đảm bảo các field bắt buộc của Step 2 đã được điền
+      if (!email.trim() || !email.includes('@') || !accountName.trim()) {
+        Alert.alert(t("error.title"), t("error.requiredFieldsMissing") || "Please complete the required fields in Step 2 (Name, Email) before skipping.");
+        return;
+      }
+      // Gọi hàm setup với các dữ liệu hiện có
+      await createTempAccountAndSetup(true);
+    } else {
+      Alert.alert(t("error.title"), t("setup.skipNotAllowed") || "Skipping is only allowed from step 3 onwards.");
+    }
+  };
 
-  const createTempAccountAndSetup = async () => {
+
+  const createTempAccountAndSetup = async (isSkipping = false) => {
     try {
-      // basic client-side validation
       if (!email || !email.includes("@")) {
         Alert.alert(t("error.title"), t("error.enterValidEmail") || "Please enter a valid email")
         return
       }
 
-      // build payload but only attach keys that have real values (no "undefined" strings)
       const payload: Partial<CreateUserPayload> = {
         email: email.toLowerCase(),
+        // Gửi các field đã có, nếu isSkipping là true, các field tùy chọn khác có thể thiếu
         fullname: accountName || undefined,
         nickname: accountName || undefined,
         phone: phoneNumber || undefined,
       }
 
-      // character3dId: only set if value exists and is a proper UUID-like string
       if (selectedCharacter?.character3dId) {
-        payload.character3dId = selectedCharacter.character3dId // do NOT call String(...) when might be undefined
+        payload.character3dId = selectedCharacter.character3dId
       }
 
-      // country: use mapped enum token
       const mappedCountry = mapCountryToEnum(country ?? undefined)
       if (mappedCountry) payload.country = mappedCountry as Country
 
-      // ageRange: map display -> BE enum (AGE_18_24 ...)
       const mappedAge = mapAgeRangeToEnum(ageRange)
       if (mappedAge) payload.ageRange = mappedAge as unknown as string
 
+      // Nếu isSkipping là true, chỉ gửi các field đã được chọn (nếu có), không bắt buộc phải có đủ
       if (nativeLanguage) payload.nativeLanguageCode = nativeLanguage.toLowerCase()
       if (targetLanguages?.length) payload.languages = targetLanguages.map(code => code.toLowerCase())
 
       if (certificationsSelected?.length) {
-        // ensure we only map valid non-empty strings
         payload.certificationIds = certificationsSelected
           .map(id => id?.toUpperCase())
           .filter(Boolean) as string[]
       }
 
-      // IMPORTANT: backend expects 'interestestIds' (typo) as array of UUID strings
       if (selectedInterests?.length) {
         payload.interestestIds = selectedInterests
           .map(id => (id ? String(id) : null))
@@ -365,7 +359,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
       if (learningPace) payload.learningPace = learningPace.toUpperCase() as LearningPace
 
-      // DEBUG: ensure nothing silly like "undefined" exists
       console.log("Create user payload ->", JSON.stringify(payload, null, 2))
 
       const existingUser = useUserStore.getState().user;
@@ -373,19 +366,13 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       let response;
 
       if (existingUser?.userId) {
-        // LUỒNG B: CẬP NHẬT USER ĐÃ TỒN TẠI
-        // Người dùng đã đăng nhập (Google, Email...) và chỉ đang setup profile
-
         console.log(`Updating existing user ${existingUser.userId}...`);
 
-        // Gọi PUT đến /api/v1/users/{id}
         response = await instance.put(`/api/v1/users/${existingUser.userId}`, payload);
 
         console.log("Account updated, response:", response.data);
 
-        // Endpoint PUT trả về AppApiResponse<UserResponse> (chỉ có user, không có token)
         useUserStore.getState().setUser(response.data.result);
-        // Không cần set token, vì user đã đăng nhập
 
       } else {
         console.log("Quick Start: Checking if email is available...");
@@ -424,7 +411,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         }
       }
 
-      await AsyncStorage.setItem("hasFinishedSetup", "true");
+      // GỌI HÀM ĐÁNH DẤU setupInit ĐÃ HOÀN TẤT TRÊN SERVER
+      await useUserStore.getState().finishSetup();
+
       gotoTab("ProficiencyTestScreen");
 
     } catch (error: any) {
@@ -445,19 +434,17 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const toggleArraySelection = (array: string[], item: string, setter: (arr: string[]) => void) => {
     const newArray = array.includes(item) ? array.filter(i => i !== item) : [...array, item]
-    console.log(`Toggling ${item}, new state:`, newArray) // Debug log
+    console.log(`Toggling ${item}, new state:`, newArray)
     setter(newArray)
   }
 
   const normalizeLangCode = (code?: string) => (code ? String(code).toLowerCase() : "")
 
-  // prevent selecting the same as native: user must explicitly choose a non-native language
   const toggleTargetLanguage = (langCodeRaw: string) => {
     const langCode = normalizeLangCode(langCodeRaw)
     if (!langCode) return
 
     if (nativeLanguage && langCode === nativeLanguage) {
-      // disallow auto-selecting native as a learning language
       Alert.alert(t("error.title"), t("setup.cannotSelectNativeAsTarget") || "Cannot select native language as learning target")
       return
     }
@@ -492,7 +479,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     if (defaultLang) {
       const code = defaultLang.toUpperCase()
       setNativeLanguage(code)
-      // remove native from targets if present
       setTargetLanguages(prev => prev.filter(c => c !== code))
     }
   }
@@ -500,7 +486,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const onSelectNativeLanguage = (langCodeRaw: string) => {
     const code = normalizeLangCode(langCodeRaw)
     setNativeLanguage(code)
-    // remove native from targets if present
     setTargetLanguages(prev => prev.filter(c => c !== code))
   }
 
@@ -509,7 +494,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     const lower = String(langCode).toLowerCase()
     const mapped = (languageToCountry as Record<string, string>)[lower]
     if (mapped) return mapped
-    // fallback: try first two letters, uppercase
     return langCode.slice(0, 2).toUpperCase()
   }
 
@@ -536,7 +520,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         data={characters}
         numColumns={2}
         keyExtractor={(item) => item.character3dId}
-        columnWrapperStyle={styles.charactersRow} // căn đều 2 item mỗi row
+        columnWrapperStyle={styles.charactersRow}
         renderItem={({ item }) => (
           <TouchableOpacity
             key={item.character3dId}
@@ -544,16 +528,15 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
               styles.characterCard,
               selectedCharacter?.character3dId === item.character3dId && styles.characterCardSelected
             ]}
-            onPress={() => setSelectedCharacter(item)} // Dùng TouchableOpacity để bọc card
+            onPress={() => setSelectedCharacter(item)}
           >
             {item.modelUrl && typeof item.modelUrl === 'string' ? (
               <Image
                 source={{ uri: item.modelUrl }}
-                style={styles.characterImage} // Style mới cho Image
+                style={styles.characterImage}
                 resizeMode="contain"
               />
             ) : (
-              // Hiển thị một placeholder nếu không có URL ảnh
               <View style={styles.modelPlaceholder}>
                 <Icon name="image" size={40} color="#9CA3AF" />
                 <Text style={styles.modelErrorText}>No Image</Text>
@@ -583,7 +566,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         <Text style={styles.inputLabel}>{t("auth.fullName")} *</Text>
         <TextInput
           style={styles.textInput}
-          value={accountName} // Sẽ được điền sẵn từ UserStore
+          value={accountName}
           onChangeText={setAccountName}
           placeholder={t("auth.enterName")}
         />
@@ -680,7 +663,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
           {languages
-            // hide native from learning-language options so user cannot accidentally pick it
             .filter((lang) => lang.languageCode !== nativeLanguage)
             .map((lang) => {
               const iso = getFlagIsoFromLang(lang.languageCode)
@@ -925,6 +907,18 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     </View>
   )
 
+  const renderSkipButton = () => {
+    // Nút Bỏ qua chỉ xuất hiện từ Step 3 và không ở Step cuối (Summary)
+    if (currentStep >= 3 && currentStep < 5) {
+      return (
+        <TouchableOpacity onPress={handleSkip}>
+          <Text style={styles.skipButtonText}>{t("setup.skip") || "Skip"}</Text>
+        </TouchableOpacity>
+      )
+    }
+    return <View style={{ width: 24 }} /> // Giữ chỗ để căn chỉnh header
+  }
+
   return (
     <ScreenLayout style={styles.container}>
       <Animated.View
@@ -941,12 +935,12 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
             <Icon name="arrow-back" size={24} color="#374151" />
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{t("setup.title")}</Text>
-          <View style={{ width: 24 }} />
+          {renderSkipButton()}
         </View>
 
         {renderStepIndicator()}
 
-        <ScrollView style={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView>
           {currentStep === 1 && renderCharacterSelection()}
           {currentStep === 2 && renderBasicInfo()}
           {currentStep === 3 && renderInterestsAndGoals()}
@@ -990,6 +984,11 @@ const styles = createScaledSheet({
     fontSize: 18,
     fontWeight: "600",
     color: "#1F2937",
+  },
+  skipButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#4F46E5",
   },
   stepIndicator: {
     flexDirection: "row",
@@ -1071,7 +1070,7 @@ const styles = createScaledSheet({
     borderRadius: 12,
     padding: 12,
     alignItems: "center",
-    borderWidth: 2, // Thêm border để mô phỏng trạng thái chọn
+    borderWidth: 2,
     borderColor: "#E5E7EB",
   },
   characterCardSelected: {
@@ -1079,7 +1078,7 @@ const styles = createScaledSheet({
     backgroundColor: "#F0FDF4",
   },
   characterImage: {
-    height: 150, // Chiều cao cố định cho ảnh
+    height: 150,
     width: '100%',
     borderRadius: 8,
     marginBottom: 8,
@@ -1427,7 +1426,7 @@ const styles = createScaledSheet({
     fontWeight: "600",
   },
   modelPlaceholder: {
-    height: 150, // Đặt chiều cao tương tự cho placeholder ảnh
+    height: 150,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',

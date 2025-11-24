@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.StudyHistoryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserLearningActivityResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
+import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import com.connectJPA.LinguaVietnameseApp.event.DailyChallengeCompletedEvent;
 import com.connectJPA.LinguaVietnameseApp.event.LessonCompletedEvent;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserLearningActivityMapper;
@@ -79,28 +80,10 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
     @EventListener
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handleDailyChallengeCompleted(DailyChallengeCompletedEvent event) {
-        log.info("Bắt sự kiện DailyChallengeCompletedEvent cho user: {}", event.getUserDailyChallenge().getUserId());
-        try {
-            UserDailyChallenge userChallenge = event.getUserDailyChallenge();
 
-            // Lấy thông tin gốc của DailyChallenge
-            DailyChallenge challenge = dailyChallengeRepository.findById(userChallenge.getChallengeId()).orElse(null);
-            if (challenge == null) return;
+    }
 
-            // Ghi log
-            logUserActivity(
-                    userChallenge.getUserId(),
-                    ActivityType.DAILY_CHALLENGE_COMPLETED,
-                    challenge.getId(),
-                    null, // Duration
-                    userChallenge.getExpReward(),
-                    challenge.getTitle(),
-                    String.valueOf(challenge.getDifficulty()) // Ví dụ, coi "difficulty" là "skill"
-            );
-
-        } catch (Exception e) {
-            log.error("Lỗi khi ghi log DailyChallengeCompletedEvent: ", e);
-        }
+    private void logUserActivity(UUID userId, ActivityType activityType, UUID id, Object o, int expReward, String title) {
     }
 
     @Override
@@ -123,7 +106,7 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
 
     @Override
     @Transactional
-    public UserLearningActivityResponse logUserActivity(UUID userId, ActivityType activityType, UUID relatedEntityId, Integer durationInSeconds, int expReward, String details, String skillTypes) {
+    public UserLearningActivityResponse logUserActivity(UUID userId, ActivityType activityType, UUID relatedEntityId, Integer durationInSeconds, int expReward, String details, SkillType skillTypes) {
         if (userId == null || activityType == null) {
             throw new IllegalArgumentException("UserId and ActivityType are required for logging activity");
         }

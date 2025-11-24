@@ -25,7 +25,7 @@ public class RoadmapPublicDetailResponse {
     private Double averageRating;
     private Integer viewCount;
     private Integer favoriteCount;
-    private Boolean isPublic;
+    private boolean isPublic;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private List<RoadmapSuggestionResponse> suggestions;

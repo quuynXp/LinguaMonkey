@@ -23,4 +23,7 @@ public class UserLanguage extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "proficiency_level")
     private ProficiencyLevel proficiencyLevel;
+    
+    @Version // <-- THÊM TRƯỜNG VERSIONING
+    private Long version;
 }

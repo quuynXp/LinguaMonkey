@@ -1,5 +1,9 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
+import com.connectJPA.LinguaVietnameseApp.converter.RoomPurposeConverter;
+import com.connectJPA.LinguaVietnameseApp.converter.RoomStatusConverter;
+import com.connectJPA.LinguaVietnameseApp.converter.RoomTopicConverter;
+import com.connectJPA.LinguaVietnameseApp.converter.RoomTypeConverter;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomStatus;
@@ -9,8 +13,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -34,18 +36,20 @@ public class Room extends BaseEntity {
     @Column(name = "max_members", nullable = false)
     private int maxMembers;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = RoomPurposeConverter.class)
     @Column(name = "purpose")
     private RoomPurpose purpose;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = RoomTopicConverter.class)
+    @Column(name = "topic")
     private RoomTopic topic;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = RoomTypeConverter.class)
     @Column(name = "room_type", nullable = false)
     private RoomType roomType;
 
-    @Enumerated(EnumType.STRING)
+    @Convert(converter = RoomStatusConverter.class)
     @Column(name = "status", nullable = false)
+    @Builder.Default
     private RoomStatus status = RoomStatus.ACTIVE;
 }

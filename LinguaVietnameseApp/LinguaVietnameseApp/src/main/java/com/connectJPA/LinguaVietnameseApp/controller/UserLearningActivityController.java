@@ -117,7 +117,7 @@ public class UserLearningActivityController {
                 request.getRelatedEntityId(),
                 null, // Duration là null khi START
                 lesson.getExpReward(), request.getDetails(),
-                String.valueOf(lesson.getSkillTypes()));
+                lesson.getSkillTypes());
 
         return AppApiResponse.<UserLearningActivityResponse>builder()
                 .code(201)
@@ -155,7 +155,7 @@ public class UserLearningActivityController {
                 request.getRelatedEntityId(),
                 request.getDurationInSeconds(),
                 lesson.getExpReward(), request.getDetails(),
-                String.valueOf(lesson.getSkillTypes()));
+                lesson.getSkillTypes());
 
         return AppApiResponse.<UserLearningActivityResponse>builder()
                 .code(201)

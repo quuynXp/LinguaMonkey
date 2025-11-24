@@ -624,6 +624,11 @@
     "loadCertificationsFailed": "Failed to load certifications",
     "uploadFailed": "Upload failed"
   },
+  "course": {
+    "totalLessons": "{{count}} Lessons",
+    "progress": "Progress: {{progress}}%",
+    "continue": "Continue"
+  },
   "success": {
     "noteCreated": "Note created successfully",
     "noteUpdated": "Note updated successfully",
@@ -1073,6 +1078,7 @@
   },
   "setup": {
     "title": "Account Setup",
+    "skip": "Skip",
     "chooseCompanion": "Choose Your Learning Companion",
     "chooseCompanion.desc": "Select a 3D character that will guide you through your learning journey",
     "createAccount": "Create Your Account",
@@ -1212,8 +1218,8 @@
   "facebook": "facebook",
   "admin": {
     "section": {
-      "business" : "Business",
-      "content" : "Content"
+      "business": "Business",
+      "content": "Content"
     },
     "stats": {
       "users": "Users",
@@ -1384,6 +1390,7 @@
   },
   "home": {
     "title": "Home",
+    "dailyStreak": "Daily Streak",
     "subtitle": "Your daily English learning hub",
     "welcomeMessage": "Welcome back, {{name}}!",
     "dailyGoal": {
@@ -1401,6 +1408,12 @@
       "getMore": "Get More"
     },
     "student": "Student",
+    "student": {
+      "searchCoursesPlaceholder": "Search courses...",
+      "enrolledCourses": "My Courses",
+      "allCourses": "All Courses",
+      "noCoursesFound": "No courses found."
+    },
     "days": "{{count}} days",
     "leaderboard": {
       "title": "🏆 Leaderboard",
@@ -1529,6 +1542,12 @@
     "errorSendingTest": "Failed to send test notification",
     "history": "Notification History"
   },
+  "history": {
+    "noSessions": "No sesssions",
+    "test" : {
+      "notImplemented": "Not Implement history"
+    }
+  },
   "privacy": {
     "settingsTitle": "Privacy Settings",
     "privacyNoticeTitle": "Privacy Commitment",
@@ -1653,6 +1672,70 @@
     },
     "copyright": "© 2025 MonkeyLingua. All rights reserved.",
     "madeWithLove": "Made with ❤️ in Vietnam by NgocQuyen"
+  },
+  "help": {
+    "title": "Help & Support",
+    "welcome": {
+      "title": "How can we help you?",
+      "subtitle": "Find answers to common questions or contact support."
+    },
+    "search": {
+      "placeholder": "Search help articles..."
+    },
+    "faq": {
+      "title": "Frequently Asked Questions (FAQs)",
+      "changeLanguage": {
+        "q": "How do I change my learning language?",
+        "a": "You can change your target language in the Profile Settings screen."
+      },
+      "streakLost": {
+        "q": "My streak was lost. Can I restore it?",
+        "a": "Streaks can often be restored using a Streak Freeze item available in the store. Check your inventory!"
+      },
+      "changePassword": {
+        "q": "How can I change my password?",
+        "a": "You can change your password in the Security Settings section of your Profile."
+      },
+      "offlineSupport": {
+        "q": "Does the app support offline learning?",
+        "a": "Yes, you can download lessons and courses for offline study."
+      },
+      "contactSupport": {
+        "q": "How do I contact customer support?",
+        "a": "Scroll down to the 'Support Channels' section below to see all contact options."
+      }
+    },
+    "support": {
+      "title": "Support Channels",
+      "email": {
+        "title": "Email Support",
+        "desc": "Get personalized help via email. Response time is typically 24-48 hours."
+      },
+      "chat": {
+        "title": "Live Chat",
+        "desc": "Chat instantly with our support team during business hours."
+      },
+      "community": {
+        "title": "Community Forum",
+        "desc": "Ask questions and get help from other learners and moderators."
+      },
+      "video": {
+        "title": "Video Tutorials",
+        "desc": "Watch quick video guides on how to use key features of the app."
+      }
+    },
+    "feedback": {
+      "title": "Send Feedback",
+      "label": "Your feedback helps us improve!",
+      "placeholder": "Tell us what you love or how we can do better...",
+      "submit": "Submit Feedback"
+    },
+    "appInfo": {
+      "title": "App Information",
+      "version": "Version",
+      "lastUpdate": "Last Updated",
+      "os": "Operating System"
+    }
   },
   "helpSupport": {
     "title": "Help & Support",
