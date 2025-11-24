@@ -21,11 +21,25 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     Page<Course> findByTypeAndIsDeletedFalse(CourseType type, Pageable pageable);
     List<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId);
 
+    // FIX: Sử dụng CAST(... AS VARCHAR) để tránh lỗi "could not determine data type" của Postgres
     @Query(value = """
-      SELECT * FROM courses c WHERE c.is_deleted = false AND (:languageCode IS NULL OR c.language_code = :languageCode) AND (:proficiency IS NULL OR c.difficulty_level = :proficiency) AND c.course_id NOT IN (:excluded) ORDER BY RANDOM() LIMIT :limit
+        SELECT * FROM courses c WHERE c.is_deleted = false 
+        AND (
+            CAST(:languageCode AS VARCHAR) IS NULL 
+            OR c.language_code = :languageCode
+        ) 
+        AND (
+            CAST(:proficiency AS VARCHAR) IS NULL 
+            OR c.difficulty_level = :proficiency
+        ) 
+        AND (
+            c.course_id NOT IN (:excluded)
+        )
+        ORDER BY RANDOM() 
+        LIMIT :limit
     """, nativeQuery = true)
     List<Course> findRecommendedCourses(
-            @Param("proficiency") ProficiencyLevel proficiency,
+            @Param("proficiency") String proficiency, // Đổi sang String để Hibernate binding chính xác với VARCHAR
             @Param("languageCode") String languageCode,
             @Param("excluded") List<UUID> excluded,
             @Param("limit") int limit);
@@ -41,10 +55,6 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
       """)
     Page<Course> findDiscountedCourses(Pageable pageable);
 
-    /**
-     * THÊM: Phương thức tìm kiếm Course thay thế Elasticsearch.
-     * Tìm kiếm theo keyword trong title hoặc description.
-     */
     @Query("SELECT c FROM Course c WHERE (" +
             "LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
             "LOWER(c.latestPublicVersion.description) LIKE LOWER(CONCAT('%', :keyword, '%'))" +

@@ -52,6 +52,18 @@ public class CourseController {
                 .build();
     }
 
+
+        @Operation(summary = "Get all course categories", description = "Lấy danh sách các category (Enum/String)")
+        @GetMapping("/categories") // PHẢI ĐẶT TRƯỚC @GetMapping("/{id}")
+        public AppApiResponse<List<String>> getCourseCategories(Locale locale) {
+                List<String> categories = courseService.getCourseCategories(); // Giả định service này tồn tại
+                return AppApiResponse.<List<String>>builder()
+                        .code(200)
+                        .message(messageSource.getMessage("course.categories.success", null, locale))
+                        .result(categories)
+                        .build();
+        }
+
     @Operation(summary = "Get course by ID", description = "Lấy chi tiết khóa học (và version public mới nhất)")
     @GetMapping("/{id}")
     public AppApiResponse<CourseResponse> getCourseById(

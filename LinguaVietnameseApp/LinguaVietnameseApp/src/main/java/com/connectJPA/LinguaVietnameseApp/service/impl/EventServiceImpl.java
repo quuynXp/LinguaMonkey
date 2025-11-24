@@ -31,7 +31,7 @@ public class EventServiceImpl implements EventService {
     private final EventMapper eventMapper;
 
     @Override
-    @Cacheable(value = "events", key = "#eventType + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    // //@Cacheable(value = "events", key = "#eventType + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<EventResponse> getAllEvents(String eventType, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -46,7 +46,7 @@ public class EventServiceImpl implements EventService {
     }
 
     @Override
-    @Cacheable(value = "events", key = "#id")
+    // //@Cacheable(value = "events", key = "#id")
     public EventResponse getEventById(UUID id) {
         try {
             if (id == null) {
@@ -63,7 +63,7 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional
-    @CachePut(value = "events", key = "#result.eventId")
+    //@CachePut(value = "events", key = "#result.eventId")
     public EventResponse createEvent(EventRequest request) {
         try {
             if (request == null) {
@@ -80,7 +80,7 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional
-    @CachePut(value = "events", key = "#id")
+    //@CachePut(value = "events", key = "#id")
     public EventResponse updateEvent(UUID id, EventRequest request) {
         try {
             if (id == null || request == null) {
@@ -99,7 +99,7 @@ public class EventServiceImpl implements EventService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "events", key = "#id")
+    //@CacheEvict(value = "events", key = "#id")
     public void deleteEvent(UUID id) {
         try {
             if (id == null) {

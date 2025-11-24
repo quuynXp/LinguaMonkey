@@ -2,12 +2,14 @@ package com.connectJPA.LinguaVietnameseApp.scheduler;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.LeaderboardEntry;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CoupleRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.DatingInviteRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.FriendshipRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LeaderboardEntryRepository;
-// import com.connectJPA.LinguaVietnameseApp.service.LeaderboardService; // (Giả định)
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -19,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -30,7 +33,7 @@ public class CommunityScheduler {
     private final FriendshipRepository friendshipRepository;
     private final LeaderboardEntryRepository leaderboardEntryRepository;
     private final NotificationService notificationService;
-    // private final LeaderboardService leaderboardService; // (GiGả định)
+    private final UserRepository userRepository;
 
     /**
      * Chạy hàng giờ để dọn dẹp các lời mời đã hết hạn.
@@ -58,19 +61,12 @@ public class CommunityScheduler {
     @Transactional
     public void finalizeWeeklyLeaderboard() {
         log.info("Finalizing weekly leaderboards...");
-        LocalDate snapshotDate = LocalDate.now().minusDays(1); // Ngày Chủ Nhật
+        LocalDate snapshotDate = LocalDate.now().minusDays(1);
 
-        // **Giả định logic nghiệp vụ:**
-        // Bạn cần một service (ví dụ: LeaderboardService) để chạy logic
-        // tổng kết điểm (EXP) của tuần trước và lưu vào bảng 'leaderboard_entries'
-        // với 'snapshot_date' = ngày Chủ Nhật vừa qua.
-        // leaderboardService.generateWeeklySnapshot(snapshotDate);
-
-        // Sau khi đã có data, gửi thông báo cho top 3
         Pageable top3 = PageRequest.of(0, 3);
         List<LeaderboardEntry> topUsers = leaderboardEntryRepository.findTopUsers(
-                "WEEKLY", // (Tên leaderboard tuần)
-                "ALL",      // (Tên tab)
+                "WEEKLY",
+                "ALL",
                 snapshotDate,
                 top3
         ).getContent();
@@ -80,16 +76,32 @@ public class CommunityScheduler {
             return;
         }
 
+        // Lấy thông tin ngôn ngữ của các top user
+        List<User> usersWithLang = userRepository.findAllById(
+                topUsers.stream().map(entry -> entry.getUser().getUserId()).collect(Collectors.toList())
+        );
+        
         int rank = 1;
         for (LeaderboardEntry entry : topUsers) {
-            String title = "You're a Top Learner!";
-            String content = "Congratulations! You finished #" + (rank++) + " on the weekly leaderboard!";
+            String langCode = usersWithLang.stream()
+                    .filter(u -> u.getUserId().equals(entry.getUser().getUserId()))
+                    .findFirst()
+                    .map(User::getNativeLanguageCode)
+                    .orElse("en");
 
-            if (rank == 2) { // (Đã ++ nên giờ là 2)
-                title = "You're #1!";
-                content = "Amazing! You finished #1 on the weekly leaderboard! 🏆";
+            String notificationKey = (rank == 1) ? "LEADERBOARD_RANK1" : "LEADERBOARD_OTHER";
+            String[] message = NotificationI18nUtil.getLocalizedMessage(notificationKey, langCode);
+
+            String title;
+            String content;
+            if (rank == 1) {
+                title = message[0];
+                content = message[1];
+            } else {
+                title = message[0];
+                content = String.format(message[1], rank);
             }
-
+            
             NotificationRequest request = NotificationRequest.builder()
                     .userId(entry.getUser().getUserId())
                     .title(title)
@@ -98,6 +110,7 @@ public class CommunityScheduler {
                     .payload("{\"screen\":\"Leaderboard\"}")
                     .build();
             notificationService.createPushNotification(request);
+            rank++;
         }
     }
 }

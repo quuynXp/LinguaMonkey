@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.LessonType;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import lombok.AllArgsConstructor;
@@ -28,5 +29,15 @@ public class LessonResponse {
     private SkillType skillTypes;
     private Integer flashcardCount;
     private Integer dueFlashcardsCount;
-    private List<String> videoUrls; // From videos table
+    private List<String> videoUrls;
+    private String description;
+    private Integer orderIndex;
+    private boolean isFree;
+    private DifficultyLevel difficultyLevel;
+    private String thumbnailUrl;
+    private Integer durationSeconds;
+    private String certificateCode;
+    private Integer passScorePercent;
+    private Boolean shuffleQuestions;
+    private Integer allowedRetakeCount;
 }

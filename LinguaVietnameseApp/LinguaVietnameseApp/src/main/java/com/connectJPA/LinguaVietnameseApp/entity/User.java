@@ -8,6 +8,7 @@ import lombok.*;
 import lombok.experimental.FieldDefaults;
 import lombok.experimental.SuperBuilder;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -21,6 +22,7 @@ import java.util.UUID;
 public class User extends BaseEntity {
 
     private static final long ONLINE_THRESHOLD_MINUTES = 5;
+    private static final int DEFAULT_MIN_LEARNING_DURATION_MINUTES = 15; // Mặc định 15 phút
 
     @org.springframework.data.annotation.Id
     @Id
@@ -67,7 +69,7 @@ public class User extends BaseEntity {
     @Column(name = "proficiency")
     private ProficiencyLevel proficiency;
 
-   @Column(name = "level", nullable = false)
+    @Column(name = "level", nullable = false)
     @Builder.Default
     private int level = 1;
 
@@ -96,6 +98,16 @@ public class User extends BaseEntity {
 
     @Column(name = "last_daily_welcome_at")
     private OffsetDateTime lastDailyWelcomeAt;
+    
+    // THÊM: Mục tiêu học tập tối thiểu hàng ngày (phút)
+    @Column(name = "min_learning_duration_minutes", nullable = false)
+    @Builder.Default
+    private int minLearningDurationMinutes = DEFAULT_MIN_LEARNING_DURATION_MINUTES;
+
+    // THÊM: Ngày cuối cùng user được tăng streak (hoặc giữ)
+    // Dùng để kiểm tra logic 1 lần tăng streak/ngày
+    @Column(name = "last_streak_check_date")
+    private LocalDate lastStreakCheckDate;
 
     @Transient
     public boolean isOnline() {

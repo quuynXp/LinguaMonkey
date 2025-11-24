@@ -30,7 +30,6 @@ public class FirebaseConfig {
             return FirebaseMessaging.getInstance();
         }
 
-        // Xử lý đường dẫn: Nếu là file tuyệt đối trong Docker (/app/...) mà không có prefix
         String finalPath = credentialsPath;
         if (finalPath.startsWith("/") && !finalPath.startsWith("file:")) {
             finalPath = "file:" + finalPath;
@@ -42,7 +41,6 @@ public class FirebaseConfig {
         Resource resource = resourceLoader.getResource(finalPath);
 
         if (!resource.exists()) {
-            // Fallback logging để debug nếu vẫn lỗi
             log.error("Firebase credentials file NOT FOUND at: {}", finalPath);
             throw new IOException("Firebase credentials file not found at: " + finalPath);
         }

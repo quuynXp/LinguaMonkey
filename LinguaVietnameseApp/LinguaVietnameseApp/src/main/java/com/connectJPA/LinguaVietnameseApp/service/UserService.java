@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.PasswordUpdateRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TeacherApplyRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
@@ -45,6 +46,10 @@ public interface UserService {
     LevelInfoResponse getLevelInfo(UUID id);
 
     void registerFcmToken(NotificationRequest request);
+
+    void changePassword(UUID id, PasswordUpdateRequest request);
+    void deactivateUser(UUID id, int daysToKeep);
+    UserResponse restoreUser(UUID id);
 
     // --- New Methods ---
     UserResponse updateSetupStatus(UUID id, boolean isFinished);

@@ -1,29 +1,43 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateCourseRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest; 
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.PublishVersionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateCourseDetailsRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateCourseVersionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseSummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
-import com.connectJPA.LinguaVietnameseApp.entity.*;
-import com.connectJPA.LinguaVietnameseApp.enums.*;
+import com.connectJPA.LinguaVietnameseApp.entity.Course;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseEnrollment;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionLesson;
+import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
+import com.connectJPA.LinguaVietnameseApp.entity.Role;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.entity.UserRole;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
+import com.connectJPA.LinguaVietnameseApp.enums.RoleName;
+import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseVersionMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseEnrollmentRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionLessonRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoleRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRoleRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CourseDiscountService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
-import com.connectJPA.LinguaVietnameseApp.service.NotificationService; 
+import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,14 +46,19 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class CourseServiceImpl implements CourseService {
 
-    // === REPOSITORIES ===
     private final CourseRepository courseRepository;
     private final CourseVersionRepository courseVersionRepository;
     private final CourseVersionLessonRepository cvlRepository;
@@ -49,19 +68,14 @@ public class CourseServiceImpl implements CourseService {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
 
-    // === MAPPERS ===
     private final CourseMapper courseMapper;
     private final CourseVersionMapper versionMapper;
 
-    // === OTHER SERVICES ===
     private final CourseDiscountService courseDiscountService;
     private final CourseEnrollmentService courseEnrollmentService;
     private final GrpcClientService grpcClientService;
-    private final NotificationService notificationService; 
+    private final NotificationService notificationService;
 
-    // =================================================================
-    // === HÀM SEARCH THAY THẾ ELASTICSEARCH ===
-    // =================================================================
     @Override
     public Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
@@ -69,40 +83,29 @@ public class CourseServiceImpl implements CourseService {
         }
         try {
             Pageable pageable = PageRequest.of(page, size);
-            // GỌI PHƯƠNG THỨC SEARCH TRONG REPOSITORY
             return courseRepository.searchCoursesByKeyword(keyword, pageable);
         } catch (Exception e) {
-            // Log lỗi và ném ra SystemException (hoặc AppException nếu bạn có định nghĩa cụ thể)
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+            throw new AppException(ErrorCode.BAD_REQUEST);
         }
     }
-    
-    // =================================================================
-    // === FLOW QUẢN LÝ VERSIONING MỚI (CORE LOGIC) ===
-    // =================================================================
 
     @Override
     @Transactional
-    @CacheEvict(value = "courses", allEntries = true)
     public CourseResponse createCourse(CreateCourseRequest request) {
-        User creator = userRepository.findById(request.getCreatorId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        User creator = userRepository.findByUserIdAndIsDeletedFalse(request.getCreatorId())
+                .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST));
 
-        // TODO: Validate creator has TEACHER role
-
-        // 1. Tạo Course (chỉ chứa thông tin gốc)
         Course course = new Course();
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
         course.setPrice(request.getPrice());
-        course.setApprovalStatus(CourseApprovalStatus.PENDING); 
+        course.setApprovalStatus(CourseApprovalStatus.PENDING);
         course = courseRepository.save(course);
 
-        // 2. Tạo CourseVersion đầu tiên (bản nháp)
         CourseVersion version = new CourseVersion();
         version.setCourse(course);
         version.setVersionNumber(1);
-        version.setStatus(VersionStatus.DRAFT); 
+        version.setStatus(VersionStatus.DRAFT);
         courseVersionRepository.save(version);
 
         return courseMapper.toResponse(course);
@@ -115,13 +118,13 @@ public class CourseServiceImpl implements CourseService {
                 .orElseThrow(() -> new AppException(ErrorCode.VERSION_NOT_FOUND_OR_NOT_DRAFT));
 
         User creator = userRepository.findById(version.getCourse().getCreatorId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST));
 
         version.setDescription(request.getDescription());
         version.setThumbnailUrl(request.getThumbnailUrl());
 
         if (version.getLessons() != null) {
-            version.getLessons().clear(); 
+            version.getLessons().clear();
         } else {
             version.setLessons(new ArrayList<>());
         }
@@ -145,7 +148,6 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"courses", "course"}, allEntries = true)
     public CourseVersionResponse publishCourseVersion(UUID versionId, PublishVersionRequest request) {
         CourseVersion version = courseVersionRepository.findByVersionIdAndStatus(versionId, VersionStatus.DRAFT)
                 .orElseThrow(() -> new AppException(ErrorCode.VERSION_NOT_FOUND_OR_NOT_DRAFT));
@@ -173,13 +175,11 @@ public class CourseServiceImpl implements CourseService {
         if (requiresAdminApproval) {
             version.setStatus(VersionStatus.PENDING_APPROVAL);
 
-            // === GỬI THÔNG BÁO CHO ADMIN ===
             sendAdminNotification(
                     "Course Approval Request",
                     "The course '" + course.getTitle() + "' (v" + version.getVersionNumber() + ") requires approval.",
                     "COURSE_APPROVAL_PENDING"
             );
-            // === KẾT THÚC THÔNG BÁO ===
 
         } else {
             version.setStatus(VersionStatus.PUBLIC);
@@ -188,13 +188,11 @@ public class CourseServiceImpl implements CourseService {
             course.setApprovalStatus(CourseApprovalStatus.APPROVED);
             courseRepository.save(course);
 
-            // === GỬI THÔNG BÁO CHO HỌC VIÊN ===
             sendLearnerUpdateNotification(
                     course,
                     version,
                     "A new version (v" + version.getVersionNumber() + ") is available. Reason: " + version.getReasonForChange()
             );
-            // === KẾT THÚC THÔNG BÁO ===
         }
 
         version = courseVersionRepository.save(version);
@@ -224,7 +222,7 @@ public class CourseServiceImpl implements CourseService {
         newDraft.setDescription(publicVersion.getDescription());
         newDraft.setThumbnailUrl(publicVersion.getThumbnailUrl());
 
-        newDraft.setLessons(new ArrayList<>()); 
+        newDraft.setLessons(new ArrayList<>());
 
         List<CourseVersionLesson> oldLessons = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(publicVersion.getVersionId());
 
@@ -240,8 +238,6 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     @Transactional
-    @CachePut(value = "course", key = "#id")
-    @CacheEvict(value = "courses", allEntries = true)
     public CourseResponse updateCourseDetails(UUID id, UpdateCourseDetailsRequest request) {
         Course course = courseRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
@@ -256,16 +252,12 @@ public class CourseServiceImpl implements CourseService {
             course.setLanguageCode(request.getLanguageCode());
         }
         if (request.getDifficultyLevel() != null) {
-            course.setDifficultyLevel(request.getDifficultyLevel()); 
+            course.setDifficultyLevel(request.getDifficultyLevel());
         }
 
         course = courseRepository.save(course);
         return courseMapper.toResponse(course);
     }
-
-    // =================================================================
-    // === HÀM HELPER ===
-    // =================================================================
 
     private boolean isMajorChange(CourseVersion newVersion, CourseVersion oldVersion) {
         if (oldVersion == null) {
@@ -289,10 +281,8 @@ public class CourseServiceImpl implements CourseService {
         if (oldSize == 0) return newLessonIds.size() > 0;
 
         double changePercentage = (double) totalChanges / oldSize;
-        return changePercentage > 0.3; 
+        return changePercentage > 0.3;
     }
-
-    // === CÁC HÀM HELPER GỬI THÔNG BÁO ===
 
     private void sendAdminNotification(String title, String content, String type) {
         Role adminRole = roleRepository.findByRoleNameAndIsDeletedFalse(RoleName.ADMIN)
@@ -326,13 +316,7 @@ public class CourseServiceImpl implements CourseService {
         }
     }
 
-
-    // =================================================================
-    // === CÁC HÀM GET/DELETE (ĐÃ REFACTOR) ===
-    // =================================================================
-
     @Override
-    @Cacheable(value = "courses", key = "#title + ':' + #languageCode + ':' + #pageable")
     public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Pageable pageable) {
         Page<Course> courses;
         if (type == null) {
@@ -356,13 +340,20 @@ public class CourseServiceImpl implements CourseService {
                     if (enrollment.getCourseVersion() != null && enrollment.getCourseVersion().getCourse() != null) {
                         return enrollment.getCourseVersion().getCourse().getCourseId();
                     }
-                    return null; 
+                    return null;
                 })
-                .filter(Objects::nonNull) 
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
 
+        // FIX: Handle empty list to prevent SQL "NOT IN ()" or "NOT IN (NULL)" issues in native query
+        if (enrolledCourseIds.isEmpty()) {
+            // Add a dummy UUID that won't match any real course ID. 
+            // This ensures the "NOT IN" clause is syntactically valid and logically correct (excludes nothing).
+            enrolledCourseIds.add(UUID.fromString("00000000-0000-0000-0000-000000000000"));
+        }
+
         List<Course> recommended = courseRepository.findRecommendedCourses(
-                user.getProficiency(),
+                user.getProficiency() != null ? user.getProficiency().name() : null, // Convert Enum to String
                 user.getNativeLanguageCode(),
                 enrolledCourseIds,
                 limit
@@ -388,7 +379,6 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    @Cacheable(value = "course", key = "#id")
     public CourseResponse getCourseById(UUID id) {
         Course course = courseRepository
                 .findByCourseIdAndIsDeletedFalse(id)
@@ -398,7 +388,6 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"course", "courses"}, key = "#id", allEntries = true)
     public void deleteCourse(UUID id) {
         Course course = courseRepository
                 .findByCourseIdAndIsDeletedFalse(id)
@@ -411,28 +400,22 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    @Cacheable(value = "enrolledCoursesByUser", key = "#userId + ':' + #pageable")
     public Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable) {
         Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId, pageable);
         return enrollments.map(enrollment -> {
-            Course course = enrollment.getCourseVersion().getCourse(); 
+            Course course = enrollment.getCourseVersion().getCourse();
             if (course == null) {
-                throw new AppException(ErrorCode.COURSE_NOT_FOUND); 
+                throw new AppException(ErrorCode.COURSE_NOT_FOUND);
             }
             return courseMapper.toResponse(course);
         });
     }
 
     @Override
-    @Cacheable(value = "coursesByCreator", key = "#creatorId + ':' + #pageable")
     public Page<CourseResponse> getCoursesByCreator(UUID creatorId, Pageable pageable) {
         Page<Course> courses = courseRepository.findByCreatorIdAndIsDeletedFalse(creatorId, pageable);
         return courses.map(courseMapper::toResponse);
     }
-
-    // =================================================================
-    // === CÁC HÀM ADMIN MỚI (CHO VERSIONING) ===
-    // =================================================================
 
     @Override
     @Transactional
@@ -456,8 +439,6 @@ public class CourseServiceImpl implements CourseService {
         courseRepository.save(course);
         version = courseVersionRepository.save(version);
 
-        // === GỬI THÔNG BÁO CHO CREATOR VÀ LEARNERS ===
-        // 1. Gửi thông báo cho Creator
         NotificationRequest creatorNotif = NotificationRequest.builder()
                 .userId(course.getCreatorId())
                 .title("Course Version Approved")
@@ -466,13 +447,11 @@ public class CourseServiceImpl implements CourseService {
                 .build();
         notificationService.createPushNotification(creatorNotif);
 
-        // 2. Gửi thông báo cho Learners
         sendLearnerUpdateNotification(
                 course,
                 version,
                 "A new version (v" + version.getVersionNumber() + ") is available. Reason: " + version.getReasonForChange()
         );
-        // === KẾT THÚC THÔNG BÁO ===
 
         return versionMapper.toResponse(version);
     }
@@ -486,7 +465,6 @@ public class CourseServiceImpl implements CourseService {
         version.setStatus(VersionStatus.DRAFT);
         version = courseVersionRepository.save(version);
 
-        // === GỬI THÔNG BÁO CHO CREATOR ===
         NotificationRequest creatorNotif = NotificationRequest.builder()
                 .userId(version.getCourse().getCreatorId())
                 .title("Course Version Rejected")
@@ -494,8 +472,14 @@ public class CourseServiceImpl implements CourseService {
                 .type("COURSE_APPROVAL_REJECTED")
                 .build();
         notificationService.createPushNotification(creatorNotif);
-        // === KẾT THÚC THÔNG BÁO ===
 
         return versionMapper.toResponse(version);
+    }
+
+    @Override
+    public List<String> getCourseCategories() {
+        return Arrays.stream(CourseType.values())
+                .map(CourseType::name)
+                .collect(Collectors.toList());
     }
 }

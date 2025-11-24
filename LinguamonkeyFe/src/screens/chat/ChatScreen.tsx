@@ -32,8 +32,14 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   const { data: activities = [], isLoading: isLoadingActivities } = useQuery<UserLearningActivityResponse[]>({
     queryKey: ['chatActivities', user?.userId],
     queryFn: async () => {
-      const response = await instance.get<AppApiResponse<PageResponse<UserLearningActivityResponse>>>(`/api/v1/users/${user?.userId}/activities`, {
-        params: { page: 0, size: 5, sort: 'createdAt,desc', type: 'CHAT' }
+      const response = await instance.get<AppApiResponse<PageResponse<UserLearningActivityResponse>>>(`/api/v1/user-learning-activities`, {
+        params: {
+          userId: user?.userId,
+          page: 0,
+          size: 5,
+          sort: 'createdAt,desc',
+          type: 'CHAT'
+        }
       });
       return response.data.result.content;
     },

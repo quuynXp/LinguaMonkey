@@ -29,7 +29,7 @@ public class LessonSubCategoryServiceImpl implements LessonSubCategoryService {
     private final LessonSubCategoryMapper lessonSubCategoryMapper;
 
     @Override
-    @Cacheable(value = "lessonSubCategories", key = "#lessonCategoryId + ':' + #languageCode + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "lessonSubCategories", key = "#lessonCategoryId + ':' + #languageCode + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LessonSubCategoryResponse> getAllLessonSubCategories(String lessonCategoryId, String languageCode, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -45,7 +45,7 @@ public class LessonSubCategoryServiceImpl implements LessonSubCategoryService {
     }
 
     @Override
-    @Cacheable(value = "lessonSubCategories", key = "#id")
+    //@Cacheable(value = "lessonSubCategories", key = "#id")
     public LessonSubCategoryResponse getLessonSubCategoryById(UUID id) {
         try {
             if (id == null) {
@@ -62,7 +62,7 @@ public class LessonSubCategoryServiceImpl implements LessonSubCategoryService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonSubCategories", key = "#result.lessonSubCategoryId")
+    //@CachePut(value = "lessonSubCategories", key = "#result.lessonSubCategoryId")
     public LessonSubCategoryResponse createLessonSubCategory(LessonSubCategoryRequest request) {
         try {
             if (request == null || request.getLessonCategoryId() == null) {
@@ -79,7 +79,7 @@ public class LessonSubCategoryServiceImpl implements LessonSubCategoryService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonSubCategories", key = "#id")
+    //@CachePut(value = "lessonSubCategories", key = "#id")
     public LessonSubCategoryResponse updateLessonSubCategory(UUID id, LessonSubCategoryRequest request) {
         try {
             if (id == null || request == null) {
@@ -98,7 +98,7 @@ public class LessonSubCategoryServiceImpl implements LessonSubCategoryService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "lessonSubCategories", key = "#id")
+    //@CacheEvict(value = "lessonSubCategories", key = "#id")
     public void deleteLessonSubCategory(UUID id) {
         try {
             if (id == null) {

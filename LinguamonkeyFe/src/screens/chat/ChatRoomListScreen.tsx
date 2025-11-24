@@ -70,16 +70,9 @@ const ChatRoomListScreen = ({ navigation }: any) => {
 
   const { data: roomsData, isLoading, isError } = useAllRooms(queryParams);
 
-  // Access data correctly from PageResponse structure
   const rooms = (roomsData?.data || []) as RoomResponse[];
 
   const joinRoom = (room: RoomResponse) => {
-    // 'memberCount' does not exist on RoomResponse based on the error.
-    // Assuming maxMembers logic check might need to be adjusted or memberCount fetched separately.
-    // For now, removing memberCount check or defaulting to 0 if it's truly missing in DTO.
-    // If the API doesn't return current member count, we can't check 'full' status client-side accurately without another call.
-    // Proceeding with navigation.
-
     navigation.navigate('GroupChatScreen', {
       roomId: room.roomId,
       roomName: room.roomName

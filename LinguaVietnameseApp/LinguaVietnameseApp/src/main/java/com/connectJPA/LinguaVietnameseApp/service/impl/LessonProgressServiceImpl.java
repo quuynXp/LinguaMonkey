@@ -35,7 +35,7 @@ public class LessonProgressServiceImpl implements LessonProgressService {
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
-    @Cacheable(value = "lessonProgress", key = "#lessonId + ':' + #userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "lessonProgress", key = "#lessonId + ':' + #userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LessonProgressResponse> getAllLessonProgress(String lessonId, String userId, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -68,7 +68,7 @@ public class LessonProgressServiceImpl implements LessonProgressService {
     }
 
     @Override
-    @Cacheable(value = "lessonProgress", key = "#lessonId + ':' + #userId")
+    //@Cacheable(value = "lessonProgress", key = "#lessonId + ':' + #userId")
     public LessonProgressResponse getLessonProgressByIds(UUID lessonId, UUID userId) {
         try {
             if (lessonId == null || userId == null) {
@@ -85,7 +85,7 @@ public class LessonProgressServiceImpl implements LessonProgressService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonProgress", key = "#result.lessonId + ':' + #result.userId")
+    //@CachePut(value = "lessonProgress", key = "#result.lessonId + ':' + #result.userId")
     public LessonProgressResponse createLessonProgress(LessonProgressRequest request) {
         try {
             if (request == null || request.getLessonId() == null || request.getUserId() == null) {
@@ -102,7 +102,7 @@ public class LessonProgressServiceImpl implements LessonProgressService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonProgress", key = "#lessonId + ':' + #userId")
+    //@CachePut(value = "lessonProgress", key = "#lessonId + ':' + #userId")
     public LessonProgressResponse updateLessonProgress(UUID lessonId, UUID userId, LessonProgressRequest request) {
         try {
             if (lessonId == null || userId == null || request == null) {
@@ -121,7 +121,7 @@ public class LessonProgressServiceImpl implements LessonProgressService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "lessonProgress", key = "#lessonId + ':' + #userId")
+    //@CacheEvict(value = "lessonProgress", key = "#lessonId + ':' + #userId")
     public void deleteLessonProgress(UUID lessonId, UUID userId) {
         try {
             if (lessonId == null || userId == null) {

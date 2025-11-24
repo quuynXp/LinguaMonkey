@@ -16,6 +16,7 @@ import { useLessonStructure } from "../../hooks/useLessonStructure";
 import { LessonCategoryResponse, LessonResponse } from "../../types/dto";
 import { SkillType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 const UI_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#EF4444", "#EC4899"];
 const UI_ICONS = ["chat", "newspaper", "business", "flight", "school", "movie"];
@@ -246,7 +247,7 @@ const ListeningScreen = ({ navigation }: any) => {
   }
 
   return (
-    <View style={styles.container}>
+    <ScreenLayout style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -285,7 +286,7 @@ const ListeningScreen = ({ navigation }: any) => {
           </Animated.View>
         </ScrollView>
       )}
-    </View>
+    </ScreenLayout>
   );
 };
 

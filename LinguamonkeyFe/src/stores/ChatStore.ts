@@ -29,6 +29,7 @@ interface UseChatState {
   aiChatHistory: AiMessage[];
   isAiStreaming: boolean;
   activeAiRoomId: string | null;
+  isAiInitialMessageSent: boolean; // Trạng thái mới: Đã gửi tin nhắn chào ban đầu chưa
 
   // Video State
   videoSubtitleService: VideoSubtitleService | null;
@@ -41,6 +42,7 @@ interface UseChatState {
   loadMessages: (roomId: string) => Promise<void>;
   sendMessage: (roomId: string, content: string, type: 'TEXT' | 'IMAGE') => void;
   sendAiPrompt: (content: string) => void;
+  sendAiWelcomeMessage: () => void;
   connectVideoSubtitles: (roomId: string, targetLang: string) => void;
   disconnectVideoSubtitles: () => void;
   disconnect: () => void;
@@ -54,6 +56,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   aiChatHistory: [],
   isAiStreaming: false,
   activeAiRoomId: null,
+  isAiInitialMessageSent: false,
+
+  // FIX: Khởi tạo các thuộc tính bị thiếu
   videoSubtitleService: null,
   currentVideoSubtitles: null,
 
@@ -88,6 +93,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
                   roomId: msg.roomId || state.activeAiRoomId || '',
                 },
               ],
+              isAiInitialMessageSent: true,
             });
           }
         } else if (msg.type === 'chat_response_complete') {
@@ -133,7 +139,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   startAiChat: async () => {
-    const userId = useUserStore.getState().user?.userId; // Lấy userId từ UserStore
+    const userId = useUserStore.getState().user?.userId;
     if (!userId) {
       console.error('Failed to start AI chat: User ID is missing.');
       throw new Error('User ID is missing for AI chat initialization.');
@@ -146,7 +152,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       const room = res.data.result;
 
       if (room && room.roomId) {
-        set({ activeAiRoomId: room.roomId });
+        // Đảm bảo cờ isAiInitialMessageSent được reset khi vào chat
+        set({ activeAiRoomId: room.roomId, isAiInitialMessageSent: false });
+
         await get().loadMessages(room.roomId);
 
         const dbMessages = get().messagesByRoom[room.roomId] || [];
@@ -156,7 +164,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           content: m.content || '',
           roomId: room.roomId,
         }));
-        set({ aiChatHistory: aiFormatMessages });
+
+        const validAiFormatMessages = aiFormatMessages.filter(m => m.content.trim() !== '');
+
+        set({ aiChatHistory: validAiFormatMessages });
+
       } else {
         throw new Error("AI Room API returned missing room ID.");
       }
@@ -164,6 +176,37 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       console.error('Failed to start AI chat:', e);
       throw e;
     }
+  },
+
+  // HÀNH ĐỘNG GỬI TIN NHẮN CHÀO ĐẦU TIÊN
+  sendAiWelcomeMessage: () => {
+    const { activeAiRoomId, aiWsConnected, isAiInitialMessageSent, aiChatHistory } = get();
+
+    if (!activeAiRoomId || !aiWsConnected || isAiInitialMessageSent) {
+      console.log('Skipping AI welcome message: Room not ready, WS not connected, or message already sent.');
+      return;
+    }
+
+    // Prompt đặc biệt
+    const WELCOME_PROMPT = "INITIAL_WELCOME_MESSAGE";
+
+    set({
+      isAiStreaming: true,
+      // Đánh dấu đã gửi ngay lập tức để ngăn chặn việc gọi lại
+      isAiInitialMessageSent: true,
+    });
+
+    // Gửi prompt đặc biệt tới Python service. Python service sẽ nhận diện và tạo tin chào.
+    // Quan trọng: Gửi cả lịch sử trò chuyện (aiChatHistory) để AI có thể cá nhân hóa lời chào.
+    const historyForAi = aiChatHistory.map((m) => ({ role: m.role, content: m.content }));
+
+    pythonAiWsService.sendMessage({
+      type: 'chat_request',
+      prompt: WELCOME_PROMPT,
+      history: historyForAi,
+      roomId: activeAiRoomId,
+      messageType: 'TEXT',
+    });
   },
 
   loadMessages: async (roomId: string) => {
@@ -216,6 +259,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         },
       ],
       isAiStreaming: true,
+      isAiInitialMessageSent: true,
     }));
 
     const history = get().aiChatHistory.map((m) => ({ role: m.role, content: m.content }));
@@ -252,6 +296,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       rooms: {},
       messagesByRoom: {},
       aiChatHistory: [],
+      isAiInitialMessageSent: false,
+      videoSubtitleService: null,
+      currentVideoSubtitles: null,
     });
   },
 }));

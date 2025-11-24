@@ -29,7 +29,7 @@ public class LessonOrderInSeriesServiceImpl implements LessonOrderInSeriesServic
     private final LessonOrderInSeriesMapper lessonOrderInSeriesMapper;
 
     @Override
-    @Cacheable(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    // //@Cacheable(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LessonOrderInSeriesResponse> getAllLessonOrdersInSeries(String lessonId, String lessonSeriesId, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -46,7 +46,7 @@ public class LessonOrderInSeriesServiceImpl implements LessonOrderInSeriesServic
     }
 
     @Override
-    @Cacheable(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId")
+    // //@Cacheable(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId")
     public LessonOrderInSeriesResponse getLessonOrderInSeriesByIds(UUID lessonId, UUID lessonSeriesId) {
         try {
             if (lessonId == null || lessonSeriesId == null) {
@@ -63,7 +63,7 @@ public class LessonOrderInSeriesServiceImpl implements LessonOrderInSeriesServic
 
     @Override
     @Transactional
-    @CachePut(value = "lessonOrderInSeries", key = "#result.lessonId + ':' + #result.lessonSeriesId")
+    //@CachePut(value = "lessonOrderInSeries", key = "#result.lessonId + ':' + #result.lessonSeriesId")
     public LessonOrderInSeriesResponse createLessonOrderInSeries(LessonOrderInSeriesRequest request) {
         try {
             if (request == null || request.getLessonId() == null || request.getLessonSeriesId() == null) {
@@ -80,7 +80,7 @@ public class LessonOrderInSeriesServiceImpl implements LessonOrderInSeriesServic
 
     @Override
     @Transactional
-    @CachePut(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId")
+    //@CachePut(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId")
     public LessonOrderInSeriesResponse updateLessonOrderInSeries(UUID lessonId, UUID lessonSeriesId, LessonOrderInSeriesRequest request) {
         try {
             if (lessonId == null || lessonSeriesId == null || request == null) {
@@ -99,7 +99,7 @@ public class LessonOrderInSeriesServiceImpl implements LessonOrderInSeriesServic
 
     @Override
     @Transactional
-    @CacheEvict(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId")
+    //@CacheEvict(value = "lessonOrderInSeries", key = "#lessonId + ':' + #lessonSeriesId")
     public void deleteLessonOrderInSeries(UUID lessonId, UUID lessonSeriesId) {
         try {
             if (lessonId == null || lessonSeriesId == null) {

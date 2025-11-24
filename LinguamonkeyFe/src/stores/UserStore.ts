@@ -45,6 +45,9 @@ interface UserState {
   hasFinishedSetup?: boolean;
   lastDailyWelcomeAt?: string;
 
+  // THÊM: Trạng thái theo dõi mục tiêu 15 phút đã đạt chưa
+  isDailyGoalAchieved: boolean; // Theo dõi trong ngày
+
   setToken: (token: string) => void;
   setDeviceId: (id: string) => void;
   setTokenRegistered: (isRegistered: boolean) => void;
@@ -65,6 +68,10 @@ interface UserState {
   finishSetup: () => Promise<void>;
   finishPlacementTest: () => Promise<void>;
   trackDailyWelcome: () => Promise<void>;
+
+  // THÊM: Logic cập nhật Streak và trạng thái Daily Goal
+  // Loại bỏ locale, vì nó không cần thiết trong việc gọi API này
+  updateStreakAndDailyGoal: (id: string) => Promise<UserResponse | null>;
 }
 
 const defaultUserState: Omit<UserState, keyof {
@@ -85,6 +92,7 @@ const defaultUserState: Omit<UserState, keyof {
   finishSetup: any;
   finishPlacementTest: any;
   trackDailyWelcome: any;
+  updateStreakAndDailyGoal: any;
 }> = {
   user: null,
   isAuthenticated: false,
@@ -112,6 +120,7 @@ const defaultUserState: Omit<UserState, keyof {
   hasDonePlacementTest: undefined,
   hasFinishedSetup: undefined,
   lastDailyWelcomeAt: undefined,
+  isDailyGoalAchieved: false, // Mặc định
 };
 
 const getInitialState = (): Partial<UserState> => ({
@@ -141,6 +150,7 @@ const getInitialState = (): Partial<UserState> => ({
   hasDonePlacementTest: undefined,
   hasFinishedSetup: undefined,
   lastDailyWelcomeAt: undefined,
+  isDailyGoalAchieved: false, // Mặc định
 });
 
 
@@ -161,6 +171,11 @@ export const useUserStore = create<UserState>()(
 
         // Map backend fields, even if not strictly in TS interface yet
         const rawUser = user as any;
+
+        // Lấy ngày hiện tại ở định dạng YYYY-MM-DD
+        const todayDate = new Date().toISOString().split('T')[0];
+        // Lấy ngày check streak cuối cùng từ backend
+        const lastStreakCheckDate = rawUser.lastStreakCheckDate;
 
         set({
           user: user,
@@ -186,6 +201,9 @@ export const useUserStore = create<UserState>()(
           hasDonePlacementTest: rawUser.hasDonePlacementTest,
           hasFinishedSetup: rawUser.hasFinishedSetup,
           lastDailyWelcomeAt: rawUser.lastDailyWelcomeAt,
+
+          // Cập nhật trạng thái Daily Goal: Đã hoàn thành nếu lastStreakCheckDate là hôm nay
+          isDailyGoalAchieved: !!lastStreakCheckDate && lastStreakCheckDate === todayDate,
         });
 
         if (user.nativeLanguageCode) {
@@ -359,6 +377,39 @@ export const useUserStore = create<UserState>()(
         } catch (e) {
           console.error("Failed to track daily welcome", e);
         }
+      },
+
+      // Cập nhật streak và trạng thái daily goal
+      updateStreakAndDailyGoal: async (id: string) => {
+        try {
+          const res = await instance.patch<any>(
+            `/api/v1/users/${id}/streak`,
+          );
+          if (res.data && res.data.code === 200 && res.data.result) {
+            const updatedUser = res.data.result;
+            get().setUser(updatedUser);
+
+            // Logic cập nhật trạng thái Daily Goal: 
+            // Nếu backend cập nhật lastStreakCheckDate là ngày hôm nay, 
+            // nghĩa là mục tiêu đã đạt.
+            const rawUser = updatedUser as any;
+            const todayDate = new Date().toISOString().split('T')[0];
+
+            if (rawUser.lastStreakCheckDate === todayDate) {
+              set({ isDailyGoalAchieved: true });
+            }
+
+            // NOTE: Việc hiển thị Pop-up sẽ được xử lý qua Push Notification Listener.
+
+            return updatedUser as UserResponse;
+          } else {
+            throw new Error(res.data.message || 'Streak update failed');
+          }
+        } catch (error) {
+          console.error('Update streak failed:', error);
+          throw error;
+        }
+        return null;
       }
 
     }),
@@ -391,6 +442,7 @@ export const useUserStore = create<UserState>()(
         hasDonePlacementTest: state.hasDonePlacementTest,
         hasFinishedSetup: state.hasFinishedSetup,
         lastDailyWelcomeAt: state.lastDailyWelcomeAt,
+        isDailyGoalAchieved: state.isDailyGoalAchieved,
       }),
     },
   ),

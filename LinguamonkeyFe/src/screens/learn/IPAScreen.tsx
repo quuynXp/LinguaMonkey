@@ -44,7 +44,9 @@ const IPAScreen: React.FC<Props> = ({ navigation, route, languageCode: propLang,
   const [selected, setSelected] = useState<BasicLessonResponse | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  const audioPlayer = useRef(new (AudioRecorderPlayer as any)()).current;
+  // FIX: Xử lý lỗi TypeError: constructor is not callable bằng cách kiểm tra thuộc tính .default
+  const PlayerConstructor = (AudioRecorderPlayer as any)?.default || AudioRecorderPlayer;
+  const audioPlayer = useRef(new PlayerConstructor()).current;
 
   useEffect(() => {
     return () => {

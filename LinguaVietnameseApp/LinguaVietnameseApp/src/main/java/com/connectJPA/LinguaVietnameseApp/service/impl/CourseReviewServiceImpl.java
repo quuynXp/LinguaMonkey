@@ -30,7 +30,7 @@ public class CourseReviewServiceImpl implements CourseReviewService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
-    @Cacheable(value = "courseReviews", key = "#courseId + ':' + #userId + ':' + #rating + ':' + #pageable")
+    // //@Cacheable(value = "courseReviews", key = "#courseId + ':' + #userId + ':' + #rating + ':' + #pageable")
     public Page<CourseReviewResponse> getAllCourseReviews(UUID courseId, UUID userId, BigDecimal rating, Pageable pageable) {
         try {
             Page<CourseReview> reviews = courseReviewRepository.findAllByCourseIdAndUserIdAndRatingAndIsDeletedFalse(courseId, userId, rating, pageable);
@@ -43,7 +43,7 @@ public class CourseReviewServiceImpl implements CourseReviewService {
     }
 
     @Override
-    @Cacheable(value = "courseReview", key = "#courseId + ':' + #userId")
+    // //@Cacheable(value = "courseReview", key = "#courseId + ':' + #userId")
     public CourseReviewResponse getCourseReviewByIds(UUID courseId, UUID userId) {
         try {
             CourseReview review = courseReviewRepository.findByCourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
@@ -58,7 +58,7 @@ public class CourseReviewServiceImpl implements CourseReviewService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"courseReviews"}, allEntries = true)
+    //@CacheEvict(value = {"courseReviews"}, allEntries = true)
     public CourseReviewResponse createCourseReview(CourseReviewRequest request) {
         try {
             CourseReview review = courseReviewMapper.toEntity(request);
@@ -73,7 +73,7 @@ public class CourseReviewServiceImpl implements CourseReviewService {
 
     @Override
     @Transactional
-    @CachePut(value = "courseReview", key = "#courseId + ':' + #userId")
+    //@CachePut(value = "courseReview", key = "#courseId + ':' + #userId")
     public CourseReviewResponse updateCourseReview(UUID courseId, UUID userId, CourseReviewRequest request) {
         try {
             CourseReview review = courseReviewRepository.findByCourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
@@ -90,7 +90,7 @@ public class CourseReviewServiceImpl implements CourseReviewService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "courseReview", key = "#courseId + ':' + #userId")
+    //@CacheEvict(value = "courseReview", key = "#courseId + ':' + #userId")
     public void deleteCourseReview(UUID courseId, UUID userId) {
         try {
             CourseReview review = courseReviewRepository.findByCourseIdAndUserIdAndIsDeletedFalse(courseId, userId)

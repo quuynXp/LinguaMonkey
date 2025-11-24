@@ -14,7 +14,7 @@ public interface CourseEnrollmentService {
     Page<CourseEnrollmentResponse> getAllCourseEnrollments(UUID courseId, UUID userId, Pageable pageable);
 
     @Transactional
-    @CachePut(value = "courseEnrollment", key = "#result.courseId + ':' + #result.userId")
+    //@CachePut(value = "courseEnrollment", key = "#result.courseId + ':' + #result.userId")
     CourseEnrollmentResponse switchCourseVersion(SwitchVersionRequest request);
 
     CourseEnrollmentResponse getCourseEnrollmentByIds(UUID courseId, UUID userId);

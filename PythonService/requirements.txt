@@ -15,6 +15,7 @@ sentencepiece
 torch==2.6.0
 torchvision==0.21.0
 torchaudio==2.6.0
+langdetect
 
 # --- Other libs ---
 soundfile==0.12.1

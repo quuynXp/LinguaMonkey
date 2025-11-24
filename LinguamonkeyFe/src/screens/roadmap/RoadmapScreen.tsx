@@ -14,13 +14,20 @@ const RoadmapScreen = ({ navigation, route }: any) => {
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'available' | 'completed'>('all')
   const [showMilestones, setShowMilestones] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+
+  // Animation cho Fade/Slide chính (có thể dùng Native Driver)
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(50)).current
+
+  // Animation cho Progress Bar (phải dùng Native Driver FALSE)
+  const progressBarAnim = useRef(new Animated.Value(0)).current
+
   const { useUserRoadmaps } = useRoadmap()
   const { data: userRoadmaps, isLoading, error, refetch } = useUserRoadmaps(languageCode)
   const roadmap: RoadmapUserResponse | undefined = userRoadmaps && userRoadmaps.length > 0 ? userRoadmaps[0] : undefined
 
   useEffect(() => {
+    // Animation khi màn hình được load
     Animated.parallel([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -34,6 +41,21 @@ const RoadmapScreen = ({ navigation, route }: any) => {
       }),
     ]).start()
   }, [fadeAnim, slideAnim])
+
+  useEffect(() => {
+    // Animation cho Progress Bar
+    if (roadmap) {
+      const progressPercentage = roadmap.totalItems > 0
+        ? (roadmap.completedItems / roadmap.totalItems) * 100
+        : 0
+
+      Animated.timing(progressBarAnim, {
+        toValue: progressPercentage, // Target là phần trăm (0-100)
+        duration: 1000,
+        useNativeDriver: false, // Bắt buộc là FALSE khi animate chiều rộng (%)
+      }).start()
+    }
+  }, [roadmap]) // Chạy lại khi roadmap được load hoặc thay đổi
 
   const onRefresh = async () => {
     setRefreshing(true)
@@ -129,9 +151,16 @@ const RoadmapScreen = ({ navigation, route }: any) => {
 
   const renderProgressBar = () => {
     if (!roadmap) return null
+
     const progressPercentage = roadmap.totalItems > 0
       ? (roadmap.completedItems / roadmap.totalItems) * 100
       : 0
+
+    const interpolatedWidth = progressBarAnim.interpolate({
+      inputRange: [0, 100],
+      outputRange: ['0%', '100%'],
+    })
+
     return (
       <View style={styles.progressContainer}>
         <View style={styles.progressHeader}>
@@ -143,10 +172,7 @@ const RoadmapScreen = ({ navigation, route }: any) => {
             style={[
               styles.progressBar,
               {
-                width: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: ['0%', `${progressPercentage}%`],
-                }),
+                width: interpolatedWidth, // SỬ DỤNG ANIMATED WIDTH
               },
             ]}
           />
@@ -285,6 +311,32 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         </View>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>{t('roadmap.loadingRoadmap')}</Text>
+        </View>
+      </ScreenLayout>
+    )
+  }
+
+  // THÊM KIỂM TRA: Nếu không có roadmap nào được gán cho user
+  if (!roadmap) {
+    return (
+      <ScreenLayout>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Icon name="arrow-back" size={24} color="#1F2937" />
+          </TouchableOpacity>
+          <Text style={styles.title}>{t('roadmap.title')}</Text>
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.emptyContainer}>
+          <Icon name="map-marker-off" size={64} color="#9CA3AF" />
+          <Text style={styles.emptyText}>{t('roadmap.noActiveRoadmap')}</Text>
+          <Text style={styles.emptySubtext}>{t('roadmap.suggestedAction')}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={() => navigation.navigate('PublicRoadmapsScreen')} // Chuyển hướng đến màn hình chọn/tạo Roadmap
+          >
+            <Text style={styles.retryText}>{t('roadmap.chooseRoadmap')}</Text>
+          </TouchableOpacity>
         </View>
       </ScreenLayout>
     )
@@ -654,8 +706,11 @@ const styles = createScaledSheet({
     color: "#FFFFFF",
   },
   emptyContainer: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    paddingVertical: 60,
+    padding: 40,
+    minHeight: 400, // Đảm bảo chiếm đủ không gian
   },
   emptyText: {
     fontSize: 18,
@@ -668,6 +723,7 @@ const styles = createScaledSheet({
     fontSize: 14,
     color: "#D1D5DB",
     textAlign: "center",
+    marginBottom: 20,
   },
   modalContainer: {
     flex: 1,

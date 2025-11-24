@@ -448,7 +448,7 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     @Override
-    @Cacheable(value = "transactions", key = "#userId + ':' + #status + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "transactions", key = "#userId + ':' + #status + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) {
         try {
             TransactionStatus transactionStatus = status != null ? TransactionStatus.valueOf(status) : null;
@@ -465,7 +465,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    @CachePut(value = "transactions", key = "#result.transactionId")
+    //@CachePut(value = "transactions", key = "#result.transactionId")
     public TransactionResponse createTransaction(TransactionRequest request) {
         try {
             userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
@@ -482,7 +482,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    @CachePut(value = "transactions", key = "#id")
+    //@CachePut(value = "transactions", key = "#id")
     public TransactionResponse updateTransaction(UUID id, TransactionRequest request) {
         try {
             Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
@@ -500,7 +500,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "transactions", key = "#id")
+    //@CacheEvict(value = "transactions", key = "#id")
     public void deleteTransaction(UUID id) {
         try {
             Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)

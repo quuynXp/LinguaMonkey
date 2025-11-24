@@ -168,7 +168,18 @@
     "enterName": "Enter your full name",
     "email": "Email Address",
     "enterEmail": "Enter your email",
-    "createPassword": "Create a secure password"
+    "createPassword": "Create a secure password",
+    "welcomeBack": "Welcomeback to MonkeyLingua",
+    "orContinueWith": "Or continue with",
+    "orSignUpWith": "Or sign up with",
+    "sendOtp": "Send OTP",
+    "signInContinue": "Sign in cotinue",
+    "dontHaveAccount": "Dont have an account",
+    "agreeTo": "By signing up, you agree to our ",
+    "and": " and ",
+    "google": "google",
+    "haveAccount": "Already have an account? ",
+    "facebook": "facebook"
   },
   "language": {
     "chooseLanguages": "Choose your native and learning languages",
@@ -185,11 +196,14 @@
     "selectLearning": "Select the language you want to learn"
   },
   "profile": {
+    "deactivateWarning": "Are you sure?",
+    "accountActions": "Account Actions",
     "loadFailed": "Failed to load profile",
     "updateSuccess": "Profile updated successfully",
     "personalInfo": "Personal Information",
     "ageRange": "Age Range",
     "account": "Account",
+    "deactivateAccount": "Deactivate Account",
     "notification": "Notification",
     "about": "About",
     "title": "Profile",
@@ -426,6 +440,12 @@
     "submitting": "Submitting...",
     "reset": "Reset",
     "optional": "Optional",
+    "viewAll_vn": "Xem tất cả",
+    "complete_vn": "Hoàn thành",
+    "create_vn": "Tạo",
+    "cancel_vn": "Hủy",
+    "select": "Select",
+    "complete": "Quiz Complete!",
     "period": {
       "day": "Day",
       "week": "Week",
@@ -622,7 +642,9 @@
     "loadCourseDetailsFailed": "Failed to load course details",
     "purchaseFailed": "Purchase failed. Please try again.",
     "loadCertificationsFailed": "Failed to load certifications",
-    "uploadFailed": "Upload failed"
+    "uploadFailed": "Upload failed",
+    "aiRoomNotFound": "Cannot create AI chat room. Please try again.",
+    "roomNotReady": "Chat room is not ready."
   },
   "course": {
     "totalLessons": "{{count}} Lessons",
@@ -659,7 +681,8 @@
     "switch": "Switch Environment"
   },
   "loading": {
-    "ai": "AI is responding..."
+    "ai": "AI is responding...",
+    "room": "Loading chat room..."
   },
   "input": {
     "placeholder": "Type a message..."
@@ -795,6 +818,10 @@
   },
   "roadmap": {
     "title": "Learning Roadmap",
+    "chooseRoadmap": "Choose a roadmap",
+    "noActiveRoadmap": "No active roadmap now!",
+    "suggestedAction": "Suggested action",
+    "browsePublic": "Browse public",
     "loadingRoadmap": "Loading your personalized roadmap...",
     "overallProgress": "Overall Progress",
     "itemsCompleted": "items completed",
@@ -850,7 +877,11 @@
       "overview": "Overview",
       "guidance": "Guidance",
       "resources": "Resources"
-    }
+    },
+    "publicRoadmaps": "Public Roadmaps",
+    "suggest": "Suggest",
+    "addSuggestion": "Add Your Suggestion",
+    "suggestionPlaceholder": "Share your idea to improve this roadmap..."
   },
   "chat": {
     "title": "Chat",
@@ -1122,10 +1153,9 @@
     "interestsAndGoals.desc": "Select your interests and set learning goals to personalize",
     "loadingModels": "Loading 3D models..."
   },
-  "loading.room": "Loading chat room...",
-  "error.aiRoomNotFound": "Cannot create AI chat room. Please try again.",
-  "error.roomNotReady": "Chat room is not ready.",
-  "action.retry": "Retry",
+  "action": {
+    "retry": "Retry"
+  },
   "proficiencyTest": {
     "title": "Proficiency Test",
     "description": "Start adding vocabulary notes to build your personal dictionary",
@@ -1192,186 +1222,7 @@
   "noAccount": "Don't have an account? ",
   "joinLearners": "Join millions of learners worldwide",
   "firstName": "First Name",
-  "createAccount": "Create an account",
   "lastName": "Last Name",
-  "emailAddress": "Email address",
-  "password": "Password",
-  "email": "Email",
-  "signUp": "Sign Up",
-  "sendOtp": "Send OTP",
-  "signInContinue": "Sign in cotinue",
-  "welcomeBack": "Welcomeback to MonkeyLingua",
-  "signIn": "Sign In",
-  "orContinueWith": "Or continue with",
-  "loginWithGoogle": "Login with Google",
-  "loginWithFacebook": "Login with Facebook",
-  "forgotPassword": "Forgot password?",
-  "phoneNumber": "Phone number",
-  "dontHaveAccount": "Dont have an account",
-  "agreeTo": "By signing up, you agree to our ",
-  "termsOfService": "Terms of Service",
-  "and": " and ",
-  "privacyPolicy": "Privacy Policy",
-  "orSignUpWith": "Or sign up with",
-  "google": "google",
-  "haveAccount": "Already have an account? ",
-  "facebook": "facebook",
-  "admin": {
-    "section": {
-      "business": "Business",
-      "content": "Content"
-    },
-    "stats": {
-      "users": "Users",
-      "revenue": "Revenue",
-      "courses": "Courses",
-      "transactions": "Transactions"
-    },
-    "actions": {
-      "addUser": "Add User",
-      "addCourse": "Add Course"
-    },
-    "screens": {
-      "users": "Users",
-      "courses": "Courses",
-      "lessons": "Lessons",
-      "createVideo": "Create Video",
-      "analytics": "Analytics",
-      "transactions": "Transactions"
-    },
-    "desc": {
-      "createVideo": "Upload a new video lesson",
-      "analytics": "View system analytics and reports",
-      "transactions": "Monitor system transactions"
-    },
-    "transactions": {
-      "title": "Transactions",
-      "defaultTitle": "Transaction",
-      "noTransactions": "No transactions"
-    },
-    "lessons": {
-      "title": "Lesson Management",
-      "completions": "Lesson Completions",
-      "listTitle": "Lessons",
-      "noLessons": "No lessons"
-    },
-    "courseDetail": {
-      "title": "Course Detail",
-      "updateSuccess": "Course updated successfully.",
-      "delete": {
-        "title": "Delete Course",
-        "message": "Are you sure you want to delete this course? This action cannot be undone.",
-        "successTitle": "Deleted",
-        "successMessage": "Course removed."
-      },
-      "form": {
-        "thumbnailUrl": "Thumbnail URL",
-        "title": "Title",
-        "description": "Description",
-        "difficultyLevel": "Difficulty Level",
-        "type": "Type",
-        "price": "Price",
-        "courseId": "Course ID",
-        "creatorId": "Creator ID",
-        "createdAt": "Created At"
-      }
-    },
-    "courses": {
-      "title": "Course Management",
-      "overview": {
-        "totalCourses": "Total Courses",
-        "lessons": "Lessons"
-      },
-      "listTitle": "Courses",
-      "noCourses": "No courses"
-    },
-    "menu": {
-      "appInfo": "App information"
-    },
-    "auth": {
-      "logout": "Log Out",
-      "logoutTitle": "Log Out",
-      "logoutConfirm": "Are you sure log out now?"
-    },
-    "analytics": {
-      "title": "Revenue Analytics",
-      "logout": {
-        "title": "Logout",
-        "message": "Are you sure you want to log out?"
-      },
-      "periods": {
-        "week": "Week",
-        "month": "Month",
-        "year": "Year",
-        "custom": "Custom Range"
-      },
-      "errors": {
-        "invalidRangeTitle": "Invalid Range",
-        "invalidRangeMessage": "End date must be on or after the start date."
-      },
-      "charts": {
-        "revenue": "Revenue",
-        "transactions": "Transactions",
-        "breakdown": "Breakdown",
-        "notAvailable": "N/A",
-        "itemLabel": "Item {{index}}",
-        "noBreakdown": "No breakdown data"
-      },
-      "overview": {
-        "title": "Overview",
-        "users": "Users",
-        "revenue": "Revenue"
-      }
-    },
-    "dashboard": {
-      "loading": "Loading dashboard...",
-      "totalUsers": "Total Users",
-      "totalCourses": "Total Courses",
-      "totalLessons": "Total Lessons",
-      "totalRevenue": "Total Revenue",
-      "revenueThisMonth": "Revenue This Month",
-      "quickActions": "Quick Actions",
-      "periods": {
-        "week": "This Week",
-        "month": "This Month",
-        "year": "This Year"
-      },
-      "overview": "Overview",
-      "totalTransactions": "Total Transactions",
-      "selectStart": "Select start date",
-      "selectEnd": "Select end date",
-      "charts": {
-        "revenue": "Revenue",
-        "transactions": "Transactions"
-      },
-      "users": "Users",
-      "courses": "Courses",
-      "lessons": "Lessons",
-      "revenue": "Revenue",
-      "transactions": "Transactions",
-      "title": "Admin Dashboard",
-      "period": {
-        "week": "Week",
-        "month": "Month",
-        "year": "Year",
-        "custom": "Custom"
-      }
-    },
-    "users": {
-      "title": "User Management",
-      "total": "Total Users",
-      "new": "New Users",
-      "growthChart": "Growth Chart",
-      "overview": {
-        "totalUsers": "Total Users",
-        "growth": "Growth"
-      },
-      "listTitle": "Users",
-      "defaultUserName": "User",
-      "noUsers": "No users to display",
-      "searchPlaceholder": "Search users by name or email..."
-    }
-  },
   "passwordLength": "Password must be at least 8 characters long",
   "passwordUppercase": "Password must contain at least one uppercase letter",
   "verifyCode": "Verify code",
@@ -1389,6 +1240,16 @@
     "doLessonToKeepStreak": "Do a lesson today to keep your streak going!"
   },
   "home": {
+    "challenge": {
+      "defaultDescShort": "Hoàn thành thử thách này để nhận thưởng.",
+      "xp": "+{{exp}} XP",
+      "currentTitle": "Your Challenges",
+      "defaultDesc": "Default desc",
+      "exp": "EXP",
+      "title": "Challenges today for you",
+      "add": "Get more",
+      "error": "Failed to load challenges"
+    },
     "title": "Home",
     "dailyStreak": "Daily Streak",
     "subtitle": "Your daily English learning hub",
@@ -1407,7 +1268,6 @@
       "completed": "(Completed)",
       "getMore": "Get More"
     },
-    "student": "Student",
     "student": {
       "searchCoursesPlaceholder": "Search courses...",
       "enrolledCourses": "My Courses",
@@ -1452,10 +1312,11 @@
       "title": "📚 Continue Learning",
       "lesson": "Lesson {{number}}"
     },
-    "challenge": {
-      "title": "Challenges today for you",
-      "add": "Get more"
-    }
+    "roadmapLoading": "Loading your roadmap...",
+    "roadmapError": "Failed to load roadmap",
+    "roadmapSelectDefault": "Select a default roadmap to get started",
+    "roadmapBrowsePublic": "Browse Public Roadmaps",
+    "dailyGoalComplete": "Complete {total} lessons today"
   },
   "level": {
     "beginner": "Beginner",
@@ -1544,8 +1405,40 @@
   },
   "history": {
     "noSessions": "No sesssions",
-    "test" : {
+    "test": {
       "notImplemented": "Not Implement history"
+    },
+    "title": "Study History",
+    "export": "Export",
+    "tabs": {
+      "sessions": "Sessions",
+      "tests": "Tests",
+      "stats": "Statistics"
+    },
+    "filters": {
+      "week": "This Week",
+      "month": "This Month",
+      "year": "This Year"
+    },
+    "stats": {
+      "sessions": "Sessions",
+      "studyTime": "Study Time",
+      "experience": "Experience",
+      "avgScore": "Avg. Score",
+      "progressChart": "Progress Chart"
+    },
+    "session": {
+      "score": "{{score}}/{{maxScore}}",
+      "exp": "+{{experience}} XP"
+    },
+    "types": {
+      "LESSON_COMPLETED": "Lesson",
+      "COURSE_COMPLETED": "Course",
+      "DAILY_CHALLENGE_COMPLETED": "Daily Challenge",
+      "FLASHCARD_REVIEWED": "Flashcard",
+      "EVENT_COMPLETED": "Event",
+      "QUIZ_COMPLETED": "Quiz",
+      "DEFAULT": "Activity"
     }
   },
   "privacy": {
@@ -1737,6 +1630,25 @@
       "os": "Operating System"
     }
   },
+  "categories": {
+    "all": "All Categories"
+  },
+  "enums": {
+    "level": "Level",
+    "country": {
+      "VIETNAM": "Vietnam",
+      "CHINA": "CHINA",
+      "JAPAN": "JAPAN",
+      "KOREAN": "KOREAN",
+      "FRANCE": "FRANCE"
+    },
+    "ageRange": {
+      "AGE_18_24": "18 - 24 Years Old"
+    },
+    "learningPace": {
+      "SLOW": "Slow (20 mins/day)"
+    }
+  },
   "helpSupport": {
     "title": "Help & Support",
     "welcomeTitle": "We are here to help!",
@@ -1826,16 +1738,6 @@
   "oneToOneCallError": "Error creating 1-1 call",
   "selectCallFirst": "Please select a video call first",
   "enterParticipantId": "Please enter participant userId",
-  "confirm": "Confirm",
-  "removeUser": "Remove user",
-  "cancel": "Cancel",
-  "ok": "OK",
-  "filterCallerId": "Filter by callerId",
-  "filterStatus": "Filter by status",
-  "callerId": "Caller Id",
-  "participantId": "Participant Id",
-  "createGroupCall": "Create Group Call",
-  "createOneToOne": "Create 1-1 Call",
   "addParticipant": "Add Participant",
   "joinJitsi": "Join Jitsi",
   "participants": "Participants",
@@ -1932,50 +1834,6 @@
     "sat": "Sat",
     "sun": "Sun"
   },
-  "history": {
-    "title": "Study History",
-    "export": "Export",
-    "tabs": {
-      "sessions": "Sessions",
-      "tests": "Tests",
-      "stats": "Statistics"
-    },
-    "filters": {
-      "week": "This Week",
-      "month": "This Month",
-      "year": "This Year"
-    },
-    "stats": {
-      "sessions": "Sessions",
-      "studyTime": "Study Time",
-      "experience": "Experience",
-      "avgScore": "Avg. Score",
-      "progressChart": "Progress Chart"
-    },
-    "session": {
-      "score": "{{score}}/{{maxScore}}",
-      "exp": "+{{experience}} XP"
-    },
-    "types": {
-      "LESSON_COMPLETED": "Lesson",
-      "COURSE_COMPLETED": "Course",
-      "DAILY_CHALLENGE_COMPLETED": "Daily Challenge",
-      "FLASHCARD_REVIEWED": "Flashcard",
-      "EVENT_COMPLETED": "Event",
-      "QUIZ_COMPLETED": "Quiz",
-      "DEFAULT": "Activity"
-    }
-  },
-  "home.roadmap.loading": "Loading your roadmap...",
-  "home.roadmap.error": "Failed to load roadmap",
-  "home.roadmap.selectDefault": "Select a default roadmap to get started",
-  "home.roadmap.browsePublic": "Browse Public Roadmaps",
-  "roadmap.publicRoadmaps": "Public Roadmaps",
-  "roadmap.suggest": "Suggest",
-  "roadmap.addSuggestion": "Add Your Suggestion",
-  "roadmap.suggestionPlaceholder": "Share your idea to improve this roadmap...",
-  "home.challenge.error": "Failed to load challenges",
-  "home.dailyGoal.complete": "Complete {total} lessons today",
   "wallet": {
     "availableBalance": "Available Balance",
     "topup": "Top Up",
@@ -2009,51 +1867,273 @@
       "REFUNDED": "Refunded"
     }
   },
-  "common": {
-    "skip": "Skip",
-    "loading": "Loading...",
-    "appName": "MonkeyLingua",
-    "error": "Error",
-    "success": "Success",
-    "cancel": "Cancel",
-    "create": "Create",
-    "authRequired": "Login Required",
-    "open_settings": "Open Settings",
-    "no_internet": "No internet connection. Please check your network.",
-    "save": "Save",
-    "delete": "Delete",
-    "edit": "Edit",
-    "add": "Add",
-    "search": "Search",
-    "retry": "Retry",
-    "back": "Back",
-    "next": "Next",
-    "previous": "Previous",
-    "close": "Close",
-    "confirm": "Confirm",
-    "yes": "Yes",
-    "no": "No",
-    "ok": "OK",
-    "done": "Done",
-    "refresh": "Refresh",
-    "viewAll": "View All",
-    "all": "All",
-    "minutes": "min",
-    "hours": "h",
-    "days": "days",
-    "weeks": "weeks",
-    "months": "months",
-    "years": "years",
-    "starting": "Starting...",
-    "completing": "Completing...",
-    "submitting": "Submitting...",
-    "reset": "Reset",
-    "optional": "Optional",
-    "period": {
-      "day": "Day",
-      "week": "Week",
-      "month": "Month",
-      "year": "Year"
+  "admin": {
+    "section": {
+      "business": "Business",
+      "content": "Content"
+    },
+    "stats": {
+      "users": "Users",
+      "revenue": "Revenue",
+      "courses": "Courses",
+      "transactions": "Transactions"
+    },
+    "actions": {
+      "addUser": "Add User",
+      "addCourse": "Add Course"
+    },
+    "screens": {
+      "users": "Users",
+      "courses": "Courses",
+      "lessons": "Lessons",
+      "createVideo": "Create Video",
+      "analytics": "Analytics",
+      "transactions": "Transactions"
+    },
+    "desc": {
+      "createVideo": "Upload a new video lesson",
+      "analytics": "View system analytics and reports",
+      "transactions": "Monitor system transactions"
+    },
+    "transactions": {
+      "title": "Transactions",
+      "defaultTitle": "Transaction",
+      "noTransactions": "No transactions"
+    },
+    "lessons": {
+      "title": "Lesson Management",
+      "completions": "Lesson Completions",
+      "listTitle": "Lessons",
+      "noLessons": "No lessons"
+    },
+    "courseDetail": {
+      "title": "Course Detail",
+      "updateSuccess": "Course updated successfully.",
+      "delete": {
+        "title": "Delete Course",
+        "message": "Are you sure you want to delete this course? This action cannot be undone.",
+        "successTitle": "Deleted",
+        "successMessage": "Course removed."
+      },
+      "form": {
+        "thumbnailUrl": "Thumbnail URL",
+        "title": "Title",
+        "description": "Description",
+        "difficultyLevel": "Difficulty Level",
+        "type": "Type",
+        "price": "Price",
+        "courseId": "Course ID",
+        "creatorId": "Creator ID",
+        "createdAt": "Created At"
+      }
+    },
+    "courses": {
+      "title": "Course Management",
+      "overview": {
+        "totalCourses": "Total Courses",
+        "lessons": "Lessons"
+      },
+      "listTitle": "Courses",
+      "noCourses": "No courses"
+    },
+    "menu": {
+      "appInfo": "App information"
+    },
+    "auth": {
+      "logout": "Log Out",
+      "logoutTitle": "Log Out",
+      "logoutConfirm": "Are you sure log out now?"
+    },
+    "analytics": {
+      "title": "Revenue Analytics",
+      "logout": {
+        "title": "Logout",
+        "message": "Are you sure you want to log out?"
+      },
+      "periods": {
+        "week": "Week",
+        "month": "Month",
+        "year": "Year",
+        "custom": "Custom Range"
+      },
+      "errors": {
+        "invalidRangeTitle": "Invalid Range",
+        "invalidRangeMessage": "End date must be on or after the start date."
+      },
+      "charts": {
+        "revenue": "Revenue",
+        "transactions": "Transactions",
+        "breakdown": "Breakdown",
+        "notAvailable": "N/A",
+        "itemLabel": "Item {{index}}",
+        "noBreakdown": "No breakdown data"
+      },
+      "overview": {
+        "title": "Overview",
+        "users": "Users",
+        "revenue": "Revenue"
+      }
+    },
+    "dashboard": {
+      "loading": "Loading dashboard...",
+      "totalUsers": "Total Users",
+      "totalCourses": "Total Courses",
+      "totalLessons": "Total Lessons",
+      "totalRevenue": "Total Revenue",
+      "revenueThisMonth": "Revenue This Month",
+      "quickActions": "Quick Actions",
+      "periods": {
+        "week": "This Week",
+        "month": "This Month",
+        "year": "This Year"
+      },
+      "overview": "Overview",
+      "totalTransactions": "Total Transactions",
+      "selectStart": "Select start date",
+      "selectEnd": "Select end date",
+      "charts": {
+        "revenue": "Revenue",
+        "transactions": "Transactions"
+      },
+      "users": "Users",
+      "courses": "Courses",
+      "lessons": "Lessons",
+      "revenue": "Revenue",
+      "transactions": "Transactions",
+      "title": "Admin Dashboard",
+      "period": {
+        "week": "Week",
+        "month": "Month",
+        "year": "Year",
+        "custom": "Custom"
+      }
+    },
+    "users": {
+      "title": "User Management",
+      "total": "Total Users",
+      "new": "New Users",
+      "growthChart": "Growth Chart",
+      "overview": {
+        "totalUsers": "Total Users",
+        "growth": "Growth"
+      },
+      "listTitle": "Users",
+      "defaultUserName": "User",
+      "noUsers": "No users to display",
+      "searchPlaceholder": "Search users by name or email..."
     }
+  },
+  "proficiency": {
+    "A1": "A1",
+    "A2": "A2",
+    "B1": "B1",
+    "B2": "B2",
+    "C1": "C1",
+    "C2": "C2",
+    "NATIVE": "Native Speaker"
+  },
+  "home": {
+    "roadmap": {
+      "targetCertification": "Target Certification",
+      "targetDateHint": "Set a goal date for your certification"
+    }
+  },
+  "permissions": {
+    "microphone": {
+      "title": "Microphone Permission Required",
+      "message": "We need access to your microphone to enable speaking exercises."
+    }
+  },
+  "speaking": {
+    "select_lesson": "Select a Lesson",
+    "no_lessons_available": "No lessons available. Please check back later."
+  },
+  "common": {
+    "reload": "Reload"
+  },
+  "reading": {
+    "screenTitle": "Reading Practice",
+    "welcomeTitle": "Improve Your Reading Skills",
+    "welcomeText": "Generate a custom article based on your level and interests, or use a sample.",
+    "generateSample": "Generate Sample Article",
+    "generateButton": "Generate Article",
+    "generatedContentTitle": "Generated Content",
+    "errorLoadingContent": "Could not load content. Please try again.",
+    "startReading": "Start Reading"
+  },
+  "errors": {
+    "api": "A network or server error occurred. Please try again."
+  },
+  "filterCallerId": "Filter by callerId",
+  "filterStatus": "Filter by status",
+  "callerId": "Caller Id",
+  "participantId": "Participant Id",
+  "createGroupCall": "Create Group Call",
+  "createOneToOne": "Create 1-1 Call",
+  "enterParticipantId": "Please enter participant userId",
+  "removeUser": "Remove user",
+  "profile": {
+    "title": "Profile",
+    "editProfile": "Edit Profile",
+    "transactionHistory": "Transaction History",
+    "notificationHistory": "Notification History",
+    "privacySettings": "Privacy Settings",
+    "roadmap": "Learning Roadmap",
+    "notes": "Notes",
+    "helpSupport": "Help & Support",
+    "about": "About",
+    "logout": "Logout",
+    "logoutFailed": "Logout failed, please try again.",
+    "logoutConfirmTitle": "Logout",
+    "logoutConfirmMessage": "Are you sure you want to logout?",
+    "noName": "No Name",
+    "addABio": "Add a Bio",
+    "streakDays": "Streak Days",
+    "dailyGoal": "Daily Goal",
+    "languages": "Languages",
+    "level": "Level",
+    "expShort": "EXP",
+    "toNextLevel": "To Next Level: {{exp}} EXP",
+    "noLanguages": "No languages selected",
+    "badges": "Badges",
+    "noBadges": "No badges earned",
+    "actions": "Actions",
+    "details": "Profile Details",
+    "email": "Email",
+    "phone": "Phone",
+    "country": "Country",
+    "age": "Age",
+    "learningPace": "Learning Pace",
+    "proficiency": "Proficiency",
+    "progress": "Progress",
+    "certifications": "Certifications",
+    "interests": "Interests",
+    "goals": "Goals",
+    "profileVisibility": "Profile Visibility",
+    "progressSharing": "Progress Sharing",
+    "dataCollection": "Data Collection",
+    "personalization": "Personalization",
+    "analytics": "Analytics",
+    "crashReports": "Crash Reports",
+    "locationTracking": "Location Tracking",
+    "contactSync": "Contact Sync",
+    "studyReminders": "Study Reminders",
+    "streakReminders": "Streak Reminders",
+    "messageNotifications": "Message Notifications",
+    "achievementNotifications": "Achievement Notifications",
+    "quietHours": "Quiet Hours",
+    "enabled": "On",
+    "disabled": "Off",
+    "quietHoursValue": "{{status}} ({{start}}-{{end}})",
+    "aboutYourAccount": "About Your Account",
+    "privacyNotice": "Your information is protected and only used to enhance your learning experience.",
+    "playStoreRating": "Rated 5★ by users on Google Play.",
+    "policySnippet": "See our Privacy Policy and Terms to understand how we handle your data.",
+    "uploadingColor": "#9CA3AF"
+  },
+  "errors": {
+    "userNotFound": "User not found",
+    "uploadFailed": "Upload failed",
+    "server": "Server Error"
   }
 }

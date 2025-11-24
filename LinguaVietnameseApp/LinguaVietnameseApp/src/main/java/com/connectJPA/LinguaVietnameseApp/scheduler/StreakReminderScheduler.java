@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserLearningActivityRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -27,17 +28,25 @@ public class StreakReminderScheduler {
     @Transactional
     public void sendStreakReminders() {
         List<User> users = userRepository.findAllByIsDeletedFalse();
+        LocalDate today = LocalDate.now();
+
         for (User user : users) {
             UUID userId = user.getUserId();
-            LocalDate today = LocalDate.now();
-            boolean hasActivityToday = userLearningActivityRepository.existsByUserIdAndDate(userId, today);
-            if (!hasActivityToday && user.getStreak() > 0) {
+            Long totalDurationToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, today);
+            
+            boolean hasHitDailyGoal = totalDurationToday >= user.getMinLearningDurationMinutes();
+
+            if (!hasHitDailyGoal && user.getStreak() > 0) {
+                long minutesRemaining = user.getMinLearningDurationMinutes() - totalDurationToday;
+                
+                String langCode = user.getNativeLanguageCode();
+                String[] message = NotificationI18nUtil.getLocalizedMessage("STREAK_REMINDER", langCode);
+
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(userId)
-                        .title("Keep Your Streak Alive!")
-                        .content("Complete a lesson today to maintain your " + user.getStreak() + "-day streak!")
+                        .title(message[0])
+                        .content(String.format(message[1], minutesRemaining, user.getStreak()))
                         .type("STREAK_REMINDER")
-                        // THÊM PAYLOAD: Mở app và điều hướng đến tab học
                         .payload("{\"screen\":\"Learn\"}")
                         .build();
                 notificationService.createPushNotification(notificationRequest);
@@ -49,23 +58,32 @@ public class StreakReminderScheduler {
     @Transactional
     public void resetStreaks() {
         List<User> users = userRepository.findAllByIsDeletedFalse();
+        LocalDate yesterday = LocalDate.now().minusDays(1);
+
         for (User user : users) {
             UUID userId = user.getUserId();
-            LocalDate yesterday = LocalDate.now().minusDays(1);
-            boolean hasActivityYesterday = userLearningActivityRepository.existsByUserIdAndDate(userId, yesterday);
-            if (!hasActivityYesterday && user.getStreak() > 0) {
-                user.setStreak(0);
-                userRepository.save(user);
+            
+            Long totalDurationYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, yesterday);
+            
+            boolean hasHitDailyGoalYesterday = totalDurationYesterday >= user.getMinLearningDurationMinutes();
+
+            if (!hasHitDailyGoalYesterday && user.getStreak() > 0) {
+                
+                String langCode = user.getNativeLanguageCode();
+                String[] message = NotificationI18nUtil.getLocalizedMessage("STREAK_RESET", langCode);
+
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(userId)
-                        .title("Streak Reset")
-                        .content("Your streak has been reset to 0 due to inactivity.")
+                        .title(message[0])
+                        .content(message[1])
                         .type("STREAK_RESET")
-                        // THÊM PAYLOAD: Mở app đến trang Home
                         .payload("{\"screen\":\"Home\"}")
                         .build();
-                // Sửa lỗi logic: Phải gọi createPushNotification
                 notificationService.createPushNotification(notificationRequest);
+
+                user.setStreak(0);
+                user.setLastStreakCheckDate(null);
+                userRepository.save(user);
             }
         }
     }

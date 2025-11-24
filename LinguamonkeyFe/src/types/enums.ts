@@ -311,7 +311,9 @@ export enum RoomTopic {
 
 export enum RoomType {
     PRIVATE = "PRIVATE",
-    PUBLIC = "PUBLIC"
+    PUBLIC = "PUBLIC",
+    GROUP = "GROUP",
+    COUPLE = "COUPLE"
 }
 
 export enum SkillType {

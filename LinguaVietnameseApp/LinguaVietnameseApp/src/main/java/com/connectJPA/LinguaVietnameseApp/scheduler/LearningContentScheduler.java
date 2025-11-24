@@ -11,6 +11,7 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserDailyChallengeRepos
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserReminderRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,9 +20,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -59,12 +62,36 @@ public class LearningContentScheduler {
 
             notificationService.createPushNotification(request);
 
-            // Xử lý nhắc nhở
             if (reminder.getRepeatType() == null || "none".equalsIgnoreCase(String.valueOf(reminder.getRepeatType()))) {
-                reminder.setEnabled(false); // Tắt nếu không lặp lại
+                reminder.setEnabled(false);
             } else {
-                // TODO: Thêm logic lặp lại (ví dụ: cộng thêm 1 ngày/1 tuần vào reminder_time)
-                // Ví dụ: if ("daily".equals..._
+                String repeatType = String.valueOf(reminder.getRepeatType()).toLowerCase();
+                OffsetDateTime nextTime = reminder.getReminderTime();
+
+                while (nextTime.isBefore(now) || nextTime.isEqual(now)) {
+                    switch (repeatType) {
+                        case "daily":
+                            nextTime = nextTime.plus(1, ChronoUnit.DAYS);
+                            break;
+                        case "weekly":
+                            nextTime = nextTime.plus(7, ChronoUnit.DAYS);
+                            break;
+                        case "monthly":
+                            nextTime = nextTime.plus(1, ChronoUnit.MONTHS);
+                            break;
+                        default:
+                            nextTime = null;
+                            break;
+                    }
+                    if (nextTime == null) {
+                        reminder.setEnabled(false);
+                        break;
+                    }
+                }
+
+                if (nextTime != null) {
+                    reminder.setReminderTime(nextTime);
+                }
             }
         }
         userReminderRepository.saveAll(reminders);
@@ -83,11 +110,17 @@ public class LearningContentScheduler {
 
         log.info("Sending flashcard reminders to {} users.", userIds.size());
 
-        for (UUID userId : userIds) {
+        // Lấy thông tin ngôn ngữ của tất cả người dùng liên quan
+        List<User> users = userRepository.findAllById(userIds);
+        
+        for (User user : users) {
+            String langCode = user.getNativeLanguageCode();
+            String[] message = NotificationI18nUtil.getLocalizedMessage("FLASHCARD_REMINDER", langCode);
+
             NotificationRequest request = NotificationRequest.builder()
-                    .userId(userId)
-                    .title("Flashcard Review")
-                    .content("You have flashcards ready for review!")
+                    .userId(user.getUserId())
+                    .title(message[0])
+                    .content(message[1])
                     .type("FLASHCARD_REMINDER")
                     .payload("{\"screen\":\"Learn\", \"stackScreen\":\"FlashcardDeck\"}")
                     .build();
@@ -117,33 +150,33 @@ public class LearningContentScheduler {
         for (User user : users) {
             int stack = 1;
             for (DailyChallenge challenge : challenges) {
-                // Tạo bản ghi UserDailyChallenge mới
-                // Giả định constructor (bạn cần tạo entity này)
                 UserDailyChallenge assignment = new UserDailyChallenge(
                         user.getUserId(),
                         challenge.getId(),
-                        today, // Dùng assigned_date (LocalDate)
+                        today,
                         stack++,
                         challenge.getBaseExp(),
-                        false, // is_completed
+                        false,
                         challenge.getRewardCoins(),
-                        0 // progress
+                        0
                 );
                 newAssignments.add(assignment);
             }
 
-            // Gửi một thông báo cho mỗi user
+            // Gửi thông báo i18n
+            String langCode = user.getNativeLanguageCode();
+            String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE", langCode);
+
             NotificationRequest request = NotificationRequest.builder()
                     .userId(user.getUserId())
-                    .title("New Daily Challenges!")
-                    .content("Your " + challenges.size() + " new daily challenges are available. Check them out!")
+                    .title(message[0])
+                    .content(String.format(message[1], challenges.size()))
                     .type("DAILY_CHALLENGE")
                     .payload("{\"screen\":\"Home\", \"tab\":\"Challenges\"}")
                     .build();
             notificationService.createPushNotification(request);
         }
 
-        // Lưu tất cả vào DB một lần
         userDailyChallengeRepository.saveAll(newAssignments);
     }
 }

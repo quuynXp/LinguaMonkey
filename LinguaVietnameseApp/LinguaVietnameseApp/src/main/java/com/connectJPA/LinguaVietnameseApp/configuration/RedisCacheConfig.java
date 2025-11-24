@@ -7,6 +7,8 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
@@ -30,6 +32,9 @@ public class RedisCacheConfig {
                 LaissezFaireSubTypeValidator.instance,
                 ObjectMapper.DefaultTyping.NON_FINAL
         );
+        // Tham chiếu đúng đến các Mixin trong cùng package
+        redisObjectMapper.addMixIn(PageImpl.class, PageImplMixin.class);
+        redisObjectMapper.addMixIn(PageRequest.class, PageRequestMixin.class);
     }
 
     @Bean
@@ -64,5 +69,3 @@ public class RedisCacheConfig {
         return new RestTemplate();
     }
 }
-
-

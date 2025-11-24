@@ -58,7 +58,7 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     }
 
     @Transactional
-    @CacheEvict(value = "memorizations", key = "#request.userId")
+    //@CacheEvict(value = "memorizations", key = "#request.userId")
     @Override
     public MemorizationResponse saveMemorization(MemorizationRequest request, UUID authenticatedUserId) {
         // Validate user and ownership
@@ -107,7 +107,7 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     }
 
     @Transactional
-    @CacheEvict(value = "memorizations", key = "#request.userId")
+    //@CacheEvict(value = "memorizations", key = "#request.userId")
     @Override
     public MemorizationResponse updateMemorization(UUID memorizationId, MemorizationRequest request, UUID authenticatedUserId) {
         UserMemorization memorization = memorizationRepository.findById(memorizationId)
@@ -154,7 +154,7 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     }
 
     @Transactional
-    @CacheEvict(value = "memorizations", key = "#authenticatedUserId")
+    //@CacheEvict(value = "memorizations", key = "#authenticatedUserId")
     @Override
     public void deleteMemorization(UUID memorizationId, UUID authenticatedUserId) {
         UserMemorization memorization = memorizationRepository.findById(memorizationId)
@@ -169,7 +169,7 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
         memorizationRepository.save(memorization);
     }
 
-    @Cacheable(value = "memorizations", key = "#userId + '-' + #contentType + '-' + #pageable.pageNumber")
+    //@Cacheable(value = "memorizations", key = "#userId + '-' + #contentType + '-' + #pageable.pageNumber")
     @Override
     public Page<MemorizationResponse> getMemorizationsByUser(UUID userId, String contentType, Pageable pageable) {
         Page<UserMemorization> memorizations;

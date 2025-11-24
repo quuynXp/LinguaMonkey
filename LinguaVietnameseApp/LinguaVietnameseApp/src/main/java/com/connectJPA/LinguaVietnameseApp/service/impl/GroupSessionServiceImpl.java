@@ -29,7 +29,7 @@ public class GroupSessionServiceImpl implements GroupSessionService {
     private final GroupSessionMapper groupSessionMapper;
 
     @Override
-    @Cacheable(value = "groupSessions", key = "#lessonId + ':' + #roomId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    // //@Cacheable(value = "groupSessions", key = "#lessonId + ':' + #roomId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<GroupSessionResponse> getAllGroupSessions(String lessonId, String roomId, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -46,7 +46,7 @@ public class GroupSessionServiceImpl implements GroupSessionService {
     }
 
     @Override
-    @Cacheable(value = "groupSessions", key = "#id")
+    // //@Cacheable(value = "groupSessions", key = "#id")
     public GroupSessionResponse getGroupSessionById(UUID id) {
         try {
             if (id == null) {
@@ -63,7 +63,7 @@ public class GroupSessionServiceImpl implements GroupSessionService {
 
     @Override
     @Transactional
-    @CachePut(value = "groupSessions", key = "#result.groupSessionId")
+    //@CachePut(value = "groupSessions", key = "#result.groupSessionId")
     public GroupSessionResponse createGroupSession(GroupSessionRequest request) {
         try {
             if (request == null || request.getLessonId() == null || request.getRoomId() == null) {
@@ -80,7 +80,7 @@ public class GroupSessionServiceImpl implements GroupSessionService {
 
     @Override
     @Transactional
-    @CachePut(value = "groupSessions", key = "#id")
+    //@CachePut(value = "groupSessions", key = "#id")
     public GroupSessionResponse updateGroupSession(UUID id, GroupSessionRequest request) {
         try {
             if (id == null || request == null) {
@@ -99,7 +99,7 @@ public class GroupSessionServiceImpl implements GroupSessionService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "groupSessions", key = "#id")
+    //@CacheEvict(value = "groupSessions", key = "#id")
     public void deleteGroupSession(UUID id) {
         try {
             if (id == null) {

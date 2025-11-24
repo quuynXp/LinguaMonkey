@@ -24,8 +24,7 @@ public class Friendship extends BaseEntity {
     @Column(name = "status", nullable = false)
     private FriendshipStatus status = FriendshipStatus.ACCEPTED;
 
-    public UUID getSenderId() {
-        return this.id.getUser1Id();
+    public UUID getRequesterId() {
+        return this.id.getRequesterId();
     }
-
 }

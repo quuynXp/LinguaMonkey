@@ -38,7 +38,8 @@ public interface CourseService {
     // === LOGIC ADMIN (ĐIỀU CHỈNH) ===
     CourseVersionResponse approveCourseVersion(UUID versionId);
     CourseVersionResponse rejectCourseVersion(UUID versionId, String reason);
-    
+
+    List<String> getCourseCategories();
     // THÊM: Phương thức tìm kiếm
     Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters);
 }

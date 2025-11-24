@@ -33,7 +33,6 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
     private final CourseVersionRepository courseVersionRepository;
 
     @Override
-    @Cacheable(value = "courseEnrollments", key = "#courseId + ':' + #userId + ':' + #pageable")
     public Page<CourseEnrollmentResponse> getAllCourseEnrollments(UUID courseId, UUID userId, Pageable pageable) {
         try {
             Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findAllByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId, pageable);
@@ -47,7 +46,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
 
 
     @Transactional
-    @CachePut(value = "courseEnrollment", key = "#result.courseId + ':' + #result.userId")
+    //@CachePut(value = "courseEnrollment", key = "#result.courseId + ':' + #result.userId")
     @Override
     public CourseEnrollmentResponse switchCourseVersion(SwitchVersionRequest request) {
         try {
@@ -79,7 +78,6 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
     }
 
     @Override
-    @Cacheable(value = "courseEnrollment", key = "#courseId + ':' + #userId")
     public CourseEnrollmentResponse getCourseEnrollmentByIds(UUID courseId, UUID userId) {
         try {
             CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
@@ -94,7 +92,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"courseEnrollments"}, allEntries = true)
+    //@CacheEvict(value = {"courseEnrollments"}, allEntries = true)
     public CourseEnrollmentResponse createCourseEnrollment(CourseEnrollmentRequest request) {
         try {
             CourseEnrollment enrollment = courseEnrollmentMapper.toEntity(request);
@@ -109,7 +107,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
 
     @Override
     @Transactional
-    @CachePut(value = "courseEnrollment", key = "#courseId + ':' + #userId")
+    //@CachePut(value = "courseEnrollment", key = "#courseId + ':' + #userId")
     public CourseEnrollmentResponse updateCourseEnrollment(UUID courseId, UUID userId, CourseEnrollmentRequest request) {
         try {
             CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
@@ -126,7 +124,7 @@ public class CourseEnrollmentServiceImpl implements CourseEnrollmentService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "courseEnrollment", key = "#courseId + ':' + #userId")
+    //@CacheEvict(value = "courseEnrollment", key = "#courseId + ':' + #userId")
     public void deleteCourseEnrollment(UUID courseId, UUID userId) {
         try {
             CourseEnrollment enrollment = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId)

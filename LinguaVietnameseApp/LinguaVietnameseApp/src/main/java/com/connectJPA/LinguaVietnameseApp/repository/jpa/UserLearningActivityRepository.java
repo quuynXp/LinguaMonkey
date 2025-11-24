@@ -30,6 +30,11 @@ public interface UserLearningActivityRepository extends JpaRepository<UserLearni
             "AND DATE(ula.createdAt) = :date AND ula.isDeleted = false")
     boolean existsByUserIdAndDate(@Param("userId") UUID userId, @Param("date") LocalDate date);
 
+    // Cập nhật query để tính tổng durationInSeconds và chia cho 60 để có tổng phút
+    // Giả định: Trường durationMinutes trong query cũ phải là durationInSeconds nếu muốn tính thời gian học
+    @Query("SELECT COALESCE(SUM(ula.durationInSeconds), 0) / 60 FROM UserLearningActivity ula WHERE ula.userId = :userId AND DATE(ula.createdAt) = :date AND ula.isDeleted = false")
+    Long sumDurationMinutesByUserIdAndDate(@Param("userId") UUID userId, @Param("date") LocalDate date);
+
     @Query("SELECT ula FROM UserLearningActivity ula " +
             "WHERE ula.targetId = :lessonId " +
             "AND ula.activityType IN (:lessonTypes) " +

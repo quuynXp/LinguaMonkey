@@ -13,8 +13,8 @@ import java.util.UUID;
 @Embeddable
 public class FriendshipId implements Serializable {
     @Column(name = "requester_id", nullable = false)
-    private UUID user1Id;
+    private UUID requesterId;
 
     @Column(name = "receiver_id", nullable = false)
-    private UUID user2Id;
+    private UUID receiverId;
 }

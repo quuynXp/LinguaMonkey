@@ -1,38 +1,55 @@
 import { useState, useEffect, useRef } from "react"
-import { Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
+import {
+    Animated,
+    ScrollView,
+    Text,
+    TouchableOpacity,
+    View,
+    ActivityIndicator,
+    RefreshControl,
+} from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useNavigation } from "@react-navigation/native"
 import { useTranslation } from "react-i18next"
 import { formatDuration } from "../../utils/timeHelper"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import { StudySessionResponse } from "../../types/dto"
-import { ActivityType } from "../../types/enums"
 import { useUserStore } from "../../stores/UserStore"
 import { useUserLearningActivities } from "../../hooks/useUserActivity"
+import type { StudySessionResponse, StatsResponse } from "../../types/dto"
+import { ActivityType } from "../../types/enums"
+
+type Tab = "sessions" | "tests" | "stats"
+type Period = "week" | "month" | "year"
 
 const ProgressScreen = () => {
     const navigation = useNavigation()
     const { t } = useTranslation()
     const userId = useUserStore((state) => state.user?.userId)
-    const [currentTab, setCurrentTab] = useState<"sessions" | "tests" | "stats">("sessions")
-    const [timeFilter, setTimeFilter] = useState<"week" | "month" | "year">("month")
-    const fadeAnim = useRef(new Animated.Value(0)).current
 
-    // Sửa lỗi: Gọi factory function trước (0 arguments), sau đó gọi hook cụ thể (useGetStudyHistory)
+    const [currentTab, setCurrentTab] = useState<Tab>("stats")
+    const [timeFilter, setTimeFilter] = useState<Period>("month")
+    const fadeAnim = useRef(new Animated.Value(1)).current
+
     const { useGetStudyHistory } = useUserLearningActivities()
-    const { data: studyHistory, isLoading, error } = useGetStudyHistory(
-        userId || "",
+    const {
+        data: studyHistory,
+        isLoading,
+        error,
+        refetch,
+    } = useGetStudyHistory(
+        userId,
         timeFilter
     )
+
     const studySessions: StudySessionResponse[] = studyHistory?.sessions || []
-    const stats = studyHistory?.stats || null
+    const stats: StatsResponse | null = studyHistory?.stats || null
 
     useEffect(() => {
         fadeAnim.setValue(0)
         Animated.timing(fadeAnim, {
             toValue: 1,
-            duration: 500,
+            duration: 300,
             useNativeDriver: true,
         }).start()
     }, [currentTab, timeFilter])
@@ -64,7 +81,7 @@ const ProgressScreen = () => {
     }
 
     const renderSessionCard = (session: StudySessionResponse) => (
-        <TouchableOpacity key={session.id} style={styles.sessionCard}>
+        <TouchableOpacity key={session.id} style={styles.sessionCard} activeOpacity={0.8}>
             <View style={styles.sessionHeader}>
                 <View style={[styles.typeIcon, { backgroundColor: `${getTypeColor(session.type)}20` }]}>
                     <Icon name={getTypeIcon(session.type)} size={20} color={getTypeColor(session.type)} />
@@ -117,69 +134,95 @@ const ProgressScreen = () => {
         </TouchableOpacity>
     )
 
+    const renderStatsBlock = ({ label, value, icon, color, bgColor }: {
+        label: string,
+        value: string | number,
+        icon: string,
+        color: string,
+        bgColor: string
+    }) => (
+        <View style={[styles.statCard, { backgroundColor: bgColor }]}>
+            <View style={styles.statHeader}>
+                <View style={[styles.statIconBubble]}>
+                    <Icon name={icon} size={20} color={color} />
+                </View>
+                <Text style={[styles.statValue, { color: color }]}>
+                    {typeof value === "number" ? value.toLocaleString() : value}
+                </Text>
+            </View>
+            <Text style={styles.statLabel}>{label}</Text>
+        </View>
+    )
+
     const renderStatsTab = () => {
-        if (!stats) return null
+        if (!stats) return (
+            <View style={styles.centerContent}>
+                <Icon name="sentiment-dissatisfied" size={48} color="#6B7280" />
+                <Text style={styles.loadingText}>{t("history.noStats")}</Text>
+            </View>
+        )
 
         return (
             <View style={styles.statsContainer}>
+                <Text style={styles.sectionHeader}>{t("history.stats.summary")}</Text>
                 <View style={styles.statsGrid}>
-                    <View style={styles.statCard}>
-                        <Icon name="assignment" size={32} color="#4F46E5" />
-                        <Text style={styles.statValue}>{stats.totalSessions}</Text>
-                        <Text style={styles.statLabel}>{t("history.stats.sessions")}</Text>
-                    </View>
-
-                    <View style={styles.statCard}>
-                        <Icon name="schedule" size={32} color="#10B981" />
-                        <Text style={styles.statValue}>{formatDuration(stats.totalTime)}</Text>
-                        <Text style={styles.statLabel}>{t("history.stats.studyTime")}</Text>
-                    </View>
-
-                    <View style={styles.statCard}>
-                        <Icon name="stars" size={32} color="#F59E0B" />
-                        <Text style={styles.statValue}>{stats.totalExperience}</Text>
-                        <Text style={styles.statLabel}>{t("history.stats.experience")}</Text>
-                    </View>
-
-                    <View style={styles.statCard}>
-                        <Icon name="trending-up" size={32} color="#EF4444" />
-                        <Text style={styles.statValue}>{Math.round(stats.averageScore)}%</Text>
-                        <Text style={styles.statLabel}>{t("history.stats.avgScore")}</Text>
-                    </View>
+                    {renderStatsBlock({
+                        label: t("history.stats.sessions"),
+                        value: stats.totalSessions,
+                        icon: "assignment",
+                        color: "#4F46E5",
+                        bgColor: "#EEF2FF"
+                    })}
+                    {renderStatsBlock({
+                        label: t("history.stats.studyTime"),
+                        value: formatDuration(stats.totalTime),
+                        icon: "schedule",
+                        color: "#10B981",
+                        bgColor: "#ECFDF5"
+                    })}
+                    {renderStatsBlock({
+                        label: t("history.stats.experience"),
+                        value: stats.totalExperience.toLocaleString(),
+                        icon: "stars",
+                        color: "#F59E0B",
+                        bgColor: "#FFFBEB"
+                    })}
+                    {renderStatsBlock({
+                        label: t("history.stats.avgScore"),
+                        value: `${Math.round(stats.averageScore)}%`,
+                        icon: "trending-up",
+                        color: "#EF4444",
+                        bgColor: "#FEF2F2"
+                    })}
                 </View>
 
                 <View style={styles.chartSection}>
                     <Text style={styles.chartTitle}>{t("history.stats.progressChart")}</Text>
-                    <Text style={styles.skillText}>({t("common.chartComponent")})</Text>
+                    <Text style={styles.chartPlaceholderText}>({t("common.chartComponent")})</Text>
                 </View>
             </View>
         )
     }
 
     const renderContent = () => {
-        if (!userId) {
-            return (
-                <View style={styles.centerScreen}>
-                    <Icon name="lock-outline" size={48} color="#6B7280" />
-                    <Text style={styles.errorText}>{t("common.authRequired")}</Text>
-                </View>
-            )
-        }
 
         if (isLoading) {
             return (
-                <View style={styles.centerScreen}>
-                    <ActivityIndicator size="large" />
-                    <Text style={styles.loadingText}>{t("common.loading")}</Text>
+                <View style={styles.centerContent}>
+                    <ActivityIndicator size="large" color="#4F46E5" />
+                    <Text style={styles.loadingText}>{t("common.loadingData")}</Text>
                 </View>
             )
         }
 
         if (error) {
+            console.error("API Error in ProgressScreen:", error);
             return (
-                <View style={styles.centerScreen}>
+                <View style={styles.centerContent}>
                     <Icon name="error-outline" size={48} color="#EF4444" />
-                    <Text style={styles.errorText}>{t("common.error")}</Text>
+                    <Text style={styles.errorText}>
+                        {t("common.errorLoadingData")}
+                    </Text>
                 </View>
             )
         }
@@ -191,7 +234,7 @@ const ProgressScreen = () => {
                         {studySessions.length > 0 ? (
                             studySessions.map(renderSessionCard)
                         ) : (
-                            <View style={styles.centerScreen}>
+                            <View style={styles.centerContent}>
                                 <Icon name="sentiment-dissatisfied" size={48} color="#6B7280" />
                                 <Text style={styles.loadingText}>{t("history.noSessions")}</Text>
                             </View>
@@ -199,7 +242,7 @@ const ProgressScreen = () => {
                     </View>
                 )}
                 {currentTab === "tests" && (
-                    <View style={styles.centerScreen}>
+                    <View style={styles.centerContent}>
                         <Icon name="build-circle" size={48} color="#6B7280" />
                         <Text style={styles.loadingText}>{t("history.tests.notImplemented")}</Text>
                     </View>
@@ -219,20 +262,21 @@ const ProgressScreen = () => {
                     <Text style={styles.headerTitle}>{t("history.title")}</Text>
                     <TouchableOpacity>
                         <Icon name="file-download" size={24} color="#6B7280" />
-                        <Text style={{ fontSize: 10, color: "#6B7280" }}>{t("history.export")}</Text>
+                        <Text style={styles.exportText}>{t("history.export")}</Text>
                     </TouchableOpacity>
                 </View>
 
                 <View style={styles.tabContainer}>
                     {[
+                        { key: "stats", label: t("history.tabs.stats"), icon: "analytics" },
                         { key: "sessions", label: t("history.tabs.sessions"), icon: "history" },
                         { key: "tests", label: t("history.tabs.tests"), icon: "assignment" },
-                        { key: "stats", label: t("history.tabs.stats"), icon: "analytics" },
                     ].map((tab) => (
                         <TouchableOpacity
                             key={tab.key}
                             style={[styles.tab, currentTab === tab.key && styles.activeTab]}
-                            onPress={() => setCurrentTab(tab.key as any)}
+                            onPress={() => setCurrentTab(tab.key as Tab)}
+                            disabled={isLoading}
                         >
                             <Icon name={tab.icon} size={18} color={currentTab === tab.key ? "#FFFFFF" : "#6B7280"} />
                             <Text style={[styles.tabText, currentTab === tab.key && styles.activeTabText]}>{tab.label}</Text>
@@ -240,27 +284,29 @@ const ProgressScreen = () => {
                     ))}
                 </View>
 
-                {currentTab !== "stats" && (
-                    <View style={styles.filterContainer}>
-                        {[
-                            { key: "week", label: t("history.filters.week") },
-                            { key: "month", label: t("history.filters.month") },
-                            { key: "year", label: t("history.filters.year") },
-                        ].map((filter) => (
-                            <TouchableOpacity
-                                key={filter.key}
-                                style={[styles.filterButton, timeFilter === filter.key && styles.activeFilter]}
-                                onPress={() => setTimeFilter(filter.key as any)}
-                            >
-                                <Text style={[styles.filterText, timeFilter === filter.key && styles.activeFilterText]}>
-                                    {filter.label}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                )}
+                <View style={styles.filterContainer}>
+                    {(["week", "month", "year"] as Period[]).map((filter) => (
+                        <TouchableOpacity
+                            key={filter}
+                            style={[styles.filterButton, timeFilter === filter && styles.activeFilter]}
+                            onPress={() => setTimeFilter(filter)}
+                            disabled={isLoading}
+                        >
+                            <Text style={[styles.filterText, timeFilter === filter && styles.activeFilterText]}>
+                                {t(`history.filters.${filter}`)}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
 
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+                <ScrollView
+                    style={styles.content}
+                    contentContainerStyle={styles.scrollContentContainer}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#4F46E5" />
+                    }
+                >
                     {renderContent()}
                 </ScrollView>
             </View>
@@ -273,14 +319,16 @@ const styles = createScaledSheet({
         flex: 1,
         backgroundColor: "#F8FAFC",
     },
-    centerScreen: {
+    centerContent: {
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
+        paddingVertical: 50,
     },
     loadingText: {
         marginTop: 10,
         color: "#6B7280",
+        fontSize: 14
     },
     errorText: {
         marginTop: 10,
@@ -303,6 +351,12 @@ const styles = createScaledSheet({
         fontSize: 18,
         fontWeight: "600",
         color: "#1F2937",
+    },
+    exportText: {
+        fontSize: 10,
+        color: "#6B7280",
+        textAlign: "center",
+        marginTop: 2
     },
     tabContainer: {
         flexDirection: "row",
@@ -362,8 +416,12 @@ const styles = createScaledSheet({
     content: {
         flex: 1,
     },
-    scrollContent: {
+    scrollContentContainer: {
         padding: 20,
+        paddingBottom: 40
+    },
+    scrollContent: {
+        flexGrow: 1
     },
     sessionsList: {
         gap: 12,
@@ -466,34 +524,54 @@ const styles = createScaledSheet({
     },
     statsContainer: {
         gap: 24,
+        flex: 1
     },
     statsGrid: {
         flexDirection: "row",
         flexWrap: "wrap",
+        justifyContent: "space-between",
         gap: 12,
     },
     statCard: {
-        flex: 1,
-        minWidth: "45%",
-        backgroundColor: "#FFFFFF",
-        padding: 20,
+        width: "48%",
+        padding: 16,
         borderRadius: 12,
-        alignItems: "center",
+        justifyContent: "space-between",
+        minHeight: 110,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
         shadowRadius: 3,
         elevation: 2,
     },
+    statHeader: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "flex-start",
+        marginBottom: 12,
+    },
+    statIconBubble: {
+        padding: 8,
+        borderRadius: 12,
+        backgroundColor: "#FFFFFF"
+    },
     statValue: {
         fontSize: 24,
-        fontWeight: "bold",
-        color: "#1F2937",
-        marginVertical: 8,
+        fontWeight: "800",
+        marginTop: 4,
+        color: "#1F2937"
     },
     statLabel: {
-        fontSize: 12,
-        color: "#6B7280",
+        fontSize: 13,
+        fontWeight: "600",
+        color: "#475569",
+    },
+    sectionHeader: {
+        fontSize: 14,
+        fontWeight: "700",
+        color: "#64748B",
+        marginBottom: 12,
+        textTransform: "uppercase",
     },
     chartSection: {
         backgroundColor: "#FFFFFF",
@@ -504,6 +582,7 @@ const styles = createScaledSheet({
         shadowOpacity: 0.05,
         shadowRadius: 3,
         elevation: 2,
+        minHeight: 200,
     },
     chartTitle: {
         fontSize: 16,
@@ -511,6 +590,12 @@ const styles = createScaledSheet({
         color: "#1F2937",
         marginBottom: 16,
     },
+    chartPlaceholderText: {
+        fontSize: 12,
+        color: "#9CA3AF",
+        fontStyle: 'italic',
+        textAlign: 'center'
+    }
 })
 
-export default ProgressScreen;
+export default ProgressScreen

@@ -29,7 +29,7 @@ public class LessonSeriesServiceImpl implements LessonSeriesService {
     private final LessonSeriesMapper lessonSeriesMapper;
 
     @Override
-    @Cacheable(value = "lessonSeries", key = "#lessonSeriesName + ':' + #languageCode + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "lessonSeries", key = "#lessonSeriesName + ':' + #languageCode + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<LessonSeriesResponse> getAllLessonSeries(String lessonSeriesName, String languageCode, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -44,7 +44,7 @@ public class LessonSeriesServiceImpl implements LessonSeriesService {
     }
 
     @Override
-    @Cacheable(value = "lessonSeries", key = "#id")
+    //@Cacheable(value = "lessonSeries", key = "#id")
     public LessonSeriesResponse getLessonSeriesById(UUID id) {
         try {
             if (id == null) {
@@ -61,7 +61,7 @@ public class LessonSeriesServiceImpl implements LessonSeriesService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonSeries", key = "#result.lessonSeriesId")
+    //@CachePut(value = "lessonSeries", key = "#result.lessonSeriesId")
     public LessonSeriesResponse createLessonSeries(LessonSeriesRequest request) {
         try {
             if (request == null) {
@@ -78,7 +78,7 @@ public class LessonSeriesServiceImpl implements LessonSeriesService {
 
     @Override
     @Transactional
-    @CachePut(value = "lessonSeries", key = "#id")
+    //@CachePut(value = "lessonSeries", key = "#id")
     public LessonSeriesResponse updateLessonSeries(UUID id, LessonSeriesRequest request) {
         try {
             if (id == null || request == null) {
@@ -97,7 +97,7 @@ public class LessonSeriesServiceImpl implements LessonSeriesService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "lessonSeries", key = "#id")
+    //@CacheEvict(value = "lessonSeries", key = "#id")
     public void deleteLessonSeries(UUID id) {
         try {
             if (id == null) {

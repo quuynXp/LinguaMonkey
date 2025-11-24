@@ -3,14 +3,16 @@ package com.connectJPA.LinguaVietnameseApp.scheduler;
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
 import com.connectJPA.LinguaVietnameseApp.entity.Transaction;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseDiscountRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.TransactionRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
-// import com.connectJPA.LinguaVietnameseApp.service.PaymentGatewayService; // Giả định bạn có service này
+import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -19,7 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -31,8 +35,7 @@ public class CommerceScheduler {
     private final CourseDiscountRepository courseDiscountRepository;
     private final CourseVersionRepository courseVersionRepository;
     private final CourseEnrollmentRepository courseEnrollmentRepository;
-
-    // private final PaymentGatewayService paymentGatewayService; // (Giả định)
+    private final UserRepository userRepository;
 
     /**
      * Chạy mỗi 15 phút để kiểm tra lại các giao dịch "PENDING".
@@ -40,46 +43,56 @@ public class CommerceScheduler {
     @Scheduled(cron = "0 0/15 * * * ?") // 15 phút một lần
     @Transactional
     public void checkPendingTransactions() {
-        // Kiểm tra các giao dịch PENDING được tạo hơn 10 phút trước
         OffsetDateTime tenMinutesAgo = OffsetDateTime.now().minusMinutes(10);
         List<Transaction> pendingTransactions = transactionRepository.findByStatusAndCreatedAtBeforeAndIsDeletedFalse(TransactionStatus.PENDING, tenMinutesAgo);
         if (pendingTransactions.isEmpty()) return;
 
         log.info("Checking status of {} pending transactions.", pendingTransactions.size());
 
-        for (Transaction tx : pendingTransactions) {
-            // **Giả định logic nghiệp vụ:**
-            // Bạn cần một service (ví dụ: PaymentGatewayService) để gọi API của VNPAY/Momo
-            // để kiểm tra lại trạng thái của giao dịch bằng idempotency_key hoặc payment_gateway_transaction_id
+        List<UUID> userIds = pendingTransactions.stream().map(Transaction::getUserId).collect(Collectors.toList());
+        Map<UUID, String> userLangMap = userRepository.findAllById(userIds).stream()
+                .collect(Collectors.toMap(User::getUserId, User::getNativeLanguageCode));
 
-            // String paymentStatus = paymentGatewayService.checkTransaction(tx.getIdempotencyKey());
-            String paymentStatus = "FAILED"; // (Giả lập là FAILED)
+        for (Transaction tx : pendingTransactions) {
+            String paymentStatus = "FAILED";
+            String langCode = userLangMap.getOrDefault(tx.getUserId(), "en");
+
+            String title;
+            String content;
+            String type;
 
             if ("SUCCESS".equals(paymentStatus)) {
                 tx.setStatus(TransactionStatus.valueOf("SUCCESS"));
                 // (Thêm logic nghiệp vụ: cộng tiền vào ví, kích hoạt khóa học...)
 
-                NotificationRequest request = NotificationRequest.builder()
-                        .userId(tx.getUserId())
-                        .title("Transaction Successful")
-                        .content("Your payment of " + tx.getAmount() + " " + tx.getCurrency() + " was successful.")
-                        .type("TRANSACTION_SUCCESS")
-                        .payload("{\"screen\":\"Wallet\"}")
-                        .build();
-                notificationService.createPushNotification(request);
+                title = "Transaction Successful";
+                content = "Your payment of " + tx.getAmount() + " " + tx.getCurrency() + " was successful.";
+                type = "TRANSACTION_SUCCESS";
 
             } else if ("FAILED".equals(paymentStatus)) {
                 tx.setStatus(TransactionStatus.valueOf("FAILED"));
-                NotificationRequest request = NotificationRequest.builder()
-                        .userId(tx.getUserId())
-                        .title("Transaction Failed")
-                        .content("Your payment of " + tx.getAmount() + " " + tx.getCurrency() + " failed.")
-                        .type("TRANSACTION_FAILED")
-                        .payload("{\"screen\":\"Wallet\"}")
-                        .build();
-                notificationService.createPushNotification(request);
+                
+                title = "Transaction Failed";
+                content = "Your payment of " + tx.getAmount() + " " + tx.getCurrency() + " failed.";
+                type = "TRANSACTION_FAILED";
+            } else {
+                continue; // Chưa xử lý nếu vẫn PENDING hoặc status khác
             }
+            
+            // Chú ý: Ở đây ta KHÔNG dùng NotificationI18nUtil vì nội dung có chứa amount và currency
+            // -> Cần một MessageSource hoặc logic i18n phức tạp hơn để xử lý format số và chuỗi.
+            // Tạm thời giữ nguyên để tránh việc tạo logic quá phức tạp cho ví dụ này, 
+            // nhưng nên lưu ý rằng các chuỗi này cần được dịch trong thực tế.
+
+            NotificationRequest request = NotificationRequest.builder()
+                    .userId(tx.getUserId())
+                    .title(title)
+                    .content(content)
+                    .type(type)
+                    .payload("{\"screen\":\"Wallet\"}")
+                    .build();
             transactionRepository.save(tx);
+            notificationService.createPushNotification(request);
         }
     }
 
@@ -110,13 +123,22 @@ public class CommerceScheduler {
 
             List<UUID> userIds = courseEnrollmentRepository.findActiveUserIdsByCourseId(version.getCourse().getCourseId());
 
+            if (userIds.isEmpty()) continue;
+            
             log.info("Sending COURSE_UPDATE notification to {} users for courseId {}", userIds.size(), version.getCourse().getCourseId());
 
+            // Lấy thông tin ngôn ngữ của người dùng
+            Map<UUID, String> userLangMap = userRepository.findAllById(userIds).stream()
+                    .collect(Collectors.toMap(User::getUserId, User::getNativeLanguageCode));
+
             for (UUID userId : userIds) {
+                String langCode = userLangMap.getOrDefault(userId, "en");
+                String[] message = NotificationI18nUtil.getLocalizedMessage("COURSE_UPDATE", langCode);
+                
                 NotificationRequest request = NotificationRequest.builder()
                         .userId(userId)
-                        .title("Course Updated!")
-                        .content("A course you are enrolled in (" + version.getCourse().getTitle() + ") has a new version.")
+                        .title(message[0])
+                        .content(String.format(message[1], version.getCourse().getTitle()))
                         .type("COURSE_UPDATE")
                         .payload(String.format("{\"screen\":\"CourseDetail\", \"courseId\":\"%s\"}", version.getCourse().getCourseId()))
                         .build();

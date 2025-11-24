@@ -8,8 +8,11 @@ public enum ErrorCode {
     EMAIL_SENDING_FAILED(1000, "error.missing_required_field", HttpStatus.BAD_REQUEST, true),
     BAD_REQUEST(1000, "error.missing_required_field", HttpStatus.BAD_REQUEST, true),
     ITEM_NOT_FOUND(1000, "error.missing_required_field", HttpStatus.BAD_REQUEST, true),
-
-
+    INCORRECT_PASSWORD(1120, "INCORRECT_PASSWORD", HttpStatus.BAD_REQUEST,  true),
+    CONCURRENT_UPDATE_ERROR(2200, "CONCURRENT_UPDATE_ERROR", HttpStatus.BAD_REQUEST, true),
+    ACCOUNT_ALREADY_DEACTIVATED(400, "Account.alreadyDeactivated",HttpStatus.BAD_REQUEST, true),
+ACCOUNT_NOT_DEACTIVATED(400, "Account.notDeactivated", HttpStatus.BAD_REQUEST, true),
+ACCOUNT_RECOVERY_EXPIRED(400, "Account.recoveryExpired", HttpStatus.BAD_REQUEST,true),
     // ===== 400 Bad Request (Lỗi từ phía client, an toàn để hiển thị) =====
     // Nhóm: Validation & Request Chung (10xx)
     MISSING_REQUIRED_FIELD(1000, "error.missing_required_field", HttpStatus.BAD_REQUEST, true),

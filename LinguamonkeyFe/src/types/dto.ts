@@ -265,7 +265,7 @@ export interface CreateRoadmapRequest {
     languageCode: string;
     currentLevel: number;
     targetLevel: number;
-    targetProficiency: string;
+    targetProficiency: Enums.ProficiencyLevel;
     estimatedCompletionTime: number;
     certification: Enums.Certification;
 }
@@ -637,8 +637,9 @@ export interface TransferRequest {
 }
 
 export interface TranslationRequestBody {
-    translatedText: string;
-    targetLanguage: string;
+    text: string;           
+    source_lang: string;  
+    target_lang: string;
 }
 
 export interface TtsRequest {
@@ -1189,6 +1190,7 @@ export interface LanguageResponse {
 }
 
 export interface LeaderboardEntryResponse {
+    leaderboardEntryId: Entities.LeaderboardEntryId,
     userId: string;
     fullname: string;
     nickname: string;
@@ -1279,6 +1281,16 @@ export interface LessonResponse {
     flashcardCount: number;
     dueFlashcardsCount: number;
     videoUrls: string[];
+    description: string;
+    orderIndex: number;
+    isFree: boolean;
+    difficultyLevel: Enums.DifficultyLevel;
+    thumbnailUrl: string;
+    durationSeconds: number;
+    certificateCode: string;
+    passScorePercent: number;
+    shuffleQuestions: boolean;
+    allowedRetakeCount: number;
 }
 
 export interface LessonReviewResponse {

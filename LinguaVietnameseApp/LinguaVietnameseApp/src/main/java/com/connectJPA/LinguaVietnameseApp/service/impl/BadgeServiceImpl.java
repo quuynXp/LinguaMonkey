@@ -40,7 +40,6 @@ public class BadgeServiceImpl implements BadgeService {
     private final UserDailyChallengeRepository userDailyChallengeRepository;
 
     @Override
-    @Cacheable(value = "badges", key = "#badgeName + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<BadgeResponse> getAllBadges(String badgeName, Pageable pageable) {
         try {
             Page<Badge> badges = badgeRepository.findByBadgeNameContainingAndIsDeletedFalse(badgeName, pageable);
@@ -124,7 +123,6 @@ public class BadgeServiceImpl implements BadgeService {
     }
 
     @Override
-    @Cacheable(value = "badges", key = "#id")
     public BadgeResponse getBadgeById(UUID id) {
         try {
             Badge badge = badgeRepository.findByBadgeIdAndIsDeletedFalse(id)
@@ -141,7 +139,7 @@ public class BadgeServiceImpl implements BadgeService {
 
     @Override
     @Transactional
-    @CachePut(value = "badges", key = "#result.badgeId")
+    //@CachePut(value = "badges", key = "#result.badgeId")
     public BadgeResponse createBadge(BadgeRequest request) {
         try {
             if (request == null) {
@@ -162,8 +160,8 @@ public class BadgeServiceImpl implements BadgeService {
 
     @Override
     @Transactional
-    @CachePut(value = "badges", key = "#id")
-    @CacheEvict(value = "badges", allEntries = true)
+    //@CachePut(value = "badges", key = "#id")
+    //@CacheEvict(value = "badges", allEntries = true)
     public BadgeResponse updateBadge(UUID id, BadgeRequest request) {
         try {
             if (request == null) {
@@ -185,7 +183,7 @@ public class BadgeServiceImpl implements BadgeService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "badges", key = "#id", allEntries = true)
+    //@CacheEvict(value = "badges", key = "#id", allEntries = true)
     public void deleteBadge(UUID id) {
         try {
             Badge badge = badgeRepository.findByBadgeIdAndIsDeletedFalse(id)

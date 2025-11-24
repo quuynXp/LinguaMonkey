@@ -29,7 +29,7 @@ public class PermissionServiceImpl implements PermissionService {
     private final PermissionMapper permissionMapper;
 
     @Override
-    @Cacheable(value = "permissions", key = "#name + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "permissions", key = "#name + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<PermissionResponse> getAllPermissions(String name, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -44,7 +44,7 @@ public class PermissionServiceImpl implements PermissionService {
     }
 
     @Override
-    @Cacheable(value = "permissions", key = "#id")
+    //@Cacheable(value = "permissions", key = "#id")
     public PermissionResponse getPermissionById(UUID id) {
         try {
             if (id == null) {
@@ -61,7 +61,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     @Transactional
-    @CachePut(value = "permissions", key = "#result.permissionId")
+    //@CachePut(value = "permissions", key = "#result.permissionId")
     public PermissionResponse createPermission(PermissionRequest request) {
         try {
             if (request == null) {
@@ -78,7 +78,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     @Transactional
-    @CachePut(value = "permissions", key = "#id")
+    //@CachePut(value = "permissions", key = "#id")
     public PermissionResponse updatePermission(UUID id, PermissionRequest request) {
         try {
             if (id == null || request == null) {
@@ -97,7 +97,7 @@ public class PermissionServiceImpl implements PermissionService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "permissions", key = "#id")
+    //@CacheEvict(value = "permissions", key = "#id")
     public void deletePermission(UUID id) {
         try {
             if (id == null) {

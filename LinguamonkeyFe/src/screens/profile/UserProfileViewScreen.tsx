@@ -134,9 +134,6 @@ const UserProfileViewScreen = ({ route }: { route: { params?: RouteParams } }) =
     });
   };
 
-  // Không còn primaryLearningLanguage → tạm thời loại bỏ nút Roadmap
-  // Khi backend bổ sung field này, sẽ bật lại
-
   if (profileError) {
     return (
       <ScreenLayout>
@@ -188,7 +185,8 @@ const UserProfileViewScreen = ({ route }: { route: { params?: RouteParams } }) =
 
           {currentUser?.userId !== profileSafe.id && (
             <View style={styles.actionButtons}>
-              {!profileSafe.isFriend && !profileSafe.friendRequestSent && (
+              {/* 1. Add Friend */}
+              {!profileSafe.isFriend && !profileSafe.friendRequestSent && !profileSafe.incomingFriendRequest && (
                 <TouchableOpacity
                   style={[styles.addFriendButton, sendRequest.isPending && styles.disabledButton]}
                   onPress={handleAddFriend}
@@ -201,6 +199,7 @@ const UserProfileViewScreen = ({ route }: { route: { params?: RouteParams } }) =
                 </TouchableOpacity>
               )}
 
+              {/* 2. Request Sent (Pending) */}
               {profileSafe.friendRequestSent && (
                 <View style={styles.pendingButton}>
                   <Icon name="schedule" size={20} color="#666" />
@@ -208,6 +207,7 @@ const UserProfileViewScreen = ({ route }: { route: { params?: RouteParams } }) =
                 </View>
               )}
 
+              {/* 3. Incoming Request (Accept) */}
               {profileSafe.incomingFriendRequest && (
                 <TouchableOpacity
                   style={[styles.addFriendButton, styles.acceptButton]}
@@ -221,10 +221,13 @@ const UserProfileViewScreen = ({ route }: { route: { params?: RouteParams } }) =
                 </TouchableOpacity>
               )}
 
-              <TouchableOpacity style={styles.messageButton} onPress={handleMessage}>
-                <Icon name="message" size={20} color="#2196F3" />
-                <Text style={styles.messageText}>{t("profile.message")}</Text>
-              </TouchableOpacity>
+              {/* 4. Is Friend (Message Button) */}
+              {(profileSafe.isFriend || profileSafe.incomingFriendRequest) && (
+                <TouchableOpacity style={styles.messageButton} onPress={handleMessage}>
+                  <Icon name="message" size={20} color="#2196F3" />
+                  <Text style={styles.messageText}>{t("profile.message")}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           )}
         </View>

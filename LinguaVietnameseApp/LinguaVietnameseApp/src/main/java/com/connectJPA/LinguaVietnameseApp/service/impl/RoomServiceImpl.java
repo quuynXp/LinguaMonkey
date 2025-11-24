@@ -48,7 +48,7 @@ public class RoomServiceImpl implements RoomService {
     private final RoomMapper roomMapper;
 
     @Override
-    @Cacheable(value = "rooms", key = "#roomName + ':' + #creatorId + ':' + #purpose + ':' + #roomType + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "rooms", key = "#roomName + ':' + #creatorId + ':' + #purpose + ':' + #roomType + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -151,7 +151,7 @@ public class RoomServiceImpl implements RoomService {
     }
 
     @Override
-    @Cacheable(value = "rooms", key = "#id")
+    //@Cacheable(value = "rooms", key = "#id")
     public RoomResponse getRoomById(UUID id) {
         try {
             if (id == null) {
@@ -168,7 +168,7 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional
-    @CachePut(value = "rooms", key = "#result.roomId")
+    //@CachePut(value = "rooms", key = "#result.roomId")
     public RoomResponse createRoom(RoomRequest request) {
         try {
             if (request == null || request.getCreatorId() == null) {
@@ -198,7 +198,7 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional
-    @CachePut(value = "rooms", key = "#id")
+    //@CachePut(value = "rooms", key = "#id")
     public RoomResponse updateRoom(UUID id, RoomRequest request) {
         try {
             if (id == null || request == null) {
@@ -223,7 +223,7 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "rooms", key = "#id")
+    //@CacheEvict(value = "rooms", key = "#id")
     public void deleteRoom(UUID id) {
         try {
             if (id == null) {
@@ -244,7 +244,7 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "room_members", key = "#roomId")
+    //@Cacheable(value = "room_members", key = "#roomId")
     public List<MemberResponse> getRoomMembers(UUID roomId) {
         try {
             if (!roomRepository.existsById(roomId)) {

@@ -29,7 +29,6 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
-    @Cacheable(value = "courseDiscounts", key = "#courseId + ':' + #discountPercentage + ':' + #pageable")
     public Page<CourseDiscountResponse> getAllCourseDiscounts(UUID courseId, Integer discountPercentage, Pageable pageable) {
         try {
             Page<CourseDiscount> discounts = courseDiscountRepository.findAllByCourseIdAndDiscountPercentageAndIsDeletedFalse(courseId, discountPercentage, pageable);
@@ -42,7 +41,6 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
     }
 
     @Override
-    @Cacheable(value = "courseDiscount", key = "#id")
     public CourseDiscountResponse getCourseDiscountById(UUID id) {
         try {
             CourseDiscount discount = courseDiscountRepository.findById(id)
@@ -57,7 +55,7 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"courseDiscounts"}, allEntries = true)
+    //@CacheEvict(value = {"courseDiscounts"}, allEntries = true)
     public CourseDiscountResponse createCourseDiscount(CourseDiscountRequest request) {
         try {
             CourseDiscount discount = courseDiscountMapper.toEntity(request);
@@ -72,7 +70,7 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    @CachePut(value = "courseDiscount", key = "#id")
+    //@CachePut(value = "courseDiscount", key = "#id")
     public CourseDiscountResponse updateCourseDiscount(UUID id, CourseDiscountRequest request) {
         try {
             CourseDiscount discount = courseDiscountRepository.findById(id)
@@ -89,7 +87,7 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "courseDiscount", key = "#id")
+    //@CacheEvict(value = "courseDiscount", key = "#id")
     public void deleteCourseDiscount(UUID id) {
         try {
             CourseDiscount discount = courseDiscountRepository.findById(id)
@@ -105,7 +103,7 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "courseDiscounts", allEntries = true)
+    //@CacheEvict(value = "courseDiscounts", allEntries = true)
     public void deleteCourseDiscountsByCourseId(UUID courseId) {
         try {
             courseDiscountRepository.findAllByCourseIdAndIsDeletedFalse(courseId).forEach(discount -> {

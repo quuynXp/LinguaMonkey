@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
@@ -19,7 +20,7 @@ import com.connectJPA.LinguaVietnameseApp.service.*;
 import com.connectJPA.LinguaVietnameseApp.utils.CloudinaryHelper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
-import org.springframework.orm.ObjectOptimisticLockingFailureException; // <-- NEW IMPORT
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -27,11 +28,11 @@ import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+
 
 import java.time.Duration;
 import java.time.LocalDate;
@@ -40,6 +41,7 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+
 
 @Service
 @RequiredArgsConstructor
@@ -183,7 +185,7 @@ public class UserServiceImpl implements UserService {
     @Override
     public Page<User> searchUsers(String keyword, int page, int size) {
         if (keyword == null || keyword.isBlank()) {
-            return Page.empty(); 
+            return Page.empty();
         }
         try {
             Pageable pageable = PageRequest.of(page, size);
@@ -203,6 +205,10 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
+    }
+    @Override
+    public User findByUserId(UUID userId) {
+        return userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
     }
 
 
@@ -459,9 +465,9 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         
         if (request.getEmail() != null) user.setEmail(request.getEmail());
-        if (request.getPassword() != null && !request.getPassword().isBlank()) {
-            user.setPassword(passwordEncoder.encode(request.getPassword()));
-        }
+        // Remove password update from this general PUT method to avoid accidental changes
+        // The dedicated PATCH /{id}/password is used for security.
+        
         if (request.getFullname() != null) user.setFullname(request.getFullname());
         if (request.getNickname() != null) user.setNickname(request.getNickname());
         if (request.getBio() != null) user.setBio(request.getBio());
@@ -804,6 +810,8 @@ public class UserServiceImpl implements UserService {
             if (id == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
+            // Cần dùng findById để có thể tìm cả user đã bị soft-delete (nếu repository cho phép)
+            // Tuy nhiên, vì API này chỉ dùng cho ADMIN (ở UserController), ta dùng findByUserIdAndIsDeletedFalse.
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             userRepository.softDeleteById(id);
@@ -816,19 +824,21 @@ public class UserServiceImpl implements UserService {
     @Override
     public User getUserIfExists(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId)
-                .orElseThrow(() -> new RuntimeException("User not found with id: " + userId));
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
     }
 
 
-    @Override
-    public User findByUserId(UUID userId) {
-        try {
-            return userRepository.findByUserIdAndIsDeletedFalse(userId)
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.USER_NOT_FOUND);
-        }
-    }
+    // The problematic method removed from here:
+    // @Override
+    // public User findByUserIdAndIsDeletedFalse(UUID userId) {
+    //     try {
+    //         return userRepository.findByUserIdAndIsDeletedFalse(userId)
+    //                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    //     } catch (Exception e) {
+    //         throw new AppException(ErrorCode.USER_NOT_FOUND);
+    //     }
+    // }
+
 
     @Transactional
     public UserResponse updateAvatarUrl(UUID id, String avatarUrl) {
@@ -1063,6 +1073,8 @@ public class UserServiceImpl implements UserService {
     }
 
 
+    // START: Logic cập nhật Streak (15 phút/ngày)
+    
     @Override
     @Transactional
     public UserResponse updateStreakOnActivity(UUID id) {
@@ -1070,27 +1082,55 @@ public class UserServiceImpl implements UserService {
             if (id == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
+            
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            
             LocalDate today = LocalDate.now();
-            boolean hasActivityToday = userLearningActivityRepository.existsByUserIdAndDate(id, today);
-            if (!hasActivityToday) {
-                int currentStreak = user.getStreak();
+            int currentStreak = user.getStreak();
+            
+            // 1. Kiểm tra tổng thời gian học trong ngày (phút)
+            Long totalDurationMinutesToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, today);
+            int minGoal = user.getMinLearningDurationMinutes(); // Mặc định 15 phút
+            
+            boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
+            boolean streakAlreadyUpdatedToday = today.equals(user.getLastStreakCheckDate());
+
+            if (hasHitDailyGoal && !streakAlreadyUpdatedToday) {
+                // 2. Đạt mục tiêu và chưa được tăng streak hôm nay -> Tăng streak
                 user.setStreak(currentStreak + 1);
+                user.setLastStreakCheckDate(today); // Ghi lại ngày tăng streak
                 user = userRepository.saveAndFlush(user);
+                
+                // 3. Gửi Pop-up thông báo tăng streak
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
-                        .title("Streak Updated")
-                        .content("Great job! Your streak is now " + (currentStreak + 1) + " days!")
-                        .type("STREAK_UPDATE")
+                        .title("🔥 Chuỗi Streak Tăng " + (currentStreak + 1) + " Ngày!")
+                        .content("Tuyệt vời! Bạn đã hoàn thành mục tiêu " + minGoal + " phút học tập hàng ngày.")
+                        .type("STREAK_POPUP_SUCCESS") // Loại pop-up để client hiển thị
+                        .payload("{\"newStreak\":" + user.getStreak() + "}")
                         .build();
-                notificationService.createNotification(notificationRequest);
-                notificationService.sendStreakRewardNotification(id, currentStreak + 1);
+                notificationService.createPushNotification(notificationRequest);
+                notificationService.sendStreakRewardNotification(id, currentStreak + 1); // Giả định
+                
+            } else if (hasHitDailyGoal && streakAlreadyUpdatedToday) {
+                // 4. Đã đạt mục tiêu và đã được tăng streak hôm nay -> Duy trì, không làm gì.
+                log.info("User {} maintained streak today. Total minutes: {}", id, totalDurationMinutesToday);
+                
+            } else {
+                // 5. Chưa đạt mục tiêu.
+                log.info("User {} has not hit daily goal ({} mins). Current minutes: {}", id, minGoal, totalDurationMinutesToday);
             }
 
+            // Dù có tăng streak hay không, chúng ta luôn trả về thông tin user mới nhất
             return mapUserToResponseWithAllDetails(user);
+            
+        } catch (ObjectOptimisticLockingFailureException e) {
+            // Xử lý xung đột đồng thời nếu cần
+            log.error("Optimistic lock failed while updating streak for user ID {}: {}", id, e.getMessage());
+            throw new AppException(ErrorCode.CONCURRENT_UPDATE_ERROR);
         } catch (Exception e) {
-            log.error("Error while updating streak for user ID {}: {}", id, e.getMessage());
+            log.error("Error while updating streak for user ID {}: {}", id, e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -1104,15 +1144,29 @@ public class UserServiceImpl implements UserService {
             }
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            
             LocalDate yesterday = LocalDate.now().minusDays(1);
-            boolean hasActivityYesterday = userLearningActivityRepository.existsByUserIdAndDate(id, yesterday);
-            if (!hasActivityYesterday && user.getStreak() > 0) {
+            int minGoal = user.getMinLearningDurationMinutes(); // Mục tiêu tối thiểu
+
+            // 1. Kiểm tra thời gian học ngày hôm qua (phút)
+            Long totalDurationMinutesYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, yesterday);
+            boolean hasHitDailyGoalYesterday = totalDurationMinutesYesterday >= minGoal;
+            
+            // 2. Kiểm tra xem streak có được ghi nhận cho ngày hôm qua không
+            // Đây là lớp bảo vệ dự phòng cho Scheduler (dù logic reset sẽ nằm trong Scheduler). 
+            // Ta chỉ reset nếu streak > 0 VÀ không đạt mục tiêu ngày hôm qua.
+            
+            boolean streakCheckYesterday = yesterday.equals(user.getLastStreakCheckDate());
+
+            if (user.getStreak() > 0 && (!hasHitDailyGoalYesterday || !streakCheckYesterday)) {
                 user.setStreak(0);
+                user.setLastStreakCheckDate(null); // Reset ngày kiểm tra
                 user = userRepository.saveAndFlush(user);
+                
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
                         .title("Streak Reset")
-                        .content("Your streak has been reset to 0 due to inactivity.")
+                        .content("Chuỗi học tập của bạn đã bị reset về 0 do không hoàn thành mục tiêu " + minGoal + " phút.")
                         .type("STREAK_RESET")
                         .build();
                 notificationService.createNotification(notificationRequest);
@@ -1132,14 +1186,23 @@ public class UserServiceImpl implements UserService {
             }
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            
             LocalDate today = LocalDate.now();
-            boolean hasActivityToday = userLearningActivityRepository.existsByUserIdAndDate(id, today);
-            if (!hasActivityToday && user.getStreak() > 0) {
+            int minGoal = user.getMinLearningDurationMinutes();
+
+            Long totalDurationMinutesToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, today);
+            boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
+
+            // Kiểm tra: Chưa đạt mục tiêu VÀ đang có streak > 0
+            if (!hasHitDailyGoal && user.getStreak() > 0) {
+                long minutesRemaining = minGoal - totalDurationMinutesToday;
+                
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
-                        .title("Keep Your Streak Alive!")
-                        .content("Complete a lesson today to maintain your " + user.getStreak() + "-day streak!")
+                        .title("Giữ Vững Chuỗi Streak! ⏳")
+                        .content("Bạn cần học thêm " + minutesRemaining + " phút để duy trì chuỗi " + user.getStreak() + " ngày!")
                         .type("STREAK_REMINDER")
+                        .payload("{\"screen\":\"Learn\"}")
                         .build();
                 notificationService.createPushNotification(notificationRequest);
             }
@@ -1148,6 +1211,8 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+    
+    // END: Logic cập nhật Streak (15 phút/ngày)
 
     @Override
     public LevelInfoResponse getLevelInfo(UUID id) {
@@ -1257,5 +1322,104 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    @Override
+    @Transactional
+    public void changePassword(UUID id, PasswordUpdateRequest request) {
+        if (id == null || request == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        // Kiểm tra mật khẩu hiện tại (nếu có, không áp dụng cho social login)
+        if (user.getPassword() != null && !user.getPassword().isBlank() && request.getCurrentPassword() != null) {
+            if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+                throw new AppException(ErrorCode.INCORRECT_PASSWORD);
+            }
+        } else if (user.getPassword() != null && !user.getPassword().isBlank() && request.getCurrentPassword() == null) {
+            // Nếu user có mật khẩu nhưng request không gửi currentPassword
+            throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+        }
+
+        if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
+            throw new AppException(ErrorCode.INVALID_PASSWORD);
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        userRepository.saveAndFlush(user);
+
+        NotificationRequest notificationRequest = NotificationRequest.builder()
+                .userId(id)
+                .title("Password Changed")
+                .content("Your password has been successfully changed.")
+                .type("SECURITY_UPDATE")
+                .build();
+        notificationService.createNotification(notificationRequest);
+    }
+
+    @Override
+    @Transactional
+    public void deactivateUser(UUID id, int daysToKeep) {
+        if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
+
+        // Tìm kiếm cả user đã bị soft delete nếu cần
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (user.isDeleted()) {
+            throw new AppException(ErrorCode.ACCOUNT_ALREADY_DEACTIVATED);
+        }
+
+        user.setDeleted(true);
+        user.setDeletedAt(OffsetDateTime.now());
+        
+        // NOTE: Việc xóa vĩnh viễn sau 30 ngày cần được xử lý bởi một background job (Scheduler)
+        // Công việc của API này là set isDeleted=true và deletedAt=now.
+
+        userRepository.saveAndFlush(user);
+        
+        NotificationRequest notificationRequest = NotificationRequest.builder()
+                .userId(id)
+                .title("Account Deactivated")
+                .content("Your account has been deactivated. You have " + daysToKeep + " days to restore it.")
+                .type("ACCOUNT_DEACTIVATED")
+                .build();
+        notificationService.createNotification(notificationRequest);
+    }
+
+    @Override
+    @Transactional
+    public UserResponse restoreUser(UUID id) {
+        if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
+        
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id) // Tìm user kể cả đã bị soft-delete
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (!user.isDeleted()) {
+            throw new AppException(ErrorCode.ACCOUNT_NOT_DEACTIVATED);
+        }
+
+        // Giả định thời gian khôi phục là 30 ngày (tính từ deletedAt)
+        if (user.getDeletedAt() != null) {
+            OffsetDateTime permanentDeleteTime = user.getDeletedAt().plusDays(30);
+            if (OffsetDateTime.now().isAfter(permanentDeleteTime)) {
+                throw new AppException(ErrorCode.ACCOUNT_RECOVERY_EXPIRED);
+            }
+        }
+        
+        user.setDeleted(false);
+        user.setDeletedAt(null);
+        user = userRepository.saveAndFlush(user);
+
+        NotificationRequest notificationRequest = NotificationRequest.builder()
+                .userId(id)
+                .title("Account Restored")
+                .content("Your account has been successfully restored.")
+                .type("ACCOUNT_RESTORED")
+                .build();
+        notificationService.createNotification(notificationRequest);
+
+        return mapUserToResponseWithAllDetails(user);
     }
 }

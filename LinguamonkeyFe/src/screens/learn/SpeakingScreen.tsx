@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,10 +10,12 @@ import {
     ActivityIndicator,
     FlatList,
     Platform,
+    StyleSheet,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native'; // IMPORT THÊM
 import PermissionService from '../../services/permissionService';
 import i18n from '../../i18n';
 import { useSkillLessons } from '../../hooks/useSkillLessons';
@@ -25,22 +27,25 @@ import {
     SpeakingSentence,
     LessonResponse,
 } from '../../types/dto';
+import { SkillType } from '../../types/enums';
 
 interface SpeakingScreenProps {
     navigation: any;
     route: {
         params?: {
             lessonId?: string;
-            lesson?: LessonResponse; // Added lesson object
-            categoryId?: string;
+            lesson?: LessonResponse;
         };
     };
 }
 
 const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const insets = useSafeAreaInsets();
-    const lessonId = route.params?.lessonId || route.params?.lesson?.lessonId;
-    const passedLesson = route.params?.lesson;
+
+    const paramLessonId = route.params?.lessonId || route.params?.lesson?.lessonId;
+    const paramLesson = route.params?.lesson;
+
+    const [currentLessonId, setCurrentLessonId] = useState<string | undefined>(paramLessonId);
 
     const [selectedSentence, setSelectedSentence] = useState<SpeakingSentence | null>(null);
     const [isRecording, setIsRecording] = useState(false);
@@ -57,14 +62,44 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
     const { useStreamPronunciation } = useSkillLessons();
-    const { useLesson } = useLessons();
+    const { useLesson, useAllLessons } = useLessons();
     const streamPronunciationMutation = useStreamPronunciation();
 
-    // Fetch fresh data, but we can use passedLesson while loading
-    const { data: fetchedLessonData, isLoading: isLoadingLesson } = useLesson(lessonId || null);
+    // SỬA ĐOẠN NÀY: Lấy thêm isError, error, refetch
+    const {
+        data: speakingLessonsData,
+        isLoading: isLoadingList,
+        isError: isListError,   // Thêm check lỗi
+        error: listError,       // Thêm chi tiết lỗi
+        refetch: refetchList    // Thêm hàm gọi lại
+    } = useAllLessons({
+        skillType: SkillType.SPEAKING,
+        page: 0,
+        size: 50,
+    });
 
-    // Prioritize fetched data, fallback to passed params
-    const activeLessonData = fetchedLessonData || passedLesson;
+    const {
+        data: lessonDetailData,
+        isLoading: isLoadingDetail,
+        refetch: refetchDetail // Thêm refetch cho detail
+    } = useLesson(currentLessonId || null);
+
+    const activeLesson = lessonDetailData || paramLesson;
+    const speakingLessonsList = (speakingLessonsData?.data || []) as LessonResponse[];
+
+    // THÊM: Ép gọi lại API khi màn hình được focus
+    useFocusEffect(
+        useCallback(() => {
+            // Chỉ gọi lại list nếu chưa chọn lesson cụ thể
+            if (!currentLessonId) {
+                console.log('SpeakingScreen focused - Refetching list');
+                refetchList();
+            } else {
+                // Nếu đang trong bài học thì refetch bài học đó
+                refetchDetail();
+            }
+        }, [currentLessonId, refetchList, refetchDetail])
+    );
 
     useEffect(() => {
         Animated.timing(fadeAnim, {
@@ -77,26 +112,35 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     }, []);
 
     useEffect(() => {
-        // Initialize sentence data from either fetched or passed lesson
-        if (activeLessonData && activeLessonData.title) {
+        if (activeLesson && activeLesson.title) {
             setSelectedSentence({
-                id: activeLessonData.lessonId || activeLessonData.courseId || 'default',
-                text: activeLessonData.title,
-                translation: '', // Add translation if available in LessonResponse
-                audioUrl: '', // Add audioUrl if available
+                id: activeLesson.lessonId,
+                text: activeLesson.title,
+                translation: '',
+                audioUrl: '',
                 ipa: ''
             } as unknown as SpeakingSentence);
         }
-    }, [activeLessonData]);
+    }, [activeLesson]);
 
     const checkAndRequestMicrophonePermission = async () => {
         const granted = await PermissionService.requestMicrophonePermission();
         setHasMicPermission(granted);
-        if (!granted) {
-            Alert.alert(
-                i18n.t('speaking.mic_permission_title'),
-                i18n.t('speaking.mic_permission_message'),
-            );
+    };
+
+    const handleSelectLesson = (lesson: LessonResponse) => {
+        setCurrentLessonId(lesson.lessonId);
+        setFinalResult(null);
+        setWordFeedbacks([]);
+        setStreamingChunks([]);
+    };
+
+    const handleBack = () => {
+        if (currentLessonId && !paramLessonId) {
+            setCurrentLessonId(undefined);
+            setFinalResult(null);
+        } else {
+            navigation.goBack();
         }
     };
 
@@ -127,40 +171,29 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     };
 
     const startRecording = async () => {
-        if (!selectedSentence) {
-            Alert.alert(i18n.t('common.error'), i18n.t('speaking.select_sentence_first'));
-            return;
-        }
+        if (!currentLessonId || !selectedSentence) return;
+
         if (!hasMicPermission) {
-            checkAndRequestMicrophonePermission();
-            return;
-        }
-        if (!lessonId) {
-            Alert.alert(i18n.t('common.error'), i18n.t('speaking.lesson_required'));
-            return;
+            const granted = await PermissionService.requestMicrophonePermission();
+            setHasMicPermission(granted);
+            if (!granted) return;
         }
 
         try {
             setIsRecording(true);
             startPulseAnimation();
-
-            await setAudioModeAsync({
-                allowsRecording: true,
-                playsInSilentMode: true,
-            });
-
+            await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
             await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
             await recorder.record();
         } catch (error) {
             console.error('Recording error:', error);
             setIsRecording(false);
             stopPulseAnimation();
-            Alert.alert(i18n.t('common.error'), i18n.t('speaking.error_start_recording'));
         }
     };
 
     const stopRecording = async () => {
-        if (!lessonId || !selectedSentence) return;
+        if (!currentLessonId || !selectedSentence) return;
 
         try {
             await recorder.stop();
@@ -178,16 +211,13 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
 
                 streamPronunciationMutation.mutate({
                     audioUri: fileUri,
-                    lessonId,
-                    languageCode: activeLessonData?.languageCode || 'en',
+                    lessonId: currentLessonId,
+                    languageCode: activeLesson?.languageCode || 'en',
                     referenceText: selectedSentence.text,
                     onChunk: handleStreamingChunk,
                 }, {
-                    onSuccess: () => {
-                        setIsStreaming(false);
-                    },
-                    onError: (error: any) => {
-                        console.error('Streaming error:', error);
+                    onSuccess: () => setIsStreaming(false),
+                    onError: () => {
                         setIsStreaming(false);
                         Alert.alert(i18n.t('common.error'), i18n.t('speaking.error_analysis'));
                     },
@@ -220,10 +250,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                 const updated = [...prev];
                 const lastIdx = updated.length - 1;
                 if (lastIdx >= 0) {
-                    updated[lastIdx] = {
-                        ...updated[lastIdx],
-                        suggestion: chunk.feedback,
-                    };
+                    updated[lastIdx] = { ...updated[lastIdx], suggestion: chunk.feedback };
                 }
                 return updated;
             });
@@ -239,219 +266,104 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
             });
             setShowResult(true);
         }
-
-        if (chunk.type === 'error') {
-            Alert.alert(i18n.t('common.error'), chunk.feedback);
-        }
     };
 
-    const renderStreamingChunks = () => {
-        return (
-            <View>
-                <FlatList
-                    data={streamingChunks}
-                    keyExtractor={(_, idx) => idx.toString()}
-                    scrollEnabled={false}
-                    renderItem={({ item }) => {
-                        if (item.type === 'chunk' && item.word_analysis) {
-                            return (
-                                <View
-                                    style={[
-                                        styles.wordBadge,
-                                        {
-                                            backgroundColor: item.word_analysis.is_correct
-                                                ? '#ECFDF5'
-                                                : '#FEF2F2',
-                                        },
-                                    ]}
-                                >
-                                    <Text
-                                        style={[
-                                            styles.wordText,
-                                            {
-                                                color: item.word_analysis.is_correct
-                                                    ? '#10B981'
-                                                    : '#EF4444',
-                                            },
-                                        ]}
-                                    >
-                                        {item.word_analysis.word}: {item.word_analysis.word_score}/100
-                                    </Text>
-                                </View>
-                            );
-                        }
-
-                        if (item.type === 'suggestion') {
-                            return (
-                                <View>
-                                    <Icon name="lightbulb" size={14} color="#F59E0B" />
-                                    <Text style={styles.suggestionText}>{item.feedback}</Text>
-                                </View>
-                            );
-                        }
-
-                        return null;
-                    }}
-                />
-            </View>
-        );
-    };
-
-    const renderFinalResult = () => {
-        if (!showResult || !finalResult) return null;
-
-        const scoreColor =
-            finalResult.overall_score >= 80
-                ? '#10B981'
-                : finalResult.overall_score >= 60
-                    ? '#F59E0B'
-                    : '#EF4444';
-
-        return (
-            <Modal visible={showResult} animationType="slide">
-                <View
-                    style={[
-                        styles.resultContainer,
-                        { paddingTop: insets.top },
-                    ]}
-                >
-                    <View>
-                        <Text style={styles.resultTitle}>{i18n.t('speaking.result_title')}</Text>
-                        <TouchableOpacity onPress={() => setShowResult(false)}>
-                            <Icon name="close" size={24} color="#374151" />
-                        </TouchableOpacity>
-                    </View>
-
-                    <ScrollView style={styles.resultContent} contentContainerStyle={{ paddingBottom: insets.bottom }}>
-                        <View>
-                            <Text style={styles.scoreLabel}>{i18n.t('speaking.score_overall')}</Text>
-                            <Text
-                                style={[
-                                    styles.overallScore,
-                                    { color: scoreColor },
-                                ]}
-                            >
-                                {finalResult.overall_score}/100
-                            </Text>
-
-                            <View >
-                                <View>
-                                    <Text style={styles.scoreItemLabel}>{i18n.t('speaking.score_accuracy')}</Text>
-                                    <Text style={styles.scoreItemValue}>
-                                        {finalResult.accuracy_score.toFixed(1)}%
-                                    </Text>
-                                </View>
-                                <View>
-                                    <Text style={styles.scoreItemLabel}>{i18n.t('speaking.score_fluency')}</Text>
-                                    <Text style={styles.scoreItemValue}>
-                                        {finalResult.fluency_score.toFixed(1)}%
-                                    </Text>
-                                </View>
-                            </View>
-                        </View>
-
-                        <View style={styles.wordAnalysisCard}>
-                            <Text style={styles.cardTitle}>{i18n.t('speaking.word_analysis_title')}</Text>
-                            {wordFeedbacks.map((wf, idx) => (
-                                <View
-                                    key={idx}
-                                    style={[
-                                        styles.wordItem,
-                                        {
-                                            backgroundColor: wf.isCorrect ? '#ECFDF5' : '#FEF2F2',
-                                            borderColor: wf.isCorrect ? '#10B981' : '#EF4444',
-                                            borderWidth: 1,
-                                        },
-                                    ]}
-                                >
-                                    <View style={styles.wordInfo}>
-                                        <Text style={[styles.wordLabel, { color: wf.isCorrect ? '#10B981' : '#EF4444' }]}>
-                                            {wf.word} {wf.isCorrect ? '✅' : '❌'}
-                                        </Text>
-                                        <Text style={styles.wordSpoken}>{i18n.t('speaking.word_spoken', { spoken: wf.spoken })}</Text>
-                                    </View>
-                                    <Text style={styles.wordScore}>{wf.score}/100</Text>
-                                    {wf.suggestion && (
-                                        <Text style={styles.wordSuggestion}>💡 {wf.suggestion}</Text>
-                                    )}
-                                </View>
-                            ))}
-                        </View>
-
-                        <View style={styles.feedbackCard}>
-                            <Text style={styles.cardTitle}>{i18n.t('speaking.feedback_title')}</Text>
-                            <Text style={styles.feedbackText}>{finalResult.feedback}</Text>
-                        </View>
-
-                        <TouchableOpacity
-                            onPress={() => {
-                                setShowResult(false);
-                                setStreamingChunks([]);
-                                setWordFeedbacks([]);
-                                setFinalResult(null);
-                            }}
-                        >
-                            <Icon name="refresh" size={20} color="#FFFFFF" />
-                            <Text style={styles.retryButtonText}>{i18n.t('common.retry')}</Text>
-                        </TouchableOpacity>
-                    </ScrollView>
+    const renderLessonList = () => {
+        if (isLoadingList) {
+            return (
+                <View style={styles.centerContainer}>
+                    <ActivityIndicator size="large" color="#4F46E5" />
+                    <Text style={styles.loadingText}>{i18n.t('common.loading')}</Text>
                 </View>
-            </Modal>
+            );
+        }
+
+        // THÊM: Handle trường hợp lỗi API (401, 500...)
+        if (isListError) {
+            return (
+                <View style={styles.centerContainer}>
+                    <Icon name="error-outline" size={48} color="#EF4444" />
+                    <Text style={styles.errorText}>{i18n.t('common.error_occurred')}</Text>
+                    <Text style={[styles.errorText, { fontSize: 12, color: '#999' }]}>
+                        {listError instanceof Error ? listError.message : 'Unknown error'}
+                    </Text>
+                    <TouchableOpacity style={styles.retryButtonSmall} onPress={() => refetchList()}>
+                        <Text style={styles.retryButtonTextSmall}>{i18n.t('common.retry')}</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        if (!speakingLessonsList || speakingLessonsList.length === 0) {
+            return (
+                <View style={styles.centerContainer}>
+                    <Icon name="sentiment-dissatisfied" size={48} color="#9CA3AF" />
+                    <Text style={styles.emptyText}>{i18n.t('speaking.no_lessons_available') || "No speaking lessons found."}</Text>
+                    {/* Thêm nút Reload ở màn hình trống phòng trường hợp lỗi mạng mà không bắt được Exception */}
+                    <TouchableOpacity style={[styles.retryButtonSmall, { marginTop: 16 }]} onPress={() => refetchList()}>
+                        <Text style={styles.retryButtonTextSmall}>{i18n.t('common.reload')}</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        return (
+            <FlatList
+                data={speakingLessonsList}
+                keyExtractor={(item) => item.lessonId}
+                contentContainerStyle={styles.listContent}
+                refreshing={isLoadingList} // Thêm pull to refresh
+                onRefresh={refetchList}    // Thêm pull to refresh
+                renderItem={({ item }) => (
+                    <TouchableOpacity
+                        style={styles.lessonItem}
+                        onPress={() => handleSelectLesson(item)}
+                    >
+                        <View style={styles.lessonIcon}>
+                            <Icon name="mic" size={24} color="#4F46E5" />
+                        </View>
+                        <View style={styles.lessonInfo}>
+                            <Text style={styles.lessonTitle} numberOfLines={2}>{item.title || item.lessonName}</Text>
+                            <Text style={styles.lessonExp}>{item.expReward || 10} XP</Text>
+                        </View>
+                        <Icon name="chevron-right" size={24} color="#9CA3AF" />
+                    </TouchableOpacity>
+                )}
+            />
         );
     };
 
-    // Only show loading if we have NO data (neither passed nor fetched)
-    if (isLoadingLesson && !activeLessonData) {
+    const renderPracticeScreen = () => {
+        if (isLoadingDetail && !activeLesson) {
+            return (
+                <View style={styles.centerContainer}>
+                    <ActivityIndicator size="large" color="#4F46E5" />
+                </View>
+            );
+        }
+
+        if (!activeLesson) {
+            return (
+                <View style={styles.centerContainer}>
+                    <Text style={styles.errorText}>{i18n.t('common.error_occurred')}</Text>
+                    <TouchableOpacity style={styles.backButton} onPress={() => setCurrentLessonId(undefined)}>
+                        <Text style={styles.backButtonText}>{i18n.t('common.go_back')}</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
         return (
-            <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator size="large" color="#4F46E5" />
-                <Text style={styles.loadingText}>{i18n.t('common.loading')}</Text>
-            </View>
-        );
-    }
-
-    if (!activeLessonData) {
-        return (
-            <View style={[styles.container, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center' }]}>
-                <Icon name="error-outline" size={48} color="#EF4444" />
-                <Text style={styles.errorText}>{i18n.t('speaking.lesson_not_found')}</Text>
-                <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-                    <Text style={styles.backButtonText}>{i18n.t('common.go_back')}</Text>
-                </TouchableOpacity>
-            </View>
-        );
-    }
-
-    return (
-        <View style={[styles.container, { paddingTop: insets.top }]}>
-            <View>
-                <TouchableOpacity onPress={() => navigation.goBack()}>
-                    <Icon name="arrow-back" size={24} color="#374151" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>{activeLessonData.title || i18n.t('speaking.screen_title')}</Text>
-                <View style={{ width: 24 }} />
-            </View>
-
             <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
                 <Animated.View style={[{ opacity: fadeAnim }]}>
-                    {activeLessonData.title && (
-                        <View style={styles.sentenceCard}>
-                            <Text style={styles.sentenceText}>{activeLessonData.title}</Text>
-                        </View>
-                    )}
+                    <View style={styles.sentenceCard}>
+                        <Text style={styles.sentenceText}>{activeLesson.title}</Text>
+                    </View>
 
-                    <View>
+                    <View style={styles.recordingSection}>
                         <Text style={styles.recordingTitle}>{i18n.t('speaking.ready_title')}</Text>
-                        <Text style={styles.recordingInstruction}>
-                            {i18n.t('speaking.record_instruction')}
-                        </Text>
 
-                        <Animated.View
-                            style={[
-                                styles.recordButton,
-                                { transform: [{ scale: pulseAnim }] },
-                            ]}
-                        >
+                        <Animated.View style={[styles.recordButton, isRecording && { transform: [{ scale: pulseAnim }] }]}>
                             <TouchableOpacity
                                 style={[
                                     styles.recordButtonInner,
@@ -462,60 +374,205 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                                 onPressOut={stopRecording}
                                 disabled={!hasMicPermission || isStreaming}
                             >
-                                <Icon
-                                    name={isRecording ? 'stop' : 'mic'}
-                                    size={32}
-                                    color="#FFFFFF"
-                                />
+                                <Icon name={isRecording ? 'stop' : 'mic'} size={32} color="#FFFFFF" />
                             </TouchableOpacity>
                         </Animated.View>
 
-                        {isRecording && (
-                            <Text style={styles.recordingText}>{i18n.t('speaking.recording_status')}</Text>
-                        )}
-                        {!hasMicPermission && (
-                            <TouchableOpacity onPress={checkAndRequestMicrophonePermission}>
-                                <Text style={[styles.recordingText, { textDecorationLine: 'underline', marginTop: 10, color: '#F59E0B' }]}>
-                                    {i18n.t('speaking.request_mic_tap')}
-                                </Text>
-                            </TouchableOpacity>
+                        {isRecording ? (
+                            <Text style={styles.recordingText}>{i18n.t('speaking.recording')}</Text>
+                        ) : (
+                            <Text style={styles.hintText}>{i18n.t('speaking.tap_hold_record')}</Text>
                         )}
                     </View>
 
                     {isStreaming && (
-                        <View>
-                            <ActivityIndicator size="large" color="#4F46E5" />
-                            <Text style={styles.streamingText}>{i18n.t('speaking.analyzing_status')}</Text>
-                            {renderStreamingChunks()}
+                        <View style={styles.streamingContainer}>
+                            <ActivityIndicator size="small" color="#4F46E5" />
+                            <Text style={styles.streamingText}>{i18n.t('speaking.analyzing')}</Text>
+                            <View style={styles.chunksContainer}>
+                                {streamingChunks.map((chunk, index) => {
+                                    if (chunk.type === 'chunk' && chunk.word_analysis) {
+                                        const w = chunk.word_analysis;
+                                        return (
+                                            <Text key={index} style={[styles.chunkWord, { color: w.is_correct ? '#10B981' : '#EF4444' }]}>
+                                                {w.word}{' '}
+                                            </Text>
+                                        );
+                                    }
+                                    return null;
+                                })}
+                            </View>
                         </View>
                     )}
                 </Animated.View>
             </ScrollView>
+        );
+    };
 
-            {renderFinalResult()}
+    const renderResultModal = () => {
+        if (!showResult || !finalResult) return null;
+
+        return (
+            <Modal visible={showResult} animationType="slide" transparent={false}>
+                <View style={[styles.resultContainer, { paddingTop: insets.top }]}>
+                    <View style={styles.header}>
+                        <Text style={styles.headerTitle}>{i18n.t('speaking.result')}</Text>
+                        <TouchableOpacity onPress={() => setShowResult(false)}>
+                            <Icon name="close" size={24} color="#374151" />
+                        </TouchableOpacity>
+                    </View>
+                    <ScrollView contentContainerStyle={styles.resultContent}>
+                        <View style={styles.scoreCircle}>
+                            <Text style={styles.scoreValue}>{finalResult.overall_score}</Text>
+                            <Text style={styles.scoreLabel}>{i18n.t('speaking.score_overall')}</Text>
+                        </View>
+
+                        <View style={styles.statsRow}>
+                            <View style={styles.statItem}>
+                                <Text style={styles.statValue}>{finalResult.accuracy_score.toFixed(0)}%</Text>
+                                <Text style={styles.statLabel}>{i18n.t('speaking.accuracy')}</Text>
+                            </View>
+                            <View style={styles.statItem}>
+                                <Text style={styles.statValue}>{finalResult.fluency_score.toFixed(0)}%</Text>
+                                <Text style={styles.statLabel}>{i18n.t('speaking.fluency')}</Text>
+                            </View>
+                        </View>
+
+                        <View style={styles.analysisList}>
+                            <Text style={styles.sectionTitle}>{i18n.t('speaking.detailed_analysis')}</Text>
+                            {wordFeedbacks.map((item, index) => (
+                                <View key={index} style={styles.wordResultItem}>
+                                    <View style={styles.wordResultHeader}>
+                                        <Text style={[styles.wordResultText, { color: item.isCorrect ? '#10B981' : '#EF4444' }]}>
+                                            {item.word}
+                                        </Text>
+                                        <Text style={styles.wordResultScore}>{item.score}/100</Text>
+                                    </View>
+                                    <Text style={styles.wordResultSpoken}>{i18n.t('speaking.you_said')}: {item.spoken}</Text>
+                                    {item.suggestion && (
+                                        <View style={styles.suggestionBox}>
+                                            <Icon name="lightbulb-outline" size={16} color="#B45309" />
+                                            <Text style={styles.suggestionText}>{item.suggestion}</Text>
+                                        </View>
+                                    )}
+                                </View>
+                            ))}
+                        </View>
+
+                        <View style={styles.feedbackBox}>
+                            <Text style={styles.sectionTitle}>{i18n.t('speaking.feedback')}</Text>
+                            <Text style={styles.feedbackText}>{finalResult.feedback}</Text>
+                        </View>
+
+                        <TouchableOpacity
+                            style={styles.retryButton}
+                            onPress={() => {
+                                setShowResult(false);
+                                setStreamingChunks([]);
+                                setWordFeedbacks([]);
+                            }}
+                        >
+                            <Text style={styles.retryButtonText}>{i18n.t('common.retry')}</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
+                </View>
+            </Modal>
+        );
+    };
+
+    return (
+        <View style={[styles.container, { paddingTop: insets.top }]}>
+            <View style={styles.header}>
+                <TouchableOpacity onPress={handleBack}>
+                    <Icon name="arrow-back" size={24} color="#374151" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>
+                    {!currentLessonId ? i18n.t('speaking.select_lesson') : (activeLesson?.title || i18n.t('speaking.practice'))}
+                </Text>
+                <View style={{ width: 24 }} />
+            </View>
+
+            {!currentLessonId ? renderLessonList() : renderPracticeScreen()}
+            {renderResultModal()}
         </View>
     );
 };
 
-const styles = {
+const styles = StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: '#F8FAFC',
     },
     header: {
-        flexDirection: 'row' as const,
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
         backgroundColor: '#FFFFFF',
         borderBottomWidth: 1,
         borderBottomColor: '#E5E7EB',
     },
     headerTitle: {
         fontSize: 18,
-        fontWeight: '600' as const,
+        fontWeight: '600',
         color: '#1F2937',
+        flex: 1,
+        textAlign: 'center',
+    },
+    centerContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    loadingText: {
+        marginTop: 12,
+        color: '#6B7280',
+    },
+    emptyText: {
+        marginTop: 12,
+        color: '#6B7280',
+        fontSize: 16,
+        textAlign: 'center',
+    },
+    listContent: {
+        padding: 16,
+    },
+    lessonItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        padding: 16,
+        borderRadius: 12,
+        marginBottom: 12,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 2,
+    },
+    lessonIcon: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: '#EEF2FF',
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    lessonInfo: {
+        flex: 1,
+    },
+    lessonTitle: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: '#1F2937',
+        marginBottom: 4,
+    },
+    lessonExp: {
+        fontSize: 12,
+        color: '#6B7280',
     },
     content: {
         flex: 1,
@@ -523,9 +580,10 @@ const styles = {
     },
     sentenceCard: {
         backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 12,
+        borderRadius: 16,
+        padding: 24,
+        alignItems: 'center',
+        marginBottom: 24,
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.1,
@@ -533,34 +591,21 @@ const styles = {
         elevation: 3,
     },
     sentenceText: {
-        fontSize: 16,
+        fontSize: 20,
+        fontWeight: '600',
         color: '#1F2937',
-        marginBottom: 8,
-        lineHeight: 24,
+        textAlign: 'center',
+        lineHeight: 30,
     },
     recordingSection: {
         alignItems: 'center',
-        backgroundColor: '#FFFFFF',
-        borderRadius: 16,
-        padding: 24,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
-        marginVertical: 20,
+        marginTop: 20,
     },
     recordingTitle: {
-        fontSize: 18,
-        fontWeight: '600' as const,
-        color: '#1F2937',
-        marginBottom: 8,
-    },
-    recordingInstruction: {
-        fontSize: 14,
-        color: '#6B7280',
-        marginBottom: 24,
-        textAlign: 'center' as const,
+        fontSize: 16,
+        fontWeight: '500',
+        color: '#4B5563',
+        marginBottom: 20,
     },
     recordButton: {
         marginBottom: 16,
@@ -572,205 +617,200 @@ const styles = {
         backgroundColor: '#4F46E5',
         alignItems: 'center',
         justifyContent: 'center',
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 6,
     },
     recordingActive: {
         backgroundColor: '#EF4444',
+        shadowColor: '#EF4444',
     },
     recordingText: {
-        fontSize: 14,
         color: '#EF4444',
-        fontWeight: '500' as const,
-        textAlign: 'center' as const,
+        fontWeight: '600',
+    },
+    hintText: {
+        color: '#9CA3AF',
+        fontSize: 14,
     },
     streamingContainer: {
+        marginTop: 30,
         backgroundColor: '#FFFFFF',
-        borderRadius: 12,
         padding: 16,
-        alignItems: 'center',
-        marginVertical: 20,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
     },
     streamingText: {
-        fontSize: 14,
+        textAlign: 'center',
         color: '#4F46E5',
-        marginTop: 8,
+        marginBottom: 8,
+        fontWeight: '500',
     },
-    chunksList: {
-        marginTop: 12,
-        width: '100%',
+    chunksContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'center',
     },
-    wordBadge: {
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 8,
-        marginVertical: 4,
-    },
-    wordText: {
-        fontSize: 14,
-        fontWeight: '600' as const,
-    },
-    suggestionBox: {
-        backgroundColor: '#FFFBEB',
-        padding: 12,
-        borderRadius: 8,
-        marginVertical: 8,
-        flexDirection: 'row' as const,
-        gap: 8,
-        alignItems: 'center',
-    },
-    suggestionText: {
-        fontSize: 12,
-        color: '#B45309',
-        flex: 1,
+    chunkWord: {
+        fontSize: 16,
+        fontWeight: '500',
+        marginHorizontal: 2,
     },
     resultContainer: {
         flex: 1,
         backgroundColor: '#F8FAFC',
     },
-    resultHeader: {
-        flexDirection: 'row' as const,
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingVertical: 16,
-        backgroundColor: '#FFFFFF',
-        borderBottomWidth: 1,
-        borderBottomColor: '#E5E7EB',
-    },
-    resultTitle: {
-        fontSize: 18,
-        fontWeight: '600' as const,
-        color: '#1F2937',
-    },
     resultContent: {
-        flex: 1,
-        paddingHorizontal: 20,
+        padding: 20,
+        paddingBottom: 40,
     },
-    overallScoreCard: {
+    scoreCircle: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
         backgroundColor: '#FFFFFF',
-        borderRadius: 16,
-        padding: 24,
+        borderWidth: 4,
+        borderColor: '#4F46E5',
+        alignSelf: 'center',
+        justifyContent: 'center',
         alignItems: 'center',
-        marginVertical: 24,
+        marginBottom: 24,
+    },
+    scoreValue: {
+        fontSize: 40,
+        fontWeight: 'bold',
+        color: '#4F46E5',
     },
     scoreLabel: {
-        fontSize: 16,
-        color: '#6B7280',
-        marginBottom: 8,
-    },
-    overallScore: {
-        fontSize: 48,
-        fontWeight: 'bold' as const,
-        marginBottom: 16,
-    },
-    scoreBreakdown: {
-        flexDirection: 'row' as const,
-        width: '100%',
-        gap: 16,
-    },
-    scoreItem: {
-        flex: 1,
-        alignItems: 'center',
-        padding: 12,
-        backgroundColor: '#F3F4F6',
-        borderRadius: 8,
-    },
-    scoreItemLabel: {
         fontSize: 12,
         color: '#6B7280',
-        marginBottom: 4,
+        marginTop: 4,
     },
-    scoreItemValue: {
-        fontSize: 18,
-        fontWeight: 'bold' as const,
+    statsRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        marginBottom: 24,
+    },
+    statItem: {
+        alignItems: 'center',
+        backgroundColor: '#FFFFFF',
+        padding: 16,
+        borderRadius: 12,
+        width: '45%',
+        shadowColor: '#000',
+        shadowOpacity: 0.05,
+        shadowRadius: 4,
+        elevation: 2,
+    },
+    statValue: {
+        fontSize: 20,
+        fontWeight: 'bold',
         color: '#1F2937',
     },
-    wordAnalysisCard: {
-        backgroundColor: '#FFFFFF',
-        borderRadius: 12,
-        padding: 16,
-        marginBottom: 20,
+    statLabel: {
+        fontSize: 14,
+        color: '#6B7280',
     },
-    cardTitle: {
-        fontSize: 16,
-        fontWeight: '600' as const,
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
         color: '#1F2937',
         marginBottom: 12,
     },
-    wordItem: {
+    analysisList: {
+        marginBottom: 24,
+    },
+    wordResultItem: {
+        backgroundColor: '#FFFFFF',
         padding: 12,
-        borderRadius: 8,
+        borderRadius: 12,
         marginBottom: 8,
+        borderWidth: 1,
+        borderColor: '#F3F4F6',
     },
-    wordInfo: {
-        marginBottom: 8,
-    },
-    wordLabel: {
-        fontSize: 14,
-        fontWeight: '600' as const,
+    wordResultHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
         marginBottom: 4,
     },
-    wordSpoken: {
-        fontSize: 12,
-        color: '#6B7280',
+    wordResultText: {
+        fontSize: 16,
+        fontWeight: '600',
     },
-    wordScore: {
-        fontSize: 12,
-        fontWeight: 'bold' as const,
+    wordResultScore: {
+        fontWeight: 'bold',
         color: '#4F46E5',
     },
-    wordSuggestion: {
-        fontSize: 11,
-        marginTop: 8,
+    wordResultSpoken: {
+        fontSize: 14,
         color: '#6B7280',
     },
-    feedbackCard: {
+    suggestionBox: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#FFFBEB',
+        padding: 8,
+        borderRadius: 6,
+        marginTop: 8,
+        gap: 6,
+    },
+    suggestionText: {
+        fontSize: 13,
+        color: '#B45309',
+        flex: 1,
+    },
+    feedbackBox: {
         backgroundColor: '#FFFFFF',
-        borderRadius: 12,
         padding: 16,
-        marginBottom: 20,
+        borderRadius: 12,
+        marginBottom: 24,
     },
     feedbackText: {
-        fontSize: 14,
+        fontSize: 15,
         color: '#374151',
-        lineHeight: 20,
+        lineHeight: 22,
     },
     retryButton: {
         backgroundColor: '#4F46E5',
-        flexDirection: 'row' as const,
+        padding: 16,
+        borderRadius: 12,
         alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 12,
-        borderRadius: 8,
-        gap: 8,
-        marginBottom: 20,
     },
     retryButtonText: {
         color: '#FFFFFF',
-        fontWeight: '600' as const,
+        fontWeight: '600',
         fontSize: 16,
-    },
-    loadingText: {
-        fontSize: 16,
-        color: '#6B7280',
-        marginTop: 12,
     },
     errorText: {
         fontSize: 16,
         color: '#EF4444',
-        marginTop: 12,
-        marginBottom: 24,
+        marginBottom: 16,
+        textAlign: 'center',
     },
     backButton: {
-        backgroundColor: '#4F46E5',
-        paddingHorizontal: 24,
-        paddingVertical: 12,
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        backgroundColor: '#E5E7EB',
         borderRadius: 8,
     },
     backButtonText: {
-        color: '#FFFFFF',
-        fontWeight: '600' as const,
-        fontSize: 16,
+        color: '#374151',
+        fontWeight: '600',
     },
-};
+    retryButtonSmall: {
+        backgroundColor: '#4F46E5',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 8,
+        marginTop: 10,
+    },
+    retryButtonTextSmall: {
+        color: '#FFFFFF',
+        fontWeight: '600',
+    },
+});
 
 export default SpeakingScreen;

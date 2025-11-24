@@ -29,7 +29,7 @@ public class GroupAnswerServiceImpl implements GroupAnswerService {
     private final GroupAnswerMapper groupAnswerMapper;
 
     @Override
-    @Cacheable(value = "groupAnswers", key = "#groupSessionId + ':' + #userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    // //@Cacheable(value = "groupAnswers", key = "#groupSessionId + ':' + #userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<GroupAnswerResponse> getAllGroupAnswers(String groupSessionId, String userId, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -46,7 +46,7 @@ public class GroupAnswerServiceImpl implements GroupAnswerService {
     }
 
     @Override
-    @Cacheable(value = "groupAnswers", key = "#groupSessionId + ':' + #userId")
+    // //@Cacheable(value = "groupAnswers", key = "#groupSessionId + ':' + #userId")
     public GroupAnswerResponse getGroupAnswerByIds(UUID groupSessionId, UUID userId) {
         try {
             if (groupSessionId == null || userId == null) {
@@ -63,7 +63,7 @@ public class GroupAnswerServiceImpl implements GroupAnswerService {
 
     @Override
     @Transactional
-    @CachePut(value = "groupAnswers", key = "#result.groupSessionId + ':' + #result.userId")
+    //@CachePut(value = "groupAnswers", key = "#result.groupSessionId + ':' + #result.userId")
     public GroupAnswerResponse createGroupAnswer(GroupAnswerRequest request) {
         try {
             if (request == null || request.getGroupSessionId() == null || request.getUserId() == null) {
@@ -80,7 +80,7 @@ public class GroupAnswerServiceImpl implements GroupAnswerService {
 
     @Override
     @Transactional
-    @CachePut(value = "groupAnswers", key = "#groupSessionId + ':' + #userId")
+    //@CachePut(value = "groupAnswers", key = "#groupSessionId + ':' + #userId")
     public GroupAnswerResponse updateGroupAnswer(UUID groupSessionId, UUID userId, GroupAnswerRequest request) {
         try {
             if (groupSessionId == null || userId == null || request == null) {
@@ -99,7 +99,7 @@ public class GroupAnswerServiceImpl implements GroupAnswerService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "groupAnswers", key = "#groupSessionId + ':' + #userId")
+    //@CacheEvict(value = "groupAnswers", key = "#groupSessionId + ':' + #userId")
     public void deleteGroupAnswer(UUID groupSessionId, UUID userId) {
         try {
             if (groupSessionId == null || userId == null) {

@@ -3,12 +3,11 @@ import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndi
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
-import { useAppStore, CallPreferences } from "../../stores/appStore" // IMPORT CallPreferences type từ store
+import { useAppStore, CallPreferences } from "../../stores/appStore"
 import instance from "../../api/axiosClient"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import { InterestResponse, LanguageResponse } from "../../types/dto"
 import { AgeRange } from "../../types/enums"
 
 const languageFlags = {
@@ -51,7 +50,7 @@ const CallSetupScreen = ({ navigation }) => {
     },
   })
 
-  const interests = interestsData || []
+  const interests = Array.isArray(interestsData) ? interestsData : []
 
   const { data: languagesData, isLoading: isLoadingLanguages } = useQuery({
     queryKey: ["languages"],
@@ -61,7 +60,7 @@ const CallSetupScreen = ({ navigation }) => {
     },
   })
 
-  const languages = languagesData || []
+  const languages = Array.isArray(languagesData) ? languagesData : []
 
   useEffect(() => {
     if (savedPreferences) {
@@ -193,11 +192,8 @@ const CallSetupScreen = ({ navigation }) => {
     </View>
   )
 
-  // FIX: Safely access languages by defaulting to an empty array for the find method
-  const languageList = languagesData ?? [];
-
-  const selectedNativeLanguageName = languageList.find((l) => l.languageCode === preferences.nativeLanguage)?.languageName || preferences.nativeLanguage
-  const selectedLearningLanguageName = languageList.find((l) => l.languageCode === preferences.learningLanguage)?.languageName || preferences.learningLanguage
+  const selectedNativeLanguageName = languages.find((l) => l.languageCode === preferences.nativeLanguage)?.languageName || preferences.nativeLanguage
+  const selectedLearningLanguageName = languages.find((l) => l.languageCode === preferences.learningLanguage)?.languageName || preferences.learningLanguage
 
   const selectedGenderLabel = genderOptions.find((g) => g.value === preferences.gender)?.label
   const selectedDurationLabel = callDurations.find((d) => d.value === preferences.callDuration)?.label

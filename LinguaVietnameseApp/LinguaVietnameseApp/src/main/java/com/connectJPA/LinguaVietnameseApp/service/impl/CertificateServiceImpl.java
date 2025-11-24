@@ -29,7 +29,7 @@ public class CertificateServiceImpl implements CertificateService {
     private final CertificateMapper certificateMapper;
 
     @Override
-    @Cacheable(value = "certificates", key = "#pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "certificates", key = "#pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<CertificateResponse> getAllCertificates(Pageable pageable) {
         try {
             if (pageable == null) {
@@ -44,7 +44,7 @@ public class CertificateServiceImpl implements CertificateService {
     }
 
     @Override
-    @Cacheable(value = "certificates", key = "#id")
+    //@Cacheable(value = "certificates", key = "#id")
     public CertificateResponse getCertificateById(UUID id) {
         try {
             if (id == null) {
@@ -61,7 +61,7 @@ public class CertificateServiceImpl implements CertificateService {
 
     @Override
     @Transactional
-    @CachePut(value = "certificates", key = "#result.certificateId")
+    //@CachePut(value = "certificates", key = "#result.certificateId")
     public CertificateResponse createCertificate(CertificateRequest request) {
         try {
             if (request == null) {
@@ -79,7 +79,7 @@ public class CertificateServiceImpl implements CertificateService {
 
     @Override
     @Transactional
-    @CachePut(value = "certificates", key = "#id")
+    //@CachePut(value = "certificates", key = "#id")
     public CertificateResponse updateCertificate(UUID id, CertificateRequest request) {
         try {
             if (id == null || request == null) {
@@ -98,7 +98,7 @@ public class CertificateServiceImpl implements CertificateService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "certificates", key = "#id")
+    //@CacheEvict(value = "certificates", key = "#id")
     public void deleteCertificate(UUID id) {
         try {
             if (id == null) {

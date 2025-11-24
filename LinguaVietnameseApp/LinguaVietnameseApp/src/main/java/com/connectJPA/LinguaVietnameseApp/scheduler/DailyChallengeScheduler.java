@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -38,16 +39,17 @@ public class DailyChallengeScheduler {
 
         for (User user : activeUsers) {
             try {
-                // Kiểm tra có thể assign thêm challenge không
                 var stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
                 Boolean canAssignMore = (Boolean) stats.get("canAssignMore");
 
                 if (canAssignMore) {
-                    // Gợi ý assign challenge
+                    String langCode = user.getNativeLanguageCode();
+                    String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE_SUGGESTION", langCode);
+
                     NotificationRequest suggestion = NotificationRequest.builder()
                             .userId(user.getUserId())
-                            .title("New Daily Challenge Available!")
-                            .content("Complete daily challenges to earn XP and maintain your streak!")
+                            .title(message[0])
+                            .content(message[1])
                             .type("DAILY_CHALLENGE_SUGGESTION")
                             .payload("{\"screen\":\"Home\", \"action\":\"dailyChallenge\"}")
                             .build();
@@ -74,12 +76,6 @@ public class DailyChallengeScheduler {
         log.info("Daily Challenge Reset Scheduler started");
 
         try {
-            // Logic: Xóa/Archive những UserDailyChallenge của ngày hôm qua
-            // hoặc đánh dấu là expired nếu không hoàn thành
-
-            // Implementation tùy vào business logic
-            // VD: Ghi log vào archive table, hoặc soft delete...
-
             log.info("Daily Challenges reset completed for new day");
         } catch (Exception e) {
             log.error("Error resetting daily challenges: {}", e.getMessage());
@@ -106,11 +102,13 @@ public class DailyChallengeScheduler {
                 if (totalChallenges > completedChallenges) {
                     long remaining = totalChallenges - completedChallenges;
 
+                    String langCode = user.getNativeLanguageCode();
+                    String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE_REMINDER", langCode);
+
                     NotificationRequest reminder = NotificationRequest.builder()
                             .userId(user.getUserId())
-                            .title("Hurry! Complete Your Challenges!")
-                            .content("You have " + remaining + " challenge(s) left. " +
-                                    "Hurry up before day ends!")
+                            .title(message[0])
+                            .content(String.format(message[1], remaining))
                             .type("DAILY_CHALLENGE_REMINDER")
                             .payload("{\"screen\":\"Home\", \"action\":\"dailyChallenge\"}")
                             .build();

@@ -84,7 +84,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    @Cacheable(value = "notifications", key = "#userId + ':' + #title + ':' + #type + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "notifications", key = "#userId + ':' + #title + ':' + #type + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<NotificationResponse> getAllNotifications(UUID userId, String title, String type, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -101,7 +101,7 @@ public class NotificationServiceImpl implements NotificationService {
     // [Các phương thức khác giữ nguyên]...
 
     @Override
-    @Cacheable(value = "notifications", key = "#userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+    //@Cacheable(value = "notifications", key = "#userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<NotificationResponse> getAllNotificationByUserId(UUID userId, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -116,7 +116,7 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    @Cacheable(value = "notifications", key = "#id")
+    //@Cacheable(value = "notifications", key = "#id")
     public NotificationResponse getNotificationById(UUID id) {
         try {
             if (id == null) {
@@ -133,7 +133,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    @CachePut(value = "notifications", key = "#result.notificationId")
+    //@CachePut(value = "notifications", key = "#result.notificationId")
     public NotificationResponse createNotification(NotificationRequest request) {
         try {
             if (request == null || request.getUserId() == null) {
@@ -207,7 +207,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    @CachePut(value = "notifications", key = "#id")
+    //@CachePut(value = "notifications", key = "#id")
     public NotificationResponse updateNotification(UUID id, NotificationRequest request) {
         try {
             if (id == null || request == null) {
@@ -227,7 +227,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "notifications", key = "#id")
+    //@CacheEvict(value = "notifications", key = "#id")
     public void deleteNotification(UUID id) {
         try {
             if (id == null) {

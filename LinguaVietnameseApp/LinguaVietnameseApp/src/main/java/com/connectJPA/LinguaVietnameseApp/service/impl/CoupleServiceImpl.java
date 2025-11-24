@@ -32,14 +32,12 @@ public class CoupleServiceImpl implements CoupleService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
-    @Cacheable(value = "couples", key = "#user1Id + ':' + #status + ':' + #pageable")
     public Page<CoupleResponse> getAllCouples(UUID user1Id, String status, Pageable pageable) {
         Page<Couple> couples = coupleRepository.findAllByUser1_UserIdAndStatusAndIsDeletedFalse(user1Id, status, pageable);
         return couples.map(coupleMapper::toResponse);
     }
 
     @Override
-    @Cacheable(value = "couple", key = "#user1Id + ':' + #user2Id")
     public CoupleResponse getCoupleByIds(UUID user1Id, UUID user2Id) {
         Couple couple = coupleRepository.findByUser1_UserIdAndUser2_UserIdAndIsDeletedFalse(user1Id, user2Id)
                 .orElseThrow(() -> new AppException(ErrorCode.COUPLE_NOT_FOUND));
@@ -48,7 +46,7 @@ public class CoupleServiceImpl implements CoupleService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"couples"}, allEntries = true)
+    //@CacheEvict(value = {"couples"}, allEntries = true)
     public CoupleResponse createCouple(CoupleRequest request) {
         User u1 = userRepository.findById(request.getUser1Id())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -64,7 +62,7 @@ public class CoupleServiceImpl implements CoupleService {
 
     @Override
     @Transactional
-    @CachePut(value = "couple", key = "#user1Id + ':' + #user2Id")
+    //@CachePut(value = "couple", key = "#user1Id + ':' + #user2Id")
     public CoupleResponse updateCouple(UUID user1Id, UUID user2Id, CoupleRequest request) {
         Couple couple = coupleRepository.findByUser1_UserIdAndUser2_UserIdAndIsDeletedFalse(user1Id, user2Id)
                 .orElseThrow(() -> new AppException(ErrorCode.COUPLE_NOT_FOUND));
@@ -84,7 +82,7 @@ public class CoupleServiceImpl implements CoupleService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "couple", key = "#user1Id + ':' + #user2Id")
+    //@CacheEvict(value = "couple", key = "#user1Id + ':' + #user2Id")
     public void deleteCouple(UUID user1Id, UUID user2Id) {
         Couple couple = coupleRepository.findByUser1_UserIdAndUser2_UserIdAndIsDeletedFalse(user1Id, user2Id)
                 .orElseThrow(() -> new AppException(ErrorCode.COUPLE_NOT_FOUND));

@@ -29,7 +29,6 @@ public class CourseLessonServiceImpl implements CourseLessonService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
-    @Cacheable(value = "courseLessons", key = "#courseId + ':' + #lessonId + ':' + #pageable")
     public Page<CourseLessonResponse> getAllCourseLessons(UUID courseId, UUID lessonId, Pageable pageable) {
         try {
             Page<CourseLesson> lessons = courseLessonRepository.findAllByIdCourseIdAndIdLessonIdAndIsDeletedFalse(courseId, lessonId, pageable);
@@ -42,7 +41,6 @@ public class CourseLessonServiceImpl implements CourseLessonService {
     }
 
     @Override
-    @Cacheable(value = "courseLesson", key = "#courseId + ':' + #lessonId")
     public CourseLessonResponse getCourseLessonByIds(UUID courseId, UUID lessonId) {
         try {
             CourseLesson lesson = courseLessonRepository.findByIdCourseIdAndIdLessonIdAndIsDeletedFalse(courseId, lessonId)
@@ -57,7 +55,7 @@ public class CourseLessonServiceImpl implements CourseLessonService {
 
     @Override
     @Transactional
-    @CacheEvict(value = {"courseLessons"}, allEntries = true)
+    //@CacheEvict(value = {"courseLessons"}, allEntries = true)
     public CourseLessonResponse createCourseLesson(CourseLessonRequest request) {
         try {
             CourseLesson lesson = courseLessonMapper.toEntity(request);
@@ -72,7 +70,7 @@ public class CourseLessonServiceImpl implements CourseLessonService {
 
     @Override
     @Transactional
-    @CachePut(value = "courseLesson", key = "#courseId + ':' + #lessonId")
+    //@CachePut(value = "courseLesson", key = "#courseId + ':' + #lessonId")
     public CourseLessonResponse updateCourseLesson(UUID courseId, UUID lessonId, CourseLessonRequest request) {
         try {
             CourseLesson lesson = courseLessonRepository.findByIdCourseIdAndIdLessonIdAndIsDeletedFalse(courseId, lessonId)
@@ -89,7 +87,7 @@ public class CourseLessonServiceImpl implements CourseLessonService {
 
     @Override
     @Transactional
-    @CacheEvict(value = "courseLesson", key = "#courseId + ':' + #lessonId")
+    //@CacheEvict(value = "courseLesson", key = "#courseId + ':' + #lessonId")
     public void deleteCourseLesson(UUID courseId, UUID lessonId) {
         try {
             CourseLesson lesson = courseLessonRepository.findByIdCourseIdAndIdLessonIdAndIsDeletedFalse(courseId, lessonId)

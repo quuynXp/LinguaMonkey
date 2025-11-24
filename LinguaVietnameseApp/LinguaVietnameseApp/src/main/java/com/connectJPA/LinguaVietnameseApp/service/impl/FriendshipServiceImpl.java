@@ -28,13 +28,14 @@ public class FriendshipServiceImpl implements FriendshipService {
     private final FriendshipMapper friendshipMapper;
 
     @Override
-    public Page<FriendshipResponse> getAllFriendships(String user1Id, String status, Pageable pageable) {
+    public Page<FriendshipResponse> getAllFriendships(String requesterId, String status, Pageable pageable) {
         try {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
-            UUID user1Uuid = (user1Id != null) ? UUID.fromString(user1Id) : null;
-            Page<Friendship> friendships = friendshipRepository.findByIdUser1IdAndStatusAndIsDeletedFalse(user1Uuid, status, pageable);
+            UUID requesterUuid = (requesterId != null) ? UUID.fromString(requesterId) : null;
+            // GIẢ ĐỊNH: FriendshipRepository có findByIdRequesterIdAndStatusAndIsDeletedFalse
+            Page<Friendship> friendships = friendshipRepository.findByIdRequesterIdAndStatusAndIsDeletedFalse(requesterUuid, status, pageable);
             return friendships.map(friendshipMapper::toResponse);
         } catch (Exception e) {
             log.error("Error while fetching all friendships: {}", e.getMessage());
@@ -48,12 +49,17 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (currentUserId == null || otherUserId == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            boolean hasSent = friendshipRepository.findByIdUser1IdAndIdUser2IdAndIsDeletedFalse(currentUserId, otherUserId)
+            
+            // Tìm kiếm yêu cầu gửi đi: currentUserId là Requester, otherUserId là Receiver
+            boolean hasSent = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(currentUserId, otherUserId)
                     .filter(f -> f.getStatus() == FriendshipStatus.PENDING)
                     .isPresent();
-            boolean hasReceived = friendshipRepository.findByIdUser1IdAndIdUser2IdAndIsDeletedFalse(otherUserId, currentUserId)
+            
+            // Tìm kiếm yêu cầu nhận được: otherUserId là Requester, currentUserId là Receiver
+            boolean hasReceived = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(otherUserId, currentUserId)
                     .filter(f -> f.getStatus() == FriendshipStatus.PENDING)
                     .isPresent();
+            
             FriendRequestStatusResponse response = new FriendRequestStatusResponse();
             response.setHasSentRequest(hasSent);
             response.setHasReceivedRequest(hasReceived);
@@ -66,8 +72,9 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     @Override
     public Page<FriendshipResponse> getPendingRequestsForUser(UUID userId, Pageable pageable) {
+        // GIẢ ĐỊNH: findPendingRequests tìm theo ReceiverId là userId
         Page<Friendship> requests = friendshipRepository.findPendingRequests(userId, pageable);
-        return requests.map(f -> new FriendshipResponse(f.getId().getUser1Id(), f.getId().getUser2Id(), f.getStatus(), f.getCreatedAt()));
+        return requests.map(f -> new FriendshipResponse(f.getId().getRequesterId(), f.getId().getReceiverId(), f.getStatus(), f.getCreatedAt()));
     }
 
     @Override
@@ -76,12 +83,16 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (user1Id == null || user2Id == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            boolean direct = friendshipRepository.findByIdUser1IdAndIdUser2IdAndIsDeletedFalse(user1Id, user2Id)
+            // Kiểm tra kết bạn trực tiếp (user1Id là Requester, user2Id là Receiver)
+            boolean direct = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(user1Id, user2Id)
                     .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
                     .isPresent();
-            boolean reverse = friendshipRepository.findByIdUser1IdAndIdUser2IdAndIsDeletedFalse(user2Id, user1Id)
+            
+            // Kiểm tra kết bạn ngược lại (user2Id là Requester, user1Id là Receiver)
+            boolean reverse = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(user2Id, user1Id)
                     .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
                     .isPresent();
+            
             return direct || reverse;
         } catch (Exception e) {
             log.error("Error checking friendship between {} and {}: {}", user1Id, user2Id, e.getMessage());
@@ -96,7 +107,8 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (user1Id == null || user2Id == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            Friendship friendship = friendshipRepository.findByIdUser1IdAndIdUser2IdAndIsDeletedFalse(user1Id, user2Id)
+            // GIẢ ĐỊNH: user1Id là Requester, user2Id là Receiver
+            Friendship friendship = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(user1Id, user2Id)
                     .orElseThrow(() -> new AppException(ErrorCode.FRIENDSHIP_NOT_FOUND));
             return friendshipMapper.toResponse(friendship);
         } catch (Exception e) {
@@ -123,34 +135,36 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     @Override
     @Transactional
-    public FriendshipResponse updateFriendship(UUID user1Id, UUID user2Id, FriendshipRequest request) {
+    public FriendshipResponse updateFriendship(UUID requesterId, UUID receiverId, FriendshipRequest request) {
         try {
-            if (user1Id == null || user2Id == null || request == null) {
+            if (requesterId == null || receiverId == null || request == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            Friendship friendship = friendshipRepository.findByIdUser1IdAndIdUser2IdAndIsDeletedFalse(user1Id, user2Id)
+            // Tìm kiếm bản ghi theo RequesterId và ReceiverId
+            Friendship friendship = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(requesterId, receiverId)
                     .orElseThrow(() -> new AppException(ErrorCode.FRIENDSHIP_NOT_FOUND));
             friendshipMapper.updateEntityFromRequest(request, friendship);
             friendship = friendshipRepository.save(friendship);
             return friendshipMapper.toResponse(friendship);
         } catch (Exception e) {
-            log.error("Error while updating friendship between {} and {}: {}", user1Id, user2Id, e.getMessage());
+            log.error("Error while updating friendship between {} and {}: {}", requesterId, receiverId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 
     @Override
     @Transactional
-    public void deleteFriendship(UUID user1Id, UUID user2Id) {
+    public void deleteFriendship(UUID requesterId, UUID receiverId) {
         try {
-            if (user1Id == null || user2Id == null) {
+            if (requesterId == null || receiverId == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            Friendship friendship = friendshipRepository.findByIdUser1IdAndIdUser2IdAndIsDeletedFalse(user1Id, user2Id)
+            Friendship friendship = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(requesterId, receiverId)
                     .orElseThrow(() -> new AppException(ErrorCode.FRIENDSHIP_NOT_FOUND));
-            friendshipRepository.softDeleteByUserIds(user1Id, user2Id);
+            // GIẢ ĐỊNH: softDeleteByUserIds được sửa để chấp nhận RequesterId và ReceiverId
+            friendshipRepository.softDeleteByUserIds(requesterId, receiverId);
         } catch (Exception e) {
-            log.error("Error while deleting friendship between {} and {}: {}", user1Id, user2Id, e.getMessage());
+            log.error("Error while deleting friendship between {} and {}: {}", requesterId, receiverId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

@@ -19,7 +19,7 @@ type DailyWelcomeScreenProps = {
 };
 
 const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
-  const { user, nativeLanguageId } = useUserStore();
+  const { user, nativeLanguageId, trackDailyWelcome } = useUserStore();
   const { t } = useTranslation();
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -34,6 +34,16 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
       resetToAuth();
       return;
     }
+
+    const recordDailyWelcome = async () => {
+      try {
+        await trackDailyWelcome();
+      } catch (error) {
+        console.error("Failed to record daily welcome:", error);
+      }
+    };
+
+    recordDailyWelcome();
 
     setGreetingTime(getGreetingKey());
     setQuote(getRandomQuote(nativeLanguageId));
@@ -57,7 +67,9 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         useNativeDriver: true,
       }),
     ]).start();
-  }, [user?.userId, nativeLanguageId]);
+  }, [user?.userId, nativeLanguageId, trackDailyWelcome]);
+
+  const displayGreetingName = user?.fullname?.split(' ')[0] || user?.nickname || t("label.learner");
 
   return (
     <ScreenLayout backgroundColor="#F8FAFC">
@@ -80,7 +92,8 @@ const DailyWelcomeScreen = ({ navigation }: DailyWelcomeScreenProps) => {
         <View style={styles.greetingContainer}>
           <Text style={styles.greetingEmoji}>{getTimeBasedEmoji()}</Text>
           <Text style={styles.greetingTitle}>
-            {t(greetingTime)}, {user?.fullname?.split(' ')[0] || user?.nickname || "Learner"}
+            {/* Bọc chuỗi t(greetingTime) và displayGreetingName trong Text component */}
+            {t(greetingTime)}, {displayGreetingName}
           </Text>
           <Text style={styles.greetingSubtitle}>{t("welcome.subtitle")}</Text>
         </View>

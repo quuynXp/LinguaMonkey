@@ -9,11 +9,14 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
+  FlatList, // Import FlatList
 } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useSkillLessons } from "../../hooks/useSkillLessons";
-import { ReadingResponse, ComprehensionQuestion, TranslationRequestBody } from "../../types/dto";
+import { ReadingResponse, ComprehensionQuestion, TranslationRequestBody, LessonResponse } from "../../types/dto"; // Import LessonResponse
+import { useLessons } from "../../hooks/useLessons"; // Import useLessons
+import { SkillType } from "../../types/enums"; // Import SkillType
 import ScreenLayout from "../../components/layout/ScreenLayout";
 
 // --- TYPE DỰA TRÊN API VÀ UI (KHÔNG MOCK DATA) ---
@@ -24,8 +27,8 @@ interface ReadingTextData {
   languageCode: string;
   sentences: string[];
   vocabulary: string[];
-  level: string; // Giữ lại cho UI
-  category: string; // Giữ lại cho UI
+  level: string;
+  category: string;
 }
 
 // Type cho trạng thái dịch
@@ -36,18 +39,20 @@ interface TranslationResult {
   suggestion?: string;
 }
 
-const ReadingScreen = ({ navigation }) => {
+const ReadingScreen = ({ navigation }: any) => { // Thêm kiểu cho navigation
   const { t } = useTranslation()
   const { mutateAsync: generateReading, isPending: isGeneratingReading } = useSkillLessons().useGenerateReading();
   const { mutateAsync: checkTranslation, isPending: isCheckingTranslation } = useSkillLessons().useCheckTranslation();
+  const { useAllLessons, useLesson } = useLessons(); // Sử dụng useAllLessons
 
+  const [selectedLesson, setSelectedLesson] = useState<LessonResponse | null>(null);
   const [selectedTextData, setSelectedTextData] = useState<ReadingTextData | null>(null)
   const [currentMode, setCurrentMode] = useState<"read" | "translate" | "quiz">("read")
   const [selectedSentenceIndex, setSelectedSentenceIndex] = useState<number | null>(null)
   const [translations, setTranslations] = useState<TranslationResult[]>([])
   const [userTranslation, setUserTranslation] = useState("")
 
-  // Sử dụng DTO chuẩn: currentQuiz là mảng ComprehensionQuestion[]
+  // DTO chuẩn
   const [currentQuiz, setCurrentQuiz] = useState<ComprehensionQuestion[]>([])
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0)
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null)
@@ -57,6 +62,21 @@ const ReadingScreen = ({ navigation }) => {
 
   const fadeAnim = useRef(new Animated.Value(0)).current
 
+  // --- HOOK: Lấy danh sách bài đọc ---
+  const {
+    data: readingLessonsData,
+    isLoading: isLoadingLessonsList,
+  } = useAllLessons({
+    skillType: SkillType.READING,
+    page: 0,
+    size: 20,
+  });
+
+  // --- HOOK: Lấy nội dung chi tiết bài học nếu đã chọn lessonId (Nếu API hỗ trợ) ---
+  // Giả sử nếu bạn chọn Lesson, bạn cần fetch chi tiết nội dung (passage, questions)
+  const { data: lessonDetail, isLoading: isLoadingLessonDetail } = useLesson(selectedLesson?.lessonId || null);
+
+  // --- EFFECTS ---
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
@@ -65,14 +85,56 @@ const ReadingScreen = ({ navigation }) => {
     }).start()
   }, [fadeAnim])
 
+  useEffect(() => {
+    if (lessonDetail) {
+      // Giả định: lessonDetail chứa đủ thông tin để tạo ReadingTextData và Quiz
+      // Nếu API lessonDetail không trả về passage/questions trực tiếp, cần điều chỉnh hoặc sử dụng API khác.
+      // Hiện tại, chúng ta mô phỏng việc trích xuất từ lessonDetail:
+
+      // Tách title thành content (Mô phỏng: nếu không có API passage, dùng title)
+      const passage = lessonDetail.title || t("reading.noPassageFound");
+      const sentences = passage.match(/[^.!?]+[.!?]/g) || [passage];
+
+      // Nếu API có endpoint lấy ReadingContent từ lessonId, bạn sẽ gọi nó ở đây.
+      // Vì không có API đó, ta giả sử Question API là nguồn cho quiz.
+
+      // Tạm thời set data với thông tin có sẵn
+      setSelectedTextData({
+        lessonId: lessonDetail.lessonId,
+        languageCode: lessonDetail.languageCode || 'EN',
+        title: lessonDetail.title,
+        content: passage,
+        sentences: sentences,
+        vocabulary: ["word", "phrase", "test"], // Chỉ là dữ liệu giả cho UI
+        level: lessonDetail.difficultyLevel || "beginner",
+        category: lessonDetail.certificateCode || "General" // Giả sử DTO lesson có tên category
+      });
+
+      // Cần thêm logic fetch questions hoặc mock data quiz nếu lessonDetail không có
+      setReadingData({ passage: passage, questions: currentQuiz } as ReadingResponse); // Cần Question API
+
+      setTranslations(new Array(sentences.length).fill(null));
+    }
+  }, [lessonDetail]);
+
+  const readingLessons: LessonResponse[] = (readingLessonsData?.data || []) as LessonResponse[];
+
+  const handleSelectLesson = (lesson: LessonResponse) => {
+    setSelectedLesson(lesson);
+    setSelectedTextData(null); // Reset nội dung cũ
+  };
+
+  // GIỮ LẠI loadSampleContent CHO CHỨC NĂNG TẠO NỘI DUNG NGẪU NHIÊN
   const loadSampleContent = async () => {
-    const MOCK_LESSON_ID = "GEN_L0001";
+    // ... (Giữ nguyên logic tạo nội dung mẫu)
+    const MOCK_LESSON_ID = "GEN_R0001"; // Dùng ID khác để phân biệt nội dung tạo mẫu
     const MOCK_LANG_CODE = "EN";
     const MOCK_TITLE = t("reading.generatedContentTitle") ?? "Generated Practice Text";
 
     setSelectedTextData(null);
     setReadingData(null);
     setCurrentMode('read');
+    setSelectedLesson(null); // Bỏ chọn bài học nếu đang tạo mẫu
 
     try {
       const result = await generateReading({
@@ -82,21 +144,18 @@ const ReadingScreen = ({ navigation }) => {
 
       const passage = result.passage || t("reading.noPassageFound");
 
-      // Tách passage thành sentences (client-side logic)
       const sentences = passage.match(/[^.!?]+[.!?]/g) || [passage];
 
-      // Cập nhật state nội dung hiển thị
       setSelectedTextData({
         lessonId: MOCK_LESSON_ID,
         languageCode: MOCK_LANG_CODE,
         title: MOCK_TITLE,
         content: passage,
         sentences: sentences,
-        vocabulary: ["word", "phrase", "test"], // GIỮ LẠI MẢNG STRING CỨNG cho UI list
-        level: "beginner", category: "daily-life"
+        vocabulary: ["word", "phrase", "test"],
+        level: "intermediate", category: "generated"
       });
 
-      // Sử dụng DTO thật từ API
       setCurrentQuiz(result.questions || []);
       setReadingData(result);
       setTranslations(new Array(sentences.length).fill(null));
@@ -107,7 +166,10 @@ const ReadingScreen = ({ navigation }) => {
     }
   }
 
+  // Giữ nguyên các hàm submitTranslation, startQuiz, submitQuizAnswer, getLevelColor
+
   const submitTranslation = async () => {
+    // ... (Giữ nguyên)
     if (!selectedTextData || selectedSentenceIndex === null || !userTranslation.trim()) {
       Alert.alert(t("common.error"), t("translation.errorNoInput") ?? "Vui lòng nhập bản dịch");
       return
@@ -146,6 +208,7 @@ const ReadingScreen = ({ navigation }) => {
   }
 
   const startQuiz = () => {
+    // ... (Giữ nguyên)
     if (!readingData || currentQuiz.length === 0) {
       Alert.alert(t("quiz.errorTitle") ?? "Lỗi Quiz", t("quiz.errorNoQuestions") ?? "Bài đọc chưa có bộ câu hỏi nào.");
       return;
@@ -159,11 +222,11 @@ const ReadingScreen = ({ navigation }) => {
   }
 
   const submitQuizAnswer = () => {
+    // ... (Giữ nguyên)
     if (selectedAnswer === null) return Alert.alert(t("common.error"), t("quiz.selectAnswerRequired") ?? "Vui lòng chọn câu trả lời");
 
     const currentQuestion = currentQuiz[currentQuestionIndex]
 
-    // So sánh đáp án được chọn (string) với đáp án đúng (correctAnswer: string DTO)
     const selectedOptionText = currentQuestion.options[selectedAnswer];
     const isCorrect = selectedOptionText === currentQuestion.correctAnswer;
 
@@ -192,13 +255,12 @@ const ReadingScreen = ({ navigation }) => {
     }
   }
 
-  // BỎ renderTextCard
   const renderReadingMode = () => (
+    // ... (Giữ nguyên)
     <ScrollView style={styles.readingContent}>
       <Text style={styles.readingTitle}>{selectedTextData?.title}</Text>
       <Text style={styles.readingText}>{readingData?.passage || selectedTextData?.content}</Text>
 
-      {/* Vocabulary Section */}
       {selectedTextData?.vocabulary && (
         <View style={styles.vocabularySection}>
           <Text style={styles.vocabularyTitle}>{t("reading.vocabularyTitle") ?? "Từ vựng quan trọng"}</Text>
@@ -227,6 +289,7 @@ const ReadingScreen = ({ navigation }) => {
   )
 
   const renderTranslationMode = () => (
+    // ... (Giữ nguyên)
     <ScrollView style={styles.translationContent}>
       <Text style={styles.translationTitle}>{t("translation.title") ?? "Dịch từng câu"}</Text>
       <Text style={styles.translationInstruction}>{t("translation.instruction") ?? "Chọn câu và nhập bản dịch của bạn"}</Text>
@@ -291,6 +354,7 @@ const ReadingScreen = ({ navigation }) => {
   )
 
   const renderQuizMode = () => {
+    // ... (Giữ nguyên)
     if (showQuizResult) {
       return (
         <View style={styles.quizResultContainer}>
@@ -340,7 +404,6 @@ const ReadingScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.questionContainer}>
-          {/* BỎ questionTypeContainer VÌ KHÔNG CÓ TRƯỜNG TYPE TRONG DTO */}
           <Text style={styles.questionText}>{currentQuestion.question}</Text>
 
           <View style={styles.optionsContainer}>
@@ -378,6 +441,24 @@ const ReadingScreen = ({ navigation }) => {
     )
   }
 
+  const renderLessonListItem = ({ item: lesson }: { item: LessonResponse }) => (
+    <TouchableOpacity
+      key={lesson.lessonId}
+      style={localStyles.lessonListItem}
+      onPress={() => handleSelectLesson(lesson)}
+    >
+      <Icon name="menu-book" size={24} color="#4F46E5" />
+      <View style={localStyles.lessonInfo}>
+        <Text style={localStyles.lessonTitle} numberOfLines={2}>
+          {lesson.lessonName || lesson.title || t('common.untitled')}
+        </Text>
+        <Text style={localStyles.lessonExp}>{lesson.expReward || 10} XP</Text>
+      </View>
+      <Icon name="chevron-right" size={24} color="#6B7280" />
+    </TouchableOpacity>
+  );
+
+  // --- RENDER LOGIC: LESSON DETAIL ---
   if (selectedTextData) {
     return (
       <View style={styles.container}>
@@ -422,6 +503,7 @@ const ReadingScreen = ({ navigation }) => {
     )
   }
 
+  // --- RENDER LOGIC: LESSON LIST / GENERATE ---
   return (
     <ScreenLayout style={styles.container}>
       <View style={styles.header}>
@@ -443,27 +525,77 @@ const ReadingScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.textsSection}>
-            <Text style={styles.sectionTitle}>{t("reading.generateSample") ?? "Tạo Bài Đọc Mẫu"}</Text>
-            <TouchableOpacity
-              style={styles.generateButton}
-              onPress={loadSampleContent}
-              disabled={isGeneratingReading}
-            >
-              {isGeneratingReading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <>
-                  <Icon name="auto-fix-high" size={24} color="#FFFFFF" />
-                  <Text style={styles.generateButtonText}>{t("reading.generateButton") ?? "Tạo Bài Đọc Mẫu"}</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <Text style={styles.sectionTitle}>
+              {readingLessons.length > 0 ? (t("reading.availableLessons") ?? "Bài học có sẵn") : (t("reading.generateSample") ?? "Tạo Bài Đọc Mẫu")}
+            </Text>
+
+            {isLoadingLessonsList ? (
+              <ActivityIndicator size="large" color="#4F46E5" style={{ marginVertical: 20 }} />
+            ) : readingLessons.length > 0 ? (
+              <FlatList<LessonResponse>
+                data={readingLessons}
+                keyExtractor={(item) => item.lessonId}
+                renderItem={renderLessonListItem}
+                scrollEnabled={false}
+                contentContainerStyle={localStyles.lessonsListContainer}
+              />
+            ) : (
+              // Nếu không có bài học nào, hiển thị nút tạo mẫu
+              <TouchableOpacity
+                style={styles.generateButton}
+                onPress={loadSampleContent}
+                disabled={isGeneratingReading}
+              >
+                {isGeneratingReading ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <>
+                    <Icon name="auto-fix-high" size={24} color="#FFFFFF" />
+                    <Text style={styles.generateButtonText}>{t("reading.generateButton") ?? "Tạo Bài Đọc Mẫu"}</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
           </View>
         </Animated.View>
       </ScrollView>
     </ScreenLayout>
   )
 }
+
+// Thêm localStyles cho ReadingScreen
+const localStyles = createScaledSheet({
+  lessonsListContainer: {
+    paddingBottom: 20,
+  },
+  lessonListItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  lessonInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  lessonTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  lessonExp: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+});
 
 const styles = createScaledSheet({
   container: {
@@ -475,7 +607,6 @@ const styles = createScaledSheet({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingTop: 50,
     paddingBottom: 16,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
@@ -551,47 +682,6 @@ const styles = createScaledSheet({
     fontSize: 16,
     color: "#FFFFFF",
     fontWeight: "600",
-  },
-  textCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  textHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  levelBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 12,
-  },
-  levelText: {
-    fontSize: 10,
-    fontWeight: "600",
-  },
-  categoryText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  textTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  textPreview: {
-    fontSize: 14,
-    color: "#6B7280",
-    lineHeight: 20,
   },
   readingContent: {
     flex: 1,
