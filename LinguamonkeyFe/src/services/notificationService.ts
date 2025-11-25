@@ -1,33 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, NativeEventEmitter, NativeModules } from 'react-native';
+import { Platform } from 'react-native';
 import { useAppStore } from '../stores/appStore';
 import instance from "../api/axiosClient";
-import messaging, {
-  requestPermission,
-  getToken,
-} from '@react-native-firebase/messaging';
+import messaging from '@react-native-firebase/messaging';
 import { useUserStore } from '../stores/UserStore';
 import { handleNotificationNavigation } from '../utils/navigationRef';
 import i18n from "../i18n";
-
-// --- FIX: NativeEventEmitter Warnings ---
-// Polyfill để tránh crash/warning khi thư viện native thiếu method addListener/removeListeners
-const RNFB_Module = NativeModules.RNFBAppModule || NativeModules.RNFBMessagingModule;
-if (RNFB_Module) {
-  const eventEmitter = new NativeEventEmitter(RNFB_Module);
-  // @ts-ignore
-  if (!eventEmitter.addListener) {
-    // @ts-ignore
-    eventEmitter.addListener = () => { };
-  }
-  // @ts-ignore
-  if (!eventEmitter.removeListeners) {
-    // @ts-ignore
-    eventEmitter.removeListeners = () => { };
-  }
-}
 
 export interface NotificationPreferences {
   enablePush: boolean;
@@ -81,11 +61,7 @@ class NotificationService {
       reminderFrequency: 'daily',
       customDays: [],
       studyTime: '09:00',
-      quietHours: {
-        enabled: false,
-        start: '22:00',
-        end: '07:00',
-      },
+      quietHours: { enabled: false, start: '22:00', end: '07:00' },
     };
   }
 
@@ -103,49 +79,38 @@ class NotificationService {
     }
 
     await this.loadPreferences();
-    await this.requestPermissions(); // Expo Permission
+    await this.requestPermissions();
+    await this.requestFirebasePermissions();
+
     this.isInitialized = true;
   }
 
   setupNotificationListeners() {
-    // 1. Expo: User taps on local notification
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
-      console.log('User tapped notification (Expo Listener):', data);
       handleNotificationNavigation(data);
     });
 
-    // 2. Firebase: Background State (App Open)
     const unsubscribeOnOpened = messaging().onNotificationOpenedApp(remoteMessage => {
-      console.log('User tapped notification (Firebase Background):', remoteMessage.data);
-      if (remoteMessage.data) {
+      if (remoteMessage?.data) {
         handleNotificationNavigation(remoteMessage.data);
       }
     });
 
-    // 3. Firebase: Quit State (Initial Launch)
     messaging().getInitialNotification().then(remoteMessage => {
       if (remoteMessage) {
-        console.log('App opened from Quit State (Firebase):', remoteMessage.data);
-        // Delay slightly to ensure navigation container is ready
         setTimeout(() => {
           if (remoteMessage.data) {
             handleNotificationNavigation(remoteMessage.data);
           }
-        }, 1200);
+        }, 1500);
       }
     });
 
-    // 4. Firebase: Foreground State (App Active) -> Convert to Local Notification
     const unsubscribeOnMessage = messaging().onMessage(async (remoteMessage) => {
-      console.log("Foreground Notification (FCM):", remoteMessage);
-
-      // Hiển thị thông báo local ngay cả khi đang mở app
-      await this.sendLocalNotification(
-        remoteMessage.notification?.title || i18n.t("notification.default_title"),
-        remoteMessage.notification?.body || "",
-        remoteMessage.data
-      );
+      const title = remoteMessage.notification?.title || i18n.t("notification.default_title");
+      const body = remoteMessage.notification?.body || "";
+      await this.sendLocalNotification(title, body, remoteMessage.data);
     });
 
     return () => {
@@ -169,13 +134,13 @@ class NotificationService {
   }
 
   async requestFirebasePermissions(): Promise<boolean> {
-    const authStatus = await requestPermission(messaging());
-    const enabled =
-      authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
-      authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-
-    console.log('Firebase Permission status:', authStatus);
-    return enabled;
+    try {
+      const authStatus = await messaging().requestPermission();
+      return authStatus === 1 || authStatus === 2;
+    } catch (error) {
+      console.error('Request Firebase Permission Error:', error);
+      return false;
+    }
   }
 
   async getFcmToken(): Promise<string | null> {
@@ -183,8 +148,7 @@ class NotificationService {
     if (!enabled) return null;
 
     try {
-      const fcmToken = await getToken(messaging());
-      console.log('Firebase FCM Token:', fcmToken);
+      const fcmToken = await messaging().getToken();
       return fcmToken;
     } catch (error) {
       console.error('Error getting FCM token:', error);
@@ -196,25 +160,19 @@ class NotificationService {
     const store = useUserStore.getState();
     const userId = store.user?.userId;
 
-    if (!userId) {
-      console.log('User not logged in, skipping token registration.');
-      return;
-    }
+    if (!userId) return;
 
     const fcmToken = await this.getFcmToken();
     const deviceId = await this.getDeviceId();
 
     if (!fcmToken || !deviceId) {
-      console.log('FCM token or Device ID is missing, skipping registration.');
       return;
     }
 
     if (store.setToken) store.setToken(fcmToken);
     if (store.setDeviceId) store.setDeviceId(deviceId);
 
-    // Skip if already registered same token/device
     if (store.fcmToken === fcmToken && store.deviceId === deviceId && store.isTokenRegistered) {
-      console.log('FCM Token already registered to backend for this device.');
       return;
     }
 
@@ -225,32 +183,23 @@ class NotificationService {
         deviceId: deviceId,
       });
 
-      console.log('FCM Token registered to backend successfully.');
       if (store.setTokenRegistered) store.setTokenRegistered(true);
-
     } catch (error) {
-      console.error('Error registering FCM token to backend:', error);
       if (store.setTokenRegistered) store.setTokenRegistered(false);
     }
   }
 
   async deleteTokenFromBackend() {
     const { user, deviceId } = useUserStore.getState();
-
-    if (!user?.userId || !deviceId) {
-      return;
-    }
+    if (!user?.userId || !deviceId) return;
 
     try {
       await instance.delete('/api/v1/users/fcm-token', {
-        params: {
-          userId: user.userId,
-          deviceId: deviceId
-        }
+        params: { userId: user.userId, deviceId: deviceId }
       });
-      console.log('FCM Token deleted from backend successfully for device:', deviceId);
+      await messaging().deleteToken();
     } catch (error) {
-      console.error('Failed to delete FCM token on logout:', error);
+      console.error('Failed to delete FCM token:', error);
     }
   }
 
@@ -263,10 +212,10 @@ class NotificationService {
         title,
         body,
         data: data as Record<string, unknown> | undefined,
-        sound: prefs.soundEnabled ? 'default_sound.wav' : undefined, // Check if sound file exists or use default
+        sound: prefs.soundEnabled,
         vibrate: prefs.vibrationEnabled ? [0, 250, 250, 250] : undefined,
       },
-      trigger: null, // Show immediately
+      trigger: null,
     });
   }
 
@@ -274,35 +223,36 @@ class NotificationService {
     try {
       const savedPrefs = await AsyncStorage.getItem(STORAGE_KEY);
       if (savedPrefs) {
-        const parsedPrefs = JSON.parse(savedPrefs);
-        this.preferences = { ...this.preferences, ...parsedPrefs };
+        this.preferences = { ...this.preferences, ...JSON.parse(savedPrefs) };
         useAppStore.getState().setNotificationPreferences(this.preferences);
       }
-    } catch (error) {
-      console.error('Error loading notification preferences:', error);
-    }
+    } catch (error) { }
   }
 
   async savePreferences(): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.preferences));
       useAppStore.getState().setNotificationPreferences(this.preferences);
-    } catch (error) {
-      console.error('Error saving notification preferences:', error);
-      throw error;
-    }
+    } catch (error) { }
   }
 
   async requestPermissions(): Promise<boolean> {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
     let finalStatus = existingStatus;
-
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
     }
-
     return finalStatus === 'granted';
+  }
+
+  setPreferences(prefs: Partial<NotificationPreferences>): void {
+    this.preferences = { ...this.preferences, ...prefs };
+    this.savePreferences();
+  }
+
+  getPreferences(): NotificationPreferences {
+    return this.preferences;
   }
 
   async scheduleStudyReminder(): Promise<string | null> {
@@ -335,30 +285,19 @@ class NotificationService {
   async scheduleNotification(title: string, body: string, seconds: number): Promise<string | null> {
     if (!this.preferences.enablePush || !this.preferences.scheduled || this.isQuietHours()) return null;
 
-    const id = await Notifications.scheduleNotificationAsync({
+    return await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
-        sound: this.preferences.soundEnabled, // Boolean or custom sound string
+        sound: this.preferences.soundEnabled,
         vibrate: this.preferences.vibrationEnabled ? [0, 250, 250, 250] : undefined,
       },
       trigger: { seconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL },
     });
-
-    return id;
   }
 
   async cancelAllScheduled(): Promise<void> {
     await Notifications.cancelAllScheduledNotificationsAsync();
-  }
-
-  setPreferences(prefs: Partial<NotificationPreferences>): void {
-    this.preferences = { ...this.preferences, ...prefs };
-    this.savePreferences();
-  }
-
-  getPreferences(): NotificationPreferences {
-    return this.preferences;
   }
 
   private isQuietHours(): boolean {
@@ -367,16 +306,17 @@ class NotificationService {
     const now = new Date();
     const [startHour, startMinute] = this.preferences.quietHours.start.split(':').map(Number);
     const [endHour, endMinute] = this.preferences.quietHours.end.split(':').map(Number);
+
     const currentTimeInMinutes = now.getHours() * 60 + now.getMinutes();
     const startTimeInMinutes = startHour * 60 + startMinute;
     const endTimeInMinutes = endHour * 60 + endMinute;
 
-    return startTimeInMinutes < endTimeInMinutes
-      ? currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes
-      : currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
-  }
+    if (startTimeInMinutes > endTimeInMinutes) {
+      return currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
+    }
 
-  // --- API Notification Methods ---
+    return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
+  }
 
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;

@@ -17,7 +17,6 @@ import java.util.UUID;
 
 public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEntry, LeaderboardEntryId> {
 
-    // [FIXED] Standard query now includes JOIN FETCH to prevent N+1 and ensure User data availability
     @Query(value = "SELECT le FROM LeaderboardEntry le JOIN FETCH le.user u " +
             "WHERE le.id.leaderboardId = :leaderboardId " +
             "AND le.isDeleted = false AND u.isDeleted = false",
@@ -28,8 +27,6 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             @Param("leaderboardId") UUID leaderboardId,
             Pageable pageable);
 
-    // [NEW] Dedicated Query for Global/Level-based tabs. 
-    // Fixes "Missing User" bug by enforcing a deterministic sort order: Level DESC -> Score DESC -> UpdatedAt ASC
     @Query(value = "SELECT le FROM LeaderboardEntry le JOIN FETCH le.user u " +
             "WHERE le.id.leaderboardId = :leaderboardId " +
             "AND le.isDeleted = false AND u.isDeleted = false " +
@@ -97,7 +94,7 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
                 FROM leaderboard_entries le
                 JOIN users u ON le.user_id = u.user_id
                 WHERE le.leaderboard_id = (
-                    SELECT id
+                    SELECT leaderboard_id
                     FROM leaderboards
                     WHERE tab = :tab
                     AND type = :type

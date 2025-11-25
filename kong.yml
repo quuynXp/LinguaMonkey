@@ -2,7 +2,9 @@ _format_version: "3.0"
 _transform: true
 
 services:
+  # ==============================================================================
   # 1. PUBLIC JAVA SERVICE
+  # ==============================================================================
   - name: public-java-service
     url: http://linguavietnameseapp:8080
     routes:
@@ -44,11 +46,14 @@ services:
           policy: redis
           redis_host: redis
           redis_port: 6379
+          redis_password: redisPass123
           limit_by: consumer
           second: 10
           minute: 200
 
+  # ==============================================================================
   # 2. PROTECTED JAVA SERVICE
+  # ==============================================================================
   - name: java-service
     url: http://linguavietnameseapp:8080
     routes:
@@ -97,13 +102,16 @@ services:
           policy: redis
           redis_host: redis
           redis_port: 6379
+          redis_password: redisPass123
           limit_by: consumer
           second: 20
           minute: 500
 
+  # ==============================================================================
   # 3. PYTHON SERVICE
+  # ==============================================================================
   - name: python-service
-    url: http://pythonservice:50051
+    url: http://pythonservice:8001
     connect_timeout: 60000
     write_timeout: 300000
     read_timeout: 300000

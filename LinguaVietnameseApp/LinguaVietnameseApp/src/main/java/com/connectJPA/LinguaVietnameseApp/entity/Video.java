@@ -20,26 +20,29 @@ import java.util.UUID;
 public class Video extends BaseEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
+    @Column(name = "video_id")
     private UUID videoId;
 
+    @Column(name = "title")
     private String title;
 
+    @Column(name = "video_url")
     private String videoUrl;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "type")
     private VideoType type;
 
+    @Column(name = "original_subtitle_url")
     private String originalSubtitleUrl;
 
+    @Column(name = "lesson_id")
     private UUID lessonId;
 
+    @Column(name = "language")
     private String language;
 
-    private double averageRating;
-
-    private long totalViews;
-
     @Enumerated(EnumType.STRING)
+    @Column(name = "level")
     private DifficultyLevel level;
-
 }

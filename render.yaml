@@ -8,8 +8,7 @@ services:
     autoDeploy: true
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
-    # Lệnh khởi động tùy chỉnh để format lại JDBC URL từ Render env
-    startCommand: "export SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME} && java -jar /app/app.jar"
+    dockerCommand: "sh -c 'export SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME} && java -jar /app/app.jar'"
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
@@ -17,7 +16,7 @@ services:
         value: prod
       - key: PORT
         value: 8080
-      # -- Database Variables (Dùng để ghép chuỗi connection) --
+      # -- Database Linking --
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
@@ -38,7 +37,7 @@ services:
         fromDatabase:
           name: shared-postgres
           property: password
-      # -- Redis --
+      # -- Redis Linking --
       - key: SPRING_REDIS_HOST
         fromService:
           type: redis
@@ -49,7 +48,7 @@ services:
           type: redis
           name: redis
           property: port
-      # -- Service Discovery --
+      # -- Internal Service URL --
       - key: PYTHON_SERVICE_URL
         value: http://pythonservice:50051
     healthCheckPath: /actuator/health
@@ -69,7 +68,6 @@ services:
         value: Asia/Ho_Chi_Minh
       - key: PORT
         value: 50051
-      # -- Database --
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
@@ -90,7 +88,6 @@ services:
         fromDatabase:
           name: shared-postgres
           property: password
-      # -- Redis --
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -101,7 +98,6 @@ services:
           type: redis
           name: redis
           property: port
-      # -- Service Discovery --
       - key: JAVA_SERVICE_URL
         value: http://linguavietnameseapp:8080
     numInstances: 1
@@ -113,7 +109,6 @@ services:
     region: singapore
     plan: free
     autoDeploy: true
-    # Sử dụng Dockerfile riêng để copy kong.yml vào image
     dockerContext: .
     dockerfilePath: ./Dockerfile.kong
     envVars:

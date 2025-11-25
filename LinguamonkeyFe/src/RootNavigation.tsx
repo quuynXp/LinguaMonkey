@@ -2,10 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { View, Text } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import {
-  RootNavigationRef,
-  flushPendingActions,
-} from "./utils/navigationRef";
+import { RootNavigationRef, flushPendingActions } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
 import notificationService from "./services/notificationService";
 import { useTokenStore } from "./stores/tokenStore";
@@ -20,57 +17,18 @@ import i18n from "./i18n";
 import AuthStack from "./navigation/stack/AuthStack";
 import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 
-// --- Logic Đăng ký Token ---
-// Có thể cân nhắc chuyển logic này vào notificationService trong tương lai
-// Hiện tại giữ ở đây để đảm bảo luồng Auth
-const registerFCMToken = async (userId: string) => {
-  const { fcmToken, isTokenRegistered, setToken, setTokenRegistered } =
-    useUserStore.getState();
-
-  if (fcmToken && isTokenRegistered) {
-    console.log("FCM Token already registered.");
-    return;
-  }
-
-  try {
-    // Tận dụng notificationService để lấy token chuẩn
-    const token = await notificationService.getFcmToken();
-    if (token) {
-      setToken(token);
-      const payload = {
-        userId,
-        fcmToken: token,
-        deviceId: await notificationService.getDeviceId(),
-      };
-
-      await instance.post("/api/v1/users/fcm-token", payload);
-      setTokenRegistered(true);
-      console.log("FCM Token successfully registered on server.");
-    } else {
-      console.warn("Failed to obtain FCM token via Service.");
-    }
-  } catch (error) {
-    console.error("FCM Token registration failed:", error);
-    setTokenRegistered(false);
-  }
-};
-
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
 
   const accessToken = useTokenStore((state) => state.accessToken);
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
-  const clearTokens = useTokenStore((state) => state.clearTokens);
 
-  const { user, setUser, setLocalNativeLanguage, fcmToken, isTokenRegistered } =
-    useUserStore();
+  const { setUser, setLocalNativeLanguage } = useUserStore();
 
-  const [initialMainRoute, setInitialMainRoute] =
-    useState<keyof MainStackParamList>("TabApp");
+  const [initialMainRoute, setInitialMainRoute] = useState<keyof MainStackParamList>("TabApp");
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
 
-  // --- CẤU HÌNH DEEP LINK ---
   const linking = useMemo(
     () => ({
       prefixes: [
@@ -84,7 +42,6 @@ const RootNavigation = () => {
           LoginScreen: "login",
           RegisterScreen: "register",
           ForgotPasswordScreen: "forgot-password",
-
           TabApp: {
             screens: {
               Home: "home",
@@ -94,7 +51,6 @@ const RootNavigation = () => {
               Profile: "profile",
             },
           },
-
           LearnStack: {
             screens: {
               Lesson: "lesson/:id",
@@ -105,7 +61,6 @@ const RootNavigation = () => {
           ChatStack: "chat-full",
           ProfileStack: "profile-stack",
           PaymentStack: "payment",
-
           DailyWelcomeScreen: "daily-welcome",
           ProficiencyTestScreen: "proficiency-test",
           SetupInitScreen: "setup",
@@ -122,7 +77,6 @@ const RootNavigation = () => {
     []
   );
 
-  // --- NETWORK CHECK ---
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
       setIsConnected(state.isConnected ?? false);
@@ -130,23 +84,16 @@ const RootNavigation = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- NOTIFICATION INITIALIZATION ---
-  // Toàn bộ logic listener đã được chuyển vào Service để fix lỗi NativeEventEmitter
   useEffect(() => {
-    const initNotifications = async () => {
-      await notificationService.initialize();
-    };
-    initNotifications();
-
-    // Setup listeners (Background, Quit, Foreground -> Local)
-    const cleanupListeners = notificationService.setupNotificationListeners();
+    notificationService.initialize();
+    const cleanup = notificationService.setupNotificationListeners();
+    permissionService.checkNotificationPermission();
 
     return () => {
-      if (cleanupListeners) cleanupListeners();
+      if (cleanup) cleanup();
     };
   }, []);
 
-  // --- BOOTSTRAP APP (Auth & User Data) ---
   useEffect(() => {
     let mounted = true;
 
@@ -154,7 +101,6 @@ const RootNavigation = () => {
       try {
         const hasValidToken = await initializeTokens();
 
-        // Language Setup
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
@@ -162,7 +108,6 @@ const RootNavigation = () => {
           await AsyncStorage.setItem("userLanguage", savedLanguage);
         }
         setLocalNativeLanguage(savedLanguage);
-
         if (i18n.language !== savedLanguage) {
           await i18n.changeLanguage(savedLanguage);
         }
@@ -174,6 +119,7 @@ const RootNavigation = () => {
               const payload = decodeToken(currentToken);
               if (payload?.userId) {
                 const userId = payload.userId;
+
                 const userRes = await instance.get(`/api/v1/users/${userId}`);
                 const rawUser = userRes.data.result || {};
                 const normalizedUser = {
@@ -182,33 +128,17 @@ const RootNavigation = () => {
                   roles: getRoleFromToken(currentToken),
                 };
 
-                // Sync Language
-                if (
-                  normalizedUser.nativeLanguageCode &&
-                  normalizedUser.nativeLanguageCode !== savedLanguage
-                ) {
+                if (normalizedUser.nativeLanguageCode && normalizedUser.nativeLanguageCode !== savedLanguage) {
                   await i18n.changeLanguage(normalizedUser.nativeLanguageCode);
-                  await AsyncStorage.setItem(
-                    "userLanguage",
-                    normalizedUser.nativeLanguageCode
-                  );
+                  await AsyncStorage.setItem("userLanguage", normalizedUser.nativeLanguageCode);
                   setLocalNativeLanguage(normalizedUser.nativeLanguageCode);
-                  savedLanguage = normalizedUser.nativeLanguageCode;
                 }
 
                 setUser(normalizedUser, savedLanguage);
                 await AsyncStorage.setItem("hasLoggedIn", "true");
 
-                // Check FCM Token
-                const isTokenMissingOrUnregistered =
-                  !useUserStore.getState().fcmToken ||
-                  !useUserStore.getState().isTokenRegistered;
+                notificationService.registerTokenToBackend();
 
-                if (isTokenMissingOrUnregistered) {
-                  await registerFCMToken(userId);
-                }
-
-                // Route Logic
                 const roles = normalizedUser.roles || [];
                 const hasFinishedSetup = normalizedUser.hasFinishedSetup === true;
                 const hasDonePlacementTest = normalizedUser.hasDonePlacementTest === true;
@@ -217,12 +147,8 @@ const RootNavigation = () => {
                 let isFirstOpenToday = true;
 
                 if (lastDailyWelcomeAt) {
-                  const lastDateString = new Date(lastDailyWelcomeAt)
-                    .toISOString()
-                    .split("T")[0];
-                  if (lastDateString === today) {
-                    isFirstOpenToday = false;
-                  }
+                  const lastDate = new Date(lastDailyWelcomeAt).toISOString().split("T")[0];
+                  if (lastDate === today) isFirstOpenToday = false;
                 }
 
                 if (roles.includes("ROLE_ADMIN")) {
@@ -232,11 +158,7 @@ const RootNavigation = () => {
                 } else if (!hasDonePlacementTest) {
                   setInitialMainRoute("ProficiencyTestScreen");
                 } else {
-                  if (isFirstOpenToday) {
-                    setInitialMainRoute("DailyWelcomeScreen");
-                  } else {
-                    setInitialMainRoute("TabApp");
-                  }
+                  setInitialMainRoute(isFirstOpenToday ? "DailyWelcomeScreen" : "TabApp");
                 }
               }
             } catch (e) {
@@ -244,8 +166,7 @@ const RootNavigation = () => {
             }
           }
         } else {
-          const hasFinishedOnboarding =
-            (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
+          const hasFinishedOnboarding = (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
           if (hasFinishedOnboarding) {
             setInitialAuthParams({ skipToAuth: true });
           }
@@ -259,30 +180,13 @@ const RootNavigation = () => {
 
     boot();
 
-    // Check permissions
-    const initPermissions = async () => {
-      await permissionService.checkNotificationPermission();
-    };
-    initPermissions();
-
-    return () => {
-      mounted = false;
-    };
-  }, [
-    initializeTokens,
-    setUser,
-    clearTokens,
-    setLocalNativeLanguage,
-    fcmToken,
-    isTokenRegistered,
-  ]);
+    return () => { mounted = false; };
+  }, [initializeTokens, setUser, setLocalNativeLanguage]);
 
   if (!isConnected) {
     return (
       <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <Text style={{ fontSize: 16, color: "red" }}>
-          {i18n.t("common.no_internet")}
-        </Text>
+        <Text style={{ fontSize: 16, color: "red" }}>{i18n.t("common.no_internet")}</Text>
       </View>
     );
   }

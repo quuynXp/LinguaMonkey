@@ -58,6 +58,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const pulseAnim = useRef(new Animated.Value(1)).current;
+    const stopSignalRef = useRef(false);
 
     const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -86,7 +87,6 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const activeLesson = lessonDetailData || paramLesson;
     const speakingLessonsList = (speakingLessonsData?.data || []) as LessonResponse[];
 
-    // Refetch data when screen comes into focus, but avoid unnecessary loops
     useFocusEffect(
         useCallback(() => {
             if (!currentLessonId) {
@@ -175,12 +175,25 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
             if (!granted) return;
         }
 
+        stopSignalRef.current = false;
+
         try {
             setIsRecording(true);
             startPulseAnimation();
             await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
             await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
+
+            if (stopSignalRef.current) {
+                setIsRecording(false);
+                stopPulseAnimation();
+                return;
+            }
+
             await recorder.record();
+
+            if (stopSignalRef.current) {
+                await stopRecording();
+            }
         } catch (error) {
             console.error('Recording error:', error);
             setIsRecording(false);
@@ -191,36 +204,43 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const stopRecording = async () => {
         if (!currentLessonId || !selectedSentence) return;
 
-        try {
-            await recorder.stop();
-            const uri = recorder.uri;
+        stopSignalRef.current = true;
 
-            if (uri) {
+        try {
+            if (recorder.isRecording) {
+                await recorder.stop();
+                const uri = recorder.uri;
+
+                if (uri) {
+                    setIsRecording(false);
+                    stopPulseAnimation();
+                    setIsStreaming(true);
+                    setStreamingChunks([]);
+                    setWordFeedbacks([]);
+                    setFinalResult(null);
+
+                    const fileUri = Platform.OS === 'ios' ? uri : `file://${uri}`;
+
+                    streamPronunciationMutation.mutate({
+                        audioUri: fileUri,
+                        lessonId: currentLessonId,
+                        languageCode: activeLesson?.languageCode || 'en',
+                        referenceText: selectedSentence.text,
+                        onChunk: handleStreamingChunk,
+                    }, {
+                        onSuccess: () => setIsStreaming(false),
+                        onError: () => {
+                            setIsStreaming(false);
+                            Alert.alert(i18n.t('common.error'), i18n.t('speaking.error_analysis'));
+                        },
+                    });
+                }
+            } else {
                 setIsRecording(false);
                 stopPulseAnimation();
-                setIsStreaming(true);
-                setStreamingChunks([]);
-                setWordFeedbacks([]);
-                setFinalResult(null);
-
-                const fileUri = Platform.OS === 'ios' ? uri : `file://${uri}`;
-
-                streamPronunciationMutation.mutate({
-                    audioUri: fileUri,
-                    lessonId: currentLessonId,
-                    languageCode: activeLesson?.languageCode || 'en',
-                    referenceText: selectedSentence.text,
-                    onChunk: handleStreamingChunk,
-                }, {
-                    onSuccess: () => setIsStreaming(false),
-                    onError: () => {
-                        setIsStreaming(false);
-                        Alert.alert(i18n.t('common.error'), i18n.t('speaking.error_analysis'));
-                    },
-                });
             }
         } catch (error) {
-            console.error('Stop recording error:', error);
+            console.error('Stop recording error handled:', error);
             setIsRecording(false);
             stopPulseAnimation();
         }

@@ -42,8 +42,12 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
+            // FIX: Fail fast if ID is missing to prevent Repository lookup on null
+            if (leaderboardId == null || leaderboardId.trim().isEmpty()) {
+                throw new AppException(ErrorCode.INVALID_KEY);
+            }
 
-            UUID leaderboardUuid = (leaderboardId != null) ? UUID.fromString(leaderboardId) : null;
+            UUID leaderboardUuid = UUID.fromString(leaderboardId);
 
             Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
@@ -51,7 +55,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             String tab = leaderboard.getTab();
             Page<LeaderboardEntry> entries;
 
-            // [FIXED] Use specific query method for Level-based sorting to ensure deterministic order
+            // Use specific query method for Level-based sorting to ensure deterministic order
             // and correct fetch logic. Prevents missing users when Level/Score are identical.
             if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
                 // Pass Unsorted Pageable because the Repository method has Hardcoded ORDER BY
@@ -66,7 +70,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, effectivePageable);
             }
 
-            // [FIXED] Removed N+1 problem. User is already fetched via JOIN FETCH in repository.
+            // JOIN FETCH used in repository, mapped here
             return entries.map(entry -> {
                 LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
                 User u = entry.getUser();
@@ -79,6 +83,11 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 return dto;
             });
 
+        } catch (AppException e) {
+            throw e;
+        } catch (IllegalArgumentException e) {
+             // Handle UUID format errors
+            throw new AppException(ErrorCode.INVALID_KEY);
         } catch (Exception e) {
             log.error("Error while fetching all leaderboard entries: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);

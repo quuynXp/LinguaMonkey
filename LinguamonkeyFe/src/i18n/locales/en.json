@@ -453,6 +453,8 @@
     "select": "Select",
     "complete": "Quiz Complete!",
     "reload": "Reload",
+    "noDescription": "No description available",
+    "loadingData": "Loading data...",
     "period": {
       "day": "Day",
       "week": "Week",
@@ -657,7 +659,8 @@
   "course": {
     "totalLessons": "{{count}} Lessons",
     "progress": "Progress: {{progress}}%",
-    "continue": "Continue"
+    "continue": "Continue",
+    "courseNotFoundOrNotPublic": "Course not found or is not public"
   },
   "success": {
     "noteCreated": "Note created successfully",
@@ -690,7 +693,8 @@
   },
   "loading": {
     "ai": "AI is responding...",
-    "room": "Loading chat room..."
+    "room": "Loading chat room...",
+    "aiRoom": "Loading AI Room..."
   },
   "input": {
     "placeholder": "Type a message..."
@@ -971,7 +975,12 @@
     "tipsTitle": "Chat Tips",
     "tip1": "Tip 1: Enable auto-translate for smoother communication.",
     "tip2": "Tip 2: Save history to review important messages later.",
-    "tip3": "Tip 3: Use sound and vibration notifications to stay updated."
+    "tip3": "Tip 3: Use sound and vibration notifications to stay updated.",
+    "activeRooms": "Active Rooms",
+    "inbox": "Inbox",
+    "no_messages": "No messages",
+    "ai_assistant": "AI Assistant",
+    "click_to_view": "Click to view"
   },
   "groupStudy": {
     "title": "Group Study Rooms",
@@ -1008,7 +1017,16 @@
     "empty.subtext": "Create a new room and invite your friends!",
     "join.by.code": "Join by Code",
     "join.by.code.desc": "Enter the room code to join",
-    "code.placeholder": "Enter room code"
+    "code.placeholder": "Enter room code",
+    "community_lobby": "Community Lobby",
+    "search_public": "Search Public Rooms",
+    "empty_public": "No public rooms found",
+    "private": {
+      "title": "Private Room"
+    },
+    "enter": {
+      "password": "Enter Password"
+    }
   },
   "quiz": {
     "title": "Quiz",
@@ -1342,7 +1360,8 @@
   },
   "purpose": {
     "learning": "Learning",
-    "social": "Social"
+    "social": "Social",
+    "quiz": "Quiz"
   },
   "group": {
     "share": {
@@ -1427,6 +1446,7 @@
     },
     "title": "Study History",
     "export": "Export",
+    "noStats": "No statistics available",
     "tabs": {
       "sessions": "Sessions",
       "tests": "Tests",
@@ -1648,7 +1668,10 @@
     }
   },
   "categories": {
-    "all": "All Categories"
+    "all": "All Categories",
+    "free": "Free",
+    "paid": "Paid",
+    "purchased": "Purchased"
   },
   "enums": {
     "level": "Level",
@@ -1766,7 +1789,6 @@
   "noCallSelected": "No call selected",
   "id": "ID",
   "role": "Role",
-  "status": "Status",
   "type": "Type",
   "historyUser": "History (User)",
   "enterUserIdHistory": "Enter userId to view history",
@@ -1774,6 +1796,8 @@
   "historyError": "Cannot fetch history",
   "noHistory": "No history",
   "translation": {
+    "selectTarget": "Select Target Language",
+    "targetLang": "Target Language",
     "quiz": {
       "solo": "Solo Quiz",
       "loading": "Loading Quiz...",
@@ -2056,7 +2080,11 @@
   },
   "speaking": {
     "select_lesson": "Select a Lesson",
-    "no_lessons_available": "No lessons available. Please check back later."
+    "no_lessons_available": "No lessons available. Please check back later.",
+    "practice": "Speaking Practice",
+    "ready_title": "Get Ready",
+    "tap_hold_record": "Tap and hold to record",
+    "recording": "Recording..."
   },
   "reading": {
     "screenTitle": "Reading Practice",
@@ -2066,7 +2094,11 @@
     "generateButton": "Generate Article",
     "generatedContentTitle": "Generated Content",
     "errorLoadingContent": "Could not load content. Please try again.",
-    "startReading": "Start Reading"
+    "startReading": "Start Reading",
+    "select_lesson": "Select a Lesson",
+    "practice": "Reading Practice",
+    "generating_content": "Generating content...",
+    "error_loading_content": "Error loading content"
   },
   "filterCallerId": "Filter by callerId",
   "filterStatus": "Filter by status",
@@ -2074,5 +2106,21 @@
   "participantId": "Participant Id",
   "createGroupCall": "Create Group Call",
   "createOneToOne": "Create 1-1 Call",
-  "removeUser": "Remove user"
+  "removeUser": "Remove user",
+  "status": {
+    "online": "Online"
+  },
+  "password": {
+    "optional": "Password (Optional)"
+  },
+  "cancel": "Cancel",
+  "confirm": "Confirm",
+  "people": "People",
+  "filter": {
+    "all": "All",
+    "ai": "AI",
+    "friend": "Friends",
+    "stranger": "Strangers",
+    "couple": "Couple"
+  }
 }

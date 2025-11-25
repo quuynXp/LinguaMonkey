@@ -56,7 +56,6 @@ public class Lesson extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "lesson_type")
     private LessonType lessonType;
-    // save as CSV e.g. "LISTENING,SPEAKING"
 
     @Column(name = "skill_types")
     @Enumerated(EnumType.STRING)
