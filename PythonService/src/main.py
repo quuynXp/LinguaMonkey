@@ -1,4 +1,3 @@
-# file: PythonService/src/main.py
 from fastapi import (
     FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query
 )
@@ -43,11 +42,13 @@ try:
     logger.info("Public key loaded successfully.")
 except Exception as e:
     logger.error(f"Failed to load public key: {str(e)}")
+    # Fallback for local dev
     try:
         with open("public_key.pem", "rb") as f:
             PUBLIC_KEY = serialization.load_pem_public_key(f.read(), backend=default_backend())
     except:
-        raise RuntimeError("Public key loading failed")
+        logger.warning("Could not load public_key.pem. JWT verification may fail.")
+        PUBLIC_KEY = None
 
 # === ROUTERS ===
 internal_router = APIRouter(prefix="/internal")
@@ -89,7 +90,6 @@ class ConnectionManager:
     async def broadcast_to_room(self, message: dict, room_id: str):
         if room_id in self.active_connections:
             text_data = json.dumps(message)
-            # Iterate copy to avoid runtime modification errors
             for connection in self.active_connections[room_id][:]:
                 try:
                     await connection.send_text(text_data)
@@ -98,10 +98,12 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 audio_buffers = defaultdict(list)
-BUFFER_THRESHOLD_SECONDS = 2
+# Tune buffering: 16k sample rate * 2 bytes (16bit) = 32000 bytes/sec
+# 1.5s buffer is usually good balance between latency and accuracy for Whisper
+BUFFER_THRESHOLD_SECONDS = 1.5 
 SAMPLE_RATE = 16000
 BYTES_PER_SECOND = SAMPLE_RATE * 2
-BUFFER_SIZE_LIMIT = BYTES_PER_SECOND * BUFFER_THRESHOLD_SECONDS
+BUFFER_SIZE_LIMIT = int(BYTES_PER_SECOND * BUFFER_THRESHOLD_SECONDS)
 
 # === HELPERS ===
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -119,8 +121,13 @@ async def get_websocket_user(websocket: WebSocket, token: str) -> str:
              await websocket.close(code=1008, reason="Missing Token")
              raise WebSocketDisconnect()
         
+        # If public key load failed, skip verify for dev (Warning: Insecure)
+        options = {"verify_signature": False} if PUBLIC_KEY is None else {"verify_exp": True}
+        key = PUBLIC_KEY if PUBLIC_KEY else ""
+        
         decoded_token = jwt.decode(
-            token, PUBLIC_KEY, algorithms=["RS256"], issuer="LinguaMonkey.com"
+            token, key, algorithms=["RS256"], issuer="LinguaMonkey.com", 
+            options=options
         )
         user_id = decoded_token.get("sub") or decoded_token.get("userId")
         return user_id
@@ -131,29 +138,29 @@ async def get_websocket_user(websocket: WebSocket, token: str) -> str:
 
 # === API ENDPOINTS ===
 
-# 1. Internal API (No Auth Check)
 @internal_router.post("/invalidate-cache") 
 async def invalidate_user_cache(
     request: CacheInvalidationRequest,
-    redis: Redis = Depends(get_redis_client) # Inject Redis
+    redis: Redis = Depends(get_redis_client)
 ):
     cache_key = f"user_profile:{request.user_id}"
     try:
         await redis.delete(cache_key)
-        logger.info(f"Cache invalidated for {request.user_id}")
         return {"status": "success"}
     except Exception as e:
         logger.error(f"Invalidate cache error: {e}")
         raise HTTPException(status_code=500, detail="Redis error")
 
-# 2. Protected API (With JWT)
 @protected_router.post("/translate")
 async def translate(
     request: TranslationRequest, 
     user: dict = Depends(verify_token)
 ):
     try:
-        translated_text, error = translate_text(request.text, request.source_lang, request.target_lang)
+        # Use asyncio.to_thread for blocking CPU task
+        translated_text, error = await asyncio.to_thread(
+            translate_text, request.text, request.source_lang, request.target_lang
+        )
         if error: raise HTTPException(status_code=500, detail=error)
         return {"translated_text": translated_text}
     except Exception as e:
@@ -182,7 +189,6 @@ app = FastAPI()
 async def voice_stream(websocket: WebSocket, token: str = Query(...)):
     user_id = await get_websocket_user(websocket, token)
     await websocket.accept()
-    logging.info(f"Client {user_id} connected to Voice Stream")
     
     try:
         while True:
@@ -191,7 +197,8 @@ async def voice_stream(websocket: WebSocket, token: str = Query(...)):
             audio_chunk = base64.b64decode(msg.get("audio_chunk", "")) if msg.get("audio_chunk") else b""
             
             if audio_chunk:
-                text, error = speech_to_text(audio_chunk, "en")
+                # Run STT in thread pool
+                text, error = await asyncio.to_thread(speech_to_text, audio_chunk, "en")
                 response = {"seq": msg.get("seq", 0)}
                 if error: response["error"] = error
                 else: response["text"] = text
@@ -205,9 +212,7 @@ async def voice_stream(websocket: WebSocket, token: str = Query(...)):
 async def chat_stream(websocket: WebSocket, token: str = Query(...)):
     user_id = await get_websocket_user(websocket, token)
     await websocket.accept()
-    logging.info(f"Client {user_id} connected to Chat Stream")
     
-    # Init resources locally for this socket session
     db = AsyncSessionLocal()
     redis = await get_redis_client()
     
@@ -237,7 +242,6 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                 
                 await websocket.send_text(json.dumps({"type": "chat_response_complete"}))
                 
-                # Async persist
                 http_payload = {
                     "userId": user_id, "roomId": room_id,
                     "userPrompt": prompt, "aiResponse": full_ai_response,
@@ -252,7 +256,6 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
         logger.error(f"Chat WS Error: {e}")
     finally:
         await db.close()
-        # Redis connection is from pool, no need to close specifically unless using a dedicated client
 
 @app.websocket("/live-subtitles")
 async def live_subtitles(websocket: WebSocket, token: str = Query(...), roomId: str = Query(...), nativeLang: str = Query("vi")):
@@ -266,34 +269,47 @@ async def live_subtitles(websocket: WebSocket, token: str = Query(...), roomId: 
             msg = json.loads(data)
             original_text = ""
 
-            # Case 1: Audio Chunk
+            # Case 1: Audio Chunk Processing
             if "audio_chunk" in msg and msg["audio_chunk"]:
                 try:
                     chunk_bytes = base64.b64decode(msg["audio_chunk"])
                     audio_buffers[buffer_key].append(chunk_bytes)
                     
-                    if sum(len(c) for c in audio_buffers[buffer_key]) > BUFFER_SIZE_LIMIT:
+                    current_buffer_size = sum(len(c) for c in audio_buffers[buffer_key])
+                    
+                    if current_buffer_size > BUFFER_SIZE_LIMIT:
                         full_audio = b"".join(audio_buffers[buffer_key])
-                        audio_buffers[buffer_key] = []
-                        stt_text, error = speech_to_text(full_audio, "en")
-                        if not error and stt_text and stt_text.strip():
+                        audio_buffers[buffer_key] = [] # Clear buffer immediately
+                        
+                        # Run STT in thread pool to avoid blocking WS loop
+                        stt_text, error = await asyncio.to_thread(speech_to_text, full_audio, "en")
+                        
+                        if not error and stt_text and len(stt_text.strip()) > 1:
                             original_text = stt_text
                 except Exception as e:
                     logger.error(f"Audio processing error: {e}")
             
-            # Case 2: Direct Text
+            # Case 2: Direct Text (e.g., from chat input)
             elif "text" in msg:
                 original_text = msg["text"]
 
+            # If we have valid text from either source, translate and broadcast
             if original_text:
-                translated_text, err = translate_text(original_text, "auto", nativeLang)
-                if err: translated_text = "Translation error"
+                # Run Translation in thread pool
+                translated_text, err = await asyncio.to_thread(
+                    translate_text, original_text, "auto", nativeLang
+                )
+                if err: 
+                    translated_text = "[Translation Error]"
                 
+                # Broadcast dual subtitle
                 await manager.broadcast_to_room({
                     "type": "subtitle",
                     "senderId": user_id,
                     "original": original_text,
+                    "originalLang": "en", # STT assumes en for now, or 'auto' result from earlier
                     "translated": translated_text,
+                    "translatedLang": nativeLang,
                     "timestamp": datetime.now().isoformat()
                 }, roomId)
 

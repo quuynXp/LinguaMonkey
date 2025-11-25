@@ -1,13 +1,26 @@
-# === 1. DATABASE (GỘP CHUNG ĐỂ DÙNG FREE TIER) ===
-databases:
-  - name: shared-postgres # Tên instance trên Render
+# FILE: render.yaml (DB-less Kong Architecture)
+# Sử dụng cấu trúc mới nhất và fix lỗi xung đột DB
+---
+services:
+  # === 1. DATABASE (GỘP CHUNG ĐỂ DÙNG FREE TIER) ===
+  - type: pserv
+    name: shared-postgres
+    runtime: postgres
     region: singapore
     plan: free
-    databaseName: linguaviet_db # Tên DB mặc định bên trong
-    user: linguauser
+    disk:
+      name: postgres-data
+      sizeGB: 1
+    # Chỉ định databaseName và user mặc định
+    envVars:
+      - key: POSTGRES_DB
+        value: linguaviet_db
+      - key: POSTGRES_USER
+        value: linguauser
+      - key: POSTGRES_PASSWORD
+        generateValue: true
     ipAllowList: []
 
-services:
   # === 2. REDIS (FREE) ===
   - type: redis
     name: redis
@@ -15,76 +28,13 @@ services:
     plan: free
     ipAllowList: []
 
-  # === 3. STORAGE & SEARCH (COMMENTED OUT FOR DEBUILD) ===
-  # - type: web
-  #   name: minio
-  #   runtime: image
-  #   image:
-  #     url: minio/minio:RELEASE.2023-03-20T20-16-18Z
-  #   region: singapore
-  #   plan: free
-  #   startCommand: server /data --console-address ":9001"
-  #   envVars:
-  #     - key: MINIO_ROOT_USER
-  #       value: minioadmin
-  #     - key: MINIO_ROOT_PASSWORD
-  #       value: minioadmin
-  #     - key: TZ
-  #       value: Asia/Ho_Chi_Minh
-
-  # - type: pserv
-  #   name: elasticsearch
-  #   runtime: image
-  #   image:
-  #     url: docker.elastic.co/elasticsearch/elasticsearch:7.17.5
-  #   region: singapore
-  #   plan: starter
-  #   envVars:
-  #     - key: discovery.type
-  #       value: single-node
-  #     - key: ES_JAVA_OPTS
-  #       value: "-Xms256m -Xmx256m"
-  #     - key: TZ
-  #       value: Asia/Ho_Chi_Minh
-  #   disk:
-  #     name: es_data
-  #     mountPath: /usr/share/elasticsearch/data
-  #     sizeGB: 1
-
-  # - type: web
-  #   name: kibana
-  #   runtime: image
-  #   image:
-  #     url: docker.elastic.co/kibana/kibana:7.17.5
-  #   region: singapore
-  #   plan: free
-  #   envVars:
-  #     - key: ELASTICSEARCH_HOSTS
-  #       value: http://elasticsearch:9200
-  #     - key: TZ
-  #       value: Asia/Ho_Chi_Minh
-
-  # - type: pserv
-  #   name: kafka
-  #   runtime: image
-  #   image:
-  #     url: redpandadata/redpanda:v23.1.1
-  #   region: singapore
-  #   plan: starter
-  #   envVars:
-  #     - key: TZ
-  #       value: Asia/Ho_Chi_Minh
-  #   disk:
-  #     name: kafka_data
-  #     mountPath: /var/lib/redpanda/data
-  #     sizeGB: 1
-
-  # === 4. BACKEND SERVICES (ACTIVE - FREE) ===
+  # === 3. BACKEND SERVICES (ACTIVE - FREE) ===
   - type: web
     name: linguavietnameseapp
     runtime: docker
     region: singapore
     plan: free
+    autoDeploy: true
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
     envVars:
@@ -92,15 +42,26 @@ services:
         value: Asia/Ho_Chi_Minh
       # Kết nối vào Shared DB
       - key: SPRING_DATASOURCE_URL
-        fromDatabase:
+        fromService:
+          type: pserv
           name: shared-postgres
           property: connectionString
+      - key: SPRING_DATASOURCE_USERNAME
+        fromService:
+          type: pserv
+          name: shared-postgres
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromService:
+          type: pserv
+          name: shared-postgres
+          property: password
       - key: SPRING_REDIS_HOST
         fromService:
           type: redis
           name: redis
           property: host
-      # Dummy Values để code không lỗi khi khởi động
+      # Dummy Values
       - key: KAFKA_BOOTSTRAP_SERVERS
         value: disabled:9092
       - key: ELASTICSEARCH_URIS
@@ -111,22 +72,36 @@ services:
       - key: PYTHON_SERVICE_URL
         value: http://pythonservice:8001
       - fromGroup: shared-app-env
+    healthCheckPath: /actuator/health # Giả định Java có /actuator/health
+    numInstances: 1
 
   - type: web
     name: pythonservice
     runtime: docker
     region: singapore
     plan: free
+    autoDeploy: true
     dockerContext: .
     dockerfilePath: ./PythonService/Dockerfile
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
-      # Kết nối vào Shared DB
+      # Kết nối vào Shared DB (Python dùng host, user, pass)
       - key: DB_HOST
-        fromDatabase:
+        fromService:
+          type: pserv
           name: shared-postgres
           property: host
+      - key: DB_USER
+        fromService:
+          type: pserv
+          name: shared-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromService:
+          type: pserv
+          name: shared-postgres
+          property: password
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -138,8 +113,11 @@ services:
       - key: JAVA_SERVICE_URL
         value: http://linguavietnameseapp:8080
       - fromGroup: shared-app-env
+    numInstances: 1
+    port: 8001 # Cổng mà dịch vụ Python expose
 
-  # === 5. KONG GATEWAY (ACTIVE - FREE - SHARED DB) ===
+  # === 4. KONG GATEWAY (ACTIVE - FREE - DB-LESS) ===
+  # Konga và Kong-init không cần thiết với chế độ này.
   - type: web
     name: kong
     runtime: image
@@ -147,24 +125,16 @@ services:
       url: kong:3.4
     region: singapore
     plan: free
+    autoDeploy: true
+    # Đảm bảo Kong khởi động sau khi các backend đã sẵn sàng
+    dependsOn:
+      - linguavietnameseapp
+      - pythonservice
     envVars:
       - key: KONG_DATABASE
-        value: postgres
-      # Trỏ Kong vào Shared DB luôn
-      - key: KONG_PG_HOST
-        fromDatabase:
-          name: shared-postgres
-          property: host
-      - key: KONG_PG_USER
-        fromDatabase:
-          name: shared-postgres
-          property: user
-      - key: KONG_PG_PASSWORD
-        fromDatabase:
-          name: shared-postgres
-          property: password
-      - key: KONG_PG_DATABASE
-        value: linguaviet_db # Dùng chung database name
+        value: "off" # Chế độ DB-less
+      - key: KONG_DECLARATIVE_CONFIG
+        value: /usr/local/etc/kong/kong.yml # Đường dẫn file cấu hình
       - key: KONG_PROXY_ACCESS_LOG
         value: /dev/stdout
       - key: KONG_ADMIN_ACCESS_LOG
@@ -179,52 +149,14 @@ services:
         value: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
       - key: TZ
         value: Asia/Ho_Chi_Minh
-
-  - type: web
-    name: konga
-    runtime: image
-    image:
-      url: pantsel/konga:latest
-    region: singapore
-    plan: free
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: DB_ADAPTER
-        value: postgres
-      # Trỏ Konga vào Shared DB
-      - key: DB_HOST
-        fromDatabase:
-          name: shared-postgres
-          property: host
-      - key: DB_USER
-        fromDatabase:
-          name: shared-postgres
-          property: user
-      - key: DB_PASSWORD
-        fromDatabase:
-          name: shared-postgres
-          property: password
-      - key: DB_DATABASE
-        value: linguaviet_db
-      - key: TOKEN_SECRET
-        generateValue: true
-      - key: KONGA_HOOK_TIMEOUT
-        value: 120000
-      - key: TZ
-        value: Asia/Ho_Chi_Minh
-
-  # === 6. INIT TASKS ===
-  - type: cron
-    name: kong-init-job
-    region: singapore
-    schedule: "0 0 1 1 *"
-    runtime: docker
-    dockerContext: .
-    dockerfilePath: ./kong-init/Dockerfile.init
-    envVars:
-      - key: KONG_ADMIN_URL
-        value: http://kong:8001
+    ports:
+      - port: 8000 # Proxy HTTP
+      - port: 8001 # Admin API
+    disk:
+      # Mount file kong.yml vào container Kong
+      - name: kong-config
+        mountPath: /usr/local/etc/kong/kong.yml
+        # Lưu ý: Cần đảm bảo file kong.yml được tạo và đẩy lên repo
 
 envVarGroups:
   - name: shared-app-env
