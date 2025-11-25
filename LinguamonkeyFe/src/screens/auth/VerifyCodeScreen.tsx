@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
-import { verifyOtpAndLogin, requestOtp } from '../../services/authService';
+import { authService } from '../../services/authService';
 import { showError, showSuccess } from "../../utils/toastHelper";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -43,7 +43,7 @@ const VerifyCodeScreen = ({ navigation, route }) => {
     }
     setIsLoading(true);
     try {
-      const success = await verifyOtpAndLogin(identifier, code);
+      const success = await authService.verifyOtpAndLogin(identifier, code);
       if (success) {
         showSuccess(t('loginSuccess'));
       }
@@ -57,7 +57,7 @@ const VerifyCodeScreen = ({ navigation, route }) => {
   const handleResend = async () => {
     setIsLoading(true);
     try {
-      await requestOtp(identifier);
+      await authService.requestOtp(identifier);
       showSuccess(t('otpSentSuccess'));
       setTimeLeft(60);
       setCanResend(false);

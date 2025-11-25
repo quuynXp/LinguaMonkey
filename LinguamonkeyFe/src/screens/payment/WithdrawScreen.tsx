@@ -6,9 +6,9 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUserStore } from '../../stores/UserStore';
 import { useWallet } from '../../hooks/useWallet';
-import { formatCurrency } from '../../utils/currency';
 import * as Enums from '../../types/enums';
 import { WithdrawRequest } from '../../types/dto';
+import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
 
 const parseBankInfo = (info: string) => {
     const parts = info.split('-').map(p => p.trim());
@@ -22,6 +22,7 @@ const parseBankInfo = (info: string) => {
 const WithdrawScreen = ({ navigation }) => {
     const { t } = useTranslation();
     const { user } = useUserStore();
+    const formatCurrency = useCurrencyConverter().convert;
     const withdrawMutation = useWallet().useWithdraw();
 
     const {
@@ -45,7 +46,7 @@ const WithdrawScreen = ({ navigation }) => {
         if (isNaN(amount) || amount < MIN_WITHDRAWAL || amount > availableBalance) {
             return Alert.alert(
                 t('withdraw.error.invalidAmount') ?? 'Invalid Amount',
-                t('withdraw.error.amountDetails', { available: formatCurrency(availableBalance) })
+                t('withdraw.error.amountDetails', { available: formatCurrency(availableBalance, 'USD') })
             );
         }
 
@@ -57,7 +58,7 @@ const WithdrawScreen = ({ navigation }) => {
 
         Alert.alert(
             t('withdraw.confirmTitle') ?? 'Confirm Withdrawal',
-            t('withdraw.confirmMessage', { amount: formatCurrency(amount), bank: bankDetails.accountName }),
+            t('withdraw.confirmMessage', { amount: formatCurrency(amount, 'USD'), bank: bankDetails.accountName }),
             [
                 { text: t('common.cancel') ?? 'Cancel', style: 'cancel' },
                 {
@@ -112,7 +113,7 @@ const WithdrawScreen = ({ navigation }) => {
             <View style={styles.container}>
                 <View style={styles.balanceInfo}>
                     <Text style={styles.availableLabel}>{t('withdraw.availableBalance') ?? 'Available Balance'}:</Text>
-                    <Text style={styles.availableAmount}>{formatCurrency(availableBalance)}</Text>
+                    <Text style={styles.availableAmount}>{formatCurrency(availableBalance, 'USD')}</Text>
                 </View>
 
                 <Text style={styles.label}>{t('withdraw.amountLabel') ?? 'Amount to withdraw'}</Text>

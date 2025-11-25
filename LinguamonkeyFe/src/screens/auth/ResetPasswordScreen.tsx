@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from 'react-i18next';
 import { Animated, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { requestPasswordResetOtp, verifyPasswordResetOtp, resetPassword } from '../../services/authService';
+import { authService } from '../../services/authService';
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { showError, showSuccess } from "../../utils/toastHelper";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -45,7 +45,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         setIsLoading(true);
         try {
             const target = method === 'EMAIL' ? methods.email : methods.phone;
-            await requestPasswordResetOtp(target || identifier, method);
+            await authService.requestPasswordResetOtp(target || identifier, method);
             showSuccess(t('otpSentSuccess'));
             setCurrentStep('OTP');
         } catch (error: any) {
@@ -63,7 +63,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         setIsLoading(true);
         try {
             const target = selectedMethod === 'EMAIL' ? methods.email : methods.phone;
-            const token = await verifyPasswordResetOtp(target || identifier, otp);
+            const token = await authService.verifyPasswordResetOtp(target || identifier, otp);
             setSecureToken(token);
             setCurrentStep('NEW_PASSWORD');
         } catch (error: any) {
@@ -84,7 +84,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         }
         setIsLoading(true);
         try {
-            await resetPassword(secureToken, newPassword);
+            await authService.resetPassword(secureToken, newPassword);
             showSuccess(t('passwordResetSuccess'));
             navigation.reset({
                 index: 0,

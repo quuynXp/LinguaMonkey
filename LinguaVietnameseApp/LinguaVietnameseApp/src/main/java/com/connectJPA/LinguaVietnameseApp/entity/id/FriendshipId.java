@@ -2,7 +2,9 @@ package com.connectJPA.LinguaVietnameseApp.entity.id;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
-import lombok.*;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.util.UUID;
@@ -12,9 +14,9 @@ import java.util.UUID;
 @AllArgsConstructor
 @Embeddable
 public class FriendshipId implements Serializable {
-    @Column(name = "requester_id", nullable = false)
+    @Column(name = "user1_id", nullable = false)
     private UUID requesterId;
 
-    @Column(name = "receiver_id", nullable = false)
+    @Column(name = "user2_id", nullable = false)
     private UUID receiverId;
 }

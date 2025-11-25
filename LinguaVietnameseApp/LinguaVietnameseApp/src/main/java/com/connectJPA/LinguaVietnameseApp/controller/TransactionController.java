@@ -17,11 +17,9 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Locale;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -39,8 +37,10 @@ public class TransactionController {
     @PostMapping("/create-payment")
     public ResponseEntity<AppApiResponse<String>> createPayment(
             @Valid @RequestBody PaymentRequest request,
+            HttpServletRequest httpServletRequest,
             Locale locale) {
-        String paymentUrl = transactionService.createPaymentUrl(request);
+        String clientIp = getClientIp(httpServletRequest);
+        String paymentUrl = transactionService.createPaymentUrl(request, clientIp);
         return ResponseEntity.ok(AppApiResponse.<String>builder()
                 .code(200)
                 .message(messageSource.getMessage("transaction.payment.created.success", null, locale))
@@ -170,5 +170,24 @@ public class TransactionController {
                 .code(200)
                 .message(messageSource.getMessage("transaction.deleted.success", null, locale))
                 .build();
+    }
+
+    // Helper method to extract Real IP when running behind Docker/Nginx/Kong
+    private String getClientIp(HttpServletRequest request) {
+        String ipAddress = request.getHeader("X-Forwarded-For");
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getHeader("Proxy-Client-IP");
+        }
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getHeader("WL-Proxy-Client-IP");
+        }
+        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
+            ipAddress = request.getRemoteAddr();
+        }
+        // In case of multiple proxies, X-Forwarded-For contains comma separated IPs, take the first one
+        if (ipAddress != null && ipAddress.contains(",")) {
+            ipAddress = ipAddress.split(",")[0].trim();
+        }
+        return ipAddress;
     }
 }

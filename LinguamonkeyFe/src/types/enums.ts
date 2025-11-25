@@ -289,7 +289,8 @@ export enum RoomPurpose {
     CALL = "CALL",
     PRIVATE_CHAT = "PRIVATE_CHAT",
     GROUP_CHAT = "GROUP_CHAT",
-    AI_CHAT = "AI_CHAT"
+    AI_CHAT = "AI_CHAT",
+    COUPLE = "COUPLE"
 }
 
 export enum RoomRole {

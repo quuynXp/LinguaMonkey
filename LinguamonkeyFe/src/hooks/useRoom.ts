@@ -13,6 +13,7 @@ import { RoomPurpose, RoomType } from "../types/enums";
 export const roomKeys = {
     all: ["rooms"] as const,
     lists: (params: any) => [...roomKeys.all, "list", params] as const,
+    joined: (params: any) => [...roomKeys.all, "joined", params] as const, // New Key
     detail: (id: string) => [...roomKeys.all, "detail", id] as const,
     members: (id: string) => [...roomKeys.all, "members", id] as const,
     private: (targetUserId: string) => [...roomKeys.all, "private", targetUserId] as const,
@@ -37,8 +38,6 @@ export const useRooms = () => {
     const queryClient = useQueryClient();
     const BASE = "/api/v1/rooms";
 
-    // --- QUERIES ---
-
     const useAllRooms = (params?: {
         roomName?: string;
         creatorId?: string;
@@ -58,6 +57,26 @@ export const useRooms = () => {
                 return mapPageResponse(data.result, page, size);
             },
             staleTime: 5 * 60 * 1000,
+        });
+    };
+
+    // NEW: Get rooms I have joined (Private, AI, Groups)
+    const useJoinedRooms = (params?: {
+        purpose?: RoomPurpose;
+        page?: number;
+        size?: number;
+    }) => {
+        const { page = 0, size = 10 } = params || {};
+        return useQuery({
+            queryKey: roomKeys.joined(params),
+            queryFn: async () => {
+                const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
+                    `${BASE}/joined`,
+                    { params: { ...params, page, size } }
+                );
+                return mapPageResponse(data.result, page, size);
+            },
+            staleTime: 1 * 60 * 1000, // Keep fresh for inbox
         });
     };
 
@@ -98,19 +117,18 @@ export const useRooms = () => {
         });
     };
 
-    // --- MUTATIONS ---
-
     const useCreateRoom = () => {
         return useMutation({
             mutationFn: async (req: RoomRequest) => {
                 const { data } = await instance.post<AppApiResponse<RoomResponse>>(BASE, req);
                 return data.result!;
             },
-            onSuccess: () => queryClient.invalidateQueries({ queryKey: roomKeys.all }),
+            onSuccess: () => {
+                queryClient.invalidateQueries({ queryKey: roomKeys.all });
+            },
         });
     };
 
-    // New: Join Room Mutation (Handles ID or Code + Password)
     const useJoinRoom = () => {
         return useMutation({
             mutationFn: async ({ roomId, roomCode, password }: { roomId?: string; roomCode?: string; password?: string }) => {
@@ -196,11 +214,12 @@ export const useRooms = () => {
 
     return {
         useAllRooms,
+        useJoinedRooms, // Exported here
         useRoom,
         useRoomMembers,
         useAiChatRoom,
         useCreateRoom,
-        useJoinRoom, // Export new hook
+        useJoinRoom,
         useUpdateRoom,
         useDeleteRoom,
         useFindOrCreatePrivateRoom,

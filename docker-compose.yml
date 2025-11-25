@@ -287,6 +287,138 @@
 #       - TZ=Asia/Ho_Chi_Minh
 #     networks:
 #       - lingua-net
+# version: '3.8'
+
+# networks:
+#   lingua-net:
+#     driver: bridge
+
+# volumes:
+#   app_data:
+#   redis_data:
+
+# services:
+#   # === DATABASES ===
+#   app-database:
+#     image: postgres:17
+#     container_name: app-database
+#     environment:
+#       POSTGRES_USER: linguauser
+#       POSTGRES_DB: linguaviet_db
+#       POSTGRES_PASSWORD: linguapass
+#       TZ: "Asia/Ho_Chi_Minh"
+#     volumes:
+#       - app_data:/var/lib/postgresql/data
+#       - ./db:/docker-entrypoint-initdb.d
+#     ports:
+#       - "5433:5432"
+#     networks:
+#       - lingua-net
+#     restart: always
+
+#   # === CACHE ===
+#   redis:
+#     image: redis:6-alpine
+#     container_name: redis
+#     command: ["redis-server", "--requirepass", "redisPass123"]
+#     ports:
+#       - "6379:6379"
+#     volumes:
+#       - redis_data:/data
+#     networks:
+#       - lingua-net
+#     restart: always
+
+#   # === BACKEND ===
+#   linguavietnameseapp:
+#     build:
+#       context: ./LinguaVietnameseApp
+#       dockerfile: Dockerfile
+#     container_name: linguavietnameseapp
+#     depends_on:
+#       - app-database
+#       - redis
+#     env_file:
+#       - ./LinguaVietnameseApp/.env
+#     environment:
+#       - TZ=Asia/Ho_Chi_Minh
+#       - PYTHON_SERVICE_URL=http://pythonservice:50051
+#     volumes:
+#       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro
+#     networks:
+#       - lingua-net
+#     restart: always
+
+#   pythonservice:
+#     build: 
+#       context: ./PythonService
+#     container_name: pythonservice
+#     depends_on:
+#       - app-database
+#       - redis
+#     env_file:
+#       - ./PythonService/.env
+#     environment:
+#       - TZ=Asia/Ho_Chi_Minh
+#       - JAVA_SERVICE_URL=http://linguavietnameseapp:8080
+#     volumes:
+#       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/app/public_key.pem:ro
+#     ports:
+#       - "50051:50051"
+#     networks:
+#       - lingua-net
+#     restart: always
+
+#   # === KONG (Local Mode: DB-less) ===
+#   # Ở Local chạy DB-less cho tiện, đỡ phải migrate DB
+#   kong:
+#     image: kong:3.4
+#     container_name: kong
+#     depends_on:
+#       - linguavietnameseapp
+#       - pythonservice
+#     environment:
+#       KONG_DATABASE: "off"
+#       KONG_DECLARATIVE_CONFIG: "/etc/kong/kong.yml"
+#       KONG_PROXY_ACCESS_LOG: /dev/stdout
+#       KONG_ADMIN_ACCESS_LOG: /dev/stdout
+#       KONG_PROXY_ERROR_LOG: /dev/stderr
+#       KONG_ADMIN_ERROR_LOG: /dev/stderr
+#       KONG_ADMIN_LISTEN: 0.0.0.0:8001
+#       KONG_PLUGINS: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
+#     ports:
+#       - "8000:8000"
+#       - "8001:8001"
+#       - "8002:8002"
+#     volumes:
+#       - ./kong.yml:/etc/kong/kong.yml:ro
+#     networks:
+#       - lingua-net
+#     restart: always
+
+#   # === AUTO BACKUP ===
+#   db-backup:
+#     image: prodrigestivill/postgres-backup-local
+#     container_name: db-backup
+#     restart: always
+#     user: postgres:postgres
+#     volumes:
+#       - ./backups:/backups
+#     depends_on:
+#       - app-database
+#     environment:
+#       - POSTGRES_HOST=app-database
+#       - POSTGRES_DB=linguaviet_db
+#       - POSTGRES_USER=linguauser
+#       - POSTGRES_PASSWORD=linguapass
+#       - SCHEDULE=@daily
+#       - BACKUP_KEEP_DAYS=7
+#       - BACKUP_DIR=/backups
+#       - TZ=Asia/Ho_Chi_Minh
+#     networks:
+#       - lingua-net
+
+
 version: '3.8'
 
 networks:
@@ -322,14 +454,14 @@ services:
     container_name: redis
     command: ["redis-server", "--requirepass", "redisPass123"]
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     networks:
       - lingua-net
     restart: always
 
-  # === BACKEND ===
+  # === BACKEND SERVICES ===
   linguavietnameseapp:
     build:
       context: ./LinguaVietnameseApp
@@ -342,7 +474,10 @@ services:
       - ./LinguaVietnameseApp/.env
     environment:
       - TZ=Asia/Ho_Chi_Minh
-      - PYTHON_SERVICE_URL=http://pythonservice:50051
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://app-database:5432/linguaviet_db
+      - SPRING_REDIS_HOST=redis
+      # Gọi sang Python Service qua nội bộ container port 8001
+      - PYTHON_SERVICE_URL=http://pythonservice:8001
     volumes:
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro
     networks:
@@ -360,23 +495,26 @@ services:
       - ./PythonService/.env
     environment:
       - TZ=Asia/Ho_Chi_Minh
+      - DB_HOST=app-database
+      - REDIS_HOST=redis
       - JAVA_SERVICE_URL=http://linguavietnameseapp:8080
     volumes:
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/app/public_key.pem:ro
+    # Map port ra ngoài để debug nếu cần, port nội bộ vẫn là 8001
     ports:
-      - "50051:50051"
+      - "50052:8001"
     networks:
       - lingua-net
     restart: always
 
-  # === KONG (Local Mode: DB-less) ===
-  # Ở Local chạy DB-less cho tiện, đỡ phải migrate DB
+  # === KONG GATEWAY (DB-less) ===
   kong:
     image: kong:3.4
     container_name: kong
     depends_on:
       - linguavietnameseapp
       - pythonservice
+      - redis
     environment:
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: "/etc/kong/kong.yml"
@@ -385,8 +523,9 @@ services:
       KONG_PROXY_ERROR_LOG: /dev/stderr
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
-      KONG_PLUGINS: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
+      KONG_PLUGINS: bundled,rate-limiting,cors,request-transformer,proxy-cache
     ports:
+      # SỬA QUAN TRỌNG: Map 8000 host vào 8000 container để khớp với FE
       - "8000:8000"
       - "8001:8001"
       - "8002:8002"

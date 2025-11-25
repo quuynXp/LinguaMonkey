@@ -19,6 +19,9 @@ public interface RoomService {
 
     RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2);
 
+// Thêm method signature
+Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pageable);
+
     RoomResponse findOrCreateAiChatRoom(UUID userId);
 
     RoomResponse getRoomById(UUID id);

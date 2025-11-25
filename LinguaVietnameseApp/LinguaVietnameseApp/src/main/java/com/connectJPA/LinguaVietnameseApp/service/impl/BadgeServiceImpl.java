@@ -62,7 +62,7 @@ public class BadgeServiceImpl implements BadgeService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         // 2. Lấy danh sách các huy hiệu user đã sở hữu (để check 'isAchieved')
-        Set<UUID> achievedBadgeIds = userBadgeRepository.findById_UserId(userId)
+        Set<UUID> achievedBadgeIds = userBadgeRepository.findBadgesByUserId(userId)
                 .stream()
                 .map(Badge::getBadgeId)
                 .collect(Collectors.toSet());
@@ -202,7 +202,7 @@ public class BadgeServiceImpl implements BadgeService {
 
     @Override
     public List<BadgeResponse> getBadgesForUser(UUID userId) {
-        List<Badge> badges = userBadgeRepository.findById_UserId(userId);
+        List<Badge> badges = userBadgeRepository.findBadgesByUserId(userId);
         return badges.stream()
                 .map(b -> new BadgeResponse(b.getBadgeId(), b.getBadgeName(), b.getDescription(), b.getImageUrl()))
                 .collect(Collectors.toList());

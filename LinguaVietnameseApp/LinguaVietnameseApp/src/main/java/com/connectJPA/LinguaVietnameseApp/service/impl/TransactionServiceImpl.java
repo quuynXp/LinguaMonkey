@@ -26,9 +26,6 @@ import com.stripe.net.Webhook;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -83,7 +80,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    public String createDepositUrl(DepositRequest request) {
+    public String createDepositUrl(DepositRequest request, String clientIp) {
         User user = getUser(request.getUserId());
         Wallet wallet = getWallet(user.getUserId());
 
@@ -101,9 +98,9 @@ public class TransactionServiceImpl implements TransactionService {
 
         switch (request.getProvider()) {
             case VNPAY:
-                return createVnpayPaymentUrl(transaction, request);
+                return createVnpayPaymentUrl(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl(), clientIp);
             case STRIPE:
-                return createStripeCheckoutSession(transaction, request);
+                return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl());
             default:
                 throw new AppException(ErrorCode.INVALID_PAYMENT_PROVIDER);
         }
@@ -136,8 +133,8 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
-        // Bỏ vnp_SecureHash ra khỏi params để check
         params.remove("vnp_SecureHash");
+        params.remove("vnp_SecureHashType"); // Remove optional field if exists
         String queryString = VnPayUtils.buildQueryString(params);
         String computedHash = VnPayUtils.hmacSHA512(vnpHashSecret, queryString);
 
@@ -152,7 +149,6 @@ public class TransactionServiceImpl implements TransactionService {
 
         if ("00".equals(responseCode)) {
             transaction.setStatus(TransactionStatus.SUCCESS);
-            // Cộng tiền vào ví
             walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
         } else {
             transaction.setStatus(TransactionStatus.FAILED);
@@ -163,7 +159,7 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Transactional
     protected String handleStripeWebhook(Map<String, String> params) {
-        String payload = params.get("payload"); // Đây là JSON string
+        String payload = params.get("payload");
         String signatureHeader = params.get("stripe-signature");
 
         try {
@@ -183,7 +179,6 @@ public class TransactionServiceImpl implements TransactionService {
 
                     if ("paid".equals(session.getPaymentStatus())) {
                         transaction.setStatus(TransactionStatus.SUCCESS);
-                        // Cộng tiền vào ví
                         walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
                     } else {
                         transaction.setStatus(TransactionStatus.FAILED);
@@ -213,7 +208,7 @@ public class TransactionServiceImpl implements TransactionService {
         User sender = getUser(request.getSenderId());
         User receiver = getUser(request.getReceiverId());
         Wallet senderWallet = getWallet(sender.getUserId());
-        getWallet(receiver.getUserId()); // Chỉ check tồn tại
+        getWallet(receiver.getUserId());
 
         if (request.getIdempotencyKey() != null) {
             var existingTx = transactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
@@ -275,21 +270,13 @@ public class TransactionServiceImpl implements TransactionService {
                 .build();
         transaction = transactionRepository.save(transaction);
 
-        // Trừ tiền ngay để "đóng băng"
         walletService.debit(user.getUserId(), request.getAmount());
 
         try {
-            // TODO: Gọi API của Payment Gateway (PG) để tạo yêu cầu rút tiền
-            // (Ví dụ: PG.createPayout(transaction.getId(), request.getBankAccount()))
-            // Nếu PG báo lỗi đồng bộ -> throw exception để rollback
-            // Nếu PG xử lý async (webhook) -> log và return
-
             log.info("Withdrawal request created and awaiting PG processing: {}", transaction.getTransactionId());
             return transactionMapper.toResponse(transaction);
-
         } catch (Exception e) {
             log.error("Withdrawal failed during PG call: {}", e.getMessage());
-            // Nếu lỗi, @Transactional sẽ rollback (bao gồm cả lệnh debit)
             throw new AppException(ErrorCode.PAYMENT_PROCESSING_FAILED);
         }
     }
@@ -305,20 +292,17 @@ public class TransactionServiceImpl implements TransactionService {
             throw new AppException(ErrorCode.TRANSACTION_NOT_REFUNDABLE);
         }
 
-        // Check nếu đã có yêu cầu refund
-        // ... (Tùy logic nghiệp vụ)
-
         originalTx.setStatus(TransactionStatus.PENDING_REFUND);
         transactionRepository.save(originalTx);
 
         Transaction refundTx = Transaction.builder()
                 .user(requester)
                 .wallet(originalTx.getWallet())
-                .sender(originalTx.getReceiver()) // Người bị trừ tiền (người bán)
-                .receiver(originalTx.getSender()) // Người nhận tiền (người mua)
+                .sender(originalTx.getReceiver())
+                .receiver(originalTx.getSender())
                 .amount(originalTx.getAmount())
                 .type(TransactionType.REFUND)
-                .status(TransactionStatus.PENDING) // Chờ admin approve
+                .status(TransactionStatus.PENDING)
                 .provider(TransactionProvider.INTERNAL)
                 .originalTransaction(originalTx)
                 .description("Refund request: " + request.getReason())
@@ -331,16 +315,13 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionResponse approveRefund(ApproveRefundRequest request) {
-        // adminUser (lấy từ request.getAdminId())
         Transaction refundTx = getRefundTx(request.getRefundTransactionId());
         Transaction originalTx = refundTx.getOriginalTransaction();
 
         try {
-            // Atomic transfer ngược
             walletService.debit(refundTx.getSender().getUserId(), refundTx.getAmount());
             walletService.credit(refundTx.getReceiver().getUserId(), refundTx.getAmount());
 
-            // Cập nhật trạng thái
             refundTx.setStatus(TransactionStatus.SUCCESS);
             originalTx.setStatus(TransactionStatus.REFUNDED);
 
@@ -350,7 +331,7 @@ public class TransactionServiceImpl implements TransactionService {
             return transactionMapper.toResponse(refundTx);
         } catch (Exception e) {
             refundTx.setStatus(TransactionStatus.FAILED);
-            originalTx.setStatus(TransactionStatus.SUCCESS); // Trả lại trạng thái cũ
+            originalTx.setStatus(TransactionStatus.SUCCESS);
             transactionRepository.save(refundTx);
             transactionRepository.save(originalTx);
             log.error("Refund approval failed: {}", e.getMessage());
@@ -362,21 +343,18 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionResponse rejectRefund(UUID refundTransactionId, UUID adminId, String reason) {
-        // adminUser
         Transaction refundTx = getRefundTx(refundTransactionId);
         Transaction originalTx = refundTx.getOriginalTransaction();
 
         refundTx.setStatus(TransactionStatus.REJECTED);
         refundTx.setDescription(refundTx.getDescription() + " | Rejected by admin: " + reason);
-        originalTx.setStatus(TransactionStatus.SUCCESS); // Hoàn lại trạng thái SUCCESS
+        originalTx.setStatus(TransactionStatus.SUCCESS);
 
         transactionRepository.save(refundTx);
         transactionRepository.save(originalTx);
 
         return transactionMapper.toResponse(refundTx);
     }
-
-    // === Tiện ích nội bộ ===
 
     private User getUser(UUID userId) {
         return userRepository.findById(userId)
@@ -397,58 +375,7 @@ public class TransactionServiceImpl implements TransactionService {
         return refundTx;
     }
 
-    // VNPAY / STRIPE (Helper)
-    private String createVnpayPaymentUrl(Transaction transaction, DepositRequest request) {
-        Map<String, String> vnpParams = new HashMap<>();
-        vnpParams.put("vnp_Version", "2.1.0");
-        vnpParams.put("vnp_TmnCode", vnpTmnCode);
-        vnpParams.put("vnp_Amount", String.valueOf(request.getAmount().multiply(BigDecimal.valueOf(100)).longValue()));
-        vnpParams.put("vnp_Command", "pay");
-        vnpParams.put("vnp_CurrCode", request.getCurrency());
-        vnpParams.put("vnp_TxnRef", transaction.getTransactionId().toString());
-        vnpParams.put("vnp_OrderInfo", "Nap tien vi LinguaVietnamese");
-        vnpParams.put("vnp_OrderType", "billpayment");
-        vnpParams.put("vnp_Locale", "vn");
-        vnpParams.put("vnp_ReturnUrl", request.getReturnUrl());
-        vnpParams.put("vnp_IpAddr", "127.0.0.1"); // TODO: Lấy IP từ request
-        vnpParams.put("vnp_CreateDate", String.valueOf(System.currentTimeMillis()));
-
-        String queryString = VnPayUtils.buildQueryString(vnpParams);
-        String secureHash = VnPayUtils.hmacSHA512(vnpHashSecret, queryString);
-        return vnpUrl + "?" + queryString + "&vnp_SecureHash=" + secureHash;
-    }
-
-    private String createStripeCheckoutSession(Transaction transaction, DepositRequest request) {
-        Stripe.apiKey = stripeApiKey;
-        Map<String, Object> params = new HashMap<>();
-        params.put("payment_method_types", new String[]{"card"});
-        params.put("line_items", new Object[]{
-                new HashMap<String, Object>() {{
-                    put("price_data", new HashMap<String, Object>() {{
-                        put("currency", request.getCurrency().toLowerCase());
-                        put("unit_amount", request.getAmount().multiply(BigDecimal.valueOf(100)).longValue());
-                        put("product_data", new HashMap<String, Object>() {{
-                            put("name", "Nap tien vi LinguaVietnamese");
-                        }});
-                    }});
-                    put("quantity", 1);
-                }}
-        });
-        params.put("mode", "payment");
-        params.put("success_url", request.getReturnUrl() + "?status=success&transactionId=" + transaction.getTransactionId());
-        params.put("cancel_url", request.getReturnUrl() + "?status=cancel&transactionId=" + transaction.getTransactionId());
-        params.put("client_reference_id", transaction.getTransactionId().toString());
-
-        try {
-            com.stripe.model.checkout.Session session = com.stripe.model.checkout.Session.create(params);
-            return session.getUrl();
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.PAYMENT_PROCESSING_FAILED);
-        }
-    }
-
     @Override
-    //@Cacheable(value = "transactions", key = "#userId + ':' + #status + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) {
         try {
             TransactionStatus transactionStatus = status != null ? TransactionStatus.valueOf(status) : null;
@@ -465,7 +392,6 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    //@CachePut(value = "transactions", key = "#result.transactionId")
     public TransactionResponse createTransaction(TransactionRequest request) {
         try {
             userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
@@ -482,7 +408,6 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    //@CachePut(value = "transactions", key = "#id")
     public TransactionResponse updateTransaction(UUID id, TransactionRequest request) {
         try {
             Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
@@ -500,7 +425,6 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Override
     @Transactional
-    //@CacheEvict(value = "transactions", key = "#id")
     public void deleteTransaction(UUID id) {
         try {
             Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
@@ -513,7 +437,7 @@ public class TransactionServiceImpl implements TransactionService {
     }
 
     @Override
-    public String createPaymentUrl(PaymentRequest request) {
+    public String createPaymentUrl(PaymentRequest request, String clientIp) {
         try {
             userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -530,9 +454,9 @@ public class TransactionServiceImpl implements TransactionService {
 
             switch (request.getProvider()) {
                 case VNPAY:
-                    return createVnpayPaymentUrl(transaction, request);
+                    return createVnpayPaymentUrl(transaction, request.getAmount(), request.getCurrency(), request.getDescription(), request.getReturnUrl(), clientIp);
                 case STRIPE:
-                    return createStripeCheckoutSession(transaction, request);
+                    return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), request.getDescription(), request.getReturnUrl());
                 default:
                     throw new AppException(ErrorCode.INVALID_PAYMENT_PROVIDER);
             }
@@ -542,19 +466,21 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
-    private String createVnpayPaymentUrl(Transaction transaction, PaymentRequest request) {
+    // Refactored helper to support both Deposit and PaymentRequest and enforce Real IP
+    private String createVnpayPaymentUrl(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl, String clientIp) {
         Map<String, String> vnpParams = new HashMap<>();
         vnpParams.put("vnp_Version", "2.1.0");
         vnpParams.put("vnp_TmnCode", vnpTmnCode);
-        vnpParams.put("vnp_Amount", String.valueOf(request.getAmount().multiply(BigDecimal.valueOf(100)).longValue()));
+        vnpParams.put("vnp_Amount", String.valueOf(amount.multiply(BigDecimal.valueOf(100)).longValue()));
         vnpParams.put("vnp_Command", "pay");
-        vnpParams.put("vnp_CurrCode", request.getCurrency());
+        vnpParams.put("vnp_CurrCode", currency != null ? currency : "VND");
         vnpParams.put("vnp_TxnRef", transaction.getTransactionId().toString());
-        vnpParams.put("vnp_OrderInfo", request.getDescription() != null ? request.getDescription() : "Payment for LinguaVietnamese");
+        vnpParams.put("vnp_OrderInfo", description != null ? description : "LinguaVietnamese Payment");
         vnpParams.put("vnp_OrderType", "billpayment");
         vnpParams.put("vnp_Locale", "vn");
-        vnpParams.put("vnp_ReturnUrl", request.getReturnUrl());
-        vnpParams.put("vnp_IpAddr", "127.0.0.1");
+        vnpParams.put("vnp_ReturnUrl", returnUrl);
+        // CRITICAL FOR PROD: Use real client IP
+        vnpParams.put("vnp_IpAddr", clientIp != null ? clientIp : "127.0.0.1"); 
         vnpParams.put("vnp_CreateDate", String.valueOf(System.currentTimeMillis()));
 
         String queryString = VnPayUtils.buildQueryString(vnpParams);
@@ -562,45 +488,25 @@ public class TransactionServiceImpl implements TransactionService {
         return vnpUrl + "?" + queryString + "&vnp_SecureHash=" + secureHash;
     }
 
-//    private String createMomoPaymentUrl(Transaction transaction, PaymentRequest request) {
-//        Map<String, String> momoParams = new HashMap<>();
-//        momoParams.put("partnerCode", momoPartnerCode);
-//        momoParams.put("accessKey", momoAccessKey);
-//        momoParams.put("requestId", UUID.randomUUID().toString());
-//        momoParams.put("amount", request.getAmount().toString());
-//        momoParams.put("orderId", transaction.getTransactionId().toString());
-//        momoParams.put("orderInfo", request.getDescription() != null ? request.getDescription() : "Payment for LinguaVietnamese");
-//        momoParams.put("returnUrl", request.getReturnUrl());
-//        momoParams.put("notifyUrl", "https://yourapp.com/api/transactions/momo-notify");
-//        momoParams.put("requestType", "captureMoMoWallet");
-//
-//        String signature = MomoUtils.generateSignature(momoParams, momoSecretKey);
-//        momoParams.put("signature", signature);
-//
-//        // Simulate HTTP POST to MoMo API
-//        // In practice, use RestTemplate or WebClient to call MoMo API
-//        return momoUrl + "?data=" + MomoUtils.toJson(momoParams);
-//    }
-
-    private String createStripeCheckoutSession(Transaction transaction, PaymentRequest request) {
+    private String createStripeCheckoutSession(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl) {
         Stripe.apiKey = stripeApiKey;
         Map<String, Object> params = new HashMap<>();
         params.put("payment_method_types", new String[]{"card"});
         params.put("line_items", new Object[]{
                 new HashMap<String, Object>() {{
                     put("price_data", new HashMap<String, Object>() {{
-                        put("currency", request.getCurrency().toLowerCase());
-                        put("unit_amount", request.getAmount().multiply(BigDecimal.valueOf(100)).longValue());
+                        put("currency", currency.toLowerCase());
+                        put("unit_amount", amount.multiply(BigDecimal.valueOf(100)).longValue());
                         put("product_data", new HashMap<String, Object>() {{
-                            put("name", request.getDescription() != null ? request.getDescription() : "LinguaVietnamese Payment");
+                            put("name", description != null ? description : "LinguaVietnamese Payment");
                         }});
                     }});
                     put("quantity", 1);
                 }}
         });
         params.put("mode", "payment");
-        params.put("success_url", request.getReturnUrl() + "?transactionId=" + transaction.getTransactionId());
-        params.put("cancel_url", request.getReturnUrl() + "?transactionId=" + transaction.getTransactionId());
+        params.put("success_url", returnUrl + "?status=success&transactionId=" + transaction.getTransactionId());
+        params.put("cancel_url", returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId());
         params.put("client_reference_id", transaction.getTransactionId().toString());
 
         try {
@@ -611,28 +517,4 @@ public class TransactionServiceImpl implements TransactionService {
             throw new AppException(ErrorCode.PAYMENT_PROCESSING_FAILED);
         }
     }
-
-//    private String handleMomoWebhook(Map<String, String> params) {
-//        String requestId = params.get("requestId");
-//        String orderId = params.get("orderId");
-//        String resultCode = params.get("resultCode");
-//
-//        Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(UUID.fromString(orderId))
-//                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-//
-//        String computedSignature = MomoUtils.generateSignature(params, momoSecretKey);
-//        if (!computedSignature.equals(params.get("signature"))) {
-//            log.error("Invalid MoMo webhook signature for transaction ID: {}", orderId);
-//            throw new AppException(ErrorCode.INVALID_SIGNATURE);
-//        }
-//
-//        if ("0".equals(resultCode)) {
-//            transaction.setStatus(TransactionStatus.SUCCESS);
-//        } else {
-//            transaction.setStatus(TransactionStatus.FAILED);
-//        }
-//        transactionRepository.save(transaction);
-//        return "Webhook processed successfully";
-//    }
-
 }

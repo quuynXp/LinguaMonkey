@@ -9,23 +9,17 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
+import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 
-import java.nio.file.attribute.UserPrincipal;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -37,7 +31,7 @@ public class RoomController {
     private final RoomService roomService;
     private final MessageSource messageSource;
 
-    @Operation(summary = "Get all rooms", description = "Retrieve a paginated list of rooms with optional filtering")
+    @Operation(summary = "Get all rooms (Public Lobby)", description = "Retrieve rooms for the lobby list")
     @GetMapping
     public AppApiResponse<Page<RoomResponse>> getAllRooms(
             @RequestParam(required = false) String roomName,
@@ -50,6 +44,21 @@ public class RoomController {
         return AppApiResponse.<Page<RoomResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("room.list.success", null, locale))
+                .result(rooms)
+                .build();
+    }
+
+    @Operation(summary = "Get Joined Rooms (My Inbox)", description = "Get rooms the current user is a member of (Private, AI, etc.)")
+    @GetMapping("/joined")
+    public AppApiResponse<Page<RoomResponse>> getJoinedRooms(
+            @RequestParam(required = false) RoomPurpose purpose,
+            Pageable pageable,
+            Locale locale) {
+        UUID userId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
+        Page<RoomResponse> rooms = roomService.getJoinedRooms(userId, purpose, pageable);
+        return AppApiResponse.<Page<RoomResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("room.joined_list.success", null, locale))
                 .result(rooms)
                 .build();
     }
@@ -72,11 +81,8 @@ public class RoomController {
     public AppApiResponse<RoomResponse> getPrivateRoom(
             @RequestParam UUID targetUserId,
             Locale locale) {
-
         UUID currentUserId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
-
         RoomResponse room = roomService.findOrCreatePrivateRoom(currentUserId, targetUserId);
-
         return AppApiResponse.<RoomResponse>builder()
                 .code(200)
                 .message("Success")
@@ -84,30 +90,20 @@ public class RoomController {
                 .build();
     }
 
-
-    @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
+    @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user")
     @GetMapping("/ai-chat-room")
     public AppApiResponse<RoomResponse> getAiChatRoom(
             @RequestParam UUID userId,
             Locale locale) {
-
         String authenticatedUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
-
         if (authenticatedUserIdStr == null || authenticatedUserIdStr.equalsIgnoreCase("anonymousUser")) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
-        UUID currentUserId;
-        try {
-            currentUserId = UUID.fromString(authenticatedUserIdStr);
-        } catch (IllegalArgumentException e) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
-        }
+        UUID currentUserId = UUID.fromString(authenticatedUserIdStr);
         if (!currentUserId.equals(userId)) {
             throw new AppException(ErrorCode.UNAUTHENTICATED);
         }
-
         RoomResponse room = roomService.findOrCreateAiChatRoom(currentUserId);
-
         return AppApiResponse.<RoomResponse>builder()
                 .code(200)
                 .message(messageSource.getMessage("room.ai_room.success", null, locale))
@@ -121,7 +117,6 @@ public class RoomController {
             @PathVariable UUID id,
             Locale locale) {
         List<MemberResponse> members = roomService.getRoomMembers(id);
-
         return AppApiResponse.<List<MemberResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("room.members.list.success", null, locale))
@@ -142,7 +137,7 @@ public class RoomController {
                 .build();
     }
 
-    @Operation(summary = "Create a new room", description = "Create a new room with specified purpose and type")
+    @Operation(summary = "Create a new room", description = "Create a new room")
     @PostMapping
     public AppApiResponse<RoomResponse> createRoom(
             @Valid @RequestBody RoomRequest request,
@@ -155,7 +150,7 @@ public class RoomController {
                 .build();
     }
 
-    @Operation(summary = "Update a room", description = "Update room details, including purpose and type")
+    @Operation(summary = "Update a room", description = "Update room details")
     @PutMapping("/{id}")
     public AppApiResponse<RoomResponse> updateRoom(
             @PathVariable UUID id,
@@ -169,7 +164,7 @@ public class RoomController {
                 .build();
     }
 
-    @Operation(summary = "Delete a room", description = "Soft delete a room by its ID")
+    @Operation(summary = "Delete a room", description = "Soft delete a room")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteRoom(
             @PathVariable UUID id,

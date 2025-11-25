@@ -1,5 +1,3 @@
-// /d:/LinguaApp/LinguamonkeyFe/src/screens/chat/GroupChatScreen.tsx
-
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import {
     ActivityIndicator,
@@ -130,6 +128,15 @@ const GroupChatScreen = () => {
 
     const safeRoomInfo: RoomResponse | undefined = roomInfo;
 
+    const { data: members = [], isLoading: isLoadingMembers } = useQuery<MemberResponse[]>({
+        queryKey: ['roomMembers', roomId],
+        queryFn: async () => {
+            const response = await instance.get<AppApiResponse<MemberResponse[]>>(`/api/v1/rooms/${roomId}/members`);
+            return response.data.result;
+        },
+        enabled: !!roomId,
+    });
+
     useEffect(() => {
         if (safeRoomInfo) {
             setNewRoomName(safeRoomInfo.roomName);
@@ -140,14 +147,24 @@ const GroupChatScreen = () => {
         setTranslationTargetLang(i18n.language);
     }, [i18n.language]);
 
-    const { data: members = [], isLoading: isLoadingMembers } = useQuery<MemberResponse[]>({
-        queryKey: ['roomMembers', roomId],
-        queryFn: async () => {
-            const response = await instance.get<AppApiResponse<MemberResponse[]>>(`/api/v1/rooms/${roomId}/members`);
-            return response.data.result;
-        },
-        enabled: !!roomId,
-    });
+    const displayRoomName = useMemo(() => {
+        if (!safeRoomInfo) return initialRoomName;
+
+        if (safeRoomInfo.purpose === RoomPurpose.PRIVATE_CHAT) {
+            const otherMember = members.find(m => m.userId !== currentUserId);
+            if (otherMember) {
+                return otherMember.nickname || otherMember.fullname || t('user.anonymous');
+            }
+            return t('chat.private_room');
+        }
+
+        if (safeRoomInfo.purpose === RoomPurpose.AI_CHAT) {
+            return t('chat.ai_assistant');
+        }
+
+        // Phòng Group giữ nguyên tên phòng
+        return safeRoomInfo.roomName;
+    }, [safeRoomInfo, members, currentUserId, initialRoomName]);
 
     const { mutate: translateMutate } = useMutation<
         PythonTranslateResponse & { messageId: string, targetLanguage: string, originalText: string },
@@ -302,7 +319,7 @@ const GroupChatScreen = () => {
                 sentAt,
                 translatedText: serverTranslatedText,
                 translated: !!serverTranslatedText || hasAnyLocalTranslation,
-                user: senderInfo?.username || senderId,
+                user: senderInfo?.fullname || senderId,
                 avatar: senderInfo?.avatarUrl || '👤',
                 reactions: (msg as any)?.reactions,
                 currentDisplay: {
@@ -410,7 +427,7 @@ const GroupChatScreen = () => {
     };
 
     const handleKickMember = (member: MemberResponse) => {
-        Alert.alert(t("group.kick.confirm"), t("group.kick.confirm.message", { name: member.username }), [
+        Alert.alert(t("group.kick.confirm"), t("group.kick.confirm.message", { name: member.fullname }), [
             { text: t("cancel"), style: "cancel" },
             {
                 text: t("confirm"),
@@ -509,7 +526,7 @@ const GroupChatScreen = () => {
                 <View style={styles.memberInfo}>
                     <Text style={styles.memberAvatar}>{member.avatarUrl || '👤'}</Text>
                     <View style={styles.memberDetails}>
-                        <Text style={styles.memberName}>{member.username}</Text>
+                        <Text style={styles.memberName}>{member.fullname}</Text>
                         <View style={styles.memberStatus}>
                             <View style={[styles.onlineIndicator, { backgroundColor: member.isOnline ? "#10B981" : "#6B7280" }]} />
                             <Text style={styles.memberRole}>{t(member.role.toLowerCase())}</Text>
@@ -549,8 +566,10 @@ const GroupChatScreen = () => {
                             <Icon name="arrow-back" size={24} color="#374151" />
                         </TouchableOpacity>
                         <View style={styles.roomInfo}>
-                            <Text style={styles.roomName}>{safeRoomInfo?.roomName || initialRoomName}</Text>
-                            <Text style={styles.memberCount}>{members.length}/{safeRoomInfo?.maxMembers || 0} {t("group.members")}</Text>
+                            <Text style={styles.roomName}>{displayRoomName}</Text>
+                            {safeRoomInfo?.purpose === RoomPurpose.GROUP_CHAT && (
+                                <Text style={styles.memberCount}>{members.length}/{safeRoomInfo?.maxMembers || 0} {t("group.members")}</Text>
+                            )}
                         </View>
                         <TouchableOpacity style={styles.headerButton} onPress={() => setShowRoomSettings(true)}>
                             <Icon name="settings" size={22} color="#6B7280" />

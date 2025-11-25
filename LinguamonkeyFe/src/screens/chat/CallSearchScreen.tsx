@@ -215,7 +215,7 @@ const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     flexDirection: "row", alignItems: "center", justifyContent: "space-between",
-    paddingHorizontal: 20, paddingTop: 50, paddingBottom: 16,
+    paddingHorizontal: 20, paddingBottom: 16,
     backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB",
   },
   headerTitle: { fontSize: 18, fontWeight: "600", color: "#1F2937" },

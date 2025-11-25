@@ -4,8 +4,8 @@ import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useUserStore } from '../../stores/UserStore';
 import { useWallet } from '../../hooks/useWallet';
-import { formatCurrency } from '../../utils/currency';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
 // import { TransactionResponse } from '../../types/dto'; // Bỏ import này để tránh xung đột
 import { PageResponse } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
@@ -34,6 +34,7 @@ const PAGE_SIZE = 10;
 const WalletScreen = ({ navigation }) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
+  const formatCurrency = useCurrencyConverter().convert;
   const [page, setPage] = useState(0);
 
   // Lấy số dư ví
@@ -104,7 +105,7 @@ const WalletScreen = ({ navigation }) => {
         </View>
         <View style={styles.txnRight}>
           <Text style={[styles.txnAmount, { color: isIncome ? '#10B981' : '#EF4444' }]}>
-            {isIncome ? '+' : '-'}{formatCurrency(transaction.amount)}
+            {isIncome ? '+' : '-'}{formatCurrency(transaction.amount, 'USD')}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
             <Text style={styles.statusText}>
@@ -159,7 +160,7 @@ const WalletScreen = ({ navigation }) => {
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>{t('wallet.availableBalance')}</Text>
         <Text style={styles.balanceAmount}>
-          {formatCurrency(walletData?.balance || 0)}
+          {formatCurrency(walletData?.balance || 0, 'USD')}
         </Text>
 
         <View style={styles.actionRow}>

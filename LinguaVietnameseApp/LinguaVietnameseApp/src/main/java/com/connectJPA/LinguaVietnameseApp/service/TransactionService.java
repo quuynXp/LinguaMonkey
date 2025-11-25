@@ -8,24 +8,23 @@ import org.springframework.data.domain.Pageable;
 import java.util.UUID;
 
 public interface TransactionService {
-    Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable);
+    Page<TransactionResponse> getAllUserTransactions(UUID userId, Pageable pageable);
     TransactionResponse getTransactionById(UUID id);
-    TransactionResponse createTransaction(TransactionRequest request);
-    TransactionResponse updateTransaction(UUID id, TransactionRequest request);
-    void deleteTransaction(UUID id);
-    String createPaymentUrl(PaymentRequest request);
+    
+    // Updated: deposit now needs IP for VNPay Prod
+    String createDepositUrl(DepositRequest request, String clientIp); 
+    
     String handleWebhook(WebhookRequest request);
-    String createDepositUrl(DepositRequest request);
-    TransactionResponse withdraw(WithdrawRequest request);
-
-    // Luồng P2P
     TransactionResponse transfer(TransferRequest request);
-
-    // Luồng Hoàn tiền
+    TransactionResponse withdraw(WithdrawRequest request);
     TransactionResponse requestRefund(RefundRequest request);
     TransactionResponse approveRefund(ApproveRefundRequest request);
     TransactionResponse rejectRefund(UUID refundTransactionId, UUID adminId, String reason);
-
-    // Luồng Lấy lịch sử
-    Page<TransactionResponse> getAllUserTransactions(UUID userId, Pageable pageable);
+    Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable);
+    TransactionResponse createTransaction(TransactionRequest request);
+    TransactionResponse updateTransaction(UUID id, TransactionRequest request);
+    void deleteTransaction(UUID id);
+    
+    // Updated: payment URL now needs IP for VNPay Prod
+    String createPaymentUrl(PaymentRequest request, String clientIp);
 }

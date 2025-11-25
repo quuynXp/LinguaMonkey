@@ -59,9 +59,6 @@ public class LessonServiceImpl implements LessonService {
     private final QuizQuestionMapper quizQuestionMapper;
     private final CourseVersionLessonRepository courseVersionLessonRepository;
 
-    // =================================================================
-    // === HÀM SEARCH THAY THẾ ELASTICSEARCH ===
-    // =================================================================
     @Override
     public Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
@@ -69,25 +66,21 @@ public class LessonServiceImpl implements LessonService {
         }
         try {
             Pageable pageable = PageRequest.of(page, size);
-            // GỌI PHƯƠNG THỨC SEARCH MỚI TRONG REPOSITORY
             return lessonRepository.searchLessonsByKeyword(keyword, pageable);
         } catch (Exception e) {
-            // Log lỗi và ném ra SystemException (hoặc AppException nếu bạn có định nghĩa cụ thể)
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 
     @Override
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
-                                             UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
-                                             Pageable pageable) {
+                                              UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
+                                              Pageable pageable) {
         try {
-            // Validate pagination
             if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
 
-            // Validate category and subcategory existence
             if (categoryId != null && !lessonCategoryRepository.existsById(categoryId)) {
                 throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
             }
@@ -115,20 +108,21 @@ public class LessonServiceImpl implements LessonService {
                     predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
                 }
                 if (courseId != null) {
-                    Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions"); 
-                    
-                    Join<CourseVersionLesson, CourseVersion> cvJoin = cvlJoin.join("courseVersion"); 
-                    
-                    Join<CourseVersion, Course> cJoin = cvJoin.join("course"); 
-                    
+                    Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
+                    Join<CourseVersionLesson, CourseVersion> cvJoin = cvlJoin.join("courseVersion");
+                    Join<CourseVersion, Course> cJoin = cvJoin.join("course");
                     predicates.add(cb.equal(cJoin.get("courseId"), courseId));
                 }
                 if (seriesId != null) {
                     predicates.add(cb.equal(root.get("lessonSeriesId"), seriesId));
                 }
+                
+                // SỬA Ở ĐÂY: Dùng EQUAL cho Enum thay vì LIKE
+                // root.get("skillTypes") trỏ về field 'skillTypes' trong Entity Lesson
                 if (skillType != null) {
-                    predicates.add(cb.like(cb.coalesce(root.get("skillTypes"), ""), "%" + skillType.name() + "%"));
+                    predicates.add(cb.equal(root.get("skillTypes"), skillType));
                 }
+
                 predicates.add(cb.isFalse(root.get("isDeleted")));
                 return cb.and(predicates.toArray(new Predicate[0]));
             };
@@ -200,37 +194,33 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     @Transactional
-    public Map<String,Object> startTest(UUID lessonId, UUID userId) {
+    public Map<String, Object> startTest(UUID lessonId, UUID userId) {
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
-        // load questions
         List<LessonQuestion> questions = lessonQuestionRepository.findByLessonIdOrderByOrderIndex(lessonId);
         if (Boolean.TRUE.equals(lesson.getShuffleQuestions())) {
             Collections.shuffle(questions);
         }
 
-        // prepare response: mask correctAnswer
-        List<Map<String,Object>> qDtos = questions.stream().map(q -> {
-            Map<String,Object> m = new HashMap<>();
+        List<Map<String, Object>> qDtos = questions.stream().map(q -> {
+            Map<String, Object> m = new HashMap<>();
             m.put("questionId", q.getLessonQuestionId());
             m.put("question", q.getQuestion());
             m.put("questionType", q.getQuestionType());
-            m.put("options", q.getOptionsJson()); // frontend parse JSON
+            m.put("options", q.getOptionsJson());
             m.put("mediaUrl", q.getMediaUrl());
             m.put("weight", q.getWeight());
             m.put("orderIndex", q.getOrderIndex());
-            // DO NOT put correctAnswer
             return m;
         }).collect(Collectors.toList());
 
-        // build a lightweight session response (no DB session entity created because we reuse LessonProgress)
-        Map<String,Object> resp = new HashMap<>();
+        Map<String, Object> resp = new HashMap<>();
         resp.put("lessonId", lessonId);
         resp.put("questions", qDtos);
         resp.put("durationSeconds", lesson.getDurationSeconds());
         resp.put("allowedRetakeCount", lesson.getAllowedRetakeCount());
-        // optionally compute user attemptNumber
+        
         int attemptNumber = 1;
         if (userId != null) {
             Optional<LessonProgress> existing = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId));
@@ -242,9 +232,8 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     @Transactional
-    public Map<String,Object> submitTest(UUID lessonId, UUID userId, Map<String,Object> payload) {
-        // payload expected: { "answers": { "<questionId>": "<answer>" }, "attemptNumber": n }
-        Map<String,Object> answers = (Map<String,Object>) payload.get("answers");
+    public Map<String, Object> submitTest(UUID lessonId, UUID userId, Map<String, Object> payload) {
+        Map<String, Object> answers = (Map<String, Object>) payload.get("answers");
         Integer attemptNumber = payload.get("attemptNumber") != null ? (Integer) payload.get("attemptNumber") : 1;
 
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
@@ -263,31 +252,29 @@ public class LessonServiceImpl implements LessonService {
             boolean correct = false;
             int scoreGiven = 0;
             if (q.getQuestionType() == QuestionType.MCQ || q.getQuestionType() == null) {
-                // MCQ: correctAnswer -> option id or index
                 if (rawAns != null && q.getCorrectOption() != null) {
                     if (rawAns.toString().trim().equalsIgnoreCase(q.getCorrectOption().trim())) {
                         correct = true;
                     }
                 }
             } else if (q.getQuestionType() == QuestionType.FILL_BLANK) {
-                // simple equality or CSV of acceptable answers
                 if (rawAns != null && q.getCorrectOption() != null) {
                     String got = rawAns.toString().trim().toLowerCase();
                     String correctAnswer = q.getCorrectOption().trim().toLowerCase();
-                    // support multiple options separated by ||
                     List<String> opts = Arrays.stream(correctAnswer.split("\\|\\|")).map(String::trim).collect(Collectors.toList());
                     for (String o : opts) {
-                        if (o.equals(got)) { correct = true; break; }
+                        if (o.equals(got)) {
+                            correct = true;
+                            break;
+                        }
                     }
                 }
             } else if (q.getQuestionType() == QuestionType.ORDERING) {
-                // correctAnswer = JSON array of indices "['0','2','1']"
                 if (rawAns != null && q.getCorrectOption() != null) {
                     String got = rawAns.toString();
                     if (got.equals(q.getCorrectOption())) correct = true;
                 }
             } else if (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) {
-                // cannot auto-grade reliably -> mark needsReview
                 correct = false;
             }
 
@@ -295,7 +282,6 @@ public class LessonServiceImpl implements LessonService {
                 scoreGiven = q.getWeight() == null ? 1 : q.getWeight();
                 totalScore += scoreGiven;
             } else {
-                // save wrong item
                 LessonProgressWrongItemsId wid = new LessonProgressWrongItemsId();
                 wid.setLessonId(lessonId);
                 wid.setUserId(userId);
@@ -309,15 +295,12 @@ public class LessonServiceImpl implements LessonService {
             }
         }
 
-        // persist wrong items
         if (!wrongItems.isEmpty()) {
             lessonProgressWrongItemRepository.saveAll(wrongItems);
         }
 
-        // compute percent
         float percent = totalMax == 0 ? 0f : (totalScore * 100f / totalMax);
 
-        // update or create LessonProgress
         LessonProgressId pid = new LessonProgressId(lessonId, userId);
         LessonProgress lp = lessonProgressRepository.findById(pid)
                 .orElse(LessonProgress.builder().id(pid).build());
@@ -325,18 +308,18 @@ public class LessonServiceImpl implements LessonService {
         lp.setMaxScore(totalMax);
         lp.setAttemptNumber(attemptNumber);
         lp.setCompletedAt(OffsetDateTime.now());
-        // set needsReview if any speaking/writing present in answers
         boolean hasOpenAnswer = questions.stream().anyMatch(q -> q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING);
         lp.setNeedsReview(hasOpenAnswer);
-        // store answers JSON
-        try { lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers)); } catch (Exception ex) { lp.setAnswersJson("{}"); }
+        try {
+            lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers));
+        } catch (Exception ex) {
+            lp.setAnswersJson("{}");
+        }
         lessonProgressRepository.save(lp);
 
-        // compute progressPercent vs userGoal (basic)
         int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
 
-        // build response
-        Map<String,Object> result = new HashMap<>();
+        Map<String, Object> result = new HashMap<>();
         result.put("lessonId", lessonId);
         result.put("totalScore", totalScore);
         result.put("maxScore", totalMax);
@@ -352,24 +335,20 @@ public class LessonServiceImpl implements LessonService {
         if (userId == null) {
             throw new AppException(ErrorCode.INVALID_KEY);
         }
-
         log.info("Generating solo quiz for user: {}", userId);
         try {
-            // 1. Gọi gRPC (async) và chờ kết quả (sync)
             QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
                     token,
                     userId.toString(),
-                    15, // 15 câu cho solo
+                    15,
                     "solo",
                     null
-            ).get(); // .get() để chờ CompletableFuture
-
-            // 2. Map từ Proto -> DTO và trả về
+            ).get();
             return quizQuestionMapper.toResponse(grpcResponse);
         } catch (InterruptedException | ExecutionException e) {
             log.error("Failed to generate solo quiz for user {}: {}", userId, e.getMessage());
             if (e.getCause() instanceof AppException appEx) {
-                throw appEx; // Ném lại lỗi AppException từ gRPC
+                throw appEx;
             }
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
@@ -382,24 +361,16 @@ public class LessonServiceImpl implements LessonService {
             if (lesson.getLessonName() == null) {
                 lesson.setLessonName("Untitled Lesson");
             }
-
-            // Set default status nếu cần
             lesson.setDeleted(false);
-
             Lesson savedLesson = lessonRepository.save(lesson);
 
-            // B. Tạo liên kết với CourseVersion (Bảng CourseVersionLesson)
             CourseVersionLessonId linkId = new CourseVersionLessonId(versionId, savedLesson.getLessonId());
-
             CourseVersionLesson courseVersionLesson = CourseVersionLesson.builder()
                     .id(linkId)
                     .orderIndex(lessonIndex)
                     .build();
-
             courseVersionLessonRepository.save(courseVersionLesson);
-
             return savedLesson;
-
         } catch (Exception e) {
             log.error("Error saving lesson for version: {}", e.getMessage());
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -410,26 +381,22 @@ public class LessonServiceImpl implements LessonService {
     public QuizResponse generateTeamQuiz(String token, String topic) {
         log.info("Generating team quiz with topic: {}", topic);
         try {
-            // 1. Gọi gRPC (async) và chờ kết quả (sync)
             QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
                     token,
-                    null, // không có userId cho team
-                    30,  // 30 câu cho team
+                    null,
+                    30,
                     "team",
                     topic
-            ).get(); // .get() để chờ CompletableFuture
-
-            // 2. Map từ Proto -> DTO và trả về
+            ).get();
             return quizQuestionMapper.toResponse(grpcResponse);
         } catch (InterruptedException | ExecutionException e) {
             log.error("Failed to generate team quiz: {}", e.getMessage());
             if (e.getCause() instanceof AppException appEx) {
-                throw appEx; // Ném lại lỗi AppException từ gRPC
+                throw appEx;
             }
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
-
 
     @Override
     @Transactional
@@ -511,7 +478,6 @@ public class LessonServiceImpl implements LessonService {
     @Override
     public Page<LessonResponse> getLessonsBySkillType(SkillType skillType, Pageable pageable) {
         try {
-            // Validate pagination
             if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
@@ -535,12 +501,10 @@ public class LessonServiceImpl implements LessonService {
     @Override
     public Page<LessonResponse> getLessonsByCertificateOrTopic(UUID categoryId, UUID subCategoryId, Pageable pageable) {
         try {
-            // Validate pagination
             if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
 
-            // Validate category and subcategory existence
             if (categoryId != null && !lessonCategoryRepository.existsById(categoryId)) {
                 throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
             }
@@ -570,7 +534,10 @@ public class LessonServiceImpl implements LessonService {
 
     private LessonResponse toLessonResponse(Lesson lesson) {
         try {
-            SkillType skillType = lessonRepository.findSkillTypeByLessonIdAndIsDeletedFalse(lesson.getLessonId());
+            // TỐI ƯU: Lấy trực tiếp từ field Entity vì nó đã được load,
+            // không cần query lại DB (lessonRepository.findSkillTypeByLessonId...) gây N+1
+            SkillType skillType = lesson.getSkillTypes();
+            
             List<String> videoUrls = videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
                     .stream()
                     .map(Video::getVideoUrl)
@@ -585,27 +552,25 @@ public class LessonServiceImpl implements LessonService {
         }
     }
 
-//    helper
-private int computeProgressVsUserGoal(UUID userId, Lesson lesson, float percentScore) {
-    Optional<UserGoal> gOpt = userGoalRepository.findTopByUserIdAndLanguageCodeOrderByCreatedAtDesc(userId, lesson.getLanguageCode());
-    if (gOpt.isEmpty()) return Math.round(percentScore);
+    private int computeProgressVsUserGoal(UUID userId, Lesson lesson, float percentScore) {
+        Optional<UserGoal> gOpt = userGoalRepository.findTopByUserIdAndLanguageCodeOrderByCreatedAtDesc(userId, lesson.getLanguageCode());
+        if (gOpt.isEmpty()) return Math.round(percentScore);
 
-    UserGoal g = gOpt.get();
-    if (g.getTargetScore() > 0) {
-        // assume percentScore maps to same scale (best-effort)
-        int p = Math.min(100, Math.round(percentScore * 100.0f / g.getTargetScore()));
-        return p;
-    } else if (g.getTargetProficiency() != null) {
-        Map<ProficiencyLevel,Integer> map = Map.of(
-                ProficiencyLevel.A1,1, ProficiencyLevel.A2,2, ProficiencyLevel.B1,3,
-                ProficiencyLevel.B2,4, ProficiencyLevel.C1,5, ProficiencyLevel.C2,6
-        );
-        int currentIndex = inferProficiencyFromPercent(percentScore); // simple mapping
-        int targetIndex = map.getOrDefault(g.getTargetProficiency(), 3);
-        return Math.min(100, (currentIndex * 100 / targetIndex));
+        UserGoal g = gOpt.get();
+        if (g.getTargetScore() > 0) {
+            int p = Math.min(100, Math.round(percentScore * 100.0f / g.getTargetScore()));
+            return p;
+        } else if (g.getTargetProficiency() != null) {
+            Map<ProficiencyLevel, Integer> map = Map.of(
+                    ProficiencyLevel.A1, 1, ProficiencyLevel.A2, 2, ProficiencyLevel.B1, 3,
+                    ProficiencyLevel.B2, 4, ProficiencyLevel.C1, 5, ProficiencyLevel.C2, 6
+            );
+            int currentIndex = inferProficiencyFromPercent(percentScore);
+            int targetIndex = map.getOrDefault(g.getTargetProficiency(), 3);
+            return Math.min(100, (currentIndex * 100 / targetIndex));
+        }
+        return Math.round(percentScore);
     }
-    return Math.round(percentScore);
-}
 
     private int inferProficiencyFromPercent(float p) {
         if (p < 30) return 1;
@@ -614,5 +579,4 @@ private int computeProgressVsUserGoal(UUID userId, Lesson lesson, float percentS
         if (p < 85) return 4;
         return 5;
     }
-
 }

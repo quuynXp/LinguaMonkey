@@ -1,13 +1,15 @@
-import { useState } from "react"
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from "react-native"
+import { useState, useEffect } from "react"
+import { Alert, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useUserStore } from "../../stores/UserStore"
 import * as WebBrowser from "expo-web-browser"
 import { useTransactionsApi } from "../../hooks/useTransaction"
+import { useWallet } from "../../hooks/useWallet"
+import { useCurrencyConverter } from "../../hooks/useCurrencyConverter"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useTranslation } from "react-i18next"
 import * as Enums from "../../types/enums"
-import { PaymentRequest } from "../../types/dto"
+import { PaymentRequest, TransactionRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 
 interface CourseType {
@@ -20,190 +22,172 @@ interface CourseType {
 const PaymentScreen = ({ navigation, route }) => {
   const { t } = useTranslation();
   const { course } = route.params as { course: CourseType };
-
   const { user } = useUserStore();
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<"card" | "paypal" | "apple" | "google">("card")
-  const [cardNumber, setCardNumber] = useState("")
-  const [expiryDate, setExpiryDate] = useState("")
-  const [cvv, setCvv] = useState("")
-  const [cardholderName, setCardholderName] = useState("")
 
-  const createPayment = useTransactionsApi().useCreatePayment()
+  const [selectedMethod, setSelectedMethod] = useState<"wallet" | "gateway">("gateway");
+  const [gatewayProvider, setGatewayProvider] = useState<Enums.TransactionProvider>(Enums.TransactionProvider.VNPAY);
 
-  const paymentMethods = [
-    { id: "card", label: t('payment.method.card') ?? "Credit/Debit Card", icon: "credit-card" },
-    { id: "paypal", label: t('payment.method.paypal') ?? "PayPal", icon: "account-balance-wallet" },
-    { id: "apple", label: t('payment.method.apple') ?? "Apple Pay", icon: "phone-iphone" },
-    { id: "google", label: t('payment.method.google') ?? "Google Pay", icon: "android" },
-  ]
+  // Hooks
+  const { data: walletData, isLoading: loadingBalance } = useWallet().useWalletBalance(user?.userId);
+  const createPaymentUrl = useTransactionsApi().useCreatePayment();
+  const createTransaction = useTransactionsApi().useCreateTransaction();
+  const { convert, isLoading: loadingRates } = useCurrencyConverter();
 
-  const getProviderEnum = (method: string): Enums.TransactionProvider => {
-    switch (method) {
-      case "card":
-      case "paypal":
-        return Enums.TransactionProvider.STRIPE;
-      case "apple":
-      case "google":
-        return Enums.TransactionProvider.VNPAY;
-      default:
-        return Enums.TransactionProvider.STRIPE;
-    }
-  }
+  // Currency Logic
+  const userCurrency = user?.country ? (user.country === Enums.Country.VIETNAM ? 'VND' : 'USD') : 'VND'; // Fallback logic
+  const displayPrice = convert(course.price, userCurrency);
+  const isBalanceSufficient = (walletData?.balance || 0) >= course.price;
 
   const handlePayment = () => {
-    if (!user?.userId) {
-      Alert.alert(t('common.error'), t('errors.userNotFound') ?? "User not authenticated.")
-      return;
+    if (!user?.userId) return;
+
+    if (selectedMethod === "wallet") {
+      if (!isBalanceSufficient) {
+        Alert.alert(t('common.error'), t('payment.insufficientBalance'));
+        return;
+      }
+      processWalletPayment();
+    } else {
+      processGatewayPayment();
     }
+  };
 
-    if (selectedPaymentMethod === "card" && (!cardNumber || !expiryDate || !cvv || !cardholderName)) {
-      Alert.alert(t('common.error'), t('payment.error.cardDetails') ?? "Please fill in all card details")
-      return
-    }
-
-    const provider: Enums.TransactionProvider = getProviderEnum(selectedPaymentMethod);
-
-    const payload: PaymentRequest = {
-      userId: user.userId,
+  const processWalletPayment = () => {
+    // Logic: Tạo transaction loại PAYMENT trừ tiền ví
+    const payload: TransactionRequest = {
+      userId: user!.userId,
       amount: course.price,
-      provider: provider,
-      currency: "VND",
-      returnUrl: "linguamonkey://payment/success",
-      description: t('payment.orderInfo', { title: course.title, userId: user.userId }),
+      provider: Enums.TransactionProvider.INTERNAL,
+      status: Enums.TransactionStatus.SUCCESS, // Internal xử lý sync
+      description: `Payment for course: ${course.title}`,
+      // Backend cần xử lý logic: Nếu provider=INTERNAL & Type=PAYMENT -> Trừ tiền ví
     };
 
-    createPayment.mutate(
-      payload,
-      {
-        onSuccess: async (paymentUrl) => {
-          await WebBrowser.openBrowserAsync(paymentUrl)
-          navigation.navigate('WalletScreen');
-        },
-        onError: (error) => {
-          Alert.alert(t('payment.failedTitle') ?? "Please try again or use a different method.")
-        },
-      }
-    )
-  }
+    createTransaction.mutate(payload, {
+      onSuccess: () => {
+        Alert.alert(t('common.success'), t('payment.success'));
+        navigation.navigate('MyCoursesScreen');
+      },
+      onError: () => Alert.alert(t('common.error'), t('payment.failed'))
+    });
+  };
 
-  const formatCardNumber = (text: string) => {
-    const cleaned = text.replace(/\s/g, "").replace(/\D/g, "")
-    const match = cleaned.match(/.{1,4}/g)
-    return match ? match.join(" ") : cleaned
-  }
+  const processGatewayPayment = () => {
+    const payload: PaymentRequest = {
+      userId: user!.userId,
+      amount: course.price, // Gửi tiền gốc (VND), backend tự xử lý currency nếu cần
+      provider: gatewayProvider,
+      currency: "VND",
+      returnUrl: "linguamonkey://payment/success",
+      description: `Buy ${course.title}`,
+    };
 
-  const formatExpiryDate = (text: string) => {
-    const cleaned = text.replace(/\D/g, "")
-    if (cleaned.length >= 2) return cleaned.substring(0, 2) + "/" + cleaned.substring(2, 4)
-    return cleaned
-  }
+    createPaymentUrl.mutate(payload, {
+      onSuccess: async (url) => {
+        const result = await WebBrowser.openBrowserAsync(url);
+        if (result.type === 'dismiss' || result.type === 'cancel') {
+          // User closed browser
+        }
+      },
+      onError: () => Alert.alert(t('common.error'), t('payment.gatewayError'))
+    });
+  };
 
-  const isButtonDisabled = createPayment.isPending || (selectedPaymentMethod === "card" && (!cardNumber || !expiryDate || !cvv || !cardholderName));
+  const renderPriceDisplay = () => {
+    if (loadingRates) return <ActivityIndicator size="small" color="#4F46E5" />;
+    return (
+      <Text style={styles.totalValue}>
+        {displayPrice.toLocaleString()} {userCurrency}
+      </Text>
+    );
+  };
 
   return (
     <ScreenLayout style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('payment.title') ?? "Payment"}</Text>
+        <Text style={styles.headerTitle}>{t('payment.title')}</Text>
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Course Summary */}
-        <View style={styles.courseSummary}>
-          <Text style={styles.summaryTitle}>{t('payment.summaryTitle') ?? "Course Summary"}</Text>
+      <ScrollView style={styles.content}>
+        {/* Course Info */}
+        <View style={styles.card}>
           <Text style={styles.courseTitle}>{course.title}</Text>
-          <Text style={styles.courseInstructor}>{t('payment.instructorPrefix') ?? "by"} {course.instructor}</Text>
-
-          <View style={styles.priceBreakdown}>
-            <View style={styles.priceRow}>
-              <Text style={styles.priceLabel}>{t('payment.coursePrice') ?? "Course Price"}</Text>
-              <Text style={styles.priceValue}>{course.price.toLocaleString('vi-VN')} đ</Text>
-            </View>
-            <View style={styles.divider} />
-            <View style={styles.priceRow}>
-              <Text style={styles.totalLabel}>{t('payment.total') ?? "Total"}</Text>
-              <Text style={styles.totalValue}>{course.price.toLocaleString('vi-VN')} đ</Text>
-            </View>
+          <Text style={styles.instructor}>by {course.instructor}</Text>
+          <View style={styles.divider} />
+          <View style={styles.priceRow}>
+            <Text style={styles.label}>{t('payment.total')}</Text>
+            {renderPriceDisplay()}
           </View>
         </View>
 
         {/* Payment Methods */}
-        <View style={styles.paymentMethods}>
-          <Text style={styles.sectionTitle}>{t('payment.methodTitle') ?? "Payment Method"}</Text>
-          {paymentMethods.map((method) => (
-            <TouchableOpacity
-              key={method.id}
-              style={[styles.paymentMethod, selectedPaymentMethod === method.id && styles.selectedPaymentMethod]}
-              onPress={() => setSelectedPaymentMethod(method.id as any)}
-            >
-              <Icon name={method.icon} size={24} color="#4F46E5" />
-              <Text style={styles.paymentMethodText}>{method.label}</Text>
-              <View style={styles.radioButton}>
-                {selectedPaymentMethod === method.id && <View style={styles.radioButtonSelected} />}
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+        <Text style={styles.sectionTitle}>{t('payment.selectMethod')}</Text>
 
-        {/* Card Details */}
-        {selectedPaymentMethod === "card" && (
-          <View style={styles.cardDetails}>
-            <Text style={styles.sectionTitle}>{t('payment.cardDetailsTitle') ?? "Card Details"}</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder={t('payment.cardNamePlaceholder') ?? "Cardholder Name"}
-              value={cardholderName}
-              onChangeText={setCardholderName}
-            />
-            <TextInput
-              style={styles.textInput}
-              placeholder="1234 5678 9012 3456"
-              value={cardNumber}
-              onChangeText={(text) => setCardNumber(formatCardNumber(text))}
-              keyboardType="numeric"
-              maxLength={19}
-            />
-            <View style={styles.cardRow}>
-              <TextInput
-                style={[styles.textInput, styles.halfInput]}
-                placeholder="MM/YY"
-                value={expiryDate}
-                onChangeText={(text) => setExpiryDate(formatExpiryDate(text))}
-                keyboardType="numeric"
-                maxLength={5}
-              />
-              <TextInput
-                style={[styles.textInput, styles.halfInput]}
-                placeholder="CVV"
-                value={cvv}
-                onChangeText={setCvv}
-                keyboardType="numeric"
-                maxLength={4}
-                secureTextEntry
-              />
-            </View>
+        {/* Option 1: Wallet */}
+        <TouchableOpacity
+          style={[styles.methodCard, selectedMethod === 'wallet' && styles.selectedMethod]}
+          onPress={() => setSelectedMethod('wallet')}
+        >
+          <View style={styles.methodHeader}>
+            <Icon name="account-balance-wallet" size={24} color="#4F46E5" />
+            <Text style={styles.methodTitle}>{t('payment.myWallet')}</Text>
+            {selectedMethod === 'wallet' && <Icon name="check-circle" size={20} color="#4F46E5" />}
           </View>
-        )}
+          <Text style={styles.balanceText}>
+            {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} VND
+          </Text>
+          {!isBalanceSufficient && (
+            <Text style={styles.errorText}>{t('payment.insufficientWarning')}</Text>
+          )}
+        </TouchableOpacity>
+
+        {/* Option 2: Gateway */}
+        <TouchableOpacity
+          style={[styles.methodCard, selectedMethod === 'gateway' && styles.selectedMethod]}
+          onPress={() => setSelectedMethod('gateway')}
+        >
+          <View style={styles.methodHeader}>
+            <Icon name="public" size={24} color="#10B981" />
+            <Text style={styles.methodTitle}>{t('payment.externalGateway')}</Text>
+            {selectedMethod === 'gateway' && <Icon name="check-circle" size={20} color="#10B981" />}
+          </View>
+
+          {selectedMethod === 'gateway' && (
+            <View style={styles.gatewayOptions}>
+              <TouchableOpacity
+                style={[styles.chip, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChip]}
+                onPress={() => setGatewayProvider(Enums.TransactionProvider.VNPAY)}
+              >
+                <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChipText]}>VNPAY</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.chip, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChip]}
+                onPress={() => setGatewayProvider(Enums.TransactionProvider.STRIPE)}
+              >
+                <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChipText]}>Stripe (Visa/Master)</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </TouchableOpacity>
+
       </ScrollView>
 
-      {/* Payment Button */}
-      <View style={styles.bottomAction}>
+      <View style={styles.footer}>
         <TouchableOpacity
-          style={[styles.payButton, isButtonDisabled && styles.payButtonDisabled]}
+          style={[styles.payButton, (selectedMethod === 'wallet' && !isBalanceSufficient) && styles.disabledButton]}
+          disabled={selectedMethod === 'wallet' && !isBalanceSufficient}
           onPress={handlePayment}
-          disabled={isButtonDisabled}
         >
-          {createPayment.isPending ? (
+          {createPaymentUrl.isPending || createTransaction.isPending ? (
             <ActivityIndicator color="#FFF" />
           ) : (
-            <>
-              <Icon name="lock" size={20} color="#FFFFFF" />
-              <Text style={styles.payButtonText}>{t('payment.payButton', { amount: course.price.toLocaleString('vi-VN') }) ?? `Pay ${course.price.toLocaleString('vi-VN')} đ`}</Text>
-            </>
+            <Text style={styles.payButtonText}>
+              {selectedMethod === 'wallet' ? t('payment.payNow') : t('payment.continueToGateway')}
+            </Text>
           )}
         </TouchableOpacity>
       </View>
@@ -213,71 +197,37 @@ const PaymentScreen = ({ navigation, route }) => {
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 60,
-    paddingBottom: 20,
-    backgroundColor: "#FFFFFF"
-  },
-  headerTitle: { fontSize: 20, fontWeight: "bold", color: "#1F2937" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 20, paddingTop: 50, paddingBottom: 15, backgroundColor: "#FFF" },
+  headerTitle: { fontSize: 18, fontWeight: "600", color: "#1F2937" },
   placeholder: { width: 24 },
-  content: { flex: 1 },
+  content: { flex: 1, padding: 20 },
 
-  // Summary Card
-  courseSummary: { backgroundColor: "#FFF", marginHorizontal: 24, marginTop: 16, padding: 20, borderRadius: 16, marginBottom: 16 },
-  summaryTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937", marginBottom: 8 },
-  courseTitle: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 4 },
-  courseInstructor: { fontSize: 14, color: "#6B7280", marginBottom: 12 },
+  card: { backgroundColor: "#FFF", padding: 20, borderRadius: 12, marginBottom: 24, elevation: 2 },
+  courseTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937", marginBottom: 4 },
+  instructor: { fontSize: 14, color: "#6B7280" },
+  divider: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 12 },
+  priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  label: { fontSize: 16, color: "#4B5563" },
+  totalValue: { fontSize: 20, fontWeight: "700", color: "#4F46E5" },
 
-  priceBreakdown: { borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 16 },
-  priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: 'center' },
-  priceLabel: { fontSize: 14, color: "#6B7280" },
-  priceValue: { fontSize: 14, fontWeight: "500", color: "#374151" },
-  divider: { height: 1, backgroundColor: "#F3F4F6", marginVertical: 12 },
-  totalLabel: { fontSize: 16, fontWeight: "600", color: "#1F2937" },
-  totalValue: { fontSize: 18, fontWeight: "bold", color: "#4F46E5" },
+  sectionTitle: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 12 },
+  methodCard: { backgroundColor: "#FFF", padding: 16, borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 12 },
+  selectedMethod: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },
+  methodHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
+  methodTitle: { fontSize: 16, fontWeight: "500", flex: 1, color: "#1F2937" },
+  balanceText: { marginLeft: 36, marginTop: 4, fontSize: 14, color: "#6B7280" },
+  errorText: { marginLeft: 36, marginTop: 4, fontSize: 12, color: "#EF4444" },
 
-  // Payment Methods
-  paymentMethods: { backgroundColor: "#FFF", marginHorizontal: 24, padding: 20, borderRadius: 16, marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937", marginBottom: 12 },
-  paymentMethod: { flexDirection: "row", alignItems: "center", padding: 16, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, marginBottom: 12 },
-  selectedPaymentMethod: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },
-  paymentMethodText: { flex: 1, marginLeft: 12, fontSize: 16, fontWeight: "500", color: "#374151" },
-  radioButton: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: "#D1D5DB", alignItems: "center", justifyContent: "center" },
-  radioButtonSelected: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#4F46E5" },
+  gatewayOptions: { flexDirection: "row", gap: 10, marginTop: 12, marginLeft: 36 },
+  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: "#F3F4F6" },
+  selectedChip: { backgroundColor: "#4F46E5" },
+  chipText: { fontSize: 12, color: "#4B5563" },
+  selectedChipText: { color: "#FFF" },
 
-  // Card Details
-  cardDetails: { backgroundColor: "#FFF", marginHorizontal: 24, padding: 20, borderRadius: 16, marginBottom: 16 },
-  textInput: { borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, paddingHorizontal: 12, paddingVertical: 12, fontSize: 16, marginBottom: 12, color: "#1F2937" },
-  cardRow: { flexDirection: 'row', justifyContent: 'space-between', gap: 12 },
-  halfInput: { flex: 1, marginBottom: 0 },
-
-  // Bottom Action Bar
-  bottomAction: {
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB'
-  },
-  payButton: {
-    backgroundColor: "#4F46E5",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8
-  },
-  payButtonDisabled: {
-    backgroundColor: "#9CA3AF"
-  },
-  payButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFF"
-  },
+  footer: { padding: 20, backgroundColor: "#FFF", borderTopWidth: 1, borderTopColor: "#E5E7EB" },
+  payButton: { backgroundColor: "#4F46E5", padding: 16, borderRadius: 12, alignItems: "center" },
+  disabledButton: { backgroundColor: "#9CA3AF" },
+  payButtonText: { color: "#FFF", fontSize: 16, fontWeight: "600" },
 });
+
+export default PaymentScreen;

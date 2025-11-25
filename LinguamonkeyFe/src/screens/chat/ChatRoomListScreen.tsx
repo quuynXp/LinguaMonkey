@@ -37,7 +37,8 @@ const ChatRoomListScreen = ({ navigation }: any) => {
   const { mutate: joinRoomApi, isPending: isJoining } = useJoinRoom();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedFilter, setSelectedFilter] = useState<RoomPurpose | 'all'>('all');
+  // FIX: Default to GROUP_CHAT only for the Lobby
+  const [selectedFilter, setSelectedFilter] = useState<RoomPurpose>(RoomPurpose.GROUP_CHAT);
 
   const [showCodeModal, setShowCodeModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -59,7 +60,7 @@ const ChatRoomListScreen = ({ navigation }: any) => {
   const queryParams = {
     page: 0,
     size: 20,
-    purpose: selectedFilter === 'all' ? undefined : selectedFilter,
+    purpose: selectedFilter, // Only fetch based on selected Public filter
     roomName: searchQuery || undefined,
   };
 
@@ -183,10 +184,16 @@ const ChatRoomListScreen = ({ navigation }: any) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('room.list')}</Text>
-        <TouchableOpacity onPress={() => setShowCodeModal(true)}>
-          <Icon name="dialpad" size={24} color="#4F46E5" />
-        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t('room.community_lobby')}</Text>
+        <View style={{flexDirection: 'row', gap: 12}}>
+            {/* Button to navigate to Private Chats */}
+            <TouchableOpacity onPress={() => navigation.navigate('PrivateChatListScreen')}>
+                <Icon name="chat" size={24} color="#4F46E5" />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowCodeModal(true)}>
+                <Icon name="dialpad" size={24} color="#4F46E5" />
+            </TouchableOpacity>
+        </View>
       </View>
 
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
@@ -194,7 +201,7 @@ const ChatRoomListScreen = ({ navigation }: any) => {
           <Icon name="search" size={20} color="#9CA3AF" />
           <TextInput
             style={styles.searchInput}
-            placeholder={t('room.search')}
+            placeholder={t('room.search_public')}
             placeholderTextColor="#9CA3AF"
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -202,14 +209,12 @@ const ChatRoomListScreen = ({ navigation }: any) => {
         </View>
 
         <View style={styles.filtersContainer}>
-          <TouchableOpacity style={[styles.filterButton, selectedFilter === 'all' && styles.activeFilterButton]} onPress={() => setSelectedFilter('all')}>
-            <Text style={[styles.filterButtonText, selectedFilter === 'all' && styles.activeFilterButtonText]}>{t('all')}</Text>
-          </TouchableOpacity>
+          {/* Removed 'ALL' to force purpose selection for cleaner Public/Private separation */}
           <TouchableOpacity style={[styles.filterButton, selectedFilter === RoomPurpose.GROUP_CHAT && styles.activeFilterButton]} onPress={() => setSelectedFilter(RoomPurpose.GROUP_CHAT)}>
             <Text style={[styles.filterButtonText, selectedFilter === RoomPurpose.GROUP_CHAT && styles.activeFilterButtonText]}>{t('purpose.learning')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.filterButton, selectedFilter === RoomPurpose.AI_CHAT && styles.activeFilterButton]} onPress={() => setSelectedFilter(RoomPurpose.AI_CHAT)}>
-            <Text style={[styles.filterButtonText, selectedFilter === RoomPurpose.AI_CHAT && styles.activeFilterButtonText]}>{t('purpose.social')}</Text>
+          <TouchableOpacity style={[styles.filterButton, selectedFilter === RoomPurpose.QUIZ_TEAM && styles.activeFilterButton]} onPress={() => setSelectedFilter(RoomPurpose.QUIZ_TEAM)}>
+            <Text style={[styles.filterButtonText, selectedFilter === RoomPurpose.QUIZ_TEAM && styles.activeFilterButtonText]}>{t('purpose.quiz')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -227,7 +232,7 @@ const ChatRoomListScreen = ({ navigation }: any) => {
             ListEmptyComponent={
               <View style={styles.emptyContainer}>
                 <Icon name="chat-bubble-outline" size={48} color="#D1D5DB" />
-                <Text style={styles.emptyText}>{t('room.empty')}</Text>
+                <Text style={styles.emptyText}>{t('room.empty_public')}</Text>
               </View>
             }
           />
@@ -242,6 +247,7 @@ const ChatRoomListScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </Animated.View>
 
+      {/* Code & Password Modals (Kept same as original) */}
       <Modal visible={showCodeModal} transparent animationType="slide" onRequestClose={() => setShowCodeModal(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.modalContent}>

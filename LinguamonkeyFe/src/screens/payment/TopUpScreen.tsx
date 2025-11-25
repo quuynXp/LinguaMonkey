@@ -14,9 +14,9 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as WebBrowser from 'expo-web-browser';
 import { useUserStore } from '../../stores/UserStore';
 import { useWallet } from '../../hooks/useWallet';
-import { formatCurrency } from '../../utils/currency';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import * as Enums from '../../types/enums';
+import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
 
 type WebBrowserResultType = 'cancel' | 'dismiss' | 'success' | 'opened' | 'error';
 
@@ -26,6 +26,7 @@ const TopUpScreen = ({ navigation }) => {
     const { user } = useUserStore();
     const [customAmount, setCustomAmount] = useState('');
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
+    const formatCurrency = useCurrencyConverter().convert;
 
     const [selectedProvider, setSelectedProvider] = useState<Enums.TransactionProvider>(Enums.TransactionProvider.VNPAY);
 
@@ -56,7 +57,7 @@ const TopUpScreen = ({ navigation }) => {
         const amount = getAmount();
 
         if (!amount || amount < MINIMUM_AMOUNT) {
-            Alert.alert(t('common.error'), t('wallet.minimumAmount') ?? `Minimum top-up amount is ${formatCurrency(MINIMUM_AMOUNT)}.`);
+            Alert.alert(t('common.error'), t('wallet.minimumAmount') ?? `Minimum top-up amount is ${formatCurrency(MINIMUM_AMOUNT, 'USD')}.`);
             return;
         }
 
@@ -102,7 +103,7 @@ const TopUpScreen = ({ navigation }) => {
                     selectedAmount === item && styles.presetBtnTextSelected,
                 ]}
             >
-                {formatCurrency(item)}
+                {formatCurrency(item, "USD")}
             </Text>
         </TouchableOpacity>
     );
@@ -152,7 +153,7 @@ const TopUpScreen = ({ navigation }) => {
                     />
                 </View>
                 <Text style={styles.helperText}>
-                    {t('wallet.minimumAmount') ?? 'Minimum Amount'}: {formatCurrency(MINIMUM_AMOUNT)}
+                    {t('wallet.minimumAmount') ?? 'Minimum Amount'}: {formatCurrency(MINIMUM_AMOUNT, 'USD')}
                 </Text>
             </View>
 
@@ -183,7 +184,7 @@ const TopUpScreen = ({ navigation }) => {
             <View style={styles.summaryCard}>
                 <Text style={styles.summaryLabel}>{t('wallet.totalAmount') ?? 'Total Amount'}</Text>
                 <Text style={styles.summaryAmount}>
-                    {formatCurrency(currentAmount || 0)}
+                    {formatCurrency(currentAmount || 0, 'USD')}
                 </Text>
                 <Text style={styles.summaryNote}>
                     {t('wallet.topupNote') ?? 'You will be redirected to the payment gateway.'}

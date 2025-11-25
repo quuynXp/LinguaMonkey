@@ -177,7 +177,8 @@ const LearnScreen = ({ navigation }: any) => {
     navigation.navigate(screenName)
   }
 
-  const renderCourseCardItem = (course: CourseResponse, isPurchased = false) => {
+  // UPDATED: Added index parameter and fallback key
+  const renderCourseCardItem = (course: CourseResponse, index: number, isPurchased = false) => {
     if (!course) return null
 
     const version = course.latestPublicVersion
@@ -191,9 +192,12 @@ const LearnScreen = ({ navigation }: any) => {
     const totalLessons = version?.lessons?.length ?? 0
     const thumbnailUrl = version?.thumbnailUrl
 
+    // Safe Key Logic: Use ID if available, otherwise fallback to index
+    const uniqueKey = course.courseId ? `course-${course.courseId}` : `course-idx-${index}`
+
     return (
       <TouchableOpacity
-        key={course.courseId}
+        key={uniqueKey}
         style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
         onPress={() => handleCoursePress(course, isPurchased)}
       >
@@ -253,24 +257,27 @@ const LearnScreen = ({ navigation }: any) => {
     )
   }
 
-  const renderLessonCard = (lesson: LessonResponse) => {
+  // UPDATED: Added index parameter and fallback key
+  const renderLessonCard = (lesson: LessonResponse, index: number) => {
     if (!lesson) return null
 
-    // Determine target screen based on skill type
     const handlePress = () => {
       if (lesson.skillTypes === SkillType.SPEAKING) {
         navigation.navigate("SpeakingScreen", {
           lessonId: lesson.lessonId,
-          lesson: lesson // Pass the full lesson object
+          lesson: lesson
         })
       } else {
         navigation.navigate("LessonScreen", { lesson })
       }
     }
 
+    // Safe Key Logic: Use ID if available, otherwise fallback to index
+    const uniqueKey = lesson.lessonId ? `lesson-${lesson.lessonId}` : `lesson-idx-${index}`
+
     return (
       <TouchableOpacity
-        key={lesson.lessonId}
+        key={uniqueKey}
         style={styles.lessonCard}
         onPress={handlePress}
       >
@@ -292,9 +299,10 @@ const LearnScreen = ({ navigation }: any) => {
     )
   }
 
-  const renderLearningToolCard = (tool: any) => (
+  // UPDATED: Added index parameter and fallback key
+  const renderLearningToolCard = (tool: any, index: number) => (
     <TouchableOpacity
-      key={tool.screen}
+      key={tool.screen || `tool-${index}`}
       style={styles.toolCard}
       onPress={() => handleNavigation(tool.screen)}
     >
@@ -367,7 +375,7 @@ const LearnScreen = ({ navigation }: any) => {
               </TouchableOpacity>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {purchasedCourses.map((c: any) => renderCourseCardItem(c, true))}
+              {purchasedCourses.map((c: any, index: number) => renderCourseCardItem(c, index, true))}
             </ScrollView>
           </View>
         )}
@@ -377,7 +385,7 @@ const LearnScreen = ({ navigation }: any) => {
             <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
           </View>
           <View style={styles.toolGrid}>
-            {learningTools.map(renderLearningToolCard)}
+            {learningTools.map((tool, index) => renderLearningToolCard(tool, index))}
           </View>
         </View>
 
@@ -387,7 +395,7 @@ const LearnScreen = ({ navigation }: any) => {
               <Text style={styles.sectionTitle}>{t("learn.listeningLessons")}</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {listeningLessons.map(renderLessonCard)}
+              {listeningLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
             </ScrollView>
           </View>
         )}
@@ -398,7 +406,7 @@ const LearnScreen = ({ navigation }: any) => {
               <Text style={styles.sectionTitle}>{t("learn.speakingLessons")}</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {speakingLessons.map(renderLessonCard)}
+              {speakingLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
             </ScrollView>
           </View>
         )}
@@ -409,7 +417,7 @@ const LearnScreen = ({ navigation }: any) => {
               <Text style={styles.sectionTitle}>{t("learn.readingLessons")}</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {readingLessons.map(renderLessonCard)}
+              {readingLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
             </ScrollView>
           </View>
         )}
@@ -420,7 +428,7 @@ const LearnScreen = ({ navigation }: any) => {
               <Text style={styles.sectionTitle}>{t("learn.writingLessons")}</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {writingLessons.map(renderLessonCard)}
+              {writingLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
             </ScrollView>
           </View>
         )}
@@ -431,7 +439,7 @@ const LearnScreen = ({ navigation }: any) => {
               <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {recommendedCourses.map((c: any) => renderCourseCardItem(c, false))}
+              {recommendedCourses.map((c: any, index: number) => renderCourseCardItem(c, index, false))}
             </ScrollView>
           </View>
         )}
@@ -445,7 +453,7 @@ const LearnScreen = ({ navigation }: any) => {
               </TouchableOpacity>
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {freeCourses.slice(0, 5).map((c: any) => renderCourseCardItem(c, false))}
+              {freeCourses.slice(0, 5).map((c: any, index: number) => renderCourseCardItem(c, index, false))}
             </ScrollView>
           </View>
         )}

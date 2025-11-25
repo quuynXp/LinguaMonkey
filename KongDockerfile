@@ -1,7 +1,0 @@
-FROM kong:3.4
-
-# Copy file config từ root repo vào trong image
-# Thay thế cho việc mount volume (Render Free không hỗ trợ Volume)
-COPY kong.yml /usr/local/etc/kong/kong.yml
-
-USER kong

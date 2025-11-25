@@ -1,15 +1,33 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, NativeEventEmitter, NativeModules } from 'react-native';
 import { useAppStore } from '../stores/appStore';
 import instance from "../api/axiosClient";
 import messaging, {
   requestPermission,
-  getToken
+  getToken,
 } from '@react-native-firebase/messaging';
 import { useUserStore } from '../stores/UserStore';
 import { handleNotificationNavigation } from '../utils/navigationRef';
+import i18n from "../i18n";
+
+// --- FIX: NativeEventEmitter Warnings ---
+// Polyfill để tránh crash/warning khi thư viện native thiếu method addListener/removeListeners
+const RNFB_Module = NativeModules.RNFBAppModule || NativeModules.RNFBMessagingModule;
+if (RNFB_Module) {
+  const eventEmitter = new NativeEventEmitter(RNFB_Module);
+  // @ts-ignore
+  if (!eventEmitter.addListener) {
+    // @ts-ignore
+    eventEmitter.addListener = () => { };
+  }
+  // @ts-ignore
+  if (!eventEmitter.removeListeners) {
+    // @ts-ignore
+    eventEmitter.removeListeners = () => { };
+  }
+}
 
 export interface NotificationPreferences {
   enablePush: boolean;
@@ -34,16 +52,6 @@ export interface NotificationPreferences {
 
 const STORAGE_KEY = 'notification-preferences';
 
-if (Platform.OS === 'android') {
-  Notifications.setNotificationChannelAsync('default_channel_id', {
-    name: 'Default Channel',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#FF231F7C',
-    sound: 'notification.mp3',
-  });
-}
-
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -56,6 +64,7 @@ Notifications.setNotificationHandler({
 
 class NotificationService {
   private preferences: NotificationPreferences;
+  private isInitialized: boolean = false;
 
   constructor() {
     this.preferences = {
@@ -78,39 +87,71 @@ class NotificationService {
         end: '07:00',
       },
     };
-    this.loadPreferences();
   }
 
-  /**
-   * Quan trọng: Gọi hàm này ở App.tsx hoặc Root Component (useEffect)
-   */
+  async initialize() {
+    if (this.isInitialized) return;
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('default_channel_id', {
+        name: 'Default Channel',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+        sound: 'notification.mp3',
+      });
+    }
+
+    await this.loadPreferences();
+    await this.requestPermissions(); // Expo Permission
+    this.isInitialized = true;
+  }
+
   setupNotificationListeners() {
-    // 1. App đang mở hoặc chạy nền (Foreground/Background) - Xử lý interaction qua Expo
-    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+    // 1. Expo: User taps on local notification
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       console.log('User tapped notification (Expo Listener):', data);
       handleNotificationNavigation(data);
     });
 
-    // 2. App đang chạy nền (Background) - Click vào noti do Firebase sinh ra
-    messaging().onNotificationOpenedApp(remoteMessage => {
+    // 2. Firebase: Background State (App Open)
+    const unsubscribeOnOpened = messaging().onNotificationOpenedApp(remoteMessage => {
       console.log('User tapped notification (Firebase Background):', remoteMessage.data);
-      handleNotificationNavigation(remoteMessage.data);
-    });
-
-    // 3. App đã tắt hoàn toàn (Quit State) - Mở app từ noti
-    messaging().getInitialNotification().then(remoteMessage => {
-      if (remoteMessage) {
-        console.log('App opened from Quit State (Firebase):', remoteMessage.data);
-        // Delay nhẹ để Navigation container kịp mount
-        setTimeout(() => {
-          handleNotificationNavigation(remoteMessage.data);
-        }, 1000);
+      if (remoteMessage.data) {
+        handleNotificationNavigation(remoteMessage.data);
       }
     });
 
+    // 3. Firebase: Quit State (Initial Launch)
+    messaging().getInitialNotification().then(remoteMessage => {
+      if (remoteMessage) {
+        console.log('App opened from Quit State (Firebase):', remoteMessage.data);
+        // Delay slightly to ensure navigation container is ready
+        setTimeout(() => {
+          if (remoteMessage.data) {
+            handleNotificationNavigation(remoteMessage.data);
+          }
+        }, 1200);
+      }
+    });
+
+    // 4. Firebase: Foreground State (App Active) -> Convert to Local Notification
+    const unsubscribeOnMessage = messaging().onMessage(async (remoteMessage) => {
+      console.log("Foreground Notification (FCM):", remoteMessage);
+
+      // Hiển thị thông báo local ngay cả khi đang mở app
+      await this.sendLocalNotification(
+        remoteMessage.notification?.title || i18n.t("notification.default_title"),
+        remoteMessage.notification?.body || "",
+        remoteMessage.data
+      );
+    });
+
     return () => {
-      subscription.remove();
+      responseSubscription.remove();
+      unsubscribeOnOpened();
+      unsubscribeOnMessage();
     };
   }
 
@@ -120,7 +161,6 @@ class NotificationService {
 
     if (!deviceId) {
       deviceId = Device.osInternalBuildId || Device.osBuildId || 'unknown_device';
-
       if (store.setDeviceId) {
         store.setDeviceId(deviceId);
       }
@@ -172,6 +212,7 @@ class NotificationService {
     if (store.setToken) store.setToken(fcmToken);
     if (store.setDeviceId) store.setDeviceId(deviceId);
 
+    // Skip if already registered same token/device
     if (store.fcmToken === fcmToken && store.deviceId === deviceId && store.isTokenRegistered) {
       console.log('FCM Token already registered to backend for this device.');
       return;
@@ -197,7 +238,6 @@ class NotificationService {
     const { user, deviceId } = useUserStore.getState();
 
     if (!user?.userId || !deviceId) {
-      console.log('Cannot delete FCM token: User not logged in or Device ID missing in store.');
       return;
     }
 
@@ -209,7 +249,6 @@ class NotificationService {
         }
       });
       console.log('FCM Token deleted from backend successfully for device:', deviceId);
-
     } catch (error) {
       console.error('Failed to delete FCM token on logout:', error);
     }
@@ -224,10 +263,10 @@ class NotificationService {
         title,
         body,
         data: data as Record<string, unknown> | undefined,
-        sound: prefs.soundEnabled ? 'default_sound.wav' : undefined,
+        sound: prefs.soundEnabled ? 'default_sound.wav' : undefined, // Check if sound file exists or use default
         vibrate: prefs.vibrationEnabled ? [0, 250, 250, 250] : undefined,
       },
-      trigger: null,
+      trigger: null, // Show immediately
     });
   }
 
@@ -279,13 +318,15 @@ class NotificationService {
     }
 
     const secondsUntilTrigger = Math.floor((triggerDate.getTime() - now.getTime()) / 1000);
+    const title = 'Daily Study Reminder';
+    const body = 'Time to practice your language skills!';
 
     if (this.preferences.reminderFrequency === 'daily') {
-      return this.scheduleNotification('Daily Study Reminder', 'Time to practice your language skills!', secondsUntilTrigger);
+      return this.scheduleNotification(title, body, secondsUntilTrigger);
     } else if (this.preferences.reminderFrequency === 'weekdays' && [1, 2, 3, 4, 5].includes(now.getDay())) {
-      return this.scheduleNotification('Daily Study Reminder', 'Time to practice your language skills!', secondsUntilTrigger);
+      return this.scheduleNotification(title, body, secondsUntilTrigger);
     } else if (this.preferences.reminderFrequency === 'custom' && this.preferences.customDays.includes(now.getDay())) {
-      return this.scheduleNotification('Daily Study Reminder', 'Time to practice your language skills!', secondsUntilTrigger);
+      return this.scheduleNotification(title, body, secondsUntilTrigger);
     }
 
     return null;
@@ -298,7 +339,7 @@ class NotificationService {
       content: {
         title,
         body,
-        sound: "../assets/sounds/notification.mp3",
+        sound: this.preferences.soundEnabled, // Boolean or custom sound string
         vibrate: this.preferences.vibrationEnabled ? [0, 250, 250, 250] : undefined,
       },
       trigger: { seconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL },
@@ -335,7 +376,8 @@ class NotificationService {
       : currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
   }
 
-  // --- Giữ nguyên các hàm gửi local notification từ backend logic ---
+  // --- API Notification Methods ---
+
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;
     try {

@@ -10,6 +10,7 @@ import CreateRoomScreen from '../../screens/chat/CreateRoomScreen';
 import JitsiCallScreen from '../../screens/chat/JitsiCallScreen';
 import VideoCallManagerScreen from '../../screens/chat/VideoCallManagerScreen';
 import GroupChatScreen from '../../screens/chat/GroupChatScreen';
+import PrivateChatListScreen from '../../screens/chat/PrivateChatListScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -25,6 +26,7 @@ const ChatStack = () => (
     <Stack.Screen name="VideoCallManagerScreen" component={VideoCallManagerScreen} />
     <Stack.Screen name="JitsiCallScreen" component={JitsiCallScreen} />
     <Stack.Screen name="GroupChatScreen" component={GroupChatScreen} />
+    <Stack.Screen name="PrivateChatListScreen" component={PrivateChatListScreen} />
   </Stack.Navigator>
 );
 

@@ -10,17 +10,14 @@ import asyncio
 from dotenv import load_dotenv
 from .api.matchmaking_service import match_users_with_gemini
 
-# === IMPORT DECORATOR MỚI ===
 from .core.grpc_auth_decorator import authenticated_grpc_method
 
-# === CÁC IMPORT CỦA BẠN (giữ nguyên) ===
 from . import learning_service_pb2 as learning_pb2
 from . import learning_service_pb2_grpc as learning_pb2_grpc
 
 from .core.session import AsyncSessionLocal
 from .core.cache import get_redis_client, close_redis_client
 from .core.user_profile_service import get_user_profile
-from .core.kafka_consumer import consume_user_updates
 
 from .api.speech_to_text import speech_to_text
 from .api.chat_ai import chat_with_ai
@@ -36,7 +33,6 @@ from .api.translation import translate_text
 from .api.tts_generator import generate_tts
 from .api.quiz_generator import generate_quiz
 from .api.analytics_service import analyze_course_quality, decide_refund
-# Giả sử bạn có import này
 from .api.review_analyzer import analyze_review
 
 load_dotenv()
@@ -54,8 +50,6 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             raise
         self.redis_client = get_redis_client()
 
-    # === HÀM XÁC THỰC GỐC (ĐƯỢC GIỮ LẠI) ===
-    # Decorator sẽ gọi hàm này
     def _verify_token(self, context):
         try:
             metadata = dict(context.invocation_metadata())
@@ -82,16 +76,10 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             context.set_details(f"Invalid token: {str(e)}")
             return None
 
-    # === HÀM HELPER (GIỮ NGUYÊN) ===
     async def _get_profile_from_db(self, user_id: str, db_session):
-        """Fetches user profile using cache and DB."""
         if not user_id:
             return None
         return await get_user_profile(user_id, db_session, self.redis_client)
-
-    # === CÁC HANDLER ĐÃ ĐƯỢC DỌN DẸP ===
-    # Chú ý: (self, request, context, claims)
-    # 'claims' được tự động inject bởi decorator
 
     @authenticated_grpc_method
     async def SpeechToText(self, request, context, claims) -> learning_pb2.SpeechResponse:
@@ -118,24 +106,16 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     
     @authenticated_grpc_method
     async def StreamPronunciation(self, request_iterator, context, claims):
-        """
-        Xử lý streaming pronunciation chunks theo thời gian thực.
-        
-        Client gửi chunks audio liên tục, server phân tích và gửi lại feedback chunks.
-        """
         full_audio_chunks = []
         reference_text = None
         
         try:
-            # 1. Thu thập tất cả audio chunks từ client
             async for chunk in request_iterator:
                 full_audio_chunks.append(chunk.audio_chunk)
                 
-                # Lần đầu tiên, lưu reference text
                 if reference_text is None and chunk.reference_text:
                     reference_text = chunk.reference_text
                 
-                # Nếu là chunk cuối, dừng lại
                 if chunk.is_final:
                     break
 
@@ -153,13 +133,11 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 )
                 return
 
-            # 2. Ghép tất cả chunks lại
             final_audio = b"".join(full_audio_chunks)
             
             logging.info(f"Received {len(full_audio_chunks)} audio chunks, total {len(final_audio)} bytes")
             logging.info(f"Reference text: {reference_text}")
 
-            # 3. Stream phân tích từ pronunciation_checker
             from .api.pronunciation_checker import stream_pronunciation_analysis
             
             async for analysis_chunk in stream_pronunciation_analysis(final_audio, reference_text):
@@ -210,7 +188,6 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     @authenticated_grpc_method
     async def FindMatch(self, request, context, claims) -> learning_pb2.FindMatchResponse:
         try:
-            # Gọi hàm AI logic
             match_result, error = await match_users_with_gemini(
                 request.current_user_id,
                 request.current_user_prefs,
@@ -223,7 +200,6 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                     error=error or "No match found"
                 )
 
-            # Nếu AI tìm thấy người phù hợp
             return learning_pb2.FindMatchResponse(
                 match_found=True,
                 partner_user_id=match_result["best_match_id"],
@@ -301,7 +277,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                     user_id, request.prompt, request.language, user_profile
                 )
             return learning_pb2.GenerateImageResponse(
-                image_urls=["https://example.com/mock_image.png"], # Mock
+                image_urls=["https://example.com/mock_image.png"], 
                 model_used="mock_model",
                 error=error,
             )
@@ -452,7 +428,6 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"AnalyzeReviewQuality failed unexpectedly: {e}")
             return learning_pb2.ReviewQualityResponse(error=f"Internal server error: {e}")
 
-# === HÀM SERVE (GIỮ NGUYÊN) ===
 async def serve():
     server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
     learning_pb2_grpc.add_LearningServiceServicer_to_server(LearningService(), server)
@@ -462,19 +437,11 @@ async def serve():
     logging.info(f"Starting gRPC server on port {grpc_port}...")
     await server.start()
 
-    logging.info("Starting Kafka consumer task...")
-    kafka_task = asyncio.create_task(consume_user_updates())
-
     try:
         await server.wait_for_termination()
     except KeyboardInterrupt:
         logging.info("Stopping server...")
         await server.stop(0)
-        kafka_task.cancel()
-        try:
-            await kafka_task
-        except asyncio.CancelledError:
-            logging.info("Kafka consumer task cancelled.")
     finally:
         await close_redis_client()
 

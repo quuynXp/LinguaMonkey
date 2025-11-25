@@ -1,3 +1,4 @@
+import { Language } from './entity';
 // src/types/dto.ts
 import * as Enums from './enums';
 import * as Entities from './entity';
@@ -1352,7 +1353,8 @@ export interface ListeningResponse {
 
 export interface MemberResponse {
     userId: string;
-    username: string;
+    fullname: string;
+    nickname: string;
     avatarUrl: string;
     role: string;
     isOnline: boolean;
@@ -1926,6 +1928,8 @@ export interface UserProfileResponse {
     level: number;
     exp: number;
     bio?: string;
+    languages?: string[];
+    streak?: number;
 
     character3d?: Character3dResponse;
     stats?: UserStatsResponse;

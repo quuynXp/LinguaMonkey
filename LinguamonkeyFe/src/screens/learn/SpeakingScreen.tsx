@@ -15,7 +15,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync } from 'expo-audio';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect } from '@react-navigation/native'; // IMPORT THÊM
+import { useFocusEffect } from '@react-navigation/native';
 import PermissionService from '../../services/permissionService';
 import i18n from '../../i18n';
 import { useSkillLessons } from '../../hooks/useSkillLessons';
@@ -62,16 +62,15 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
     const { useStreamPronunciation } = useSkillLessons();
-    const { useLesson, useAllLessons } = useLessons();
+    const { useAllLessons, useLesson } = useLessons();
     const streamPronunciationMutation = useStreamPronunciation();
 
-    // SỬA ĐOẠN NÀY: Lấy thêm isError, error, refetch
     const {
         data: speakingLessonsData,
         isLoading: isLoadingList,
-        isError: isListError,   // Thêm check lỗi
-        error: listError,       // Thêm chi tiết lỗi
-        refetch: refetchList    // Thêm hàm gọi lại
+        isError: isListError,
+        error: listError,
+        refetch: refetchList
     } = useAllLessons({
         skillType: SkillType.SPEAKING,
         page: 0,
@@ -81,21 +80,18 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const {
         data: lessonDetailData,
         isLoading: isLoadingDetail,
-        refetch: refetchDetail // Thêm refetch cho detail
+        refetch: refetchDetail
     } = useLesson(currentLessonId || null);
 
     const activeLesson = lessonDetailData || paramLesson;
     const speakingLessonsList = (speakingLessonsData?.data || []) as LessonResponse[];
 
-    // THÊM: Ép gọi lại API khi màn hình được focus
+    // Refetch data when screen comes into focus, but avoid unnecessary loops
     useFocusEffect(
         useCallback(() => {
-            // Chỉ gọi lại list nếu chưa chọn lesson cụ thể
             if (!currentLessonId) {
-                console.log('SpeakingScreen focused - Refetching list');
                 refetchList();
             } else {
-                // Nếu đang trong bài học thì refetch bài học đó
                 refetchDetail();
             }
         }, [currentLessonId, refetchList, refetchDetail])
@@ -278,7 +274,6 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
             );
         }
 
-        // THÊM: Handle trường hợp lỗi API (401, 500...)
         if (isListError) {
             return (
                 <View style={styles.centerContainer}>
@@ -299,7 +294,6 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                 <View style={styles.centerContainer}>
                     <Icon name="sentiment-dissatisfied" size={48} color="#9CA3AF" />
                     <Text style={styles.emptyText}>{i18n.t('speaking.no_lessons_available') || "No speaking lessons found."}</Text>
-                    {/* Thêm nút Reload ở màn hình trống phòng trường hợp lỗi mạng mà không bắt được Exception */}
                     <TouchableOpacity style={[styles.retryButtonSmall, { marginTop: 16 }]} onPress={() => refetchList()}>
                         <Text style={styles.retryButtonTextSmall}>{i18n.t('common.reload')}</Text>
                     </TouchableOpacity>
@@ -312,8 +306,8 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                 data={speakingLessonsList}
                 keyExtractor={(item) => item.lessonId}
                 contentContainerStyle={styles.listContent}
-                refreshing={isLoadingList} // Thêm pull to refresh
-                onRefresh={refetchList}    // Thêm pull to refresh
+                refreshing={isLoadingList}
+                onRefresh={refetchList}
                 renderItem={({ item }) => (
                     <TouchableOpacity
                         style={styles.lessonItem}

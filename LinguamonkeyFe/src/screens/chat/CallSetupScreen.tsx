@@ -197,6 +197,9 @@ const CallSetupScreen = ({ navigation }) => {
   const selectedNativeLanguageName = languages.find((l) => l.languageCode === preferences.nativeLanguage)?.languageName || preferences.nativeLanguage
   const selectedLearningLanguageName = languages.find((l) => l.languageCode === preferences.learningLanguage)?.languageName || preferences.learningLanguage
 
+  const selectedNativeLanguageFlag = languageFlags[preferences.nativeLanguage] || '🌐'
+  const selectedLearningLanguageFlag = languageFlags[preferences.learningLanguage] || '🌐'
+
   const selectedGenderLabel = genderOptions.find((g) => g.value === preferences.gender)?.label
   const selectedDurationLabel = callDurations.find((d) => d.value === preferences.callDuration)?.label
 
@@ -241,7 +244,10 @@ const CallSetupScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("call.partnerNativeLanguage")}</Text>
+            <Text style={styles.sectionTitle}>
+              {t("call.partnerNativeLanguage")}
+              {` (${selectedNativeLanguageFlag} ${selectedNativeLanguageName})`}
+            </Text>
             {isLoadingLanguages ? <ActivityIndicator /> :
               <View style={styles.languagesGrid}>
                 {languages.map((lang) =>
@@ -254,7 +260,10 @@ const CallSetupScreen = ({ navigation }) => {
           </View>
 
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("call.partnerLearningLanguage")}</Text>
+            <Text style={styles.sectionTitle}>
+              {t("call.partnerLearningLanguage")}
+              {` (${selectedLearningLanguageFlag} ${selectedLearningLanguageName})`}
+            </Text>
             {isLoadingLanguages ? <ActivityIndicator /> :
               <View style={styles.languagesGrid}>
                 {languages.map((lang) =>
@@ -296,14 +305,14 @@ const CallSetupScreen = ({ navigation }) => {
               <View style={styles.summaryItem}>
                 <Icon name="language" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  {t("call.native")}: {languageFlags[preferences.nativeLanguage] || "🌐"}{" "}
+                  {t("call.native")}: {selectedNativeLanguageFlag}{" "}
                   {selectedNativeLanguageName}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="school" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  {t("call.learning")}: {languageFlags[preferences.learningLanguage] || "🌐"}{" "}
+                  {t("call.learning")}: {selectedLearningLanguageFlag}{" "}
                   {selectedLearningLanguageName}
                 </Text>
               </View>

@@ -6,6 +6,9 @@ public enum LessonType {
     FLASHCARD,
     QUIZ,
     SPEAKING,
+    READING,
+    WRITING,
+    VOCABULARY,
     VIDEO
 }
 

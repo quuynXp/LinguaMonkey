@@ -1,17 +1,13 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Platform, View, Text } from "react-native";
+import { View, Text } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as Notifications from "expo-notifications";
 import NetInfo from "@react-native-community/netinfo";
-import messaging, {
-  onMessage,
-} from "@react-native-firebase/messaging";
 import {
   RootNavigationRef,
   flushPendingActions,
-} from "./utils/navigationRef"; // Giữ lại RootNavigationRef và flushPendingActions
+} from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
-import notificationService from "./services/notificationService"; // Sử dụng service đã có listener
+import notificationService from "./services/notificationService";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
@@ -24,7 +20,9 @@ import i18n from "./i18n";
 import AuthStack from "./navigation/stack/AuthStack";
 import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 
-// Thêm logic đăng ký FCM Token (Giữ nguyên)
+// --- Logic Đăng ký Token ---
+// Có thể cân nhắc chuyển logic này vào notificationService trong tương lai
+// Hiện tại giữ ở đây để đảm bảo luồng Auth
 const registerFCMToken = async (userId: string) => {
   const { fcmToken, isTokenRegistered, setToken, setTokenRegistered } =
     useUserStore.getState();
@@ -35,35 +33,21 @@ const registerFCMToken = async (userId: string) => {
   }
 
   try {
-    let token = fcmToken;
-    let registered = isTokenRegistered;
-
-    // 1. Lấy token mới nếu chưa có
-    if (!token) {
-      console.log("Requesting new FCM token...");
-      await messaging().requestPermission();
-      token = await messaging().getToken();
-      if (token) {
-        setToken(token); // Cập nhật vào store
-        registered = false;
-        console.log("New FCM Token obtained:", token);
-      } else {
-        console.warn("Failed to obtain FCM token.");
-        return;
-      }
-    }
-
-    // 2. Đăng ký/Cập nhật token lên server
-    if (token && !registered) {
+    // Tận dụng notificationService để lấy token chuẩn
+    const token = await notificationService.getFcmToken();
+    if (token) {
+      setToken(token);
       const payload = {
         userId,
         fcmToken: token,
-        deviceId: useUserStore.getState().deviceId,
+        deviceId: await notificationService.getDeviceId(),
       };
 
       await instance.post("/api/v1/users/fcm-token", payload);
       setTokenRegistered(true);
       console.log("FCM Token successfully registered on server.");
+    } else {
+      console.warn("Failed to obtain FCM token via Service.");
     }
   } catch (error) {
     console.error("FCM Token registration failed:", error);
@@ -86,6 +70,7 @@ const RootNavigation = () => {
     useState<keyof MainStackParamList>("TabApp");
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
 
+  // --- CẤU HÌNH DEEP LINK ---
   const linking = useMemo(
     () => ({
       prefixes: [
@@ -129,20 +114,15 @@ const RootNavigation = () => {
       subscribe(listener: (url: string) => void) {
         const onReceiveURL = ({ url }: { url: string }) => listener(url);
         const eventListener = Linking.addEventListener("url", onReceiveURL);
-
-        // 👉 XÓA: Loại bỏ onNotificationOpenedApp ở đây, để logic này nằm gọn trong notificationService.ts
-        // const unsubscribeNotification = messaging().onNotificationOpenedApp((remoteMessage) => { ... });
-
-        // Tạm thời giữ lại việc unsubcribe cho clean up, nhưng nếu bạn đã xóa listener trên thì chỉ cần return eventListener.remove
         return () => {
           eventListener.remove();
-          // unsubscribeNotification(); // Nếu đã xóa listener
         };
       },
     }),
     []
   );
 
+  // --- NETWORK CHECK ---
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener((state) => {
       setIsConnected(state.isConnected ?? false);
@@ -150,33 +130,23 @@ const RootNavigation = () => {
     return () => unsubscribe();
   }, []);
 
-  // ✅ Kích hoạt Listener xử lý TẤT CẢ các trạng thái click Notification (Foreground/Background/Quit)
+  // --- NOTIFICATION INITIALIZATION ---
+  // Toàn bộ logic listener đã được chuyển vào Service để fix lỗi NativeEventEmitter
   useEffect(() => {
-    // Service này sẽ bao gồm logic onNotificationOpenedApp và getInitialNotification
-    const cleanup = notificationService.setupNotificationListeners();
+    const initNotifications = async () => {
+      await notificationService.initialize();
+    };
+    initNotifications();
+
+    // Setup listeners (Background, Quit, Foreground -> Local)
+    const cleanupListeners = notificationService.setupNotificationListeners();
+
     return () => {
-      if (cleanup) cleanup();
+      if (cleanupListeners) cleanupListeners();
     };
   }, []);
 
-  // ✅ Xử lý Notification ở trạng thái Foreground (Hiển thị local noti khi app đang mở)
-  useEffect(() => {
-    const unsubscribeOnMessage = onMessage(
-      messaging(),
-      async (remoteMessage) => {
-        console.log("Foreground Notification (FCM):", remoteMessage);
-        // Sau khi nhận, chuyển sang hiển thị Local Notification (có thể kèm data để click)
-        notificationService.sendLocalNotification(
-          remoteMessage.notification?.title ||
-          i18n.t("notification.default_title"),
-          remoteMessage.notification?.body || "",
-          remoteMessage.data
-        );
-      }
-    );
-    return () => unsubscribeOnMessage();
-  }, []);
-
+  // --- BOOTSTRAP APP (Auth & User Data) ---
   useEffect(() => {
     let mounted = true;
 
@@ -184,7 +154,7 @@ const RootNavigation = () => {
       try {
         const hasValidToken = await initializeTokens();
 
-        // 1. Initial Language Load (from Local)
+        // Language Setup
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
@@ -193,7 +163,6 @@ const RootNavigation = () => {
         }
         setLocalNativeLanguage(savedLanguage);
 
-        // Initial i18n set from storage
         if (i18n.language !== savedLanguage) {
           await i18n.changeLanguage(savedLanguage);
         }
@@ -205,7 +174,6 @@ const RootNavigation = () => {
               const payload = decodeToken(currentToken);
               if (payload?.userId) {
                 const userId = payload.userId;
-
                 const userRes = await instance.get(`/api/v1/users/${userId}`);
                 const rawUser = userRes.data.result || {};
                 const normalizedUser = {
@@ -214,7 +182,7 @@ const RootNavigation = () => {
                   roles: getRoleFromToken(currentToken),
                 };
 
-                // 2. Sync Language from User Profile (if different from local)
+                // Sync Language
                 if (
                   normalizedUser.nativeLanguageCode &&
                   normalizedUser.nativeLanguageCode !== savedLanguage
@@ -231,7 +199,7 @@ const RootNavigation = () => {
                 setUser(normalizedUser, savedLanguage);
                 await AsyncStorage.setItem("hasLoggedIn", "true");
 
-                // === BỔ SUNG LOGIC KIỂM TRA & ĐĂNG KÝ FCM TOKEN SAU KHI CÓ USER ID ===
+                // Check FCM Token
                 const isTokenMissingOrUnregistered =
                   !useUserStore.getState().fcmToken ||
                   !useUserStore.getState().isTokenRegistered;
@@ -239,16 +207,11 @@ const RootNavigation = () => {
                 if (isTokenMissingOrUnregistered) {
                   await registerFCMToken(userId);
                 }
-                // ====================================================================
 
+                // Route Logic
                 const roles = normalizedUser.roles || [];
-
-                // 3. Check Backend Status Flags instead of AsyncStorage
                 const hasFinishedSetup = normalizedUser.hasFinishedSetup === true;
-                const hasDonePlacementTest =
-                  normalizedUser.hasDonePlacementTest === true;
-
-                // Daily Welcome Check
+                const hasDonePlacementTest = normalizedUser.hasDonePlacementTest === true;
                 const today = new Date().toISOString().split("T")[0];
                 const lastDailyWelcomeAt = normalizedUser.lastDailyWelcomeAt;
                 let isFirstOpenToday = true;
@@ -281,7 +244,6 @@ const RootNavigation = () => {
             }
           }
         } else {
-          // Fallback for onboarding check (still local as it precedes login)
           const hasFinishedOnboarding =
             (await AsyncStorage.getItem("hasFinishedOnboarding")) === "true";
           if (hasFinishedOnboarding) {
@@ -297,15 +259,8 @@ const RootNavigation = () => {
 
     boot();
 
+    // Check permissions
     const initPermissions = async () => {
-      if (Platform.OS === "android") {
-        await Notifications.setNotificationChannelAsync("default", {
-          name: i18n.t("notification.channel_default_name"),
-          importance: Notifications.AndroidImportance.MAX,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: "#FF231F7C",
-        });
-      }
       await permissionService.checkNotificationPermission();
     };
     initPermissions();
@@ -322,14 +277,9 @@ const RootNavigation = () => {
     isTokenRegistered,
   ]);
 
-  // 👉 XÓA: Loại bỏ hàm handleNotificationNavigation LẶP LẠI ở đây
-  // const handleNotificationNavigation = (remoteMessage: any) => { ... };
-
   if (!isConnected) {
     return (
-      <View
-        style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-      >
+      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
         <Text style={{ fontSize: 16, color: "red" }}>
           {i18n.t("common.no_internet")}
         </Text>
@@ -346,16 +296,8 @@ const RootNavigation = () => {
       ref={RootNavigationRef}
       linking={linking}
       fallback={<SplashScreen />}
-      onReady={async () => {
+      onReady={() => {
         console.log("Navigation Ready");
-
-        // 👉 XÓA: Loại bỏ việc gọi getInitialNotification ở đây
-        // Logic này đã được chuyển vào notificationService.setupNotificationListeners()
-        // const initialMessage = await getInitialNotification(messaging());
-        // if (initialMessage) {
-        //   handleNotificationNavigation(initialMessage);
-        // }
-
         flushPendingActions();
       }}
     >

@@ -1,25 +1,101 @@
-# Stage 1: Build
+# # Stage 1: Build the application
+# FROM eclipse-temurin:21-jdk AS builder
+# WORKDIR /app
+
+# # Copy the entire project context (everything in D:\LinguaApp\LinguaVietnamesApp)
+# # Thư mục code thật (mvnw) sẽ nằm ở /app/LinguaVietnamesApp/
+# COPY . .
+
+# # Fix line endings for mvnw (important for Windows hosts)
+# # Sửa lỗi: Phải trỏ vào thư mục con
+# RUN sed -i 's/\r$//' LinguaVietnameseApp/mvnw
+
+# # Grant execute permissions
+# # Sửa lỗi: Phải trỏ vào thư mục con
+# RUN chmod +x LinguaVietnameseApp/mvnw
+
+# # Đổi WORKDIR vào thư mục code
+# WORKDIR /app/LinguaVietnameseApp
+
+# # Build the package
+# RUN ./mvnw clean package -DskipTests
+
+# # Stage 2: Create the final, smaller image
+# FROM eclipse-temurin:21-jre-alpine
+# WORKDIR /app
+
+# # Copy only the built .jar file from the builder stage
+# # Sửa lỗi: Đường dẫn đến file jar cũng phải chính xác
+# COPY --from=builder /app/LinguaVietnameseApp/target/*.jar app.jar
+
+# EXPOSE 8080
+# ENTRYPOINT ["java","-jar","/app/app.jar"]
+
+# Build local
+# FROM eclipse-temurin:21-jdk AS builder
+# WORKDIR /app
+# COPY LinguaVietnameseApp/ .
+
+# RUN sed -i 's/\r$//' mvnw
+
+# RUN chmod +x mvnw
+# RUN ./mvnw dependency:go-offline
+# RUN ./mvnw clean package -DskipTests
+
+# FROM eclipse-temurin:21-jre-alpine
+# WORKDIR /app
+# COPY --from=builder /app/target/*.jar app.jar
+# EXPOSE 8080
+# ENTRYPOINT ["java","-jar","/app/app.jar"]
+
+
+
+# Stage 1: Build the application
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 
-# Copy toàn bộ context (đang đứng ở root repo)
+# Copy the entire project context (everything in D:\LinguaApp\LinguaVietnamesApp)
+# Thư mục code thật (mvnw) sẽ nằm ở /app/LinguaVietnamesApp/
 COPY . .
 
-# QUAN TRỌNG: Di chuyển vào thư mục code thật (Lớp thứ 2)
-# Dựa trên ảnh: LinguaVietnameseApp (Outer) -> LinguaVietnameseApp (Inner)
-WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
+# Fix line endings for mvnw (important for Windows hosts)
+# Sửa lỗi: Phải trỏ vào thư mục con
+RUN sed -i 's/\r$//' LinguaVietnameseApp/mvnw
 
-# Fix quyền và build
-RUN sed -i 's/\r$//' mvnw
-RUN chmod +x mvnw
+# Grant execute permissions
+# Sửa lỗi: Phải trỏ vào thư mục con
+RUN chmod +x LinguaVietnameseApp/mvnw
+
+# Đổi WORKDIR vào thư mục code
+WORKDIR /app/LinguaVietnameseApp
+
+# Build the package
 RUN ./mvnw clean package -DskipTests
 
-# Stage 2: Runtime
+# Stage 2: Create the final, smaller image
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# Copy file JAR từ đúng thư mục target đã build ở trên
-COPY --from=builder /app/LinguaVietnameseApp/LinguaVietnameseApp/target/*.jar app.jar
+# Copy only the built .jar file from the builder stage
+# Sửa lỗi: Đường dẫn đến file jar cũng phải chính xác
+COPY --from=builder /app/LinguaVietnameseApp/target/*.jar app.jar
 
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","/app/app.jar"]
+
+# Build local
+# FROM eclipse-temurin:21-jdk AS builder
+# WORKDIR /app
+# COPY LinguaVietnameseApp/ .
+
+# RUN sed -i 's/\r$//' mvnw
+
+# RUN chmod +x mvnw
+# RUN ./mvnw dependency:go-offline
+# RUN ./mvnw clean package -DskipTests
+
+# FROM eclipse-temurin:21-jre-alpine
+# WORKDIR /app
+# COPY --from=builder /app/target/*.jar app.jar
+# EXPOSE 8080
+# ENTRYPOINT ["java","-jar","/app/app.jar"]

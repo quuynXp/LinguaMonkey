@@ -27,9 +27,13 @@ public class UserProfileResponse {
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
 
+
     private int level;
     private int exp;
     private String bio;
+    private int streak;
+    private List<String> languages;
+
 
     private Character3dResponse character3d;
     private UserStatsResponse stats;

@@ -8,26 +8,50 @@ services:
     autoDeploy: true
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
+    # Lệnh khởi động tùy chỉnh để format lại JDBC URL từ Render env
+    startCommand: "export SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME} && java -jar /app/app.jar"
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
       - key: SPRING_PROFILES_ACTIVE
         value: prod
-      - key: SPRING_DATASOURCE_URL
+      - key: PORT
+        value: 8080
+      # -- Database Variables (Dùng để ghép chuỗi connection) --
+      - key: DB_HOST
         fromDatabase:
           name: shared-postgres
-          property: connectionString
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: shared-postgres
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: shared-postgres
+          property: database
+      - key: SPRING_DATASOURCE_USERNAME
+        fromDatabase:
+          name: shared-postgres
+          property: user
+      - key: SPRING_DATASOURCE_PASSWORD
+        fromDatabase:
+          name: shared-postgres
+          property: password
+      # -- Redis --
       - key: SPRING_REDIS_HOST
         fromService:
           type: redis
           name: redis
           property: host
-      # Khai báo PORT cho Render biết Spring Boot chạy port nào
-      - key: PORT
-        value: 8080
+      - key: SPRING_REDIS_PORT
+        fromService:
+          type: redis
+          name: redis
+          property: port
+      # -- Service Discovery --
       - key: PYTHON_SERVICE_URL
         value: http://pythonservice:50051
-      - fromGroup: shared-app-env
     healthCheckPath: /actuator/health
     numInstances: 1
 
@@ -43,56 +67,62 @@ services:
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
+      - key: PORT
+        value: 50051
+      # -- Database --
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
           property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: shared-postgres
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: shared-postgres
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: shared-postgres
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: shared-postgres
+          property: password
+      # -- Redis --
       - key: REDIS_HOST
         fromService:
           type: redis
           name: redis
           property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: redis
+          property: port
+      # -- Service Discovery --
       - key: JAVA_SERVICE_URL
         value: http://linguavietnameseapp:8080
-      # FIX LỖI: Khai báo PORT ở đây thay vì property 'port' bên ngoài
-      - key: PORT
-        value: 50051
-      - fromGroup: shared-app-env
     numInstances: 1
 
-  # === 3. KONG GATEWAY ===
+  # === 3. KONG GATEWAY (DB-LESS) ===
   - type: web
     name: kong
-    runtime: image
-    image:
-      url: kong:3.4
+    runtime: docker
     region: singapore
     plan: free
     autoDeploy: true
-    # Đã xóa 'dependsOn' gây lỗi
-    # Start command: Chạy migration xong mới start Kong
-    startCommand: sh -c "kong migrations bootstrap && /docker-entrypoint.sh kong docker-start"
+    # Sử dụng Dockerfile riêng để copy kong.yml vào image
+    dockerContext: .
+    dockerfilePath: ./Dockerfile.kong
     envVars:
-      # FIX LỖI: Render Web Service chỉ public 1 port. Ta chọn port 8000 (Proxy)
       - key: PORT
         value: 8000
       - key: KONG_DATABASE
-        value: postgres
-      - key: KONG_PG_HOST
-        fromDatabase:
-          name: shared-postgres
-          property: host
-      - key: KONG_PG_USER
-        fromDatabase:
-          name: shared-postgres
-          property: user
-      - key: KONG_PG_PASSWORD
-        fromDatabase:
-          name: shared-postgres
-          property: password
-      - key: KONG_PG_DATABASE
-        value: linguaviet_db
-      # Cấu hình Kong lắng nghe đúng port mà Render cấp
+        value: "off"
+      - key: KONG_DECLARATIVE_CONFIG
+        value: /etc/kong/kong.yml
       - key: KONG_PROXY_LISTEN
         value: 0.0.0.0:8000
       - key: KONG_ADMIN_LISTEN
@@ -106,8 +136,7 @@ services:
       - key: KONG_ADMIN_ERROR_LOG
         value: /dev/stderr
       - key: KONG_PLUGINS
-        value: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
-    # Đã xóa phần 'ports' gây lỗi
+        value: bundled,rate-limiting,cors,request-transformer,proxy-cache
     numInstances: 1
 
   # === 4. REDIS ===
@@ -124,9 +153,3 @@ databases:
     databaseName: linguaviet_db
     user: linguauser
     ipAllowList: []
-
-envVarGroups:
-  - name: shared-app-env
-    envVars:
-      - key: ENVIRONMENT
-        value: production

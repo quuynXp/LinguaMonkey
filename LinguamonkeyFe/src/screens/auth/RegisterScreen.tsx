@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from "react"
-import { View, Text, TouchableOpacity, Animated, TextInput, Alert, ScrollView, ActivityIndicator } from "react-native"
+import { useState, useRef, useEffect } from "react";
+import { View, Text, TouchableOpacity, Animated, TextInput, Alert, ScrollView, ActivityIndicator } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
-import { registerWithEmail, handleGoogleLogin as serviceHandleGoogle, handleFacebookLogin as serviceHandleFacebook } from '../../services/authService';
+import { authService } from '../../services/authService';
 import { showError, showSuccess } from "../../utils/toastHelper";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import * as Google from 'expo-auth-session/providers/google';
@@ -61,11 +61,10 @@ const RegisterScreen = ({ navigation }) => {
       const { id_token } = googleResponse.params;
       if (id_token) {
         setIsSocialLoading(true);
-        serviceHandleGoogle(id_token)
+        authService.handleGoogleLogin(id_token)
           .then((result) => {
             if (result) {
               showSuccess(t("registerSuccess"));
-              navigation.navigate('SetupInitScreen');
             }
           })
           .catch((err) => safeShowError(err))
@@ -79,11 +78,10 @@ const RegisterScreen = ({ navigation }) => {
       const { access_token } = fbResponse.params;
       if (access_token) {
         setIsSocialLoading(true);
-        serviceHandleFacebook(access_token)
+        authService.handleFacebookLogin(access_token)
           .then((result) => {
             if (result) {
               showSuccess(t("registerSuccess"));
-              navigation.navigate('SetupInitScreen');
             }
           })
           .catch((err) => safeShowError(err))
@@ -120,9 +118,8 @@ const RegisterScreen = ({ navigation }) => {
     if (!validateForm()) return;
     setIsLoading(true);
     try {
-      await registerWithEmail(formData.firstName, formData.lastName, formData.email, formData.password);
+      await authService.registerWithEmail(formData.firstName, formData.lastName, formData.email, formData.password);
       showSuccess(t("registerSuccess"));
-      navigation.navigate('SetupInitScreen');
     } catch (error: any) {
       safeShowError(error);
     } finally {
@@ -198,7 +195,7 @@ const RegisterScreen = ({ navigation }) => {
           </View>
           <View style={styles.signinContainer}>
             <Text style={styles.signinText}>{t('haveAccount')}</Text>
-            <TouchableOpacity onPress={() => navigation.navigate("Login")}><Text style={styles.signinLink}>{t('signIn')}</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate("LoginScreen")}><Text style={styles.signinLink}>{t('signIn')}</Text></TouchableOpacity>
           </View>
         </Animated.View>
       </ScrollView>
@@ -236,12 +233,7 @@ const styles = createScaledSheet({
   signinContainer: { flexDirection: "row", justifyContent: "center", alignItems: "center" },
   signinText: { fontSize: 14, color: "#6B7280" },
   signinLink: { fontSize: 14, color: "#4F46E5", fontWeight: "600" },
-
-  loadingAnimation: {
-    width: 24,
-    height: 24,
-  },
-
-})
+  loadingAnimation: { width: 24, height: 24 },
+});
 
 export default RegisterScreen;

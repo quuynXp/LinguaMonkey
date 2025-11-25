@@ -616,6 +616,15 @@ public class UserServiceImpl implements UserService {
         User target = userRepository.findByUserIdAndIsDeletedFalse(targetId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
+        // --- UPDATE START: Lấy danh sách ngôn ngữ ---
+        List<String> languages = new ArrayList<>();
+        try {
+            languages = userLanguageRepository.findLanguageCodesByUserId(targetId);
+        } catch (Exception e) {
+            log.warn("Failed to fetch languages for user profile {}: {}", targetId, e.getMessage());
+        }
+        // --- UPDATE END ---
+
         UserProfileResponse.UserProfileResponseBuilder respB = UserProfileResponse.builder()
                 .userId(target.getUserId())
                 .fullname(target.getFullname())
@@ -623,8 +632,13 @@ public class UserServiceImpl implements UserService {
                 .avatarUrl(target.getAvatarUrl())
                 .country(target.getCountry())
                 .level(target.getLevel())
+                .streak(target.getStreak())   
+                .languages(languages)          
                 .exp(target.getExp())
-                .bio(target.getBio());
+                .bio(target.getBio())
+                .ageRange(target.getAgeRange())    
+                .proficiency(target.getProficiency())
+                .learningPace(target.getLearningPace());
 
         if (target.getCountry() != null) {
             respB.flag(target.getCountry().name());

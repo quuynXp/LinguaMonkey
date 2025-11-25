@@ -44,6 +44,24 @@ public class RoomServiceImpl implements RoomService {
     private final UserRepository userRepository;
     private final RoomMapper roomMapper;
 
+
+@Override
+    @Transactional(readOnly = true)
+    public Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pageable) {
+        try {
+            Page<Room> rooms = roomRepository.findRoomsByMemberUserId(userId, purpose, pageable);
+            return rooms.map(room -> {
+                RoomResponse response = roomMapper.toResponse(room);
+                long count = roomRepository.countMembersByRoomId(room.getRoomId());
+                response.setMemberCount((int) count);
+                return response;
+            });
+        } catch (Exception e) {
+            log.error("Error fetching joined rooms for user {}: {}", userId, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
     @Override
     public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
         try {
@@ -324,7 +342,8 @@ public class RoomServiceImpl implements RoomService {
 
                         return MemberResponse.builder()
                                 .userId(user.getUserId())
-                                .username(user.getNickname())
+                                .nickname(user.getNickname())
+                                .fullname(user.getFullname())
                                 .avatarUrl(user.getAvatarUrl())
                                 .role(String.valueOf(member.getRole()))
                                 .isOnline(user.isOnline())

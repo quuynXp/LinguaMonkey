@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.TransactionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.WalletResponse;
 import com.connectJPA.LinguaVietnameseApp.service.TransactionService;
 import com.connectJPA.LinguaVietnameseApp.service.WalletService;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
@@ -27,10 +28,9 @@ public class WalletController {
     private final WalletService walletService;
     private final MessageSource messageSource;
 
-    // === LẤY THÔNG TIN VÍ ===
     @GetMapping("/balance")
     public AppApiResponse<WalletResponse> getWalletBalance(
-            @RequestParam UUID userId, // TODO: Lấy từ Principal/SecurityContext
+            @RequestParam UUID userId,
             Locale locale) {
         WalletResponse wallet = walletService.getWalletByUserId(userId);
         return AppApiResponse.<WalletResponse>builder()
@@ -42,7 +42,7 @@ public class WalletController {
 
     @GetMapping("/history")
     public AppApiResponse<Page<TransactionResponse>> getTransactionHistory(
-            @RequestParam UUID userId, // TODO: Lấy từ Principal/SecurityContext
+            @RequestParam UUID userId,
             Pageable pageable,
             Locale locale) {
         Page<TransactionResponse> transactions = transactionService.getAllUserTransactions(userId, pageable);
@@ -53,14 +53,16 @@ public class WalletController {
                 .build();
     }
 
-    // === CÁC LUỒNG GIAO DỊCH ===
-
     @PostMapping("/deposit")
     public AppApiResponse<String> deposit(
             @Valid @RequestBody DepositRequest request,
-            Locale locale) {
-        // TODO: Đảm bảo request.userId khớp với user đang đăng nhập
-        String paymentUrl = transactionService.createDepositUrl(request);
+            Locale locale,
+            HttpServletRequest httpServletRequest) {
+        String clientIp = httpServletRequest.getHeader("X-Forwarded-For");
+        if (clientIp == null || clientIp.isEmpty()) {
+            clientIp = httpServletRequest.getRemoteAddr();
+        }
+        String paymentUrl = transactionService.createDepositUrl(request, clientIp);
         return AppApiResponse.<String>builder()
                 .code(200)
                 .message("Deposit URL created")
@@ -72,7 +74,6 @@ public class WalletController {
     public AppApiResponse<TransactionResponse> withdraw(
             @Valid @RequestBody WithdrawRequest request,
             Locale locale) {
-        // TODO: Đảm bảo request.userId khớp với user đang đăng nhập
         TransactionResponse transaction = transactionService.withdraw(request);
         return AppApiResponse.<TransactionResponse>builder()
                 .code(201)
@@ -85,7 +86,6 @@ public class WalletController {
     public AppApiResponse<TransactionResponse> transfer(
             @Valid @RequestBody TransferRequest request,
             Locale locale) {
-        // TODO: Đảm bảo request.senderId khớp với user đang đăng nhập
         TransactionResponse transaction = transactionService.transfer(request);
         return AppApiResponse.<TransactionResponse>builder()
                 .code(201)
@@ -98,7 +98,6 @@ public class WalletController {
     public AppApiResponse<TransactionResponse> requestRefund(
             @Valid @RequestBody RefundRequest request,
             Locale locale) {
-        // TODO: Đảm bảo request.requesterId khớp (admin hoặc user sở hữu originalTx)
         TransactionResponse transaction = transactionService.requestRefund(request);
         return AppApiResponse.<TransactionResponse>builder()
                 .code(201)
@@ -107,7 +106,6 @@ public class WalletController {
                 .build();
     }
 
-    // === WEBHOOK ===
     @PostMapping("/webhook")
     public AppApiResponse<String> handleWebhook(
             @RequestBody WebhookRequest request,
@@ -120,9 +118,7 @@ public class WalletController {
                 .build();
     }
 
-    // === ADMIN ===
     @PostMapping("/admin/approve-refund")
-    // @PreAuthorize("hasRole('ADMIN')")
     public AppApiResponse<TransactionResponse> approveRefund(
             @Valid @RequestBody ApproveRefundRequest request,
             Locale locale) {
@@ -135,7 +131,6 @@ public class WalletController {
     }
 
     @PostMapping("/admin/reject-refund")
-    // @PreAuthorize("hasRole('ADMIN')")
     public AppApiResponse<TransactionResponse> rejectRefund(
             @RequestParam UUID refundTransactionId,
             @RequestParam UUID adminId,

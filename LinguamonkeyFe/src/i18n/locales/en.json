@@ -108,28 +108,6 @@
     "nameRequired": "Name is required",
     "nameMin": "Name must be at least 2 characters"
   },
-  "errors": {
-    "network": "Network error. Please check your connection.",
-    "server": "Server Error",
-    "loading": "Loading...",
-    "loadTestsFailed": "Faild to load tests",
-    "unauthorized": "You are not authorized to perform this action.",
-    "notFound": "The requested resource was not found.",
-    "validation": "Please check your input and try again.",
-    "unknown": "An unexpected error occurred.",
-    "networkError": "Network error occurred",
-    "loadRoadmapFailed": "Failed to load roadmap",
-    "loadItemFailed": "Failed to load item details",
-    "loadLearnDataFailed": "Failed to load learning data",
-    "loadCourseDetailsFailed": "Failed to load course details",
-    "purchaseFailed": "Purchase failed. Please try again.",
-    "loadCertificationsFailed": "Failed to load certifications",
-    "uploadFailed": "Upload failed",
-    "aiRoomNotFound": "Cannot create AI chat room. Please try again.",
-    "roomNotReady": "Chat room is not ready.",
-    "userNotFound": "User not found",
-    "api": "A network or server error occurred. Please try again."
-  },
   "createRoom": {
     "title": "Create New Room",
     "roomNameLabel": "Room Name",
@@ -284,7 +262,10 @@
     "notes": "Notes",
     "helpSupport": "Help & Support",
     "logout": "Logout",
-    "noName": "No name",
+    "logoutFailed": "Logout failed, please try again.",
+    "logoutConfirmTitle": "Logout",
+    "logoutConfirmMessage": "Are you sure you want to logout?",
+    "noName": "No Name",
     "noEmail": "No email",
     "details": "Profile Details",
     "email": "Email",
@@ -305,8 +286,8 @@
     "dailyGoal": "Daily Goal",
     "settingsSummary": "Settings Summary",
     "notifications": "Notifications",
-    "enabled": "Enabled",
-    "disabled": "Disabled",
+    "enabled": "On",
+    "disabled": "Off",
     "studyReminders": "Study Reminders",
     "privacy": "Privacy",
     "public": "Public",
@@ -353,18 +334,15 @@
     "messageNotifications": "Message Notifications",
     "achievementNotifications": "Achievement Notifications",
     "quietHours": "Quiet Hours",
-    "quietHoursValue": "{{status}} ({{start}}-{{end}})",
     "addABio": "Add a Bio",
     "expShort": "EXP",
     "toNextLevel": "To Next Level: {{exp}} EXP",
     "aboutYourAccount": "About Your Account",
-    "privacyNotice": "Your information is protected and only used to improve your learning experience.",
+    "privacyNotice": "Your information is protected and only used to enhance your learning experience.",
     "playStoreRating": "Rated 5★ by users on Google Play.",
     "policySnippet": "See our Privacy Policy and Terms to understand how we handle your data.",
-    "uploadingColor": "#9CA3AF",
-    "logoutFailed": "Logout failed, please try again.",
-    "logoutConfirmTitle": "Logout",
-    "logoutConfirmMessage": "Are you sure you want to logout?"
+    "quietHoursValue": "{{status}} ({{start}}-{{end}})",
+    "uploadingColor": "#9CA3AF"
   },
   "learn": {
     "title": "Learn English",
@@ -474,13 +452,13 @@
     "cancel_vn": "Hủy",
     "select": "Select",
     "complete": "Quiz Complete!",
+    "reload": "Reload",
     "period": {
       "day": "Day",
       "week": "Week",
       "month": "Month",
       "year": "Year"
-    },
-    "reload": "Reload"
+    }
   },
   "upload": {
     "inProgress": "Uploading...",
@@ -655,6 +633,27 @@
       }
     }
   },
+  "errors": {
+    "network": "Network error. Please check your connection.",
+    "server": "Server Error",
+    "loading": "Loading...",
+    "loadTestsFailed": "Faild to load tests",
+    "unauthorized": "You are not authorized to perform this action.",
+    "notFound": "The requested resource was not found.",
+    "validation": "Please check your input and try again.",
+    "unknown": "An unexpected error occurred.",
+    "networkError": "Network error occurred",
+    "loadRoadmapFailed": "Failed to load roadmap",
+    "loadItemFailed": "Failed to load item details",
+    "loadLearnDataFailed": "Failed to load learning data",
+    "loadCourseDetailsFailed": "Failed to load course details",
+    "purchaseFailed": "Purchase failed. Please try again.",
+    "loadCertificationsFailed": "Failed to load certifications",
+    "uploadFailed": "Upload failed",
+    "aiRoomNotFound": "Cannot create AI chat room. Please try again.",
+    "roomNotReady": "Chat room is not ready.",
+    "userNotFound": "User not found"
+  },
   "course": {
     "totalLessons": "{{count}} Lessons",
     "progress": "Progress: {{progress}}%",
@@ -789,6 +788,7 @@
     "reviews": "reviews",
     "rating": "Rating",
     "students": "Students",
+    "courses": "Courses",
     "level": "Level",
     "defaultDescription": "Master essential skills with this comprehensive course designed for learners who want to excel.",
     "whatYouWillLearn": "What you'll learn",
@@ -1090,7 +1090,14 @@
       "fr": "French",
       "es": "Spanish",
       "de": "German"
-    }
+    },
+    "searchTime": "Search Time",
+    "findingMatch": "Finding the perfect match...",
+    "criteria": "Matching Criteria",
+    "minutes": "minutes",
+    "cancelSearch": "Cancel Search",
+    "connecting": "Connecting...",
+    "searchingTitle": "Searching for Partner"
   },
   "appSubtitle": {
     "feature": {
@@ -1682,7 +1689,8 @@
       "title": "App Information",
       "version": "Version:",
       "lastUpdate": "Last updated:",
-      "os": "Operating System:"
+      "os": "Operating System:",
+      "versionValue": "Version"
     },
     "faqData": {
       "1q": "How to change learning language?",
@@ -2066,6 +2074,5 @@
   "participantId": "Participant Id",
   "createGroupCall": "Create Group Call",
   "createOneToOne": "Create 1-1 Call",
-  "enterParticipantId": "Please enter participant userId",
   "removeUser": "Remove user"
 }

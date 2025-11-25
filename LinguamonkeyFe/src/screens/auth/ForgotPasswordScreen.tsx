@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Animated, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
-import { checkResetMethods } from '../../services/authService';
+import { authService } from '../../services/authService';
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { showError } from "../../utils/toastHelper";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -31,7 +31,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
     setIsLoading(true);
     try {
-      const methods = await checkResetMethods(identifier);
+      const methods = await authService.checkResetMethods(identifier);
       gotoTab("Profile", "ResetPasswordScreen", { identifier: identifier, methods: methods });
     } catch (error: any) {
       showError(error.message || t('accountNotFound'));
@@ -79,7 +79,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  content: { flex: 1, paddingHorizontal: 24, paddingTop: 50 },
+  content: { flex: 1, paddingHorizontal: 24},
   header: { marginBottom: 20 },
   title: { fontSize: 28, fontWeight: "bold", color: "#1F2937", textAlign: "center", marginBottom: 8 },
   subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center", marginBottom: 40, lineHeight: 24 },
