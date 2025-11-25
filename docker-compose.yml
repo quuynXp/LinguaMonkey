@@ -287,7 +287,6 @@
 #       - TZ=Asia/Ho_Chi_Minh
 #     networks:
 #       - lingua-net
-
 version: '3.8'
 
 networks:
@@ -330,11 +329,11 @@ services:
       - lingua-net
     restart: always
 
-  # === BACKEND SERVICES ===
+  # === BACKEND ===
   linguavietnameseapp:
     build:
       context: ./LinguaVietnameseApp
-      dockerfile: Dockerfile # Sử dụng file Dockerfile đã fix path
+      dockerfile: Dockerfile
     container_name: linguavietnameseapp
     depends_on:
       - app-database
@@ -345,7 +344,6 @@ services:
       - TZ=Asia/Ho_Chi_Minh
       - PYTHON_SERVICE_URL=http://pythonservice:50051
     volumes:
-      # Sửa lại đường dẫn volume cho đúng cấu trúc lồng nhau
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro
     networks:
       - lingua-net
@@ -371,7 +369,8 @@ services:
       - lingua-net
     restart: always
 
-  # === KONG GATEWAY (DB-LESS LOCAL) ===
+  # === KONG (Local Mode: DB-less) ===
+  # Ở Local chạy DB-less cho tiện, đỡ phải migrate DB
   kong:
     image: kong:3.4
     container_name: kong
@@ -387,7 +386,6 @@ services:
       KONG_ADMIN_ERROR_LOG: /dev/stderr
       KONG_ADMIN_LISTEN: 0.0.0.0:8001
       KONG_PLUGINS: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
-      TZ: "Asia/Ho_Chi_Minh"
     ports:
       - "8000:8000"
       - "8001:8001"
