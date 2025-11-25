@@ -5,6 +5,7 @@ package learning;
 option java_package = "learning";
 option java_multiple_files = true;
 
+
 message ReviewQualityRequest {
   string user_id = 1;
   string content_id = 2;   // ID cho course, lesson, hoặc video
@@ -75,7 +76,6 @@ service LearningService {
     rpc GenerateLanguageQuiz (QuizGenerationRequest) returns (QuizGenerationResponse);
 }
 
-
 message CallPreferences {
   repeated string interests = 1;
   string gender = 2; // "any", "male", "female"
@@ -85,10 +85,16 @@ message CallPreferences {
   string call_duration = 6; // "15"
 }
 
-message FindMatchRequest {
+message MatchCandidate {
   string user_id = 1;
   CallPreferences preferences = 2;
-  Metadata metadata = 3;
+}
+
+message FindMatchRequest {
+  string current_user_id = 1;
+  CallPreferences current_user_prefs = 2;
+  repeated MatchCandidate candidates = 3; // Danh sách người đang chờ
+  Metadata metadata = 4;
 }
 
 message FoundPartner {
@@ -104,10 +110,11 @@ message FoundPartner {
 }
 
 message FindMatchResponse {
-  FoundPartner partner = 1;
-  string video_call_id = 2; // ID của video_calls table
-  string room_id = 3; // Jitsi room name
-  string error = 4;
+  bool match_found = 1;
+  string partner_user_id = 2; // ID của người được AI chọn
+  float compatibility_score = 3; // Độ hợp nhau (0-100)
+  string reason = 4; // Lý do AI chọn (để debug hoặc hiện UI)
+  string error = 5;
 }
 
 // Định nghĩa một câu hỏi quiz

@@ -637,8 +637,8 @@ export interface TransferRequest {
 }
 
 export interface TranslationRequestBody {
-    text: string;           
-    source_lang: string;  
+    text: string;
+    source_lang: string;
     target_lang: string;
 }
 
@@ -910,6 +910,7 @@ export interface ChatStatsResponse {
     totalMessages: number;
     translationsUsed: number;
     videoCalls: number;
+    joinedRooms: number;
     lastActiveAt: string;
     online: boolean;
     level: number;
@@ -1671,6 +1672,11 @@ export interface RoomResponse {
     roomId: string;
     roomName: string;
     creatorId: string;
+    creatorName: string;
+    roomCode: string;
+    content: string;
+    description: string;
+    memberCount: number;
     maxMembers: number;
     purpose: Enums.RoomPurpose;
     roomType: Enums.RoomType;

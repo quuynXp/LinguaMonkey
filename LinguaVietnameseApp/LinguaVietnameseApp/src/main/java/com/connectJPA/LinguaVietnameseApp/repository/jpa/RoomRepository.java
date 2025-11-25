@@ -61,4 +61,15 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             RoomType roomType
     );
 
+    // New: Find by 6-digit Room Code
+    @Query("SELECT r FROM Room r WHERE r.roomCode = :roomCode AND r.isDeleted = false")
+    Optional<Room> findByRoomCodeAndIsDeletedFalse(@Param("roomCode") String roomCode);
+
+    // New: Check existence of code
+    boolean existsByRoomCode(String roomCode);
+
+    // New: Efficient count for list view
+    @Query("SELECT COUNT(m) FROM RoomMember m WHERE m.id.roomId = :roomId AND m.isDeleted = false")
+    long countMembersByRoomId(@Param("roomId") UUID roomId);
+
 }

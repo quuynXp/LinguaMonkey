@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.JoinRoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomMemberRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
@@ -53,6 +54,19 @@ public class RoomController {
                 .build();
     }
 
+    @Operation(summary = "Join Room", description = "Join a room using Room ID or 6-digit Code, with optional password")
+    @PostMapping("/join")
+    public AppApiResponse<RoomResponse> joinRoom(
+            @Valid @RequestBody JoinRoomRequest request,
+            Locale locale) {
+        RoomResponse response = roomService.joinRoom(request);
+        return AppApiResponse.<RoomResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("room.joined.success", null, locale))
+                .result(response)
+                .build();
+    }
+
     @Operation(summary = "Get or Create Private Room", description = "Get existing private chat room with target user or create new one")
     @PostMapping("/private")
     public AppApiResponse<RoomResponse> getPrivateRoom(
@@ -71,50 +85,41 @@ public class RoomController {
     }
 
 
-        @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
-                @GetMapping("/ai-chat-room")
-                public AppApiResponse<RoomResponse> getAiChatRoom(
-                        @RequestParam UUID userId, // <--- THÊM PARAM NÀY
-                        Locale locale) {
+    @Operation(summary = "Find or Create AI Chat Room", description = "Finds an existing AI_SOLO room for the authenticated user, or creates one if it doesn't exist.")
+    @GetMapping("/ai-chat-room")
+    public AppApiResponse<RoomResponse> getAiChatRoom(
+            @RequestParam UUID userId,
+            Locale locale) {
 
-                // 1. Lấy ID từ Security Context (ID đã được xác thực từ JWT)
-                String authenticatedUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
+        String authenticatedUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
 
-                // 2. Kiểm tra xác thực (Giữ nguyên check)
-                if (authenticatedUserIdStr == null || authenticatedUserIdStr.equalsIgnoreCase("anonymousUser")) {
-                        throw new AppException(ErrorCode.UNAUTHENTICATED);
-                }
-                
-                // 3. Chuyển đổi ID đã xác thực sang UUID
-                UUID currentUserId;
-                try {
-                        currentUserId = UUID.fromString(authenticatedUserIdStr);
-                } catch (IllegalArgumentException e) {
-                        throw new AppException(ErrorCode.UNAUTHENTICATED); 
-                }
-                
-                // 4. KIỂM TRA CHÉO: Đảm bảo userId từ params khớp với ID trong token
-                if (!currentUserId.equals(userId)) {
-                        throw new AppException(ErrorCode.UNAUTHENTICATED); // Hoặc một mã lỗi thích hợp
-                }
+        if (authenticatedUserIdStr == null || authenticatedUserIdStr.equalsIgnoreCase("anonymousUser")) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        UUID currentUserId;
+        try {
+            currentUserId = UUID.fromString(authenticatedUserIdStr);
+        } catch (IllegalArgumentException e) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
+        if (!currentUserId.equals(userId)) {
+            throw new AppException(ErrorCode.UNAUTHENTICATED);
+        }
 
-                // Nếu khớp, sử dụng userId đã được xác thực
-                RoomResponse room = roomService.findOrCreateAiChatRoom(currentUserId); 
+        RoomResponse room = roomService.findOrCreateAiChatRoom(currentUserId);
 
-                return AppApiResponse.<RoomResponse>builder()
-                        .code(200)
-                        .message(messageSource.getMessage("room.ai_room.success", null, locale))
-                        .result(room)
-                        .build();
-                }
+        return AppApiResponse.<RoomResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("room.ai_room.success", null, locale))
+                .result(room)
+                .build();
+    }
 
     @Operation(summary = "Get room members", description = "Retrieve a list of members for a specific room")
     @GetMapping("/{id}/members")
     public AppApiResponse<List<MemberResponse>> getRoomMembers(
             @PathVariable UUID id,
             Locale locale) {
-        // Bạn cần tạo phương thức `getRoomMembers` trong RoomService
-        // trả về List<MemberResponse> (gồm userId, username, avatarUrl, role, isOnline)
         List<MemberResponse> members = roomService.getRoomMembers(id);
 
         return AppApiResponse.<List<MemberResponse>>builder()
@@ -201,6 +206,4 @@ public class RoomController {
                 .message(messageSource.getMessage("room.members.removed.success", null, locale))
                 .build();
     }
-
-
 }

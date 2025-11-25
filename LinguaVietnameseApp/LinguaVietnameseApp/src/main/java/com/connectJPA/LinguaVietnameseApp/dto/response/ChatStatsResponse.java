@@ -13,6 +13,7 @@ public class ChatStatsResponse {
     private long totalMessages;
     private long translationsUsed;
     private long videoCalls;
+    private long joinedRooms;
     private OffsetDateTime lastActiveAt;
     private boolean online;
     private Integer level;

@@ -7,6 +7,7 @@ import {
   VideoCallRequest,
   CreateGroupCallRequest,
   UpdateParticipantStatusRequest,
+  RoomResponse,
   CallPreferencesRequest, // Thêm DTO Matchmaking
   FindMatchResponse,      // Thêm DTO Matchmaking
 } from "../types/dto";
@@ -44,6 +45,7 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 export const useVideoCalls = () => {
   const queryClient = useQueryClient();
   const BASE = "/api/v1/video-calls";
+  const MATCHMAKING_BASE = "/api/v1/matchmaking";
 
   // ==========================================
   // === 1. VIDEO CALLS QUERIES (CRUD Base) ===
@@ -240,22 +242,32 @@ export const useVideoCalls = () => {
   // === 4. MATCHMAKING (Integrated from MatchmakingController) ===
   // ==========================================
 
-  // POST /api/v1/matchmaking/find-call
   const useFindCallPartner = () => {
     return useMutation({
       mutationFn: async (req: CallPreferencesRequest) => {
-        // Endpoint Matchmaking nằm ngoài BASE /api/v1/video-calls
-        const { data } = await instance.post<AppApiResponse<FindMatchResponse>>(
-          `/api/v1/matchmaking/find-call`,
+        // Axios interceptor thường trả về data.result, nhưng ở đây ta cần check cả status code
+        // Nên ta sẽ request raw response hoặc cấu hình để lấy được code
+        const response = await instance.post<AppApiResponse<RoomResponse | null>>(
+          `${MATCHMAKING_BASE}/find-call`,
           req
         );
-        return data.result!;
+
+        // Giả sử response.data là cấu trúc AppApiResponse
+        return {
+          data: response.data.result, // RoomResponse hoặc null
+          code: response.data.code,   // 200 hoặc 202
+          message: response.data.message
+        };
       },
-      onSuccess: (data) => {
-        // Invalidate video call lists as a new call might have been created
-        queryClient.invalidateQueries({ queryKey: videoCallKeys.all });
-        // Optional: Cache partner info or push to specific state
-      },
+    });
+  };
+
+  // POST /api/v1/matchmaking/cancel
+  const useCancelFindMatch = () => {
+    return useMutation({
+      mutationFn: async () => {
+        await instance.post(`${MATCHMAKING_BASE}/cancel`);
+      }
     });
   };
 
@@ -279,5 +291,6 @@ export const useVideoCalls = () => {
 
     // Matchmaking
     useFindCallPartner,
+    useCancelFindMatch,
   };
 };

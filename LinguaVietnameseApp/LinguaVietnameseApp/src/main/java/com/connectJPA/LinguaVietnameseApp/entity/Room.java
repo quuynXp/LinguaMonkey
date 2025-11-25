@@ -48,6 +48,14 @@ public class Room extends BaseEntity {
     @Column(name = "room_type", nullable = false)
     private RoomType roomType;
 
+    @Column(name = "room_code", length = 6, unique = true)
+    private String roomCode;
+
+    @Column(name = "password")
+    private String password;
+
+    private String content;
+
     @Convert(converter = RoomStatusConverter.class)
     @Column(name = "status", nullable = false)
     @Builder.Default

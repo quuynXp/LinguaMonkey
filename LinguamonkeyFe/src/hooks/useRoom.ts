@@ -8,11 +8,8 @@ import {
     MemberResponse,
     RoomMemberRequest,
 } from "../types/dto";
-
 import { RoomPurpose, RoomType } from "../types/enums";
-// import { VideoCallParticipant } from "../types/entity"; // Dùng Entity
 
-// --- Keys Factory ---
 export const roomKeys = {
     all: ["rooms"] as const,
     lists: (params: any) => [...roomKeys.all, "list", params] as const,
@@ -22,7 +19,6 @@ export const roomKeys = {
     ai: () => [...roomKeys.all, "aiRoom"] as const,
 };
 
-// --- Helper to standardize pagination return ---
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
     data: (result?.content as T[]) || [],
     pagination: {
@@ -37,19 +33,12 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
     },
 });
 
-/**
- * Hook: useRooms 💬
- * Handles all CRUD and special logic for Chat/Video Rooms and membership management.
- */
 export const useRooms = () => {
     const queryClient = useQueryClient();
     const BASE = "/api/v1/rooms";
 
-    // ==========================================
-    // === 1. ROOM QUERIES ===
-    // ==========================================
+    // --- QUERIES ---
 
-    // GET /api/v1/rooms
     const useAllRooms = (params?: {
         roomName?: string;
         creatorId?: string;
@@ -72,7 +61,6 @@ export const useRooms = () => {
         });
     };
 
-    // GET /api/v1/rooms/{id}
     const useRoom = (id?: string | null) => {
         return useQuery({
             queryKey: roomKeys.detail(id!),
@@ -85,13 +73,11 @@ export const useRooms = () => {
         });
     };
 
-    // GET /api/v1/rooms/{id}/members
     const useRoomMembers = (roomId?: string | null) => {
         return useQuery({
             queryKey: roomKeys.members(roomId!),
             queryFn: async () => {
                 if (!roomId) throw new Error("Room ID required");
-                // Lỗi: Cannot find name 'List'. Đã sửa thành MemberResponse[]
                 const { data } = await instance.get<AppApiResponse<MemberResponse[]>>(
                     `${BASE}/${roomId}/members`
                 );
@@ -101,7 +87,6 @@ export const useRooms = () => {
         });
     };
 
-    // GET /api/v1/rooms/ai-chat-room
     const useAiChatRoom = () => {
         return useQuery({
             queryKey: roomKeys.ai(),
@@ -113,11 +98,8 @@ export const useRooms = () => {
         });
     };
 
-    // ==========================================
-    // === 2. ROOM MUTATIONS ===
-    // ==========================================
+    // --- MUTATIONS ---
 
-    // POST /api/v1/rooms
     const useCreateRoom = () => {
         return useMutation({
             mutationFn: async (req: RoomRequest) => {
@@ -128,7 +110,24 @@ export const useRooms = () => {
         });
     };
 
-    // POST /api/v1/rooms/private?targetUserId={targetId}
+    // New: Join Room Mutation (Handles ID or Code + Password)
+    const useJoinRoom = () => {
+        return useMutation({
+            mutationFn: async ({ roomId, roomCode, password }: { roomId?: string; roomCode?: string; password?: string }) => {
+                const { data } = await instance.post<AppApiResponse<RoomResponse>>(`${BASE}/join`, {
+                    roomId,
+                    roomCode,
+                    password
+                });
+                return data.result!;
+            },
+            onSuccess: (data) => {
+                queryClient.invalidateQueries({ queryKey: roomKeys.all });
+                queryClient.invalidateQueries({ queryKey: roomKeys.detail(data.roomId) });
+            },
+        });
+    };
+
     const useFindOrCreatePrivateRoom = () => {
         return useMutation({
             mutationFn: async (targetUserId: string) => {
@@ -140,15 +139,12 @@ export const useRooms = () => {
                 return data.result!;
             },
             onSuccess: (data) => {
-                // Lỗi logic: Property 'user1Id' does not exist on type 'RoomResponse'.
-                // Chỉ cần invalidate danh sách phòng chat chung.
                 queryClient.invalidateQueries({ queryKey: roomKeys.all });
                 queryClient.invalidateQueries({ queryKey: roomKeys.detail(data.roomId) });
             },
         });
     };
 
-    // PUT /api/v1/rooms/{id}
     const useUpdateRoom = () => {
         return useMutation({
             mutationFn: async ({ id, req }: { id: string; req: RoomRequest }) => {
@@ -165,7 +161,6 @@ export const useRooms = () => {
         });
     };
 
-    // DELETE /api/v1/rooms/{id}
     const useDeleteRoom = () => {
         return useMutation({
             mutationFn: async (id: string) => {
@@ -175,14 +170,8 @@ export const useRooms = () => {
         });
     };
 
-    // ==========================================
-    // === 3. MEMBER MUTATIONS ===
-    // ==========================================
-
-    // POST /api/v1/rooms/{id}/members (Add list of members)
     const useAddRoomMembers = () => {
         return useMutation({
-            // Lỗi: Cannot find name 'List'. Đã sửa thành RoomMemberRequest[]
             mutationFn: async ({ roomId, memberRequests }: { roomId: string; memberRequests: RoomMemberRequest[] }) => {
                 await instance.post<AppApiResponse<void>>(
                     `${BASE}/${roomId}/members`,
@@ -193,12 +182,9 @@ export const useRooms = () => {
         });
     };
 
-    // DELETE /api/v1/rooms/{id}/members (Remove list of members)
     const useRemoveRoomMembers = () => {
         return useMutation({
-            // Lỗi: Cannot find name 'List'. Đã sửa thành string[] (UUIDs)
             mutationFn: async ({ roomId, userIds }: { roomId: string; userIds: string[] }) => {
-                // NOTE: BE controller uses @RequestBody List<UUID> for DELETE.
                 await instance.delete<AppApiResponse<void>>(
                     `${BASE}/${roomId}/members`,
                     { data: userIds }
@@ -208,13 +194,13 @@ export const useRooms = () => {
         });
     };
 
-
     return {
         useAllRooms,
         useRoom,
         useRoomMembers,
         useAiChatRoom,
         useCreateRoom,
+        useJoinRoom, // Export new hook
         useUpdateRoom,
         useDeleteRoom,
         useFindOrCreatePrivateRoom,

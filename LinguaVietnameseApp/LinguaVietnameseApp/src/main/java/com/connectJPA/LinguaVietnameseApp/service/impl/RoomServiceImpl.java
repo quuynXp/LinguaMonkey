@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.JoinRoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomMemberRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
@@ -21,34 +22,29 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.time.OffsetDateTime;
-import java.util.List;
-import java.util.Objects;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class RoomServiceImpl implements RoomService {
+
     private final RoomRepository roomRepository;
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
     private final RoomMapper roomMapper;
 
     @Override
-    //@Cacheable(value = "rooms", key = "#roomName + ':' + #creatorId + ':' + #purpose + ':' + #roomType + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -56,7 +52,20 @@ public class RoomServiceImpl implements RoomService {
             }
             Page<Room> rooms = roomRepository.findByRoomNameContainingAndCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(
                     roomName, creatorId, purpose, roomType, pageable);
-            return rooms.map(roomMapper::toResponse);
+
+            return rooms.map(room -> {
+                RoomResponse response = roomMapper.toResponse(room);
+
+                long count = roomRepository.countMembersByRoomId(room.getRoomId());
+                response.setMemberCount((int) count);
+
+                userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
+                        .ifPresent(user -> response.setCreatorName(
+                                StringUtils.hasText(user.getNickname()) ? user.getNickname() : user.getFullname()
+                        ));
+
+                return response;
+            });
         } catch (Exception e) {
             log.error("Error while fetching all rooms: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -66,14 +75,12 @@ public class RoomServiceImpl implements RoomService {
     @Transactional
     @Override
     public RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2) {
-        // 1. Tìm xem đã có phòng chưa
         Optional<Room> existingRoom = roomRepository.findPrivateRoomBetweenUsers(userId1, userId2);
 
         if (existingRoom.isPresent()) {
             return roomMapper.toResponse(existingRoom.get());
         }
 
-        // 2. Nếu chưa có, tạo mới
         User user1 = userRepository.findByUserIdAndIsDeletedFalse(userId1)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         User user2 = userRepository.findByUserIdAndIsDeletedFalse(userId2)
@@ -85,27 +92,26 @@ public class RoomServiceImpl implements RoomService {
                 .maxMembers(2)
                 .purpose(RoomPurpose.PRIVATE_CHAT)
                 .roomType(RoomType.PRIVATE)
+                .roomCode(generateUniqueRoomCode())
                 .isDeleted(false)
                 .createdAt(OffsetDateTime.now())
                 .build();
 
         room = roomRepository.save(room);
 
-        // Add User 1
         RoomMember member1 = RoomMember.builder()
                 .id(new RoomMemberId(room.getRoomId(), userId1))
-                .room(room) // IMPORTANT: Set the Room entity
-                .user(user1) // IMPORTANT: Set the User entity
+                .room(room)
+                .user(user1)
                 .role(RoomRole.ADMIN)
                 .joinedAt(OffsetDateTime.now())
                 .build();
         roomMemberRepository.save(member1);
 
-        // Add User 2
         RoomMember member2 = RoomMember.builder()
                 .id(new RoomMemberId(room.getRoomId(), userId2))
-                .room(room) // IMPORTANT: Set the Room entity
-                .user(user2) // IMPORTANT: Set the User entity
+                .room(room)
+                .user(user2)
                 .role(RoomRole.MEMBER)
                 .joinedAt(OffsetDateTime.now())
                 .build();
@@ -113,7 +119,6 @@ public class RoomServiceImpl implements RoomService {
 
         return roomMapper.toResponse(room);
     }
-
 
     @Transactional
     @Override
@@ -151,7 +156,6 @@ public class RoomServiceImpl implements RoomService {
     }
 
     @Override
-    //@Cacheable(value = "rooms", key = "#id")
     public RoomResponse getRoomById(UUID id) {
         try {
             if (id == null) {
@@ -159,7 +163,9 @@ public class RoomServiceImpl implements RoomService {
             }
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-            return roomMapper.toResponse(room);
+            RoomResponse response = roomMapper.toResponse(room);
+            response.setMemberCount((int) roomRepository.countMembersByRoomId(id));
+            return response;
         } catch (Exception e) {
             log.error("Error while fetching room by ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -168,7 +174,6 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional
-    //@CachePut(value = "rooms", key = "#result.roomId")
     public RoomResponse createRoom(RoomRequest request) {
         try {
             if (request == null || request.getCreatorId() == null) {
@@ -176,14 +181,15 @@ public class RoomServiceImpl implements RoomService {
             }
             User creator = userRepository.findByUserIdAndIsDeletedFalse(request.getCreatorId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
             Room room = roomMapper.toEntity(request);
+            room.setRoomCode(generateUniqueRoomCode());
             room = roomRepository.save(room);
 
-            // Add creator as a member
             RoomMember member = RoomMember.builder()
                     .id(new RoomMemberId(room.getRoomId(), request.getCreatorId()))
-                    .room(room) // FIX: Set the Room entity
-                    .user(creator) // FIX: Set the User entity
+                    .room(room)
+                    .user(creator)
                     .role(RoomRole.ADMIN)
                     .joinedAt(OffsetDateTime.now())
                     .build();
@@ -196,9 +202,66 @@ public class RoomServiceImpl implements RoomService {
         }
     }
 
+    private String generateUniqueRoomCode() {
+        Random random = new Random();
+        String code;
+        int attempts = 0;
+        do {
+            int number = random.nextInt(1000000);
+            code = String.format("%06d", number);
+            attempts++;
+            if (attempts > 10) throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        } while (roomRepository.existsByRoomCode(code));
+        return code;
+    }
+
+    @Transactional
+    @Override
+    public RoomResponse joinRoom(JoinRoomRequest request) {
+        UUID userId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
+
+        Optional<Room> roomOpt = Optional.empty();
+        if (request.getRoomId() != null) {
+            roomOpt = roomRepository.findByRoomIdAndIsDeletedFalse(request.getRoomId());
+        }
+        if (roomOpt.isEmpty() && StringUtils.hasText(request.getRoomCode())) {
+            roomOpt = roomRepository.findByRoomCodeAndIsDeletedFalse(request.getRoomCode());
+        }
+
+        Room room = roomOpt.orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+
+        long currentMembers = roomRepository.countMembersByRoomId(room.getRoomId());
+        if (currentMembers >= room.getMaxMembers()) {
+            throw new AppException(ErrorCode.EXCEEDS_MAX_MEMBERS);
+        }
+
+        if (room.getRoomType() == RoomType.PRIVATE) {
+            if (!StringUtils.hasText(request.getPassword()) || !request.getPassword().equals(room.getPassword())) {
+                throw new AppException(ErrorCode.INVALID_PASSWORD);
+            }
+        }
+
+        if (roomMemberRepository.existsById(new RoomMemberId(room.getRoomId(), userId))) {
+            return roomMapper.toResponse(room);
+        }
+
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        RoomMember member = RoomMember.builder()
+                .id(new RoomMemberId(room.getRoomId(), userId))
+                .room(room)
+                .user(user)
+                .role(RoomRole.MEMBER)
+                .joinedAt(OffsetDateTime.now())
+                .build();
+        roomMemberRepository.save(member);
+
+        return roomMapper.toResponse(room);
+    }
+
     @Override
     @Transactional
-    //@CachePut(value = "rooms", key = "#id")
     public RoomResponse updateRoom(UUID id, RoomRequest request) {
         try {
             if (id == null || request == null) {
@@ -223,7 +286,6 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional
-    //@CacheEvict(value = "rooms", key = "#id")
     public void deleteRoom(UUID id) {
         try {
             if (id == null) {
@@ -244,7 +306,6 @@ public class RoomServiceImpl implements RoomService {
 
     @Override
     @Transactional(readOnly = true)
-    //@Cacheable(value = "room_members", key = "#roomId")
     public List<MemberResponse> getRoomMembers(UUID roomId) {
         try {
             if (!roomRepository.existsById(roomId)) {
@@ -299,13 +360,12 @@ public class RoomServiceImpl implements RoomService {
                 throw new AppException(ErrorCode.EXCEEDS_MAX_MEMBERS);
             }
             for (RoomMemberRequest req : memberRequests) {
-                User user = userRepository.findByUserIdAndIsDeletedFalse(req.getUserId()) // FIX: Retrieve User
+                User user = userRepository.findByUserIdAndIsDeletedFalse(req.getUserId())
                         .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-                
                 RoomMember member = RoomMember.builder()
                         .id(new RoomMemberId(roomId, req.getUserId()))
-                        .room(room) // FIX: Set the Room entity
-                        .user(user) // FIX: Set the User entity
+                        .room(room)
+                        .user(user)
                         .role(req.getRole() != null ? RoomRole.valueOf(req.getRole()) : RoomRole.MEMBER)
                         .joinedAt(OffsetDateTime.now())
                         .build();
@@ -347,11 +407,9 @@ public class RoomServiceImpl implements RoomService {
         if (userId == null) {
             throw new AppException(ErrorCode.INVALID_KEY);
         }
-        // Kiểm tra user tồn tại
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // 1. Tìm một phòng QUIZ_TEAM public còn chỗ (maxMembers được set trong DB)
         Page<Room> availableRooms = roomRepository.findAvailableRoomsByPurposeAndType(
                 RoomPurpose.QUIZ_TEAM,
                 RoomType.PUBLIC,
@@ -360,40 +418,34 @@ public class RoomServiceImpl implements RoomService {
 
         Room roomToJoin;
         if (availableRooms.hasContent()) {
-            // 2a. Tìm thấy phòng -> tham gia
             roomToJoin = availableRooms.getContent().get(0);
             log.info("Found available quiz room: {}", roomToJoin.getRoomId());
         } else {
-            // 2b. Không tìm thấy -> tạo phòng mới
             log.info("No available quiz rooms found. Creating a new one for user {}", userId);
             RoomRequest newRoomRequest = RoomRequest.builder()
-                    .roomName("Team Quiz Room") // Tên có thể tạo ngẫu nhiên
-                    .creatorId(userId) // Người tìm phòng sẽ là người tạo
+                    .roomName("Team Quiz Room")
+                    .creatorId(userId)
                     .purpose(RoomPurpose.QUIZ_TEAM)
                     .roomType(RoomType.PUBLIC)
-                    .maxMembers(10) // Theo yêu cầu
+                    .maxMembers(10)
                     .build();
 
-            // Hàm createRoom đã tự động thêm creator làm ADMIN
             return this.createRoom(newRoomRequest);
         }
 
-        // 3. Thêm user vào phòng đã tìm thấy (nếu user chưa ở trong đó)
         RoomMemberId memberId = new RoomMemberId(roomToJoin.getRoomId(), userId);
         if (!roomMemberRepository.existsById(memberId)) {
-            // Kiểm tra số lượng thành viên trước khi thêm
             long currentMembers = roomMemberRepository.countByIdRoomIdAndIsDeletedFalse(roomToJoin.getRoomId());
             if (currentMembers >= roomToJoin.getMaxMembers()) {
                 log.warn("Room {} is full. Recursively finding another room.", roomToJoin.getRoomId());
-                // Nếu phòng này bị đầy trong lúc check, tìm phòng khác
                 return findOrCreateQuizRoom(userId);
             }
 
             log.info("Adding user {} to room {}", userId, roomToJoin.getRoomId());
             RoomMember member = RoomMember.builder()
                     .id(memberId)
-                    .room(roomToJoin) // IMPORTANT: Set the Room entity
-                    .user(user) // IMPORTANT: Set the User entity
+                    .room(roomToJoin)
+                    .user(user)
                     .role(RoomRole.MEMBER)
                     .joinedAt(OffsetDateTime.now())
                     .build();
@@ -402,6 +454,8 @@ public class RoomServiceImpl implements RoomService {
             log.info("User {} is already in room {}", userId, roomToJoin.getRoomId());
         }
 
-        return roomMapper.toResponse(roomToJoin);
+        RoomResponse response = roomMapper.toResponse(roomToJoin);
+        response.setMemberCount((int) roomRepository.countMembersByRoomId(roomToJoin.getRoomId()));
+        return response;
     }
 }

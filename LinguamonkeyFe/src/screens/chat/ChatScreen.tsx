@@ -10,6 +10,11 @@ import instance from "../../api/axiosClient"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { AppApiResponse, ChatStatsResponse, UserLearningActivityResponse, PageResponse } from "../../types/dto"
 
+// Augment local interface if not yet updated in types/dto
+interface ExtendedChatStatsResponse extends ChatStatsResponse {
+  joinedRooms: number;
+}
+
 const ChatScreen = ({ navigation }: { navigation: any }) => {
   const { t } = useTranslation()
   const user = useUserStore((state) => state.user)
@@ -20,10 +25,10 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   const initChatService = useChatStore((state) => state.initChatService);
   const disconnectChatService = useChatStore((state) => state.disconnect);
 
-  const { data: stats, isLoading: isLoadingStats } = useQuery<ChatStatsResponse>({
+  const { data: stats, isLoading: isLoadingStats } = useQuery<ExtendedChatStatsResponse>({
     queryKey: ['chatStats', user?.userId],
     queryFn: async () => {
-      const response = await instance.get<AppApiResponse<ChatStatsResponse>>(`/api/v1/chat/stats/${user?.userId}`);
+      const response = await instance.get<AppApiResponse<ExtendedChatStatsResponse>>(`/api/v1/chat/stats/${user?.userId}`);
       return response.data.result;
     },
     enabled: !!user?.userId,
@@ -193,10 +198,16 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
                   <Text style={styles.statValue}>{stats.translationsUsed || 0}</Text>
                   <Text style={styles.statLabel}>{t("chat.translations")}</Text>
                 </View>
+                {/* Changed layout to accommodate 4 items or wrapping */}
                 <View style={styles.statCard}>
                   <Icon name="videocam" size={24} color="#EF4444" />
                   <Text style={styles.statValue}>{stats.videoCalls || 0}</Text>
                   <Text style={styles.statLabel}>{t("chat.videoCalls")}</Text>
+                </View>
+                <View style={styles.statCard}>
+                  <Icon name="meeting-room" size={24} color="#F59E0B" />
+                  <Text style={styles.statValue}>{stats.joinedRooms || 0}</Text>
+                  <Text style={styles.statLabel}>{t("chat.activeRooms")}</Text>
                 </View>
               </View>
             </View>
@@ -286,10 +297,12 @@ const styles = createScaledSheet({
   },
   statsGrid: {
     flexDirection: "row",
+    flexWrap: "wrap", // Allow wrapping for 4th item if screen small
     gap: 12,
   },
   statCard: {
     flex: 1,
+    minWidth: '45%', // Ensure 2 per row
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,

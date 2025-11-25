@@ -8,6 +8,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 import asyncio
 from dotenv import load_dotenv
+from .api.matchmaking_service import match_users_with_gemini
 
 # === IMPORT DECORATOR MỚI ===
 from .core.grpc_auth_decorator import authenticated_grpc_method
@@ -205,6 +206,34 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 feedback=f"Lỗi máy chủ: {str(e)}"
             )
 
+
+    @authenticated_grpc_method
+    async def FindMatch(self, request, context, claims) -> learning_pb2.FindMatchResponse:
+        try:
+            # Gọi hàm AI logic
+            match_result, error = await match_users_with_gemini(
+                request.current_user_id,
+                request.current_user_prefs,
+                request.candidates
+            )
+
+            if error or not match_result:
+                return learning_pb2.FindMatchResponse(
+                    match_found=False,
+                    error=error or "No match found"
+                )
+
+            # Nếu AI tìm thấy người phù hợp
+            return learning_pb2.FindMatchResponse(
+                match_found=True,
+                partner_user_id=match_result["best_match_id"],
+                compatibility_score=float(match_result["score"]),
+                reason=match_result["reason"]
+            )
+
+        except Exception as e:
+            logging.error(f"Error during FindMatch: {e}", exc_info=True)
+            return learning_pb2.FindMatchResponse(error=f"Internal error: {str(e)}")
 
     @authenticated_grpc_method
     async def CheckSpelling(self, request, context, claims) -> learning_pb2.SpellingResponse:

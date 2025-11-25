@@ -121,11 +121,13 @@ const CallSetupScreen = ({ navigation }) => {
 
   const startSearch = () => {
     if (preferences.interests.length === 0) {
-      Alert.alert(t("call.selectInterests"), t("call.selectInterestsMessage"))
-      return
+      Alert.alert(t("call.selectInterests"), t("call.selectInterestsMessage"));
+      return;
     }
-    setCallPreferences(preferences)
-    navigation.navigate("CallSearchScreen", { preferences })
+
+    setCallPreferences(preferences);
+
+    navigation.navigate("CallSearchScreen", { preferences });
   }
 
   const renderInterestItem = (interest) => {

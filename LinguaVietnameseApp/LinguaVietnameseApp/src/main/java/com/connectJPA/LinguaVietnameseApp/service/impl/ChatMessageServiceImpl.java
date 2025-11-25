@@ -21,8 +21,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.time.OffsetDateTime; 
-import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -59,11 +57,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
     }
 
-    // THÊM: Phương thức tìm kiếm tin nhắn thay thế ES
     @Override
     public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
         if (keyword == null || keyword.isBlank()) {
-            // Nếu không có keyword, trả về trang trống
             return Page.empty();
         }
         try {
@@ -81,11 +77,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         try {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-            
+
             if (room.getPurpose() != request.getPurpose()) {
                 throw new AppException(ErrorCode.ROOM_PURPOSE_MISMATCH);
             }
-            
+
             if (room.getPurpose() != RoomPurpose.AI_CHAT) {
                 String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
                 roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, UUID.fromString(currentUserId))
@@ -109,7 +105,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
             ChatMessage message = chatMessageMapper.toEntity(request);
             message.setRoomId(roomId);
-            message.setSenderId(request.getSenderId()); 
+            message.setSenderId(request.getSenderId());
 
             message = chatMessageRepository.save(message);
             ChatMessageResponse response = chatMessageMapper.toResponse(message);
@@ -191,7 +187,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Transactional
     public ChatMessageResponse generateAIResponse(ChatMessageResponse userMessage) {
         try {
-            // Placeholder for AI integration (e.g., xAI API at https://x.ai/api)
             ChatMessage aiMessage = ChatMessage.builder()
                     .id(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()))
                     .roomId(userMessage.getRoomId())
@@ -218,7 +213,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
             if (room.getPurpose() != RoomPurpose.AI_CHAT) {
-                // Verify user is a member of the room
                 roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, request.getUserId())
                         .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
             }
@@ -234,13 +228,17 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         long totalMessages = chatMessageRepository.countBySenderIdAndIsDeletedFalse(userId);
+        long totalTranslations = chatMessageRepository.countTranslationsForUser(userId);
+        long totalRooms = roomMemberRepository.countByIdUserIdAndIsDeletedFalse(userId);
 
+        // Note: videoCalls is set to 0 as VideoCall entity is not yet implemented in Schema
         return ChatStatsResponse.builder()
                 .totalMessages(totalMessages)
-                .translationsUsed(0)
+                .translationsUsed(totalTranslations)
+                .joinedRooms(totalRooms)
                 .videoCalls(0)
                 .lastActiveAt(user.getLastActiveAt())
-                .online(false)
+                .online(user.isOnline())
                 .level(user.getLevel())
                 .exp(user.getExp())
                 .streak(user.getStreak())
@@ -259,13 +257,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .targetLang(targetLang)
                     .translatedText(translatedText)
                     .build();
-            // inject repository via constructor
+
             messageTranslationRepository.save(mt);
 
-            // optionally attach the translation to response DTO for immediate publish
             ChatMessageResponse response = chatMessageMapper.toResponse(message);
             response.setPurpose(roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId()).orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND)).getPurpose());
-            // add translatedText to a field in response (you may need to extend ChatMessageResponse DTO)
+
             response.setTranslatedText(translatedText);
             response.setTranslatedLang(targetLang);
             return response;

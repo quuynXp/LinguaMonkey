@@ -29,6 +29,8 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, RoomMemb
 
     List<RoomMember> findAllById_RoomIdAndIsDeletedFalse(UUID roomId);
 
+    long countByIdUserIdAndIsDeletedFalse(UUID userId);
+
     List<RoomMember> findAllByIdRoomIdAndIsDeletedFalse(UUID roomId);
 }
 

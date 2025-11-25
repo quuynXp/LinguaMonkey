@@ -61,25 +61,25 @@ public class GrpcClientService {
         });
     }
 
-    public CompletableFuture<FindMatchResponse> callFindMatchAsync(String token, String userId, CallPreferences preferences) {
+    public CompletableFuture<FindMatchResponse> callFindMatchAsync(
+            String token, 
+            String userId, 
+            CallPreferences userPrefs, 
+            List<MatchCandidate> candidates) { // <--- Thêm tham số này
+        
         ManagedChannel channel = createChannelWithToken(token);
         LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
 
         FindMatchRequest request = FindMatchRequest.newBuilder()
-                .setUserId(userId)
-                .setPreferences(preferences)
+                .setCurrentUserId(userId)
+                .setCurrentUserPrefs(userPrefs)
+                .addAllCandidates(candidates) // <--- Gửi list candidates
                 .build();
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                FindMatchResponse response = stub.findMatch(request).get();
-                if (response == null || !response.getError().isEmpty()) {
-                    log.error("gRPC FindMatch failed: {}", response.getError());
-                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-                }
-                return response;
+                return stub.findMatch(request).get();
             } catch (Exception e) {
-                log.error("gRPC call to FindMatch failed: {}", e.getMessage());
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             } finally {
                 channel.shutdown();

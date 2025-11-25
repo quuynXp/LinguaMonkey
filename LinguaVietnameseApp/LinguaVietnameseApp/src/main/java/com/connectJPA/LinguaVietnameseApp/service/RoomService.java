@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.service;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.JoinRoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomMemberRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
@@ -14,14 +15,15 @@ import java.util.List;
 import java.util.UUID;
 
 public interface RoomService {
-    @Transactional
+    RoomResponse joinRoom(JoinRoomRequest request);
+
     RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2);
 
-    @Transactional
     RoomResponse findOrCreateAiChatRoom(UUID userId);
 
     RoomResponse getRoomById(UUID id);
     RoomResponse createRoom(RoomRequest request);
+
     RoomResponse updateRoom(UUID id, RoomRequest request);
     void deleteRoom(UUID id);
     List<MemberResponse> getRoomMembers(UUID roomId);
