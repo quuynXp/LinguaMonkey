@@ -6,7 +6,6 @@ services:
     region: singapore
     plan: free
     autoDeploy: true
-    # QUAN TRỌNG: Để context là root (.) để Dockerfile xử lý đúng path lồng nhau
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
     envVars:
@@ -23,6 +22,9 @@ services:
           type: redis
           name: redis
           property: host
+      # Khai báo PORT cho Render biết Spring Boot chạy port nào
+      - key: PORT
+        value: 8080
       - key: PYTHON_SERVICE_URL
         value: http://pythonservice:50051
       - fromGroup: shared-app-env
@@ -52,11 +54,13 @@ services:
           property: host
       - key: JAVA_SERVICE_URL
         value: http://linguavietnameseapp:8080
+      # FIX LỖI: Khai báo PORT ở đây thay vì property 'port' bên ngoài
+      - key: PORT
+        value: 50051
       - fromGroup: shared-app-env
-    port: 50051
     numInstances: 1
 
-  # === 3. KONG GATEWAY (Migration included) ===
+  # === 3. KONG GATEWAY ===
   - type: web
     name: kong
     runtime: image
@@ -65,12 +69,13 @@ services:
     region: singapore
     plan: free
     autoDeploy: true
-    dependsOn:
-      - linguavietnameseapp
-      - pythonservice
-    # FIX LỖI: Chạy migration ngay khi start service
+    # Đã xóa 'dependsOn' gây lỗi
+    # Start command: Chạy migration xong mới start Kong
     startCommand: sh -c "kong migrations bootstrap && /docker-entrypoint.sh kong docker-start"
     envVars:
+      # FIX LỖI: Render Web Service chỉ public 1 port. Ta chọn port 8000 (Proxy)
+      - key: PORT
+        value: 8000
       - key: KONG_DATABASE
         value: postgres
       - key: KONG_PG_HOST
@@ -87,6 +92,11 @@ services:
           property: password
       - key: KONG_PG_DATABASE
         value: linguaviet_db
+      # Cấu hình Kong lắng nghe đúng port mà Render cấp
+      - key: KONG_PROXY_LISTEN
+        value: 0.0.0.0:8000
+      - key: KONG_ADMIN_LISTEN
+        value: 0.0.0.0:8001
       - key: KONG_PROXY_ACCESS_LOG
         value: /dev/stdout
       - key: KONG_ADMIN_ACCESS_LOG
@@ -95,12 +105,9 @@ services:
         value: /dev/stderr
       - key: KONG_ADMIN_ERROR_LOG
         value: /dev/stderr
-      - key: KONG_ADMIN_LISTEN
-        value: 0.0.0.0:8001
       - key: KONG_PLUGINS
         value: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
-    ports:
-      - port: 8000
+    # Đã xóa phần 'ports' gây lỗi
     numInstances: 1
 
   # === 4. REDIS ===
