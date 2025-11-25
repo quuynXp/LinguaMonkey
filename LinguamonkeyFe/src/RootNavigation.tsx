@@ -4,16 +4,14 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Notifications from "expo-notifications";
 import NetInfo from "@react-native-community/netinfo";
 import messaging, {
-  getInitialNotification,
   onMessage,
 } from "@react-native-firebase/messaging";
 import {
   RootNavigationRef,
   flushPendingActions,
-  gotoTab,
-} from "./utils/navigationRef";
+} from "./utils/navigationRef"; // Giữ lại RootNavigationRef và flushPendingActions
 import { NavigationContainer } from "@react-navigation/native";
-import notificationService from "./services/notificationService";
+import notificationService from "./services/notificationService"; // Sử dụng service đã có listener
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
@@ -23,11 +21,10 @@ import SplashScreen from "./screens/Splash/SplashScreen";
 import * as Linking from "expo-linking";
 import permissionService from "./services/permissionService";
 import i18n from "./i18n";
-
 import AuthStack from "./navigation/stack/AuthStack";
 import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 
-// Thêm logic đăng ký FCM Token
+// Thêm logic đăng ký FCM Token (Giữ nguyên)
 const registerFCMToken = async (userId: string) => {
   const { fcmToken, isTokenRegistered, setToken, setTokenRegistered } =
     useUserStore.getState();
@@ -64,7 +61,6 @@ const registerFCMToken = async (userId: string) => {
         deviceId: useUserStore.getState().deviceId,
       };
 
-      // Đã tạo API endpoint /fcm-token/register để xử lý việc đăng ký/cập nhật
       await instance.post("/api/v1/users/fcm-token", payload);
       setTokenRegistered(true);
       console.log("FCM Token successfully registered on server.");
@@ -134,16 +130,13 @@ const RootNavigation = () => {
         const onReceiveURL = ({ url }: { url: string }) => listener(url);
         const eventListener = Linking.addEventListener("url", onReceiveURL);
 
-        const unsubscribeNotification = messaging().onNotificationOpenedApp(
-          (remoteMessage) => {
-            console.log("Background Notification Tapped:", remoteMessage);
-            handleNotificationNavigation(remoteMessage);
-          }
-        );
+        // 👉 XÓA: Loại bỏ onNotificationOpenedApp ở đây, để logic này nằm gọn trong notificationService.ts
+        // const unsubscribeNotification = messaging().onNotificationOpenedApp((remoteMessage) => { ... });
 
+        // Tạm thời giữ lại việc unsubcribe cho clean up, nhưng nếu bạn đã xóa listener trên thì chỉ cần return eventListener.remove
         return () => {
           eventListener.remove();
-          unsubscribeNotification();
+          // unsubscribeNotification(); // Nếu đã xóa listener
         };
       },
     }),
@@ -157,11 +150,22 @@ const RootNavigation = () => {
     return () => unsubscribe();
   }, []);
 
+  // ✅ Kích hoạt Listener xử lý TẤT CẢ các trạng thái click Notification (Foreground/Background/Quit)
+  useEffect(() => {
+    // Service này sẽ bao gồm logic onNotificationOpenedApp và getInitialNotification
+    const cleanup = notificationService.setupNotificationListeners();
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, []);
+
+  // ✅ Xử lý Notification ở trạng thái Foreground (Hiển thị local noti khi app đang mở)
   useEffect(() => {
     const unsubscribeOnMessage = onMessage(
       messaging(),
       async (remoteMessage) => {
         console.log("Foreground Notification (FCM):", remoteMessage);
+        // Sau khi nhận, chuyển sang hiển thị Local Notification (có thể kèm data để click)
         notificationService.sendLocalNotification(
           remoteMessage.notification?.title ||
           i18n.t("notification.default_title"),
@@ -200,7 +204,7 @@ const RootNavigation = () => {
             try {
               const payload = decodeToken(currentToken);
               if (payload?.userId) {
-                const userId = payload.userId; // Lấy userId trước
+                const userId = payload.userId;
 
                 const userRes = await instance.get(`/api/v1/users/${userId}`);
                 const rawUser = userRes.data.result || {};
@@ -211,7 +215,6 @@ const RootNavigation = () => {
                 };
 
                 // 2. Sync Language from User Profile (if different from local)
-                // If the user has a saved language in backend, it takes precedence
                 if (
                   normalizedUser.nativeLanguageCode &&
                   normalizedUser.nativeLanguageCode !== savedLanguage
@@ -222,7 +225,7 @@ const RootNavigation = () => {
                     normalizedUser.nativeLanguageCode
                   );
                   setLocalNativeLanguage(normalizedUser.nativeLanguageCode);
-                  savedLanguage = normalizedUser.nativeLanguageCode; // Update current ref
+                  savedLanguage = normalizedUser.nativeLanguageCode;
                 }
 
                 setUser(normalizedUser, savedLanguage);
@@ -241,14 +244,12 @@ const RootNavigation = () => {
                 const roles = normalizedUser.roles || [];
 
                 // 3. Check Backend Status Flags instead of AsyncStorage
-                // Note: The fields must match what UserStore extracts from 'normalizedUser'
                 const hasFinishedSetup = normalizedUser.hasFinishedSetup === true;
                 const hasDonePlacementTest =
                   normalizedUser.hasDonePlacementTest === true;
 
                 // Daily Welcome Check
                 const today = new Date().toISOString().split("T")[0];
-                // Check against backend timestamp
                 const lastDailyWelcomeAt = normalizedUser.lastDailyWelcomeAt;
                 let isFirstOpenToday = true;
 
@@ -270,8 +271,6 @@ const RootNavigation = () => {
                 } else {
                   if (isFirstOpenToday) {
                     setInitialMainRoute("DailyWelcomeScreen");
-                    // Note: The DailyWelcomeScreen component MUST call `userStore.trackDailyWelcome()`
-                    // when it mounts or completes to update the backend.
                   } else {
                     setInitialMainRoute("TabApp");
                   }
@@ -279,7 +278,6 @@ const RootNavigation = () => {
               }
             } catch (e) {
               console.error("Boot user fetch failed:", e);
-              // Do not clear tokens on transient network/server errors
             }
           }
         } else {
@@ -324,15 +322,8 @@ const RootNavigation = () => {
     isTokenRegistered,
   ]);
 
-  const handleNotificationNavigation = (remoteMessage: any) => {
-    if (!remoteMessage?.data) return;
-    const { accessToken: token } = useTokenStore.getState();
-    const { screen, stackScreen, ...params } = remoteMessage.data;
-
-    if (screen && token) {
-      gotoTab(screen as any, stackScreen, params);
-    }
-  };
+  // 👉 XÓA: Loại bỏ hàm handleNotificationNavigation LẶP LẠI ở đây
+  // const handleNotificationNavigation = (remoteMessage: any) => { ... };
 
   if (!isConnected) {
     return (
@@ -357,10 +348,14 @@ const RootNavigation = () => {
       fallback={<SplashScreen />}
       onReady={async () => {
         console.log("Navigation Ready");
-        const initialMessage = await getInitialNotification(messaging());
-        if (initialMessage) {
-          handleNotificationNavigation(initialMessage);
-        }
+
+        // 👉 XÓA: Loại bỏ việc gọi getInitialNotification ở đây
+        // Logic này đã được chuyển vào notificationService.setupNotificationListeners()
+        // const initialMessage = await getInitialNotification(messaging());
+        // if (initialMessage) {
+        //   handleNotificationNavigation(initialMessage);
+        // }
+
         flushPendingActions();
       }}
     >

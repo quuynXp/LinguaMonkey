@@ -9,6 +9,7 @@ import messaging, {
   getToken
 } from '@react-native-firebase/messaging';
 import { useUserStore } from '../stores/UserStore';
+import { handleNotificationNavigation } from '../utils/navigationRef';
 
 export interface NotificationPreferences {
   enablePush: boolean;
@@ -80,6 +81,39 @@ class NotificationService {
     this.loadPreferences();
   }
 
+  /**
+   * Quan trọng: Gọi hàm này ở App.tsx hoặc Root Component (useEffect)
+   */
+  setupNotificationListeners() {
+    // 1. App đang mở hoặc chạy nền (Foreground/Background) - Xử lý interaction qua Expo
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const data = response.notification.request.content.data;
+      console.log('User tapped notification (Expo Listener):', data);
+      handleNotificationNavigation(data);
+    });
+
+    // 2. App đang chạy nền (Background) - Click vào noti do Firebase sinh ra
+    messaging().onNotificationOpenedApp(remoteMessage => {
+      console.log('User tapped notification (Firebase Background):', remoteMessage.data);
+      handleNotificationNavigation(remoteMessage.data);
+    });
+
+    // 3. App đã tắt hoàn toàn (Quit State) - Mở app từ noti
+    messaging().getInitialNotification().then(remoteMessage => {
+      if (remoteMessage) {
+        console.log('App opened from Quit State (Firebase):', remoteMessage.data);
+        // Delay nhẹ để Navigation container kịp mount
+        setTimeout(() => {
+          handleNotificationNavigation(remoteMessage.data);
+        }, 1000);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }
+
   async getDeviceId(): Promise<string> {
     const store = useUserStore.getState();
     let deviceId = store.deviceId;
@@ -138,7 +172,6 @@ class NotificationService {
     if (store.setToken) store.setToken(fcmToken);
     if (store.setDeviceId) store.setDeviceId(deviceId);
 
-    // Check if already registered in store to avoid redundant API calls
     if (store.fcmToken === fcmToken && store.deviceId === deviceId && store.isTokenRegistered) {
       console.log('FCM Token already registered to backend for this device.');
       return;
@@ -302,6 +335,7 @@ class NotificationService {
       : currentTimeInMinutes >= startTimeInMinutes || currentTimeInMinutes <= endTimeInMinutes;
   }
 
+  // --- Giữ nguyên các hàm gửi local notification từ backend logic ---
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;
     try {

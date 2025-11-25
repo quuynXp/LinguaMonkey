@@ -4,6 +4,13 @@ export const RootNavigationRef = createNavigationContainerRef();
 
 let pendingActions: (() => void)[] = [];
 
+// Định nghĩa kiểu dữ liệu trả về từ Backend
+interface NotificationPayload {
+  screen?: string;      // Ví dụ: "Chat", "Home"
+  stackScreen?: string; // Ví dụ: "ChatDetail"
+  [key: string]: any;   // Các params khác: chatId, courseId...
+}
+
 function queuePending(fn: () => void) {
   pendingActions.push(fn);
 }
@@ -22,9 +29,24 @@ export function flushPendingActions() {
 }
 
 /**
- * Reset navigation stack.
- * Hỗ trợ cả Tab (Home, Learn...) và Screen cấp cao (AdminStack, SetupInitScreen...)
+ * Xử lý data từ notification để navigate
+ * Hỗ trợ input là remoteMessage (Firebase) hoặc data object trực tiếp (Expo)
  */
+export const handleNotificationNavigation = (raw: any) => {
+  // Extract data: Nếu là remoteMessage thì lấy .data, nếu không thì dùng trực tiếp raw
+  const data = (raw?.data ? raw.data : raw) as NotificationPayload;
+
+  if (!data || !data.screen) {
+    console.log("🚀 Notification Navigation: No screen provided in payload", data);
+    return;
+  }
+
+  const { screen, stackScreen, ...params } = data;
+  console.log("🚀 Notification Navigation ->", { screen, stackScreen, params });
+
+  gotoTab(screen, stackScreen, params);
+};
+
 export function resetToTab(
   destination:
     | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
@@ -37,7 +59,6 @@ export function resetToTab(
   let routes;
 
   if (isTab) {
-    // Nếu là Tab, bọc nó trong TabApp
     routes = [
       {
         name: 'TabApp',
@@ -53,7 +74,6 @@ export function resetToTab(
       },
     ];
   } else {
-    // Nếu là AdminStack hoặc các màn hình full-screen khác, reset trực tiếp
     routes = [
       {
         name: destination,

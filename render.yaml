@@ -1,38 +1,97 @@
-# FILE: render.yaml (Đã bổ sung autoDeploy: true)
----
+# FILE: render.yaml
 services:
-  # ... (Phần 1 và 2: Postgres và Redis đã bị loại bỏ/tham chiếu)
-
-  # === 3. BACKEND SERVICES ===
+  # === 1. BACKEND (JAVA) ===
   - type: web
     name: linguavietnameseapp
     runtime: docker
     region: singapore
     plan: free
-    autoDeploy: true # 👈 Kích hoạt CI/CD tự động
-    dockerContext: .
+    autoDeploy: true
+    dockerContext: LinguaVietnameseApp
+    # Dùng file Dockerfile đã fix lỗi path ở bước trước
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
     envVars:
-      # ... (Các biến môi trường)
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+      - key: SPRING_PROFILES_ACTIVE
+        value: prod
+      # DB Connection (Shared)
+      - key: SPRING_DATASOURCE_URL
+        fromDatabase:
+          name: shared-postgres
+          property: connectionString
+      - key: SPRING_REDIS_HOST
+        fromService:
+          type: redis
+          name: redis
+          property: host
+      # Internal Service URLs
+      - key: PYTHON_SERVICE_URL
+        value: http://pythonservice:50051
       - fromGroup: shared-app-env
     healthCheckPath: /actuator/health
     numInstances: 1
 
+  # === 2. BACKEND (PYTHON) ===
   - type: web
     name: pythonservice
     runtime: docker
     region: singapore
     plan: free
-    autoDeploy: true # 👈 Kích hoạt CI/CD tự động
-    dockerContext: .
+    autoDeploy: true
+    dockerContext: PythonService
     dockerfilePath: ./PythonService/Dockerfile
     envVars:
-      # ... (Các biến môi trường)
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+      - key: DB_HOST
+        fromDatabase:
+          name: shared-postgres
+          property: host
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: redis
+          property: host
+      # Internal URL
+      - key: JAVA_SERVICE_URL
+        value: http://linguavietnameseapp:8080
       - fromGroup: shared-app-env
+    # Khai báo port để Render route traffic
+    port: 50051
     numInstances: 1
-    port: 8001
 
-  # === 4. KONG GATEWAY (DB-LESS) ===
+  # === 3. KONG MIGRATION (BẮT BUỘC) ===
+  # Job này chạy 1 lần mỗi khi deploy để tạo bảng cho Kong
+  - type: job
+    name: kong-migration
+    runtime: image
+    image:
+      url: kong:3.4
+    region: singapore
+    plan: free
+    command: "kong migrations bootstrap"
+    envVars:
+      - key: KONG_DATABASE
+        value: postgres
+      - key: KONG_PG_HOST
+        fromDatabase:
+          name: shared-postgres
+          property: host
+      - key: KONG_PG_USER
+        fromDatabase:
+          name: shared-postgres
+          property: user
+      - key: KONG_PG_PASSWORD
+        fromDatabase:
+          name: shared-postgres
+          property: password
+      - key: KONG_PG_DATABASE
+        value: linguaviet_db # Dùng chung DB
+      - key: KONG_PASSWORD
+        value: kong
+
+  # === 4. KONG GATEWAY ===
   - type: web
     name: kong
     runtime: image
@@ -40,19 +99,58 @@ services:
       url: kong:3.4
     region: singapore
     plan: free
-    autoDeploy: true # 👈 Kích hoạt CI/CD tự động
+    autoDeploy: true
     dependsOn:
       - linguavietnameseapp
       - pythonservice
+      - kong-migration # Đợi migration xong mới start
     envVars:
-      # ... (Các biến môi trường Kong)
+      - key: KONG_DATABASE
+        value: postgres
+      - key: KONG_PG_HOST
+        fromDatabase:
+          name: shared-postgres
+          property: host
+      - key: KONG_PG_USER
+        fromDatabase:
+          name: shared-postgres
+          property: user
+      - key: KONG_PG_PASSWORD
+        fromDatabase:
+          name: shared-postgres
+          property: password
+      - key: KONG_PG_DATABASE
+        value: linguaviet_db
+      - key: KONG_PROXY_ACCESS_LOG
+        value: /dev/stdout
+      - key: KONG_ADMIN_ACCESS_LOG
+        value: /dev/stdout
+      - key: KONG_PROXY_ERROR_LOG
+        value: /dev/stderr
+      - key: KONG_ADMIN_ERROR_LOG
+        value: /dev/stderr
+      - key: KONG_ADMIN_LISTEN
+        value: 0.0.0.0:8001
+      - key: KONG_PLUGINS
+        value: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
     ports:
-      - port: 8000
-      - port: 8001
-    disk:
-      - name: kong-config
-        mountPath: /usr/local/etc/kong/kong.yml
+      - port: 8000 # Proxy Port (Public)
     numInstances: 1
+
+  # === 5. REDIS (Service Riêng) ===
+  - type: redis
+    name: redis
+    region: singapore
+    plan: free
+    ipAllowList: [] # Allow internal access only
+
+databases:
+  - name: shared-postgres
+    region: singapore
+    plan: free
+    databaseName: linguaviet_db
+    user: linguauser
+    ipAllowList: []
 
 envVarGroups:
   - name: shared-app-env

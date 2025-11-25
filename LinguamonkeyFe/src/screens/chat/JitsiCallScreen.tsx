@@ -33,7 +33,6 @@ type SubtitleData = {
   senderId: string;
 };
 
-// Hàm helper để xử lý URL WS (tự động chuyển http -> ws, https -> wss)
 const getWsUrl = (baseUrl: string) => {
   const cleanUrl = baseUrl.replace(/^https?:\/\//, '');
   const protocol = baseUrl.includes('https') ? 'wss://' : 'ws://';
@@ -56,13 +55,13 @@ const JitsiWebView = () => {
 
   const ws = useRef<WebSocket | null>(null);
 
-  // Cấu hình Audio khớp với Backend (16kHz, 16-bit, Mono)
   const audioOptions = {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
     audioSource: 6, // VOICE_RECOGNITION
     bufferSize: 4096,
+    wavFile: 'temp_stream.wav'
   };
 
   const handleLanguageChange = (langCode: string) => {

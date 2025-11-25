@@ -2,6 +2,7 @@ _format_version: "3.0"
 _transform: true
 
 services:
+  # === JAVA SERVICE ===
   - name: java-service
     url: http://linguavietnameseapp:8080
     routes:
@@ -12,24 +13,13 @@ services:
           - /api/swagger
           - /swagger-ui
           - /v3/api-docs
-        methods:
-          - GET
-          - POST
-          - PUT
-          - DELETE
-          - PATCH
-          - OPTIONS
+        methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
       - name: java-stomp
         strip_path: false
         paths:
           - /ws/
-        protocols:
-          - http
-          - https
-        methods:
-          - GET
-          - POST
-          - OPTIONS
+        protocols: [http, https]
+        methods: [GET, POST, OPTIONS]
     plugins:
       - name: rate-limiting
         config:
@@ -39,8 +29,11 @@ services:
           limit_by: consumer
           second: 20
           minute: 500
+
+  # === PYTHON SERVICE ===
   - name: python-service
-    url: http://pythonservice:8001
+    # SỬA LỖI: Đổi từ 8001 -> 50051 để khớp với Dockerfile
+    url: http://pythonservice:50051
     connect_timeout: 60000
     write_timeout: 300000
     read_timeout: 300000
@@ -49,35 +42,20 @@ services:
         strip_path: true
         paths:
           - /api/py/
-        methods:
-          - POST
-          - OPTIONS
+        methods: [POST, OPTIONS]
       - name: python-ws
         strip_path: true
         paths:
           - /ws/py/
-        protocols:
-          - http
-          - https
-        methods:
-          - GET
-          - OPTIONS
+        protocols: [http, https]
+        methods: [GET, OPTIONS]
 
 plugins:
   - name: cors
     config:
-      origins:
-        - "*"
-      methods:
-        - GET
-        - POST
-        - PUT
-        - DELETE
-        - PATCH
-        - OPTIONS
-      headers:
-        - "*"
-      exposed_headers:
-        - "*"
+      origins: ["*"]
+      methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
+      headers: ["*"]
+      exposed_headers: ["*"]
       credentials: true
       max_age: 3600
