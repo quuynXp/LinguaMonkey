@@ -108,6 +108,28 @@
     "nameRequired": "Name is required",
     "nameMin": "Name must be at least 2 characters"
   },
+  "errors": {
+    "network": "Network error. Please check your connection.",
+    "server": "Server Error",
+    "loading": "Loading...",
+    "loadTestsFailed": "Faild to load tests",
+    "unauthorized": "You are not authorized to perform this action.",
+    "notFound": "The requested resource was not found.",
+    "validation": "Please check your input and try again.",
+    "unknown": "An unexpected error occurred.",
+    "networkError": "Network error occurred",
+    "loadRoadmapFailed": "Failed to load roadmap",
+    "loadItemFailed": "Failed to load item details",
+    "loadLearnDataFailed": "Failed to load learning data",
+    "loadCourseDetailsFailed": "Failed to load course details",
+    "purchaseFailed": "Purchase failed. Please try again.",
+    "loadCertificationsFailed": "Failed to load certifications",
+    "uploadFailed": "Upload failed",
+    "aiRoomNotFound": "Cannot create AI chat room. Please try again.",
+    "roomNotReady": "Chat room is not ready.",
+    "userNotFound": "User not found",
+    "api": "A network or server error occurred. Please try again."
+  },
   "createRoom": {
     "title": "Create New Room",
     "roomNameLabel": "Room Name",
@@ -257,6 +279,7 @@
     "settings": "Settings",
     "privacySettings": "Privacy Settings",
     "transactionHistory": "Transaction History",
+    "notificationHistory": "Notification History",
     "roadmap": "Learning Roadmap",
     "notes": "Notes",
     "helpSupport": "Help & Support",
@@ -330,13 +353,18 @@
     "messageNotifications": "Message Notifications",
     "achievementNotifications": "Achievement Notifications",
     "quietHours": "Quiet Hours",
+    "quietHoursValue": "{{status}} ({{start}}-{{end}})",
     "addABio": "Add a Bio",
     "expShort": "EXP",
-    "toNextLevel": "To Next Level",
+    "toNextLevel": "To Next Level: {{exp}} EXP",
     "aboutYourAccount": "About Your Account",
     "privacyNotice": "Your information is protected and only used to improve your learning experience.",
     "playStoreRating": "Rated 5★ by users on Google Play.",
-    "policySnippet": "See our Privacy Policy and Terms to understand how we handle your data."
+    "policySnippet": "See our Privacy Policy and Terms to understand how we handle your data.",
+    "uploadingColor": "#9CA3AF",
+    "logoutFailed": "Logout failed, please try again.",
+    "logoutConfirmTitle": "Logout",
+    "logoutConfirmMessage": "Are you sure you want to logout?"
   },
   "learn": {
     "title": "Learn English",
@@ -451,7 +479,8 @@
       "week": "Week",
       "month": "Month",
       "year": "Year"
-    }
+    },
+    "reload": "Reload"
   },
   "upload": {
     "inProgress": "Uploading...",
@@ -626,26 +655,6 @@
       }
     }
   },
-  "errors": {
-    "network": "Network error. Please check your connection.",
-    "server": "Server Error",
-    "loading": "Loading...",
-    "loadTestsFailed": "Faild to load tests",
-    "unauthorized": "You are not authorized to perform this action.",
-    "notFound": "The requested resource was not found.",
-    "validation": "Please check your input and try again.",
-    "unknown": "An unexpected error occurred.",
-    "networkError": "Network error occurred",
-    "loadRoadmapFailed": "Failed to load roadmap",
-    "loadItemFailed": "Failed to load item details",
-    "loadLearnDataFailed": "Failed to load learning data",
-    "loadCourseDetailsFailed": "Failed to load course details",
-    "purchaseFailed": "Purchase failed. Please try again.",
-    "loadCertificationsFailed": "Failed to load certifications",
-    "uploadFailed": "Upload failed",
-    "aiRoomNotFound": "Cannot create AI chat room. Please try again.",
-    "roomNotReady": "Chat room is not ready."
-  },
   "course": {
     "totalLessons": "{{count}} Lessons",
     "progress": "Progress: {{progress}}%",
@@ -780,7 +789,6 @@
     "reviews": "reviews",
     "rating": "Rating",
     "students": "Students",
-    "courses": "Courses",
     "level": "Level",
     "defaultDescription": "Master essential skills with this comprehensive course designed for learners who want to excel.",
     "whatYouWillLearn": "What you'll learn",
@@ -1306,7 +1314,9 @@
       "targetDate": "Target Date",
       "create": "Create",
       "cancel": "Cancel",
-      "notFound": "Roadmap not found"
+      "notFound": "Roadmap not found",
+      "targetCertification": "Target Certification",
+      "targetDateHint": "Set a goal date for your certification"
     },
     "recentLessons": {
       "title": "📚 Continue Learning",
@@ -1823,6 +1833,10 @@
     "location": {
       "title": "Location Permission",
       "message": "This app needs access to your location to provide location-based services."
+    },
+    "microphone": {
+      "title": "Microphone Permission Required",
+      "message": "We need access to your microphone to enable speaking exercises."
     }
   },
   "days": {
@@ -2032,24 +2046,9 @@
     "C2": "C2",
     "NATIVE": "Native Speaker"
   },
-  "home": {
-    "roadmap": {
-      "targetCertification": "Target Certification",
-      "targetDateHint": "Set a goal date for your certification"
-    }
-  },
-  "permissions": {
-    "microphone": {
-      "title": "Microphone Permission Required",
-      "message": "We need access to your microphone to enable speaking exercises."
-    }
-  },
   "speaking": {
     "select_lesson": "Select a Lesson",
     "no_lessons_available": "No lessons available. Please check back later."
-  },
-  "common": {
-    "reload": "Reload"
   },
   "reading": {
     "screenTitle": "Reading Practice",
@@ -2061,9 +2060,6 @@
     "errorLoadingContent": "Could not load content. Please try again.",
     "startReading": "Start Reading"
   },
-  "errors": {
-    "api": "A network or server error occurred. Please try again."
-  },
   "filterCallerId": "Filter by callerId",
   "filterStatus": "Filter by status",
   "callerId": "Caller Id",
@@ -2071,69 +2067,5 @@
   "createGroupCall": "Create Group Call",
   "createOneToOne": "Create 1-1 Call",
   "enterParticipantId": "Please enter participant userId",
-  "removeUser": "Remove user",
-  "profile": {
-    "title": "Profile",
-    "editProfile": "Edit Profile",
-    "transactionHistory": "Transaction History",
-    "notificationHistory": "Notification History",
-    "privacySettings": "Privacy Settings",
-    "roadmap": "Learning Roadmap",
-    "notes": "Notes",
-    "helpSupport": "Help & Support",
-    "about": "About",
-    "logout": "Logout",
-    "logoutFailed": "Logout failed, please try again.",
-    "logoutConfirmTitle": "Logout",
-    "logoutConfirmMessage": "Are you sure you want to logout?",
-    "noName": "No Name",
-    "addABio": "Add a Bio",
-    "streakDays": "Streak Days",
-    "dailyGoal": "Daily Goal",
-    "languages": "Languages",
-    "level": "Level",
-    "expShort": "EXP",
-    "toNextLevel": "To Next Level: {{exp}} EXP",
-    "noLanguages": "No languages selected",
-    "badges": "Badges",
-    "noBadges": "No badges earned",
-    "actions": "Actions",
-    "details": "Profile Details",
-    "email": "Email",
-    "phone": "Phone",
-    "country": "Country",
-    "age": "Age",
-    "learningPace": "Learning Pace",
-    "proficiency": "Proficiency",
-    "progress": "Progress",
-    "certifications": "Certifications",
-    "interests": "Interests",
-    "goals": "Goals",
-    "profileVisibility": "Profile Visibility",
-    "progressSharing": "Progress Sharing",
-    "dataCollection": "Data Collection",
-    "personalization": "Personalization",
-    "analytics": "Analytics",
-    "crashReports": "Crash Reports",
-    "locationTracking": "Location Tracking",
-    "contactSync": "Contact Sync",
-    "studyReminders": "Study Reminders",
-    "streakReminders": "Streak Reminders",
-    "messageNotifications": "Message Notifications",
-    "achievementNotifications": "Achievement Notifications",
-    "quietHours": "Quiet Hours",
-    "enabled": "On",
-    "disabled": "Off",
-    "quietHoursValue": "{{status}} ({{start}}-{{end}})",
-    "aboutYourAccount": "About Your Account",
-    "privacyNotice": "Your information is protected and only used to enhance your learning experience.",
-    "playStoreRating": "Rated 5★ by users on Google Play.",
-    "policySnippet": "See our Privacy Policy and Terms to understand how we handle your data.",
-    "uploadingColor": "#9CA3AF"
-  },
-  "errors": {
-    "userNotFound": "User not found",
-    "uploadFailed": "Upload failed",
-    "server": "Server Error"
-  }
+  "removeUser": "Remove user"
 }

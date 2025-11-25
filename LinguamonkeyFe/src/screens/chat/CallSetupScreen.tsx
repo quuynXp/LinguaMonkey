@@ -10,7 +10,7 @@ import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { AgeRange } from "../../types/enums"
 
-const languageFlags = {
+const languageFlags: Record<string, string> = {
   en: "🇺🇸",
   zh: "🇨🇳",
   vi: "🇻🇳",
@@ -29,8 +29,8 @@ const CallSetupScreen = ({ navigation }) => {
   const defaultPreferences: CallPreferences = {
     interests: [],
     gender: "any",
-    nativeLanguage: user?.nativeLanguageCode || "en",
-    learningLanguage: user?.languages?.[0] || "vi",
+    nativeLanguage: user?.languages?.[0] || "en",
+    learningLanguage: user?.nativeLanguageCode || "vi",
     ageRange: (user?.ageRange || AgeRange.AGE_18_24) as string,
     callDuration: "15",
   }
@@ -68,8 +68,8 @@ const CallSetupScreen = ({ navigation }) => {
     } else {
       setPreferences((prev) => ({
         ...prev,
-        nativeLanguage: user?.nativeLanguageCode || "en",
-        learningLanguage: user?.languages?.[0] || "vi",
+        nativeLanguage: user?.languages?.[0] || "en",
+        learningLanguage: user?.nativeLanguageCode || "vi",
         ageRange: (user?.ageRange || AgeRange.AGE_18_24),
       }))
     }
@@ -296,14 +296,15 @@ const CallSetupScreen = ({ navigation }) => {
               <View style={styles.summaryItem}>
                 <Icon name="language" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  {t("call.native")}:{" "}
+                  {t("call.native")}: {languageFlags[preferences.nativeLanguage] || "🌐"}{" "}
                   {selectedNativeLanguageName}
                 </Text>
               </View>
               <View style={styles.summaryItem}>
                 <Icon name="school" size={16} color="#4F46E5" />
                 <Text style={styles.summaryText}>
-                  {t("call.learning")}: {selectedLearningLanguageName}
+                  {t("call.learning")}: {languageFlags[preferences.learningLanguage] || "🌐"}{" "}
+                  {selectedLearningLanguageName}
                 </Text>
               </View>
               <View style={styles.summaryItem}>

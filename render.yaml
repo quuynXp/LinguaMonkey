@@ -1,78 +1,21 @@
-# FILE: render.yaml (DB-less Kong Architecture)
-# Sử dụng cấu trúc mới nhất và fix lỗi xung đột DB
+# FILE: render.yaml (Đã bổ sung autoDeploy: true)
 ---
 services:
-  # === 1. DATABASE (GỘP CHUNG ĐỂ DÙNG FREE TIER) ===
-  - type: pserv
-    name: shared-postgres
-    runtime: postgres
-    region: singapore
-    plan: free
-    disk:
-      name: postgres-data
-      sizeGB: 1
-    # Chỉ định databaseName và user mặc định
-    envVars:
-      - key: POSTGRES_DB
-        value: linguaviet_db
-      - key: POSTGRES_USER
-        value: linguauser
-      - key: POSTGRES_PASSWORD
-        generateValue: true
-    ipAllowList: []
+  # ... (Phần 1 và 2: Postgres và Redis đã bị loại bỏ/tham chiếu)
 
-  # === 2. REDIS (FREE) ===
-  - type: redis
-    name: redis
-    region: singapore
-    plan: free
-    ipAllowList: []
-
-  # === 3. BACKEND SERVICES (ACTIVE - FREE) ===
+  # === 3. BACKEND SERVICES ===
   - type: web
     name: linguavietnameseapp
     runtime: docker
     region: singapore
     plan: free
-    autoDeploy: true
+    autoDeploy: true # 👈 Kích hoạt CI/CD tự động
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
     envVars:
-      - key: TZ
-        value: Asia/Ho_Chi_Minh
-      # Kết nối vào Shared DB
-      - key: SPRING_DATASOURCE_URL
-        fromService:
-          type: pserv
-          name: shared-postgres
-          property: connectionString
-      - key: SPRING_DATASOURCE_USERNAME
-        fromService:
-          type: pserv
-          name: shared-postgres
-          property: user
-      - key: SPRING_DATASOURCE_PASSWORD
-        fromService:
-          type: pserv
-          name: shared-postgres
-          property: password
-      - key: SPRING_REDIS_HOST
-        fromService:
-          type: redis
-          name: redis
-          property: host
-      # Dummy Values
-      - key: KAFKA_BOOTSTRAP_SERVERS
-        value: disabled:9092
-      - key: ELASTICSEARCH_URIS
-        value: http://disabled:9200
-      - key: MINIO_URL
-        value: http://disabled:9000
-      # URL nội bộ để Java gọi Python
-      - key: PYTHON_SERVICE_URL
-        value: http://pythonservice:8001
+      # ... (Các biến môi trường)
       - fromGroup: shared-app-env
-    healthCheckPath: /actuator/health # Giả định Java có /actuator/health
+    healthCheckPath: /actuator/health
     numInstances: 1
 
   - type: web
@@ -80,44 +23,16 @@ services:
     runtime: docker
     region: singapore
     plan: free
-    autoDeploy: true
+    autoDeploy: true # 👈 Kích hoạt CI/CD tự động
     dockerContext: .
     dockerfilePath: ./PythonService/Dockerfile
     envVars:
-      - key: TZ
-        value: Asia/Ho_Chi_Minh
-      # Kết nối vào Shared DB (Python dùng host, user, pass)
-      - key: DB_HOST
-        fromService:
-          type: pserv
-          name: shared-postgres
-          property: host
-      - key: DB_USER
-        fromService:
-          type: pserv
-          name: shared-postgres
-          property: user
-      - key: DB_PASSWORD
-        fromService:
-          type: pserv
-          name: shared-postgres
-          property: password
-      - key: REDIS_HOST
-        fromService:
-          type: redis
-          name: redis
-          property: host
-      - key: KAFKA_BOOTSTRAP_SERVERS
-        value: disabled:9092
-      # URL nội bộ để Python gọi Java
-      - key: JAVA_SERVICE_URL
-        value: http://linguavietnameseapp:8080
+      # ... (Các biến môi trường)
       - fromGroup: shared-app-env
     numInstances: 1
-    port: 8001 # Cổng mà dịch vụ Python expose
+    port: 8001
 
-  # === 4. KONG GATEWAY (ACTIVE - FREE - DB-LESS) ===
-  # Konga và Kong-init không cần thiết với chế độ này.
+  # === 4. KONG GATEWAY (DB-LESS) ===
   - type: web
     name: kong
     runtime: image
@@ -125,38 +40,19 @@ services:
       url: kong:3.4
     region: singapore
     plan: free
-    autoDeploy: true
-    # Đảm bảo Kong khởi động sau khi các backend đã sẵn sàng
+    autoDeploy: true # 👈 Kích hoạt CI/CD tự động
     dependsOn:
       - linguavietnameseapp
       - pythonservice
     envVars:
-      - key: KONG_DATABASE
-        value: "off" # Chế độ DB-less
-      - key: KONG_DECLARATIVE_CONFIG
-        value: /usr/local/etc/kong/kong.yml # Đường dẫn file cấu hình
-      - key: KONG_PROXY_ACCESS_LOG
-        value: /dev/stdout
-      - key: KONG_ADMIN_ACCESS_LOG
-        value: /dev/stdout
-      - key: KONG_PROXY_ERROR_LOG
-        value: /dev/stderr
-      - key: KONG_ADMIN_ERROR_LOG
-        value: /dev/stderr
-      - key: KONG_ADMIN_LISTEN
-        value: 0.0.0.0:8001
-      - key: KONG_PLUGINS
-        value: bundled,jwt,rate-limiting,cors,request-transformer,proxy-cache
-      - key: TZ
-        value: Asia/Ho_Chi_Minh
+      # ... (Các biến môi trường Kong)
     ports:
-      - port: 8000 # Proxy HTTP
-      - port: 8001 # Admin API
+      - port: 8000
+      - port: 8001
     disk:
-      # Mount file kong.yml vào container Kong
       - name: kong-config
         mountPath: /usr/local/etc/kong/kong.yml
-        # Lưu ý: Cần đảm bảo file kong.yml được tạo và đẩy lên repo
+    numInstances: 1
 
 envVarGroups:
   - name: shared-app-env

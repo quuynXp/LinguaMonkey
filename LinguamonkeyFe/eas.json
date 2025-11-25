@@ -11,7 +11,6 @@
         "image": "latest",
         "ndk": "26.1.10909125"
       },
-      "node": "24",
       "env": {
         "APP_VARIANT": "development"
       }
@@ -22,7 +21,6 @@
         "image": "latest",
         "ndk": "26.1.10909125"
       },
-      "node": "24",
       "env": {
         "APP_VARIANT": "staging"
       }
@@ -35,7 +33,6 @@
         "image": "latest",
         "ndk": "26.1.10909125"
       },
-      "node": "24",
       "env": {
         "APP_VARIANT": "production"
       }
@@ -43,7 +40,6 @@
     "production-apk": {
       "extends": "production",
       "distribution": "internal",
-      "node": "24",
       "android": {
         "buildType": "apk"
       }
