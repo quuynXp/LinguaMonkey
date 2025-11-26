@@ -1,11 +1,14 @@
 import React from 'react';
 import {
-    Animated,
-    StyleSheet,
-    TouchableOpacity,
-    View
+  Animated,
+  StyleSheet,
+  TouchableOpacity,
+  View,
+  Text
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+// Giả định: Import hàm dịch thuật của bạn. Thường là từ một tệp i18n/config.
+import { useTranslation } from './i18n/i18n'; // THAY THẾ BẰNG IMPORT THỰC TẾ CỦA BẠN
 
 interface TabBarProps {
   state: any;
@@ -14,6 +17,9 @@ interface TabBarProps {
 }
 
 const CustomTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation }) => {
+  // 1. Khởi tạo hàm dịch thuật
+  const { t } = useTranslation();
+
   const animatedValues = React.useRef(
     state.routes.map(() => new Animated.Value(0))
   ).current;
@@ -45,18 +51,19 @@ const CustomTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation })
     }
   };
 
-  const getTabLabel = (routeName: string) => {
+  // 2. Thay thế hàm getTabLabel bằng hàm truy xuất i18n
+  const getTabLabelKey = (routeName: string): string => {
     switch (routeName) {
       case 'Home':
-        return 'Trang chủ';
+        return 'tabbar.home';
       case 'Learn':
-        return 'Học tập';
+        return 'tabbar.learn';
       case 'Progress':
-        return 'Tiến độ';
+        return 'tabbar.progress';
       case 'ChatAI':
-        return 'AI Chat';
+        return 'tabbar.chat_ai';
       case 'Profile':
-        return 'Hồ sơ';
+        return 'tabbar.profile';
       default:
         return routeName;
     }
@@ -79,6 +86,12 @@ const CustomTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation })
             navigation.navigate(route.name);
           }
         };
+
+        // Lấy key bản dịch
+        const translationKey = getTabLabelKey(route.name);
+        // Dịch nhãn
+        const label = t(translationKey);
+
 
         return (
           <TouchableOpacity
@@ -123,7 +136,8 @@ const CustomTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation })
                 },
               ]}
             >
-              {getTabLabel(route.name)}
+              {/* 3. Sử dụng nhãn đã được dịch */}
+              {label}
             </Animated.Text>
             {isFocused && (
               <Animated.View

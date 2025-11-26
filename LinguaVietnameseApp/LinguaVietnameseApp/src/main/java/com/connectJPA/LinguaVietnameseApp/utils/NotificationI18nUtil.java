@@ -70,6 +70,20 @@ public class NotificationI18nUtil {
                     "vi", new String[]{"Chuỗi Streak Đã Bị Mất 😔", "Chuỗi học tập của bạn đã bị reset về 0 vì không hoàn thành mục tiêu học tập tối thiểu."},
                     "en", new String[]{"Streak Lost 😔", "Your learning streak has been reset to 0 for not meeting the minimum learning goal."},
                     "zh", new String[]{"学习连击已中断 😔", "您的学习连击已重置为 0，因为未达到最低学习目标。"}
+            ),
+            
+            // --- THUMBNAIL_COURSE_READY ---
+            "THUMBNAIL_COURSE_READY", Map.of(
+                    "vi", new String[]{"Ảnh bìa Khóa Học Đã Sẵn Sàng!", "Ảnh bìa cho khóa học '%s' đã được tạo thành công!"},
+                    "en", new String[]{"Course Thumbnail Ready!", "The thumbnail for course '%s' has been successfully generated!"},
+                    "zh", new String[]{"课程缩略图已就绪!", "课程 '%s' 的缩略图已成功生成!"}
+            ),
+            
+            // --- THUMBNAIL_LESSON_READY ---
+            "THUMBNAIL_LESSON_READY", Map.of(
+                    "vi", new String[]{"Ảnh bìa Bài Học Đã Sẵn Sàng!", "Ảnh bìa cho bài học '%s' đã được tạo thành công!"},
+                    "en", new String[]{"Lesson Thumbnail Ready!", "The thumbnail for lesson '%s' has been successfully generated!"},
+                    "zh", new String[]{"课时缩略图已就绪!", "课时 '%s' 的缩略图已成功生成!"}
             )
     );
 
@@ -82,7 +96,7 @@ public class NotificationI18nUtil {
      * @return String array: [Title, Content]
      */
     public static String[] getLocalizedMessage(String key, String langCode) {
-        String finalLangCode = langCode != null && MESSAGES.get(key).containsKey(langCode.toLowerCase())
+        String finalLangCode = langCode != null && MESSAGES.get(key) != null && MESSAGES.get(key).containsKey(langCode.toLowerCase())
                 ? langCode.toLowerCase()
                 : DEFAULT_LANG;
 

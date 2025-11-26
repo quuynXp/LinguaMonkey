@@ -2122,5 +2122,12 @@
     "friend": "Friends",
     "stranger": "Strangers",
     "couple": "Couple"
+  },
+  "tabbar": {
+    "home": "Trang chủ",
+    "learn": "Học tập",
+    "progress": "Tiến độ",
+    "chat_ai": "AI Chat",
+    "profile": "Hồ sơ"
   }
 }

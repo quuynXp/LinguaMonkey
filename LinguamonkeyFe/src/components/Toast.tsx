@@ -30,6 +30,7 @@ export const toastConfig = {
   error: (props) => (
     <BaseToast
       {...props}
+      // Màu đỏ cho lỗi Server (5xx)
       style={{ ...commonStyle, borderLeftColor: "#EF4444" }}
       contentContainerStyle={{ paddingHorizontal: 15 }}
       text1Style={commonTextStyle}
@@ -57,6 +58,7 @@ export const toastConfig = {
   warning: (props) => (
     <BaseToast
       {...props}
+      // Màu vàng/cam cho lỗi Client (4xx)
       style={{ ...commonStyle, borderLeftColor: "#F59E0B" }}
       contentContainerStyle={{ paddingHorizontal: 15 }}
       text1Style={commonTextStyle}

@@ -32,6 +32,7 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
     List<Lesson> findByCreatorIdAndLessonIdIn(UUID creatorId, List<UUID> ids);
     Page<Lesson> findByCreatorId(UUID creatorId, Pageable pageable);
 
+    List<Lesson> findTop50ByThumbnailUrlIsNullAndCreatedAtBefore(OffsetDateTime threshold);
     Page<Lesson> findAll(Specification<com.connectJPA.LinguaVietnameseApp.entity.Lesson> spec, Pageable pageable);
 
     /**

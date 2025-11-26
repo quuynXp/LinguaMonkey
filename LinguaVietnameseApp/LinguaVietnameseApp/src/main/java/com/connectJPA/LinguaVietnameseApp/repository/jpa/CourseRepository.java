@@ -20,6 +20,7 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     Page<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId, Pageable pageable);
     Page<Course> findByTypeAndIsDeletedFalse(CourseType type, Pageable pageable);
     List<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId);
+    List<Course> findTop50ByThumbnailUrlIsNullAndCreatedAtBefore(OffsetDateTime threshold);
 
     // FIX: Sử dụng CAST(... AS VARCHAR) để tránh lỗi "could not determine data type" của Postgres
     @Query(value = """

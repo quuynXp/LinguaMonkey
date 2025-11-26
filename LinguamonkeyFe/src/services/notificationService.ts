@@ -4,7 +4,7 @@ import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { useAppStore } from '../stores/appStore';
 import instance from "../api/axiosClient";
-import messaging from '@react-native-firebase/messaging';
+import messaging, { firebase } from '@react-native-firebase/messaging';
 import { useUserStore } from '../stores/UserStore';
 import { handleNotificationNavigation } from '../utils/navigationRef';
 import i18n from "../i18n";
@@ -45,6 +45,7 @@ Notifications.setNotificationHandler({
 class NotificationService {
   private preferences: NotificationPreferences;
   private isInitialized: boolean = false;
+  private messagingInstance: ReturnType<typeof messaging> | null = null;
 
   constructor() {
     this.preferences = {
@@ -63,6 +64,14 @@ class NotificationService {
       studyTime: '09:00',
       quietHours: { enabled: false, start: '22:00', end: '07:00' },
     };
+  }
+
+  // ✅ Get messaging instance một lần duy nhất
+  private getMessaging() {
+    if (!this.messagingInstance) {
+      this.messagingInstance = messaging();
+    }
+    return this.messagingInstance;
   }
 
   async initialize() {
@@ -85,34 +94,50 @@ class NotificationService {
     this.isInitialized = true;
   }
 
+  // ✅ SỬA: Setup listeners ĐÚNG CÁCH
   setupNotificationListeners() {
+    const msg = this.getMessaging();
+
+    // A. Expo Listener
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
+      console.log('🔔 Expo Local Interaction:', data);
       handleNotificationNavigation(data);
     });
 
-    const unsubscribeOnOpened = messaging().onNotificationOpenedApp(remoteMessage => {
+    // B. Firebase Background - App opened from background
+    const unsubscribeOnOpened = msg.onNotificationOpenedApp(remoteMessage => {
+      console.log('🔔 Firebase Background Interaction:', remoteMessage?.data);
       if (remoteMessage?.data) {
         handleNotificationNavigation(remoteMessage.data);
       }
     });
 
-    messaging().getInitialNotification().then(remoteMessage => {
+    // C. Firebase Quit State - App opened from quit state
+    msg.getInitialNotification().then(remoteMessage => {
       if (remoteMessage) {
+        console.log('🔔 Firebase Quit State Interaction:', remoteMessage.data);
         setTimeout(() => {
           if (remoteMessage.data) {
             handleNotificationNavigation(remoteMessage.data);
           }
         }, 1500);
       }
+    }).catch(err => {
+      console.error('getInitialNotification error:', err);
     });
 
-    const unsubscribeOnMessage = messaging().onMessage(async (remoteMessage) => {
+    // D. Firebase Foreground - App is active
+    const unsubscribeOnMessage = msg.onMessage(async remoteMessage => {
+      console.log("🔔 Firebase Foreground:", remoteMessage);
+
       const title = remoteMessage.notification?.title || i18n.t("notification.default_title");
       const body = remoteMessage.notification?.body || "";
+
       await this.sendLocalNotification(title, body, remoteMessage.data);
     });
 
+    // Return cleanup function
     return () => {
       responseSubscription.remove();
       unsubscribeOnOpened();
@@ -133,25 +158,40 @@ class NotificationService {
     return deviceId;
   }
 
+  // ✅ SỬA: Request permissions ĐÚNG
   async requestFirebasePermissions(): Promise<boolean> {
     try {
-      const authStatus = await messaging().requestPermission();
-      return authStatus === 1 || authStatus === 2;
+      const msg = this.getMessaging();
+      const authStatus = await msg.requestPermission();
+
+      // Dùng enum từ messaging()
+      const enabled =
+        authStatus === firebase.messaging.AuthorizationStatus.AUTHORIZED ||
+        authStatus === firebase.messaging.AuthorizationStatus.PROVISIONAL;
+
+      console.log('🔥 Firebase Permission Status:', authStatus);
+      return enabled;
     } catch (error) {
-      console.error('Request Firebase Permission Error:', error);
+      console.error('❌ Request Firebase Permission Error:', error);
       return false;
     }
   }
 
+  // ✅ SỬA: Get FCM Token ĐÚNG
   async getFcmToken(): Promise<string | null> {
     const enabled = await this.requestFirebasePermissions();
-    if (!enabled) return null;
+    if (!enabled) {
+      console.warn('⚠️ Firebase permissions not granted');
+      return null;
+    }
 
     try {
-      const fcmToken = await messaging().getToken();
+      const msg = this.getMessaging();
+      const fcmToken = await msg.getToken();
+      console.log('🔥 FCM Token:', fcmToken);
       return fcmToken;
     } catch (error) {
-      console.error('Error getting FCM token:', error);
+      console.error('❌ Error getting FCM token:', error);
       return null;
     }
   }
@@ -160,19 +200,26 @@ class NotificationService {
     const store = useUserStore.getState();
     const userId = store.user?.userId;
 
-    if (!userId) return;
+    if (!userId) {
+      console.warn('⚠️ No userId found, skipping token registration');
+      return;
+    }
 
     const fcmToken = await this.getFcmToken();
     const deviceId = await this.getDeviceId();
 
     if (!fcmToken || !deviceId) {
+      console.warn('⚠️ Cannot register token: Missing Token or DeviceID');
       return;
     }
 
+    // Update Store
     if (store.setToken) store.setToken(fcmToken);
     if (store.setDeviceId) store.setDeviceId(deviceId);
 
+    // Check duplicate
     if (store.fcmToken === fcmToken && store.deviceId === deviceId && store.isTokenRegistered) {
+      console.log('✅ FCM Token already synced.');
       return;
     }
 
@@ -183,8 +230,11 @@ class NotificationService {
         deviceId: deviceId,
       });
 
+      console.log('✅ FCM Token registered to backend.');
       if (store.setTokenRegistered) store.setTokenRegistered(true);
+
     } catch (error) {
+      console.error('❌ Failed to register FCM token:', error);
       if (store.setTokenRegistered) store.setTokenRegistered(false);
     }
   }
@@ -197,9 +247,13 @@ class NotificationService {
       await instance.delete('/api/v1/users/fcm-token', {
         params: { userId: user.userId, deviceId: deviceId }
       });
-      await messaging().deleteToken();
+
+      const msg = this.getMessaging();
+      await msg.deleteToken();
+
+      console.log('🗑️ FCM Token deleted.');
     } catch (error) {
-      console.error('Failed to delete FCM token:', error);
+      console.error('❌ Failed to delete FCM token:', error);
     }
   }
 
@@ -226,14 +280,18 @@ class NotificationService {
         this.preferences = { ...this.preferences, ...JSON.parse(savedPrefs) };
         useAppStore.getState().setNotificationPreferences(this.preferences);
       }
-    } catch (error) { }
+    } catch (error) {
+      console.error('❌ Load prefs error:', error);
+    }
   }
 
   async savePreferences(): Promise<void> {
     try {
       await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(this.preferences));
       useAppStore.getState().setNotificationPreferences(this.preferences);
-    } catch (error) { }
+    } catch (error) {
+      console.error('❌ Save prefs error:', error);
+    }
   }
 
   async requestPermissions(): Promise<boolean> {
@@ -285,7 +343,7 @@ class NotificationService {
   async scheduleNotification(title: string, body: string, seconds: number): Promise<string | null> {
     if (!this.preferences.enablePush || !this.preferences.scheduled || this.isQuietHours()) return null;
 
-    return await Notifications.scheduleNotificationAsync({
+    const id = await Notifications.scheduleNotificationAsync({
       content: {
         title,
         body,
@@ -294,6 +352,8 @@ class NotificationService {
       },
       trigger: { seconds, type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL },
     });
+
+    return id;
   }
 
   async cancelAllScheduled(): Promise<void> {
@@ -318,6 +378,7 @@ class NotificationService {
     return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
   }
 
+  // API Methods - giữ nguyên
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;
     try {

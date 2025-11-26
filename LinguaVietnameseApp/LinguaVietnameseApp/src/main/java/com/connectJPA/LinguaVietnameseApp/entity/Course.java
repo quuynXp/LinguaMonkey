@@ -1,4 +1,3 @@
-// LinguaVietnameseApp/LinguaVietnameseApp/src/main/java/com/connectJPA/LinguaVietnameseApp/entity/Course.java
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
@@ -73,6 +72,10 @@ public class Course extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false)
     private CourseApprovalStatus approvalStatus = CourseApprovalStatus.PENDING;
+    
+    // NEW COLUMN ADDED: thumbnail_url
+    @Column(name = "thumbnail_url")
+    private String thumbnailUrl;
 
     public List<Lesson> getLessons() {
         if (this.latestPublicVersion == null || this.latestPublicVersion.getLessons() == null) {

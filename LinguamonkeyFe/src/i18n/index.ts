@@ -5,6 +5,7 @@ import { initReactI18next } from "react-i18next";
 import en from "./locales/en.json";
 import vi from "./locales/vi.json";
 import zh from "./locales/zh.json";
+import motivation from "./locales/motivation.json";
 
 const LANGUAGE_DETECTOR = {
   type: "languageDetector" as const,
@@ -36,9 +37,18 @@ i18n
   .use(initReactI18next)
   .init({
     resources: {
-      en: { translation: en },
-      vi: { translation: vi },
-      zh: { translation: zh },
+      en: {
+        translation: en,
+        motivation: motivation.en
+      },
+      vi: {
+        translation: vi,
+        motivation: motivation.vi
+      },
+      zh: {
+        translation: zh,
+        motivation: motivation.zh
+      },
     },
     fallbackLng: "en",
     debug: __DEV__,
