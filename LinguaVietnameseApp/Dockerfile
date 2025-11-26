@@ -73,26 +73,17 @@
 # RUN ./mvnw clean package -DskipTests
 
 
-# LinguaVietnameseApp/Dockerfile (Giữ nguyên)
-# Stage 1: Build the application
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 COPY . .
-# Fix line endings for mvnw (important for Windows hosts)
-RUN sed -i 's/\r$//' LinguaVietnameseApp/mvnw # Dòng này sẽ hoạt động vì COPY . . đã copy cả folder LinguaVietnameseApp/
-# Grant execute permissions
+RUN sed -i 's/\r$//' LinguaVietnameseApp/mvnw
 RUN chmod +x LinguaVietnameseApp/mvnw
-# Đổi WORKDIR vào thư mục code
 WORKDIR /app/LinguaVietnameseApp
-# Build the package
 RUN ./mvnw clean package -DskipTests
 
-# Stage 2: Create the final, smaller image
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-# Copy only the built .jar file from the builder stage
-# Sửa lỗi: Đường dẫn đến file jar cũng phải chính xác
 COPY --from=builder /app/LinguaVietnameseApp/target/*.jar app.jar
 
 EXPOSE 8080
