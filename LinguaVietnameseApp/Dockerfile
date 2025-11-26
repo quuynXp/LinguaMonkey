@@ -4,29 +4,34 @@ FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 
 # 1. Tải dependencies (tận dụng cache Docker hiệu quả)
-# COPY chỉ các file cấu hình dependency và mvnw
-# Giả định cấu trúc code: /app/LinguaVietnameseApp/LinguaVietnameseApp/
-COPY LinguaVietnameseApp/LinguaVietnameseApp/pom.xml /app/LinguaVietnameseApp/LinguaVietnameseApp/
-COPY LinguaVietnameseApp/LinguaVietnameseApp/mvnw /app/LinguaVietnameseApp/LinguaVietnameseApp/
-COPY LinguaVietnameseApp/LinguaVietnameseApp/.mvn /app/LinguaVietnameseApp/LinguaVietnameseApp/.mvn
+
+# Đặt tên biến cho thư mục code chính để dễ bảo trì
+ENV APP_DIR=LinguaVietnameseApp/LinguaVietnameseApp
+
+# COPY các file cần thiết cho bước go-offline
+COPY ${APP_DIR}/pom.xml ${APP_DIR}/
+COPY ${APP_DIR}/mvnw ${APP_DIR}/
+# Đảm bảo copy toàn bộ nội dung của .mvn, bao gồm .mvn/wrapper/maven-wrapper.properties
+COPY ${APP_DIR}/.mvn ${APP_DIR}/.mvn
 
 # Đổi WORKDIR vào thư mục code chứa pom.xml và mvnw
-WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
+WORKDIR /app/${APP_DIR}
 
-# Cấp quyền thực thi và sửa lỗi line endings cho mvnw (cho caching)
+# Cấp quyền thực thi và sửa lỗi line endings cho mvnw
 RUN sed -i 's/\r$//' mvnw
 RUN chmod +x mvnw
 
-# Tải dependencies (sẽ sử dụng cache trừ khi pom.xml thay đổi)
+# Tải dependencies
 RUN ./mvnw dependency:go-offline
 
 # 2. Build ứng dụng
-# COPY toàn bộ code còn lại (thao tác này có thể làm mất quyền thực thi của mvnw)
+
+# COPY toàn bộ code còn lại
 WORKDIR /app
 COPY . .
 
 # Quay lại thư mục code để build
-WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
+WORKDIR /app/${APP_DIR}
 
 # Cấp quyền thực thi và sửa lỗi line endings LẦN NỮA (sau khi COPY toàn bộ code)
 RUN sed -i 's/\r$//' mvnw
@@ -38,9 +43,10 @@ RUN ./mvnw clean install -DskipTests
 # Stage 2: Create the final, smaller image
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
+ENV APP_DIR=LinguaVietnameseApp/LinguaVietnameseApp
 
 # Copy chỉ file .jar đã build từ builder stage
-COPY --from=builder /app/LinguaVietnameseApp/LinguaVietnameseApp/target/*.jar app.jar
+COPY --from=builder /app/${APP_DIR}/target/*.jar app.jar
 
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","/app/app.jar"]
