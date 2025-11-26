@@ -43,8 +43,8 @@ services:
   # === BACKEND SERVICES ===
   linguavietnameseapp:
     build:
-      context: ./LinguaVietnameseApp
-      dockerfile: Dockerfile
+      context: . 
+      dockerfile: ./LinguaVietnameseApp/Dockerfile
     container_name: linguavietnameseapp
     depends_on:
       - app-database
