@@ -31,6 +31,7 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
     torchaudio==2.6.0
 
 COPY PythonService/requirements.txt .
+
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN set -eux; \
@@ -60,19 +61,24 @@ COPY . .
 
 ENV PATH="/opt/venv/bin:$PATH"
 
+# --- THAY ĐỔI ĐƯỜNG DẪN GRPC TẠI ĐÂY ---
+# WORKDIR là /app, code nằm ở /app/PythonService/
 RUN mkdir -p /app/src/grpc_generated && \
     touch /app/src/grpc_generated/__init__.py && \
     python -m grpc_tools.protoc \
-        -I=./proto_files \
-        --python_out=./src \
-        --grpc_python_out=./src \
-        ./proto_files/*.proto
+        -I=./PythonService/proto_files \
+        --python_out=./PythonService/src \
+        --grpc_python_out=./PythonService/src \
+        ./PythonService/proto_files/*.proto
 
-RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' /app/src/learning_service_pb2_grpc.py
+# FIX import path: /app/PythonService/src/learning_service_pb2_grpc.py
+RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' /app/PythonService/src/learning_service_pb2_grpc.py
 
-RUN chmod +x start_services.sh
+# FIX start_services.sh path: /app/PythonService/start_services.sh
+RUN chmod +x PythonService/start_services.sh
 
 EXPOSE 8001
 EXPOSE 50051
 
-CMD ["./start_services.sh"]
+# FIX CMD path: /app/PythonService/start_services.sh
+CMD ["./PythonService/start_services.sh"]
