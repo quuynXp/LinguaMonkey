@@ -1,5 +1,5 @@
 import * as ExpoDocumentPicker from 'expo-document-picker';
-import { Alert } from 'react-native';
+import { Alert, StyleSheet } from 'react-native';
 
 export interface PickedDocument {
   uri: string;

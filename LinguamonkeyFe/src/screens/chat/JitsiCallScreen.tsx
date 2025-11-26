@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, Modal, FlatList, PermissionsAndroid, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, FlatList, PermissionsAndroid, Platform, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useRoute, RouteProp } from '@react-navigation/native';

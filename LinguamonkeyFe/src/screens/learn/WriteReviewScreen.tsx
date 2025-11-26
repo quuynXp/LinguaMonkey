@@ -5,9 +5,10 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useCourses } from "../../hooks/useCourses"
 import { useLessonStructure } from "../../hooks/useLessonStructure" // Đã đổi từ useLessons sang useLessonStructure
 import { useUserStore } from "../../stores/UserStore"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { CourseReviewRequest, LessonReviewRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const WriteReviewScreen = ({ navigation, route }) => {
   const { courseId, lessonId } = route.params as { courseId?: string, lessonId?: string }

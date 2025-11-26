@@ -5,7 +5,7 @@
 //   PanResponder,
 //   GestureResponderEvent,
 //   PanResponderGestureState,
-//   StyleSheet,
+//
 //   LayoutChangeEvent,
 // } from "react-native";
 // import { GLView } from "expo-gl";
@@ -534,7 +534,7 @@
 //   );
 // }
 
-// const styles = StyleSheet.create({
+// const styles = createScaledSheet({
 //   gl: {
 //     backgroundColor: "transparent",
 //   },

@@ -2,7 +2,7 @@ import { useState } from "react"
 import {
   View,
   Text,
-  StyleSheet,
+
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -19,6 +19,7 @@ import { gotoTab, resetToAuth } from "../../utils/navigationRef"
 import Toast from "../../components/Toast"
 import { LineChart } from "react-native-chart-kit"
 import { createScaledSheet } from "../../utils/scaledStyles"
+
 
 const { width } = Dimensions.get("window")
 

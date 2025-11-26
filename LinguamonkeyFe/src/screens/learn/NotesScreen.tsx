@@ -15,9 +15,10 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations"
-import { createScaledSheet } from "../../utils/scaledStyles";
+  ;
 import { MemorizationResponse, MemorizationRequest } from "../../types/dto"; // SỬ DỤNG DTO THẬT
 import * as Enums from "../../types/enums"; // Import Enums
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 
 const NotesScreen = ({ navigation }: any) => {

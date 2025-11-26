@@ -6,11 +6,12 @@ import * as WebBrowser from "expo-web-browser"
 import { useTransactionsApi } from "../../hooks/useTransaction"
 import { useWallet } from "../../hooks/useWallet"
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { useTranslation } from "react-i18next"
 import * as Enums from "../../types/enums"
 import { PaymentRequest, TransactionRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 interface CourseType {
   courseId: string;

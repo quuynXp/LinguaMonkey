@@ -632,11 +632,11 @@ public class UserServiceImpl implements UserService {
                 .avatarUrl(target.getAvatarUrl())
                 .country(target.getCountry())
                 .level(target.getLevel())
-                .streak(target.getStreak())   
-                .languages(languages)          
+                .streak(target.getStreak())    
+                .languages(languages)           
                 .exp(target.getExp())
                 .bio(target.getBio())
-                .ageRange(target.getAgeRange())    
+                .ageRange(target.getAgeRange())     
                 .proficiency(target.getProficiency())
                 .learningPace(target.getLearningPace());
 
@@ -840,19 +840,6 @@ public class UserServiceImpl implements UserService {
         return userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
     }
-
-
-    // The problematic method removed from here:
-    // @Override
-    // public User findByUserIdAndIsDeletedFalse(UUID userId) {
-    //     try {
-    //         return userRepository.findByUserIdAndIsDeletedFalse(userId)
-    //                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-    //     } catch (Exception e) {
-    //         throw new AppException(ErrorCode.USER_NOT_FOUND);
-    //     }
-    // }
-
 
     @Transactional
     public UserResponse updateAvatarUrl(UUID id, String avatarUrl) {
@@ -1257,21 +1244,35 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
 
-        Optional<UserFcmToken> existingToken = userFcmTokenRepository
-                .findByUserIdAndDeviceId(request.getUserId(), request.getDeviceId());
+        // --- FIX START: Ưu tiên tìm theo token string để tránh Unique Constraint Violation ---
+        Optional<UserFcmToken> tokenByValue = userFcmTokenRepository.findByFcmToken(request.getFcmToken());
 
-        if (existingToken.isPresent()) {
-            UserFcmToken token = existingToken.get();
-            token.setFcmToken(request.getFcmToken());
+        if (tokenByValue.isPresent()) {
+            UserFcmToken token = tokenByValue.get();
+            // Nếu token đã tồn tại, cập nhật nó về user/device hiện tại (xử lý trường hợp login trên máy khác hoặc user khác)
+            token.setUserId(request.getUserId());
+            token.setDeviceId(request.getDeviceId());
             userFcmTokenRepository.saveAndFlush(token);
         } else {
-            UserFcmToken newToken = UserFcmToken.builder()
-                    .userId(request.getUserId())
-                    .fcmToken(request.getFcmToken())
-                    .deviceId(request.getDeviceId())
-                    .build();
-            userFcmTokenRepository.saveAndFlush(newToken);
+            // Nếu token string chưa tồn tại, kiểm tra xem device này đã có token cũ nào cần update không
+            Optional<UserFcmToken> existingDeviceToken = userFcmTokenRepository
+                    .findByUserIdAndDeviceId(request.getUserId(), request.getDeviceId());
+
+            if (existingDeviceToken.isPresent()) {
+                UserFcmToken token = existingDeviceToken.get();
+                token.setFcmToken(request.getFcmToken());
+                userFcmTokenRepository.saveAndFlush(token);
+            } else {
+                // Tạo mới hoàn toàn
+                UserFcmToken newToken = UserFcmToken.builder()
+                        .userId(request.getUserId())
+                        .fcmToken(request.getFcmToken())
+                        .deviceId(request.getDeviceId())
+                        .build();
+                userFcmTokenRepository.saveAndFlush(newToken);
+            }
         }
+        // --- FIX END ---
     }
 
     @Override

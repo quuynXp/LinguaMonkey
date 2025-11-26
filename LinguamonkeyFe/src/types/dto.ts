@@ -981,6 +981,7 @@ export interface CourseResponse {
     updatedAt: string;
     latestPublicVersion: CourseVersionResponse;
     categoryCode?: string;
+    thumbnailUrl?: string;
     languageCode?: string;
     difficultyLevel?: Enums.DifficultyLevel;
 }

@@ -1,4 +1,4 @@
-import { Platform, Alert, Linking } from 'react-native';
+import { Platform, Alert, Linking, StyleSheet } from 'react-native';
 import { check, request, PERMISSIONS, RESULTS, Permission, openSettings } from 'react-native-permissions';
 import * as Notifications from 'expo-notifications';
 import i18n from '../i18n';

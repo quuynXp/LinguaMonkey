@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 interface Storage {
   setItem(key: string, value: string): Promise<void>;

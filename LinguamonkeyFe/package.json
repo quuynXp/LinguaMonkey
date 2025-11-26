@@ -68,6 +68,7 @@
     "expo-gl": "~16.0.7",
     "expo-haptics": "~15.0.7",
     "expo-image": "~3.0.9",
+    "expo-image-manipulator": "~14.0.7",
     "expo-image-picker": "~17.0.8",
     "expo-linear-gradient": "^15.0.7",
     "expo-linking": "~8.0.8",
@@ -112,6 +113,7 @@
     "sockjs-client": "^1.6.1",
     "three": "^0.166.0",
     "three-stdlib": "^2.36.0",
+    "victory-native": "^41.20.2",
     "yup": "^1.7.0",
     "zustand": "^5.0.7"
   },

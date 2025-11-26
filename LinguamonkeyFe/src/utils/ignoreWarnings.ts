@@ -1,4 +1,4 @@
-import { LogBox } from 'react-native';
+import { LogBox, StyleSheet } from 'react-native';
 
 if (__DEV__) {
     const ignoreWarns = [

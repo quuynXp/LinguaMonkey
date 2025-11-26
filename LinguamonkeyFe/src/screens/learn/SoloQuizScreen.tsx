@@ -2,7 +2,7 @@
 // import { Animated, Modal, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native";
 // import Icon from 'react-native-vector-icons/MaterialIcons';
 // import { QuizQuestion, QuizResult } from "../../types/api";
-// import { createScaledSheet } from "../../utils/scaledStyles";
+// ;
 // import { useUserStore } from "../../stores/UserStore";
 // import { useLanguageQuiz } from "../../hooks/useLanguageQuiz"; // ✅ Import hook
 // import { useTranslation } from "react-i18next";

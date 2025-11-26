@@ -1,11 +1,12 @@
 import { ScrollView, Text, View, ActivityIndicator, TouchableOpacity } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTransactionsApi } from "../../hooks/useTransaction"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { TransactionResponse } from "../../types/dto"
 import { useTranslation } from "react-i18next"
 import * as Enums from "../../types/enums"
 import ScreenLayout from "../../components/layout/ScreenLayout"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const TransactionDetailsScreen = ({ route, navigation }) => {
   const { t } = useTranslation()

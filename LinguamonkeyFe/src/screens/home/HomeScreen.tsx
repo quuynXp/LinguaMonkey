@@ -1,36 +1,28 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, Modal, TextInput, RefreshControl, Platform } from "react-native";
+import { Animated, Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, Modal, TextInput, RefreshControl, Platform, KeyboardAvoidingView, SafeAreaView } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useUserStore } from "../../stores/UserStore";
 import { useRoadmap } from "../../hooks/useRoadmap";
 import { useDailyChallenges, useAssignChallenge, useCompleteChallenge } from "../../hooks/useDailyChallenge";
 import { useLeaderboards } from "../../hooks/useLeaderboards";
 import { queryClient } from "../../services/queryClient";
 import { gotoTab } from "../../utils/navigationRef";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { getGreetingKey } from "../../utils/motivationHelper";
 import type { UserDailyChallengeResponse } from "../../types/dto";
 import { Picker } from "@react-native-picker/picker";
-import { Certification, ProficiencyLevel } from "../../types/enums"; // Giả định đường dẫn đến enums
+import { Certification, ProficiencyLevel, GoalType } from "../../types/enums";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
-// Giả định component DatePicker đơn giản, bạn có thể thay bằng thư viện thực tế
-const DateInput = ({ value, onChangeText, placeholder }: { value: string, onChangeText: (text: string) => void, placeholder: string }) => {
-  return (
-    <TextInput
-      placeholder={placeholder}
-      style={styles.input}
-      onChangeText={onChangeText}
-      value={value}
-      keyboardType={Platform.OS === 'ios' ? 'default' : 'visible-password'} // Trick for better date input on Android
-      onFocus={() => {
-        // Trong môi trường thật, sẽ mở Date Picker ở đây
-        console.log("Mở Date Picker");
-      }}
-    />
-  );
-};
+const SUPPORTED_LANGUAGES = [
+  { code: 'en', label: 'English' },
+  { code: 'vi', label: 'Vietnamese' },
+  { code: 'ja', label: 'Japanese' },
+  { code: 'ko', label: 'Korean' },
+  { code: 'zh', label: 'Chinese' },
+];
 
 const HomeScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -76,17 +68,15 @@ const HomeScreen = ({ navigation }: any) => {
 
   const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [preferences, setPreferences] = useState({
-    language_code: mainLanguage,
-    target_proficiency: ProficiencyLevel.B2, // Cấp độ mặc định
-    target_date: "",
-    target_certification: Certification.IELTS, // Chứng chỉ mặc định
-    // Thêm các trường thiếu khác để gọi API (Dựa trên CreateRoadmapRequest)
-    // Giả định: 
-    // currentLevel: 1, 
-    // estimatedCompletionTime: 1,
-    // focusAreas: [],
-    // studyTimePerDay: 1,
+
+  const [formState, setFormState] = useState({
+    languageCode: mainLanguage,
+    targetProficiency: ProficiencyLevel.B2,
+    targetDate: new Date(),
+    showDatePicker: false,
+    focusAreas: [] as GoalType[],
+    studyTime: '30',
+    prompt: ''
   });
 
   useEffect(() => {
@@ -124,24 +114,50 @@ const HomeScreen = ({ navigation }: any) => {
     }
   };
 
+  const toggleFocusArea = (area: GoalType) => {
+    setFormState(prev => {
+      const exists = prev.focusAreas.includes(area);
+      return {
+        ...prev,
+        focusAreas: exists
+          ? prev.focusAreas.filter(a => a !== area)
+          : [...prev.focusAreas, area]
+      };
+    });
+  };
+
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    const currentDate = selectedDate || formState.targetDate;
+    setFormState(prev => ({
+      ...prev,
+      showDatePicker: Platform.OS === 'ios',
+      targetDate: currentDate
+    }));
+  };
+
   const handleGenerateRoadmap = async () => {
     if (!user?.userId) return;
-    if (!preferences.target_proficiency || !preferences.target_date) {
-      alert(t("home.roadmap.missingFields"));
+
+    if (!formState.studyTime || isNaN(Number(formState.studyTime))) {
+      alert(t("Please enter a valid study time"));
+      return;
+    }
+
+    if (formState.focusAreas.length === 0) {
+      alert(t("Please select at least one focus area"));
       return;
     }
 
     try {
       await generateRoadmapMutation.mutate({
         userId: user.userId,
-        languageCode: preferences.language_code,
-        targetProficiency: preferences.target_proficiency,
-        targetDate: preferences.target_date,
-        // Dữ liệu giả định được thêm vào để khớp với CreateRoadmapRequest (dữ liệu còn thiếu)
-        focusAreas: [],
-        studyTimePerDay: 1,
+        languageCode: formState.languageCode,
+        targetProficiency: formState.targetProficiency,
+        targetDate: formState.targetDate.toISOString().split('T')[0],
+        focusAreas: formState.focusAreas.map(area => area.toString()),
+        studyTimePerDay: parseInt(formState.studyTime, 10),
         isCustom: true,
-        additionalPrompt: "",
+        additionalPrompt: formState.prompt,
       });
       setShowGenerateDialog(false);
     } catch (error) {
@@ -152,7 +168,6 @@ const HomeScreen = ({ navigation }: any) => {
   const handleAssignChallenge = async () => {
     if (!user?.userId) return;
     try {
-      // FIX 1: Thay completeMutation.mutate bằng completeMutation.completeChallenge
       await assignChallengeMutation.assignChallenge(user.userId);
     } catch (error) {
       console.error("Failed to assign challenge", error);
@@ -162,26 +177,22 @@ const HomeScreen = ({ navigation }: any) => {
   const handleCompleteChallenge = async (challengeId: string) => {
     if (!user?.userId) return;
     try {
-      // FIX 2: Thay completeMutation.mutate bằng completeMutation.completeChallenge
       await completeMutation.completeChallenge({ userId: user.userId, challengeId });
     } catch (error) {
       console.error("Failed to complete challenge", error);
     }
   };
 
-  // Helper để tính tiến độ cho Challenge Card (dựa trên DTO, giả định progress/100 nếu không có target)
   const calculateChallengeProgress = (item: UserDailyChallengeResponse): number => {
     return Math.min(1, Math.max(0, (item.progress || 0) / 100));
   };
 
-  // Hàm mới để chuyển đến màn hình ChatAI
   const goToChatAISCreen = () => {
     gotoTab("ChatStack", 'ChatAIScreen');
   };
 
-  // Các giá trị cho Picker (Lấy từ enum ProficiencyLevel và Certification)
   const proficiencyLevels = Object.values(ProficiencyLevel);
-  const certifications = Object.values(Certification);
+  const goalTypes = Object.values(GoalType);
 
   return (
     <ScreenLayout backgroundColor="#F8FAFC">
@@ -192,7 +203,6 @@ const HomeScreen = ({ navigation }: any) => {
       >
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
 
-          {/* Header */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <Text style={styles.greeting}>{t(greetingKey)} 👋</Text>
@@ -204,7 +214,6 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* Leaderboard Teaser */}
           {topThreeLoading ? (
             <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />
           ) : Array.isArray(topThreeUsers) && topThreeUsers.length > 0 ? (
@@ -219,15 +228,15 @@ const HomeScreen = ({ navigation }: any) => {
                   let podiumStyle = {};
                   let bụcStyle = {};
 
-                  if (idx === 1) { // rawTopThreeUsers[0] -> Top 1
+                  if (idx === 1) {
                     rank = 1;
                     podiumStyle = styles.firstPlacePodium;
                     bụcStyle = styles.podiumBarFirst;
-                  } else if (idx === 0) { // rawTopThreeUsers[1] -> Top 2
+                  } else if (idx === 0) {
                     rank = 2;
                     podiumStyle = styles.secondPlacePodium;
                     bụcStyle = styles.podiumBarSecond;
-                  } else if (idx === 2) { // rawTopThreeUsers[2] -> Top 3
+                  } else if (idx === 2) {
                     rank = 3;
                     podiumStyle = styles.thirdPlacePodium;
                     bụcStyle = styles.podiumBarThird;
@@ -238,23 +247,16 @@ const HomeScreen = ({ navigation }: any) => {
 
                   return (
                     <View key={rank} style={[styles.podiumItem, podiumStyle]}>
-                      {/* Huy chương */}
                       <View style={[styles.medal, isFirst ? styles.goldMedal : isSecond ? styles.silverMedal : styles.bronzeMedal]}>
                         <Text style={styles.medalText}>{rank}</Text>
                       </View>
-                      {/* Avatar */}
                       <Image source={{ uri: u.avatarUrl || 'https://via.placeholder.com/50' }} style={styles.podiumAvatar} />
-                      {/* Tên */}
                       <Text style={styles.podiumName} numberOfLines={1}>{u.fullname || u.username || "User"}</Text>
-                      {/* Level */}
                       <View style={styles.levelBadge}>
                         <Icon name="star" size={12} color="#FFFFFF" />
                         <Text style={styles.levelText}>{u.level || 1}</Text>
                       </View>
-                      {/* Score */}
                       <Text style={styles.podiumScore}>{u.score || u.totalExp || 0} XP</Text>
-
-                      {/* Thanh bục */}
                       <View style={[styles.podiumBar, bụcStyle]} />
                     </View>
                   );
@@ -263,9 +265,7 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           ) : null}
 
-          {/* AI Character */}
           <Animated.View style={[styles.characterSection, { transform: [{ scale: bounceAnim }] }]}>
-            {/* Thêm TouchableOpacity bao quanh characterContainer */}
             <TouchableOpacity style={styles.characterContainer} onPress={goToChatAISCreen} activeOpacity={0.8}>
               <View style={styles.characterCircle}>
                 <Icon name="smart-toy" size={40} color="#FFFFFF" />
@@ -277,7 +277,6 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </Animated.View>
 
-          {/* Learning Progress */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("home.progress.title")}</Text>
             <View style={styles.progressCard}>
@@ -292,7 +291,6 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
           </View>
 
-          {/* Current Challenge Progress */}
           {currentChallenge && !currentChallenge.isCompleted ? (
             <TouchableOpacity
               style={styles.section}
@@ -313,10 +311,10 @@ const HomeScreen = ({ navigation }: any) => {
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={[styles.progressValue, { textAlign: 'left', flex: 1 }]}>
-                    **+{currentChallenge.expReward} XP**
+                    +{currentChallenge.expReward} XP
                   </Text>
                   <Text style={styles.progressValue}>
-                    **{currentChallenge.progress || 0}%**
+                    {currentChallenge.progress || 0}%
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -330,8 +328,6 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           ) : null}
 
-
-          {/* Roadmap */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
@@ -393,7 +389,6 @@ const HomeScreen = ({ navigation }: any) => {
             )}
           </View>
 
-          {/* Daily Challenges */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("home.challenge.title")}</Text>
             {dailyLoading ? (
@@ -412,7 +407,6 @@ const HomeScreen = ({ navigation }: any) => {
                       disabled={item.isCompleted}
                       activeOpacity={item.isCompleted ? 1 : 0.7}
                     >
-                      {/* Icon */}
                       <View style={[styles.challengeIcon, { backgroundColor: item.isCompleted ? 'rgba(255,255,255,0.2)' : '#FFF7ED' }]}>
                         <Icon
                           name={item.isCompleted ? "check-circle" : "sports-esports"}
@@ -420,18 +414,12 @@ const HomeScreen = ({ navigation }: any) => {
                           color={item.isCompleted ? "#fff" : "#F59E0B"}
                         />
                       </View>
-
-                      {/* Title */}
                       <Text style={[styles.challengeTitleText, item.isCompleted && { color: '#fff' }]} numberOfLines={1}>
                         {item.title}
                       </Text>
-
-                      {/* Description */}
                       <Text style={[styles.challengeDescriptionText, item.isCompleted && { color: 'rgba(255,255,255,0.8)' }]} numberOfLines={2}>
                         {item.description || t("home.challenge.defaultDescShort")}
                       </Text>
-
-                      {/* Progress Bar */}
                       {showProgressBar && (
                         <View style={{ marginVertical: 8, width: '100%' }}>
                           <View style={styles.progressBarContainer}>
@@ -442,15 +430,11 @@ const HomeScreen = ({ navigation }: any) => {
                           </Text>
                         </View>
                       )}
-
-                      {/* Rewards and Chevron */}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: showProgressBar ? 0 : 8 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          {/* XP Reward */}
                           <Text style={[styles.xpBadge, item.isCompleted && { backgroundColor: 'rgba(255,255,255,0.3)', color: '#fff' }]}>
                             +{item.expReward} XP
                           </Text>
-                          {/* Coin Reward */}
                           {item.rewardCoins > 0 && (
                             <View style={[styles.coinBadge, item.isCompleted && { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
                               <Icon name="monetization-on" size={12} color={item.isCompleted ? "#fff" : "#059669"} />
@@ -460,7 +444,6 @@ const HomeScreen = ({ navigation }: any) => {
                             </View>
                           )}
                         </View>
-
                         {!item.isCompleted && (
                           <Icon name="chevron-right" size={24} color={item.isCompleted ? "#fff" : "#6B7280"} />
                         )}
@@ -475,72 +458,153 @@ const HomeScreen = ({ navigation }: any) => {
               </ScrollView>
             )}
           </View>
-
         </Animated.View>
       </ScrollView>
 
-      {/* Generate Roadmap Modal - CẬP NHẬT UI/UX Ở ĐÂY */}
       <Modal visible={showGenerateDialog} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t("home.roadmap.dialogTitle")}</Text>
+        <SafeAreaView style={styles.modalOverlay}>
+          <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            style={styles.modalContentContainer}
+          >
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{t("home.roadmap.dialogTitle")}</Text>
+                <TouchableOpacity onPress={() => setShowGenerateDialog(false)}>
+                  <Icon name="close" size={24} color="#6B7280" />
+                </TouchableOpacity>
+              </View>
 
-            {/* INPUT 1: Target Proficiency (Sử dụng Picker) */}
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerLabel}>{t("home.roadmap.targetProficiency")}:</Text>
-              <Picker
-                selectedValue={preferences.target_proficiency}
-                onValueChange={(itemValue) =>
-                  setPreferences({ ...preferences, target_proficiency: itemValue as ProficiencyLevel })
-                }
-                style={styles.picker}
-                itemStyle={styles.pickerItem}
-              >
-                {proficiencyLevels.map((level) => (
-                  <Picker.Item key={level} label={t(`proficiency.${level}`)} value={level} />
-                ))}
-              </Picker>
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formScrollContent}>
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>{t("Target Language")}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
+                    {SUPPORTED_LANGUAGES.map((lang) => (
+                      <TouchableOpacity
+                        key={lang.code}
+                        style={[
+                          styles.chip,
+                          formState.languageCode === lang.code && styles.chipSelected
+                        ]}
+                        onPress={() => setFormState(prev => ({ ...prev, languageCode: lang.code }))}
+                      >
+                        <Text style={[
+                          styles.chipText,
+                          formState.languageCode === lang.code && styles.chipTextSelected
+                        ]}>
+                          {lang.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>{t("Target Proficiency")}</Text>
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={formState.targetProficiency}
+                      onValueChange={(itemValue) =>
+                        setFormState(prev => ({ ...prev, targetProficiency: itemValue as ProficiencyLevel }))
+                      }
+                      style={styles.picker}
+                      itemStyle={styles.pickerItem}
+                    >
+                      {proficiencyLevels.map((level) => (
+                        <Picker.Item key={level} label={t(`proficiency.${level}`)} value={level} />
+                      ))}
+                    </Picker>
+                  </View>
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>{t("Target Completion Date")}</Text>
+                  <TouchableOpacity
+                    style={styles.dateButton}
+                    onPress={() => setFormState(prev => ({ ...prev, showDatePicker: true }))}
+                  >
+                    <Text style={styles.dateText}>
+                      {formState.targetDate.toLocaleDateString()}
+                    </Text>
+                    <Icon name="calendar-today" size={20} color="#666" />
+                  </TouchableOpacity>
+                  {formState.showDatePicker && (
+                    <DateTimePicker
+                      value={formState.targetDate}
+                      mode="date"
+                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                      minimumDate={new Date()}
+                      onChange={handleDateChange}
+                    />
+                  )}
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>{t("Focus Areas")}</Text>
+                  <View style={styles.grid}>
+                    {goalTypes.map((area) => (
+                      <TouchableOpacity
+                        key={area}
+                        style={[
+                          styles.gridChip,
+                          formState.focusAreas.includes(area) && styles.chipSelected
+                        ]}
+                        onPress={() => toggleFocusArea(area)}
+                      >
+                        <Text style={[
+                          styles.chipText,
+                          formState.focusAreas.includes(area) && styles.chipTextSelected
+                        ]}>
+                          {area.replace(/_/g, ' ')}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>{t("Study Time (minutes/day)")}</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={formState.studyTime}
+                    onChangeText={(val) => setFormState(prev => ({ ...prev, studyTime: val }))}
+                    keyboardType="numeric"
+                    placeholder="e.g. 30"
+                  />
+                </View>
+
+                <View style={styles.formSection}>
+                  <Text style={styles.label}>{t("Additional Requirements")}</Text>
+                  <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={formState.prompt}
+                    onChangeText={(val) => setFormState(prev => ({ ...prev, prompt: val }))}
+                    multiline
+                    placeholder={t("Any specific goals or interests?")}
+                    textAlignVertical="top"
+                  />
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowGenerateDialog(false)}>
+                    <Text style={styles.cancelButtonText}>{t("common.cancel")}</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.modalButton, styles.confirmButton]}
+                    onPress={handleGenerateRoadmap}
+                    disabled={generateRoadmapMutation.isPending}
+                  >
+                    {generateRoadmapMutation.isPending ? (
+                      <ActivityIndicator color="#fff" />
+                    ) : (
+                      <Text style={styles.confirmButtonText}>{t("common.create")}</Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
             </View>
-
-            {/* INPUT 2: Target Certification (Sử dụng Picker) */}
-            <View style={styles.pickerContainer}>
-              <Text style={styles.pickerLabel}>{t("home.roadmap.targetCertification")}:</Text>
-              <Picker
-                selectedValue={preferences.target_certification}
-                onValueChange={(itemValue) =>
-                  setPreferences({ ...preferences, target_certification: itemValue as Certification })
-                }
-                style={styles.picker}
-                itemStyle={styles.pickerItem}
-              >
-                {certifications.map((cert) => (
-                  <Picker.Item key={cert} label={cert} value={cert} />
-                ))}
-              </Picker>
-            </View>
-
-            {/* INPUT 3: Target Date (Sử dụng DateInput giả lập) */}
-            <DateInput
-              placeholder={t("home.roadmap.targetDateHint")}
-              value={preferences.target_date}
-              onChangeText={(val) => setPreferences({ ...preferences, target_date: val })}
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowGenerateDialog(false)}>
-                {/* FIX 3: Sửa style name từ styles.cancelButtonText thành styles.cancelButtonText */}
-                <Text style={styles.cancelButtonText}>{t("common.cancel")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, styles.confirmButton]} onPress={handleGenerateRoadmap} disabled={generateRoadmapMutation.isPending}>
-                {generateRoadmapMutation.isPending ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.confirmButtonText}>{t("common.create")}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
       </Modal>
     </ScreenLayout>
   );
@@ -629,7 +693,6 @@ const styles = createScaledSheet({
     width: 90,
     position: 'relative',
   },
-
   podiumBar: {
     position: 'absolute',
     bottom: 0,
@@ -655,7 +718,6 @@ const styles = createScaledSheet({
     zIndex: 1,
     opacity: 0.9,
   },
-
   thirdPlacePodium: {
     marginLeft: 8,
     paddingBottom: 40,
@@ -966,7 +1028,7 @@ const styles = createScaledSheet({
   },
   coinBadge: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: "center",
     backgroundColor: "#ECFDF5",
     paddingHorizontal: 6,
     paddingVertical: 4,
@@ -1001,29 +1063,109 @@ const styles = createScaledSheet({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.5)",
     justifyContent: "center",
+  },
+  modalContentContainer: {
+    flex: 1,
+    justifyContent: 'center',
     padding: 24,
   },
   modalContent: {
     backgroundColor: "#fff",
     borderRadius: 20,
-    padding: 24,
+    maxHeight: '85%',
+    overflow: 'hidden',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
   },
   modalTitle: {
     fontSize: 20,
     fontWeight: "bold",
+    color: "#1F2937",
+  },
+  formScrollContent: {
+    padding: 20,
+  },
+  formSection: {
     marginBottom: 20,
-    textAlign: "center",
+  },
+  label: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 10,
+  },
+  horizontalScroll: {
+    flexGrow: 0,
+  },
+  chip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  chipSelected: {
+    backgroundColor: '#EFF6FF',
+    borderColor: '#3B82F6',
+  },
+  chipText: {
+    fontSize: 14,
+    color: '#6B7280',
+    fontWeight: '500',
+  },
+  chipTextSelected: {
+    color: '#3B82F6',
+    fontWeight: '600',
+  },
+  grid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  gridChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
+    borderWidth: 1,
+    borderColor: 'transparent',
+    marginBottom: 8,
   },
   input: {
     backgroundColor: "#F3F4F6",
     padding: 12,
     borderRadius: 12,
-    marginBottom: 16,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  textArea: {
+    height: 100,
+  },
+  dateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#F3F4F6',
+    padding: 12,
+    borderRadius: 12,
+  },
+  dateText: {
+    fontSize: 16,
+    color: '#1F2937',
   },
   modalActions: {
     flexDirection: "row",
     gap: 12,
-    marginTop: 8,
+    marginTop: 20,
+    marginBottom: 20,
   },
   modalButton: {
     flex: 1,
@@ -1041,7 +1183,6 @@ const styles = createScaledSheet({
     color: "#fff",
     fontWeight: "600",
   },
-  // Style mới để fix lỗi 2551
   cancelButtonText: {
     color: "#6B7280",
     fontWeight: "600",
@@ -1061,19 +1202,11 @@ const styles = createScaledSheet({
     fontWeight: '700',
     fontSize: 14,
   },
-  // Thêm styles cho Picker
   pickerContainer: {
     backgroundColor: "#F3F4F6",
     borderRadius: 12,
-    marginBottom: 16,
     paddingHorizontal: 8,
     paddingVertical: 4,
-  },
-  pickerLabel: {
-    fontSize: 12,
-    color: "#6B7280",
-    paddingLeft: 8,
-    paddingTop: 4,
   },
   picker: {
     height: 40,

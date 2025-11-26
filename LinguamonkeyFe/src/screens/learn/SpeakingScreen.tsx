@@ -10,7 +10,6 @@ import {
     ActivityIndicator,
     FlatList,
     Platform,
-    StyleSheet,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useAudioRecorder, RecordingPresets, setAudioModeAsync } from 'expo-audio';
@@ -30,6 +29,7 @@ import {
     LessonResponse,
 } from '../../types/dto';
 import { SkillType } from '../../types/enums';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface SpeakingScreenProps {
     navigation: any;
@@ -225,7 +225,9 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
 
         try {
             if (recorder.isRecording) {
+                console.log('DEBUG: 1. Recording is active. Stopping...');
                 await recorder.stop();
+                console.log('DEBUG: 2. Recording stopped.');
 
                 if (recordingDuration < MIN_RECORD_DURATION_MS) {
                     setIsRecording(false);
@@ -238,6 +240,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                 }
 
                 const uri = recorder.uri;
+                console.log('DEBUG: 3. Recorder URI:', uri);
 
                 if (uri) {
                     setIsRecording(false);
@@ -247,8 +250,8 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                     setWordFeedbacks([]);
                     setFinalResult(null);
 
-                    const fileUri = Platform.OS === 'ios' ? uri : `file://${uri}`;
-
+                    const fileUri = Platform.OS === 'ios' ? uri : `${uri}`;
+                    console.log('DEBUG: 4. Calling API with fileUri:', fileUri);
                     streamPronunciationMutation.mutate({
                         audioUri: fileUri,
                         lessonId: currentLessonId,
@@ -257,6 +260,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                         onChunk: handleStreamingChunk,
                     }, {
                         onSuccess: () => setIsStreaming(false),
+
                         onError: () => {
                             setIsStreaming(false);
                             Alert.alert(i18n.t('common.error'), i18n.t('speaking.error_analysis'));
@@ -552,7 +556,7 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: {
         flex: 1,
         backgroundColor: '#F8FAFC',

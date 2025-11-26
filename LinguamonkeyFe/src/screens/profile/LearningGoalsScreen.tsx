@@ -3,12 +3,13 @@ import { Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator }
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useToast } from "../../utils/useToast"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { useUserStore } from "../../stores/UserStore"
 import { useUserGoalsApi } from "../../hooks/useUserGoals"
 import { UserGoalResponse } from "../../types/dto"
 import { GoalType } from "../../types/enums" // Import GoalType
 import ScreenLayout from "../../components/layout/ScreenLayout"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 // Interface cho mục tiêu hiển thị, ánh xạ từ UserGoalResponse
 interface DisplayGoal {

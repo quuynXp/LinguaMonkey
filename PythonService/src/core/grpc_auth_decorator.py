@@ -1,17 +1,10 @@
-import grpc
 import logging
+import inspect
+import grpc
 from functools import wraps
-
 from .. import learning_service_pb2 as learning_pb2
 
 def authenticated_grpc_method(func):
-    """
-    Một decorator để tự động xác thực token cho các phương thức gRPC.
-    Nó giả định hàm được bọc (wrapped) là một phương thức của class
-    Servicer (có 'self') và có 'context' là tham số thứ ba.
-    
-    Nó sẽ inject 'claims' (nội dung token) vào làm kwarg cho hàm.
-    """
     @wraps(func)
     async def wrapper(*args, **kwargs):
         servicer_instance = args[0]
@@ -25,11 +18,16 @@ def authenticated_grpc_method(func):
             
             kwargs['claims'] = claims
             
-            return await func(*args, **kwargs)
+            response = func(*args, **kwargs)
+            
+            if inspect.isasyncgen(response):
+                return response
+            
+            return await response
         
         except Exception as e:
-            logging.error(f"Lỗi không mong muốn trong gRPC auth decorator: {e}", exc_info=True)
-            context.abort(grpc.StatusCode.INTERNAL, "Lỗi server nội bộ trong quá trình xác thực")
+            logging.error(f"Error in gRPC auth decorator: {e}", exc_info=True)
+            await context.abort(grpc.StatusCode.INTERNAL, "Internal server error during authentication")
             return func.__annotations__.get('return')()
 
     return wrapper

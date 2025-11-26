@@ -10,9 +10,9 @@ import {
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { getStatisticsOverview, getTransactionStatistics } from "../../services/statisticsApi";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { LineChart } from "react-native-chart-kit";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 

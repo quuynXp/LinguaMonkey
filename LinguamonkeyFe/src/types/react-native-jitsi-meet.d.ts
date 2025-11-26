@@ -1,6 +1,6 @@
 declare module 'react-native-jitsi-meet' {
   import { Component } from 'react';
-  import { ViewProps } from 'react-native';
+  import { ViewProps, StyleSheet } from 'react-native';
 
   export interface JitsiMeetConferenceOptions {
     room: string;
@@ -21,7 +21,7 @@ declare module 'react-native-jitsi-meet' {
     onConferenceWillJoin?: (event: any) => void;
   }
 
-  export class JitsiMeetView extends Component<JitsiMeetViewProps> {}
+  export class JitsiMeetView extends Component<JitsiMeetViewProps> { }
 
   const JitsiMeet: {
     call: (url: string, userInfo?: any) => void;

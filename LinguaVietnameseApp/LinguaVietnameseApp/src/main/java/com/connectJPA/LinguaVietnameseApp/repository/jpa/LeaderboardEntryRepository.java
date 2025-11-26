@@ -94,7 +94,7 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
                 FROM leaderboard_entries le
                 JOIN users u ON le.user_id = u.user_id
                 WHERE le.leaderboard_id = (
-                    SELECT leaderboard_id
+                    SELECT id
                     FROM leaderboards
                     WHERE tab = :tab
                     AND type = :type

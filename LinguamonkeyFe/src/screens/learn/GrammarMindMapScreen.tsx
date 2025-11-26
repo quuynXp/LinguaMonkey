@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react"
-import { ActivityIndicator, Animated, Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { ActivityIndicator, Animated, Dimensions, Modal, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import { SafeAreaView } from "react-native-safe-area-context"
 import Svg, { Line } from "react-native-svg"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useGrammar } from "../../hooks/useGrammar";
 import { MindMapNode } from "../../types/api"
-import { createScaledSheet } from "../../utils/scaledStyles"
+import { createScaledSheet } from "../../utils/scaledStyles";
+
 
 const { width, height } = Dimensions.get("window")
 

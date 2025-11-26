@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Modal, StyleSheet } from 'react-native';
+import { createScaledSheet } from '../utils/scaledStyles';
 
 export const showStreakPopup = (newStreak: string, message: string) => {
     console.log(`[STREAK POPUP]: Streak increased to ${newStreak}. Message: ${message}`);
@@ -24,7 +25,7 @@ const StreakPopup = ({ isVisible, streakValue, message, onClose }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     centeredView: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
     modalView: { margin: 20, backgroundColor: 'white', borderRadius: 20, padding: 35, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 4, elevation: 5 },
     title: { fontSize: 24, fontWeight: 'bold', color: '#FF7043', marginBottom: 10 },

@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { Alert, Animated, ScrollView, Switch, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Animated, ScrollView, Switch, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';

@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { useAppStore } from '../stores/appStore';
 import instance from "../api/axiosClient";
 import messaging, { firebase } from '@react-native-firebase/messaging';

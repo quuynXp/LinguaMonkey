@@ -9,18 +9,18 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
-    StyleSheet,
+
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { useVideoCalls } from "../../hooks/useVideos";
 import { v4 as uuidv4 } from "uuid";
 import { gotoTab } from "../../utils/navigationRef";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { useTranslation } from "react-i18next";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import type { VideoCallResponse, VideoCallRequest, CreateGroupCallRequest, UpdateParticipantStatusRequest, PageResponse } from "../../types/dto";
 import type { VideoCallParticipant } from "../../types/entity";
 import { VideoCallParticipantStatus } from "../../types/enums";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const VALID_STATUSES = Object.values(VideoCallParticipantStatus);
 

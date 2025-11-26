@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.LeaderboardEntryResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Leaderboard;
 import com.connectJPA.LinguaVietnameseApp.entity.LeaderboardEntry;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
@@ -42,7 +43,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
-            // FIX: Fail fast if ID is missing to prevent Repository lookup on null
             if (leaderboardId == null || leaderboardId.trim().isEmpty()) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
@@ -55,14 +55,11 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             String tab = leaderboard.getTab();
             Page<LeaderboardEntry> entries;
 
-            // Use specific query method for Level-based sorting to ensure deterministic order
-            // and correct fetch logic. Prevents missing users when Level/Score are identical.
+            // Sorting logic: Global tabs prioritize Level > Score
             if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
-                // Pass Unsorted Pageable because the Repository method has Hardcoded ORDER BY
                 Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
                 entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardUuid, unsortedPageable);
             } else {
-                // Default logic for other tabs (Score based)
                 Pageable effectivePageable = pageable;
                 if (pageable.getSort().isUnsorted()) {
                     effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "score"));
@@ -70,7 +67,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, effectivePageable);
             }
 
-            // JOIN FETCH used in repository, mapped here
             return entries.map(entry -> {
                 LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
                 User u = entry.getUser();
@@ -86,12 +82,39 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
         } catch (AppException e) {
             throw e;
         } catch (IllegalArgumentException e) {
-             // Handle UUID format errors
             throw new AppException(ErrorCode.INVALID_KEY);
         } catch (Exception e) {
             log.error("Error while fetching all leaderboard entries: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    // [NEW] Implement logic to auto-create entry if missing (Fix manual DB insert issue)
+    @Override
+    @Transactional
+    public LeaderboardEntry ensureEntryExists(UUID userId, UUID leaderboardId) {
+        return leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
+                .orElseGet(() -> {
+                    log.info("Creating missing leaderboard entry for User {} in Leaderboard {}", userId, leaderboardId);
+                    
+                    User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                            .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+                    
+                    Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
+                            .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+
+                    LeaderboardEntry newEntry = new LeaderboardEntry();
+                    newEntry.setLeaderboardEntryId(new LeaderboardEntryId(leaderboardId, userId));
+                    newEntry.setUser(user);
+                    newEntry.setLeaderboard(leaderboard);
+                    newEntry.setScore(0);
+                    newEntry.setStreak(0);
+                    newEntry.setIsDeleted(false);
+                    // Critical: Sync level from User to Entry implies User Level helps sorting
+                    // Although sorting uses User table join, explicitly creating the relation is key.
+                    
+                    return leaderboardEntryRepository.save(newEntry);
+                });
     }
 
     @Override
@@ -100,8 +123,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             if (pageable == null) throw new AppException(ErrorCode.INVALID_PAGEABLE);
             if (leaderboardId == null) throw new AppException(ErrorCode.INVALID_KEY);
 
-            // For single entry fetch, we can use the main listing logic and take first
-            // But to be consistent with listing, we reuse the repository call
             Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
             
@@ -148,6 +169,8 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
 
+            // [Optimization] We can use ensureEntryExists here logic internally, but explicit create is requested
+            // Keeping strict creation logic from Mapper
             LeaderboardEntry entry = leaderboardEntryMapper.toEntity(request);
             entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
@@ -170,12 +193,13 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
 
+            // Using ensureEntryExists here could solve "Update but missing" bug
+            // But let's stick to standard update flow which expects existence
             LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
 
             leaderboardEntryMapper.updateEntityFromRequest(request, entry);
             
-            // Re-validate relations
             entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
             entry.setUser(userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
@@ -213,7 +237,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
 
-            // Sorting handled in Repository Query now
             Pageable pageable = PageRequest.of(0, 3);
             List<LeaderboardEntry> entries = leaderboardEntryRepository.findTop3ByLeaderboardIdOrderByUserLevelDesc(leaderboardId, pageable);
 

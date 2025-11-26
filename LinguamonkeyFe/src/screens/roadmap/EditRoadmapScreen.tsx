@@ -3,12 +3,12 @@ import { useTranslation } from "react-i18next";
 import { Alert, ScrollView, TextInput, TouchableOpacity, Text, View, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { useRoadmap } from "../../hooks/useRoadmap";
 import { RoadmapItem, Roadmap } from "../../types/entity";
 import { CreateRoadmapRequest } from "../../types/dto";
-import { Certification } from "../../types/enums";
+import { Certification, ProficiencyLevel } from "../../types/enums";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 type EditableRoadmap = Roadmap;
 
@@ -49,7 +49,7 @@ const EditRoadmapScreen = ({ route, navigation }) => {
       languageCode: roadmap.languageCode || 'en',
       currentLevel: 0,
       targetLevel: 0,
-      targetProficiency: 'BEGINNER',
+      targetProficiency: ProficiencyLevel.A1,
       estimatedCompletionTime: 1,
       certification: 'NONE' as Certification, // SỬA LỖI: Gán giá trị cụ thể ('NONE') và ép kiểu
     };

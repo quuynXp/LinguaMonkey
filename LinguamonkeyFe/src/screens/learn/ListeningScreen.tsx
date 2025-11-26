@@ -15,8 +15,8 @@ import { useLessons } from "../../hooks/useLessons";
 import { useLessonStructure } from "../../hooks/useLessonStructure";
 import { LessonCategoryResponse, LessonResponse } from "../../types/dto";
 import { SkillType } from "../../types/enums";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from '../../components/layout/ScreenLayout';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const UI_COLORS = ["#10B981", "#3B82F6", "#8B5CF6", "#F59E0B", "#EF4444", "#EC4899"];
 const UI_ICONS = ["chat", "newspaper", "business", "flight", "school", "movie"];

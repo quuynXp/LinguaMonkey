@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Animated, Text, TextInput, TouchableOpacity, View, ActivityIndicator } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { authService } from '../../services/authService';
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { showError, showSuccess } from "../../utils/toastHelper";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const ResetPasswordScreen = ({ navigation, route }) => {
     const { t } = useTranslation();

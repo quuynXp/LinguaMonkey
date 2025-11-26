@@ -1,5 +1,5 @@
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { WebSocketService } from './WebSocketService';
 import { SessionStore } from './SessionStore';
 

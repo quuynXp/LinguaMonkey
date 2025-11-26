@@ -6,8 +6,8 @@ import { gotoTab } from "../../utils/navigationRef"
 import { useTranslation } from "react-i18next"
 import { TransactionResponse } from "../../types/dto" // DTO đã được xác minh
 import ScreenLayout from "../../components/layout/ScreenLayout" // Giả định ScreenLayout tồn tại
-import { createScaledSheet } from "../../utils/scaledStyles" // Giả định createScaledSheet tồn tại
 import * as Enums from "../../types/enums" // Import Enums để đảm bảo type safety cho status
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const TransactionHistoryScreen = ({ navigation }) => {
   const { t } = useTranslation();

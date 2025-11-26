@@ -3,10 +3,10 @@ import { Animated, Text, TextInput, TouchableOpacity, View, ActivityIndicator } 
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { authService } from '../../services/authService';
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { showError } from "../../utils/toastHelper";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { gotoTab } from "../../utils/navigationRef";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -79,7 +79,7 @@ const ForgotPasswordScreen = ({ navigation }) => {
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  content: { flex: 1, paddingHorizontal: 24},
+  content: { flex: 1, paddingHorizontal: 24 },
   header: { marginBottom: 20 },
   title: { fontSize: 28, fontWeight: "bold", color: "#1F2937", textAlign: "center", marginBottom: 8 },
   subtitle: { fontSize: 16, color: "#6B7280", textAlign: "center", marginBottom: 40, lineHeight: 24 },

@@ -9,7 +9,7 @@ import {
   ActivityIndicator,
   FlatList,
   TextInput,
-  StyleSheet,
+
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +25,7 @@ import {
   ComprehensionQuestion
 } from '../../types/dto';
 import { SkillType } from '../../types/enums';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface ReadingScreenProps {
   navigation: any;
@@ -434,7 +435,7 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

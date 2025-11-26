@@ -3,9 +3,9 @@ import { FlatList, ScrollView, Text, TouchableOpacity, View, ActivityIndicator }
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useCertificates } from "../../hooks/useCertifications"
-import { createScaledSheet } from "../../utils/scaledStyles"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CertificateResponse } from "../../types/dto"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const CertificationLearningScreen = ({ navigation }: any) => {
   const { t } = useTranslation()

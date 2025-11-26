@@ -1,0 +1,107 @@
+version: '3.8'
+
+networks:
+  lingua-net:
+    driver: bridge
+
+volumes:
+  app_data:
+  redis_data:
+
+services:
+  # Database & Redis (Giống Local)
+  app-database:
+    image: postgres:17
+    container_name: app-database
+    environment:
+      POSTGRES_USER: linguauser
+      POSTGRES_DB: linguaviet_db
+      POSTGRES_PASSWORD: linguapass
+      TZ: "Asia/Ho_Chi_Minh"
+    volumes:
+      - app_data:/var/lib/postgresql/data
+      - ./db:/docker-entrypoint-initdb.d
+    ports:
+      - "5433:5432"
+    networks:
+      - lingua-net
+    restart: always
+
+  redis:
+    image: redis:6-alpine
+    container_name: redis
+    command: ["redis-server", "--requirepass", "redisPass123"]
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - lingua-net
+    restart: always
+
+  # Backend Services (Cấu hình chuẩn Render - Root Context)
+  linguavietnameseapp:
+    build:
+      context: .
+      dockerfile: ./LinguaVietnameseApp/Dockerfile
+    container_name: linguavietnameseapp
+    depends_on:
+      - app-database
+      - redis
+    env_file:
+      - ./LinguaVietnameseApp/.env
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://app-database:5432/linguaviet_db
+      - SPRING_REDIS_HOST=redis
+      - PYTHON_SERVICE_URL=http://pythonservice:8001
+    networks:
+      - lingua-net
+    restart: always
+
+  pythonservice:
+    build:
+      # PROD CONFIG: Context là root, file path là tương đối từ root
+      context: .
+      dockerfile: ./PythonService/Dockerfile
+    container_name: pythonservice
+    depends_on:
+      - app-database
+      - redis
+    env_file:
+      - ./PythonService/.env
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      - DB_HOST=app-database
+      - REDIS_HOST=redis
+      - JAVA_SERVICE_URL=http://linguavietnameseapp:8080
+    volumes:
+      - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/app/public_key.pem:ro
+    ports:
+      - "50052:8001"
+      - "50051:50051"
+    networks:
+      - lingua-net
+    restart: always
+
+  kong:
+    image: kong:3.4
+    container_name: kong
+    depends_on:
+      - linguavietnameseapp
+      - pythonservice
+      - redis
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: "/etc/kong/kong.yml"
+      KONG_PROXY_LISTEN: 0.0.0.0:8000
+      KONG_ADMIN_LISTEN: 0.0.0.0:8001
+      KONG_PLUGINS: bundled,rate-limiting,cors,request-transformer,proxy-cache
+    ports:
+      - "8000:8000"
+      - "8001:8001"
+    volumes:
+      - ./kong.yml:/etc/kong/kong.yml:ro
+    networks:
+      - lingua-net
+    restart: always

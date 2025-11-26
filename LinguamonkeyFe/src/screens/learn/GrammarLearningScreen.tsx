@@ -22,8 +22,8 @@ import type {
 } from "../../types/dto";
 import { SubmitExerciseRequest } from "../../types/dto";
 import { grammarExerciseSchema, validateData } from "../../utils/validation";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const GrammarLearningScreen = ({ navigation }: any) => {
   const { t } = useTranslation();

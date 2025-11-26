@@ -4,9 +4,10 @@ import { useTranslation } from "react-i18next"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useCourses } from "../../hooks/useCourses"
 import { useUserStore } from "../../stores/UserStore"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { CourseReviewRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const WriteReviewCourseScreen = ({ navigation, route }: any) => {
     const { courseId } = route.params as { courseId?: string }

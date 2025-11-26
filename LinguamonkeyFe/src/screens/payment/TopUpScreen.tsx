@@ -20,7 +20,6 @@ import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
 
 type WebBrowserResultType = 'cancel' | 'dismiss' | 'success' | 'opened' | 'error';
 
-
 const TopUpScreen = ({ navigation }) => {
     const { t } = useTranslation();
     const { user } = useUserStore();

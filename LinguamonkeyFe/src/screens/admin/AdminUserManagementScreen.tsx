@@ -12,9 +12,9 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { getUserCounts, getUserGrowth } from "../../services/statisticsApi";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { BarChart } from "react-native-chart-kit";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 

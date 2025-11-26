@@ -1,4 +1,4 @@
-import { LogBox, NativeEventEmitter } from 'react-native';
+import { LogBox, NativeEventEmitter, StyleSheet } from 'react-native';
 
 const originalRegister = NativeEventEmitter.prototype.addListener;
 

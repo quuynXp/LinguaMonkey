@@ -660,7 +660,8 @@
     "totalLessons": "{{count}} Lessons",
     "progress": "Progress: {{progress}}%",
     "continue": "Continue",
-    "courseNotFoundOrNotPublic": "Course not found or is not public"
+    "courseNotFoundOrNotPublic": "Course not found or is not public",
+    "free": "Free"
   },
   "success": {
     "noteCreated": "Note created successfully",
@@ -1017,7 +1018,6 @@
     "empty.subtext": "Create a new room and invite your friends!",
     "join.by.code": "Join by Code",
     "join.by.code.desc": "Enter the room code to join",
-    "code.placeholder": "Enter room code",
     "community_lobby": "Community Lobby",
     "search_public": "Search Public Rooms",
     "empty_public": "No public rooms found",
@@ -1305,7 +1305,8 @@
       "searchCoursesPlaceholder": "Search courses...",
       "enrolledCourses": "My Courses",
       "allCourses": "All Courses",
-      "noCoursesFound": "No courses found."
+      "noCoursesFound": "No courses found.",
+      "exploreCourses": "Explore Courses"
     },
     "days": "{{count}} days",
     "leaderboard": {

@@ -15,7 +15,8 @@ public interface UserFcmTokenRepository extends JpaRepository<UserFcmToken, UUID
     @Query("SELECT t.fcmToken FROM UserFcmToken t WHERE t.userId = :userId")
     List<String> findFcmTokensByUserId(@Param("userId") UUID userId);
 
-
+    Optional<UserFcmToken> findByFcmToken(String fcmToken);
+    
     List<UserFcmToken> findByUserIdAndIsDeletedFalse(UUID userId);
 
     Optional<UserFcmToken> findByUserIdAndDeviceId(UUID userId, String deviceId);

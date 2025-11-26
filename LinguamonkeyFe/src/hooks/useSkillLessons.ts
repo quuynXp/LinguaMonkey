@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosClient";
+import { useTokenStore } from "../stores/tokenStore";
 import {
     AppApiResponse,
     ListeningResponse,
@@ -40,9 +41,7 @@ export interface WordFeedback {
 export const useSkillLessons = () => {
     const queryClient = useQueryClient();
 
-    // ==========================================
-    // === 1. LISTENING ===
-    // ==========================================
+    const BASE_URL = instance.defaults.baseURL || "";
 
     const useProcessListening = () => {
         return useMutation({
@@ -77,11 +76,6 @@ export const useSkillLessons = () => {
         });
     };
 
-    // ==========================================
-    // === 2. SPEAKING ===
-    // ==========================================
-
-    // ✅ NEW: STREAMING PRONUNCIATION
     const useStreamPronunciation = () => {
         return useMutation({
             mutationFn: async ({
@@ -107,23 +101,29 @@ export const useSkillLessons = () => {
                 formData.append("languageCode", languageCode);
                 formData.append("referenceText", referenceText);
 
-                // ✅ STREAMING với NDJSON format
+                const { accessToken } = useTokenStore.getState();
+                if (!accessToken) {
+                    throw new Error("Authentication token is missing.");
+                }
+
+                const url = `${BASE_URL}${SKILL_API_BASE}/speaking/pronunciation-stream`;
+
                 const response = await fetch(
-                    `${process.env.REACT_APP_API_BASE || ""}${SKILL_API_BASE}/speaking/pronunciation-stream`,
+                    url,
                     {
                         method: "POST",
                         body: formData,
                         headers: {
-                            Authorization: `Bearer ${localStorage.getItem("token")}`,
+                            Authorization: `Bearer ${accessToken}`,
                         },
                     }
                 );
 
                 if (!response.ok) {
-                    throw new Error(`Stream failed: ${response.statusText}`);
+                    const errorText = await response.text();
+                    throw new Error(`Stream failed with status ${response.status}. Body: ${errorText.substring(0, 50)}`);
                 }
 
-                // ✅ NDJSON parser
                 const reader = response.body?.getReader();
                 if (!reader) throw new Error("No response body");
 
@@ -137,7 +137,6 @@ export const useSkillLessons = () => {
                     buffer += decoder.decode(value, { stream: true });
                     const lines = buffer.split("\n");
 
-                    // Process all complete lines
                     for (let i = 0; i < lines.length - 1; i++) {
                         const line = lines[i].trim();
                         if (line) {
@@ -145,22 +144,20 @@ export const useSkillLessons = () => {
                                 const chunk: StreamingChunk = JSON.parse(line);
                                 onChunk(chunk);
                             } catch (e) {
-                                console.error("Failed to parse chunk:", line, e);
+
                             }
                         }
                     }
 
-                    // Keep incomplete line in buffer
                     buffer = lines[lines.length - 1];
                 }
 
-                // Process remaining buffer
                 if (buffer.trim()) {
                     try {
                         const chunk: StreamingChunk = JSON.parse(buffer);
                         onChunk(chunk);
                     } catch (e) {
-                        console.error("Failed to parse final chunk:", buffer, e);
+
                     }
                 }
 
@@ -174,7 +171,6 @@ export const useSkillLessons = () => {
         });
     };
 
-    // ✅ OLD: NON-STREAMING PRONUNCIATION (KEEP for fallback)
     const useCheckPronunciation = () => {
         return useMutation({
             mutationFn: async ({
@@ -224,10 +220,6 @@ export const useSkillLessons = () => {
         });
     };
 
-    // ==========================================
-    // === 3. READING ===
-    // ==========================================
-
     const useGenerateReading = () => {
         return useMutation({
             mutationFn: async ({
@@ -246,10 +238,6 @@ export const useSkillLessons = () => {
             },
         });
     };
-
-    // ==========================================
-    // === 4. WRITING ===
-    // ==========================================
 
     const useCheckWriting = () => {
         return useMutation({
@@ -310,20 +298,12 @@ export const useSkillLessons = () => {
         });
     };
 
-    // ==========================================
-    // ✅ RETURN ALL HOOKS
-    // ==========================================
     return {
         useProcessListening,
-
         useStreamPronunciation,
         useCheckPronunciation,
         useCheckSpelling,
-
-        // Reading
         useGenerateReading,
-
-        // Writing
         useCheckWriting,
         useCheckTranslation,
     };

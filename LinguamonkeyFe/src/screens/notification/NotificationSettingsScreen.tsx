@@ -5,12 +5,12 @@ import Icon from '@expo/vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useAppStore } from '../../stores/appStore';
 import NotificationService, { type NotificationPreferences } from "../../services/notificationService"
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { useReminders } from "../../hooks/useReminders";
 import { UserReminderRequest } from "../../types/dto";
 import { useUserStore } from "../../stores/UserStore";
 import * as Enums from "../../types/enums";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 
 const notificationServiceInstance = NotificationService;

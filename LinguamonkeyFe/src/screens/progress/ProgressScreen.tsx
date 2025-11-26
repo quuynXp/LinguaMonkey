@@ -12,12 +12,13 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useNavigation } from "@react-navigation/native"
 import { useTranslation } from "react-i18next"
 import { formatDuration } from "../../utils/timeHelper"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { useUserStore } from "../../stores/UserStore"
-import { useUserLearningActivities } from "../../hooks/useUserActivity"
+import { useGetStudyHistory } from "../../hooks/useUserActivity"
 import type { StudySessionResponse, StatsResponse } from "../../types/dto"
 import { ActivityType } from "../../types/enums"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 type Tab = "sessions" | "tests" | "stats"
 type Period = "week" | "month" | "year"
@@ -25,18 +26,27 @@ type Period = "week" | "month" | "year"
 const ProgressScreen = () => {
     const navigation = useNavigation()
     const { t } = useTranslation()
-    const userId = useUserStore((state) => state.user?.userId)
+
+    // DEBUG: Kiểm tra xem UserStore có thực sự trả về ID không
+    const user = useUserStore((state) => state.user)
+    const userId = user?.userId
+
+    useEffect(() => {
+        if (!userId) {
+            console.warn("ProgressScreen: Missing userId from UserStore. API call will be disabled.")
+        }
+    }, [userId])
 
     const [currentTab, setCurrentTab] = useState<Tab>("stats")
     const [timeFilter, setTimeFilter] = useState<Period>("month")
     const fadeAnim = useRef(new Animated.Value(1)).current
 
-    const { useGetStudyHistory } = useUserLearningActivities()
     const {
         data: studyHistory,
         isLoading,
         error,
         refetch,
+        // isFetching - Có thể dùng thay cho isLoading trong refreshControl
     } = useGetStudyHistory(
         userId,
         timeFilter
@@ -205,6 +215,17 @@ const ProgressScreen = () => {
     }
 
     const renderContent = () => {
+        // Fallback: Nếu không có userId, hook bị disable nên sẽ không có API call.
+        if (!userId) {
+            return (
+                <View style={styles.centerContent}>
+                    <Icon name="account-circle" size={48} color="#F59E0B" />
+                    <Text style={styles.errorText}>
+                        {t("common.userNotIdentified", "Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.")}
+                    </Text>
+                </View>
+            )
+        }
 
         if (isLoading) {
             return (
@@ -223,6 +244,9 @@ const ProgressScreen = () => {
                     <Text style={styles.errorText}>
                         {t("common.errorLoadingData")}
                     </Text>
+                    <TouchableOpacity onPress={() => refetch()} style={{ marginTop: 16 }}>
+                        <Text style={{ color: "#4F46E5", fontWeight: "600" }}>{t("common.retry")}</Text>
+                    </TouchableOpacity>
                 </View>
             )
         }
@@ -303,8 +327,9 @@ const ProgressScreen = () => {
                     style={styles.content}
                     contentContainerStyle={styles.scrollContentContainer}
                     showsVerticalScrollIndicator={false}
+                    // Sửa lỗi: refreshing chỉ là isLoading VÀ khi userId tồn tại (để tránh loop khi disabled)
                     refreshControl={
-                        <RefreshControl refreshing={isLoading} onRefresh={refetch} tintColor="#4F46E5" />
+                        <RefreshControl refreshing={isLoading && !!userId} onRefresh={refetch} tintColor="#4F46E5" />
                     }
                 >
                     {renderContent()}
@@ -548,7 +573,6 @@ const styles = createScaledSheet({
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "flex-start",
-        marginBottom: 12,
     },
     statIconBubble: {
         padding: 8,

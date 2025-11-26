@@ -1,14 +1,15 @@
 import React from 'react';
 import {
   Animated,
-  StyleSheet,
+
   TouchableOpacity,
   View,
   Text
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 // Giả định: Import hàm dịch thuật của bạn. Thường là từ một tệp i18n/config.
-import { useTranslation } from './i18n/i18n'; // THAY THẾ BẰNG IMPORT THỰC TẾ CỦA BẠN
+import { useTranslation } from 'react-i18next';
+import { createScaledSheet } from '../utils/scaledStyles';
 
 interface TabBarProps {
   state: any;
@@ -156,7 +157,7 @@ const CustomTabBar: React.FC<TabBarProps> = ({ state, descriptors, navigation })
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   tabBar: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',

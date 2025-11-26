@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from "react";
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { useTranslation } from "react-i18next";
 import {
   useAvailableTests,
@@ -12,6 +11,7 @@ import { gotoTab } from "../../utils/navigationRef";
 import { Language, languageToCountry } from "../../types/api";
 import CountryFlag from "react-native-country-flag";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 type TestConfig = {
   testConfigId: string;

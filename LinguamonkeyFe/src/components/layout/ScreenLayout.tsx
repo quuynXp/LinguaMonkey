@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, StyleSheet, StatusBar, ViewStyle, StatusBarStyle, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { View, StatusBar, ViewStyle, StatusBarStyle, Platform, StyleSheet } from 'react-native';
+import { useSafeAreaInsets, EdgeInsets } from 'react-native-safe-area-context';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface ScreenLayoutProps {
     children: React.ReactNode;
@@ -25,70 +26,78 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
 }) => {
     const insets = useSafeAreaInsets();
 
-    if (unsafe) {
-        return (
-            <View style={[styles.container, { backgroundColor }, style]}>
-                <StatusBar
-                    barStyle={statusBarStyle}
-                    backgroundColor={statusBarColor}
-                    translucent={Platform.OS === 'android'}
-                />
-                {children}
-            </View>
-        );
-    }
+    const getSafeInsets = (currentInsets: EdgeInsets): EdgeInsets => {
+        if (unsafe) {
+            return { top: 0, bottom: 0, left: 0, right: 0 };
+        }
+        return currentInsets;
+    };
+
+    const safeInsets = getSafeInsets(insets);
 
     return (
         <View style={[styles.container, { backgroundColor }]}>
             <StatusBar
                 barStyle={statusBarStyle}
-                backgroundColor={statusBarColor}
-                translucent={Platform.OS === 'android'}
+                backgroundColor={Platform.OS === 'android' ? statusBarColor : 'transparent'}
+                translucent={true}
             />
 
+            {/* Header: Chỉ áp dụng padding an toàn nếu có headerComponent */}
             {headerComponent ? (
                 <View
                     style={[
-                        styles.header,
-                        { paddingTop: insets.top, backgroundColor: statusBarColor }
+                        styles.headerWrapper,
+                        { paddingTop: safeInsets.top, backgroundColor: statusBarColor }
                     ]}
                 >
                     {headerComponent}
                 </View>
             ) : (
-                <View style={{ height: insets.top, backgroundColor: statusBarColor }} />
+                /* Nếu không có headerComponent, thêm View để tạo khoảng cách an toàn cho StatusBar */
+                <View style={{ height: safeInsets.top, backgroundColor: statusBarColor }} />
             )}
 
+            {/* Nội dung chính: Đảm bảo flex: 1 để chiếm hết không gian còn lại */}
             <View style={[styles.content, style]}>
                 {children}
             </View>
 
-            {bottomComponent && (
+            {/* Footer: Chỉ áp dụng padding an toàn nếu có bottomComponent */}
+            {bottomComponent ? (
                 <View
                     style={[
-                        styles.bottom,
-                        { paddingBottom: insets.bottom, backgroundColor: backgroundColor }
+                        styles.bottomWrapper,
+                        { paddingBottom: safeInsets.bottom, backgroundColor: backgroundColor }
                     ]}
                 >
                     {bottomComponent}
                 </View>
+            ) : (
+                /* Nếu không có bottomComponent, thêm View để tạo khoảng cách an toàn cho vùng dưới */
+                <View style={{ height: safeInsets.bottom, backgroundColor: backgroundColor }} />
             )}
         </View>
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: {
         flex: 1,
+        overflow: 'hidden',
     },
     content: {
         flex: 1,
+        width: '100%',
+        overflow: 'hidden',
     },
-    header: {
+    headerWrapper: {
         zIndex: 10,
+        width: '100%',
     },
-    bottom: {
+    bottomWrapper: {
         zIndex: 10,
+        width: '100%',
     }
 });
 

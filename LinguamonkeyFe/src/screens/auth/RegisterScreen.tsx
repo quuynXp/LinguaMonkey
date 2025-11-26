@@ -4,11 +4,11 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { authService } from '../../services/authService';
 import { showError, showSuccess } from "../../utils/toastHelper";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 WebBrowser.maybeCompleteAuthSession();
 

@@ -1,5 +1,5 @@
 // import { useEffect, useRef, useState } from "react"
-// import { Alert, Animated, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native"
+// import { Alert, Animated, Modal, ScrollView,  Text, TextInput, TouchableOpacity, View } from "react-native"
 // import Icon from "react-native-vector-icons/MaterialIcons"
 // import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 // import { useTranslation } from "react-i18next"
@@ -8,7 +8,7 @@
 // import { formatDateTime } from "../../utils/timeHelper"
 // import instance from "../../api/axiosClient"
 // import {} from "../../types/api"
-// import { createScaledSheet } from "../../utils/scaledStyles"
+//
 // import { useUserStore } from "../../stores/UserStore"
 
 // interface StudyRoom {

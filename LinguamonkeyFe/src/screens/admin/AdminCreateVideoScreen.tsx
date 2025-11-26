@@ -4,10 +4,11 @@ import {
     Text,
     TextInput,
     TouchableOpacity,
-    StyleSheet,
+
     ScrollView,
     ActivityIndicator,
     Alert,
+    StyleSheet
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import instance from '../../api/axiosClient';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { pickSingleDocument, PickedDocument } from '../../utils/documentPickerHelper';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const AdminCreateVideoScreen = ({ navigation }) => {
     const { t } = useTranslation();
@@ -176,7 +178,7 @@ const AdminCreateVideoScreen = ({ navigation }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: { flex: 1, padding: 16, backgroundColor: '#fff' },
     header: { fontSize: 24, fontWeight: 'bold', marginBottom: 24, color: '#333' },
     inputGroup: { marginBottom: 16 },

@@ -11,7 +11,8 @@ import {
   TextInput,
   FlatList,
   Image,
-  StyleSheet,
+
+  StyleSheet
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,6 +26,7 @@ import {
   WritingResponseBody
 } from '../../types/dto';
 import { SkillType } from '../../types/enums';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface WritingScreenProps {
   navigation: any;
@@ -296,7 +298,7 @@ const WritingScreen = ({ navigation, route }: WritingScreenProps) => {
   );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

@@ -11,12 +11,13 @@ import {
 import { useTranslation } from "react-i18next"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { useLessons } from "../../hooks/useLessons"
 import { useCourses } from "../../hooks/useCourses"
 import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { LessonResponse, LessonSummaryResponse } from "../../types/dto"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const { width } = Dimensions.get("window")
 

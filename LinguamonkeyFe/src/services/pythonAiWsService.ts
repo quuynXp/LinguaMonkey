@@ -1,4 +1,4 @@
-import { AppState, AppStateStatus } from 'react-native';
+import { AppState, AppStateStatus, StyleSheet } from 'react-native';
 import { useTokenStore } from '../stores/tokenStore';
 import { API_BASE_URL } from '../api/apiConfig';
 

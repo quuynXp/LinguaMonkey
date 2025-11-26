@@ -15,7 +15,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type {
@@ -23,6 +23,7 @@ import type {
   CourseEnrollmentResponse,
 } from "../../types/dto"
 import { SupportedCurrency } from "../../utils/currency"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 // --- Components ---
 

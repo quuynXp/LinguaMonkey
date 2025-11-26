@@ -15,9 +15,9 @@ import { useNavigation } from "@react-navigation/native";
 import { useUserStore } from "../../stores/UserStore";
 import { useUsers } from "../../hooks/useUsers";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import type { UserProfileResponse } from "../../types/dto";
 import type { User } from "../../types/entity";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 interface RouteParams {
   userId: string;

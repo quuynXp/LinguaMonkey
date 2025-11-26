@@ -1,14 +1,13 @@
 // ChartWithDatePicker.js
-"use client"
-
-import React, { useState } from "react"
-import { View, Text, TouchableOpacity, Modal, StyleSheet } from "react-native"
-import { VictoryBar, VictoryChart, VictoryTheme } from "victory-native"
-import Icon from "react-native-vector-icons/MaterialIcons"
+import React, { useState } from "react";
+import { View, Text, TouchableOpacity, Modal } from "react-native";
+import { VictoryBar, VictoryChart, VictoryTheme } from "victory-native";
+import Icon from "react-native-vector-icons/MaterialIcons";
+import { createScaledSheet } from "../utils/scaledStyles";
 
 const ChartWithDatePicker = () => {
-  const [timeRange, setTimeRange] = useState("week") // "day" | "week" | "month" | "year"
-  const [showModal, setShowModal] = useState(false)
+  const [timeRange, setTimeRange] = useState("week"); // "day" | "week" | "month" | "year"
+  const [showModal, setShowModal] = useState(false);
 
   // Mock data theo từng khoảng thời gian
   const getChartData = () => {
@@ -19,7 +18,7 @@ const ChartWithDatePicker = () => {
           { label: "6-12h", value: 35 },
           { label: "12-18h", value: 40 },
           { label: "18-24h", value: 25 },
-        ]
+        ];
       case "week":
         return [
           { label: "Mon", value: 50 },
@@ -29,14 +28,14 @@ const ChartWithDatePicker = () => {
           { label: "Fri", value: 55 },
           { label: "Sat", value: 90 },
           { label: "Sun", value: 40 },
-        ]
+        ];
       case "month":
         return [
           { label: "Week 1", value: 200 },
           { label: "Week 2", value: 180 },
           { label: "Week 3", value: 250 },
           { label: "Week 4", value: 220 },
-        ]
+        ];
       case "year":
         return [
           { label: "Jan", value: 800 },
@@ -51,23 +50,26 @@ const ChartWithDatePicker = () => {
           { label: "Oct", value: 990 },
           { label: "Nov", value: 870 },
           { label: "Dec", value: 1120 },
-        ]
+        ];
       default:
-        return []
+        return [];
     }
-  }
+  };
 
   const timeLabel = {
     day: "Today",
     week: "This Week",
     month: "This Month",
     year: "This Year",
-  }
+  };
 
   return (
     <View style={styles.container}>
       {/* Nút chọn thời gian */}
-      <TouchableOpacity style={styles.timeButton} onPress={() => setShowModal(true)}>
+      <TouchableOpacity
+        style={styles.timeButton}
+        onPress={() => setShowModal(true)}
+      >
         <Icon name="event" size={20} color="#4F46E5" />
         <Text style={styles.timeButtonText}>{timeLabel[timeRange]}</Text>
       </TouchableOpacity>
@@ -97,8 +99,8 @@ const ChartWithDatePicker = () => {
                   timeRange === range && styles.modalOptionSelected,
                 ]}
                 onPress={() => {
-                  setTimeRange(range)
-                  setShowModal(false)
+                  setTimeRange(range);
+                  setShowModal(false);
                 }}
               >
                 <Text
@@ -115,10 +117,10 @@ const ChartWithDatePicker = () => {
         </View>
       </Modal>
     </View>
-  )
-}
+  );
+};
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -170,6 +172,6 @@ const styles = StyleSheet.create({
     color: "#4F46E5",
     fontWeight: "700",
   },
-})
+});
 
-export default ChartWithDatePicker
+export default ChartWithDatePicker;

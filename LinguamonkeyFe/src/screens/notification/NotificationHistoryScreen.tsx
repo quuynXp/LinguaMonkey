@@ -1,11 +1,11 @@
 import { ActivityIndicator, Alert, Animated, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import { useEffect, useRef, useState } from "react"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import { createScaledSheet } from "../../utils/scaledStyles"
 import { useNotifications } from "../../hooks/useNotifications"
 import { useUserStore } from "../../stores/UserStore"
 import { NotificationResponse, NotificationRequest } from "../../types/dto"
 import * as Enums from "../../types/enums"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 // --- Constants ---
 const PAGE_SIZE = 50;

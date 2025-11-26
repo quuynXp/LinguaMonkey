@@ -4,8 +4,8 @@ import { Alert, Animated, RefreshControl, ScrollView, Text, TouchableOpacity, Vi
 import Icon from "react-native-vector-icons/MaterialIcons";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { useRoadmap } from "../../hooks/useRoadmap";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { RoadmapItem } from "../../types/entity";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const RoadmapItemDetailScreen = ({ navigation, route }) => {
   const { itemId, roadmapId } = route.params;

@@ -10,6 +10,7 @@ import {
   Animated,
   Easing,
   Platform,
+  StyleSheet
 } from 'react-native';
 import Video from 'react-native-video';
 import AudioRecorderPlayer from 'react-native-audio-recorder-player';

@@ -29,9 +29,9 @@ import {
     useReactReview,
 } from "../../hooks/useBilinguaVideo";
 import type { BilingualVideoResponse, VideoResponse, VideoReviewResponse, CreateReviewRequest } from "../../types/dto";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width } = Dimensions.get("window");
 

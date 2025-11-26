@@ -4,8 +4,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { authService } from '../../services/authService';
 import { showError, showSuccess } from "../../utils/toastHelper";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const VerifyCodeScreen = ({ navigation, route }) => {
   const { t } = useTranslation();

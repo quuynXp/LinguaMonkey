@@ -4,10 +4,10 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { useUserStore } from "../../stores/UserStore";
 import { resetToTab, resetToAuth } from "../../utils/navigationRef";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { getGreetingKey, getRandomQuote, getTimeBasedEmoji } from "../../utils/motivationHelper";
 import { useTranslation } from "react-i18next";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 type RootStackParamList = {
   DailyWelcome: undefined;

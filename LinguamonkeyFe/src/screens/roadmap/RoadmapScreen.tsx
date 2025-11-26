@@ -3,9 +3,10 @@ import { useTranslation } from "react-i18next"
 import { Alert, Animated, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useRoadmap } from "../../hooks/useRoadmap"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { RoadmapUserResponse, RoadmapItemUserResponse, MilestoneUserResponse } from "../../types/dto"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 
 const RoadmapScreen = ({ navigation, route }: any) => {

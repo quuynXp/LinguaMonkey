@@ -248,7 +248,8 @@ export enum ProficiencyLevel {
     B2 = "B2",
     C1 = "C1",
     C2 = "C2",
-    NATIVE = "NATIVE"
+    NATIVE = "NATIVE",
+    BEGINER = "BEGINER"
 }
 
 export enum QuestionType {

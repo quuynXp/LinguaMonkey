@@ -185,14 +185,14 @@ const ChatRoomListScreen = ({ navigation }: any) => {
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('room.community_lobby')}</Text>
-        <View style={{flexDirection: 'row', gap: 12}}>
-            {/* Button to navigate to Private Chats */}
-            <TouchableOpacity onPress={() => navigation.navigate('PrivateChatListScreen')}>
-                <Icon name="chat" size={24} color="#4F46E5" />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowCodeModal(true)}>
-                <Icon name="dialpad" size={24} color="#4F46E5" />
-            </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+          {/* Button to navigate to Private Chats */}
+          <TouchableOpacity onPress={() => navigation.navigate('PrivateChatListScreen')}>
+            <Icon name="chat" size={24} color="#4F46E5" />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setShowCodeModal(true)}>
+            <Icon name="dialpad" size={24} color="#4F46E5" />
+          </TouchableOpacity>
         </View>
       </View>
 

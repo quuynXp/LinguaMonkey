@@ -12,9 +12,10 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useRoute, useNavigation } from "@react-navigation/native"
 import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CourseVersionResponse } from "../../types/dto"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const CourseManagerScreen = () => {
     const { t } = useTranslation()

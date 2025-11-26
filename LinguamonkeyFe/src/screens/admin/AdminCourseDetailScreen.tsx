@@ -17,8 +17,14 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import Toast from "../../components/Toast";
 import { useCourses } from "../../hooks/useCourses";
 import { goBack } from "../../utils/navigationRef";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
+import { CourseResponse } from "../../types/dto";
+
+// Extended interface for the form to handle flattened fields like description
+interface CourseFormState extends Partial<CourseResponse> {
+    description?: string;
+}
 
 const AdminCourseDetailScreen = () => {
     const { t } = useTranslation();
@@ -28,17 +34,24 @@ const AdminCourseDetailScreen = () => {
 
     const [refreshing, setRefreshing] = useState(false);
     const [isEditing, setIsEditing] = useState(false);
-    const [formData, setFormData] = useState<Partial<Course>>({});
+    const [formData, setFormData] = useState<CourseFormState>({});
 
-    const { useCourse, useUpdateCourse, useDeleteCourse } = useCourses();
+    // Cast to any to bypass missing property definition in useCourses hook type definition
+    const { useCourse, useUpdateCourse, useDeleteCourse } = useCourses() as any;
 
     const { data: course, isLoading, refetch } = useCourse(courseId);
-    const { updateCourse, isUpdating } = useUpdateCourse();
-    const { deleteCourse, isDeleting } = useDeleteCourse();
+
+    // Destructure standard React Query mutation results
+    const { mutateAsync: updateCourse, isPending: isUpdating } = useUpdateCourse();
+    const { mutateAsync: deleteCourse, isPending: isDeleting } = useDeleteCourse();
 
     useEffect(() => {
         if (course) {
-            setFormData(course);
+            // Flatten description from latestPublicVersion to top-level form state
+            setFormData({
+                ...course,
+                description: course.latestPublicVersion?.description || ""
+            });
         }
     }, [course]);
 
@@ -53,13 +66,17 @@ const AdminCourseDetailScreen = () => {
         }
     }, [refetch, t]);
 
-    const handleChangeText = (field: keyof Course, value: string | number) => {
+    const handleChangeText = (field: keyof CourseFormState, value: string | number) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
     };
 
     const handleToggleEdit = () => {
-        if (isEditing) {
-            setFormData(course || {});
+        if (isEditing && course) {
+            // Reset form on cancel
+            setFormData({
+                ...course,
+                description: course.latestPublicVersion?.description || ""
+            });
         }
         setIsEditing((prev) => !prev);
     };
@@ -104,7 +121,7 @@ const AdminCourseDetailScreen = () => {
         );
     };
 
-    const renderField = (label: string, field: keyof Course, multiline = false, keyboardType: "default" | "numeric" = "default") => {
+    const renderField = (label: string, field: keyof CourseFormState, multiline = false, keyboardType: "default" | "numeric" = "default") => {
         const value = formData[field] ?? "";
         return (
             <View style={styles.fieldContainer}>
@@ -174,7 +191,12 @@ const AdminCourseDetailScreen = () => {
                 {renderField(t("admin.courseDetail.form.title"), "title")}
                 {renderField(t("admin.courseDetail.form.description"), "description", true)}
                 {renderField(t("admin.courseDetail.form.difficultyLevel"), "difficultyLevel")}
-                {renderField(t("admin.courseDetail.form.type"), "type")}
+                {/* Note: 'type' might be read-only or need mapped keys if it's an enum, but rendering as text for now */}
+                <View style={styles.fieldContainer}>
+                    <Text style={styles.fieldLabel}>{t("admin.courseDetail.form.type")}</Text>
+                    <Text style={styles.fieldValue}>{course?.type || t("common.notAvailable")}</Text>
+                </View>
+
                 {renderField(t("admin.courseDetail.form.price"), "price", false, "numeric")}
 
                 <View style={styles.fieldContainer}>

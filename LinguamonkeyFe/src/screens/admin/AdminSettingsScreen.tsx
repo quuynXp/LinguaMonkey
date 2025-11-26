@@ -10,8 +10,8 @@ import {
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const AdminSettingsScreen = () => {
     const { t } = useTranslation();

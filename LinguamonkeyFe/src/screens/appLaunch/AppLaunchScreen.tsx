@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from "react"
-import { Animated, Dimensions, StyleSheet, Text, TouchableOpacity, View } from "react-native"
+import { Animated, Dimensions, Text, TouchableOpacity, View } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { gotoTab } from "../../utils/navigationRef";
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { createScaledSheet } from "../../utils/scaledStyles";
+  ;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { ScrollView } from "react-native-gesture-handler";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const { width, height } = Dimensions.get('window');
 

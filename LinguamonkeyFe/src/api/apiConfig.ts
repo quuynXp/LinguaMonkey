@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 const ADB_REVERSE_URL = process.env.EXPO_PUBLIC_ADB_REVERSE_URL || 'http://localhost:8000';
 const ANDROID_EMULATOR_URL = process.env.EXPO_PUBLIC_ANDROID_EMULATOR_URL || 'http://10.0.2.2:8000';

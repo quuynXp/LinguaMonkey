@@ -7,28 +7,29 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Môi trường / IDE
+*.log
+.venv/
+models/
+data_cache/
+
 .idea/
 .vscode/
 *.swp
 *.swo
 
-# Build/Dist artifacts
+
 build/
 dist/
 *.egg-info/
 wheels/
 
-# Git
 .git/
 .gitignore
 .gitattributes
 
-# Credentials / Logs
 .env
 *.env
 *.log
 
-# Test
 .pytest_cache/
 .tox/

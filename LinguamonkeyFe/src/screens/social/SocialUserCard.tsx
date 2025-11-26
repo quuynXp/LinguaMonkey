@@ -1,5 +1,5 @@
 // import React from 'react';
-// import { View, Text, Image, TouchableOpacity } from 'react-native';
+// import { View, Text, Image, TouchableOpacity , StyleSheet } from 'react-native';
 // import { UserProfile, CoupleData } from '../../types/api';
 // import { createScaledSheet } from '../../utils/scaledStyles'; // Import trực tiếp tool
 

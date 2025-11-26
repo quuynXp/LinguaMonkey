@@ -14,7 +14,7 @@ import { createScaledSheet } from '../../utils/scaledStyles'
 import ScreenLayout from '../../components/layout/ScreenLayout'
 import type { CourseResponse } from '../../types/dto'
 import Icon from 'react-native-vector-icons/MaterialIcons'
-import { formatCurrency } from '../../utils/currency'
+import { formatCurrency } from '../../utils/formatCurrency'
 
 const SuggestedCoursesScreen = ({ navigation }: any) => {
     const { t } = useTranslation()

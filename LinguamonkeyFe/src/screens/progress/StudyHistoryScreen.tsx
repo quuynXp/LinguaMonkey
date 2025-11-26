@@ -4,12 +4,13 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useNavigation } from "@react-navigation/native"
 import { useTranslation } from "react-i18next"
 import { formatDuration } from "../../utils/timeHelper"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { useUserStore } from "../../stores/UserStore"
-import { useUserLearningActivities } from "../../hooks/useUserActivity"
+import { useAllActivities } from "../../hooks/useUserActivity"
 import type { StudySessionResponse, StatsResponse } from "../../types/dto"
 import { ActivityType } from "../../types/enums"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const StudyHistoryScreen = () => {
     const navigation = useNavigation()
@@ -516,3 +517,7 @@ const styles = createScaledSheet({
 })
 
 export default StudyHistoryScreen
+
+function useUserLearningActivities(): { useGetStudyHistory: any } {
+    throw new Error("Function not implemented.")
+}

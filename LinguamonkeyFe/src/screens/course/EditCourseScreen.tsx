@@ -13,10 +13,11 @@ import { useTranslation } from "react-i18next"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useCourses } from "../../hooks/useCourses"
 import { useUserStore } from "../../stores/UserStore"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CourseResponse } from "../../types/dto"
 import { DifficultyLevel } from "../../types/enums"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const EditCourseScreen = ({ navigation, route }: any) => {
   const { courseId: initialCourseId } = route.params

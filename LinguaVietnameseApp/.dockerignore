@@ -19,3 +19,38 @@ build/
 
 
 .mvn/wrapper/maven-wrapper.jar
+# Python
+venv/
+.venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+*.log
+.venv/
+models/
+data_cache/
+
+.idea/
+.vscode/
+*.swp
+*.swo
+
+
+build/
+dist/
+*.egg-info/
+wheels/
+
+.git/
+.gitignore
+.gitattributes
+
+.env
+*.env
+*.log
+
+.pytest_cache/
+.tox/

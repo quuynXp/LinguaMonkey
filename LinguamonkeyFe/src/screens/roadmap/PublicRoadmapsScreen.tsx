@@ -1,11 +1,12 @@
 import React, { useState, useCallback, useMemo } from 'react'
-import { View, ScrollView, StyleSheet, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Modal, Alert } from 'react-native'
+import { View, ScrollView, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, Modal, Alert } from 'react-native'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { useTranslation } from 'react-i18next'
 import { useRoadmap } from '../../hooks/useRoadmap'
 import { useUserStore } from '../../stores/UserStore'
 import { Roadmap } from '../../types/entity'
 import ScreenLayout from '../../components/layout/ScreenLayout'
+import { createScaledSheet } from '../../utils/scaledStyles'
 // import { RoadmapResponse } from '../../types/dto' // Import DTO type
 
 
@@ -241,7 +242,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
   )
 }
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',

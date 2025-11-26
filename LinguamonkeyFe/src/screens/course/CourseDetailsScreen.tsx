@@ -12,7 +12,7 @@ import {
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type {
@@ -26,6 +26,7 @@ import {
   CourseType,
   CourseEnrollmentStatus,
 } from "../../types/enums"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const LessonItem = ({ lesson, isExpanded, onToggle, isPurchased, navigation, courseId }: any) => {
   const { t } = useTranslation()

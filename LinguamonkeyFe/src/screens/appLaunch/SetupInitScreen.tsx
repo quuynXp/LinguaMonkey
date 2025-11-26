@@ -8,13 +8,12 @@ import CountryFlag from "react-native-country-flag"
 import { useTranslation } from "react-i18next"
 import { gotoTab } from "../../utils/navigationRef";
 import PhoneInput from "react-native-phone-number-input";
-
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useUserStore } from "../../stores/UserStore";
 import { useTokenStore } from "../../stores/tokenStore";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 
 type SetupInitScreenProps = {

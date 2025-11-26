@@ -9,8 +9,8 @@ import {
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { getActivityStatistics, getStatisticsOverview } from "../../services/statisticsApi";
-import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 const AdminLessonManagementScreen = () => {
   const { t } = useTranslation();

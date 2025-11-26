@@ -1,6 +1,6 @@
 // import { useState, useEffect, useRef } from 'react';
 // import { useTranslation } from 'react-i18next';
-// import { AppState } from 'react-native';
+// import { AppState , StyleSheet } from 'react-native';
 // import { QuizQuestion, Player, ChatMessage, User, WSMessage } from '../types/api';
 // import { useUserStore } from '../stores/UserStore';
 // import { WebSocketService } from '../services/WebSocketService';

@@ -1,0 +1,21 @@
+# LinguaVietnameseApp/Dockerfile.dev
+FROM eclipse-temurin:21-jdk
+
+WORKDIR /app
+
+# 1. COPY CONFIG FILES
+# Vì context là ./LinguaVietnameseApp, ta copy từ thư mục con "LinguaVietnameseApp" bên trong nó ra thẳng /app
+COPY LinguaVietnameseApp/.mvn .mvn
+COPY LinguaVietnameseApp/mvnw .
+COPY LinguaVietnameseApp/pom.xml .
+
+# 2. FIX QUYỀN VÀ TẢI DEPENDENCY
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
+RUN ./mvnw dependency:go-offline
+
+# 3. COPY SOURCE CODE
+COPY LinguaVietnameseApp/src ./src
+
+# 4. RUN APP (Chạy trực tiếp Spring Boot để tiện debug local, hoặc build jar)
+# Dùng spring-boot:run để log đẹp hơn và nhanh hơn ở local
+CMD ["./mvnw", "spring-boot:run"]

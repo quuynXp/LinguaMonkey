@@ -13,10 +13,11 @@ import { useTranslation } from "react-i18next"
 import { useUserStore } from "../../stores/UserStore"
 import { useCourses } from "../../hooks/useCourses"
 import { useLessons } from "../../hooks/useLessons"
-import { createScaledSheet } from "../../utils/scaledStyles"
+
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CourseResponse, LessonResponse } from "../../types/dto"
 import { CourseType, SkillType } from "../../types/enums"
+import { createScaledSheet } from "../../utils/scaledStyles"
 
 const LearnScreen = ({ navigation }: any) => {
   const { t } = useTranslation()

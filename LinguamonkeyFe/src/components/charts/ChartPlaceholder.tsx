@@ -1,5 +1,6 @@
-import { View, Text } from "react-native"
-import { createScaledSheet } from "../../utils/scaledStyles"
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
+import { createScaledSheet } from '../../utils/scaledStyles';
 
 const ChartPlaceholder = () => {
     return (
