@@ -2,7 +2,7 @@ import logging
 import inspect
 import grpc
 from functools import wraps
-from .. import learning_service_pb2 as learning_pb2
+from src.grpc_generated import learning_service_pb2 as learning_pb2
 
 def authenticated_grpc_method(func):
     @wraps(func)

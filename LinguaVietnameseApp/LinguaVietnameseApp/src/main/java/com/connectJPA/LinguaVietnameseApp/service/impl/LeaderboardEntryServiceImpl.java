@@ -108,8 +108,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                     newEntry.setUser(user);
                     newEntry.setLeaderboard(leaderboard);
                     newEntry.setScore(0);
-                    newEntry.setStreak(0);
-                    newEntry.setIsDeleted(false);
+                    newEntry.setDeleted(false);
                     // Critical: Sync level from User to Entry implies User Level helps sorting
                     // Although sorting uses User table join, explicitly creating the relation is key.
                     

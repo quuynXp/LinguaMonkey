@@ -12,8 +12,8 @@ from .api.matchmaking_service import match_users_with_gemini
 
 from .core.grpc_auth_decorator import authenticated_grpc_method
 
-from . import learning_service_pb2 as learning_pb2
-from . import learning_service_pb2_grpc as learning_pb2_grpc
+from src.grpc_generated import learning_service_pb2 as learning_pb2
+from src.grpc_generated import learning_service_pb2_grpc as learning_pb2_grpc
 
 from .core.session import AsyncSessionLocal
 from .core.cache import get_redis_client, close_redis_client
