@@ -4,9 +4,18 @@ FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 
 # 1. Tải dependencies (tận dụng cache Docker hiệu quả)
-# Chỉ COPY các file cấu hình dependency (pom.xml) trước để build cache
+# COPY chỉ các file cấu hình dependency và mvnw
+# Giả định cấu trúc code: /app/LinguaVietnameseApp/LinguaVietnameseApp/
 COPY LinguaVietnameseApp/LinguaVietnameseApp/pom.xml /app/LinguaVietnameseApp/LinguaVietnameseApp/
+COPY LinguaVietnameseApp/LinguaVietnameseApp/mvnw /app/LinguaVietnameseApp/LinguaVietnameseApp/
+COPY LinguaVietnameseApp/LinguaVietnameseApp/.mvn /app/LinguaVietnameseApp/LinguaVietnameseApp/.mvn
+
+# Đổi WORKDIR vào thư mục code chứa pom.xml và mvnw
 WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
+
+# Cấp quyền thực thi và sửa lỗi line endings cho mvnw trước khi dùng
+RUN sed -i 's/\r$//' mvnw
+RUN chmod +x mvnw
 
 # Tải dependencies mà không build code (sẽ sử dụng cache trừ khi pom.xml thay đổi)
 RUN ./mvnw dependency:go-offline
@@ -15,10 +24,6 @@ RUN ./mvnw dependency:go-offline
 # COPY toàn bộ code còn lại
 WORKDIR /app
 COPY . .
-
-# Fix line endings và cấp quyền cho mvnw
-RUN sed -i 's/\r$//' LinguaVietnameseApp/LinguaVietnameseApp/mvnw
-RUN chmod +x LinguaVietnameseApp/LinguaVietnameseApp/mvnw
 
 # Quay lại thư mục code để build
 WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
