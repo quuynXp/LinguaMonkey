@@ -76,16 +76,15 @@
 FROM eclipse-temurin:21-jdk AS builder
 WORKDIR /app
 COPY . .
-RUN sed -i 's/\r$//' LinguaVietnameseApp/mvnw
-RUN chmod +x LinguaVietnameseApp/mvnw
-WORKDIR /app/LinguaVietnameseApp
+RUN sed -i 's/\r$//' LinguaVietnameseApp/LinguaVietnameseApp/mvnw
+RUN chmod +x LinguaVietnameseApp/LinguaVietnameseApp/mvnw
+WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
 RUN ./mvnw clean package -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
 
-COPY --from=builder /app/LinguaVietnameseApp/target/*.jar app.jar
-
+COPY --from=builder /app/LinguaVietnameseApp/LinguaVietnameseApp/target/*.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","/app/app.jar"]
 
