@@ -9,7 +9,7 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.FriendshipRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LeaderboardEntryRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
-import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil;
+import com.connectJPA.LinguaVietnameseApp.utils.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;

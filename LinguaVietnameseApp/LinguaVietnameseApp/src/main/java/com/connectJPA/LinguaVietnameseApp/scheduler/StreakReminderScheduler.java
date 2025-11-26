@@ -5,7 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserLearningActivityRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
-import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil;
+import com.connectJPA.LinguaVietnameseApp.utils.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -70,7 +70,7 @@ public class StreakReminderScheduler {
         for (User user : users) {
             UUID userId = user.getUserId();
             // Cần giả định user.getMinLearningDurationMinutes() trả về 15 hoặc tương đương
-            Long minGoal = user.getMinLearningDurationMinutes() != null ? user.getMinLearningDurationMinutes() : 15L; 
+            Long minGoal = user.getMinLearningDurationMinutes() != 0 ? user.getMinLearningDurationMinutes() : 15L;
 
             // Giả định sumDurationMinutesByUserIdAndDate trả về Long (tổng số phút)
             Long totalDurationToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, today);
@@ -113,7 +113,7 @@ public class StreakReminderScheduler {
         for (User user : users) {
             UUID userId = user.getUserId();
             // Cần giả định user.getMinLearningDurationMinutes() trả về 15 hoặc tương đương
-            Long minGoal = user.getMinLearningDurationMinutes() != null ? user.getMinLearningDurationMinutes() : 15L; 
+            Long minGoal = user.getMinLearningDurationMinutes() != 0 ? user.getMinLearningDurationMinutes() : 15L;
 
             Long totalDurationYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, yesterday);
             if (totalDurationYesterday == null) totalDurationYesterday = 0L;

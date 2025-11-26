@@ -5,7 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.CriteriaType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.springframework.data.elasticsearch.core.query.Criteria;
+//import org.springframework.data.elasticsearch.core.query.Criteria;
 
 import java.time.LocalDateTime;
 import java.util.UUID;

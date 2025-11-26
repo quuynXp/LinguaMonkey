@@ -33,7 +33,6 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
     Optional<User> findByEmailAndIsDeletedFalse(String email);
 
     Optional<User> findByPhoneAndIsDeletedFalse(String phone);
-    List<User> findAllByIsDeletedFalse();
 
      @Query("SELECT u FROM User u WHERE (u.email = :identifier OR u.phone = :identifier) AND u.isDeleted = false")
      Optional<User> findByIdentifier(@Param("identifier") String identifier);

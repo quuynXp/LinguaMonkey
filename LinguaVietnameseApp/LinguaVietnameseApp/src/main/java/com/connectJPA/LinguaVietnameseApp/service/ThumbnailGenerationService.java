@@ -6,11 +6,11 @@ import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
-import com.connectJPA.LinguaVietnameseApp.repository.CourseRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.LessonRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.utils.SvgGenerator;
-import com.connectJPA.LinguaVietnameseApp.util.NotificationI18nUtil; // Cần import
+import com.connectJPA.LinguaVietnameseApp.utils.NotificationI18nUtil; // Cần import
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

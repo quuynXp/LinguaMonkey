@@ -5,12 +5,14 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.UserReminderResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.UserReminder;
 import com.connectJPA.LinguaVietnameseApp.enums.RepeatType;
 import com.connectJPA.LinguaVietnameseApp.enums.TargetType;
+import com.connectJPA.LinguaVietnameseApp.exception.AppException;
+import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserReminderRepository;
 import com.connectJPA.LinguaVietnameseApp.service.UserReminderService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.elasticsearch.ResourceNotFoundException;
+//import org.springframework.data.elasticsearch.ResourceNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,7 +51,7 @@ public class UserReminderServiceImpl implements UserReminderService {
     @Transactional
     public UserReminderResponse updateReminder(UUID id, UUID userId, UserReminderRequest request) {
         UserReminder reminder = userReminderRepository.findByIdAndUserIdAndIsDeletedFalse(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found with id " + id));
+                .orElseThrow(() -> new AppException(ErrorCode.CONCURRENT_UPDATE_ERROR));
 
         mapRequestToEntity(request, reminder);
         reminder.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
@@ -62,7 +64,7 @@ public class UserReminderServiceImpl implements UserReminderService {
     @Transactional
     public void deleteReminder(UUID id, UUID userId) {
         UserReminder reminder = userReminderRepository.findByIdAndUserIdAndIsDeletedFalse(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found with id " + id));
+                .orElseThrow(() -> new AppException(ErrorCode.CONCURRENT_UPDATE_ERROR));
 
         reminder.setDeleted(true);
         reminder.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
@@ -73,7 +75,7 @@ public class UserReminderServiceImpl implements UserReminderService {
     @Transactional
     public UserReminderResponse toggleReminder(UUID id, UUID userId) {
         UserReminder reminder = userReminderRepository.findByIdAndUserIdAndIsDeletedFalse(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found with id " + id));
+                .orElseThrow(() -> new AppException(ErrorCode.CONCURRENT_UPDATE_ERROR));
 
         reminder.setEnabled(!reminder.getEnabled());
         reminder.setUpdatedAt(OffsetDateTime.now(ZoneOffset.UTC));
@@ -86,7 +88,7 @@ public class UserReminderServiceImpl implements UserReminderService {
     @Override
     public UserReminderResponse getReminderById(UUID id, UUID userId) {
         UserReminder reminder = userReminderRepository.findByIdAndUserIdAndIsDeletedFalse(id, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("Reminder not found with id " + id));
+                .orElseThrow(() -> new AppException(ErrorCode.CONCURRENT_UPDATE_ERROR));
         return mapEntityToResponse(reminder);
     }
 
