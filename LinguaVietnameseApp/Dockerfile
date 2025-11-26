@@ -79,7 +79,7 @@ COPY . .
 RUN sed -i 's/\r$//' LinguaVietnameseApp/LinguaVietnameseApp/mvnw
 RUN chmod +x LinguaVietnameseApp/LinguaVietnameseApp/mvnw
 WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
-RUN ./mvnw clean package -DskipTests
+RUN ./mvnw clean install -DskipTests
 
 FROM eclipse-temurin:21-jre-alpine
 WORKDIR /app
