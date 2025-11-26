@@ -1,52 +1,32 @@
 FROM eclipse-temurin:21-jdk AS builder
 
-# Thiết lập WORKDIR ở cấp độ gốc của dự án
 WORKDIR /app
 
-# 1. Tải dependencies (tận dụng cache Docker hiệu quả)
+# FIX: Copy từ ./LinguaVietnameseApp/LinguaVietnameseApp (context là root)
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/pom.xml ./
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/mvnw ./
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/.mvn ./.mvn
 
-# Đặt tên biến cho thư mục code chính để dễ bảo trì
-ENV APP_DIR=LinguaVietnameseApp/LinguaVietnameseApp
-
-# COPY các file cần thiết cho bước go-offline
-COPY ${APP_DIR}/pom.xml ${APP_DIR}/
-COPY ${APP_DIR}/mvnw ${APP_DIR}/
-# Đảm bảo copy toàn bộ nội dung của .mvn, bao gồm .mvn/wrapper/maven-wrapper.properties
-COPY ${APP_DIR}/.mvn ${APP_DIR}/.mvn
-
-# Đổi WORKDIR vào thư mục code chứa pom.xml và mvnw
-WORKDIR /app/${APP_DIR}
-
-# Cấp quyền thực thi và sửa lỗi line endings cho mvnw
-RUN sed -i 's/\r$//' mvnw
-RUN chmod +x mvnw
+# Sửa line endings và cấp quyền
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
 
 # Tải dependencies
 RUN ./mvnw dependency:go-offline
 
-# 2. Build ứng dụng
+# Copy toàn bộ source code
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/src ./src
 
-# COPY toàn bộ code còn lại
-WORKDIR /app
-COPY . .
+# Build
+RUN ./mvnw clean package -DskipTests
 
-# Quay lại thư mục code để build
-WORKDIR /app/${APP_DIR}
-
-# Cấp quyền thực thi và sửa lỗi line endings LẦN NỮA (sau khi COPY toàn bộ code)
-RUN sed -i 's/\r$//' mvnw
-RUN chmod +x mvnw
-
-# Build package
-RUN ./mvnw clean install -DskipTests
-
-# Stage 2: Create the final, smaller image
+# Stage 2: Runtime
 FROM eclipse-temurin:21-jre-alpine
-WORKDIR /app
-ENV APP_DIR=LinguaVietnameseApp/LinguaVietnameseApp
 
-# Copy chỉ file .jar đã build từ builder stage
-COPY --from=builder /app/${APP_DIR}/target/*.jar app.jar
+WORKDIR /app
+
+# Copy jar từ builder
+COPY --from=builder /app/target/*.jar app.jar
 
 EXPOSE 8080
-ENTRYPOINT ["java","-jar","/app/app.jar"]
+
+ENTRYPOINT ["java", "-jar", "/app/app.jar"]
