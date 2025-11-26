@@ -20,6 +20,8 @@ import PermissionService from '../../services/permissionService';
 import i18n from '../../i18n';
 import { useSkillLessons } from '../../hooks/useSkillLessons';
 import { useLessons } from '../../hooks/useLessons';
+import { useToast } from '../../utils/useToast';
+
 import {
     StreamingChunk,
     WordFeedback,
@@ -39,8 +41,11 @@ interface SpeakingScreenProps {
     };
 }
 
+const MIN_RECORD_DURATION_MS = 1000;
+
 const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
     const insets = useSafeAreaInsets();
+    const { showToast } = useToast();
 
     const paramLessonId = route.params?.lessonId || route.params?.lesson?.lessonId;
     const paramLesson = route.params?.lesson;
@@ -58,7 +63,10 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
 
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const pulseAnim = useRef(new Animated.Value(1)).current;
+
     const stopSignalRef = useRef(false);
+    const isPreparingRef = useRef(false);
+    const recordingStartTimeRef = useRef(0);
 
     const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
@@ -176,6 +184,8 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
         }
 
         stopSignalRef.current = false;
+        isPreparingRef.current = true;
+        recordingStartTimeRef.current = Date.now();
 
         try {
             setIsRecording(true);
@@ -184,20 +194,24 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
             await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
 
             if (stopSignalRef.current) {
+                isPreparingRef.current = false;
                 setIsRecording(false);
                 stopPulseAnimation();
                 return;
             }
 
             await recorder.record();
+            isPreparingRef.current = false;
 
             if (stopSignalRef.current) {
+                await new Promise(resolve => setTimeout(resolve, 500));
                 await stopRecording();
             }
         } catch (error) {
             console.error('Recording error:', error);
             setIsRecording(false);
             stopPulseAnimation();
+            isPreparingRef.current = false;
         }
     };
 
@@ -205,10 +219,24 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
         if (!currentLessonId || !selectedSentence) return;
 
         stopSignalRef.current = true;
+        if (isPreparingRef.current) return;
+
+        const recordingDuration = Date.now() - recordingStartTimeRef.current;
 
         try {
             if (recorder.isRecording) {
                 await recorder.stop();
+
+                if (recordingDuration < MIN_RECORD_DURATION_MS) {
+                    setIsRecording(false);
+                    stopPulseAnimation();
+                    showToast({
+                        message: i18n.t('speaking.hold_to_record_reminder') || 'Vui lòng ấn giữ nút Micro để ghi âm.',
+                        type: 'info'
+                    });
+                    return;
+                }
+
                 const uri = recorder.uri;
 
                 if (uri) {
@@ -236,6 +264,12 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
                     });
                 }
             } else {
+                if (recordingDuration < MIN_RECORD_DURATION_MS) {
+                    showToast({
+                        message: i18n.t('speaking.hold_to_record_reminder') || 'Vui lòng ấn giữ nút Micro để ghi âm.',
+                        type: 'info'
+                    });
+                }
                 setIsRecording(false);
                 stopPulseAnimation();
             }
@@ -243,6 +277,12 @@ const SpeakingScreen = ({ navigation, route }: SpeakingScreenProps) => {
             console.error('Stop recording error handled:', error);
             setIsRecording(false);
             stopPulseAnimation();
+            if (recordingDuration < MIN_RECORD_DURATION_MS) {
+                showToast({
+                    message: i18n.t('speaking.hold_to_record_reminder') || 'Vui lòng ấn giữ nút Micro để ghi âm.',
+                    type: 'info'
+                });
+            }
         }
     };
 

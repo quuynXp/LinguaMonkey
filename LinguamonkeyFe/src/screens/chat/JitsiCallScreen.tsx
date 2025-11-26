@@ -39,7 +39,7 @@ const getWsUrl = (baseUrl: string) => {
   return `${protocol}${cleanUrl}`;
 };
 
-const JitsiWebView = () => {
+const JitsiCallScreen = () => {
   const { t } = useTranslation();
   const route = useRoute<RouteProp<JitsiParams, 'JitsiCall'>>();
   const { roomId } = route.params;
@@ -59,7 +59,7 @@ const JitsiWebView = () => {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: 6, // VOICE_RECOGNITION
+    audioSource: 6,
     bufferSize: 4096,
     wavFile: 'temp_stream.wav'
   };
@@ -67,10 +67,8 @@ const JitsiWebView = () => {
   const handleLanguageChange = (langCode: string) => {
     setNativeLang(langCode);
     setShowSettings(false);
-    // Khi đổi ngôn ngữ, reconnect lại WS để cập nhật param nativeLang
     if (ws.current) {
       ws.current.close();
-      // useEffect sẽ tự trigger lại để connect mới
     }
   };
 
@@ -83,14 +81,14 @@ const JitsiWebView = () => {
     }
 
     try {
-      LiveAudioStream.stop(); // Reset trước khi init
+      LiveAudioStream.stop();
       LiveAudioStream.init(audioOptions);
 
       LiveAudioStream.on('data', (base64Data) => {
         if (ws.current?.readyState === WebSocket.OPEN && isMicOn) {
           ws.current.send(JSON.stringify({
             audio_chunk: base64Data,
-            seq: Date.now() // Gửi kèm timestamp để debug nếu cần
+            seq: Date.now()
           }));
         }
       });
@@ -111,11 +109,11 @@ const JitsiWebView = () => {
     }
   };
 
+  const getUserName = () => user?.nickname || user?.fullname || 'Guest';
+
   useEffect(() => {
     if (!roomId || !accessToken) return;
 
-    // Sử dụng logic URL chuẩn (tương tự PythonAiWsService)
-    // Đường dẫn phải khớp với Kong Route: /ws/py/live-subtitles
     const wsBase = getWsUrl(API_BASE_URL);
     const wsUrl = `${wsBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}`;
 
@@ -139,14 +137,12 @@ const JitsiWebView = () => {
             senderId: data.senderId
           });
 
-          // Tự động ẩn subtitle sau 5s nếu không có câu mới
-          setTimeout(() => {
+          const timer = setTimeout(() => {
             setSubtitle(prev => {
-              // Chỉ ẩn nếu subtitle hiện tại đúng là cái cũ (dựa trên nội dung/thời gian)
-              // Ở đây làm đơn giản: nếu 5s trôi qua mà chưa có subtitle mới đè lên
               return prev?.original === data.original ? null : prev;
             });
           }, 5000);
+          return () => clearTimeout(timer);
         }
       } catch (err) {
         console.error("WS Parse Error:", err);
@@ -169,13 +165,15 @@ const JitsiWebView = () => {
         ws.current = null;
       }
     };
-  }, [roomId, nativeLang, accessToken]); // Re-run khi đổi ngôn ngữ đích
+  }, [roomId, nativeLang, accessToken]);
+
+  const jitsiUrl = `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false&config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(getUserName())}`;
 
   return (
     <ScreenLayout>
       <View style={styles.container}>
         <WebView
-          source={{ uri: `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false&config.prejoinPageEnabled=false` }}
+          source={{ uri: jitsiUrl }}
           style={styles.webview}
           allowsFullscreenVideo
           javaScriptEnabled
@@ -247,10 +245,10 @@ const styles = createScaledSheet({
   webview: { flex: 1 },
   subtitleContainer: {
     position: 'absolute',
-    bottom: 120, // Nâng cao hơn chút để không bị che bởi controls Jitsi (nếu có)
+    bottom: 120,
     left: 20,
     right: 20,
-    backgroundColor: 'rgba(0,0,0,0.8)', // Đậm hơn chút để dễ đọc
+    backgroundColor: 'rgba(0,0,0,0.8)',
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
@@ -258,7 +256,7 @@ const styles = createScaledSheet({
     justifyContent: 'center'
   },
   subtitleTextOriginal: {
-    color: '#e5e7eb', // Màu xám nhạt cho text gốc
+    color: '#e5e7eb',
     fontSize: 14,
     fontWeight: '500',
     textAlign: 'center',
@@ -266,7 +264,7 @@ const styles = createScaledSheet({
     fontStyle: 'italic'
   },
   subtitleTextTranslated: {
-    color: '#fbbf24', // Màu vàng nổi bật cho text dịch
+    color: '#fbbf24',
     fontSize: 18,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -337,4 +335,4 @@ const styles = createScaledSheet({
   },
 });
 
-export default JitsiWebView;
+export default JitsiCallScreen;
