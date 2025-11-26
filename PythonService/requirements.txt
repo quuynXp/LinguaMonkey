@@ -18,6 +18,7 @@ torchaudio==2.6.0
 langdetect
 svgwrite
 grpcio
+grpcio-tools
 
 # --- Other libs ---
 soundfile==0.12.1
