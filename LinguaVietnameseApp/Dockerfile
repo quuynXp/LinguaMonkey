@@ -13,20 +13,25 @@ COPY LinguaVietnameseApp/LinguaVietnameseApp/.mvn /app/LinguaVietnameseApp/Lingu
 # Đổi WORKDIR vào thư mục code chứa pom.xml và mvnw
 WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
 
-# Cấp quyền thực thi và sửa lỗi line endings cho mvnw trước khi dùng
+# Cấp quyền thực thi và sửa lỗi line endings cho mvnw (cho caching)
 RUN sed -i 's/\r$//' mvnw
 RUN chmod +x mvnw
 
-# Tải dependencies mà không build code (sẽ sử dụng cache trừ khi pom.xml thay đổi)
+# Tải dependencies (sẽ sử dụng cache trừ khi pom.xml thay đổi)
 RUN ./mvnw dependency:go-offline
 
 # 2. Build ứng dụng
-# COPY toàn bộ code còn lại
+# COPY toàn bộ code còn lại (thao tác này có thể làm mất quyền thực thi của mvnw)
 WORKDIR /app
 COPY . .
 
 # Quay lại thư mục code để build
 WORKDIR /app/LinguaVietnameseApp/LinguaVietnameseApp
+
+# Cấp quyền thực thi và sửa lỗi line endings LẦN NỮA (sau khi COPY toàn bộ code)
+RUN sed -i 's/\r$//' mvnw
+RUN chmod +x mvnw
+
 # Build package
 RUN ./mvnw clean install -DskipTests
 
