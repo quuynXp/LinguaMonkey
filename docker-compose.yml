@@ -65,7 +65,8 @@ services:
 
   pythonservice:
     build: 
-      context: ./PythonService
+      context: .
+      dockerfile: ./PythonService/Dockerfile
     container_name: pythonservice
     depends_on:
       - app-database

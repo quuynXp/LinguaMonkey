@@ -30,7 +30,7 @@ RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu 
     torchvision==0.21.0 \
     torchaudio==2.6.0
 
-COPY requirements.txt .
+COPY PythonService/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 RUN set -eux; \
