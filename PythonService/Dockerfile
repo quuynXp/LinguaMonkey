@@ -1,5 +1,6 @@
 FROM python:3.11-bookworm AS builder
 
+# 1. SETUP VENV & BUILD ESSENTIALS
 WORKDIR /opt/venv
 RUN python -m venv .
 ENV PATH="/opt/venv/bin:$PATH"
@@ -14,37 +15,21 @@ RUN apt-get update && apt-get install -y \
 
 RUN pip install --upgrade pip setuptools wheel
 
-RUN pip uninstall -y proto || true
-
-RUN pip install --no-cache-dir --force-reinstall \
-    proto-plus==1.25.0 \
-    protobuf==4.25.3 \
-    google-api-core==2.17.1 \
-    google-generativeai==0.7.2 \
-    googleapis-common-protos==1.63.0 \
-    grpcio==1.62.2 \
-    grpcio-tools==1.62.2
-
-RUN pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-    torch==2.6.0 \
-    torchvision==0.21.0 \
-    torchaudio==2.6.0
-
+# 2. DEPENDENCY CACHING: Tải thư viện chỉ khi requirements.txt thay đổi
+# COPY file requirements.txt trước tiên để tạo cache layer cho bước cài đặt
+# *LƯU Ý:* Bạn phải đảm bảo tất cả các thư viện (bao gồm proto, grpc, và torch)
+# đã được thêm vào file `PythonService/requirements.txt` để bước này hoạt động.
 COPY PythonService/requirements.txt .
 
-RUN pip install --no-cache-dir -r requirements.txt
+# Cài đặt tất cả dependencies từ requirements.txt.
+# Nếu requirements.txt không thay đổi, bước này sẽ dùng cache.
+RUN pip install --no-cache-dir -r requirements.txt \
+    --index-url https://download.pytorch.org/whl/cpu || \
+    pip install --no-cache-dir -r requirements.txt # Thử lại không có index-url nếu thất bại
 
-RUN set -eux; \
-    for p in /opt/venv/lib/python3.11/site-packages/proto* /opt/venv/lib/python3.11/site-packages/proto.py; do \
-      if [ -e "$p" ]; then rm -rf "$p"; fi; \
-    done; \
-    pip uninstall -y proto || true
+# *Gỡ bỏ các lệnh RUN cài đặt thư viện riêng lẻ trước đó*
 
-RUN pip install --no-cache-dir --force-reinstall \
-    proto-plus==1.25.0 \
-    protobuf==4.25.3 \
-    google-generativeai==0.7.2
-
+# 3. BUILD ARTIFACTS
 FROM python:3.11-slim-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -56,23 +41,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# COPY venv đã được build và cache từ stage builder
 COPY --from=builder /opt/venv /opt/venv
-COPY . .
-
 ENV PATH="/opt/venv/bin:$PATH"
+
+# COPY toàn bộ code còn lại. Bước này sẽ làm mất cache nếu code thay đổi,
+# nhưng bước cài đặt thư viện (nặng) đã được cache.
+COPY . .
 
 # --- THAY ĐỔI ĐƯỜNG DẪN GRPC TẠI ĐÂY ---
 # WORKDIR là /app, code nằm ở /app/PythonService/
-RUN mkdir -p /app/src/grpc_generated && \
-    touch /app/src/grpc_generated/__init__.py && \
+RUN mkdir -p /app/PythonService/src/grpc_generated && \
+    touch /app/PythonService/src/grpc_generated/__init__.py && \
     python -m grpc_tools.protoc \
         -I=./PythonService/proto_files \
-        --python_out=./PythonService/src \
-        --grpc_python_out=./PythonService/src \
+        --python_out=./PythonService/src/grpc_generated \
+        --grpc_python_out=./PythonService/src/grpc_generated \
         ./PythonService/proto_files/*.proto
 
-# FIX import path: /app/PythonService/src/learning_service_pb2_grpc.py
-RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' /app/PythonService/src/learning_service_pb2_grpc.py
+# FIX import path: /app/PythonService/src/grpc_generated/learning_service_pb2_grpc.py
+# Cần điều chỉnh lại path import dựa trên thư mục mới là grpc_generated
+RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' /app/PythonService/src/grpc_generated/learning_service_pb2_grpc.py
 
 # FIX start_services.sh path: /app/PythonService/start_services.sh
 RUN chmod +x PythonService/start_services.sh
