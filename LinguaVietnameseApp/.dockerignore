@@ -18,7 +18,6 @@ build/
 .gitignore
 
 
-.mvn/wrapper/maven-wrapper.jar
 # Python
 venv/
 .venv/

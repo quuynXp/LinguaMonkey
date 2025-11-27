@@ -4,7 +4,6 @@ backups/
 LinguamonkeyFe/
 
 backups/
-db/
 
 **/target/
 **/build/
