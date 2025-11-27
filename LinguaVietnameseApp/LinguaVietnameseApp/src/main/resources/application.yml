@@ -110,6 +110,12 @@ cloudinary:
   cloud_name: ${PROD_CLOUDINARY_CLOUD_NAME}
   api_key: ${PROD_CLOUDINARY_API_KEY}
   api_secret: ${PROD_CLOUDINARY_API_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
 # Logging
 logging:
   level:

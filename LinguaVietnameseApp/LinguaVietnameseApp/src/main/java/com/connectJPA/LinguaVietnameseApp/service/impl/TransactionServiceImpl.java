@@ -16,13 +16,13 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.WalletRepository;
 import com.connectJPA.LinguaVietnameseApp.service.TransactionService;
 import com.connectJPA.LinguaVietnameseApp.service.WalletService;
-import com.connectJPA.LinguaVietnameseApp.utils.VnPayUtils;
 import com.stripe.Stripe;
 import com.stripe.exception.SignatureVerificationException;
 import com.stripe.model.Event;
 import com.stripe.model.EventDataObjectDeserializer;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
+import com.stripe.param.checkout.SessionCreateParams;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -32,7 +32,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -40,20 +39,12 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class TransactionServiceImpl implements TransactionService {
+
     private final TransactionRepository transactionRepository;
     private final UserRepository userRepository;
     private final TransactionMapper transactionMapper;
     private final WalletRepository walletRepository;
     private final WalletService walletService;
-
-    @Value("${vnpay.tmn-code}")
-    private String vnpTmnCode;
-
-    @Value("${vnpay.hash-secret}")
-    private String vnpHashSecret;
-
-    @Value("${vnpay.url}")
-    private String vnpUrl;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
@@ -89,72 +80,80 @@ public class TransactionServiceImpl implements TransactionService {
                 .user(user)
                 .wallet(wallet)
                 .amount(request.getAmount())
-                .provider(request.getProvider())
+                .provider(TransactionProvider.STRIPE) 
                 .type(TransactionType.DEPOSIT)
                 .description("Deposit to wallet")
                 .status(TransactionStatus.PENDING)
                 .build();
         transaction = transactionRepository.save(transaction);
 
-        switch (request.getProvider()) {
-            case VNPAY:
-                return createVnpayPaymentUrl(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl(), clientIp);
-            case STRIPE:
-                return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl());
-            default:
-                throw new AppException(ErrorCode.INVALID_PAYMENT_PROVIDER);
+        return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl());
+    }
+
+    @Override
+    @Transactional
+    public String createPaymentUrl(PaymentRequest request, String clientIp) {
+        User user = getUser(request.getUserId());
+
+        Transaction transaction = Transaction.builder()
+                .transactionId(UUID.randomUUID())
+                .user(user)
+                .amount(request.getAmount())
+                .provider(TransactionProvider.STRIPE)
+                .type(TransactionType.PAYMENT) 
+                .description(request.getDescription())
+                .status(TransactionStatus.PENDING)
+                .build();
+        transaction = transactionRepository.save(transaction);
+
+        return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), request.getDescription(), request.getReturnUrl());
+    }
+
+    private String createStripeCheckoutSession(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl) {
+        Stripe.apiKey = stripeApiKey;
+
+        // Tự động thêm Alipay và WeChat Pay vào danh sách thanh toán
+        // Stripe sẽ tự ẩn chúng nếu tiền tệ không phù hợp hoặc tài khoản chưa kích hoạt
+        SessionCreateParams.Builder paramsBuilder = SessionCreateParams.builder()
+                .addPaymentMethodType(SessionCreateParams.PaymentMethodType.CARD)
+                .addPaymentMethodType(SessionCreateParams.PaymentMethodType.ALIPAY)
+                .addPaymentMethodType(SessionCreateParams.PaymentMethodType.WECHAT_PAY)
+                .setMode(SessionCreateParams.Mode.PAYMENT)
+                .setSuccessUrl(returnUrl + "?status=success&transactionId=" + transaction.getTransactionId())
+                .setCancelUrl(returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId())
+                .setClientReferenceId(transaction.getTransactionId().toString())
+                .addLineItem(SessionCreateParams.LineItem.builder()
+                        .setQuantity(1L)
+                        .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
+                                .setCurrency(currency != null ? currency.toLowerCase() : "usd")
+                                .setUnitAmount(amount.multiply(BigDecimal.valueOf(100)).longValue()) // Stripe cents logic
+                                .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
+                                        .setName(description != null ? description : "LinguaVietnamese Transaction")
+                                        .build())
+                                .build())
+                        .build());
+        
+        // Options specific for WeChat Pay (require client to be specified usually, but Checkout handles redirect)
+        SessionCreateParams.PaymentMethodOptions.Builder optionsBuilder = SessionCreateParams.PaymentMethodOptions.builder()
+                .setWechatPay(SessionCreateParams.PaymentMethodOptions.WechatPay.builder()
+                        .setClient(SessionCreateParams.PaymentMethodOptions.WechatPay.Client.WEB)
+                        .build());
+        paramsBuilder.setPaymentMethodOptions(optionsBuilder.build());
+
+        try {
+            Session session = Session.create(paramsBuilder.build());
+            return session.getUrl();
+        } catch (Exception e) {
+            log.error("Error creating Stripe checkout session: {}", e.getMessage());
+            throw new AppException(ErrorCode.PAYMENT_PROCESSING_FAILED);
         }
     }
 
     @Override
     @Transactional
     public String handleWebhook(WebhookRequest request) {
-        try {
-            switch (request.getProvider().toUpperCase()) {
-                case "VNPAY":
-                    return handleVnpayWebhook(request.getPayload());
-                case "STRIPE":
-                    return handleStripeWebhook(request.getPayload());
-                default:
-                    throw new AppException(ErrorCode.INVALID_PAYMENT_PROVIDER);
-            }
-        } catch (Exception e) {
-            log.error("Error handling webhook: {}", e.getMessage());
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Transactional
-    protected String handleVnpayWebhook(Map<String, String> params) {
-        String vnpSecureHash = params.get("vnp_SecureHash");
-        String transactionId = params.get("vnp_TxnRef");
-        String responseCode = params.get("vnp_ResponseCode");
-
-        Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
-                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-
-        params.remove("vnp_SecureHash");
-        params.remove("vnp_SecureHashType"); // Remove optional field if exists
-        String queryString = VnPayUtils.buildQueryString(params);
-        String computedHash = VnPayUtils.hmacSHA512(vnpHashSecret, queryString);
-
-        if (!computedHash.equals(vnpSecureHash)) {
-            log.error("Invalid VNPAY webhook signature for transaction ID: {}", transactionId);
-            throw new AppException(ErrorCode.INVALID_SIGNATURE);
-        }
-
-        if (transaction.getStatus() != TransactionStatus.PENDING) {
-            return "Transaction already processed";
-        }
-
-        if ("00".equals(responseCode)) {
-            transaction.setStatus(TransactionStatus.SUCCESS);
-            walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
-        } else {
-            transaction.setStatus(TransactionStatus.FAILED);
-        }
-        transactionRepository.save(transaction);
-        return "Webhook processed successfully";
+        // Chỉ xử lý Stripe, bỏ qua check Provider string để linh hoạt hoặc fix cứng STRIPE
+        return handleStripeWebhook(request.getPayload());
     }
 
     @Transactional
@@ -162,38 +161,49 @@ public class TransactionServiceImpl implements TransactionService {
         String payload = params.get("payload");
         String signatureHeader = params.get("stripe-signature");
 
+        if (payload == null || signatureHeader == null) {
+             throw new AppException(ErrorCode.INVALID_REQUEST);
+        }
+
         try {
             Event event = Webhook.constructEvent(payload, signatureHeader, stripeWebhookSecret);
             EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
+
             if (deserializer.getObject().isPresent()) {
+                // Xử lý sự kiện Checkout Session Completed (An toàn nhất cho luồng redirect)
                 if ("checkout.session.completed".equals(event.getType())) {
                     Session session = (Session) deserializer.getObject().get();
-                    String transactionId = session.getClientReferenceId();
-
-                    Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
-                            .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-
-                    if (transaction.getStatus() != TransactionStatus.PENDING) {
-                        return "Transaction already processed";
-                    }
-
-                    if ("paid".equals(session.getPaymentStatus())) {
-                        transaction.setStatus(TransactionStatus.SUCCESS);
-                        walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
-                    } else {
-                        transaction.setStatus(TransactionStatus.FAILED);
-                    }
-                    transactionRepository.save(transaction);
+                    handleSuccessfulPayment(session.getClientReferenceId());
                 }
             }
             return "Webhook processed successfully";
         } catch (SignatureVerificationException e) {
+            log.error("Stripe Signature Verification Failed");
             throw new AppException(ErrorCode.INVALID_SIGNATURE);
         } catch (Exception e) {
+            log.error("Stripe Webhook Error: {}", e.getMessage());
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 
+    private void handleSuccessfulPayment(String transactionId) {
+        if (transactionId == null) return;
+
+        Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+
+        if (transaction.getStatus() == TransactionStatus.PENDING) {
+            transaction.setStatus(TransactionStatus.SUCCESS);
+            
+            // Nếu là DEPOSIT thì cộng tiền vào ví
+            if (transaction.getType() == TransactionType.DEPOSIT) {
+                walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
+            }
+            
+            transactionRepository.save(transaction);
+            log.info("Transaction {} completed successfully via Stripe", transactionId);
+        }
+    }
 
     @Override
     @Transactional
@@ -208,7 +218,7 @@ public class TransactionServiceImpl implements TransactionService {
         User sender = getUser(request.getSenderId());
         User receiver = getUser(request.getReceiverId());
         Wallet senderWallet = getWallet(sender.getUserId());
-        getWallet(receiver.getUserId());
+        getWallet(receiver.getUserId()); // Check receiver wallet exists
 
         if (request.getIdempotencyKey() != null) {
             var existingTx = transactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
@@ -265,20 +275,14 @@ public class TransactionServiceImpl implements TransactionService {
                 .amount(request.getAmount())
                 .type(TransactionType.WITHDRAW)
                 .status(TransactionStatus.PENDING)
-                .provider(request.getProvider())
+                .provider(TransactionProvider.INTERNAL) // Withdraw thường là internal process hoặc manual payout
                 .description("Withdraw from wallet")
                 .build();
         transaction = transactionRepository.save(transaction);
 
         walletService.debit(user.getUserId(), request.getAmount());
 
-        try {
-            log.info("Withdrawal request created and awaiting PG processing: {}", transaction.getTransactionId());
-            return transactionMapper.toResponse(transaction);
-        } catch (Exception e) {
-            log.error("Withdrawal failed during PG call: {}", e.getMessage());
-            throw new AppException(ErrorCode.PAYMENT_PROCESSING_FAILED);
-        }
+        return transactionMapper.toResponse(transaction);
     }
 
     @Override
@@ -356,6 +360,48 @@ public class TransactionServiceImpl implements TransactionService {
         return transactionMapper.toResponse(refundTx);
     }
 
+    @Override
+    public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) {
+        try {
+            TransactionStatus transactionStatus = status != null ? TransactionStatus.valueOf(status) : null;
+            Page<Transaction> transactions = transactionRepository.findByUserIdAndStatusAndIsDeletedFalse(userId, transactionStatus, pageable);
+            return transactions.map(transactionMapper::toResponse);
+        } catch (IllegalArgumentException e) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse createTransaction(TransactionRequest request) {
+        userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        Transaction transaction = transactionMapper.toEntity(request);
+        transaction.setStatus(request.getStatus() != null ? request.getStatus() : TransactionStatus.PENDING);
+        transaction = transactionRepository.save(transaction);
+        return transactionMapper.toResponse(transaction);
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse updateTransaction(UUID id, TransactionRequest request) {
+        Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+        userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        transactionMapper.updateEntityFromRequest(request, transaction);
+        transaction = transactionRepository.save(transaction);
+        return transactionMapper.toResponse(transaction);
+    }
+
+    @Override
+    @Transactional
+    public void deleteTransaction(UUID id) {
+        transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+        transactionRepository.softDeleteByTransactionId(id);
+    }
+
     private User getUser(UUID userId) {
         return userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -373,148 +419,5 @@ public class TransactionServiceImpl implements TransactionService {
             throw new AppException(ErrorCode.TRANSACTION_NOT_REFUNDABLE);
         }
         return refundTx;
-    }
-
-    @Override
-    public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) {
-        try {
-            TransactionStatus transactionStatus = status != null ? TransactionStatus.valueOf(status) : null;
-            Page<Transaction> transactions = transactionRepository.findByUserIdAndStatusAndIsDeletedFalse(userId, transactionStatus, pageable);
-            return transactions.map(transactionMapper::toResponse);
-        } catch (IllegalArgumentException e) {
-            log.error("Invalid userId or status: {}", e.getMessage());
-            throw new AppException(ErrorCode.INVALID_KEY);
-        } catch (Exception e) {
-            log.error("Error while fetching transactions: {}", e.getMessage());
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Override
-    @Transactional
-    public TransactionResponse createTransaction(TransactionRequest request) {
-        try {
-            userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            Transaction transaction = transactionMapper.toEntity(request);
-            transaction.setStatus(request.getStatus() != null ? request.getStatus() : TransactionStatus.PENDING);
-            transaction = transactionRepository.save(transaction);
-            return transactionMapper.toResponse(transaction);
-        } catch (Exception e) {
-            log.error("Error while creating transaction: {}", e.getMessage());
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Override
-    @Transactional
-    public TransactionResponse updateTransaction(UUID id, TransactionRequest request) {
-        try {
-            Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-            userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            transactionMapper.updateEntityFromRequest(request, transaction);
-            transaction = transactionRepository.save(transaction);
-            return transactionMapper.toResponse(transaction);
-        } catch (Exception e) {
-            log.error("Error while updating transaction ID {}: {}", id, e.getMessage());
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Override
-    @Transactional
-    public void deleteTransaction(UUID id) {
-        try {
-            Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-            transactionRepository.softDeleteByTransactionId(id);
-        } catch (Exception e) {
-            log.error("Error while deleting transaction ID {}: {}", id, e.getMessage());
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Override
-    public String createPaymentUrl(PaymentRequest request, String clientIp) {
-        try {
-            userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-            Transaction transaction = Transaction.builder()
-                    .transactionId(UUID.randomUUID())
-                    .userId(request.getUserId())
-                    .amount(request.getAmount())
-                    .provider(request.getProvider())
-                    .description(request.getDescription())
-                    .status(TransactionStatus.PENDING)
-                    .build();
-            transaction = transactionRepository.save(transaction);
-
-            switch (request.getProvider()) {
-                case VNPAY:
-                    return createVnpayPaymentUrl(transaction, request.getAmount(), request.getCurrency(), request.getDescription(), request.getReturnUrl(), clientIp);
-                case STRIPE:
-                    return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), request.getDescription(), request.getReturnUrl());
-                default:
-                    throw new AppException(ErrorCode.INVALID_PAYMENT_PROVIDER);
-            }
-        } catch (Exception e) {
-            log.error("Error while creating payment URL: {}", e.getMessage());
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    // Refactored helper to support both Deposit and PaymentRequest and enforce Real IP
-    private String createVnpayPaymentUrl(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl, String clientIp) {
-        Map<String, String> vnpParams = new HashMap<>();
-        vnpParams.put("vnp_Version", "2.1.0");
-        vnpParams.put("vnp_TmnCode", vnpTmnCode);
-        vnpParams.put("vnp_Amount", String.valueOf(amount.multiply(BigDecimal.valueOf(100)).longValue()));
-        vnpParams.put("vnp_Command", "pay");
-        vnpParams.put("vnp_CurrCode", currency != null ? currency : "VND");
-        vnpParams.put("vnp_TxnRef", transaction.getTransactionId().toString());
-        vnpParams.put("vnp_OrderInfo", description != null ? description : "LinguaVietnamese Payment");
-        vnpParams.put("vnp_OrderType", "billpayment");
-        vnpParams.put("vnp_Locale", "vn");
-        vnpParams.put("vnp_ReturnUrl", returnUrl);
-        // CRITICAL FOR PROD: Use real client IP
-        vnpParams.put("vnp_IpAddr", clientIp != null ? clientIp : "127.0.0.1"); 
-        vnpParams.put("vnp_CreateDate", String.valueOf(System.currentTimeMillis()));
-
-        String queryString = VnPayUtils.buildQueryString(vnpParams);
-        String secureHash = VnPayUtils.hmacSHA512(vnpHashSecret, queryString);
-        return vnpUrl + "?" + queryString + "&vnp_SecureHash=" + secureHash;
-    }
-
-    private String createStripeCheckoutSession(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl) {
-        Stripe.apiKey = stripeApiKey;
-        Map<String, Object> params = new HashMap<>();
-        params.put("payment_method_types", new String[]{"card"});
-        params.put("line_items", new Object[]{
-                new HashMap<String, Object>() {{
-                    put("price_data", new HashMap<String, Object>() {{
-                        put("currency", currency.toLowerCase());
-                        put("unit_amount", amount.multiply(BigDecimal.valueOf(100)).longValue());
-                        put("product_data", new HashMap<String, Object>() {{
-                            put("name", description != null ? description : "LinguaVietnamese Payment");
-                        }});
-                    }});
-                    put("quantity", 1);
-                }}
-        });
-        params.put("mode", "payment");
-        params.put("success_url", returnUrl + "?status=success&transactionId=" + transaction.getTransactionId());
-        params.put("cancel_url", returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId());
-        params.put("client_reference_id", transaction.getTransactionId().toString());
-
-        try {
-            com.stripe.model.checkout.Session session = com.stripe.model.checkout.Session.create(params);
-            return session.getUrl();
-        } catch (Exception e) {
-            log.error("Error creating Stripe checkout session: {}", e.getMessage());
-            throw new AppException(ErrorCode.PAYMENT_PROCESSING_FAILED);
-        }
     }
 }
