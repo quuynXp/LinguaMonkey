@@ -8,6 +8,7 @@ azure-cognitiveservices-speech
 websockets
 # --- AI libraries ---
 transformers==4.52.1
+tenacity
 sentence-transformers~=5.0.0
 librosa~=0.11.0
 sentencepiece

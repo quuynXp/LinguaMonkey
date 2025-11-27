@@ -20,10 +20,11 @@ import java.util.List;
 @Configuration
 public class FirebaseConfig {
 
-    @Value("${google.credentials-file-url:#{null}}")
+    // Không cần chỉ định default value #{null} vì chúng ta kiểm tra null bên dưới
+    @Value("${google.credentials-file-url:}")
     private String credentialsPath;
 
-    @Value("${FIREBASE_CREDENTIALS_BASE64:#{null}}")
+    @Value("${FIREBASE_CREDENTIALS_BASE64:}")
     private String credentialsBase64;
 
     @Bean
@@ -35,6 +36,7 @@ public class FirebaseConfig {
 
         GoogleCredentials credentials;
 
+        // ƯU TIÊN 1: Đọc từ Base64 Environment Variable (Production/Render)
         if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
             try {
                 byte[] decodedBytes = Base64.getDecoder().decode(credentialsBase64);
@@ -42,10 +44,12 @@ public class FirebaseConfig {
                     credentials = GoogleCredentials.fromStream(inputStream);
                 }
             } catch (IllegalArgumentException e) {
-                throw new IOException("Failed to decode FIREBASE_CREDENTIALS_BASE64", e);
+                throw new IOException("Failed to decode FIREBASE_CREDENTIALS_BASE64. Check if the string is correctly encoded.", e);
             }
+        // ƯU TIÊN 2: Đọc từ File Path (Local/Dev)
         } else if (credentialsPath != null && !credentialsPath.isBlank()) {
             String finalPath = credentialsPath;
+            // Dòng 57 gây lỗi: Đảm bảo Spring tìm kiếm file
             if (finalPath.startsWith("/") && !finalPath.startsWith("file:")) {
                 finalPath = "file:" + finalPath;
             }
@@ -61,7 +65,7 @@ public class FirebaseConfig {
                 credentials = GoogleCredentials.fromStream(serviceAccount);
             }
         } else {
-            throw new IOException("No Firebase credentials provided. Set FIREBASE_CREDENTIALS_BASE64 or google.credentials-file-url");
+            throw new IOException("No Firebase credentials provided. Set FIREBASE_CREDENTIALS_BASE64 environment variable.");
         }
 
         FirebaseOptions options = FirebaseOptions.builder()
