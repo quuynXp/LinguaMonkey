@@ -3,10 +3,7 @@ backups/
 
 LinguamonkeyFe/
 
-PythonService/
-
 backups/
-backups-dbless/
 db/
 
 **/target/
@@ -19,13 +16,8 @@ node_modules/
 out/
 
 **/target/
-**/.mvn/wrapper/
 .idea/
 .vscode/
 
 **/.venv/
 **/__pycache__/
-*.pyc
-
-*.log
-.DS_Store
