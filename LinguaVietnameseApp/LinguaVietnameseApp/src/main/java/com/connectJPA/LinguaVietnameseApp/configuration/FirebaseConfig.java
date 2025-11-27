@@ -4,7 +4,6 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.messaging.FirebaseMessaging;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -12,16 +11,20 @@ import org.springframework.core.io.DefaultResourceLoader;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Base64;
 import java.util.List;
 
 @Configuration
-@Slf4j
 public class FirebaseConfig {
 
-    @Value("${google.credentials-file-url}")
+    @Value("${google.credentials-file-url:#{null}}")
     private String credentialsPath;
+
+    @Value("${FIREBASE_CREDENTIALS_BASE64:#{null}}")
+    private String credentialsBase64;
 
     @Bean
     public FirebaseMessaging firebaseMessaging() throws IOException {
@@ -30,33 +33,42 @@ public class FirebaseConfig {
             return FirebaseMessaging.getInstance();
         }
 
-        String finalPath = credentialsPath;
-        if (finalPath.startsWith("/") && !finalPath.startsWith("file:")) {
-            finalPath = "file:" + finalPath;
+        GoogleCredentials credentials;
+
+        if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
+            try {
+                byte[] decodedBytes = Base64.getDecoder().decode(credentialsBase64);
+                try (InputStream inputStream = new ByteArrayInputStream(decodedBytes)) {
+                    credentials = GoogleCredentials.fromStream(inputStream);
+                }
+            } catch (IllegalArgumentException e) {
+                throw new IOException("Failed to decode FIREBASE_CREDENTIALS_BASE64", e);
+            }
+        } else if (credentialsPath != null && !credentialsPath.isBlank()) {
+            String finalPath = credentialsPath;
+            if (finalPath.startsWith("/") && !finalPath.startsWith("file:")) {
+                finalPath = "file:" + finalPath;
+            }
+            
+            ResourceLoader resourceLoader = new DefaultResourceLoader();
+            Resource resource = resourceLoader.getResource(finalPath);
+            
+            if (!resource.exists()) {
+                throw new IOException("Firebase credentials file not found at: " + finalPath);
+            }
+
+            try (InputStream serviceAccount = resource.getInputStream()) {
+                credentials = GoogleCredentials.fromStream(serviceAccount);
+            }
+        } else {
+            throw new IOException("No Firebase credentials provided. Set FIREBASE_CREDENTIALS_BASE64 or google.credentials-file-url");
         }
 
-        log.info("Initializing Firebase using credentials from: {}", finalPath);
+        FirebaseOptions options = FirebaseOptions.builder()
+                .setCredentials(credentials)
+                .build();
 
-        ResourceLoader resourceLoader = new DefaultResourceLoader();
-        Resource resource = resourceLoader.getResource(finalPath);
-
-        if (!resource.exists()) {
-            log.error("Firebase credentials file NOT FOUND at: {}", finalPath);
-            throw new IOException("Firebase credentials file not found at: " + finalPath);
-        }
-
-        try (InputStream serviceAccount = resource.getInputStream()) {
-            FirebaseOptions options = FirebaseOptions.builder()
-                    .setCredentials(GoogleCredentials.fromStream(serviceAccount))
-                    .build();
-
-            FirebaseApp.initializeApp(options);
-            log.info("FirebaseApp initialized successfully.");
-        } catch (IOException e) {
-            log.error("Error reading Firebase credentials: {}", e.getMessage());
-            throw e;
-        }
-
+        FirebaseApp.initializeApp(options);
         return FirebaseMessaging.getInstance();
     }
 }

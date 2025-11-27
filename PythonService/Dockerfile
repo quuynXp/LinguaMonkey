@@ -66,6 +66,8 @@ RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' 
 # FIX start_services.sh path: /app/PythonService/start_services.sh
 RUN chmod +x PythonService/start_services.sh
 
+RUN sed -i 's/\r$//' PythonService/start_services.sh
+
 EXPOSE 8001
 EXPOSE 50051
 

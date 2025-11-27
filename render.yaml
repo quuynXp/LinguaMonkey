@@ -18,6 +18,49 @@ services:
         value: 8080
       - key: GRPC_PORT
         value: 50051
+      - key: FIREBASE_CREDENTIALS_BASE64
+        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAid2ViLWFwcC1s
+                b3ZlIiwKICAicHJpdmF0ZV9rZXlfaWQiOiAiYzFlMGU4MDAwOGNkNTdiOTc3NjAwMjEwYjZiNDk0
+                NzdiZjliZDljMiIsCiAgInByaXZhdGVfa2V5IjogIi0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0t
+                LVxuTUlJRXZRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NCS2N3Z2dTakFnRUFBb0lCQVFDamFu
+                NkNvUVkrYm5DZ1xuZThvdFE0Z2dWOHNsUzNOMnBFVTI3RDlpTnRTRjAxeW5zZjg2Wm9ERnpxbllp
+                TjlvbGJJaTJOWHBORmJ0QVAzU1xuT3YxVFpiNlIrT3lHeVA4aTR0ZjhiSk5jWU44bFVVT3BaNzJh
+                NG5ZNmdMd0FaaDFlbWpuUWkyZklnZEhTcEdkRlxuVHB4VTlTL0xDbzV6OU5pRE5CRDBqbXBpOEZw
+                OGtBYitOanFuODEwSmpsTVhiOVFDcDRtRnpHR3RXemt2Tk9pR1xuQWRZNW1uaWYrQnc1Vk9lVUUy
+                V2dJa2xSam5iUXRueXNyUWhPWWR4Q2tLa3BsWG10OFQxeVJKanVpcGxtdnlxZ1xub3dSVFczMHhN
+                Z3NEakV0ZFAxVHI1ZG55aFp1anVJK05uSVBNVW9ISEFKSFczNE91TmpZS3MzWUlkQnljUFRWY1xu
+                cHVRZ0lMbjlBZ01CQUFFQ2dnRUFFMUhyQjJqMU10cXpheGg4NUh3Uzh5Rkl1RmlOY1VNN2x2ZU5z
+                NEFMQVRxN1xuYU1JYVlZa0QyWFJmcFRvNEVOdlROZHZQOG5uSWV5TVR0SHF2NmpVTVlrMVNpQjdw
+                b2Nkb1JLK0EwK1QwdDRDVFxua01yZDRrVmxqVVljcy82eitJbDFvMSs2a3p5SFFOeEVyMW9tRVJu
+                MGRCQ3VteXYya0dYT25yTXdXeEVuM3Q1UlxuNU1Mdmt4ajBvaDBSYkw3b2tJV0d4NlhhOWFEK2dQ
+                TzNvdHUwT1d4UFlPSFRqY0FGdi9PRXJaTWxyWElUQzU5ZFxuYWlyR2NabjVQQ0FmWXFSNm52SzRu
+                RDdHa2JEMm9CRzE4bHd3c1ZqMW8yaHJXYVFOdEJGL05UMW9qTllEOVc2WFxueGRTS2U1b0czZ2I5
+                OEVtMVJYenBXWjc0VDk5T0I4MU1vbHZtc0dEMmV3S0JnUURWa0tGM28wN3YrRHJsTUc5SFxua0lz
+                NktuNjJvbHFWKytudFJDS3M1dnU2WWswT3FWVFJOamFWSlF2OVlEQTgxZEZXK0ZBOEZpTXU1NXlv
+                ZUE3Y1xuc1RNcGlUVTREZm9IOWtvcm9tSmwxUklSK3laNlJQQmhoM0FpS2F6WmVjd21pSUQ1dXJ1
+                WXlJL1lLYWZXZGdXYlxuYWxyNVBXU0gxeG1XbmxaYzBmSkcxcU1vYndLQmdRREQ0dkh3c2VkSDBB
+                M1lmQm5hUWVid3QvY2ZJcU9CRVBUN1xuRXJaWlErTjZnZ1YxVDdKQzhFYTdKK2RKNzNMdEo4Y0tn
+                WWo2eXpSTmI4b2ovTzdxNUlZWnR5M0lDOElPcE1EOFxuMnErT0QyVE4wVzVGQlM0bzBRb2E2QzBs
+                dTVMSG9aS29zVEhqanpkN2RoeFVqek9haHJ3R2h1N3poSGV5REJaSlxudTF5Qzd4SkNVd0tCZ0Nv
+                U3J5eXhtSWgvLzZKTk0yOEcwOWJtcmtYdW9DZnlFL2l4TnArWGRib1hTWlQ4MlAvS1xuVFdCK2h1
+                a292UGdQSzRtVnE4RGFuNTNLOVRyZlJCWklOb3NWUTgzQ095SzhhNHBER0YxMVozVHhaSGdzQXF0
+                RVxuRWx3NGw1dlVlZHFSZzg4dThXdzgvdEdZQ3orZHlxYitnZU9lSzZMelJsQTg2MGluOTdIcThR
+                T3pBb0dBQmF1SFxuQjBtUEFVUWpjblc5SmRVc2d5RkFGUFdpdC9TdXNxbksvM0I0b0M0dFRFVC9T
+                dks3aVdWUlM1R1R5UXVTdGxvalxuaGVibDM2dnh0UEw0VTNKRDgzQ2E4YVJ0ZkpFR1NRdG5jM3c4
+                bGJ5UExZNUYxTWFnUFVFbE5XZGxpMFBCQkFNRlxuQjZvNGwrbEdUcWhLZlJtVFRia1FKNXBaQUox
+                YTg4MXBreHlxY2FNQ2dZRUF1ckE2R3hMcDRZZHhMRVdteWR2TlxuZDhSbGphZ2hDQ1FDK0FJRGph
+                aEJBc3A5cUpCdG5aempFZkI3WjRwMGJnL2hkNy9aZ2ZFN3RWb09FRUYxaXdLQVxuR0JKUEhzaEwy
+                TVFJZDNwOXlhWUNEa0ZmZzNhbWNoMDlEQllrRFpjUjFLbWZTNXhmMERQZExrb3BvS2dSSFl5Mlxu
+                bmI5SmhGbDdRRkRKNy9NVEs0NEM4MjQ9XG4tLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tXG4iLAog
+                ICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAd2ViLWFwcC1sb3ZlLmlh
+                bS5nc2VydmljZWFjY291bnQuY29tIiwKICAiY2xpZW50X2lkIjogIjExMzAxMjg5Njk5ODA2NDA3
+                NTk5NyIsCiAgImF1dGhfdXJpIjogImh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbS9vL29hdXRo
+                Mi9hdXRoIiwKICAidG9rZW5fdXJpIjogImh0dHBzOi8vb2F1dGgyLmdvb2dsZWFwaXMuY29tL3Rv
+                a2VuIiwKICAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2ds
+                ZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsCiAgImNsaWVudF94NTA5X2NlcnRfdXJsIjogImh0
+                dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL3JvYm90L3YxL21ldGFkYXRhL3g1MDkvZmlyZWJhc2Ut
+                YWRtaW5zZGstZmJzdmMlNDB3ZWItYXBwLWxvdmUuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLAog
+                ICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iCn0K"
       # -- Database Linking --
       - key: DB_HOST
         fromDatabase:
