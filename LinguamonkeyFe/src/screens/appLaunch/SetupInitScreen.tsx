@@ -15,7 +15,6 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 
-
 type SetupInitScreenProps = {
   navigation: NativeStackNavigationProp<any>
 }
@@ -34,6 +33,8 @@ const countryToDefaultLanguage: Record<string, string> = {
   IN: "in",
   ZH: "zh",
 }
+
+const SUPPORTED_LEARNING_LANGUAGES = ['vi', 'en', 'zh']
 
 const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const { t } = useTranslation()
@@ -83,7 +84,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     { id: "goethe", name: "Goethe", description: "German Language Certificate", languageCode: "de" },
   ]
 
-
   const learningGoals = [
     { id: "conversation", name: "Daily Conversation", icon: "chat", description: "Practice everyday speaking and listening" },
     { id: "business", name: "Business Communication", icon: "work", description: "Master professional language skills" },
@@ -110,7 +110,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       `Explore ${(interest.interestName ?? "interest").toLowerCase()} to enhance your learning experience.`,
     id: interest.interestId,
   }))
-
 
   const mapCountryToEnum = (c: string | undefined) => {
     if (!c) return undefined;
@@ -173,13 +172,11 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     prefillData();
   }, []);
 
-
   useEffect(() => {
     fetchLanguages()
     fetchCharacters()
     fetchInterests()
   }, [])
-
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -245,7 +242,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     }
   };
 
-
   const fetchLanguages = async () => {
     try {
       const response = await instance.get('/api/v1/languages')
@@ -264,7 +260,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       Alert.alert(t("error.title"), t("error.loadLanguages"))
     }
   }
-
 
   const fetchInterests = async () => {
     try {
@@ -296,20 +291,16 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }
 
   const handleSkip = async () => {
-    // Chỉ cho phép bỏ qua từ Step 3 trở đi
     if (currentStep >= 3) {
-      // Đảm bảo các field bắt buộc của Step 2 đã được điền
       if (!email.trim() || !email.includes('@') || !accountName.trim()) {
         Alert.alert(t("error.title"), t("error.requiredFieldsMissing") || "Please complete the required fields in Step 2 (Name, Email) before skipping.");
         return;
       }
-      // Gọi hàm setup với các dữ liệu hiện có
       await createTempAccountAndSetup(true);
     } else {
       Alert.alert(t("error.title"), t("setup.skipNotAllowed") || "Skipping is only allowed from step 3 onwards.");
     }
   };
-
 
   const createTempAccountAndSetup = async (isSkipping = false) => {
     try {
@@ -320,7 +311,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
       const payload: Partial<CreateUserPayload> = {
         email: email.toLowerCase(),
-        // Gửi các field đã có, nếu isSkipping là true, các field tùy chọn khác có thể thiếu
         fullname: accountName || undefined,
         nickname: accountName || undefined,
         phone: phoneNumber || undefined,
@@ -336,7 +326,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       const mappedAge = mapAgeRangeToEnum(ageRange)
       if (mappedAge) payload.ageRange = mappedAge as unknown as string
 
-      // Nếu isSkipping là true, chỉ gửi các field đã được chọn (nếu có), không bắt buộc phải có đủ
       if (nativeLanguage) payload.nativeLanguageCode = nativeLanguage.toLowerCase()
       if (targetLanguages?.length) payload.languages = targetLanguages.map(code => code.toLowerCase())
 
@@ -366,16 +355,11 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
       if (existingUser?.userId) {
         console.log(`Updating existing user ${existingUser.userId}...`);
-
         response = await instance.put(`/api/v1/users/${existingUser.userId}`, payload);
-
         console.log("Account updated, response:", response.data);
-
         useUserStore.getState().setUser(response.data.result);
-
       } else {
         console.log("Quick Start: Checking if email is available...");
-
         let emailCheckResponse;
         try {
           emailCheckResponse = await instance.get('/api/v1/users/check-email', {
@@ -399,7 +383,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
         console.log("Email is available. Creating new user...");
         response = await instance.post('/api/v1/users', payload);
-
         console.log("Account created, response:", response.data);
 
         const result = response.data.result;
@@ -410,14 +393,11 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         }
       }
 
-      // GỌI HÀM ĐÁNH DẤU setupInit ĐÃ HOÀN TẤT TRÊN SERVER
       await useUserStore.getState().finishSetup();
-
       gotoTab("ProficiencyTestScreen");
 
     } catch (error: any) {
       console.error("createTempAccountAndSetup error:", error.response?.data || error.message);
-
       const errorMessage = error.response?.data?.message || t("error.setupAccount");
       Alert.alert(t("error.title"), errorMessage);
     }
@@ -508,7 +488,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       ))}
     </View>
   )
-
 
   const renderCharacterSelection = () => (
     <View style={styles.stepContent}>
@@ -663,6 +642,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.languageScroll}>
           {languages
             .filter((lang) => lang.languageCode !== nativeLanguage)
+            .filter((lang) => SUPPORTED_LEARNING_LANGUAGES.includes(lang.languageCode))
             .map((lang) => {
               const iso = getFlagIsoFromLang(lang.languageCode)
               return (
@@ -907,7 +887,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   )
 
   const renderSkipButton = () => {
-    // Nút Bỏ qua chỉ xuất hiện từ Step 3 và không ở Step cuối (Summary)
     if (currentStep >= 3 && currentStep < 5) {
       return (
         <TouchableOpacity onPress={handleSkip}>
@@ -915,7 +894,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         </TouchableOpacity>
       )
     }
-    return <View style={{ width: 24 }} /> // Giữ chỗ để căn chỉnh header
+    return <View style={{ width: 24 }} />
   }
 
   return (

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { useTranslation } from "react-i18next";
 import {
@@ -8,21 +8,28 @@ import {
 } from "../../hooks/useTesting";
 import { useUserStore } from "../../stores/UserStore";
 import { gotoTab } from "../../utils/navigationRef";
-import { Language, languageToCountry } from "../../types/api";
+import { languageToCountry } from "../../types/api";
 import CountryFlag from "react-native-country-flag";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useRoute, useNavigation } from "@react-navigation/native";
+import Icon from "react-native-vector-icons/MaterialIcons";
+import VipUpgradeModal from "../../components/modals/VipUpgradeModal";
 
 type TestConfig = {
   testConfigId: string;
   title: string;
   description: string;
+  testType?: string; // PLACEMENT, TOEIC, IELTS, SKILL
+  skillType?: string; // LISTENING, READING, WRITING, SPEAKING
 };
+
 type TestQuestion = {
   questionId: string;
   questionText: string;
   options: string[];
 };
+
 type TestResult = {
   score: number;
   totalQuestions: number;
@@ -35,6 +42,16 @@ type Stage = "selection" | "testing" | "submitting" | "results";
 
 const ProficiencyTestScreen = () => {
   const { t } = useTranslation();
+  const route = useRoute();
+  const navigation = useNavigation();
+  const params = route.params as {
+    mode?: 'placement' | 'certification' | 'skill';
+    examType?: string; // TOEIC, IELTS
+    skillType?: string; // LISTENING, SPEAKING, etc.
+  } | undefined;
+
+  const mode = params?.mode || 'placement';
+
   const [stage, setStage] = useState<Stage>("selection");
   const [currentTest, setCurrentTest] = useState<TestConfig | null>(null);
 
@@ -43,18 +60,18 @@ const ProficiencyTestScreen = () => {
   const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [result, setResult] = useState<TestResult | null>(null);
+  const [showVipModal, setShowVipModal] = useState(false);
 
-  // Lấy các trường cần thiết từ UserStore
   const targetLanguages = useUserStore(s => s.user?.languages ?? []);
   const hasDonePlacementTest = useUserStore(s => s.hasDonePlacementTest);
   const finishPlacementTest = useUserStore(s => s.finishPlacementTest);
+  const isVip = useUserStore(s => s.isVip);
+  const registerVip = useUserStore(s => s.registerVip);
 
   const allLanguages: Record<string, { name: string, iso: string }> = {
     'en': { name: 'English', iso: 'US' },
     'vi': { name: 'Tiếng Việt', iso: 'VN' },
     'zh': { name: '中文', iso: 'CN' },
-    'jp': { name: '日本語', iso: 'JP' },
-    'fr': { name: 'Français', iso: 'FR' },
   };
 
   const countryMap: Record<string, string> = languageToCountry as Record<string, string>;
@@ -64,7 +81,6 @@ const ProficiencyTestScreen = () => {
       .map(code => ({
         code: code,
         name: allLanguages[code]?.name ?? code.toUpperCase(),
-        // SỬA LỖI 2352/2538: Sử dụng countryMap đã ép kiểu
         iso: allLanguages[code]?.iso ?? countryMap[code] ?? code.toUpperCase().slice(0, 2)
       }))
       .filter(lang => lang.name);
@@ -78,26 +94,42 @@ const ProficiencyTestScreen = () => {
     languageCode: selectedLanguageCode,
   });
 
-  // SỬA LỖI 2339: Đổi tên thành mutateAsync và sử dụng isLoading
   const { mutateAsync: startTestMutate, isPending: isStarting } = useStartTest();
   const { mutateAsync: submitTestMutate, isPending: isSubmitting } = useSubmitTest();
 
-  // --- LOGIC MỚI CHO NÚT SKIP/CONTINUE ---
+  // Filter tests based on mode
+  const filteredTests = useMemo(() => {
+    if (!availableTests) return [];
+    return availableTests.filter((test: TestConfig) => {
+      if (mode === 'placement') {
+        return test.testType === 'PLACEMENT' || !test.testType;
+      }
+      if (mode === 'certification' && params?.examType) {
+        return test.testType === params.examType;
+      }
+      if (mode === 'skill' && params?.skillType) {
+        return test.skillType === params.skillType;
+      }
+      return true;
+    });
+  }, [availableTests, mode, params]);
+
   const handleContinueToApp = async () => {
-    // 1. Chỉ gọi action cập nhật trạng thái nếu user chưa làm bài test (hoặc skip)
-    if (!hasDonePlacementTest) {
+    if (mode === 'placement' && !hasDonePlacementTest) {
       await finishPlacementTest();
     }
-    // 2. Điều hướng
-    gotoTab("Home");
+    navigation.goBack();
   };
-  // ----------------------------------------
-
 
   const handleSelectTest = async (testConfig: TestConfig) => {
+    // Check VIP for non-placement tests
+    if (mode !== 'placement' && !isVip) {
+      setShowVipModal(true);
+      return;
+    }
+
     try {
       setCurrentTest(testConfig);
-      // SỬA LỖI: Gọi mutateAsync
       const response = await startTestMutate(testConfig.testConfigId);
       if (response && response.questions) {
         setSessionId(response.sessionId);
@@ -125,12 +157,10 @@ const ProficiencyTestScreen = () => {
     if (!sessionId) return;
     setStage("submitting");
     try {
-      // SỬA LỖI: Gọi mutateAsync
       const resultData = await submitTestMutate({ sessionId, answers });
-
-      // Sau khi nộp bài thành công, gọi action set đã làm bài test
-      await finishPlacementTest();
-
+      if (mode === 'placement') {
+        await finishPlacementTest();
+      }
       setResult(resultData);
       setStage("results");
     } catch (e: any) {
@@ -140,6 +170,15 @@ const ProficiencyTestScreen = () => {
     }
   };
 
+  const onVipConfirm = async () => {
+    try {
+      await registerVip();
+      setShowVipModal(false);
+      Alert.alert(t("common.success"), t("vip.successMsg", "Nâng cấp VIP thành công!"));
+    } catch (e) {
+      Alert.alert(t("error.title"), t("vip.failMsg", "Thanh toán thất bại"));
+    }
+  };
 
   if (isStarting || isSubmitting) {
     return (
@@ -155,6 +194,37 @@ const ProficiencyTestScreen = () => {
     );
   }
 
+  const renderHeader = () => {
+    if (mode === 'certification') {
+      return (
+        <>
+          <Text style={styles.title}>{t("test.certTitle", `${params?.examType} Preparation`)}</Text>
+          <Text style={styles.description}>
+            {t("test.certDesc", "Mô phỏng bài thi thực tế. Format chuẩn 2024.")}
+          </Text>
+        </>
+      );
+    }
+    if (mode === 'skill') {
+      return (
+        <>
+          <Text style={styles.title}>{t("test.skillTitle", `${params?.skillType} Practice`)}</Text>
+          <Text style={styles.description}>
+            {t("test.skillDesc", "Luyện tập chuyên sâu kỹ năng 1-1 với AI.")}
+          </Text>
+        </>
+      );
+    }
+    return (
+      <>
+        <Text style={styles.title}>{t("proficiencyTest.title", "Kiểm Tra Trình Độ")}</Text>
+        <Text style={styles.description}>
+          {t("proficiencyTest.description", "Hãy chọn ngôn ngữ bạn muốn kiểm tra. Việc này giúp chúng tôi cá nhân hóa lộ trình học cho bạn.")}
+        </Text>
+      </>
+    );
+  };
+
   const renderSelectionStage = () => {
     if (userTargetLanguages.length === 0) {
       return (
@@ -163,7 +233,7 @@ const ProficiencyTestScreen = () => {
           <Text style={styles.description}>
             {t("proficiencyTest.noLanguageDesc", "Vui lòng quay lại và chọn ít nhất một ngôn ngữ để học.")}
           </Text>
-          <TouchableOpacity style={styles.submitButton} onPress={handleContinueToApp}>
+          <TouchableOpacity style={styles.submitButton} onPress={() => gotoTab("Home")}>
             <Text style={styles.submitButtonText}>{t("common.continueToApp", "Tiếp Tục Vào App")}</Text>
           </TouchableOpacity>
         </View>
@@ -172,10 +242,7 @@ const ProficiencyTestScreen = () => {
 
     return (
       <ScreenLayout style={styles.container}>
-        <Text style={styles.title}>{t("proficiencyTest.title", "Kiểm Tra Trình Độ")}</Text>
-        <Text style={styles.description}>
-          {t("proficiencyTest.description", "Hãy chọn ngôn ngữ bạn muốn kiểm tra. Việc này giúp chúng tôi cá nhân hóa lộ trình học cho bạn.")}
-        </Text>
+        {renderHeader()}
 
         <View style={styles.languageSelector}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.langScroll}>
@@ -204,37 +271,33 @@ const ProficiencyTestScreen = () => {
             <ActivityIndicator size="large" color="#4F46E5" style={styles.loadingIndicator} />
           )}
 
-          {!isLoadingTests && !isError && availableTests?.length === 0 && (
+          {!isLoadingTests && !isError && filteredTests.length === 0 && (
             <View style={styles.noTestsContainer}>
               <Text style={styles.noTestsText}>
-                {t("proficiencyTest.noTestsAvailable", "Hiện chưa có bài test nào cho ngôn ngữ này. Vui lòng thử lại sau.")}
+                {t("proficiencyTest.noTestsAvailable", "Hiện chưa có bài test nào cho mục này.")}
               </Text>
             </View>
           )}
 
-          {!isLoadingTests && isError && (
-            <View style={styles.noTestsContainer}>
-              <Text style={styles.noTestsText}>
-                {t("errors.loadTestsFailed", "Đã xảy ra lỗi khi tải bài test. Vui lòng kiểm tra kết nối.")}
-              </Text>
-            </View>
-          )}
-
-          {!isLoadingTests && !isError && availableTests && availableTests.map(test => (
+          {!isLoadingTests && filteredTests.map((test: TestConfig) => (
             <TouchableOpacity
               key={test.testConfigId}
               onPress={() => handleSelectTest(test)}
               style={styles.testCard}
             >
-              <Text style={styles.testTitle}>{test.title}</Text>
+              <View style={styles.testHeader}>
+                <Text style={styles.testTitle}>{test.title}</Text>
+                {mode !== 'placement' && !isVip && (
+                  <Icon name="lock" size={20} color="#EF4444" />
+                )}
+              </View>
               <Text style={styles.testDescription}>{test.description}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
 
-        {/* Gọi handleContinueToApp để thực hiện set status và điều hướng */}
         <TouchableOpacity style={styles.skipButton} onPress={handleContinueToApp}>
-          <Text style={styles.skipButtonText}>{t("common.skip", "Bỏ qua")}</Text>
+          <Text style={styles.skipButtonText}>{t("common.back", "Quay lại")}</Text>
         </TouchableOpacity>
       </ScreenLayout>
     );
@@ -290,15 +353,6 @@ const ProficiencyTestScreen = () => {
     );
   }
 
-  const renderSubmittingStage = () => {
-    return (
-      <ScreenLayout style={styles.container}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-        <Text style={styles.loadingText}>{t("proficiencyTest.submitting", "Đang nộp bài...")}</Text>
-      </ScreenLayout>
-    );
-  }
-
   const renderResultsStage = () => {
     if (!result) return <View />;
 
@@ -331,18 +385,30 @@ const ProficiencyTestScreen = () => {
         </ScrollView>
 
         <TouchableOpacity style={styles.submitButton} onPress={handleContinueToApp}>
-          <Text style={styles.submitButtonText}>{t("common.continueToApp", "Tiếp Tục Vào App")}</Text>
+          <Text style={styles.submitButtonText}>{t("common.continueToApp", "Tiếp Tục")}</Text>
         </TouchableOpacity>
       </ScreenLayout>
     );
   }
 
-  if (stage === "selection") return renderSelectionStage();
-  if (stage === "testing") return renderTestingStage();
-  if (stage === "submitting") return renderSubmittingStage();
-  if (stage === "results") return renderResultsStage();
+  return (
+    <>
+      {stage === "selection" && renderSelectionStage()}
+      {stage === "testing" && renderTestingStage()}
+      {stage === "submitting" && (
+        <ScreenLayout style={styles.container}>
+          <ActivityIndicator size="large" color="#4F46E5" />
+          <Text style={styles.loadingText}>{t("proficiencyTest.submitting", "Đang nộp bài...")}</Text>
+        </ScreenLayout>
+      )}
+      {stage === "results" && renderResultsStage()}
 
-  return <View style={styles.container}><Text>Đã xảy ra lỗi.</Text></View>;
+      <VipUpgradeModal
+        visible={showVipModal}
+        onClose={() => setShowVipModal(false)}
+      />
+    </>
+  );
 };
 
 const styles = createScaledSheet({
@@ -440,11 +506,16 @@ const styles = createScaledSheet({
     shadowRadius: 4,
     elevation: 2,
   },
+  testHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   testTitle: {
     fontSize: 18,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 4,
   },
   testDescription: {
     fontSize: 14,
@@ -463,7 +534,6 @@ const styles = createScaledSheet({
     fontWeight: '600',
     textAlign: 'center',
   },
-
   progressBarContainer: {
     height: 8,
     backgroundColor: '#E5E7EB',
@@ -520,7 +590,6 @@ const styles = createScaledSheet({
     fontWeight: '600',
     textAlign: 'center',
   },
-
   resultProficiency: {
     fontSize: 22,
     fontWeight: 'bold',

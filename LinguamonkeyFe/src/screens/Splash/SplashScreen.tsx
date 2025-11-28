@@ -1,12 +1,16 @@
 import React, { useMemo, useEffect, useRef, useState } from 'react';
-import { Text, View, Image, Animated } from 'react-native';
+import { Text, View, Image, Animated, Easing } from 'react-native';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useTranslation } from 'react-i18next';
 import { createScaledSheet } from '../../utils/scaledStyles';
 
 const QUOTES_KEY = 'quotes';
 
-const SplashScreen = () => {
+interface SplashScreenProps {
+    serverError?: string | null;
+}
+
+const SplashScreen = ({ serverError }: SplashScreenProps) => {
     const { t, i18n } = useTranslation(['translation', 'motivation']);
     const [loadingDots, setLoadingDots] = useState('');
     const progressAnim = useRef(new Animated.Value(0)).current;
@@ -28,13 +32,38 @@ const SplashScreen = () => {
         return () => clearInterval(dotInterval);
     }, []);
 
+    const animateProgress = (isError: boolean) => {
+        const baseDuration = 10000;
+        const durationMultiplier = isError ? 2 : 1;
+        const totalDuration = baseDuration * durationMultiplier;
+
+        progressAnim.setValue(0);
+
+        Animated.sequence([
+            Animated.timing(progressAnim, {
+                toValue: 0.6,
+                duration: totalDuration * 0.5,
+                easing: Easing.linear,
+                useNativeDriver: false,
+            }),
+            Animated.timing(progressAnim, {
+                toValue: 0.9,
+                duration: totalDuration * 0.2,
+                easing: Easing.out(Easing.quad),
+                useNativeDriver: false,
+            }),
+            Animated.timing(progressAnim, {
+                toValue: 1,
+                duration: totalDuration * 0.3,
+                easing: Easing.linear,
+                useNativeDriver: false,
+            }),
+        ]).start();
+    }
+
     useEffect(() => {
-        Animated.timing(progressAnim, {
-            toValue: 1,
-            duration: 3500,
-            useNativeDriver: false,
-        }).start();
-    }, [progressAnim]);
+        animateProgress(!!serverError);
+    }, [progressAnim, serverError]);
 
     const progressWidth = progressAnim.interpolate({
         inputRange: [0, 1],
@@ -42,7 +71,9 @@ const SplashScreen = () => {
     });
 
     return (
-        <ScreenLayout style={styles.container}>
+        <ScreenLayout
+            style={styles.container}
+        >
             <View style={styles.logoContainer}>
                 <Image
                     source={require('../../assets/images/icon.png')}
@@ -51,20 +82,35 @@ const SplashScreen = () => {
             </View>
 
             <View style={styles.bottomContainer}>
-                <Text style={styles.loadingText}>
-                    Loading{loadingDots}
-                </Text>
+                {/* 🚨 SỬA LỖI JITTER: Tách Loading và ... và bao bọc trong View */}
+                <View style={styles.loadingWrapper}>
+                    <Text style={styles.loadingText}>
+                        {serverError ? t('common.reconnecting', { defaultValue: 'Reconnecting' }) : 'Loading'}
+                    </Text>
+                    <Text style={[styles.loadingText, styles.dotsPlaceholder]}>
+                        {loadingDots}
+                    </Text>
+                </View>
 
                 <View style={styles.progressBarContainer}>
                     <Animated.View
                         style={[
                             styles.progressBarFill,
-                            { width: progressWidth }
+                            {
+                                width: progressWidth,
+                                backgroundColor: serverError ? '#F59E0B' : '#000000'
+                            }
                         ]}
                     />
                 </View>
 
-                <Text style={styles.quoteText}>{randomQuote}</Text>
+                {serverError ? (
+                    <Text style={styles.errorText}>
+                        {serverError}
+                    </Text>
+                ) : (
+                    <Text style={styles.quoteText}>{randomQuote}</Text>
+                )}
             </View>
         </ScreenLayout>
     );
@@ -81,15 +127,9 @@ const styles = createScaledSheet({
         alignItems: 'center',
     },
     logoImage: {
-        width: 150,
-        height: 150,
+        width: 300,
+        height: 300,
         resizeMode: 'contain',
-    },
-    logoText: {
-        fontSize: 32,
-        fontWeight: 'bold',
-        color: '#000000',
-        letterSpacing: 2,
     },
     bottomContainer: {
         width: '100%',
@@ -97,13 +137,20 @@ const styles = createScaledSheet({
         paddingBottom: 60,
         alignItems: 'center',
     },
+    // Style mới để bao bọc Loading và ...
+    loadingWrapper: {
+        flexDirection: 'row',
+        marginBottom: 8, // Di chuyển marginBottom từ loadingText lên đây
+    },
     loadingText: {
         fontSize: 14,
         color: '#666666',
-        marginBottom: 8,
         fontWeight: '500',
-        alignSelf: 'flex-start',
-        marginLeft: 2,
+        // Đã loại bỏ marginBottom vì nó đã được chuyển lên loadingWrapper
+    },
+    // Style mới để cố định chiều rộng của dấu chấm
+    dotsPlaceholder: {
+        width: 16, // Chiều rộng cố định, đảm bảo chứa 3 dấu chấm
     },
     progressBarContainer: {
         width: '100%',
@@ -111,7 +158,6 @@ const styles = createScaledSheet({
         backgroundColor: '#F0F0F0',
         borderRadius: 3,
         overflow: 'hidden',
-        marginBottom: 24,
     },
     progressBarFill: {
         height: '100%',
@@ -126,6 +172,13 @@ const styles = createScaledSheet({
         fontStyle: 'italic',
         opacity: 0.8,
     },
+    errorText: {
+        fontSize: 14,
+        color: '#EF4444',
+        textAlign: 'center',
+        lineHeight: 22,
+        fontWeight: '500',
+    }
 });
 
 export default SplashScreen;

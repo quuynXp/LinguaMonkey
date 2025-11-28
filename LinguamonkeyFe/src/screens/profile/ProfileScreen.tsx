@@ -22,9 +22,8 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import { useShallow } from 'zustand/react/shallow';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUsers } from '../../hooks/useUsers';
-import { UserProfileResponse, Character3dResponse } from '../../types/dto';
-
-const SCREEN_WIDTH = Dimensions.get('window').width;
+import { Character3dResponse } from '../../types/dto';
+import { useWallet } from '../../hooks/useWallet';
 
 const ccToFlag = (code?: string | null) => {
   if (!code) return '🏳️';
@@ -46,29 +45,17 @@ const langToFlag = (lang?: string | null) => {
   return ccToFlag(cc);
 };
 
-const fmt = (v: unknown) => {
-  if (v === null || v === undefined || v === '') return '—';
-  if (Array.isArray(v)) return v.length ? v.join(', ') : '—';
-  if (typeof v === 'boolean') return v ? 'On' : 'Off';
-  return String(v);
-};
 
 const ProfileScreen: React.FC = () => {
   const { t } = useTranslation();
 
-  const { notificationPreferences, privacySettings } = useAppStore(
-    useShallow((state) => ({
-      notificationPreferences: state.notificationPreferences,
-      privacySettings: state.privacySettings,
-    }))
-  );
-
   const userStore = useUserStore();
   const { user, fetchCharacter3d, uploadTemp, updateUserAvatar, deleteTempFile } = userStore;
+  const { useUser, useUserProfile } = useUsers();
+  const { data: walletData } = useWallet().useWalletBalance(user?.userId);
+  const balance = walletData?.balance || 0;
 
-  const { useUserProfile } = useUsers();
-
-  const { data: fullProfile, refetch: refetchProfile, isRefetching } = useUserProfile(user?.userId);
+  const { data: fullProfile, refetch: refetchProfile, isRefetching } = useUser(user?.userId);
 
   const partnerId = fullProfile?.coupleProfile?.partnerId;
   const { data: partnerProfile } = useUserProfile(partnerId || undefined);
@@ -165,27 +152,21 @@ const ProfileScreen: React.FC = () => {
     }
   }, [user?.userId, uploadTemp, updateUserAvatar, deleteTempFile, refetchProfile, t]);
 
-  const navigationButtons = useMemo(() => [
+  const menuActions = useMemo(() => [
     { label: t('profile.editProfile'), icon: 'edit', screen: 'EditProfileScreen', color: '#4F46E5' },
-    { label: t('profile.transactionHistory'), icon: 'history', screen: 'TransactionHistoryScreen', color: '#10B981' },
-    { label: t('profile.notificationHistory'), icon: 'notifications', screen: 'NotificationHistoryScreen', color: '#F59E0B' },
-    { label: t('profile.privacySettings'), icon: 'lock', screen: 'PrivacySettingsScreen', color: '#3B82F6' },
     { label: t('profile.roadmap'), icon: 'map', screen: 'RoadmapScreen', color: '#EF4444' },
     { label: t('profile.notes'), icon: 'note', screen: 'NotesScreen', color: '#06B6D4' },
-    { label: t('profile.helpSupport'), icon: 'help', screen: 'HelpSupportScreen', color: '#8B5CF6' },
-    { label: t('profile.about'), icon: 'info', screen: 'AboutScreen', color: '#F97316' },
   ], [t]);
 
   const details = useMemo(() => [
     { key: 'email', label: t('profile.email'), icon: 'email', value: user?.email, color: '#3B82F6' },
     { key: 'phone', label: t('profile.phone'), icon: 'phone', value: user?.phone, color: '#10B981' },
     { key: 'country', label: t('profile.country'), icon: 'public', value: user?.country, flag: ccToFlag(user?.country), color: '#F97316' },
+    { key: 'gender', label: t('profile.gender'), icon: 'person', value: user?.gender, color: '#EC4899' },
     { key: 'ageRange', label: t('profile.age'), icon: 'cake', value: user?.ageRange, color: '#8B5CF6' },
     { key: 'learningPace', label: t('profile.learningPace'), icon: 'timeline', value: user?.learningPace, color: '#EF4444' },
     { key: 'proficiency', label: t('profile.proficiency'), icon: 'insights', value: user?.proficiency, color: '#06B6D4' },
-    { key: 'privacy_profileVisibility', label: t('profile.profileVisibility'), icon: 'lock-open', value: privacySettings?.profileVisibility, color: '#4F46E5' },
-    { key: 'notification_quiet', label: t('profile.quietHours'), icon: 'nightlight', value: notificationPreferences?.quietHours?.enabled ? `${notificationPreferences.quietHours.start} - ${notificationPreferences.quietHours.end}` : t('profile.disabled'), color: '#06B6D4' },
-  ].filter(i => i.value), [t, user, privacySettings, notificationPreferences]);
+  ].filter(i => i.value), [t, user]);
 
   const renderExpBar = (current: number, next: number, level: number, color: string) => {
     const total = current + next;
@@ -246,32 +227,6 @@ const ProfileScreen: React.FC = () => {
         <View style={styles.greetingBox}>
           <Text style={styles.greetingText}>✨ {randomGreeting}</Text>
         </View>
-
-        <View style={styles.partnerStatsCard}>
-          <Text style={styles.partnerStatsTitle}>{t('profile.partnerProgress', { name: partner.nickname || partner.fullname })}</Text>
-          <View style={styles.partnerStatsRow}>
-            <View style={styles.pStat}>
-              <Icon name="whatshot" size={20} color="#F97316" />
-              <Text style={styles.pStatVal}>{partner.streak}</Text>
-              <Text style={styles.pStatLbl}>{t('profile.streak')}</Text>
-            </View>
-            <View style={styles.pStat}>
-              <Icon name="language" size={20} color="#3B82F6" />
-              <Text style={styles.pStatVal}>{partner.languages?.length || 0}</Text>
-              <Text style={styles.pStatLbl}>{t('profile.langs')}</Text>
-            </View>
-            <View style={styles.pStat}>
-              <Icon name="emoji-events" size={20} color="#F59E0B" />
-              <Text style={styles.pStatVal}>{partner.badges?.length || 0}</Text>
-              <Text style={styles.pStatLbl}>{t('profile.badges')}</Text>
-            </View>
-          </View>
-          <View style={styles.flagRow}>
-            {partner.languages?.slice(0, 5).map(lang => (
-              <Text key={lang} style={styles.miniFlag}>{langToFlag(lang)}</Text>
-            ))}
-          </View>
-        </View>
       </View>
     );
   };
@@ -329,6 +284,45 @@ const ProfileScreen: React.FC = () => {
     </View>
   );
 
+  const renderWalletCard = () => (
+    <View style={styles.walletCard}>
+      <View style={styles.walletHeader}>
+        <View style={styles.walletIconContainer}>
+          <Icon name="account-balance-wallet" size={24} color="#FFF" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.walletTitle}>{t('profile.myWallet')}</Text>
+          <Text style={styles.walletBalance}>
+            {balance.toLocaleString()} {user?.country === 'VIETNAM' ? 'VND' : 'USD'}
+            {/* Logic hiển thị tiền tệ có thể tuỳ biến */}
+          </Text>
+        </View>
+      </View>
+
+      <View style={styles.walletActions}>
+        {/* Nút Nạp tiền (Mới) */}
+        <TouchableOpacity
+          style={styles.actionButtonPrimary}
+          onPress={() => gotoTab('Profile', 'DepositScreen')}
+        >
+          <Icon name="add" size={20} color="#FFF" />
+          <Text style={styles.actionButtonTextPrimary}>{t('profile.deposit', 'Nạp tiền')}</Text>
+        </TouchableOpacity>
+
+        <View style={{ width: 12 }} />
+
+        {/* Nút Lịch sử (Cũ) */}
+        <TouchableOpacity
+          style={styles.actionButtonSecondary}
+          onPress={() => gotoTab('Profile', 'TransactionHistoryScreen')}
+        >
+          <Text style={styles.actionButtonTextSecondary}>{t('profile.history', 'Lịch sử')}</Text>
+          <Icon name="history" size={20} color="#4F46E5" />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
   return (
     <ScreenLayout>
       <ScrollView
@@ -339,19 +333,21 @@ const ProfileScreen: React.FC = () => {
         <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <View style={styles.header}>
             <Text style={styles.title}>{t('profile.title')}</Text>
-            <TouchableOpacity style={styles.settingsButton} onPress={() => gotoTab('Profile', 'PrivacySettingsScreen')}>
+            <TouchableOpacity style={styles.settingsButton} onPress={() => gotoTab('Profile', 'SettingsScreen')}>
               <Icon name="settings" size={26} color="#6B7280" />
             </TouchableOpacity>
           </View>
 
           {fullProfile?.coupleProfile ? renderCoupleHeader() : renderSingleHeader()}
 
+          {renderWalletCard()}
+
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>{t('profile.actions')}</Text>
-            {navigationButtons.map((btn, index) => (
+            <Text style={styles.sectionTitle}>{t('profile.menu')}</Text>
+            {menuActions.map((btn, index) => (
               <TouchableOpacity
                 key={btn.screen}
-                style={[styles.actionButton, index === navigationButtons.length - 1 && { borderBottomWidth: 0 }]}
+                style={[styles.actionButton, index === menuActions.length - 1 && { borderBottomWidth: 0 }]}
                 onPress={() => gotoTab('Profile', btn.screen)}
               >
                 <View style={[styles.actionIconContainer, { backgroundColor: `${btn.color}1A` }]}>
@@ -403,6 +399,19 @@ const styles = createScaledSheet({
   title: { fontSize: 28, fontWeight: '800', color: '#111827' },
   settingsButton: { padding: 8, backgroundColor: '#FFF', borderRadius: 20 },
 
+  // Wallet
+  walletCard: { backgroundColor: '#111827', borderRadius: 20, padding: 20, marginBottom: 16, elevation: 4, shadowColor: '#4F46E5', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
+  walletHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  walletIconContainer: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  walletTitle: { fontSize: 14, color: '#9CA3AF', fontWeight: '600' },
+  walletBalance: { fontSize: 28, color: '#FFF', fontWeight: '800', marginTop: 4 },
+  transactionButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF', paddingVertical: 12, borderRadius: 12 },
+  transactionButtonText: { color: '#4F46E5', fontWeight: '700', marginRight: 8 },
+  walletActions: { flexDirection: 'row', marginTop: 16 },
+  actionButtonPrimary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#4F46E5', paddingVertical: 12, borderRadius: 12 },
+  actionButtonTextPrimary: { color: '#FFF', fontWeight: '700', marginLeft: 6 },
+  actionButtonSecondary: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF', paddingVertical: 12, borderRadius: 12 },
+  actionButtonTextSecondary: { color: '#4F46E5', fontWeight: '700', marginRight: 6 },
   // Couple Styles
   coupleContainer: { marginBottom: 24 },
   coupleWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#FFF', borderRadius: 24, padding: 16, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, shadowOffset: { width: 0, height: 4 } },
@@ -424,16 +433,6 @@ const styles = createScaledSheet({
   miniExpText: { fontSize: 10, color: '#9CA3AF' },
   miniExpBg: { width: '100%', height: 4, backgroundColor: '#E5E7EB', borderRadius: 2 },
   miniExpFill: { height: 4, borderRadius: 2 },
-
-  // Partner Detail Card
-  partnerStatsCard: { marginTop: 16, backgroundColor: '#FFF', borderRadius: 16, padding: 16 },
-  partnerStatsTitle: { fontSize: 14, fontWeight: '700', color: '#374151', marginBottom: 12 },
-  partnerStatsRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 12 },
-  pStat: { alignItems: 'center' },
-  pStatVal: { fontSize: 16, fontWeight: '800', color: '#111827', marginTop: 4 },
-  pStatLbl: { fontSize: 11, color: '#6B7280' },
-  flagRow: { flexDirection: 'row', justifyContent: 'center', gap: 6 },
-  miniFlag: { fontSize: 18 },
 
   // Single Profile Styles
   singleHeader: { backgroundColor: '#fff', padding: 24, borderRadius: 24, alignItems: 'center', marginBottom: 24, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },

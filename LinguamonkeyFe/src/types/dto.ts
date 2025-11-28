@@ -56,8 +56,6 @@ export interface BadgeRequest {
     criteriaThreshold: number;
 }
 
-// Add these to your existing dto.ts file
-
 export interface StreamingChunk {
     type: 'metadata' | 'chunk' | 'suggestion' | 'final' | 'error';
     feedback: string;
@@ -164,6 +162,7 @@ export interface CourseDiscountRequest {
     courseId: string;
     discountPercentage: number;
     startDate: string;
+    code: string;
     endDate: string;
     isActive: boolean;
 }
@@ -510,6 +509,8 @@ export interface NotificationRequest {
     type: Enums.NotificationType;
     languageCode: string;
     payload: string;
+    fcmToken?: string;
+    deviceId?: string;
 }
 
 export interface OtpRequest {
@@ -742,6 +743,7 @@ export interface UserRequest {
     authProvider?: string;
     score: number;
     streak: number;
+    gender?: string;
 }
 
 export interface UserRoleRequest {
@@ -936,6 +938,7 @@ export interface CourseDiscountResponse {
     discountPercentage: number;
     startDate: string;
     endDate: string;
+    code: string;
     isActive: boolean;
     isDeleted: boolean;
     createdAt: string;
@@ -1198,6 +1201,7 @@ export interface LeaderboardEntryResponse {
     fullname: string;
     nickname: string;
     avatarUrl: string;
+    gender?: string;
     level: number;
     exp: number;
     rank?: number;
@@ -1685,7 +1689,13 @@ export interface RoomResponse {
     roomType: Enums.RoomType;
     status: Enums.RoomStatus;
     createdAt: string;
+    participants: any[];
     updatedAt: string;
+}
+
+export interface WaitingResponse {
+    status: "WAITING";
+    queueSize: number;
 }
 
 export interface SkillEvaluationResult {
@@ -1977,6 +1987,7 @@ export interface UserResponse {
     certificationIds?: string[] | null;
     interestestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
     goalIds?: string[] | null;
+    isVip?: boolean;
 
     // Synced Enum Fields
     ageRange?: Enums.AgeRange;
@@ -1992,6 +2003,12 @@ export interface UserResponse {
     createdAt: string;
     updatedAt: string;
     languages?: string[];
+
+    // Added gender field
+    gender?: string;
+
+    // Added coupleProfile to support profile screen using UserResponse
+    coupleProfile?: CoupleProfileSummary;
 }
 
 export interface UserRoleResponse {

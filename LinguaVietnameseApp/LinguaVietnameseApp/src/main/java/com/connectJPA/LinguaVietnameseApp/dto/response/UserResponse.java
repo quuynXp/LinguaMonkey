@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.entity.CoupleProfileSummary;
 import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import com.connectJPA.LinguaVietnameseApp.enums.LearningPace;
@@ -31,6 +32,7 @@ public class UserResponse {
     private UUID badgeId;
     private String nativeLanguageCode;
     private String authProvider;
+    private String gender;
     private Country country;
 
     // New Fields matching Entity
@@ -48,6 +50,7 @@ public class UserResponse {
     private Double progress;
     private int streak;
     private boolean isDeleted;
+    private boolean isVip;
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private List<String> languages;
@@ -56,4 +59,7 @@ public class UserResponse {
     private boolean hasFinishedSetup;
     private boolean hasDonePlacementTest;
     private OffsetDateTime lastDailyWelcomeAt;
+
+    // --- Couple Profile Info ---
+    private CoupleProfileSummary coupleProfile;
 }

@@ -39,14 +39,12 @@ interface UserState {
   languages: string[];
   dailyGoal: DailyGoal;
   statusMessage: string;
-
-  // Status flags synced with backend
+  gender?: string;
   hasDonePlacementTest?: boolean;
   hasFinishedSetup?: boolean;
   lastDailyWelcomeAt?: string;
-
-  // THÊM: Trạng thái theo dõi mục tiêu 15 phút đã đạt chưa
-  isDailyGoalAchieved: boolean; // Theo dõi trong ngày
+  isDailyGoalAchieved: boolean;
+  isVip: boolean;
 
   setToken: (token: string) => void;
   setDeviceId: (id: string) => void;
@@ -63,15 +61,11 @@ interface UserState {
   updateUserAvatar: (tempPath: string) => Promise<UserResponse>;
   setLocalNativeLanguage: (languageId: string) => void;
   updateNativeLanguageOnServer: (languageId: string) => Promise<void>;
-
-  // New Actions for Status Tracking
   finishSetup: () => Promise<void>;
   finishPlacementTest: () => Promise<void>;
   trackDailyWelcome: () => Promise<void>;
-
-  // THÊM: Logic cập nhật Streak và trạng thái Daily Goal
-  // Loại bỏ locale, vì nó không cần thiết trong việc gọi API này
   updateStreakAndDailyGoal: (id: string) => Promise<UserResponse | null>;
+  registerVip: () => Promise<string | null>; // Returns Payment URL
 }
 
 const defaultUserState: Omit<UserState, keyof {
@@ -93,6 +87,7 @@ const defaultUserState: Omit<UserState, keyof {
   finishPlacementTest: any;
   trackDailyWelcome: any;
   updateStreakAndDailyGoal: any;
+  registerVip: any;
 }> = {
   user: null,
   isAuthenticated: false,
@@ -117,42 +112,17 @@ const defaultUserState: Omit<UserState, keyof {
   languages: [],
   dailyGoal: { completedLessons: 0, totalLessons: 0 },
   statusMessage: '',
+  gender: undefined,
   hasDonePlacementTest: undefined,
   hasFinishedSetup: undefined,
   lastDailyWelcomeAt: undefined,
-  isDailyGoalAchieved: false, // Mặc định
+  isDailyGoalAchieved: false,
+  isVip: false,
 };
 
 const getInitialState = (): Partial<UserState> => ({
-  user: null,
-  isAuthenticated: false,
-  fcmToken: null,
-  deviceId: null,
-  isTokenRegistered: false,
-  name: '',
-  streak: 0,
-  level: undefined,
-  exp: undefined,
-  expToNextLevel: undefined,
-  avatarUrl: undefined,
-  bio: undefined,
-  phone: undefined,
-  country: undefined,
-  progress: undefined,
-  nativeLanguageId: undefined,
-  badgeId: undefined,
-  character3dId: undefined,
-  authProvider: undefined,
-  badges: [],
-  languages: [],
-  dailyGoal: { completedLessons: 0, totalLessons: 0 },
-  statusMessage: '',
-  hasDonePlacementTest: undefined,
-  hasFinishedSetup: undefined,
-  lastDailyWelcomeAt: undefined,
-  isDailyGoalAchieved: false, // Mặc định
+  ...defaultUserState
 });
-
 
 export const useUserStore = create<UserState>()(
   persist(
@@ -169,12 +139,8 @@ export const useUserStore = create<UserState>()(
           return;
         }
 
-        // Map backend fields, even if not strictly in TS interface yet
         const rawUser = user as any;
-
-        // Lấy ngày hiện tại ở định dạng YYYY-MM-DD
         const todayDate = new Date().toISOString().split('T')[0];
-        // Lấy ngày check streak cuối cùng từ backend
         const lastStreakCheckDate = rawUser.lastStreakCheckDate;
 
         set({
@@ -196,23 +162,17 @@ export const useUserStore = create<UserState>()(
           authProvider: user.authProvider,
           statusMessage: user.bio ?? '',
           languages: user.languages ?? [],
-
-          // Map dynamic status fields from backend user object
+          gender: user.gender,
           hasDonePlacementTest: rawUser.hasDonePlacementTest,
           hasFinishedSetup: rawUser.hasFinishedSetup,
           lastDailyWelcomeAt: rawUser.lastDailyWelcomeAt,
-
-          // Cập nhật trạng thái Daily Goal: Đã hoàn thành nếu lastStreakCheckDate là hôm nay
           isDailyGoalAchieved: !!lastStreakCheckDate && lastStreakCheckDate === todayDate,
+          isVip: rawUser.isVip ?? false,
         });
 
         if (user.nativeLanguageCode) {
           set({ nativeLanguageId: user.nativeLanguageCode });
         } else if (detectedLanguage) {
-          console.log(
-            'User has no native language. Syncing detected language to server:',
-            detectedLanguage
-          );
           get().updateNativeLanguageOnServer(detectedLanguage);
           set({ nativeLanguageId: detectedLanguage });
         }
@@ -229,16 +189,12 @@ export const useUserStore = create<UserState>()(
       updateNativeLanguageOnServer: async (languageId: string) => {
         set({ nativeLanguageId: languageId });
         const user = get().user;
-        if (!user?.userId) {
-          console.error('Cannot update native language, user not logged in.');
-          return;
-        }
+        if (!user?.userId) return;
 
         try {
           await instance.patch(`/api/v1/users/${user.userId}/native-language`, null, {
             params: { nativeLanguageCode: languageId },
           });
-          console.log('Native language updated on server');
         } catch (err) {
           console.error('Failed to update native language on server:', err);
         }
@@ -246,10 +202,7 @@ export const useUserStore = create<UserState>()(
 
       saveProfileToServer: async (userId, payload) => {
         try {
-          const res = await instance.put<any>(
-            `/api/v1/users/${userId}`,
-            payload,
-          );
+          const res = await instance.put<any>(`/api/v1/users/${userId}`, payload);
           if (res?.data?.result) {
             get().setUser(res.data.result);
             return res.data.result;
@@ -262,20 +215,14 @@ export const useUserStore = create<UserState>()(
 
       fetchCharacter3d: async () => {
         const { user } = get();
-        if (!user?.userId) {
-          console.warn('fetchCharacter3d: User not found');
-          return null;
-        }
+        if (!user?.userId) return null;
         try {
-          const res = await instance.get<any>(
-            `/api/v1/users/${user.userId}/character3d`,
-          );
+          const res = await instance.get<any>(`/api/v1/users/${user.userId}/character3d`);
           if (res.data.code === 200 && res.data.result) {
             return res.data.result;
           }
           return null;
         } catch (error) {
-          console.error('Fetch character 3D failed:', error);
           return null;
         }
       },
@@ -294,16 +241,13 @@ export const useUserStore = create<UserState>()(
           });
           return res.data as string;
         } catch (error) {
-          console.error('Upload temp failed:', error);
           throw error;
         }
       },
 
       deleteTempFile: async (path: string) => {
         try {
-          await instance.delete('/api/v1/files/temp', {
-            params: { path },
-          });
+          await instance.delete('/api/v1/files/temp', { params: { path } });
         } catch (error) {
           console.error('Delete temp file failed:', error);
         }
@@ -311,18 +255,12 @@ export const useUserStore = create<UserState>()(
 
       updateUserAvatar: async (tempPath: string) => {
         const { user } = get();
-        if (!user || !user.userId) {
-          throw new Error('User not authenticated');
-        }
+        if (!user || !user.userId) throw new Error('User not authenticated');
 
         try {
-          const res = await instance.patch<any>(
-            `/api/v1/users/${user.userId}/avatar`,
-            null,
-            {
-              params: { tempPath },
-            },
-          );
+          const res = await instance.patch<any>(`/api/v1/users/${user.userId}/avatar`, null, {
+            params: { tempPath },
+          });
 
           if (res.data && res.data.code === 200 && res.data.result) {
             get().setUser(res.data.result);
@@ -331,7 +269,6 @@ export const useUserStore = create<UserState>()(
             throw new Error(res.data.message || 'Avatar update failed');
           }
         } catch (error) {
-          console.error('Update user avatar failed:', error);
           throw error;
         }
       },
@@ -379,27 +316,19 @@ export const useUserStore = create<UserState>()(
         }
       },
 
-      // Cập nhật streak và trạng thái daily goal
       updateStreakAndDailyGoal: async (id: string) => {
         try {
-          const res = await instance.patch<any>(
-            `/api/v1/users/${id}/streak`,
-          );
+          const res = await instance.patch<any>(`/api/v1/users/${id}/streak`);
           if (res.data && res.data.code === 200 && res.data.result) {
             const updatedUser = res.data.result;
             get().setUser(updatedUser);
 
-            // Logic cập nhật trạng thái Daily Goal: 
-            // Nếu backend cập nhật lastStreakCheckDate là ngày hôm nay, 
-            // nghĩa là mục tiêu đã đạt.
             const rawUser = updatedUser as any;
             const todayDate = new Date().toISOString().split('T')[0];
 
             if (rawUser.lastStreakCheckDate === todayDate) {
               set({ isDailyGoalAchieved: true });
             }
-
-            // NOTE: Việc hiển thị Pop-up sẽ được xử lý qua Push Notification Listener.
 
             return updatedUser as UserResponse;
           } else {
@@ -409,9 +338,31 @@ export const useUserStore = create<UserState>()(
           console.error('Update streak failed:', error);
           throw error;
         }
-        return null;
-      }
+      },
 
+      registerVip: async () => {
+        const { user } = get();
+        if (!user?.userId) return null;
+        try {
+          // Call Transaction Service to create payment session for $1 trial
+          const payload = {
+            userId: user.userId,
+            amount: 1.00,
+            currency: 'USD',
+            description: 'VIP 14-Day Trial Activation',
+            returnUrl: 'yourapp://vip-result' // Deep link back to app
+          };
+
+          const res = await instance.post('/api/v1/transactions/payment-url', payload);
+          if (res.data && res.data.result) {
+            return res.data.result; // Returns Stripe URL
+          }
+          return null;
+        } catch (e) {
+          console.error("VIP registration failed", e);
+          throw e;
+        }
+      }
     }),
     {
       name: 'user-storage-v2',
@@ -439,10 +390,12 @@ export const useUserStore = create<UserState>()(
         languages: state.languages,
         dailyGoal: state.dailyGoal,
         statusMessage: state.statusMessage,
+        gender: state.gender,
         hasDonePlacementTest: state.hasDonePlacementTest,
         hasFinishedSetup: state.hasFinishedSetup,
         lastDailyWelcomeAt: state.lastDailyWelcomeAt,
         isDailyGoalAchieved: state.isDailyGoalAchieved,
+        isVip: state.isVip,
       }),
     },
   ),

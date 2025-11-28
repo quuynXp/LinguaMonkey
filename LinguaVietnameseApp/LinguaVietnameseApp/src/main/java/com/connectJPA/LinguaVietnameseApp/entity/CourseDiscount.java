@@ -29,6 +29,8 @@ public class CourseDiscount extends BaseEntity {
     @Column(name = "discount_percentage", nullable = false)
     private int discountPercentage;
 
+    private String code;
+
     @Column(name = "start_date")
     private OffsetDateTime startDate;
 

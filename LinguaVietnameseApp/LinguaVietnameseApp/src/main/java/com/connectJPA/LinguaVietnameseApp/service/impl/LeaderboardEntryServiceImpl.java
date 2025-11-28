@@ -37,6 +37,19 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     private final UserRepository userRepository;
     private final LeaderboardRepository leaderboardRepository;
 
+    private LeaderboardEntryResponse mapToResponseWithUserInfo(LeaderboardEntry entry) {
+        LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
+        User u = entry.getUser();
+        if (u != null) {
+            dto.setAvatarUrl(u.getAvatarUrl());
+            dto.setFullname(u.getFullname());
+            dto.setNickname(u.getNickname());
+            dto.setLevel(u.getLevel());
+            dto.setGender(u.getGender()); 
+        }
+        return dto;
+    }
+
     @Override
     public Page<LeaderboardEntryResponse> getAllLeaderboardEntries(String leaderboardId, Pageable pageable) {
         try {
@@ -55,7 +68,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             String tab = leaderboard.getTab();
             Page<LeaderboardEntry> entries;
 
-            // Sorting logic: Global tabs prioritize Level > Score
             if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
                 Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
                 entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardUuid, unsortedPageable);
@@ -67,17 +79,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid, effectivePageable);
             }
 
-            return entries.map(entry -> {
-                LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
-                User u = entry.getUser();
-                if (u != null) {
-                    dto.setAvatarUrl(u.getAvatarUrl());
-                    dto.setFullname(u.getFullname());
-                    dto.setNickname(u.getNickname());
-                    dto.setLevel(u.getLevel());
-                }
-                return dto;
-            });
+            return entries.map(this::mapToResponseWithUserInfo);
 
         } catch (AppException e) {
             throw e;
@@ -89,7 +91,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
         }
     }
 
-    // [NEW] Implement logic to auto-create entry if missing (Fix manual DB insert issue)
     @Override
     @Transactional
     public LeaderboardEntry ensureEntryExists(UUID userId, UUID leaderboardId) {
@@ -109,8 +110,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                     newEntry.setLeaderboard(leaderboard);
                     newEntry.setScore(0);
                     newEntry.setDeleted(false);
-                    // Critical: Sync level from User to Entry implies User Level helps sorting
-                    // Although sorting uses User table join, explicitly creating the relation is key.
                     
                     return leaderboardEntryRepository.save(newEntry);
                 });
@@ -129,29 +128,19 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             Page<LeaderboardEntry> entries;
 
             if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
-                 Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
-                 entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardId, unsortedPageable);
+                   Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
+                   entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardId, unsortedPageable);
             } else {
-                 Pageable effectivePageable = pageable;
-                 if (pageable.getSort().isUnsorted()) {
+                Pageable effectivePageable = pageable;
+                if (pageable.getSort().isUnsorted()) {
                     effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "score"));
-                 }
-                 entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, effectivePageable);
+                }
+                entries = leaderboardEntryRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardId, effectivePageable);
             }
 
             return entries.getContent().stream()
                     .findFirst()
-                    .map(entry -> {
-                        LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
-                        User u = entry.getUser();
-                        if (u != null) {
-                            dto.setAvatarUrl(u.getAvatarUrl());
-                            dto.setFullname(u.getFullname());
-                            dto.setNickname(u.getNickname());
-                            dto.setLevel(u.getLevel());
-                        }
-                        return dto;
-                    })
+                    .map(this::mapToResponseWithUserInfo)
                     .orElse(null);
 
         } catch (Exception e) {
@@ -168,8 +157,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
 
-            // [Optimization] We can use ensureEntryExists here logic internally, but explicit create is requested
-            // Keeping strict creation logic from Mapper
             LeaderboardEntry entry = leaderboardEntryMapper.toEntity(request);
             entry.setLeaderboard(leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(request.getLeaderboardId())
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND)));
@@ -177,7 +164,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
 
             entry = leaderboardEntryRepository.save(entry);
-            return leaderboardEntryMapper.toResponse(entry);
+            return mapToResponseWithUserInfo(entry);
         } catch (Exception e) {
             log.error("Error while creating leaderboard entry: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -192,8 +179,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
 
-            // Using ensureEntryExists here could solve "Update but missing" bug
-            // But let's stick to standard update flow which expects existence
             LeaderboardEntry entry = leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_ENTRY_NOT_FOUND));
 
@@ -205,7 +190,7 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)));
 
             entry = leaderboardEntryRepository.save(entry);
-            return leaderboardEntryMapper.toResponse(entry);
+            return mapToResponseWithUserInfo(entry);
         } catch (Exception e) {
             log.error("Error while updating leaderboard entry for {} and {}: {}", leaderboardId, userId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -239,17 +224,9 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             Pageable pageable = PageRequest.of(0, 3);
             List<LeaderboardEntry> entries = leaderboardEntryRepository.findTop3ByLeaderboardIdOrderByUserLevelDesc(leaderboardId, pageable);
 
-            return entries.stream().map(entry -> {
-                LeaderboardEntryResponse dto = leaderboardEntryMapper.toResponse(entry);
-                User u = entry.getUser();
-                if (u != null) {
-                    dto.setAvatarUrl(u.getAvatarUrl());
-                    dto.setFullname(u.getFullname());
-                    dto.setNickname(u.getNickname());
-                    dto.setLevel(u.getLevel());
-                }
-                return dto;
-            }).collect(Collectors.toList());
+            return entries.stream()
+                    .map(this::mapToResponseWithUserInfo)
+                    .collect(Collectors.toList());
         } catch (Exception e) {
             log.error("Error while fetching top 3 leaderboard entries for {}: {}", leaderboardId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -277,6 +254,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
 
     @Override
     public Integer getRankForUserByTab(String tab, String type, UUID userId) {
-        return leaderboardEntryRepository.findRankByUserAndTab(userId, tab, type);
+        return leaderboardEntryRepository.findRankByUserAndTab(userId, tab);
     }
 }

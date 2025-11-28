@@ -13,10 +13,11 @@ import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
 
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import type { CourseVersionResponse, LessonResponse } from "../../types/dto"
+import type { CourseVersionResponse, LessonSummaryResponse } from "../../types/dto"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
-type LessonDisplayItem = LessonResponse & { moduleTitle?: string }
+// Use LessonSummaryResponse since that's what comes inside CourseVersionResponse
+type LessonDisplayItem = LessonSummaryResponse
 
 const CurriculumManagerScreen = () => {
     const { t } = useTranslation()
@@ -44,8 +45,6 @@ const CurriculumManagerScreen = () => {
     }, [course, versionData, versionId])
 
     const lessonsList: LessonDisplayItem[] = useMemo(() => {
-        // Trong một hệ thống thực tế, cần xử lý cấu trúc Module/Chapter
-        // Hiện tại chỉ hiển thị danh sách lessons phẳng để minh họa
         return displayVersion?.lessons || []
     }, [displayVersion])
 
@@ -61,7 +60,6 @@ const CurriculumManagerScreen = () => {
     }
 
     const handleEditLesson = (lessonId: string) => {
-        // Điều hướng đến màn hình chỉnh sửa Lesson
         navigation.navigate("EditLessonScreen", {
             courseId,
             versionId: displayVersion?.versionId,
@@ -80,8 +78,7 @@ const CurriculumManagerScreen = () => {
                     {item.title}
                 </Text>
                 <Text style={styles.lessonSubtitle}>
-                    {t("course.lessonType")}: {item.lessonType} | {t("course.duration")}:{" "}
-                    {item.durationInMinutes}m
+                    #{item.orderIndex} {item.isFree ? `• ${t("course.free")}` : ""}
                 </Text>
             </View>
             <Icon name="chevron-right" size={24} color="#6B7280" />
@@ -113,11 +110,7 @@ const CurriculumManagerScreen = () => {
     }
 
     return (
-        <ScreenLayout
-            title={t("course.curriculumManager")}
-            canGoBack
-            onBackPress={() => navigation.goBack()}
-        >
+        <ScreenLayout>
             <View style={styles.header}>
                 <Text style={styles.courseTitle} numberOfLines={1}>
                     {course.title}

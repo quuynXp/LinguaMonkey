@@ -1,15 +1,20 @@
-import Icon from "react-native-vector-icons/MaterialIcons"
-import { useMemo } from "react"
+import React, { useState, useMemo } from "react"
 import {
-  ScrollView,
+  View,
   Text,
   TouchableOpacity,
-  View,
   ActivityIndicator,
-  RefreshControl,
+  FlatList,
   Image,
+  RefreshControl,
+  ScrollView,
+  ListRenderItem,
+  Alert
 } from "react-native"
+import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
+import { useSafeAreaInsets } from "react-native-safe-area-context"
+
 import { useUserStore } from "../../stores/UserStore"
 import { useCourses } from "../../hooks/useCourses"
 import { useLessons } from "../../hooks/useLessons"
@@ -18,449 +23,458 @@ import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CourseResponse, LessonResponse } from "../../types/dto"
 import { CourseType, SkillType } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import VipUpgradeModal from "../../components/modals/VipUpgradeModal"
 
-const LearnScreen = ({ navigation }: any) => {
+// --- TYPES ---
+type TabType = "OVERVIEW" | "COURSES" | SkillType
+
+// --- COMPONENTS ---
+
+const FilterBar = ({
+  activeTab,
+  onTabChange,
+}: {
+  activeTab: TabType
+  onTabChange: (tab: TabType) => void
+}) => {
   const { t } = useTranslation()
-  const { user, isAuthenticated } = useUserStore()
 
-  const {
-    useAllCourses,
-    useEnrollments,
-    useRecommendedCourses,
-  } = useCourses()
+  const tabs: { key: TabType; label: string; icon: string }[] = [
+    { key: "OVERVIEW", label: t("common.overview") || "Tổng quan", icon: "dashboard" },
+    { key: "COURSES", label: t("learn.courses") || "Khóa học", icon: "class" },
+    { key: SkillType.LISTENING, label: t("learn.listening") || "Nghe", icon: "headset" },
+    { key: SkillType.SPEAKING, label: t("learn.speaking") || "Nói", icon: "mic" },
+    { key: SkillType.READING, label: t("learn.reading") || "Đọc", icon: "menu-book" },
+    { key: SkillType.WRITING, label: t("learn.writing") || "Viết", icon: "edit" },
+  ]
 
-  const {
-    useAllLessons,
-  } = useLessons()
+  return (
+    <View style={styles.filterContainer}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+        {tabs.map((tab) => {
+          const isActive = activeTab === tab.key
+          return (
+            <TouchableOpacity
+              key={tab.key}
+              style={[styles.filterChip, isActive && styles.filterChipActive]}
+              onPress={() => onTabChange(tab.key)}
+            >
+              <Icon
+                name={tab.icon}
+                size={18}
+                color={isActive ? "#FFFFFF" : "#6B7280"}
+                style={{ marginRight: 6 }}
+              />
+              <Text style={[styles.filterText, isActive && styles.filterTextActive]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          )
+        })}
+      </ScrollView>
+    </View>
+  )
+}
 
-  const {
-    data: enrolledData,
-    isLoading: enrolledLoading,
-    refetch: refetchEnrolled,
-  } = useEnrollments({
+const OverviewView = ({ navigation }: any) => {
+  const { t } = useTranslation()
+  const { user, isAuthenticated, isVip, registerVip } = useUserStore()
+  const { useEnrollments, useRecommendedCourses } = useCourses()
+  const [showVipModal, setShowVipModal] = useState(false);
+
+  const { data: enrolledData, isLoading: enrolledLoading, refetch: refetchEnrolled } = useEnrollments({
     userId: user?.userId,
     page: 0,
     size: 5,
   })
 
-  const {
-    data: allCoursesData,
-    isLoading: allCoursesLoading,
-    refetch: refetchAllCourses,
-  } = useAllCourses({
-    page: 0,
-    size: 10,
-    type: CourseType.FREE,
-  })
-
-  const {
-    data: recommendedData,
-    isLoading: recommendedLoading,
-    refetch: refetchRecommended,
-  } = useRecommendedCourses(user?.userId, 5)
-
-  const {
-    data: listeningData,
-    isLoading: listeningLoading,
-    refetch: refetchListening,
-  } = useAllLessons({
-    skillType: SkillType.LISTENING,
-    page: 0,
-    size: 3,
-  })
-
-  const {
-    data: speakingData,
-    isLoading: speakingLoading,
-    refetch: refetchSpeaking,
-  } = useAllLessons({
-    skillType: SkillType.SPEAKING,
-    page: 0,
-    size: 3,
-  })
-
-  const {
-    data: readingData,
-    isLoading: readingLoading,
-    refetch: refetchReading,
-  } = useAllLessons({
-    skillType: SkillType.READING,
-    page: 0,
-    size: 3,
-  })
-
-  const {
-    data: writingData,
-    isLoading: writingLoading,
-    refetch: refetchWriting,
-  } = useAllLessons({
-    skillType: SkillType.WRITING,
-    page: 0,
-    size: 3,
-  })
-
-  const purchasedCourses = useMemo(() => {
-    const enrollments = enrolledData?.data || []
-    return enrollments.map((enrollment: any) => ({
-      ...enrollment.course,
-      progress: enrollment.progress ?? 0,
-      completedLessons: enrollment.completedLessons ?? 0,
-    })).filter(Boolean)
-  }, [enrolledData])
-
-  const freeCourses = useMemo(() => {
-    return allCoursesData?.data || []
-  }, [allCoursesData])
-
-  const recommendedCourses = useMemo(() => {
-    return recommendedData || []
-  }, [recommendedData])
-
-  const listeningLessons = useMemo(() => {
-    return listeningData?.data || []
-  }, [listeningData])
-
-  const speakingLessons = useMemo(() => {
-    return speakingData?.data || []
-  }, [speakingData])
-
-  const readingLessons = useMemo(() => {
-    return readingData?.data || []
-  }, [readingData])
-
-  const writingLessons = useMemo(() => {
-    return writingData?.data || []
-  }, [writingData])
-
-  const isLoading =
-    enrolledLoading ||
-    allCoursesLoading ||
-    recommendedLoading ||
-    listeningLoading ||
-    speakingLoading ||
-    readingLoading ||
-    writingLoading
+  const { data: recommendedData, isLoading: recLoading, refetch: refetchRec } = useRecommendedCourses(
+    user?.userId,
+    5
+  )
 
   const learningTools = [
-    { name: t("learn.vocabularyFlashcards"), icon: "style", screen: "VocabularyFlashcardsScreen" },
-    { name: t("learn.listening"), icon: "volume-up", screen: "ListeningScreen" },
-    { name: t("learn.speaking"), icon: "mic", screen: "SpeakingScreen" },
-    { name: t("learn.reading"), icon: "menu-book", screen: "ReadingScreen" },
-    { name: t("learn.writing"), icon: "edit", screen: "WritingScreen" },
-    { name: t("learn.ipaPronunciation"), icon: "record-voice-over", screen: "IPAScreen" },
-    { name: t("learn.notes"), icon: "notes", screen: "NotesScreen" },
-    { name: t("learn.soloQuiz"), icon: "quiz", screen: "SoloQuizScreen" },
-    { name: t("learn.teamQuiz"), icon: "people", screen: "TeamQuizRoom" },
-    { name: t("learn.bilingual"), icon: "language", screen: "BilingualVideoScreen" },
-    { name: t("learn.certifications"), icon: "card-membership", screen: "CertificationLearningScreen" },
+    { name: t("learn.vocabularyFlashcards"), icon: "style", screen: "VocabularyFlashcardsScreen", color: "#EF4444" },
+    { name: t("learn.ipaPronunciation"), icon: "record-voice-over", screen: "IPAScreen", color: "#F59E0B" },
+    { name: t("learn.soloQuiz"), icon: "quiz", screen: "SoloQuizScreen", color: "#10B981" },
+    { name: t("learn.teamQuiz"), icon: "people", screen: "TeamQuizRoom", color: "#3B82F6" },
+    { name: t("learn.bilingual"), icon: "language", screen: "BilingualVideoScreen", color: "#8B5CF6" },
+    { name: t("learn.certifications"), icon: "card-membership", screen: "CertificationLearningScreen", color: "#EC4899" },
   ]
 
   const handleRefresh = () => {
     refetchEnrolled()
-    refetchAllCourses()
-    refetchRecommended()
-    refetchListening()
-    refetchSpeaking()
-    refetchReading()
-    refetchWriting()
+    refetchRec()
   }
 
-  const handleCoursePress = (course: CourseResponse, isPurchased = false) => {
-    navigation.navigate("CourseDetailsScreen", {
-      course,
-      isPurchased,
-    })
-  }
-
-  const handleViewAllCourses = () => navigation.navigate("StudentCoursesScreen")
-
-  const handleNavigation = (screenName: string) => {
-    navigation.navigate(screenName)
-  }
-
-  // UPDATED: Added index parameter and fallback key
-  const renderCourseCardItem = (course: CourseResponse, index: number, isPurchased = false) => {
-    if (!course) return null
-
-    const version = course.latestPublicVersion
-    const rating = 0
-    const students = 0
-    const level = "B1"
-    const title = course.title || "Untitled"
-    const instructor = "Instructor"
-    const progress = (course as any).progress ?? 0
-    const completedLessons = (course as any).completedLessons ?? 0
-    const totalLessons = version?.lessons?.length ?? 0
-    const thumbnailUrl = version?.thumbnailUrl
-
-    // Safe Key Logic: Use ID if available, otherwise fallback to index
-    const uniqueKey = course.courseId ? `course-${course.courseId}` : `course-idx-${index}`
-
-    return (
-      <TouchableOpacity
-        key={uniqueKey}
-        style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
-        onPress={() => handleCoursePress(course, isPurchased)}
-      >
-        {thumbnailUrl ? (
-          <Image source={{ uri: thumbnailUrl }} style={styles.courseImage} resizeMode="cover" />
-        ) : (
-          <View style={[styles.courseImage, { justifyContent: "center", alignItems: "center" }]}>
-            <Icon name="menu-book" size={40} color="#9CA3AF" />
-          </View>
-        )}
-
-        {isPurchased && (
-          <View style={styles.purchasedBadge}>
-            <Icon name="check-circle" size={16} color="#FFFFFF" />
-            <Text style={styles.purchasedText}>{t("courses.purchased")}</Text>
-          </View>
-        )}
-
-        <View style={styles.courseContent}>
-          <Text style={styles.courseTitle} numberOfLines={2}>{title}</Text>
-          <Text style={styles.courseInstructor} numberOfLines={1}>by {instructor}</Text>
-
-          <View style={styles.courseStats}>
-            <View style={styles.ratingContainer}>
-              <Icon name="star" size={14} color="#F59E0B" />
-              <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
-              <Text style={styles.studentsText}>({students.toLocaleString()})</Text>
-            </View>
-            <View style={styles.courseMeta}>
-              <Text style={styles.levelText}>{level}</Text>
-            </View>
-          </View>
-
-          {isPurchased ? (
-            <View style={styles.progressSection}>
-              <View style={styles.progressInfo}>
-                <Text style={styles.progressText}>
-                  {t("courses.progress")}: {Math.round(progress)}%
-                </Text>
-                <Text style={styles.lessonsText}>
-                  {completedLessons}/{totalLessons} {t("courses.lessons")}
-                </Text>
-              </View>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progress}%` }]} />
-              </View>
-            </View>
-          ) : (
-            <View style={styles.priceSection}>
-              <Text style={styles.price}>
-                {course.price === 0 ? t("courses.free") : `$${course.price}`}
-              </Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    )
-  }
-
-  // UPDATED: Added index parameter and fallback key
-  const renderLessonCard = (lesson: LessonResponse, index: number) => {
-    if (!lesson) return null
-
-    const handlePress = () => {
-      if (lesson.skillTypes === SkillType.SPEAKING) {
-        navigation.navigate("SpeakingScreen", {
-          lessonId: lesson.lessonId,
-          lesson: lesson
-        })
-      } else {
-        navigation.navigate("LessonScreen", { lesson })
-      }
+  const handleVipFeature = (mode: string, type: string) => {
+    if (!isVip) {
+      setShowVipModal(true);
+      return;
     }
-
-    // Safe Key Logic: Use ID if available, otherwise fallback to index
-    const uniqueKey = lesson.lessonId ? `lesson-${lesson.lessonId}` : `lesson-idx-${index}`
-
-    return (
-      <TouchableOpacity
-        key={uniqueKey}
-        style={styles.lessonCard}
-        onPress={handlePress}
-      >
-        <View style={styles.lessonImagePlaceholder}>
-          <Icon name="auto-stories" size={40} color="#9CA3AF" />
-        </View>
-        <View style={styles.lessonContent}>
-          <Text style={styles.lessonTitle} numberOfLines={2}>
-            {lesson.lessonName || "Lesson"}
-          </Text>
-          <View style={styles.lessonStats}>
-            <View style={styles.expContainer}>
-              <Icon name="star" size={14} color="#F59E0B" />
-              <Text style={styles.expText}>{lesson.expReward || 10} XP</Text>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    )
+    navigation.navigate("ProficiencyTestScreen", { mode, examType: type, skillType: type });
   }
 
-  // UPDATED: Added index parameter and fallback key
-  const renderLearningToolCard = (tool: any, index: number) => (
-    <TouchableOpacity
-      key={tool.screen || `tool-${index}`}
-      style={styles.toolCard}
-      onPress={() => handleNavigation(tool.screen)}
+  const onVipConfirm = async () => {
+    try {
+      await registerVip();
+      setShowVipModal(false);
+      Alert.alert(t("common.success"), t("vip.successMsg", "Nâng cấp VIP thành công!"));
+    } catch (e) {
+      Alert.alert(t("error.title"), t("vip.failMsg", "Thanh toán thất bại"));
+    }
+  }
+
+  const purchasedCourses = enrolledData?.data || []
+
+  return (
+    <ScrollView
+      style={styles.tabContainer}
+      refreshControl={<RefreshControl refreshing={enrolledLoading || recLoading} onRefresh={handleRefresh} />}
+      showsVerticalScrollIndicator={false}
     >
-      <View style={styles.toolIconContainer}>
-        <Icon name={tool.icon} size={24} color="#4F46E5" />
+      <VipUpgradeModal
+        visible={showVipModal}
+        onClose={() => setShowVipModal(false)}
+      />
+
+      {/* Welcome Section */}
+      {isAuthenticated && user && (
+        <View style={styles.welcomeSection}>
+          <Text style={styles.welcomeText}>
+            {t("learn.welcome", { name: user.fullname || user.nickname })} 👋
+          </Text>
+          <View style={styles.statsRow}>
+            <View style={styles.statBadge}>
+              <Icon name="trending-up" size={16} color="#10B981" />
+              <Text style={styles.statText}>Lv. {user.level || 1}</Text>
+            </View>
+            <View style={styles.statBadge}>
+              <Icon name="local-fire-department" size={16} color="#F59E0B" />
+              <Text style={styles.statText}>{user.streak || 0} days</Text>
+            </View>
+            {isVip && (
+              <View style={[styles.statBadge, { backgroundColor: '#FEF3C7' }]}>
+                <Icon name="star" size={16} color="#F59E0B" />
+                <Text style={[styles.statText, { color: '#D97706' }]}>VIP</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      )}
+
+      {/* Certification Preparation Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t("learn.certPreparation", "Luyện thi Chứng Chỉ")}</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
+          {/* TOEIC */}
+          <TouchableOpacity
+            style={styles.certCard}
+            onPress={() => handleVipFeature('certification', 'TOEIC')}
+          >
+            <View style={[styles.certIconContainer, { backgroundColor: '#E0F2FE' }]}>
+              <Icon name="assignment" size={24} color="#0369A1" />
+            </View>
+            <Text style={styles.certTitle}>TOEIC</Text>
+            <Text style={styles.certDesc}>{t("learn.simulation", "Mô phỏng 1-1")}</Text>
+            {!isVip && (
+              <View style={styles.lockOverlay}>
+                <Icon name="lock" size={20} color="#EF4444" />
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* IELTS */}
+          <TouchableOpacity
+            style={styles.certCard}
+            onPress={() => handleVipFeature('certification', 'IELTS')}
+          >
+            <View style={[styles.certIconContainer, { backgroundColor: '#FCE7F3' }]}>
+              <Icon name="school" size={24} color="#BE185D" />
+            </View>
+            <Text style={styles.certTitle}>IELTS</Text>
+            <Text style={styles.certDesc}>{t("learn.simulation", "Mô phỏng 1-1")}</Text>
+            {!isVip && (
+              <View style={styles.lockOverlay}>
+                <Icon name="lock" size={20} color="#EF4444" />
+              </View>
+            )}
+          </TouchableOpacity>
+
+          {/* Skill Practice */}
+          <TouchableOpacity
+            style={styles.certCard}
+            onPress={() => handleVipFeature('skill', 'SPEAKING')}
+          >
+            <View style={[styles.certIconContainer, { backgroundColor: '#DCFCE7' }]}>
+              <Icon name="mic" size={24} color="#15803D" />
+            </View>
+            <Text style={styles.certTitle}>Speaking</Text>
+            <Text style={styles.certDesc}>1-1 AI Coach</Text>
+            {!isVip && (
+              <View style={styles.lockOverlay}>
+                <Icon name="lock" size={20} color="#EF4444" />
+              </View>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
       </View>
-      <Text style={styles.toolName}>{tool.name}</Text>
+
+      {/* Learning Tools Grid */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
+        <View style={styles.toolGrid}>
+          {learningTools.map((tool, index) => (
+            <TouchableOpacity
+              key={index}
+              style={styles.toolCard}
+              onPress={() => navigation.navigate(tool.screen)}
+            >
+              <View style={[styles.toolIconContainer, { backgroundColor: `${tool.color}15` }]}>
+                <Icon name={tool.icon} size={24} color={tool.color} />
+              </View>
+              <Text style={styles.toolName} numberOfLines={2}>{tool.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
+
+      {/* Continue Learning (My Courses) */}
+      {purchasedCourses.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
+            {purchasedCourses.map((enrollment: any) => (
+              <TouchableOpacity
+                key={`my-course-${enrollment.id}`}
+                style={styles.myCourseCard}
+                onPress={() => navigation.navigate("CourseDetailsScreen", { course: enrollment.course, isPurchased: true })}
+              >
+                <Image
+                  source={{ uri: enrollment.course?.latestPublicVersion?.thumbnailUrl || "https://via.placeholder.com/150" }}
+                  style={styles.myCourseImage}
+                />
+                <View style={styles.myCourseInfo}>
+                  <Text style={styles.myCourseTitle} numberOfLines={1}>{enrollment.course?.title}</Text>
+                  <View style={styles.progressBar}>
+                    <View style={[styles.progressFill, { width: `${enrollment.progress || 0}%` }]} />
+                  </View>
+                  <Text style={styles.progressText}>{Math.round(enrollment.progress || 0)}%</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
+      {/* Recommended */}
+      {recommendedData && recommendedData.length > 0 && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
+            {recommendedData.map((course: any) => (
+              <TouchableOpacity
+                key={`rec-${course.courseId}`}
+                style={styles.recCourseCard}
+                onPress={() => navigation.navigate("CourseDetailsScreen", { course, isPurchased: false })}
+              >
+                <Image source={{ uri: course.latestPublicVersion?.thumbnailUrl }} style={styles.recCourseImage} />
+                <Text style={styles.recCourseTitle} numberOfLines={2}>{course.title}</Text>
+                <Text style={styles.recPrice}>{course.price === 0 ? "Free" : `$${course.price}`}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+      <View style={{ height: 40 }} />
+    </ScrollView>
+  )
+}
+
+const CourseListView = ({ navigation }: any) => {
+  const { t } = useTranslation()
+  const { useAllCourses } = useCourses()
+  const [page, setPage] = useState(0)
+
+  const { data, isLoading, refetch, isFetching } = useAllCourses({
+    page,
+    size: 10,
+    type: CourseType.FREE,
+  })
+
+  const courses = useMemo(() => (data?.data as CourseResponse[]) || [], [data])
+
+  const loadMore = () => {
+    if (data?.pagination && !data.pagination.isLast && !isFetching) {
+      setPage(prev => prev + 1)
+    }
+  }
+
+  const renderItem: ListRenderItem<CourseResponse> = ({ item }) => (
+    <TouchableOpacity
+      style={styles.verticalCard}
+      onPress={() => navigation.navigate("CourseDetailsScreen", { course: item })}
+    >
+      <Image
+        source={{ uri: item.latestPublicVersion?.thumbnailUrl }}
+        style={styles.verticalCardImage}
+      />
+      <View style={styles.verticalCardContent}>
+        <Text style={styles.verticalCardTitle}>{item.title}</Text>
+        <Text style={styles.verticalCardAuthor}>
+          {t("common.by")} {"Instructor"}
+        </Text>
+        <View style={styles.verticalCardMeta}>
+          <Icon name="star" size={14} color="#F59E0B" />
+          <Text style={styles.metaText}>4.5</Text>
+          <View style={styles.dot} />
+          <Text style={styles.metaText}>{item.price === 0 ? t("courses.free") : `$${item.price}`}</Text>
+        </View>
+      </View>
     </TouchableOpacity>
   )
 
-  if (isLoading && !purchasedCourses.length && !freeCourses.length) {
-    return (
-      <ScreenLayout>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4F46E5" />
-          <Text style={styles.loadingText}>{t("common.loading")}</Text>
+  if (isLoading && page === 0) return <ActivityIndicator style={{ marginTop: 20 }} color="#4F46E5" />
+
+  return (
+    <FlatList<CourseResponse>
+      data={courses}
+      renderItem={renderItem}
+      keyExtractor={(item) => item.courseId}
+      contentContainerStyle={styles.listContainer}
+      onEndReached={() => { }}
+      ListFooterComponent={
+        <View style={styles.footerLoader}>
+          {!data?.pagination?.isLast ? (
+            <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMore} disabled={isFetching}>
+              {isFetching ? <ActivityIndicator color="#FFF" /> : <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>}
+            </TouchableOpacity>
+          ) : <Text style={styles.endText}>{t("common.endOfList")}</Text>}
         </View>
-      </ScreenLayout>
-    )
+      }
+      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+    />
+  )
+}
+
+const LessonListView = ({ navigation, skillType }: { navigation: any; skillType: SkillType }) => {
+  const { t } = useTranslation()
+  const { useAllLessons } = useLessons()
+  const [page, setPage] = useState(0)
+
+  const { data, isLoading, refetch, isFetching } = useAllLessons({
+    skillType,
+    page,
+    size: 15,
+  })
+
+  const lessons = useMemo(() => (data?.data as LessonResponse[]) || [], [data])
+
+  const loadMore = () => {
+    if (data?.pagination && !data.pagination.isLast && !isFetching) {
+      setPage(prev => prev + 1)
+    }
+  }
+
+  const handlePress = (lesson: LessonResponse) => {
+    if (skillType === SkillType.SPEAKING) {
+      navigation.navigate("SpeakingScreen", { lessonId: lesson.lessonId, lesson })
+    } else if (skillType === SkillType.READING) {
+      navigation.navigate("ReadingScreen", { lesson })
+    } else if (skillType === SkillType.WRITING) {
+      navigation.navigate("WritingScreen", { lesson })
+    } else if (skillType === SkillType.LISTENING) {
+      navigation.navigate("ListeningScreen")
+    } else {
+      navigation.navigate("LessonScreen", { lesson })
+    }
+  }
+
+  const renderItem: ListRenderItem<LessonResponse> = ({ item }) => (
+    <TouchableOpacity style={styles.lessonRow} onPress={() => handlePress(item)}>
+      <View style={styles.lessonIconBox}>
+        <Icon
+          name={
+            skillType === SkillType.LISTENING ? "headset" :
+              skillType === SkillType.SPEAKING ? "mic" :
+                skillType === SkillType.READING ? "menu-book" : "edit"
+          }
+          size={24}
+          color="#4F46E5"
+        />
+      </View>
+      <View style={styles.lessonRowContent}>
+        <Text style={styles.lessonRowTitle} numberOfLines={1}>{item.title || item.lessonName}</Text>
+        <Text style={styles.lessonRowSubtitle}>{item.expReward || 10} XP • {item.difficultyLevel || 'A1'}</Text>
+      </View>
+      <Icon name="chevron-right" size={20} color="#9CA3AF" />
+    </TouchableOpacity>
+  )
+
+  if (isLoading && page === 0) return <ActivityIndicator style={{ marginTop: 20 }} color="#4F46E5" />
+
+  return (
+    <FlatList<LessonResponse>
+      data={lessons}
+      renderItem={renderItem}
+      keyExtractor={(item) => item.lessonId}
+      contentContainerStyle={styles.listContainer}
+      ListFooterComponent={
+        <View style={styles.footerLoader}>
+          {!data?.pagination?.isLast ? (
+            <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMore} disabled={isFetching}>
+              {isFetching ? <ActivityIndicator color="#FFF" /> : <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>}
+            </TouchableOpacity>
+          ) : <Text style={styles.endText}>{t("common.endOfList")}</Text>}
+        </View>
+      }
+      refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+      ListEmptyComponent={
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyText}>{t("common.noData")}</Text>
+        </View>
+      }
+    />
+  )
+}
+
+const LearnScreen = ({ navigation }: any) => {
+  const { t } = useTranslation()
+  const insets = useSafeAreaInsets()
+  const [activeTab, setActiveTab] = useState<TabType>("OVERVIEW")
+
+  const renderContent = () => {
+    switch (activeTab) {
+      case "OVERVIEW":
+        return <OverviewView navigation={navigation} />
+      case "COURSES":
+        return <CourseListView navigation={navigation} />
+      case SkillType.LISTENING:
+      case SkillType.SPEAKING:
+      case SkillType.READING:
+      case SkillType.WRITING:
+        return <LessonListView navigation={navigation} skillType={activeTab} />
+      default:
+        return <OverviewView navigation={navigation} />
+    }
   }
 
   return (
     <ScreenLayout>
-      <ScrollView
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={false}
-            onRefresh={handleRefresh}
-            colors={["#4F46E5"]}
-            tintColor="#4F46E5"
-          />
-        }
-      >
+      <View style={[styles.container, { paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Text style={styles.title}>{t("learn.title")}</Text>
+          <Text style={styles.headerTitle}>{t("learn.title")}</Text>
+          <TouchableOpacity onPress={() => navigation.navigate("SearchScreen")}>
+            <Icon name="search" size={24} color="#1F2937" />
+          </TouchableOpacity>
         </View>
 
-        {isAuthenticated && user && (
-          <View style={styles.welcomeSection}>
-            <Text style={styles.welcomeText}>
-              {t("learn.welcome", {
-                name: user.fullname || user.nickname || t("learn.defaultName"),
-              })}
-            </Text>
-            <View style={styles.userStats}>
-              <View style={styles.statItem}>
-                <Icon name="trending-up" size={18} color="#10B981" />
-                <Text style={styles.statText}>
-                  {t("learn.level")} {user.level || 1}
-                </Text>
-              </View>
-              <View style={styles.statItem}>
-                <Icon name="local-fire-department" size={18} color="#F59E0B" />
-                <Text style={styles.statText}>
-                  {user.streak || 0} {t("learn.dayStreak")}
-                </Text>
-              </View>
-            </View>
-          </View>
-        )}
+        <FilterBar activeTab={activeTab} onTabChange={setActiveTab} />
 
-        {purchasedCourses.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
-              <TouchableOpacity onPress={handleViewAllCourses}>
-                <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {purchasedCourses.map((c: any, index: number) => renderCourseCardItem(c, index, true))}
-            </ScrollView>
-          </View>
-        )}
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
-          </View>
-          <View style={styles.toolGrid}>
-            {learningTools.map((tool, index) => renderLearningToolCard(tool, index))}
-          </View>
+        <View style={styles.contentArea}>
+          {renderContent()}
         </View>
-
-        {listeningLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.listeningLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {listeningLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
-            </ScrollView>
-          </View>
-        )}
-
-        {speakingLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.speakingLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {speakingLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
-            </ScrollView>
-          </View>
-        )}
-
-        {readingLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.readingLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {readingLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
-            </ScrollView>
-          </View>
-        )}
-
-        {writingLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.writingLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {writingLessons.map((lesson: LessonResponse, index: number) => renderLessonCard(lesson, index))}
-            </ScrollView>
-          </View>
-        )}
-
-        {recommendedCourses.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {recommendedCourses.map((c: any, index: number) => renderCourseCardItem(c, index, false))}
-            </ScrollView>
-          </View>
-        )}
-
-        {freeCourses.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.freeCourses")}</Text>
-              <TouchableOpacity onPress={handleViewAllCourses}>
-                <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {freeCourses.slice(0, 5).map((c: any, index: number) => renderCourseCardItem(c, index, false))}
-            </ScrollView>
-          </View>
-        )}
-
-        <View style={{ height: 50 }} />
-      </ScrollView>
+      </View>
     </ScreenLayout>
   )
 }
@@ -470,273 +484,344 @@ const styles = createScaledSheet({
     flex: 1,
     backgroundColor: "#F8FAFC",
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: "#6B7280",
-  },
   header: {
-    justifyContent: "center",
-    alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  welcomeSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  welcomeText: {
-    fontSize: 22,
-    color: "#1F2937",
-    marginBottom: 12,
-  },
-  userStats: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  statText: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginBottom: 30,
-  },
-  sectionHeader: {
+    paddingVertical: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    marginBottom: 16,
+    backgroundColor: "#FFFFFF",
   },
-  sectionTitle: {
-    fontSize: 18,
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: "#1F2937",
+  },
+  filterContainer: {
+    backgroundColor: "#FFFFFF",
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#E5E7EB",
+  },
+  filterContent: {
+    paddingHorizontal: 16,
+    gap: 10,
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#F3F4F6",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  filterChipActive: {
+    backgroundColor: "#4F46E5",
+    borderColor: "#4F46E5",
+  },
+  filterText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#6B7280",
+  },
+  filterTextActive: {
+    color: "#FFFFFF",
+  },
+  contentArea: {
+    flex: 1,
+  },
+  tabContainer: {
+    flex: 1,
+    padding: 20,
+  },
+  welcomeSection: {
+    marginBottom: 24,
+  },
+  welcomeText: {
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  statsRow: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  statBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#EFF6FF",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    gap: 4,
+  },
+  statText: {
+    fontSize: 12,
     fontWeight: "600",
     color: "#1F2937",
   },
-  viewAllText: {
-    fontSize: 14,
-    color: "#4F46E5",
-    fontWeight: "600",
+  section: {
+    marginBottom: 24,
   },
-  horizontalScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1F2937",
+    marginBottom: 16,
   },
-  courseCard: {
+  // Cert Card Styles
+  certCard: {
+    width: 140,
     backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    marginRight: 16,
-    width: 260,
+    borderRadius: 12,
+    padding: 16,
+    marginRight: 12,
+    alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    overflow: "hidden",
+    shadowOpacity: 0.05,
+    elevation: 2,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  certIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
-  purchasedCourseCard: {
-    borderWidth: 2,
-    borderColor: "#10B981",
-  },
-  courseImage: {
-    width: "100%",
-    height: 140,
-    backgroundColor: "#E5E7EB",
-  },
-  purchasedBadge: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    backgroundColor: "#10B981",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    zIndex: 1,
-  },
-  purchasedText: {
-    fontSize: 12,
-    color: "#FFFFFF",
-    fontWeight: "600",
-    marginLeft: 4,
-  },
-  courseContent: {
-    padding: 16,
-  },
-  courseTitle: {
+  certTitle: {
     fontSize: 16,
     fontWeight: "bold",
     color: "#1F2937",
     marginBottom: 4,
-    height: 44,
   },
-  courseInstructor: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 12,
-  },
-  courseStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  ratingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  ratingText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginLeft: 4,
-  },
-  studentsText: {
+  certDesc: {
     fontSize: 12,
     color: "#6B7280",
-    marginLeft: 4,
+    textAlign: "center",
   },
-  courseMeta: {
-    alignItems: "flex-end",
-  },
-  levelText: {
-    fontSize: 12,
-    color: "#4F46E5",
-    fontWeight: "600",
-  },
-  progressSection: {
-    marginTop: 8,
-  },
-  progressInfo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  progressText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  lessonsText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#10B981",
-    borderRadius: 3,
-  },
-  priceSection: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-  price: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  lessonCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    marginRight: 16,
-    width: 200,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  lessonImagePlaceholder: {
-    width: "100%",
-    height: 100,
-    backgroundColor: "#F3F4F6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  lessonContent: {
-    padding: 12,
-  },
-  lessonTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 8,
-    height: 40,
-  },
-  lessonStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  expContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  expText: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "600",
+  lockOverlay: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: 'rgba(255,255,255,0.8)',
+    borderRadius: 10,
+    padding: 4,
   },
   toolGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     justifyContent: "space-between",
+    gap: 12,
   },
   toolCard: {
+    width: "48%", // 2 columns
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     alignItems: "center",
-    width: "48%",
-    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    marginBottom: 12,
   },
   toolIconContainer: {
     width: 48,
     height: 48,
-    backgroundColor: "#EEF2FF",
     borderRadius: 24,
-    alignItems: "center",
     justifyContent: "center",
+    alignItems: "center",
     marginBottom: 8,
   },
   toolName: {
     fontSize: 14,
-    fontWeight: "600",
-    color: "#1F2937",
+    fontWeight: "500",
+    color: "#374151",
     textAlign: "center",
   },
+  horizontalList: {
+    marginHorizontal: -20,
+    paddingHorizontal: 20,
+  },
+  myCourseCard: {
+    width: 200,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    marginRight: 16,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  myCourseImage: {
+    width: "100%",
+    height: 100,
+    backgroundColor: "#E5E7EB",
+  },
+  myCourseInfo: {
+    padding: 12,
+  },
+  myCourseTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1F2937",
+    marginBottom: 8,
+  },
+  progressBar: {
+    height: 4,
+    backgroundColor: "#F3F4F6",
+    borderRadius: 2,
+    marginBottom: 4,
+  },
+  progressFill: {
+    height: "100%",
+    backgroundColor: "#10B981",
+    borderRadius: 2,
+  },
+  progressText: {
+    fontSize: 10,
+    color: "#6B7280",
+    alignSelf: "flex-end",
+  },
+  recCourseCard: {
+    width: 160,
+    marginRight: 16,
+  },
+  recCourseImage: {
+    width: 160,
+    height: 90,
+    borderRadius: 8,
+    backgroundColor: "#E5E7EB",
+    marginBottom: 8,
+  },
+  recCourseTitle: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: "#1F2937",
+  },
+  recPrice: {
+    fontSize: 12,
+    color: "#4F46E5",
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  listContainer: {
+    padding: 16,
+  },
+  verticalCard: {
+    flexDirection: "row",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    elevation: 2,
+  },
+  verticalCardImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    backgroundColor: "#F3F4F6",
+  },
+  verticalCardContent: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: "space-between",
+  },
+  verticalCardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  verticalCardAuthor: {
+    fontSize: 12,
+    color: "#6B7280",
+  },
+  verticalCardMeta: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  metaText: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: "#374151",
+    marginLeft: 4,
+  },
+  dot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#D1D5DB",
+    marginHorizontal: 8,
+  },
+  lessonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: "#F3F4F6",
+  },
+  lessonIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#EEF2FF",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  lessonRowContent: {
+    flex: 1,
+  },
+  lessonRowTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1F2937",
+  },
+  lessonRowSubtitle: {
+    fontSize: 12,
+    color: "#6B7280",
+    marginTop: 2,
+  },
+  footerLoader: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+  loadMoreBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    backgroundColor: "#4F46E5",
+    borderRadius: 20,
+  },
+  loadMoreText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+    fontSize: 12,
+  },
+  endText: {
+    color: "#9CA3AF",
+    fontSize: 12,
+  },
+  emptyContainer: {
+    alignItems: "center",
+    paddingTop: 40,
+  },
+  emptyText: {
+    color: "#6B7280",
+    fontSize: 14,
+  }
 })
 
 export default LearnScreen

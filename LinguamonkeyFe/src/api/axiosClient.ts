@@ -10,11 +10,10 @@ interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
 }
 
-// Cập nhật Định nghĩa cấu trúc phản hồi lỗi từ BE
 interface AppApiResponseError {
-    code: number; // ErrorCode.code
-    message: string; // ErrorCode.message (i18n key)
-    result: null; // Luôn là null khi lỗi
+    code: number;
+    message: string;
+    result: null;
 }
 
 export async function getDeviceIdSafe() {
@@ -41,7 +40,7 @@ const getCommonHeaders = async () => {
     };
 };
 
-const DEV_LOG_ENABLED = typeof global.__DEV__ !== 'undefined' && global.__DEV__;
+const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (global as any).__DEV__;
 
 // --- PUBLIC CLIENT ---
 export const publicClient = axios.create({
@@ -49,7 +48,6 @@ export const publicClient = axios.create({
     timeout: 15000,
 });
 
-// Thêm Dev Logging cho publicClient Request
 publicClient.interceptors.request.use(async (config) => {
     const commonHeaders = await getCommonHeaders();
     config.headers = Object.assign({}, config.headers, commonHeaders);
@@ -61,79 +59,59 @@ publicClient.interceptors.request.use(async (config) => {
     return config;
 });
 
-// Hàm kiểm tra UserFacing (Giả định Logic UserFacing dựa trên ErrorCode)
-// Do BE không gửi lại userFacing trực tiếp, FE phải giả định/xác định lỗi hiển thị.
-// Tốt nhất là BE luôn gửi lại userFacing. Tạm thời, ta dùng logic sau:
 const isUserFacing = (errorCode: number): boolean => {
-    // Dựa trên ErrorCode.java đã cung cấp (4000-4702, 1000-1502, 6000-6001 là userFacing=true)
-    // Tức là 4xx (trừ 401, 403, 405, 415) và 409 là hiển thị.
-    // Nếu BE không gửi userFacing, FE phải có 1 map ErrorCode để kiểm tra. 
-    // Giả định đơn giản: Mọi lỗi 4xx (Client Error) đều là hiển thị, trừ 401/403.
-    // Nếu bạn muốn chi tiết hơn, bạn cần định nghĩa map ErrorCode.
-    // TẠM THỜI: dựa vào HTTP Status Code để xác định lỗi hiển thị cho người dùng (4xx, 5xx).
-    // Tuy nhiên, để tuân thủ logic BE cũ (userFacing), ta cần thông tin BE.
-    // **Do BE không còn gửi userFacing, ta phải dựa vào Status Code:**
-    const status = Math.floor(errorCode / 1000); // Lấy nhóm lỗi
-    return status === 1 || status === 4 || status === 6; // 1xxx, 4xxx, 6xxx (Bad Request, Not Found, Conflict)
+    const status = Math.floor(errorCode / 1000);
+    return status === 1 || status === 4 || status === 6;
 }
 
-
-// Hàm xử lý hiển thị Toast theo logic mới (Dùng Status Code HTTP và Error Code BE)
 const handleErrorResponse = (error: AxiosError) => {
     const httpStatus = error.response?.status;
     const data = error.response?.data as AppApiResponseError | undefined;
 
-    // Xử lý Lỗi Mạng/Timeout (Không có status code)
     if (!httpStatus) {
         showToast({
+            title: 'Lỗi kết nối',
             type: 'error',
             message: error.message || 'Lỗi kết nối mạng hoặc timeout.',
         });
         return;
     }
 
-    // KHÔNG hiển thị Toast cho 401 Unauthorized và 403 Forbidden
     if (httpStatus === 401 || httpStatus === 403) {
         return;
     }
 
-    // Xử lý lỗi từ BE: Chỉ hiển thị nếu có message và dựa trên logic userFacing/status code
     if (data?.message && data.code) {
-
         let toastType: 'error' | 'warning' | 'info' = 'info';
+        let title = 'Thông báo';
 
-        // 1. Dựa vào HTTP Status Code để xác định màu nền
         if (httpStatus >= 400 && httpStatus < 500) {
-            toastType = 'warning'; // Vàng/Cam cho lỗi Client (4xx)
+            toastType = 'warning';
+            title = 'Cảnh báo';
         } else if (httpStatus >= 500) {
-            toastType = 'error'; // Đỏ cho lỗi Server (5xx)
+            toastType = 'error';
+            title = 'Lỗi máy chủ';
         }
 
-        // 2. Dựa vào BE Error Code để kiểm tra xem có nên hiển thị không (userFacing logic)
-        // Nếu BE không còn gửi userFacing, ta phải tự kiểm tra mã lỗi (isUserFacing)
         if (isUserFacing(data.code)) {
-            // Hiển thị message i18n từ BE
             showToast({
+                title: title,
                 type: toastType,
                 message: data.message,
             });
             return;
         }
-
     }
 
-    // Fallback: Lỗi hệ thống 5xx hoặc lỗi 4xx không mong muốn/ không hiển thị
     if (httpStatus >= 500) {
         showToast({
+            title: 'Hệ thống',
             type: 'error',
             message: `Lỗi hệ thống (${httpStatus}). Vui lòng thử lại sau.`,
         });
     }
-    // Các lỗi 4xx không hiển thị (userFacing=false, 405, 415) sẽ được bỏ qua
 };
 
-
-// Thêm Dev Logging cho publicClient Response/Error
 publicClient.interceptors.response.use(
     (response) => {
         if (DEV_LOG_ENABLED) {
@@ -153,14 +131,12 @@ publicClient.interceptors.response.use(
     }
 );
 
-// --- PRIVATE CLIENT ---
 export const privateClient = axios.create({
     baseURL: API_BASE_URL,
     withCredentials: true,
     timeout: 30000,
 });
 
-// Thêm Auth Token và Dev Logging cho privateClient Request
 privateClient.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
         const commonHeaders = await getCommonHeaders();
@@ -180,7 +156,6 @@ privateClient.interceptors.request.use(
     (error) => Promise.reject(error)
 );
 
-// --- INTERCEPTOR REFRESH TOKEN VÀ DEV LOGGING RESPONSE ---
 let isRefreshing = false;
 let failedQueue: any[] = [];
 
@@ -197,39 +172,31 @@ const processQueue = (error: any, token: string | null = null) => {
 
 privateClient.interceptors.response.use(
     (response: AxiosResponse) => {
-        // Dev Logging cho Success
         if (DEV_LOG_ENABLED) {
             console.log(`[RES][PRIVATE] ${response.config.method?.toUpperCase()} ${response.config.url}\nStatus: ${response.status}\nBody: ${JSON.stringify(response.data)}`);
         }
-        // Yêu cầu: request success thì kh cần hiển thị tin nhắn gì
         return response;
     },
     async (error: AxiosError) => {
         const originalRequest = error.config as CustomAxiosRequestConfig;
         const httpStatus = error.response?.status;
 
-        // Dev Logging cho Error
         if (DEV_LOG_ENABLED) {
             const data = error.response?.data;
             const url = error.config?.url;
             console.error(`[ERR][PRIVATE] ${error.config?.method?.toUpperCase()} ${url}\nStatus: ${httpStatus}\nBody: ${JSON.stringify(data || error.message)}`);
         }
 
-        // Xử lý hiển thị Toast theo logic mới (chỉ hiển thị nếu userFacing=true và không phải 401/403)
         if (httpStatus !== 401 && httpStatus !== 403) {
             handleErrorResponse(error);
         } else if (!httpStatus && error.message) {
-            // Lỗi mạng hoặc timeout không có status code
             handleErrorResponse(error);
         }
 
-
-        // Chỉ xử lý 401
         if (httpStatus !== 401 || originalRequest._retry) {
             return Promise.reject(error);
         }
 
-        // Bỏ qua nếu lỗi tại login endpoint
         if (originalRequest.url?.includes('/auth/login')) {
             return Promise.reject(error);
         }
@@ -259,7 +226,6 @@ privateClient.interceptors.response.use(
 
         try {
             const deviceId = await getDeviceIdSafe();
-            // Sử dụng publicClient để tránh loop interceptor
             const res = await publicClient.post('/api/v1/auth/refresh-token', {
                 refreshToken: refreshToken,
                 deviceId: deviceId,

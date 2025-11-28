@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react"
-import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
+import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, Image } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useQuery } from "@tanstack/react-query"
 import { useTranslation } from "react-i18next"
@@ -9,6 +9,9 @@ import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { AgeRange } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
+
+// Assuming you have a logo asset, if not, replace with Icon or text
+// import Logo from "../../assets/images/logo.png" 
 
 const languageFlags: Record<string, string> = {
   en: "🇺🇸",
@@ -200,17 +203,17 @@ const CallSetupScreen = ({ navigation }) => {
   const selectedNativeLanguageFlag = languageFlags[preferences.nativeLanguage] || '🌐'
   const selectedLearningLanguageFlag = languageFlags[preferences.learningLanguage] || '🌐'
 
-  const selectedGenderLabel = genderOptions.find((g) => g.value === preferences.gender)?.label
-  const selectedDurationLabel = callDurations.find((d) => d.value === preferences.callDuration)?.label
-
   return (
     <ScreenLayout style={styles.container}>
+      {/* Clean Header with Logo only */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#374151" />
+        <View style={styles.logoContainer}>
+          <Icon name="language" size={32} color="#4F46E5" />
+          <Text style={styles.logoText}>MonkeyLingua</Text>
+        </View>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeButton}>
+          <Icon name="close" size={24} color="#374151" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t("call.setupTitle")}</Text>
-        <View style={styles.placeholder} />
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -223,16 +226,11 @@ const CallSetupScreen = ({ navigation }) => {
             },
           ]}
         >
-          <View style={styles.welcomeSection}>
-            <Text style={styles.welcomeTitle}>{t("call.findPartner")}</Text>
-            <Text style={styles.welcomeText}>{t("call.setupDescription")}</Text>
-          </View>
+          <Text style={styles.pageTitle}>{t("call.setupTitle")}</Text>
+          <Text style={styles.pageSubtitle}>{t("call.setupDescription")}</Text>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("call.commonInterests")}</Text>
-            <Text style={styles.sectionSubtitle}>
-              {t("call.selectTopics", { count: preferences.interests.length })}
-            </Text>
             {isLoadingInterests ? <ActivityIndicator /> :
               <View style={styles.interestsGrid}>{interests.map(renderInterestItem)}</View>
             }
@@ -287,54 +285,18 @@ const CallSetupScreen = ({ navigation }) => {
             )}
           </View>
 
-          <View style={styles.summarySection}>
-            <Text style={styles.summaryTitle}>{t("call.searchSummary")}</Text>
-            <View style={styles.summaryContent}>
-              <View style={styles.summaryItem}>
-                <Icon name="interests" size={16} color="#4F46E5" />
-                <Text style={styles.summaryText}>
-                  {t("call.interestsSelected", { count: preferences.interests.length })}
-                </Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Icon name="person" size={16} color="#4F46E5" />
-                <Text style={styles.summaryText}>
-                  {t("call.gender")}: {selectedGenderLabel}
-                </Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Icon name="language" size={16} color="#4F46E5" />
-                <Text style={styles.summaryText}>
-                  {t("call.native")}: {selectedNativeLanguageFlag}{" "}
-                  {selectedNativeLanguageName}
-                </Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Icon name="school" size={16} color="#4F46E5" />
-                <Text style={styles.summaryText}>
-                  {t("call.learning")}: {selectedLearningLanguageFlag}{" "}
-                  {selectedLearningLanguageName}
-                </Text>
-              </View>
-              <View style={styles.summaryItem}>
-                <Icon name="schedule" size={16} color="#4F46E5" />
-                <Text style={styles.summaryText}>
-                  {t("call.time")}: {selectedDurationLabel}
-                </Text>
-              </View>
-            </View>
-          </View>
-
           <TouchableOpacity
             style={[styles.startButton, preferences.interests.length === 0 && styles.startButtonDisabled]}
             onPress={startSearch}
             disabled={preferences.interests.length === 0}
           >
-            <Icon name="search" size={20} color="#FFFFFF" />
+            <Icon name="search" size={24} color="#FFFFFF" />
             <Text style={styles.startButtonText}>
               {t("call.startSearch")}
             </Text>
           </TouchableOpacity>
+
+          <View style={{ height: 40 }} />
         </Animated.View>
       </ScrollView>
     </ScreenLayout>
@@ -351,18 +313,24 @@ const styles = createScaledSheet({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
-    paddingBottom: 16,
+    paddingVertical: 16,
     backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#F3F4F6",
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
+  logoContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
   },
-  placeholder: {
-    width: 24,
+  logoText: {
+    fontSize: 20,
+    fontWeight: "800",
+    color: "#4F46E5",
+    letterSpacing: -0.5,
+  },
+  closeButton: {
+    padding: 4,
   },
   content: {
     flex: 1,
@@ -370,105 +338,95 @@ const styles = createScaledSheet({
   scrollContent: {
     padding: 20,
   },
-  welcomeSection: {
-    alignItems: "center",
-    marginBottom: 30,
-  },
-  welcomeTitle: {
-    fontSize: 20,
+  pageTitle: {
+    fontSize: 28,
     fontWeight: "bold",
     color: "#1F2937",
     marginBottom: 8,
   },
-  welcomeText: {
-    fontSize: 14,
+  pageSubtitle: {
+    fontSize: 16,
     color: "#6B7280",
-    textAlign: "center",
-    lineHeight: 20,
+    marginBottom: 32,
+    lineHeight: 24,
   },
   section: {
-    marginBottom: 30,
+    marginBottom: 32,
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: "#6B7280",
+    fontWeight: "700",
+    color: "#111827",
     marginBottom: 16,
   },
   interestsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   interestItem: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 100,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
-    gap: 6,
-    marginBottom: 8,
+    gap: 8,
   },
   interestText: {
     fontSize: 14,
     color: "#374151",
+    fontWeight: "500",
   },
   languagesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   languageOption: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 100,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
-    gap: 6,
-    marginBottom: 8,
+    gap: 8,
   },
   selectedLanguageOption: {
     borderColor: "#4F46E5",
     backgroundColor: "#EEF2FF",
   },
   languageFlag: {
-    fontSize: 16,
+    fontSize: 18,
   },
   languageText: {
     fontSize: 14,
     color: "#374151",
+    fontWeight: "500",
   },
   selectedLanguageText: {
     color: "#4F46E5",
-    fontWeight: "600",
+    fontWeight: "700",
   },
   optionsContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8,
+    gap: 10,
   },
   optionButton: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: "#E5E7EB",
     backgroundColor: "#FFFFFF",
-    gap: 6,
-    marginBottom: 8,
+    gap: 8,
   },
   selectedOptionButton: {
     borderColor: "#4F46E5",
@@ -477,57 +435,33 @@ const styles = createScaledSheet({
   optionButtonText: {
     fontSize: 14,
     color: "#374151",
-    fontWeight: "500",
+    fontWeight: "600",
   },
   selectedOptionButtonText: {
     color: "#FFFFFF",
-  },
-  summarySection: {
-    backgroundColor: "#EEF2FF",
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: "#C7D2FE",
-  },
-  summaryTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#4F46E5",
-    marginBottom: 12,
-  },
-  summaryContent: {
-    gap: 8,
-  },
-  summaryItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  summaryText: {
-    fontSize: 14,
-    color: "#374151",
   },
   startButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#4F46E5",
-    paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: 18,
+    borderRadius: 16,
+    gap: 10,
+    shadowColor: "#4F46E5",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    marginTop: 16,
   },
   startButtonDisabled: {
-    backgroundColor: "#D1D5DB",
+    backgroundColor: "#9CA3AF",
+    shadowOpacity: 0.1,
   },
   startButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
+    fontSize: 18,
+    fontWeight: "700",
     color: "#FFFFFF",
   },
 })

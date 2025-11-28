@@ -26,7 +26,7 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
             ") AND u.isDeleted = false")
     Page<User> searchUsersByKeyword(@Param("keyword") String keyword, Pageable pageable);
 
-        List<User> findAllByIsDeletedFalse();
+    List<User> findAllByIsDeletedFalse();
     Optional<User> findByEmailOrPhoneAndIsDeletedFalse(String email, String phone);
     List<User> findByCreatedAtBetween(OffsetDateTime startDate, OffsetDateTime endDate);
 
@@ -56,4 +56,7 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
     void softDeleteById(@Param("id") UUID id);
 
     List<User> findByIsDeletedFalseOrderByExpDesc(Pageable pageable);
+
+    @Query("SELECT u FROM User u WHERE u.vipExpirationDate BETWEEN :start AND :end AND u.isDeleted = false")
+    List<User> findByVipExpirationDateBetween(@Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
 }

@@ -14,4 +14,5 @@ public interface CourseDiscountService {
     CourseDiscountResponse updateCourseDiscount(UUID id, CourseDiscountRequest request);
     void deleteCourseDiscountsByCourseId(UUID courseId);
     void deleteCourseDiscount(UUID id);
+    CourseDiscountResponse validateDiscountCode(String code, UUID courseId);
 }

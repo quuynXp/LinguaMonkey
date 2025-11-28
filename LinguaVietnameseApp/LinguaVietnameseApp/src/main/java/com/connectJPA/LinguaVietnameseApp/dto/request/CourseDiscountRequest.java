@@ -21,6 +21,7 @@ public class CourseDiscountRequest {
 
     private OffsetDateTime startDate;
     private OffsetDateTime endDate;
+    private String code;
     private boolean isActive = true;
     private boolean isDeleted = false;
 }

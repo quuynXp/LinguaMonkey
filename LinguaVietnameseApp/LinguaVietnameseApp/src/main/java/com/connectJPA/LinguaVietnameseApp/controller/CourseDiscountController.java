@@ -113,4 +113,19 @@ public class CourseDiscountController {
                 .message(messageSource.getMessage("courseDiscount.deleted.success", null, locale))
                 .build();
     }
+
+    @Operation(summary = "Validate a coupon code", description = "Check if a discount code is valid for a course")
+    @GetMapping("/validate")
+    public AppApiResponse<CourseDiscountResponse> validateDiscount(
+            @RequestParam String code,
+            @RequestParam UUID courseId,
+            Locale locale
+    ) {
+        CourseDiscountResponse discount = courseDiscountService.validateDiscountCode(code, courseId);
+        return AppApiResponse.<CourseDiscountResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("courseDiscount.get.success", null, locale))
+                .result(discount)
+                .build();
+    }
 }

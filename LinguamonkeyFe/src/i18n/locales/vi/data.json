@@ -1,0 +1,107 @@
+{
+    "currency": {
+        "title": "Currency",
+        "select": "Select Currency",
+        "convert": "Convert",
+        "rate": "Exchange Rate",
+        "updatedAt": "Last updated",
+        "VND": "Vietnamese Dong",
+        "USD": "US Dollar",
+        "CNY": "Chinese Yuan",
+        "JPY": "Japanese Yen",
+        "KRW": "Korean Won",
+        "EUR": "Euro"
+    },
+    "language": {
+        "chooseLanguages": "Choose your native and learning languages",
+        "nativeLanguage": "Native Language",
+        "learningLanguage": "Learning Language",
+        "selectLanguages": "Select Languages",
+        "changed": "Language changed successfully"
+    },
+    "languageSelection": {
+        "title": "Select Your Languages",
+        "nativeLanguage": "Native Language",
+        "learningLanguage": "Learning Language",
+        "selectNative": "Select your native language",
+        "selectLearning": "Select the language you want to learn"
+    },
+    "environment": {
+        "general": "General",
+        "generalDesc": "Practice everyday conversations.",
+        "business": "Business",
+        "businessDesc": "Improve your business communication skills.",
+        "casual": "Casual",
+        "casualDesc": "Relaxed conversations with friends.",
+        "academic": "Academic",
+        "academicDesc": "Learn in an academic environment.",
+        "travel": "Travel",
+        "travelDesc": "Conversations for traveling abroad.",
+        "restaurant": "Restaurant",
+        "restaurantDesc": "Practice ordering and dining conversations.",
+        "switch": "Switch Environment"
+    },
+    "categories": {
+        "all": "All Categories",
+        "free": "Free",
+        "paid": "Paid",
+        "purchased": "Purchased"
+    },
+    "enums": {
+        "level": "Level",
+        "country": {
+            "VIETNAM": "Vietnam",
+            "CHINA": "CHINA",
+            "JAPAN": "JAPAN",
+            "KOREAN": "KOREAN",
+            "FRANCE": "FRANCE"
+        },
+        "ageRange": {
+            "AGE_18_24": "18 - 24 Years Old"
+        },
+        "learningPace": {
+            "SLOW": "Slow (20 mins/day)"
+        }
+    },
+    "proficiency": {
+        "A1": "A1",
+        "A2": "A2",
+        "B1": "B1",
+        "B2": "B2",
+        "C1": "C1",
+        "C2": "C2",
+        "NATIVE": "Native Speaker",
+        "BEGINER": "Beginner"
+    },
+    "difficulty": {
+        "title": "Difficulty",
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard"
+    },
+    "tips": {
+        "title": "Tips"
+    },
+    "appSubtitle": {
+        "feature": {
+            "aiLearning": "AI-Powered Learning",
+            "socialLearning": "Social Learning",
+            "gamified": "Gamified Experience"
+        }
+    },
+    "levels": {
+        "beginner": "Beginner",
+        "intermediate": "Intermediate",
+        "advanced": "Advanced"
+    },
+    "level": {
+        "beginner": "Beginner",
+        "intermediate": "Intermediate",
+        "advanced": "Advanced"
+    },
+    "purpose": {
+        "learning": "Learning",
+        "social": "Social",
+        "quiz": "Quiz"
+    }
+}

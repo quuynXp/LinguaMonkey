@@ -46,7 +46,7 @@ public class SecurityConfig {
 
                 .requestMatchers(
                     "/api/v1/auth/**",
-                    "/api/swagger",
+                    "/api/swagger", 
                     "/api/swagger/**",
                     "/swagger-ui/**",
                     "/v3/api-docs/**",
@@ -59,8 +59,9 @@ public class SecurityConfig {
                     "/ws/**"
                 ).permitAll()
 
-                .requestMatchers(HttpMethod.GET, "/api/v1/leaderboards/**").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/v1/leaderboard-entries/**").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/users").permitAll() 
+                
+                .requestMatchers(HttpMethod.GET, "/api/v1/users/*/profile").permitAll()
 
                 .anyRequest().authenticated()
             )
@@ -89,8 +90,8 @@ public class SecurityConfig {
         try (InputStream is = publicKeyResource.getInputStream()) {
             String key = new String(is.readAllBytes(), StandardCharsets.UTF_8);
             key = key.replaceAll("-----BEGIN (.*)-----", "")
-                     .replaceAll("-----END (.*)-----", "")
-                     .replaceAll("\\s", "");
+                      .replaceAll("-----END (.*)-----", "")
+                      .replaceAll("\\s", "");
 
             byte[] keyBytes = Base64.getDecoder().decode(key);
             X509EncodedKeySpec spec = new X509EncodedKeySpec(keyBytes);
@@ -106,7 +107,8 @@ public class SecurityConfig {
         grantedAuthoritiesConverter.setAuthorityPrefix("");
 
         JwtAuthenticationConverter converter = new JwtAuthenticationConverter();
-        converter.setPrincipalClaimName("sub");
+        converter.setPrincipalClaimName("sub"); 
+        
         converter.setJwtGrantedAuthoritiesConverter(grantedAuthoritiesConverter);
         return converter;
     }

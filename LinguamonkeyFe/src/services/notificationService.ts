@@ -1,10 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform } from 'react-native';
 import { useAppStore } from '../stores/appStore';
 import instance from "../api/axiosClient";
-import messaging, { firebase } from '@react-native-firebase/messaging';
+import messaging from '@react-native-firebase/messaging';
 import { useUserStore } from '../stores/UserStore';
 import { handleNotificationNavigation } from '../utils/navigationRef';
 import i18n from "../i18n";
@@ -66,7 +66,6 @@ class NotificationService {
     };
   }
 
-  // ✅ Get messaging instance một lần duy nhất
   private getMessaging() {
     if (!this.messagingInstance) {
       this.messagingInstance = messaging();
@@ -94,7 +93,6 @@ class NotificationService {
     this.isInitialized = true;
   }
 
-  // ✅ SỬA: Setup listeners ĐÚNG CÁCH
   setupNotificationListeners() {
     const msg = this.getMessaging();
 
@@ -137,7 +135,6 @@ class NotificationService {
       await this.sendLocalNotification(title, body, remoteMessage.data);
     });
 
-    // Return cleanup function
     return () => {
       responseSubscription.remove();
       unsubscribeOnOpened();
@@ -158,16 +155,15 @@ class NotificationService {
     return deviceId;
   }
 
-  // ✅ SỬA: Request permissions ĐÚNG
   async requestFirebasePermissions(): Promise<boolean> {
     try {
       const msg = this.getMessaging();
       const authStatus = await msg.requestPermission();
 
-      // Dùng enum từ messaging()
+      // FIXED: Use messaging.AuthorizationStatus instead of firebase.messaging.AuthorizationStatus
       const enabled =
-        authStatus === firebase.messaging.AuthorizationStatus.AUTHORIZED ||
-        authStatus === firebase.messaging.AuthorizationStatus.PROVISIONAL;
+        authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
 
       console.log('🔥 Firebase Permission Status:', authStatus);
       return enabled;
@@ -177,7 +173,6 @@ class NotificationService {
     }
   }
 
-  // ✅ SỬA: Get FCM Token ĐÚNG
   async getFcmToken(): Promise<string | null> {
     const enabled = await this.requestFirebasePermissions();
     if (!enabled) {
@@ -213,11 +208,9 @@ class NotificationService {
       return;
     }
 
-    // Update Store
     if (store.setToken) store.setToken(fcmToken);
     if (store.setDeviceId) store.setDeviceId(deviceId);
 
-    // Check duplicate
     if (store.fcmToken === fcmToken && store.deviceId === deviceId && store.isTokenRegistered) {
       console.log('✅ FCM Token already synced.');
       return;
@@ -378,7 +371,6 @@ class NotificationService {
     return currentTimeInMinutes >= startTimeInMinutes && currentTimeInMinutes <= endTimeInMinutes;
   }
 
-  // API Methods - giữ nguyên
   async sendPurchaseCourseNotification(userId: string, courseName: string): Promise<void> {
     if (!this.preferences.achievementNotifications) return;
     try {

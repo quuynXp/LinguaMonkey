@@ -13,8 +13,9 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import { getGreetingKey } from "../../utils/motivationHelper";
 import type { UserDailyChallengeResponse } from "../../types/dto";
 import { Picker } from "@react-native-picker/picker";
-import { Certification, ProficiencyLevel, GoalType } from "../../types/enums";
+import { ProficiencyLevel, GoalType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import HomeCarousel from "../../components/home/HomeCarousel";
 
 const SUPPORTED_LANGUAGES = [
   { code: 'en', label: 'English' },
@@ -264,6 +265,9 @@ const HomeScreen = ({ navigation }: any) => {
               </View>
             </TouchableOpacity>
           ) : null}
+
+          {/* New Carousel Feature */}
+          <HomeCarousel navigation={navigation} />
 
           <Animated.View style={[styles.characterSection, { transform: [{ scale: bounceAnim }] }]}>
             <TouchableOpacity style={styles.characterContainer} onPress={goToChatAISCreen} activeOpacity={0.8}>
@@ -655,7 +659,7 @@ const styles = createScaledSheet({
   },
   leaderboardSection: {
     marginHorizontal: 24,
-    marginBottom: 24,
+    marginBottom: 0,
     backgroundColor: "#FFFFFF",
     borderRadius: 20,
     padding: 16,

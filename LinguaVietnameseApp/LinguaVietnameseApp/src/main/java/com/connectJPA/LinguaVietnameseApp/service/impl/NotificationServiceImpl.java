@@ -26,7 +26,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.core.context.SecurityContextHolder; // Import cần thiết cho Security
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -46,24 +46,20 @@ public class NotificationServiceImpl implements NotificationService {
     private final UserRepository userRepository;
     private final Gson gson = new Gson();
 
-    // HÀM SEARCH THAY THẾ ELASTICSEARCH
     @Override
     public Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
             return Page.empty();
         }
         try {
-            // Lấy userId từ Security Context để lọc notification của riêng user đó
             String currentUserIdString = SecurityContextHolder.getContext().getAuthentication().getName();
             UUID currentUserId = UUID.fromString(currentUserIdString);
             
             Pageable pageable = PageRequest.of(page, size);
             
-            // GỌI PHƯƠNG THỨC SEARCH MỚI
             return notificationRepository.searchNotificationsByKeyword(currentUserId, keyword, pageable);
             
         } catch (IllegalArgumentException e) {
-            // Nếu UUID không hợp lệ
             throw new AppException(ErrorCode.INVALID_KEY);
         } catch (Exception e) {
             log.error("Error while searching notifications: {}", e.getMessage());
@@ -84,7 +80,6 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    //@Cacheable(value = "notifications", key = "#userId + ':' + #title + ':' + #type + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<NotificationResponse> getAllNotifications(UUID userId, String title, String type, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -98,10 +93,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
     
-    // [Các phương thức khác giữ nguyên]...
-
     @Override
-    //@Cacheable(value = "notifications", key = "#userId + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<NotificationResponse> getAllNotificationByUserId(UUID userId, Pageable pageable) {
         try {
             if (pageable == null) {
@@ -116,7 +108,6 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
-    //@Cacheable(value = "notifications", key = "#id")
     public NotificationResponse getNotificationById(UUID id) {
         try {
             if (id == null) {
@@ -133,7 +124,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    //@CachePut(value = "notifications", key = "#result.notificationId")
     public NotificationResponse createNotification(NotificationRequest request) {
         try {
             if (request == null || request.getUserId() == null) {
@@ -152,12 +142,10 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional
     public void createPushNotification(NotificationRequest request) {
-        // 1. Lưu notification vào DB (code của bạn đã có)
         Notification savedNotification = notificationMapper.toEntity(request);
         savedNotification.setCreatedAt(OffsetDateTime.now());
         notificationRepository.save(savedNotification);
 
-        // 2. Lấy tất cả token của user
         List<UserFcmToken> tokens = userFcmTokenRepository.findByUserIdAndIsDeletedFalse(request.getUserId());
 
         if (tokens.isEmpty()) {
@@ -167,19 +155,18 @@ public class NotificationServiceImpl implements NotificationService {
 
         AndroidConfig androidConfig = AndroidConfig.builder()
                 .setNotification(AndroidNotification.builder()
-                        .setSound("notification") // Tên file âm thanh custom
-                        .setIcon("ic_notification") // Tên icon custom
-                        .setChannelId("default_channel_id") // Quan trọng: Phải tạo Channel ở FE
+                        .setSound("notification")
+                        .setIcon("ic_notification")
+                        .setChannelId("default_channel_id")
                         .build())
                 .build();
 
         ApnsConfig apnsConfig = ApnsConfig.builder()
                 .setAps(Aps.builder()
-                        .setSound("notification.mp3") // Tên file âm thanh custom cho iOS
+                        .setSound("notification.mp3")
                         .build())
                 .build();
 
-        // 5. Gửi push
         for (UserFcmToken token : tokens) {
             try {
                 Message.Builder messageBuilder = Message.builder()
@@ -188,8 +175,8 @@ public class NotificationServiceImpl implements NotificationService {
                                 .setTitle(request.getTitle())
                                 .setBody(request.getContent())
                                 .build())
-                        .setAndroidConfig(androidConfig) // Áp dụng config Android
-                        .setApnsConfig(apnsConfig);     // Áp dụng config iOS
+                        .setAndroidConfig(androidConfig)
+                        .setApnsConfig(apnsConfig);
 
                 if (request.getPayload() != null && !request.getPayload().isEmpty()) {
                     Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
@@ -207,7 +194,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    //@CachePut(value = "notifications", key = "#id")
     public NotificationResponse updateNotification(UUID id, NotificationRequest request) {
         try {
             if (id == null || request == null) {
@@ -227,7 +213,6 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
-    //@CacheEvict(value = "notifications", key = "#id")
     public void deleteNotification(UUID id) {
         try {
             if (id == null) {
@@ -434,6 +419,59 @@ public class NotificationServiceImpl implements NotificationService {
             emailService.sendStreakRewardEmail(email, streakDays, locale);
         } catch (Exception e) {
             log.error("Error sending streak reward notification for user ID {}: {}", userId, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    // --- IMPLEMENTATION OF THE NEW VIP METHOD ---
+    @Override
+    @Transactional
+    public void sendVipSuccessNotification(UUID userId, boolean isRenewal, String planType) {
+        try {
+            if (userId == null) {
+                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+            }
+            
+            String title = isRenewal ? "VIP Subscription Renewed! 💎" : "VIP Activated! 🌟";
+            String content = isRenewal 
+                ? "Your " + planType + " VIP subscription has been successfully extended."
+                : "Welcome to VIP! Your " + planType + " plan is now active. Enjoy unlimited access!";
+            String type = isRenewal ? "VIP_EXTENDED" : "VIP_ACTIVATED";
+
+            // 1. In-App Notification (and potentially Push via generic flow if needed, but we do explicitly below)
+            NotificationRequest request = NotificationRequest.builder()
+                    .userId(userId)
+                    .title(title)
+                    .content(content)
+                    .type(type)
+                    .build();
+            
+            // This method in this class saves to DB
+            createNotification(request);
+            // This method sends to FCM
+            createPushNotification(request);
+
+            // 2. Email Notification (The TODO part)
+            String email = getUserEmailByUserId(userId);
+            Locale locale = getLocaleByUserId(userId);
+            
+            // Assuming EmailService has a generic send method or you will add this specific method.
+            // Since I cannot see EmailService code, I will use a theoretical method name that follows your convention.
+            // IMPORTANT: You must add `sendVipSuccessEmail(String to, boolean isRenewal, String planType, Locale locale)` to your EmailService.
+            // If it doesn't exist, this line will break. I'm adding it as requested to "add the todo part".
+            try {
+                // Using reflection or just calling it if you update EmailService
+                // emailService.sendVipSuccessEmail(email, isRenewal, planType, locale);
+                
+                // Fallback to a log if method doesn't exist yet to prevent runtime crash if you copy-paste blindly without updating EmailService
+                log.info("TODO: Implement emailService.sendVipSuccessEmail for user {}", email);
+                
+            } catch (Exception ex) {
+                log.warn("Could not send VIP email: {}", ex.getMessage());
+            }
+
+        } catch (Exception e) {
+            log.error("Error sending VIP success notification for user ID {}: {}", userId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

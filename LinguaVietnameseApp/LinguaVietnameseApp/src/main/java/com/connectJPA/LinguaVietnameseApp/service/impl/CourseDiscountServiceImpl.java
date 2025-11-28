@@ -9,9 +9,6 @@ import com.connectJPA.LinguaVietnameseApp.mapper.CourseDiscountMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseDiscountRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CourseDiscountService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.RedisConnectionFailureException;
@@ -19,6 +16,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Service
@@ -55,7 +53,6 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    //@CacheEvict(value = {"courseDiscounts"}, allEntries = true)
     public CourseDiscountResponse createCourseDiscount(CourseDiscountRequest request) {
         try {
             CourseDiscount discount = courseDiscountMapper.toEntity(request);
@@ -70,7 +67,6 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    //@CachePut(value = "courseDiscount", key = "#id")
     public CourseDiscountResponse updateCourseDiscount(UUID id, CourseDiscountRequest request) {
         try {
             CourseDiscount discount = courseDiscountRepository.findById(id)
@@ -87,7 +83,6 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    //@CacheEvict(value = "courseDiscount", key = "#id")
     public void deleteCourseDiscount(UUID id) {
         try {
             CourseDiscount discount = courseDiscountRepository.findById(id)
@@ -103,7 +98,6 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
 
     @Override
     @Transactional
-    //@CacheEvict(value = "courseDiscounts", allEntries = true)
     public void deleteCourseDiscountsByCourseId(UUID courseId) {
         try {
             courseDiscountRepository.findAllByCourseIdAndIsDeletedFalse(courseId).forEach(discount -> {
@@ -112,6 +106,35 @@ public class CourseDiscountServiceImpl implements CourseDiscountService {
             });
         } catch (RedisConnectionFailureException e) {
             throw new AppException(ErrorCode.REDIS_CONNECTION_FAILED);
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    public CourseDiscountResponse validateDiscountCode(String code, UUID courseId) {
+        try {
+            CourseDiscount discount = courseDiscountRepository.findByCodeAndCourseIdAndIsDeletedFalse(code, courseId)
+                    .orElseThrow(() -> new AppException(ErrorCode.COURSE_DISCOUNT_NOT_FOUND)); // Or CUSTOM ERROR: INVALID_COUPON
+
+            OffsetDateTime now = OffsetDateTime.now();
+
+            if (!discount.getIsActive()) {
+                 throw new AppException(ErrorCode.COURSE_DISCOUNT_NOT_FOUND); // Inactive
+            }
+
+            if (discount.getStartDate() != null && discount.getStartDate().isAfter(now)) {
+                throw new AppException(ErrorCode.COURSE_DISCOUNT_NOT_FOUND); // Not started yet
+            }
+
+            if (discount.getEndDate() != null && discount.getEndDate().isBefore(now)) {
+                throw new AppException(ErrorCode.COURSE_DISCOUNT_NOT_FOUND); // Expired
+            }
+
+            return courseDiscountMapper.toResponse(discount);
+
+        } catch (AppException e) {
+            throw e;
         } catch (Exception e) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }

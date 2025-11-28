@@ -1,13 +1,9 @@
-import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     KeyboardAvoidingView,
-    Modal,
     Platform,
-    Share,
-
     Text,
     TextInput,
     TouchableOpacity,
@@ -16,17 +12,17 @@ import {
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
 import { pickAndUploadMedia } from "../../utils/chatMediaUtils";
 import { RoomPurpose } from "../../types/enums";
-import { RoomResponse, MemberResponse, AppApiResponse, TranslationRequestBody } from "../../types/dto";
+import { RoomResponse, MemberResponse, AppApiResponse } from "../../types/dto";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 
-// Reuse types from original file or import shared types
 type UIMessage = {
     id: string;
     sender: 'user' | 'other';
@@ -34,11 +30,9 @@ type UIMessage = {
     text: string;
     mediaUrl?: string;
     messageType: 'TEXT' | 'IMAGE' | 'VIDEO';
-    translatedText?: string;
     user: string;
     avatar: string | null;
     currentDisplay: { text: string; lang: string; isTranslatedView: boolean };
-    hasTargetLangTranslation: boolean;
     sentAt: string;
 };
 
@@ -58,7 +52,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     onMinimizeBubble
 }) => {
     const { t, i18n } = useTranslation();
-    const queryClient = useQueryClient();
     const { showToast } = useToast();
     const { user } = useUserStore();
     const currentUserId = user?.userId;
@@ -67,14 +60,21 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [isUploading, setIsUploading] = useState(false);
     const [localTranslations, setLocalTranslations] = useState<any>({});
     const [messagesToggleState, setMessagesToggleState] = useState<any>({});
-    const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
+    const [translationTargetLang] = useState(i18n.language);
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
 
+    // State Store
     const loadMessages = useChatStore(s => s.loadMessages);
     const sendMessage = useChatStore(s => s.sendMessage);
     const messagesByRoom = useChatStore(s => s.messagesByRoom);
+    const pageByRoom = useChatStore(s => s.pageByRoom);
+    const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
+    const loadingByRoom = useChatStore(s => s.loadingByRoom);
+
     const serverMessages = messagesByRoom[roomId] || [];
-    const flatListRef = useRef<FlatList>(null);
+    const currentPage = pageByRoom[roomId] || 0;
+    const hasMore = hasMoreByRoom[roomId] !== false; // Default true
+    const isLoading = loadingByRoom[roomId] || false;
 
     // --- Queries ---
     const { data: roomInfo } = useQuery({
@@ -89,6 +89,20 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         enabled: !!roomId,
     });
 
+    // --- Initial Load ---
+    useEffect(() => {
+        // Load page 0 (10 tin nhắn mới nhất) ngay khi vào màn hình
+        loadMessages(roomId, 0, 10);
+    }, [roomId, loadMessages]);
+
+    // --- Load More (Pagination) ---
+    const handleLoadMore = () => {
+        if (!isLoading && hasMore) {
+            console.log(`Loading more messages for room ${roomId}, page ${currentPage + 1}`);
+            loadMessages(roomId, currentPage + 1, 10);
+        }
+    };
+
     // --- Display Logic ---
     const displayRoomName = useMemo(() => {
         if (!roomInfo) return initialRoomName || t('chat.loading');
@@ -100,8 +114,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     }, [roomInfo, members, currentUserId, initialRoomName]);
 
     const messages: UIMessage[] = useMemo(() => {
+        // serverMessages đang là [Newest, ..., Oldest] (do Logic upsert/load trong store)
+        // FlatList inverted sẽ render item 0 ở dưới cùng. Đúng chuẩn Chat UI.
         return serverMessages.map((msg) => {
-            const sentAt = msg?.id?.sentAt || new Date().toISOString();
+            const sentAt = msg?.createdAt || msg?.id?.sentAt || new Date().toISOString();
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${sentAt}`;
             const senderInfo = members.find(m => m.userId === senderId);
@@ -116,19 +132,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 sender: senderId === currentUserId ? 'user' : 'other',
                 timestamp: new Date(sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                 text: msg.content || '',
-                mediaUrl: (msg as any).mediaUrl, // Ensure DTO has this
+                mediaUrl: (msg as any).mediaUrl,
                 messageType: (msg as any).messageType || 'TEXT',
                 user: senderInfo?.fullname || 'Unknown',
                 avatar: senderInfo?.avatarUrl,
                 sentAt,
                 currentDisplay: { text: displayedText, lang: isTranslatedView ? currentView : 'original', isTranslatedView },
-                hasTargetLangTranslation: !!localTranslations[messageId]?.[translationTargetLang],
             } as UIMessage;
-        }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
-    }, [serverMessages, members, localTranslations, messagesToggleState, translationTargetLang]);
-
-    useEffect(() => { loadMessages(roomId); }, [roomId]);
-    useEffect(() => { if (messages.length) flatListRef.current?.scrollToEnd({ animated: true }); }, [messages.length]);
+        });
+        // Không cần sort ở đây nếu Store đã đảm bảo thứ tự DESC (Newest -> Oldest)
+        // Nếu Store hỗn loạn, cần sort: .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
+    }, [serverMessages, members, localTranslations, messagesToggleState]);
 
     // --- Actions ---
     const handleSendMessage = () => {
@@ -142,7 +156,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             () => setIsUploading(true),
             (url, type) => {
                 setIsUploading(false);
-                // content serves as alt text or fallback, mediaUrl is the real deal
                 sendMessage(roomId, type === 'IMAGE' ? 'Sent an image' : 'Sent a video', type, url);
             },
             (err) => {
@@ -152,7 +165,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         );
     };
 
-    // --- Translation (Simplified from original) ---
+    // --- Translation ---
     const { mutate: translateMutate } = useMutation({
         mutationFn: async ({ text, target, id }: any) => {
             setTranslatingMessageId(id);
@@ -182,9 +195,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     };
 
-    // --- Render ---
     return (
-        <View style={styles.container}>
+        <ScreenLayout style={styles.container}>
             {/* Header */}
             <View style={[styles.header, isBubbleMode && styles.bubbleHeader]}>
                 <View style={styles.headerInfo}>
@@ -203,27 +215,26 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
             </View>
 
-            {/* Messages */}
+            {/* Messages List (Inverted for Chat UX) */}
             <FlatList
-                ref={flatListRef}
                 data={messages}
                 keyExtractor={item => item.id}
                 style={styles.list}
+                inverted={true} // Đảo ngược list: Item[0] (Newest) nằm dưới cùng
+                onEndReached={handleLoadMore} // Khi scroll lên trên cùng (thực ra là cuối list data), load page tiếp theo
+                onEndReachedThreshold={0.2}
+                ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
                 renderItem={({ item }) => (
                     <View style={[styles.msgRow, item.sender === 'user' ? styles.rowUser : styles.rowOther]}>
                         {item.sender === 'other' && (
-                            <Text style={styles.avatar}>{item.avatar || '👤'}</Text>
+                            <Text style={styles.avatar}>{item.avatar ? <Image source={{ uri: item.avatar }} style={{ width: 30, height: 30, borderRadius: 15 }} /> : '👤'}</Text>
                         )}
                         <View style={styles.msgContent}>
                             {item.sender === 'other' && <Text style={styles.senderName}>{item.user}</Text>}
 
                             <View style={[styles.bubble, item.sender === 'user' ? styles.bubbleUser : styles.bubbleOther]}>
                                 {item.messageType === 'IMAGE' ? (
-                                    <Image
-                                        source={{ uri: item.mediaUrl || item.text }}
-                                        style={styles.msgImage}
-                                        resizeMode="cover"
-                                    />
+                                    <Image source={{ uri: item.mediaUrl || item.text }} style={styles.msgImage} resizeMode="cover" />
                                 ) : (
                                     <Text style={[styles.text, item.sender === 'user' ? styles.textUser : styles.textOther]}>
                                         {item.currentDisplay.text}
@@ -267,7 +278,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
-        </View>
+        </ScreenLayout>
     );
 };
 
@@ -284,7 +295,7 @@ const styles = createScaledSheet({
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },
     rowOther: { justifyContent: 'flex-start' },
-    avatar: { fontSize: 24, marginRight: 8, marginTop: 4 },
+    avatar: { marginRight: 8, marginTop: 4, justifyContent: 'center', alignItems: 'center' },
     msgContent: { maxWidth: '75%' },
     senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2 },
     bubble: { borderRadius: 16, padding: 12 },

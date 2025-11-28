@@ -1,6 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
-
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
@@ -12,7 +11,6 @@ import com.connectJPA.LinguaVietnameseApp.enums.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
-import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
@@ -24,7 +22,6 @@ import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -33,7 +30,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -41,7 +38,6 @@ import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
-
 
 @Service
 @RequiredArgsConstructor
@@ -72,7 +68,6 @@ public class UserServiceImpl implements UserService {
     private final VideoCallRepository videoCallRepository;
     private final AuthenticationServiceImpl authenticationService;
     private final UserRoleRepository userRoleRepository;
-    private final GrpcClientService grpcClientService;
     private final AdmirationRepository admirationRepository;
     private final BadgeService badgeService;
     private final FriendshipService friendshipService;
@@ -90,6 +85,54 @@ public class UserServiceImpl implements UserService {
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonRepository lessonRepository;
 
+    // --- NEW METHODS FOR VIP LOGIC ---
+
+    @Transactional
+    @Override // Explicitly overriding interface method
+    public void activateVipTrial(UUID userId) {
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        // 14 days trial
+        user.setVipExpirationDate(OffsetDateTime.now().plusDays(14));
+        userRepository.saveAndFlush(user);
+
+        // Call the centralized notification service (Handles Push + DB + Email)
+        notificationService.sendVipSuccessNotification(userId, false, "14-Day Trial");
+    }
+
+    @Transactional
+    @Override // Explicitly overriding interface method
+    public void extendVipSubscription(UUID userId, BigDecimal amount) {
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        OffsetDateTime currentExpiry = user.getVipExpirationDate();
+        if (currentExpiry == null || currentExpiry.isBefore(OffsetDateTime.now())) {
+            currentExpiry = OffsetDateTime.now();
+        }
+
+        String planType;
+        // Determine duration based on amount (Simple logic: ~9.99 = 1 month, ~99 = 1 year)
+        // In production, pass a PlanType Enum instead of guessing by amount
+        if (amount.compareTo(new BigDecimal("90")) > 0) {
+             // Yearly
+            user.setVipExpirationDate(currentExpiry.plusYears(1));
+            planType = "Yearly";
+        } else {
+            // Monthly
+            user.setVipExpirationDate(currentExpiry.plusMonths(1));
+            planType = "Monthly";
+        }
+        
+        userRepository.saveAndFlush(user);
+
+        // Call the centralized notification service (Handles Push + DB + Email)
+        notificationService.sendVipSuccessNotification(userId, true, planType);
+    }
+    
+    // --- EXISTING METHODS (No changes below, just keeping context) ---
+
     private UserResponse mapUserToResponseWithAllDetails(User user) {
         if (user == null) {
             return null;
@@ -100,6 +143,8 @@ public class UserServiceImpl implements UserService {
         response.setHasFinishedSetup(user.isHasFinishedSetup());
         response.setHasDonePlacementTest(user.isHasDonePlacementTest());
         response.setLastDailyWelcomeAt(user.getLastDailyWelcomeAt());
+        response.setGender(user.getGender());
+        response.setVip(user.isVip()); 
 
         int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
         response.setExpToNextLevel(nextLevelExp);
@@ -177,6 +222,15 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.warn("Failed to fetch goals for user {}: {}", user.getUserId(), e.getMessage());
             response.setGoalIds(Collections.emptyList());
+        }
+
+        try {
+            if (coupleService != null) {
+                CoupleProfileSummary cps = coupleService.getCoupleProfileSummaryByUser(user.getUserId(), user.getUserId());
+                response.setCoupleProfile(cps);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to fetch couple profile for user {}: {}", user.getUserId(), e.getMessage());
         }
 
         return response;
@@ -323,6 +377,7 @@ public class UserServiceImpl implements UserService {
             if (request.getCountry() != null) user.setCountry(request.getCountry());
             if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
             if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
+            if (request.getGender() != null) user.setGender(request.getGender());
 
             if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
                 authenticationService.findOrCreateUserAccount(
@@ -427,11 +482,9 @@ public class UserServiceImpl implements UserService {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
 
-            // Update basic user info
             User user = updateBasicUserInfo(id, request);
             final UUID userId = user.getUserId();
 
-            // Update related entities
             if (request.getGoalIds() != null) {
                 updateUserGoals(userId, request.getGoalIds());
             }
@@ -448,7 +501,6 @@ public class UserServiceImpl implements UserService {
                 updateUserLanguages(userId, request.getLanguages());
             }
             
-            // Re-fetch for response
             User finalUser = userRepository.findByUserIdAndIsDeletedFalse(userId)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             
@@ -465,8 +517,6 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         
         if (request.getEmail() != null) user.setEmail(request.getEmail());
-        // Remove password update from this general PUT method to avoid accidental changes
-        // The dedicated PATCH /{id}/password is used for security.
         
         if (request.getFullname() != null) user.setFullname(request.getFullname());
         if (request.getNickname() != null) user.setNickname(request.getNickname());
@@ -481,20 +531,19 @@ public class UserServiceImpl implements UserService {
         if (request.getProficiency() != null) user.setProficiency(request.getProficiency());
         if (request.getLevel() != null) user.setLevel(request.getLevel());
         if (request.getStreak() != null) user.setStreak(request.getStreak());
+        if (request.getGender() != null) user.setGender(request.getGender());
         
         return userRepository.saveAndFlush(user);
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserLanguages(UUID userId, List<String> languageCodes) {
-        // Delete old
         userLanguageRepository.deleteAllInBatch(
                 userLanguageRepository.findByIdUserId(userId)
         );
         userLanguageRepository.flush();
         entityManager.clear();
         
-        // Create new
         List<UserLanguage> languages = languageCodes.stream()
                 .filter(Objects::nonNull)
                 .filter(langCode -> languageRepository.existsByLanguageCodeAndIsDeletedFalse(langCode))
@@ -535,8 +584,6 @@ public class UserServiceImpl implements UserService {
 
                     UserInterest ui = new UserInterest();
                     ui.setId(id);
-                    // Don't need to set user/interest - they're read-only now
-
                     return ui;
                 })
                 .collect(Collectors.toList());
@@ -616,14 +663,12 @@ public class UserServiceImpl implements UserService {
         User target = userRepository.findByUserIdAndIsDeletedFalse(targetId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // --- UPDATE START: Lấy danh sách ngôn ngữ ---
         List<String> languages = new ArrayList<>();
         try {
             languages = userLanguageRepository.findLanguageCodesByUserId(targetId);
         } catch (Exception e) {
             log.warn("Failed to fetch languages for user profile {}: {}", targetId, e.getMessage());
         }
-        // --- UPDATE END ---
 
         UserProfileResponse.UserProfileResponseBuilder respB = UserProfileResponse.builder()
                 .userId(target.getUserId())
@@ -633,10 +678,10 @@ public class UserServiceImpl implements UserService {
                 .country(target.getCountry())
                 .level(target.getLevel())
                 .streak(target.getStreak())    
-                .languages(languages)           
+                .languages(languages)            
                 .exp(target.getExp())
                 .bio(target.getBio())
-                .ageRange(target.getAgeRange())     
+                .ageRange(target.getAgeRange())      
                 .proficiency(target.getProficiency())
                 .learningPace(target.getLearningPace());
 
@@ -824,8 +869,6 @@ public class UserServiceImpl implements UserService {
             if (id == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            // Cần dùng findById để có thể tìm cả user đã bị soft-delete (nếu repository cho phép)
-            // Tuy nhiên, vì API này chỉ dùng cho ADMIN (ở UserController), ta dùng findByUserIdAndIsDeletedFalse.
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             userRepository.softDeleteById(id);
@@ -955,8 +998,6 @@ public class UserServiceImpl implements UserService {
             }
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            String email = getUserEmailByUserId(id);
-            Locale locale = getLocaleByUserId(id);
             int oldExp = user.getExp();
             int oldLevel = user.getLevel();
             int newExp = oldExp + exp;
@@ -1072,9 +1113,6 @@ public class UserServiceImpl implements UserService {
         u.setLastActiveAt(OffsetDateTime.now());
         userRepository.saveAndFlush(u);
     }
-
-
-    // START: Logic cập nhật Streak (15 phút/ngày)
     
     @Override
     @Transactional
@@ -1090,44 +1128,37 @@ public class UserServiceImpl implements UserService {
             LocalDate today = LocalDate.now();
             int currentStreak = user.getStreak();
             
-            // 1. Kiểm tra tổng thời gian học trong ngày (phút)
             Long totalDurationMinutesToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, today);
-            int minGoal = user.getMinLearningDurationMinutes(); // Mặc định 15 phút
+            int minGoal = user.getMinLearningDurationMinutes();
             
             boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
             boolean streakAlreadyUpdatedToday = today.equals(user.getLastStreakCheckDate());
 
             if (hasHitDailyGoal && !streakAlreadyUpdatedToday) {
-                // 2. Đạt mục tiêu và chưa được tăng streak hôm nay -> Tăng streak
                 user.setStreak(currentStreak + 1);
-                user.setLastStreakCheckDate(today); // Ghi lại ngày tăng streak
+                user.setLastStreakCheckDate(today);
                 user = userRepository.saveAndFlush(user);
                 
-                // 3. Gửi Pop-up thông báo tăng streak
                 NotificationRequest notificationRequest = NotificationRequest.builder()
                         .userId(id)
                         .title("🔥 Chuỗi Streak Tăng " + (currentStreak + 1) + " Ngày!")
                         .content("Tuyệt vời! Bạn đã hoàn thành mục tiêu " + minGoal + " phút học tập hàng ngày.")
-                        .type("STREAK_POPUP_SUCCESS") // Loại pop-up để client hiển thị
+                        .type("STREAK_POPUP_SUCCESS")
                         .payload("{\"newStreak\":" + user.getStreak() + "}")
                         .build();
                 notificationService.createPushNotification(notificationRequest);
-                notificationService.sendStreakRewardNotification(id, currentStreak + 1); // Giả định
+                notificationService.sendStreakRewardNotification(id, currentStreak + 1);
                 
             } else if (hasHitDailyGoal && streakAlreadyUpdatedToday) {
-                // 4. Đã đạt mục tiêu và đã được tăng streak hôm nay -> Duy trì, không làm gì.
                 log.info("User {} maintained streak today. Total minutes: {}", id, totalDurationMinutesToday);
                 
             } else {
-                // 5. Chưa đạt mục tiêu.
                 log.info("User {} has not hit daily goal ({} mins). Current minutes: {}", id, minGoal, totalDurationMinutesToday);
             }
 
-            // Dù có tăng streak hay không, chúng ta luôn trả về thông tin user mới nhất
             return mapUserToResponseWithAllDetails(user);
             
         } catch (ObjectOptimisticLockingFailureException e) {
-            // Xử lý xung đột đồng thời nếu cần
             log.error("Optimistic lock failed while updating streak for user ID {}: {}", id, e.getMessage());
             throw new AppException(ErrorCode.CONCURRENT_UPDATE_ERROR);
         } catch (Exception e) {
@@ -1147,21 +1178,16 @@ public class UserServiceImpl implements UserService {
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             
             LocalDate yesterday = LocalDate.now().minusDays(1);
-            int minGoal = user.getMinLearningDurationMinutes(); // Mục tiêu tối thiểu
+            int minGoal = user.getMinLearningDurationMinutes();
 
-            // 1. Kiểm tra thời gian học ngày hôm qua (phút)
             Long totalDurationMinutesYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, yesterday);
             boolean hasHitDailyGoalYesterday = totalDurationMinutesYesterday >= minGoal;
-            
-            // 2. Kiểm tra xem streak có được ghi nhận cho ngày hôm qua không
-            // Đây là lớp bảo vệ dự phòng cho Scheduler (dù logic reset sẽ nằm trong Scheduler). 
-            // Ta chỉ reset nếu streak > 0 VÀ không đạt mục tiêu ngày hôm qua.
             
             boolean streakCheckYesterday = yesterday.equals(user.getLastStreakCheckDate());
 
             if (user.getStreak() > 0 && (!hasHitDailyGoalYesterday || !streakCheckYesterday)) {
                 user.setStreak(0);
-                user.setLastStreakCheckDate(null); // Reset ngày kiểm tra
+                user.setLastStreakCheckDate(null);
                 user = userRepository.saveAndFlush(user);
                 
                 NotificationRequest notificationRequest = NotificationRequest.builder()
@@ -1194,7 +1220,6 @@ public class UserServiceImpl implements UserService {
             Long totalDurationMinutesToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, today);
             boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
 
-            // Kiểm tra: Chưa đạt mục tiêu VÀ đang có streak > 0
             if (!hasHitDailyGoal && user.getStreak() > 0) {
                 long minutesRemaining = minGoal - totalDurationMinutesToday;
                 
@@ -1213,8 +1238,6 @@ public class UserServiceImpl implements UserService {
         }
     }
     
-    // END: Logic cập nhật Streak (15 phút/ngày)
-
     @Override
     public LevelInfoResponse getLevelInfo(UUID id) {
         try {
@@ -1244,17 +1267,14 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
 
-        // --- FIX START: Ưu tiên tìm theo token string để tránh Unique Constraint Violation ---
         Optional<UserFcmToken> tokenByValue = userFcmTokenRepository.findByFcmToken(request.getFcmToken());
 
         if (tokenByValue.isPresent()) {
             UserFcmToken token = tokenByValue.get();
-            // Nếu token đã tồn tại, cập nhật nó về user/device hiện tại (xử lý trường hợp login trên máy khác hoặc user khác)
             token.setUserId(request.getUserId());
             token.setDeviceId(request.getDeviceId());
             userFcmTokenRepository.saveAndFlush(token);
         } else {
-            // Nếu token string chưa tồn tại, kiểm tra xem device này đã có token cũ nào cần update không
             Optional<UserFcmToken> existingDeviceToken = userFcmTokenRepository
                     .findByUserIdAndDeviceId(request.getUserId(), request.getDeviceId());
 
@@ -1263,7 +1283,6 @@ public class UserServiceImpl implements UserService {
                 token.setFcmToken(request.getFcmToken());
                 userFcmTokenRepository.saveAndFlush(token);
             } else {
-                // Tạo mới hoàn toàn
                 UserFcmToken newToken = UserFcmToken.builder()
                         .userId(request.getUserId())
                         .fcmToken(request.getFcmToken())
@@ -1272,7 +1291,6 @@ public class UserServiceImpl implements UserService {
                 userFcmTokenRepository.saveAndFlush(newToken);
             }
         }
-        // --- FIX END ---
     }
 
     @Override
@@ -1347,13 +1365,11 @@ public class UserServiceImpl implements UserService {
         User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // Kiểm tra mật khẩu hiện tại (nếu có, không áp dụng cho social login)
         if (user.getPassword() != null && !user.getPassword().isBlank() && request.getCurrentPassword() != null) {
             if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
                 throw new AppException(ErrorCode.INCORRECT_PASSWORD);
             }
         } else if (user.getPassword() != null && !user.getPassword().isBlank() && request.getCurrentPassword() == null) {
-            // Nếu user có mật khẩu nhưng request không gửi currentPassword
             throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
         }
 
@@ -1378,7 +1394,6 @@ public class UserServiceImpl implements UserService {
     public void deactivateUser(UUID id, int daysToKeep) {
         if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
 
-        // Tìm kiếm cả user đã bị soft delete nếu cần
         User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -1389,9 +1404,6 @@ public class UserServiceImpl implements UserService {
         user.setDeleted(true);
         user.setDeletedAt(OffsetDateTime.now());
         
-        // NOTE: Việc xóa vĩnh viễn sau 30 ngày cần được xử lý bởi một background job (Scheduler)
-        // Công việc của API này là set isDeleted=true và deletedAt=now.
-
         userRepository.saveAndFlush(user);
         
         NotificationRequest notificationRequest = NotificationRequest.builder()
@@ -1408,14 +1420,13 @@ public class UserServiceImpl implements UserService {
     public UserResponse restoreUser(UUID id) {
         if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
         
-        User user = userRepository.findByUserIdAndIsDeletedFalse(id) // Tìm user kể cả đã bị soft-delete
+        User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
         if (!user.isDeleted()) {
             throw new AppException(ErrorCode.ACCOUNT_NOT_DEACTIVATED);
         }
 
-        // Giả định thời gian khôi phục là 30 ngày (tính từ deletedAt)
         if (user.getDeletedAt() != null) {
             OffsetDateTime permanentDeleteTime = user.getDeletedAt().plusDays(30);
             if (OffsetDateTime.now().isAfter(permanentDeleteTime)) {

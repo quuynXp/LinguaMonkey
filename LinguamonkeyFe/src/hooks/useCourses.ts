@@ -29,9 +29,11 @@ export const courseKeys = {
   list: (params: any) => [...courseKeys.lists(), params] as const,
   details: () => [...courseKeys.all, "detail"] as const,
   detail: (id: string) => [...courseKeys.details(), id] as const,
+  versions: () => [...courseKeys.all, "version"] as const,
+  version: (id: string) => [...courseKeys.versions(), id] as const,
   recommended: (userId: string) => [...courseKeys.all, "recommended", userId] as const,
   levels: () => [...courseKeys.all, "levels"] as const,
-  categories: () => [...courseKeys.all, "categories"] as const, // NEW KEY
+  categories: () => [...courseKeys.all, "categories"] as const,
 
   // Sub-entities
   enrollments: (params: any) => [...courseKeys.all, "enrollments", params] as const,
@@ -47,18 +49,17 @@ export const useCourses = () => {
   // === 1. COURSE (General, Creator & Admin) ===
   // ==========================================
 
-  // GET /api/v1/courses
   const useAllCourses = (params?: {
     page?: number;
     size?: number;
     title?: string;
     languageCode?: string;
     type?: CourseType;
-    categoryCode?: string; // ADDED
+    categoryCode?: string;
   }) => {
     const { page = 0, size = 10, title, languageCode, type, categoryCode } = params || {};
     return useQuery({
-      queryKey: courseKeys.list({ page, size, title, languageCode, type, categoryCode }), // ADDED
+      queryKey: courseKeys.list({ page, size, title, languageCode, type, categoryCode }),
       queryFn: async () => {
         const qp = new URLSearchParams();
         qp.append("page", page.toString());
@@ -66,7 +67,7 @@ export const useCourses = () => {
         if (title) qp.append("title", title);
         if (languageCode) qp.append("languageCode", languageCode);
         if (type) qp.append("type", type);
-        if (categoryCode) qp.append("categoryCode", categoryCode); // ADDED
+        if (categoryCode) qp.append("categoryCode", categoryCode);
 
         const { data } = await instance.get<AppApiResponse<PageResponse<CourseResponse>>>(
           `/api/v1/courses?${qp.toString()}`
@@ -77,7 +78,6 @@ export const useCourses = () => {
     });
   };
 
-  // GET /api/v1/courses/{id}
   const useCourse = (courseId: string | null) => {
     return useQuery({
       queryKey: courseKeys.detail(courseId!),
@@ -92,7 +92,21 @@ export const useCourses = () => {
     });
   };
 
-  // GET /api/v1/courses/creator/{creatorId}
+  // ADDED: Missing hook definition
+  const useGetVersion = (versionId: string) => {
+    return useQuery({
+      queryKey: courseKeys.version(versionId),
+      queryFn: async () => {
+        if (!versionId) return null;
+        const { data } = await instance.get<AppApiResponse<CourseVersionResponse>>(
+          `/api/v1/courses/versions/${versionId}`
+        );
+        return data.result!;
+      },
+      enabled: !!versionId
+    });
+  };
+
   const useCreatorCourses = (creatorId?: string, page = 0, size = 20) => {
     return useQuery({
       queryKey: courseKeys.list({ type: "CREATOR", creatorId, page, size }),
@@ -107,7 +121,6 @@ export const useCourses = () => {
     });
   };
 
-  // GET /api/v1/courses/recommended
   const useRecommendedCourses = (userId?: string, limit = 5) => {
     return useQuery({
       queryKey: courseKeys.recommended(userId!),
@@ -122,7 +135,6 @@ export const useCourses = () => {
     });
   };
 
-  // GET /api/v1/courses/levels
   const useCourseLevels = () => {
     return useQuery({
       queryKey: courseKeys.levels(),
@@ -134,7 +146,6 @@ export const useCourses = () => {
     });
   };
 
-  // GET /api/v1/courses/categories // ADDED
   const useCourseCategories = () => {
     return useQuery({
       queryKey: courseKeys.categories(),
@@ -146,7 +157,6 @@ export const useCourses = () => {
     });
   };
 
-  // POST /api/v1/courses
   const useCreateCourse = () => {
     return useMutation({
       mutationFn: async (req: CreateCourseRequest) => {
@@ -157,7 +167,6 @@ export const useCourses = () => {
     });
   };
 
-  // PUT /api/v1/courses/{id}/details
   const useUpdateCourseDetails = () => {
     return useMutation({
       mutationFn: async ({ id, req }: { id: string; req: UpdateCourseDetailsRequest }) => {
@@ -174,7 +183,6 @@ export const useCourses = () => {
     });
   };
 
-  // POST /api/v1/courses/{courseId}/versions (Draft)
   const useCreateDraftVersion = () => {
     return useMutation({
       mutationFn: async (courseId: string) => {
@@ -187,7 +195,6 @@ export const useCourses = () => {
     });
   };
 
-  // PUT /api/v1/courses/versions/{versionId}
   const useUpdateCourseVersion = () => {
     return useMutation({
       mutationFn: async ({ versionId, req }: { versionId: string; req: UpdateCourseVersionRequest }) => {
@@ -201,7 +208,6 @@ export const useCourses = () => {
     });
   };
 
-  // POST /api/v1/courses/versions/{versionId}/publish
   const usePublishVersion = () => {
     return useMutation({
       mutationFn: async ({ versionId, req }: { versionId: string; req: PublishVersionRequest }) => {
@@ -215,7 +221,6 @@ export const useCourses = () => {
     });
   };
 
-  // DELETE /api/v1/courses/{id}
   const useDeleteCourse = () => {
     return useMutation({
       mutationFn: async (id: string) => {
@@ -225,7 +230,6 @@ export const useCourses = () => {
     });
   };
 
-  // POST /api/v1/courses/versions/{versionId}/approve (Admin)
   const useApproveVersion = () => {
     return useMutation({
       mutationFn: async (versionId: string) => {
@@ -238,7 +242,6 @@ export const useCourses = () => {
     });
   };
 
-  // POST /api/v1/courses/versions/{versionId}/reject (Admin)
   const useRejectVersion = () => {
     return useMutation({
       mutationFn: async ({ versionId, reason }: { versionId: string; reason: string }) => {
@@ -257,7 +260,6 @@ export const useCourses = () => {
   // === 2. ENROLLMENTS (Full CRUD) ===
   // ==========================================
 
-  // GET All
   const useEnrollments = (params?: { courseId?: string; userId?: string; page?: number; size?: number }) => {
     const { courseId, userId, page = 0, size = 10 } = params || {};
     return useQuery({
@@ -275,7 +277,6 @@ export const useCourses = () => {
     });
   };
 
-  // GET By IDs
   const useEnrollmentDetail = (courseId?: string, userId?: string) => {
     return useQuery({
       queryKey: courseKeys.enrollments({ courseId, userId, type: "detail" }),
@@ -290,7 +291,6 @@ export const useCourses = () => {
     });
   };
 
-  // CREATE
   const useCreateEnrollment = () => {
     return useMutation({
       mutationFn: async (req: CourseEnrollmentRequest) => {
@@ -304,7 +304,6 @@ export const useCourses = () => {
     });
   };
 
-  // SWITCH VERSION
   const useSwitchVersion = () => {
     return useMutation({
       mutationFn: async (req: SwitchVersionRequest) => {
@@ -318,7 +317,6 @@ export const useCourses = () => {
     });
   };
 
-  // UPDATE
   const useUpdateEnrollment = () => {
     return useMutation({
       mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseEnrollmentRequest }) => {
@@ -332,7 +330,6 @@ export const useCourses = () => {
     });
   };
 
-  // DELETE
   const useDeleteEnrollment = () => {
     return useMutation({
       mutationFn: async ({ courseId, userId }: { courseId: string; userId: string }) => {
@@ -363,7 +360,6 @@ export const useCourses = () => {
     });
   };
 
-  // Upload with FormData
   const useUploadLesson = () => {
     return useMutation({
       mutationFn: async ({
@@ -439,7 +435,6 @@ export const useCourses = () => {
   // === 4. REVIEWS (Full CRUD) ===
   // ==========================================
 
-  // GET All
   const useReviews = (params?: { courseId?: string; userId?: string; rating?: number; page?: number; size?: number }) => {
     const { courseId, userId, rating, page = 0, size = 10 } = params || {};
     return useQuery({
@@ -459,7 +454,6 @@ export const useCourses = () => {
     });
   };
 
-  // GET By IDs
   const useReviewDetail = (courseId?: string, userId?: string) => {
     return useQuery({
       queryKey: courseKeys.reviews({ courseId, userId, type: "detail" }),
@@ -474,7 +468,6 @@ export const useCourses = () => {
     });
   };
 
-  // CREATE
   const useCreateReview = () => {
     return useMutation({
       mutationFn: async (req: CourseReviewRequest) => {
@@ -485,7 +478,6 @@ export const useCourses = () => {
     });
   };
 
-  // UPDATE
   const useUpdateReview = () => {
     return useMutation({
       mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseReviewRequest }) => {
@@ -499,7 +491,6 @@ export const useCourses = () => {
     });
   };
 
-  // DELETE
   const useDeleteReview = () => {
     return useMutation({
       mutationFn: async ({ courseId, userId }: { courseId: string; userId: string }) => {
@@ -513,7 +504,6 @@ export const useCourses = () => {
   // === 5. DISCOUNTS (Full CRUD) ===
   // ==========================================
 
-  // GET All
   const useDiscounts = (params?: { courseId?: string; percentage?: number; page?: number; size?: number }) => {
     const { courseId, percentage, page = 0, size = 10 } = params || {};
     return useQuery({
@@ -531,7 +521,6 @@ export const useCourses = () => {
     });
   };
 
-  // GET By ID
   const useDiscountDetail = (discountId?: string) => {
     return useQuery({
       queryKey: courseKeys.discounts({ discountId, type: "detail" }),
@@ -546,7 +535,6 @@ export const useCourses = () => {
     });
   };
 
-  // CREATE
   const useCreateDiscount = () => {
     return useMutation({
       mutationFn: async (req: CourseDiscountRequest) => {
@@ -557,7 +545,6 @@ export const useCourses = () => {
     });
   };
 
-  // UPDATE
   const useUpdateDiscount = () => {
     return useMutation({
       mutationFn: async ({ id, req }: { id: string; req: CourseDiscountRequest }) => {
@@ -571,7 +558,6 @@ export const useCourses = () => {
     });
   };
 
-  // DELETE
   const useDeleteDiscount = () => {
     return useMutation({
       mutationFn: async (id: string) => {
@@ -581,14 +567,25 @@ export const useCourses = () => {
     });
   };
 
+  const useValidateDiscount = () => {
+    return useMutation({
+      mutationFn: async ({ code, courseId }: { code: string; courseId: string }) => {
+        const { data } = await instance.get<AppApiResponse<CourseDiscountResponse>>("/api/v1/course-discounts/validate", {
+          params: { code, courseId }
+        });
+        return data.result!;
+      }
+    });
+  };
+
   return {
-    // Course Hooks
     useAllCourses,
     useCourse,
+    useGetVersion, // EXPORTED NOW
     useCreatorCourses,
     useRecommendedCourses,
     useCourseLevels,
-    useCourseCategories, // ADDED
+    useCourseCategories,
     useCreateCourse,
     useUpdateCourseDetails,
     useCreateDraftVersion,
@@ -597,35 +594,28 @@ export const useCourses = () => {
     useDeleteCourse,
     useApproveVersion,
     useRejectVersion,
-
-    // Enrollment Hooks
     useEnrollments,
     useEnrollmentDetail,
     useCreateEnrollment,
     useSwitchVersion,
     useUpdateEnrollment,
     useDeleteEnrollment,
-
-    // Lesson Hooks
     useCourseLessons,
     useUploadLesson,
     useCreateCourseLesson,
     useUpdateCourseLesson,
     useDeleteCourseLesson,
-
-    // Review Hooks
     useReviews,
     useReviewDetail,
     useCreateReview,
     useUpdateReview,
     useDeleteReview,
-
-    // Discount Hooks
     useDiscounts,
     useDiscountDetail,
     useCreateDiscount,
     useUpdateDiscount,
     useDeleteDiscount,
+    useValidateDiscount,
   };
 };
 

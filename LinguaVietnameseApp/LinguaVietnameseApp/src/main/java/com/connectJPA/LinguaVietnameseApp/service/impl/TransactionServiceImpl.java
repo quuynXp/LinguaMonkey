@@ -15,6 +15,7 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.TransactionRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.WalletRepository;
 import com.connectJPA.LinguaVietnameseApp.service.TransactionService;
+import com.connectJPA.LinguaVietnameseApp.service.UserService; // Import User Service
 import com.connectJPA.LinguaVietnameseApp.service.WalletService;
 import com.stripe.Stripe;
 import com.stripe.exception.SignatureVerificationException;
@@ -45,6 +46,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final TransactionMapper transactionMapper;
     private final WalletRepository walletRepository;
     private final WalletService walletService;
+    private final UserService userService; // Inject UserService
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
@@ -112,8 +114,6 @@ public class TransactionServiceImpl implements TransactionService {
     private String createStripeCheckoutSession(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl) {
         Stripe.apiKey = stripeApiKey;
 
-        // Tự động thêm Alipay và WeChat Pay vào danh sách thanh toán
-        // Stripe sẽ tự ẩn chúng nếu tiền tệ không phù hợp hoặc tài khoản chưa kích hoạt
         SessionCreateParams.Builder paramsBuilder = SessionCreateParams.builder()
                 .addPaymentMethodType(SessionCreateParams.PaymentMethodType.CARD)
                 .addPaymentMethodType(SessionCreateParams.PaymentMethodType.ALIPAY)
@@ -126,14 +126,13 @@ public class TransactionServiceImpl implements TransactionService {
                         .setQuantity(1L)
                         .setPriceData(SessionCreateParams.LineItem.PriceData.builder()
                                 .setCurrency(currency != null ? currency.toLowerCase() : "usd")
-                                .setUnitAmount(amount.multiply(BigDecimal.valueOf(100)).longValue()) // Stripe cents logic
+                                .setUnitAmount(amount.multiply(BigDecimal.valueOf(100)).longValue())
                                 .setProductData(SessionCreateParams.LineItem.PriceData.ProductData.builder()
                                         .setName(description != null ? description : "LinguaVietnamese Transaction")
                                         .build())
                                 .build())
                         .build());
         
-        // Options specific for WeChat Pay (require client to be specified usually, but Checkout handles redirect)
         SessionCreateParams.PaymentMethodOptions.Builder optionsBuilder = SessionCreateParams.PaymentMethodOptions.builder()
                 .setWechatPay(SessionCreateParams.PaymentMethodOptions.WechatPay.builder()
                         .setClient(SessionCreateParams.PaymentMethodOptions.WechatPay.Client.WEB)
@@ -152,7 +151,6 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public String handleWebhook(WebhookRequest request) {
-        // Chỉ xử lý Stripe, bỏ qua check Provider string để linh hoạt hoặc fix cứng STRIPE
         return handleStripeWebhook(request.getPayload());
     }
 
@@ -170,7 +168,6 @@ public class TransactionServiceImpl implements TransactionService {
             EventDataObjectDeserializer deserializer = event.getDataObjectDeserializer();
 
             if (deserializer.getObject().isPresent()) {
-                // Xử lý sự kiện Checkout Session Completed (An toàn nhất cho luồng redirect)
                 if ("checkout.session.completed".equals(event.getType())) {
                     Session session = (Session) deserializer.getObject().get();
                     handleSuccessfulPayment(session.getClientReferenceId());
@@ -195,9 +192,21 @@ public class TransactionServiceImpl implements TransactionService {
         if (transaction.getStatus() == TransactionStatus.PENDING) {
             transaction.setStatus(TransactionStatus.SUCCESS);
             
-            // Nếu là DEPOSIT thì cộng tiền vào ví
+            UUID userId = transaction.getUser().getUserId();
+            BigDecimal amount = transaction.getAmount();
+
             if (transaction.getType() == TransactionType.DEPOSIT) {
-                walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
+                walletService.credit(userId, amount);
+            } else if (transaction.getType() == TransactionType.PAYMENT) {
+                // Determine if this is VIP purchase based on amount/description
+                // Trial: 1.00 USD
+                if (amount.compareTo(new BigDecimal("1.00")) == 0) {
+                    userService.activateVipTrial(userId);
+                }
+                // Monthly/Yearly: > 9.00 USD
+                else if (amount.compareTo(new BigDecimal("9.00")) > 0) {
+                    userService.extendVipSubscription(userId, amount);
+                }
             }
             
             transactionRepository.save(transaction);
@@ -218,7 +227,7 @@ public class TransactionServiceImpl implements TransactionService {
         User sender = getUser(request.getSenderId());
         User receiver = getUser(request.getReceiverId());
         Wallet senderWallet = getWallet(sender.getUserId());
-        getWallet(receiver.getUserId()); // Check receiver wallet exists
+        getWallet(receiver.getUserId());
 
         if (request.getIdempotencyKey() != null) {
             var existingTx = transactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
@@ -275,7 +284,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .amount(request.getAmount())
                 .type(TransactionType.WITHDRAW)
                 .status(TransactionStatus.PENDING)
-                .provider(TransactionProvider.INTERNAL) // Withdraw thường là internal process hoặc manual payout
+                .provider(TransactionProvider.INTERNAL)
                 .description("Withdraw from wallet")
                 .build();
         transaction = transactionRepository.save(transaction);

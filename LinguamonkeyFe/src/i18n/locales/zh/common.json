@@ -1,0 +1,256 @@
+{
+    "anErrorOccurred": "An Error Occurred",
+    "useOtpInstead": "Use OTP",
+    "usePasswordInstead": "Use password instead",
+    "error": {
+        "generic_internal": "Loading error",
+        "general": "Error",
+        "title": "Error",
+        "loadCharacters": "Failed to load characters",
+        "loadLanguages": "Failed to load languages",
+        "loadInterests": "Failed to load interests",
+        "characterRequired": "Please select a character to continue.",
+        "infoRequired": "Please fill in all required fields.",
+        "certificationsRequired": "Please select at least one certification.",
+        "interestsRequired": "Please select at least one interest.",
+        "learningGoalsRequired": "Please select at least one learning goal.",
+        "learningPaceRequired": "Please select your learning pace.",
+        "goalRequired": "Please set up your learning goal.",
+        "setupAccount": "Failed to setup account",
+        "classifyLevel": "Failed to classify user level",
+        "connection": "Sorry, I'm having connection issues. Please try again later.",
+        "sendMessage": "Failed to send message",
+        "translation": "Translation failed",
+        "fillRequired": "Please fill in all required fields",
+        "enterRoomId": "Please enter a room ID",
+        "createRoom": "Failed to create room",
+        "joinRoom": "Failed to join room",
+        "nameRequired": "Name is required",
+        "nameMin": "Name must be at least 2 characters"
+    },
+    "common": {
+        "skip": "Skip",
+        "server_unavailable_msg": "Server is unavailable, please try again later, we are sorry for this unpleasant experience.",
+        "reconnecting": "Reconnecting",
+        "loading": "Loading...",
+        "appName": "MonkeyLingua",
+        "error": "Error",
+        "success": "Success",
+        "cancel": "Cancel",
+        "create": "Create",
+        "authRequired": "Login Required",
+        "open_settings": "Open Settings",
+        "no_internet": "No internet connection. Please check your network.",
+        "save": "Save",
+        "delete": "Delete",
+        "edit": "Edit",
+        "add": "Add",
+        "search": "Search",
+        "retry": "Retry",
+        "back": "Back",
+        "next": "Next",
+        "previous": "Previous",
+        "close": "Close",
+        "confirm": "Confirm",
+        "yes": "Yes",
+        "no": "No",
+        "ok": "OK",
+        "done": "Done",
+        "refresh": "Refresh",
+        "viewAll": "View All",
+        "all": "All",
+        "minutes": "min",
+        "hours": "h",
+        "days": "days",
+        "weeks": "weeks",
+        "months": "months",
+        "years": "years",
+        "starting": "Starting...",
+        "completing": "Completing...",
+        "submitting": "Submitting...",
+        "reset": "Reset",
+        "optional": "Optional",
+        "viewAll_vn": "Xem tất cả",
+        "complete_vn": "Hoàn thành",
+        "create_vn": "Tạo",
+        "cancel_vn": "Hủy",
+        "select": "Select",
+        "complete": "Quiz Complete!",
+        "reload": "Reload",
+        "noDescription": "No description available",
+        "loadingData": "Loading data...",
+        "period": {
+            "day": "Day",
+            "week": "Week",
+            "month": "Month",
+            "year": "Year"
+        }
+    },
+    "upload": {
+        "inProgress": "Uploading...",
+        "success": "Upload successful",
+        "failed": "Upload failed",
+        "preview": "Preview",
+        "commit": "Commit Upload",
+        "cancel": "Cancel Upload"
+    },
+    "dialogs": {
+        "confirmDelete": "Are you sure you want to delete this?",
+        "confirmLogout": "Are you sure you want to log out?",
+        "unsavedChanges": "You have unsaved changes. Do you want to discard them?"
+    },
+    "navigation": {
+        "home": "Home",
+        "lessons": "Lessons",
+        "grammar": "Grammar",
+        "videos": "Videos",
+        "notes": "Notes",
+        "profile": "Profile"
+    },
+    "validation": {
+        "note": {
+            "content": {
+                "required": "Note content is required",
+                "min": "Note content cannot be empty",
+                "max": "Note content cannot exceed 500 characters"
+            },
+            "type": {
+                "required": "Note type is required",
+                "invalid": "Invalid note type"
+            },
+            "topic": {
+                "required": "Topic is required"
+            },
+            "language": {
+                "required": "Language is required"
+            }
+        },
+        "topic": {
+            "name": {
+                "required": "Topic name is required",
+                "min": "Topic name must be at least 2 characters",
+                "max": "Topic name cannot exceed 50 characters"
+            },
+            "color": {
+                "required": "Color is required",
+                "invalid": "Invalid color format"
+            },
+            "icon": {
+                "required": "Icon is required"
+            }
+        },
+        "quiz": {
+            "lesson": {
+                "required": "Lesson ID is required"
+            },
+            "answers": {
+                "required": "Answers are required",
+                "empty": "Please answer all questions"
+            }
+        },
+        "grammar": {
+            "rule": {
+                "required": "Grammar rule ID is required"
+            },
+            "answers": {
+                "required": "Answers are required",
+                "empty": "Please answer all exercises"
+            }
+        },
+        "search": {
+            "query": {
+                "min": "Search query must be at least 2 characters",
+                "max": "Search query cannot exceed 50 characters"
+            }
+        },
+        "friend": {
+            "userId": {
+                "required": "User ID is required"
+            }
+        }
+    },
+    "errors": {
+        "network": "Network error. Please check your connection.",
+        "server": "Server Error",
+        "loading": "Loading...",
+        "loadTestsFailed": "Faild to load tests",
+        "unauthorized": "You are not authorized to perform this action.",
+        "notFound": "The requested resource was not found.",
+        "validation": "Please check your input and try again.",
+        "unknown": "An unexpected error occurred.",
+        "networkError": "Network error occurred",
+        "loadRoadmapFailed": "Failed to load roadmap",
+        "loadItemFailed": "Failed to load item details",
+        "loadLearnDataFailed": "Failed to load learning data",
+        "loadCourseDetailsFailed": "Failed to load course details",
+        "purchaseFailed": "Purchase failed. Please try again.",
+        "loadCertificationsFailed": "Failed to load certifications",
+        "uploadFailed": "Upload failed",
+        "aiRoomNotFound": "Cannot create AI chat room. Please try again.",
+        "roomNotReady": "Chat room is not ready.",
+        "userNotFound": "User not found"
+    },
+    "success": {
+        "noteCreated": "Note created successfully",
+        "noteUpdated": "Note updated successfully",
+        "noteDeleted": "Note deleted successfully",
+        "topicCreated": "Topic created successfully",
+        "lessonCompleted": "Lesson completed successfully",
+        "quizSubmitted": "Quiz submitted successfully",
+        "exerciseCompleted": "Exercise completed successfully",
+        "friendRequestSent": "Friend request sent successfully",
+        "friendRequestAccepted": "Friend request accepted"
+    },
+    "loading": {
+        "ai": "AI is responding...",
+        "room": "Loading chat room...",
+        "aiRoom": "Loading AI Room..."
+    },
+    "input": {
+        "placeholder": "Type a message..."
+    },
+    "modal": {
+        "environment": {
+            "title": "Choose Environment"
+        },
+        "topics": {
+            "title": "Choose Topic"
+        }
+    },
+    "action": {
+        "retry": "Retry"
+    },
+    "days": {
+        "mon": "Mon",
+        "tue": "Tue",
+        "wed": "Wed",
+        "thu": "Thu",
+        "fri": "Fri",
+        "sat": "Sat",
+        "sun": "Sun"
+    },
+    "welcome": {
+        "title": "Welcome to MonkeyLingua",
+        "subtitle": "Your AI-powered English learning companion"
+    },
+    "password": {
+        "optional": "Password (Optional)"
+    },
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "tabbar": {
+        "home": "Trang chủ",
+        "learn": "Học tập",
+        "progress": "Tiến độ",
+        "chat_ai": "AI Chat",
+        "profile": "Hồ sơ"
+    },
+    "Unknown error": "An unexpected error occurred",
+    "Target Language": "Target Language",
+    "Target Proficiency": "Target Proficiency",
+    "Target Completion Date": "Target Completion Date",
+    "Focus Areas": "Focus Areas",
+    "Study Time (minutes/day)": "Study Time (minutes/day)",
+    "Additional Requirements": "Additional Requirements",
+    "Any specific goals or interests?": "Any specific goals or interests?"
+}

@@ -26,7 +26,7 @@ public interface NotificationService {
     void sendVerifyAccountNotification(UUID userId, String verifyLink);
     void sendInactivityWarningNotification(UUID userId, int days);
     void sendStreakRewardNotification(UUID userId, int streakDays);
-    
+    void sendVipSuccessNotification(UUID userId, boolean isRenewal, String planType);
     // THÊM: Phương thức tìm kiếm
     Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters);
 }

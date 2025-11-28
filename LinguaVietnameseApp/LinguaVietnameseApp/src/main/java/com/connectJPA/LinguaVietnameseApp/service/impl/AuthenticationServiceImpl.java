@@ -141,23 +141,17 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .issueTime(new Date())
                     .expirationTime(Date.from(Instant.now().plus(30, ChronoUnit.DAYS)))
                     .claim("scope", buildScope(user.getUserId()))
-                    .claim("userId", user.getUserId())
                     .build();
 
-            // === SỬA ĐỔI Ở ĐÂY ===
-            // Code cũ: new JWSHeader(JWSAlgorithm.RS256)
-            // Code mới:
             JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
-                    .keyID(jwtKeyId) // Thêm Key ID
+                    .keyID(jwtKeyId)
                     .build();
 
-            SignedJWT signedJWT = new SignedJWT(header, claims); // Dùng header mới
-            // === KẾT THÚC SỬA ĐỔI ===
-
+            SignedJWT signedJWT = new SignedJWT(header, claims);
             signedJWT.sign(new RSASSASigner(getPrivateKey()));
             return signedJWT.serialize();
         } catch (Exception e) {
-            e.printStackTrace(); // In stacktrace ra log
+            e.printStackTrace();
             throw new AppException(ErrorCode.TOKEN_GENERATION_FAILED);
         }
     }
@@ -212,9 +206,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
 
-        List<RefreshToken> tokens = refreshTokenRepository.findAllByUserId(user.getUserId());
-//        if (tokens.size() >= 5) throw new AppException(ErrorCode.MAX_SESSIONS_EXCEEDED);
-
         String accessToken = generateToken(user);
         String refreshToken = generateRefreshToken(user, 30);
 
@@ -253,9 +244,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .findByUserIdAndTokenAndIsRevokedFalse(userId, oldRefreshToken)
                     .orElseThrow(() -> new AppException(ErrorCode.REFRESH_TOKEN_NOT_FOUND));
 
-            System.out.println("DB token length no device=" + oldToken.getToken().length());
-
-
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -270,7 +258,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 oldToken.setToken(newRefreshToken);
                 oldToken.setExpiresAt(now.plusDays(360));
                 oldToken.setRevoked(false);
-                // oldToken is managed; save is optional but explicit is fine
                 refreshTokenRepository.save(oldToken);
             } else {
                 oldToken.setExpiresAt(now.plusDays(360));
@@ -507,17 +494,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             
             if (optionalToken.isEmpty()) {
                 log.error("Token not found in database for userId: {}", userId);
-                
-                List<RefreshToken> userTokens = refreshTokenRepository.findAllByUserId(userId);
-                log.error("User has {} tokens in DB", userTokens.size());
-                if (!userTokens.isEmpty()) {
-                    RefreshToken firstToken = userTokens.get(0);
-                    log.error("Sample token - length: {}, deviceId: {}, isRevoked: {}", 
-                        firstToken.getToken().length(), 
-                        firstToken.getDeviceId(),
-                        firstToken.isRevoked());
-                }
-                
                 throw new AppException(ErrorCode.REFRESH_TOKEN_NOT_FOUND);
             }
             

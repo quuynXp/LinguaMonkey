@@ -11,6 +11,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface UserService {
@@ -55,4 +56,7 @@ public interface UserService {
     UserResponse updateSetupStatus(UUID id, boolean isFinished);
     UserResponse updatePlacementTestStatus(UUID id, boolean isDone);
     UserResponse trackDailyWelcome(UUID id);
+
+    void activateVipTrial(UUID userId);
+    void extendVipSubscription(UUID userId, BigDecimal amount);
 }

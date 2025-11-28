@@ -174,6 +174,7 @@ export interface ChatMessage {
     receiverId?: string;
     isDeleted: boolean;
     updatedAt?: string;
+    createdAt?: string;
     deletedAt?: string;
     isRead: boolean;
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StatusBar, ViewStyle, StatusBarStyle, Platform, StyleSheet } from 'react-native';
+import { View, StatusBar, ViewStyle, StatusBarStyle, Platform } from 'react-native';
 import { useSafeAreaInsets, EdgeInsets } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
 
@@ -20,20 +20,29 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     backgroundColor = '#F8FAFC',
     statusBarStyle = 'dark-content',
     statusBarColor = 'transparent',
-    unsafe = false,
+    unsafe = true,
     headerComponent,
     bottomComponent,
 }) => {
     const insets = useSafeAreaInsets();
 
-    const getSafeInsets = (currentInsets: EdgeInsets): EdgeInsets => {
-        if (unsafe) {
-            return { top: 0, bottom: 0, left: 0, right: 0 };
-        }
-        return currentInsets;
-    };
+    // Lấy khoảng cách an toàn. Nếu unsafe=true, tất cả đều bằng 0 để nội dung full màn hình.
+    const safeInsets = unsafe
+        ? { top: 0, bottom: 0, left: 0, right: 0 }
+        : insets;
 
-    const safeInsets = getSafeInsets(insets);
+    // Khoảng cách an toàn chỉ được áp dụng nếu:
+    // 1. `unsafe` là `false`
+    // 2. Component tương ứng (Header/Bottom) không tồn tại, ta cần chèn một View spacer
+    //    HOẶC Component tương ứng tồn tại và ta cần đẩy nó xuống/lên.
+    //
+    // Để nội dung full màn hình (khi unsafe=true), ta chỉ cần đảm bảo **KHÔNG** áp dụng
+    // `paddingTop: safeInsets.top` hay `height: safeInsets.top`
+    const headerPaddingTop = headerComponent && !unsafe ? safeInsets.top : 0;
+    const bottomPaddingBottom = bottomComponent && !unsafe ? safeInsets.bottom : 0;
+    const headerSpacerHeight = !headerComponent && !unsafe ? safeInsets.top : 0;
+    const bottomSpacerHeight = !bottomComponent && !unsafe ? safeInsets.bottom : 0;
+
 
     return (
         <View style={[styles.container, { backgroundColor }]}>
@@ -43,19 +52,19 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 translucent={true}
             />
 
-            {/* Header: Chỉ áp dụng padding an toàn nếu có headerComponent */}
+            {/* Header: Chỉ áp dụng padding an toàn nếu có headerComponent VÀ unsafe=false */}
             {headerComponent ? (
                 <View
                     style={[
                         styles.headerWrapper,
-                        { paddingTop: safeInsets.top, backgroundColor: statusBarColor }
+                        { paddingTop: headerPaddingTop, backgroundColor: statusBarColor }
                     ]}
                 >
                     {headerComponent}
                 </View>
             ) : (
-                /* Nếu không có headerComponent, thêm View để tạo khoảng cách an toàn cho StatusBar */
-                <View style={{ height: safeInsets.top, backgroundColor: statusBarColor }} />
+                /* Nếu không có headerComponent và unsafe=false, thêm View để tạo khoảng cách an toàn cho StatusBar */
+                <View style={{ height: headerSpacerHeight, backgroundColor: statusBarColor }} />
             )}
 
             {/* Nội dung chính: Đảm bảo flex: 1 để chiếm hết không gian còn lại */}
@@ -63,19 +72,19 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 {children}
             </View>
 
-            {/* Footer: Chỉ áp dụng padding an toàn nếu có bottomComponent */}
+            {/* Footer: Chỉ áp dụng padding an toàn nếu có bottomComponent VÀ unsafe=false */}
             {bottomComponent ? (
                 <View
                     style={[
                         styles.bottomWrapper,
-                        { paddingBottom: safeInsets.bottom, backgroundColor: backgroundColor }
+                        { paddingBottom: bottomPaddingBottom, backgroundColor: backgroundColor }
                     ]}
                 >
                     {bottomComponent}
                 </View>
             ) : (
-                /* Nếu không có bottomComponent, thêm View để tạo khoảng cách an toàn cho vùng dưới */
-                <View style={{ height: safeInsets.bottom, backgroundColor: backgroundColor }} />
+                /* Nếu không có bottomComponent và unsafe=false, thêm View để tạo khoảng cách an toàn cho vùng dưới */
+                <View style={{ height: bottomSpacerHeight, backgroundColor: backgroundColor }} />
             )}
         </View>
     );
@@ -84,6 +93,8 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
 const styles = createScaledSheet({
     container: {
         flex: 1,
+        // Khi dùng View này, nội dung đã full màn hình về kích thước (100% width/height)
+        // và thuộc tính `flex: 1` sẽ giúp nó mở rộng tối đa.
         overflow: 'hidden',
     },
     content: {

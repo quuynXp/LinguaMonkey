@@ -26,9 +26,6 @@ const PrivateChatListScreen = ({ navigation }: any) => {
     const [selectedFilter, setSelectedFilter] = useState<FilterType>('ALL');
     const fadeAnim = useRef(new Animated.Value(0)).current;
 
-    // Note: Currently fetching ALL joined rooms and filtering client-side 
-    // because the API differentiation for Friend/Stranger requires more complex backend logic.
-    // Purpose filter works for AI vs PRIVATE.
     const { data: roomsData, isLoading, isError } = useJoinedRooms({
         page: 0,
         size: 50,

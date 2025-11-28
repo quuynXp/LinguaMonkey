@@ -6,7 +6,6 @@ import { API_BASE_URL } from '../api/apiConfig';
 
 const KONG_BASE_URL = API_BASE_URL;
 
-// Định nghĩa các kiểu callback
 export type StompMessageCallback = (message: any) => void;
 export type StompHook = (client: Client) => void;
 
@@ -16,10 +15,7 @@ export class StompService {
 
   constructor() {
     this.client = new Client({
-      // Dùng SockJS vì BE Java (WebSocketConfig) đang dùng .withSockJS()
       webSocketFactory: () => {
-        // SỬA: Dùng KONG_BASE_URL/ws/ để gọi qua Kong.
-        // SockJS sẽ tự động chọn WebSocket hoặc fallback.
         return new SockJS(`${KONG_BASE_URL}/ws/`);
       },
       reconnectDelay: 10000,
@@ -41,12 +37,11 @@ export class StompService {
     }
 
     this.client.configure({
-      // Gửi Authorization Header trong STOMP CONNECT frame
       connectHeaders: {
         Authorization: `Bearer ${token}`,
       },
       onConnect: (frame) => {
-        console.log('✅ STOMP connected via Kong:', frame);
+        console.log('STOMP connected via Kong:', frame);
         onConnected?.(this.client);
       },
       onStompError: (frame) => {

@@ -7,12 +7,9 @@ import {
     TouchableOpacity,
     View,
     ActivityIndicator,
-    StatusBar,
-    Platform,
-
+    StyleSheet
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { useLeaderboards } from "../../hooks/useLeaderboards";
@@ -21,15 +18,19 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import type { LeaderboardEntryResponse, LeaderboardResponse } from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
 
+const PAGE_LIMIT = 20;
+
+// Placeholder giống Facebook
+const PLACEHOLDER_MALE = "https://avatar.iran.liara.run/public/boy";
+const PLACEHOLDER_FEMALE = "https://avatar.iran.liara.run/public/girl";
+const PLACEHOLDER_DEFAULT = "https://via.placeholder.com/150/9CA3AF/FFFFFF?text=User";
+
 const tabsStatic = [
     { id: "global", titleKey: "leaderboard.tabs.global", icon: "leaderboard" },
     { id: "friends", titleKey: "leaderboard.tabs.friends", icon: "people" },
     { id: "couple", titleKey: "leaderboard.tabs.couples", icon: "favorite" },
     { id: "country", titleKey: "leaderboard.tabs.country", icon: "location-on" },
 ];
-
-const PAGE_LIMIT = 20;
-const PLACEHOLDER_AVATAR_URL = "https://via.placeholder.com/150/9CA3AF/FFFFFF?text=User";
 
 const EnhancedLeaderboardScreen = () => {
     const navigation = useNavigation<any>();
@@ -53,6 +54,7 @@ const EnhancedLeaderboardScreen = () => {
         }).start();
     }, [fadeAnim]);
 
+    // 1. Gọi API lấy Leaderboard tương ứng với Tab (Metadata)
     const {
         data: leaderboardsData,
         isLoading: leaderboardsLoading,
@@ -64,12 +66,13 @@ const EnhancedLeaderboardScreen = () => {
         return leaderboardsData.data as LeaderboardResponse[];
     }, [leaderboardsData]);
 
-    // Cập nhật leaderboardId khi danh sách thay đổi
+    // 2. Khi Tab thay đổi hoặc API Metadata trả về, lấy ID mới và reset list
     useEffect(() => {
         setPage(0);
-        const first = resolvedLeaderboardList[0];
         setHasMore(true);
         setEntriesAccum([]);
+
+        const first = resolvedLeaderboardList[0];
         if (first?.leaderboardId) {
             setLeaderboardId(first.leaderboardId);
         } else {
@@ -77,7 +80,7 @@ const EnhancedLeaderboardScreen = () => {
         }
     }, [resolvedLeaderboardList, selectedTab]);
 
-    // FIX: Thêm option { enabled: !!leaderboardId } để chặn call API khi ID là null
+    // 3. Gọi API lấy Entries dựa trên Leaderboard ID (Lazy load 20 items)
     const {
         data: entriesData,
         isLoading: entriesLoading,
@@ -88,7 +91,7 @@ const EnhancedLeaderboardScreen = () => {
             page,
             size: PAGE_LIMIT,
         },
-        { enabled: !!leaderboardId } // Quan trọng: Chỉ fetch khi đã có ID
+        { enabled: !!leaderboardId }
     );
 
     useEffect(() => {
@@ -103,8 +106,8 @@ const EnhancedLeaderboardScreen = () => {
         else setHasMore(true);
     }, [entriesData, page]);
 
-    const top3Data = entriesAccum.slice(0, 3);
-    const resolvedEntries = entriesAccum.slice(3);
+    const top3Data = useMemo(() => entriesAccum.slice(0, 3), [entriesAccum]);
+    const resolvedEntries = useMemo(() => entriesAccum.slice(3), [entriesAccum]);
 
     const loadMore = useCallback(() => {
         if (!leaderboardId || entriesLoading || !hasMore) return;
@@ -113,205 +116,35 @@ const EnhancedLeaderboardScreen = () => {
 
     const onPressUser = (entry: LeaderboardEntryResponse) => {
         const resolvedUserId = entry.userId ?? entry.leaderboardEntryId?.userId;
-
-        if (!resolvedUserId) {
-            console.warn("onPressUser: userId is missing", entry);
-            return;
-        }
+        if (!resolvedUserId) return;
         gotoTab("ProfileStack", "UserProfileViewScreen", { userId: resolvedUserId });
     };
 
-    const renderItem = ({ item, index }: { item: LeaderboardEntryResponse; index: number }) => {
-        if (!item) return null;
-
-        const rank = index + 4;
-        const currentUserId = item.userId ?? item.leaderboardEntryId?.userId;
-        const avatarSource = { uri: item.avatarUrl || PLACEHOLDER_AVATAR_URL };
-
-        return (
-            <TouchableOpacity
-                onPress={() => onPressUser(item)}
-                style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    padding: 12,
-                    borderBottomWidth: 1,
-                    borderColor: "#E5E7EB",
-                    backgroundColor: currentUserId === user?.userId ? "#ECFDF5" : "#FFFFFF",
-                }}
-            >
-                <View style={{ width: 36, alignItems: "center" }}>
-                    <Text style={{ fontWeight: "700", fontSize: 14 }}>{rank}</Text>
-                </View>
-
-                <Image
-                    source={avatarSource}
-                    style={{ width: 40, height: 40, borderRadius: 20, marginHorizontal: 12, backgroundColor: "#E5E7EB" }}
-                />
-
-                <View style={{ flex: 1 }}>
-                    <Text style={{ fontWeight: "600" }}>
-                        {item.fullname}
-                        {item.nickname ? ` (${item.nickname})` : ""}
-                    </Text>
-                    <Text style={{ color: "#6B7280", fontSize: 12 }}>
-                        {t("leaderboard.level")} {item.level ?? "-"}
-                    </Text>
-                </View>
-
-                <View style={{ alignItems: "flex-end" }}>
-                    <Text style={{ fontWeight: "700" }}>
-                        {(item.score ?? item.exp ?? 0).toLocaleString()}
-                    </Text>
-                    <Text style={{ fontSize: 11, color: "#9CA3AF" }}>EXP</Text>
-                </View>
-            </TouchableOpacity>
-        );
+    const getAvatarSource = (url?: string, gender?: string) => {
+        if (url) return { uri: url };
+        if (gender === "MALE" || gender === "Nam") return { uri: PLACEHOLDER_MALE };
+        if (gender === "FEMALE" || gender === "Nữ") return { uri: PLACEHOLDER_FEMALE };
+        return { uri: PLACEHOLDER_DEFAULT };
     };
 
-    const renderPodiumEntry = (entry: LeaderboardEntryResponse, position: number) => {
-        if (!entry) return null;
+    // --- RENDER COMPONENTS ---
 
-        let placeColor: string;
-        let medalIcon: string;
-
-        switch (position) {
-            case 1:
-                placeColor = "#F59E0B";
-                medalIcon = "emoji-events";
-                break;
-            case 2:
-                placeColor = "#9CA3AF";
-                medalIcon = "verified";
-                break;
-            case 3:
-                placeColor = "#CD7C2F";
-                medalIcon = "military-tech";
-                break;
-            default:
-                placeColor = "#6B7280";
-                medalIcon = "";
-        }
-
-        const height =
-            position === 1 ? 120 :
-                position === 2 ? 100 :
-                    80;
-
-        const avatarSource = { uri: entry.avatarUrl || PLACEHOLDER_AVATAR_URL };
-
+    const renderHeader = () => {
         return (
-            <TouchableOpacity
-                key={position}
-                onPress={() => onPressUser(entry)}
-                style={{ flex: 1, alignItems: "center", marginHorizontal: 4 }}
-            >
-                <View style={{ position: "relative", marginBottom: 8 }}>
-                    <View
-                        style={{
-                            position: "absolute",
-                            top: -10,
-                            right: -10,
-                            zIndex: 10,
-                            backgroundColor: placeColor,
-                            borderRadius: 12,
-                            padding: 2,
-                        }}
-                    >
-                        <Icon name={medalIcon as any} size={16} color="#FFF" />
-                    </View>
-
-                    <Image
-                        source={avatarSource}
-                        style={{
-                            width: 56,
-                            height: 56,
-                            borderRadius: 28,
-                            backgroundColor: "#E5E7EB",
-                            borderWidth: 3,
-                            borderColor: placeColor,
-                        }}
-                    />
-
-                    <View
-                        style={{
-                            position: "absolute",
-                            bottom: -8,
-                            alignSelf: "center",
-                            width: 24,
-                            height: 24,
-                            borderRadius: 12,
-                            backgroundColor: placeColor,
-                            justifyContent: "center",
-                            alignItems: "center",
-                            borderWidth: 2,
-                            borderColor: "#FFFFFF",
-                        }}
-                    >
-                        <Text style={{ color: "#FFF", fontWeight: "700", fontSize: 12 }}>{position}</Text>
-                    </View>
+            <View>
+                {/* Custom Header Bar */}
+                <View style={styles.headerBar}>
+                    <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                        <Icon name="arrow-back" size={24} color="#374151" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>
+                        {t("leaderboard.title")}
+                    </Text>
+                    <View style={{ width: 24 }} />
                 </View>
 
-                <Text
-                    numberOfLines={1}
-                    ellipsizeMode="tail"
-                    style={{ fontWeight: "600", fontSize: 12, maxWidth: 90, textAlign: "center", marginTop: 8 }}
-                >
-                    {entry.fullname}
-                </Text>
-
-                <Text style={{ color: "#6B7280", fontSize: 11, marginTop: 4 }}>
-                    {t("leaderboard.level")} {entry.level ?? "-"}
-                </Text>
-
-                <Text style={{ fontWeight: "700", fontSize: 14, marginTop: 4 }}>
-                    {(entry.score ?? entry.exp ?? 0).toLocaleString()} EXP
-                </Text>
-
-                <View
-                    style={{
-                        width: "100%",
-                        height: height,
-                        backgroundColor: placeColor,
-                        marginTop: 8,
-                        opacity: 0.2,
-                        borderRadius: 4,
-                    }}
-                />
-            </TouchableOpacity>
-        );
-    };
-
-    return (
-        <ScreenLayout style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
-            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-
-                <View
-                    style={{
-                        backgroundColor: "#FFFFFF",
-                        borderBottomWidth: 1,
-                        borderColor: "#E5E7EB",
-                    }}
-                >
-                    <View
-                        style={{
-                            flexDirection: "row",
-                            justifyContent: "space-between",
-                            alignItems: "center",
-                            padding: 12,
-                        }}
-                    >
-                        <TouchableOpacity onPress={() => navigation.goBack()}>
-                            <Icon name="arrow-back" size={24} color="#374151" />
-                        </TouchableOpacity>
-                        <Text style={{ fontSize: 18, fontWeight: "700" }}>
-                            {t("leaderboard.title")}
-                        </Text>
-                        <View style={{ width: 24 }} />
-                    </View>
-                </View>
-
-                <View style={{ flexDirection: "row", paddingVertical: 8, paddingHorizontal: 12 }}>
+                {/* Tabs */}
+                <View style={styles.tabsContainer}>
                     <FlatList
                         horizontal
                         data={tabsStatic}
@@ -320,16 +153,14 @@ const EnhancedLeaderboardScreen = () => {
                         renderItem={({ item }) => (
                             <TouchableOpacity
                                 onPress={() => {
-                                    setSelectedTab(item.id);
-                                    setPage(0);
+                                    if (selectedTab !== item.id) {
+                                        setSelectedTab(item.id);
+                                    }
                                 }}
-                                style={{
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 8,
-                                    borderRadius: 20,
-                                    marginRight: 8,
-                                    backgroundColor: selectedTab === item.id ? "#3B82F6" : "#F3F4F6",
-                                }}
+                                style={[
+                                    styles.tabItem,
+                                    { backgroundColor: selectedTab === item.id ? "#3B82F6" : "#F3F4F6" }
+                                ]}
                             >
                                 <View style={{ flexDirection: "row", alignItems: "center" }}>
                                     <Icon
@@ -338,12 +169,13 @@ const EnhancedLeaderboardScreen = () => {
                                         color={selectedTab === item.id ? "#FFF" : "#6B7280"}
                                     />
                                     <Text
-                                        style={{
-                                            marginLeft: 6,
-                                            color: selectedTab === item.id ? "#FFF" : "#374151",
-                                            fontWeight: selectedTab === item.id ? "700" : "600",
-                                            fontSize: 13,
-                                        }}
+                                        style={[
+                                            styles.tabText,
+                                            {
+                                                color: selectedTab === item.id ? "#FFF" : "#374151",
+                                                fontWeight: selectedTab === item.id ? "700" : "600",
+                                            }
+                                        ]}
                                     >
                                         {t(item.titleKey)}
                                     </Text>
@@ -353,52 +185,314 @@ const EnhancedLeaderboardScreen = () => {
                     />
                 </View>
 
-                <View style={{ paddingHorizontal: 12, paddingVertical: 12, backgroundColor: "#F9FAFB", borderBottomWidth: 1, borderColor: "#E5E7EB" }}>
+                {/* Podium Section */}
+                <View style={styles.podiumContainer}>
                     {entriesLoading && page === 0 && top3Data.length === 0 ? (
-                        <ActivityIndicator size="small" />
+                        <ActivityIndicator size="small" style={{ marginVertical: 40 }} />
                     ) : top3Data.length > 0 ? (
-                        <View style={{ flexDirection: "row", justifyContent: "center", alignItems: "flex-end", height: 250 }}>
+                        <View style={styles.podiumWrapper}>
                             {renderPodiumEntry(top3Data[1], 2)}
                             {renderPodiumEntry(top3Data[0], 1)}
                             {renderPodiumEntry(top3Data[2], 3)}
                         </View>
                     ) : (
-                        <Text style={{ color: "#9CA3AF", textAlign: "center", paddingVertical: 12 }}>
+                        <Text style={styles.noDataText}>
                             {t("leaderboard.noData")}
                         </Text>
                     )}
                 </View>
+            </View>
+        );
+    };
 
-                <View style={{ flex: 1 }}>
-                    {(leaderboardsLoading || entriesLoading) && page === 0 && top3Data.length === 0 ? (
-                        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                            <ActivityIndicator />
-                        </View>
-                    ) : entriesError || leaderboardsError ? (
-                        <View style={{ padding: 20 }}>
-                            <Text style={{ color: "red" }}>{t("leaderboard.error")}</Text>
-                        </View>
-                    ) : resolvedEntries.length === 0 && top3Data.length === 0 ? (
-                        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-                            <Text style={{ color: "#9CA3AF" }}>{t("leaderboard.noMoreEntries")}</Text>
-                        </View>
-                    ) : (
-                        <FlatList
-                            data={resolvedEntries}
-                            renderItem={renderItem}
-                            keyExtractor={(it, idx) =>
-                                String(it.userId ?? idx)
-                            }
-                            onEndReached={() => loadMore()}
-                            onEndReachedThreshold={0.5}
-                            ListFooterComponent={() => (entriesLoading ? <ActivityIndicator style={{ padding: 12 }} /> : null)}
-                        />
-                    )}
+    const renderPodiumEntry = (entry: LeaderboardEntryResponse, position: number) => {
+        if (!entry) return <View style={{ flex: 1, marginHorizontal: 4 }} />;
+
+        let placeColor: string;
+        let medalIcon: string;
+
+        switch (position) {
+            case 1: placeColor = "#F59E0B"; medalIcon = "emoji-events"; break;
+            case 2: placeColor = "#9CA3AF"; medalIcon = "verified"; break;
+            case 3: placeColor = "#CD7C2F"; medalIcon = "military-tech"; break;
+            default: placeColor = "#6B7280"; medalIcon = "";
+        }
+
+        const height = position === 1 ? 120 : position === 2 ? 100 : 80;
+        const avatarSource = getAvatarSource(entry.avatarUrl, entry.gender);
+
+        return (
+            <TouchableOpacity
+                key={position}
+                onPress={() => onPressUser(entry)}
+                style={styles.podiumItem}
+            >
+                <View style={{ position: "relative", marginBottom: 8 }}>
+                    <View style={[styles.medalBadge, { backgroundColor: placeColor }]}>
+                        <Icon name={medalIcon as any} size={16} color="#FFF" />
+                    </View>
+
+                    <Image
+                        source={avatarSource}
+                        style={[styles.podiumAvatar, { borderColor: placeColor }]}
+                    />
+
+                    <View style={[styles.rankBadge, { backgroundColor: placeColor }]}>
+                        <Text style={styles.rankBadgeText}>{position}</Text>
+                    </View>
                 </View>
 
+                <Text numberOfLines={1} ellipsizeMode="tail" style={styles.podiumName}>
+                    {entry.fullname}
+                </Text>
+
+                <Text style={styles.podiumLevel}>
+                    {t("leaderboard.level")} {entry.level ?? "-"}
+                </Text>
+
+                <Text style={styles.podiumScore}>
+                    {(entry.score ?? entry.exp ?? 0).toLocaleString()}
+                </Text>
+
+                <View style={[styles.podiumBar, { height: height, backgroundColor: placeColor }]} />
+            </TouchableOpacity>
+        );
+    };
+
+    const renderListEntry = ({ item, index }: { item: LeaderboardEntryResponse; index: number }) => {
+        if (!item) return null;
+
+        const rank = index + 4;
+        const currentUserId = item.userId ?? item.leaderboardEntryId?.userId;
+        const isMe = currentUserId === user?.userId;
+        const avatarSource = getAvatarSource(item.avatarUrl, item.gender);
+
+        return (
+            <TouchableOpacity
+                onPress={() => onPressUser(item)}
+                style={[
+                    styles.listItem,
+                    { backgroundColor: isMe ? "#ECFDF5" : "#FFFFFF" }
+                ]}
+            >
+                <View style={styles.rankContainer}>
+                    <Text style={styles.rankText}>{rank}</Text>
+                </View>
+
+                <Image source={avatarSource} style={styles.listAvatar} />
+
+                <View style={{ flex: 1 }}>
+                    <Text style={styles.listName}>
+                        {item.fullname}
+                        {item.nickname ? ` (${item.nickname})` : ""}
+                    </Text>
+                    <Text style={styles.listLevel}>
+                        {t("leaderboard.level")} {item.level ?? "-"}
+                    </Text>
+                </View>
+
+                <View style={{ alignItems: "flex-end" }}>
+                    <Text style={styles.listScore}>
+                        {(item.score ?? item.exp ?? 0).toLocaleString()}
+                    </Text>
+                    <Text style={styles.listScoreLabel}>EXP</Text>
+                </View>
+            </TouchableOpacity>
+        );
+    };
+
+    const renderFooter = () => {
+        if (!entriesLoading) return null;
+        return <ActivityIndicator style={{ padding: 12 }} />;
+    };
+
+    const renderEmpty = () => {
+        if (entriesLoading || top3Data.length > 0) return null;
+        if (entriesError || leaderboardsError) {
+            return (
+                <View style={styles.centerEmpty}>
+                    <Text style={{ color: "red" }}>{t("leaderboard.error")}</Text>
+                </View>
+            );
+        }
+        return (
+            <View style={styles.centerEmpty}>
+                <Text style={{ color: "#9CA3AF" }}>{t("leaderboard.noMoreEntries")}</Text>
+            </View>
+        );
+    };
+
+    return (
+        <ScreenLayout style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+                <FlatList
+                    data={resolvedEntries}
+                    renderItem={renderListEntry}
+                    keyExtractor={(it, idx) => String(it.userId ?? idx)}
+                    ListHeaderComponent={renderHeader}
+                    ListFooterComponent={renderFooter}
+                    ListEmptyComponent={renderEmpty}
+                    onEndReached={loadMore}
+                    onEndReachedThreshold={0.5}
+                    contentContainerStyle={{ flexGrow: 1 }}
+                    showsVerticalScrollIndicator={false}
+                />
             </Animated.View>
         </ScreenLayout>
     );
 };
+
+const styles = StyleSheet.create({
+    headerBar: {
+        backgroundColor: "#FFFFFF",
+        borderBottomWidth: 1,
+        borderColor: "#E5E7EB",
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: 12,
+    },
+    headerTitle: {
+        fontSize: 18,
+        fontWeight: "700",
+    },
+    tabsContainer: {
+        flexDirection: "row",
+        paddingVertical: 12,
+        paddingHorizontal: 12,
+        backgroundColor: "#FFFFFF"
+    },
+    tabItem: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 20,
+        marginRight: 8,
+    },
+    tabText: {
+        marginLeft: 6,
+        fontSize: 13,
+    },
+    podiumContainer: {
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+        backgroundColor: "#F9FAFB",
+        borderBottomWidth: 1,
+        borderColor: "#E5E7EB",
+        minHeight: 280,
+    },
+    podiumWrapper: {
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "flex-end",
+        height: 250,
+    },
+    podiumItem: {
+        flex: 1,
+        alignItems: "center",
+        marginHorizontal: 4,
+    },
+    medalBadge: {
+        position: "absolute",
+        top: -10,
+        right: -10,
+        zIndex: 10,
+        borderRadius: 12,
+        padding: 2,
+    },
+    podiumAvatar: {
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: "#E5E7EB",
+        borderWidth: 3,
+    },
+    rankBadge: {
+        position: "absolute",
+        bottom: -8,
+        alignSelf: "center",
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 2,
+        borderColor: "#FFFFFF",
+    },
+    rankBadgeText: {
+        color: "#FFF",
+        fontWeight: "700",
+        fontSize: 12,
+    },
+    podiumName: {
+        fontWeight: "600",
+        fontSize: 12,
+        maxWidth: 90,
+        textAlign: "center",
+        marginTop: 8,
+    },
+    podiumLevel: {
+        color: "#6B7280",
+        fontSize: 11,
+        marginTop: 4,
+    },
+    podiumScore: {
+        fontWeight: "700",
+        fontSize: 14,
+        marginTop: 4,
+    },
+    podiumBar: {
+        width: "100%",
+        marginTop: 8,
+        opacity: 0.2,
+        borderRadius: 4,
+    },
+    noDataText: {
+        color: "#9CA3AF",
+        textAlign: "center",
+        paddingVertical: 12,
+    },
+    listItem: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 12,
+        borderBottomWidth: 1,
+        borderColor: "#E5E7EB",
+    },
+    rankContainer: {
+        width: 36,
+        alignItems: "center",
+    },
+    rankText: {
+        fontWeight: "700",
+        fontSize: 14,
+    },
+    listAvatar: {
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        marginHorizontal: 12,
+        backgroundColor: "#E5E7EB",
+    },
+    listName: {
+        fontWeight: "600",
+    },
+    listLevel: {
+        color: "#6B7280",
+        fontSize: 12,
+    },
+    listScore: {
+        fontWeight: "700",
+    },
+    listScoreLabel: {
+        fontSize: 11,
+        color: "#9CA3AF",
+    },
+    centerEmpty: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+    }
+});
 
 export default EnhancedLeaderboardScreen;

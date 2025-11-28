@@ -28,6 +28,11 @@ public class MatchmakingQueueService {
         waitingUsers.remove(userId);
     }
 
+    // Lấy kích thước hàng đợi hiện tại
+    public int getQueueSize() {
+        return waitingUsers.size();
+    }
+
     // Lấy danh sách TẤT CẢ user đang chờ (trừ bản thân) để gửi sang Python
     public List<MatchCandidate> getCandidatesFor(String currentUserId) {
         return waitingUsers.entrySet().stream()
@@ -42,6 +47,7 @@ public class MatchmakingQueueService {
                             .setNativeLanguage(req.getNativeLanguage())
                             .setLearningLanguage(req.getLearningLanguage())
                             .setAgeRange(req.getAgeRange())
+                            .setCallDuration(req.getCallDuration())
                             .build();
 
                     return MatchCandidate.newBuilder()

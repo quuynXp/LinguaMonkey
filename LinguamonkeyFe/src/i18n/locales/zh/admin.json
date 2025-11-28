@@ -1,0 +1,158 @@
+{
+    "admin": {
+        "section": {
+            "business": "Business",
+            "content": "Content"
+        },
+        "stats": {
+            "users": "Users",
+            "revenue": "Revenue",
+            "courses": "Courses",
+            "transactions": "Transactions"
+        },
+        "actions": {
+            "addUser": "Add User",
+            "addCourse": "Add Course"
+        },
+        "screens": {
+            "users": "Users",
+            "courses": "Courses",
+            "lessons": "Lessons",
+            "createVideo": "Create Video",
+            "analytics": "Analytics",
+            "transactions": "Transactions"
+        },
+        "desc": {
+            "createVideo": "Upload a new video lesson",
+            "analytics": "View system analytics and reports",
+            "transactions": "Monitor system transactions"
+        },
+        "transactions": {
+            "title": "Transactions",
+            "defaultTitle": "Transaction",
+            "noTransactions": "No transactions"
+        },
+        "lessons": {
+            "title": "Lesson Management",
+            "completions": "Lesson Completions",
+            "listTitle": "Lessons",
+            "noLessons": "No lessons"
+        },
+        "courseDetail": {
+            "title": "Course Detail",
+            "updateSuccess": "Course updated successfully.",
+            "delete": {
+                "title": "Delete Course",
+                "message": "Are you sure you want to delete this course? This action cannot be undone.",
+                "successTitle": "Deleted",
+                "successMessage": "Course removed."
+            },
+            "form": {
+                "thumbnailUrl": "Thumbnail URL",
+                "title": "Title",
+                "description": "Description",
+                "difficultyLevel": "Difficulty Level",
+                "type": "Type",
+                "price": "Price",
+                "courseId": "Course ID",
+                "creatorId": "Creator ID",
+                "createdAt": "Created At"
+            }
+        },
+        "courses": {
+            "title": "Course Management",
+            "overview": {
+                "totalCourses": "Total Courses",
+                "lessons": "Lessons"
+            },
+            "listTitle": "Courses",
+            "noCourses": "No courses"
+        },
+        "menu": {
+            "appInfo": "App information"
+        },
+        "auth": {
+            "logout": "Log Out",
+            "logoutTitle": "Log Out",
+            "logoutConfirm": "Are you sure log out now?"
+        },
+        "analytics": {
+            "title": "Revenue Analytics",
+            "logout": {
+                "title": "Logout",
+                "message": "Are you sure you want to log out?"
+            },
+            "periods": {
+                "week": "Week",
+                "month": "Month",
+                "year": "Year",
+                "custom": "Custom Range"
+            },
+            "errors": {
+                "invalidRangeTitle": "Invalid Range",
+                "invalidRangeMessage": "End date must be on or after the start date."
+            },
+            "charts": {
+                "revenue": "Revenue",
+                "transactions": "Transactions",
+                "breakdown": "Breakdown",
+                "notAvailable": "N/A",
+                "itemLabel": "Item {{index}}",
+                "noBreakdown": "No breakdown data"
+            },
+            "overview": {
+                "title": "Overview",
+                "users": "Users",
+                "revenue": "Revenue"
+            }
+        },
+        "dashboard": {
+            "loading": "Loading dashboard...",
+            "totalUsers": "Total Users",
+            "totalCourses": "Total Courses",
+            "totalLessons": "Total Lessons",
+            "totalRevenue": "Total Revenue",
+            "revenueThisMonth": "Revenue This Month",
+            "quickActions": "Quick Actions",
+            "periods": {
+                "week": "This Week",
+                "month": "This Month",
+                "year": "This Year"
+            },
+            "overview": "Overview",
+            "totalTransactions": "Total Transactions",
+            "selectStart": "Select start date",
+            "selectEnd": "Select end date",
+            "charts": {
+                "revenue": "Revenue",
+                "transactions": "Transactions"
+            },
+            "users": "Users",
+            "courses": "Courses",
+            "lessons": "Lessons",
+            "revenue": "Revenue",
+            "transactions": "Transactions",
+            "title": "Admin Dashboard",
+            "period": {
+                "week": "Week",
+                "month": "Month",
+                "year": "Year",
+                "custom": "Custom"
+            }
+        },
+        "users": {
+            "title": "User Management",
+            "total": "Total Users",
+            "new": "New Users",
+            "growthChart": "Growth Chart",
+            "overview": {
+                "totalUsers": "Total Users",
+                "growth": "Growth"
+            },
+            "listTitle": "Users",
+            "defaultUserName": "User",
+            "noUsers": "No users to display",
+            "searchPlaceholder": "Search users by name or email..."
+        }
+    }
+}

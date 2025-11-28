@@ -5,6 +5,7 @@ import TransactionDetailsScreen from '../../screens/payment/TransactionDetailsSc
 import WalletScreen from '../../screens/payment/WalletScreen';
 import TopUpScreen from '../../screens/payment/TopUpScreen';
 import WithdrawScreen from '../../screens/payment/WithdrawScreen';
+import DepositScreen from '../../screens/payment/DepositScreen';
 
 export type PaymentStackParamList = {
     WalletScreen: undefined;
@@ -12,6 +13,7 @@ export type PaymentStackParamList = {
     WithdrawScreen: undefined;
     TransactionHistoryScreen: undefined;
     TransactionDetailsScreen: undefined;
+    DepositScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<PaymentStackParamList>();
@@ -23,6 +25,7 @@ const PaymentStack = () => (
         <Stack.Screen name="WithdrawScreen" component={WithdrawScreen} />
         <Stack.Screen name="TransactionHistoryScreen" component={TransactionHistoryScreen} />
         <Stack.Screen name="TransactionDetailsScreen" component={TransactionDetailsScreen} />
+        <Stack.Screen name="DepositScreen" component={DepositScreen} />
     </Stack.Navigator>
 );
 

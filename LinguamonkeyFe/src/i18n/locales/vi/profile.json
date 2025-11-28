@@ -1,0 +1,570 @@
+{
+    "stats": {
+        "lessons": "Lessons",
+        "words": "Words",
+        "time": "Time",
+        "xp": "XP",
+        "level": "Level"
+    },
+    "profile": {
+        "deactivateWarning": "Are you sure?",
+        "accountActions": "Account Actions",
+        "loadFailed": "Failed to load profile",
+        "updateSuccess": "Profile updated successfully",
+        "personalInfo": "Personal Information",
+        "ageRange": "Age Range",
+        "account": "Account",
+        "deactivateAccount": "Deactivate Account",
+        "notification": "Notification",
+        "about": "About",
+        "title": "Profile",
+        "addFriend": "Add Friend",
+        "message": "Message",
+        "requestSent": "Request Sent",
+        "languages": "Languages",
+        "native": "Native:",
+        "learning": "Learning:",
+        "statistics": "Learning Statistics",
+        "achievements": "Achievements",
+        "activity": "Learning Activity",
+        "viewAll": "View All",
+        "viewDetails": "View Details",
+        "totalStudyTime": "Total Study Time",
+        "lessonsCompleted": "Lessons Completed",
+        "wordsLearned": "Words Learned",
+        "averageScore": "Average Score",
+        "fullname": "Full name",
+        "recentActivity": "Recent Activity",
+        "saved": "Saved profile",
+        "savedSuccess": "Saved profile successfully",
+        "editProfile": "Edit Profile",
+        "uploadAvatar": "Upload Avatar",
+        "changeAvatar": "Change Avatar",
+        "removeAvatar": "Remove Avatar",
+        "confirmChanges": "Confirm Changes",
+        "vibrationOn": "Vibration On",
+        "vibrationOff": "Vibration Off",
+        "commitChanges": "Commit",
+        "saveSuccess": "Profile updated successfully",
+        "saveFailed": "Failed to update profile",
+        "viewRoadmap": "View Roadmap",
+        "unlocked": "Unlocked",
+        "stats": {
+            "title": "Statistics",
+            "currentLevel": "Level",
+            "totalXP": "Total XP",
+            "dayStreak": "Day Streak",
+            "totalStudyTime": "Study Time",
+            "lessonsCompleted": "Lessons",
+            "wordsLearned": "Words",
+            "averageScore": "Avg Score"
+        },
+        "timeframes": {
+            "week": "Week",
+            "month": "Month",
+            "year": "Year"
+        },
+        "country": "Country",
+        "settings": "Settings",
+        "privacySettings": "Privacy Settings",
+        "transactionHistory": "Transaction History",
+        "notificationHistory": "Notification History",
+        "roadmap": "Learning Roadmap",
+        "notes": "Notes",
+        "helpSupport": "Help & Support",
+        "logout": "Logout",
+        "logoutFailed": "Logout failed, please try again.",
+        "logoutConfirmTitle": "Logout",
+        "logoutConfirmMessage": "Are you sure you want to logout?",
+        "noName": "No Name",
+        "noEmail": "No email",
+        "details": "Profile Details",
+        "email": "Email",
+        "phone": "Phone",
+        "age": "Age",
+        "nativeLanguage": "Native Language",
+        "level": "Level",
+        "exp": "EXP",
+        "learningPace": "Learning Pace",
+        "proficiency": "Proficiency",
+        "bio": "Bio",
+        "noLanguages": "No languages selected",
+        "modelPreview": "3D Character Preview",
+        "noModel": "No model available",
+        "badges": "Badges",
+        "noBadges": "No badges earned",
+        "streakDays": "Streak Days",
+        "dailyGoal": "Daily Goal",
+        "settingsSummary": "Settings Summary",
+        "notifications": "Notifications",
+        "enabled": "On",
+        "disabled": "Off",
+        "studyReminders": "Study Reminders",
+        "privacy": "Privacy",
+        "public": "Public",
+        "private": "Private",
+        "actions": "Actions",
+        "updateFailed": "Failed to update profile",
+        "cancelChanges": "Cancel Changes",
+        "confirmCancel": "Are you sure you want to cancel unsaved changes?",
+        "continueEditing": "Continue Editing",
+        "cancel": "Cancel",
+        "save": "Save",
+        "firstName": "First Name",
+        "lastName": "Last Name",
+        "enterFirstName": "Enter your first name",
+        "enterLastName": "Enter your last name",
+        "enterEmail": "Enter your email",
+        "enterPhone": "Enter your phone number",
+        "enterDateOfBirth": "Enter your date of birth (DD/MM/YYYY)",
+        "enterCountry": "Enter your country",
+        "enterNativeLanguage": "Enter your native language",
+        "enterAgeRange": "Enter your age range",
+        "enterLearningPace": "Enter your learning pace",
+        "enterProficiency": "Enter your proficiency level",
+        "enterBio": "Write a few lines about yourself...",
+        "changePassword": "Change Password",
+        "verifyEmail": "Verify Email",
+        "verified": "Verified",
+        "authProvider": "Authentication Provider",
+        "createdAt": "Account Created At",
+        "updatedAt": "Last Updated At",
+        "progress": "Progress",
+        "certifications": "Certifications",
+        "interests": "Interests",
+        "goals": "Goals",
+        "profileVisibility": "Profile Visibility",
+        "progressSharing": "Progress Sharing",
+        "dataCollection": "Data Collection",
+        "personalization": "Personalization",
+        "analytics": "Analytics",
+        "crashReports": "Crash Reports",
+        "locationTracking": "Location Tracking",
+        "contactSync": "Contact Sync",
+        "streakReminders": "Streak Reminders",
+        "messageNotifications": "Message Notifications",
+        "achievementNotifications": "Achievement Notifications",
+        "quietHours": "Quiet Hours",
+        "addABio": "Add a Bio",
+        "expShort": "EXP",
+        "toNextLevel": "To Next Level: {{exp}} EXP",
+        "aboutYourAccount": "About Your Account",
+        "privacyNotice": "Your information is protected and only used to enhance your learning experience.",
+        "playStoreRating": "Rated 5★ by users on Google Play.",
+        "policySnippet": "See our Privacy Policy and Terms to understand how we handle your data.",
+        "quietHoursValue": "{{status}} ({{start}}-{{end}})",
+        "uploadingColor": "#9CA3AF"
+    },
+    "settings": {
+        "title": "Settings",
+        "account": "Account",
+        "notifications": "Notifications",
+        "language": "Language",
+        "privacy": "Privacy",
+        "security": "Security",
+        "logout": "Log Out"
+    },
+    "notification": {
+        "settingsTitle": "Notification Settings",
+        "permissionsSection": "Permissions",
+        "enableNotifications": "Enable Notifications",
+        "enableNotificationsDesc": "Allow the app to send you study reminders and messages",
+        "permissionsSuccess": "Success",
+        "permissionsSuccessMessage": "Notification permissions granted!",
+        "permissionsRequired": "Permissions Required",
+        "permissionsRequiredMessage": "Please enable notifications in your device settings to receive reminders.",
+        "studyRemindersSection": "Study Reminders",
+        "studyReminders": "Daily Study Reminders",
+        "studyRemindersDesc": "Get reminded to study at your preferred time",
+        "studyTime": "Study Time: {{time}}",
+        "reminderFrequency": "Reminder Frequency",
+        "daily": "Daily",
+        "default_title": "Notification",
+        "channel_default_name": "General Notifications",
+        "weekdays": "Weekdays Only",
+        "custom": "Custom Days",
+        "selectDays": "Select Days",
+        "streakReminders": "Streak Warnings",
+        "streakRemindersDesc": "Get warned before losing your study streak",
+        "messageNotificationsSection": "Message Notifications",
+        "chatMessages": "Chat Messages",
+        "chatMessagesDesc": "Notifications for new chat messages",
+        "coupleNotifications": "Couple Notifications",
+        "coupleNotificationsDesc": "Updates from your learning partner",
+        "groupInvitations": "Group Invitations",
+        "groupInvitationsDesc": "Invitations to group study sessions",
+        "achievementNotifications": "Achievement Notifications",
+        "achievementNotificationsDesc": "Celebrate your learning milestones",
+        "soundVibrationSection": "Sound & Vibration",
+        "soundEffects": "Sound Effects",
+        "soundEffectsDesc": "Play sound with notifications",
+        "vibration": "Vibration",
+        "vibrationDesc": "Vibrate device for notifications",
+        "quietHoursSection": "Quiet Hours",
+        "quietHours": "Enable Quiet Hours",
+        "quietHoursDesc": "Silence notifications during specific hours",
+        "quietHoursStart": "Start: {{time}}",
+        "quietHoursEnd": "End: {{time}}",
+        "testNotificationsSection": "Test Notifications",
+        "sendTestNotification": "Send Test Notification",
+        "testNotificationSent": "Test Sent!",
+        "errorSavingPreferences": "Failed to save notification preferences",
+        "errorSendingTest": "Failed to send test notification",
+        "history": "Notification History"
+    },
+    "history": {
+        "noSessions": "No sesssions",
+        "test": {
+            "notImplemented": "Not Implement history"
+        },
+        "title": "Study History",
+        "export": "Export",
+        "noStats": "No statistics available",
+        "tabs": {
+            "sessions": "Sessions",
+            "tests": "Tests",
+            "stats": "Statistics"
+        },
+        "filters": {
+            "week": "This Week",
+            "month": "This Month",
+            "year": "This Year"
+        },
+        "stats": {
+            "sessions": "Sessions",
+            "studyTime": "Study Time",
+            "experience": "Experience",
+            "avgScore": "Avg. Score",
+            "progressChart": "Progress Chart"
+        },
+        "session": {
+            "score": "{{score}}/{{maxScore}}",
+            "exp": "+{{experience}} XP"
+        },
+        "types": {
+            "LESSON_COMPLETED": "Lesson",
+            "COURSE_COMPLETED": "Course",
+            "DAILY_CHALLENGE_COMPLETED": "Daily Challenge",
+            "FLASHCARD_REVIEWED": "Flashcard",
+            "EVENT_COMPLETED": "Event",
+            "QUIZ_COMPLETED": "Quiz",
+            "DEFAULT": "Activity"
+        }
+    },
+    "privacy": {
+        "settingsTitle": "Privacy Settings",
+        "privacyNoticeTitle": "Privacy Commitment",
+        "privacyNoticeDesc": "We are committed to protecting your privacy. All data is encrypted and used only to enhance your learning experience.",
+        "privacySection": "Privacy",
+        "privacySubtitle": "Control your personal information",
+        "profileVisibility": "Public Profile Visibility",
+        "profileVisibilityDesc": "Allow others to view your profile",
+        "progressSharing": "Progress Sharing",
+        "progressSharingDesc": "Share learning progress with friends",
+        "locationTracking": "Location Tracking",
+        "locationTrackingDesc": "Use location to improve experience",
+        "contactSync": "Contact Sync",
+        "contactSyncDesc": "Find friends from phone contacts",
+        "dataAnalyticsSection": "Data & Analytics",
+        "dataAnalyticsSubtitle": "Manage how we use your data",
+        "dataCollection": "Data Collection",
+        "dataCollectionDesc": "Allow data collection to improve the app",
+        "personalization": "Personalization",
+        "personalizationDesc": "Use data to personalize experience",
+        "analytics": "Usage Analytics",
+        "analyticsDesc": "Send anonymous analytics data",
+        "crashReports": "Crash Reports",
+        "crashReportsDesc": "Automatically send crash reports",
+        "dataManagementSection": "Data Management",
+        "dataManagementSubtitle": "Export or delete personal data",
+        "exportData": "Export Data",
+        "exportDataDesc": "Download all your data",
+        "exportDataMessage": "We will send a file containing all your data via email within 24 hours.",
+        "deleteData": "Delete All Data",
+        "deleteDataDesc": "Permanently delete all personal data",
+        "deleteDataConfirmTitle": "Delete Data",
+        "deleteDataConfirmMessage": "Are you sure you want to delete all your data? This action cannot be undone.",
+        "legalSection": "Legal Documents",
+        "privacyPolicy": "Privacy Policy",
+        "termsOfUse": "Terms of Use",
+        "cookiePolicy": "Cookie Policy",
+        "contactSection": "Need Help?",
+        "contactText": "If you have questions about privacy, contact us at: privacy@MonkeyLingua.com"
+    },
+    "about": {
+        "title": "About App",
+        "tagline": "Smart language learning app for Vietnamese",
+        "version": "Version {{version}}",
+        "latest": "Latest",
+        "mission": {
+            "title": "Our Mission",
+            "content": "We believe language learning is not just vocabulary and grammar, but a cultural bridge..."
+        },
+        "features": {
+            "title": "Key Features",
+            "smartLearning": {
+                "title": "Smart Learning",
+                "desc": "AI personalizes your learning experience"
+            },
+            "aiChat": {
+                "title": "AI Conversation",
+                "desc": "Practice speaking with intelligent assistant"
+            },
+            "progress": {
+                "title": "Track Progress",
+                "desc": "Detailed analysis of your learning journey"
+            },
+            "community": {
+                "title": "Community",
+                "desc": "Connect with millions of learners worldwide"
+            }
+        },
+        "team": {
+            "title": "Development Team",
+            "roles": {
+                "ceo": "CEO & Founder",
+                "cto": "CTO",
+                "designer": "Lead Designer",
+                "languageExpert": "Language Expert"
+            }
+        },
+        "stats": {
+            "title": "Statistics",
+            "users": "Users",
+            "countries": "Countries",
+            "lessons": "Lessons",
+            "reviews": "Reviews"
+        },
+        "social": {
+            "title": "Follow us"
+        },
+        "legal": {
+            "title": "Legal & Contact",
+            "terms": "Terms of Use",
+            "privacy": "Privacy Policy",
+            "contact": "Contact: info@MonkeyLingua.com"
+        },
+        "copyright": "© 2025 MonkeyLingua. All rights reserved.",
+        "madeWithLove": "Made with ❤️ in Vietnam by NgocQuyen"
+    },
+    "help": {
+        "title": "Help & Support",
+        "welcome": {
+            "title": "How can we help you?",
+            "subtitle": "Find answers to common questions or contact support."
+        },
+        "search": {
+            "placeholder": "Search help articles..."
+        },
+        "faq": {
+            "title": "Frequently Asked Questions (FAQs)",
+            "changeLanguage": {
+                "q": "How do I change my learning language?",
+                "a": "You can change your target language in the Profile Settings screen."
+            },
+            "streakLost": {
+                "q": "My streak was lost. Can I restore it?",
+                "a": "Streaks can often be restored using a Streak Freeze item available in the store. Check your inventory!"
+            },
+            "changePassword": {
+                "q": "How can I change my password?",
+                "a": "You can change your password in the Security Settings section of your Profile."
+            },
+            "offlineSupport": {
+                "q": "Does the app support offline learning?",
+                "a": "Yes, you can download lessons and courses for offline study."
+            },
+            "contactSupport": {
+                "q": "How do I contact customer support?",
+                "a": "Scroll down to the 'Support Channels' section below to see all contact options."
+            }
+        },
+        "support": {
+            "title": "Support Channels",
+            "email": {
+                "title": "Email Support",
+                "desc": "Get personalized help via email. Response time is typically 24-48 hours."
+            },
+            "chat": {
+                "title": "Live Chat",
+                "desc": "Chat instantly with our support team during business hours."
+            },
+            "community": {
+                "title": "Community Forum",
+                "desc": "Ask questions and get help from other learners and moderators."
+            },
+            "video": {
+                "title": "Video Tutorials",
+                "desc": "Watch quick video guides on how to use key features of the app."
+            }
+        },
+        "feedback": {
+            "title": "Send Feedback",
+            "label": "Your feedback helps us improve!",
+            "placeholder": "Tell us what you love or how we can do better...",
+            "submit": "Submit Feedback"
+        },
+        "appInfo": {
+            "title": "App Information",
+            "version": "Version",
+            "lastUpdate": "Last Updated",
+            "os": "Operating System"
+        }
+    },
+    "helpSupport": {
+        "title": "Help & Support",
+        "welcomeTitle": "We are here to help!",
+        "welcomeText": "Find answers to your questions or contact support",
+        "searchPlaceholder": "Search questions...",
+        "faq": {
+            "title": "Frequently Asked Questions"
+        },
+        "support": {
+            "title": "Contact Support"
+        },
+        "feedback": {
+            "title": "Send Feedback",
+            "label": "Share your opinion to help us improve the app",
+            "placeholder": "Enter your feedback...",
+            "button": "Send Feedback",
+            "successTitle": "Thank you!",
+            "successMessage": "Your feedback has been sent."
+        },
+        "appInfo": {
+            "title": "App Information",
+            "version": "Version:",
+            "lastUpdate": "Last updated:",
+            "os": "Operating System:",
+            "versionValue": "Version"
+        },
+        "faqData": {
+            "1q": "How to change learning language?",
+            "1a": "Go to 'Learning Language' in Profile and select...",
+            "2q": "Why did I lose my streak?",
+            "2a": "Streak resets if daily goal is not completed...",
+            "3q": "How to change password?",
+            "3a": "Go to 'Edit Profile' and choose 'Change Password'...",
+            "4q": "Does the app work offline?",
+            "4a": "Some features are offline, but best experience requires internet.",
+            "5q": "How to contact support?",
+            "5a": "You can email support@MonkeyLingua.com or use chat."
+        },
+        "supportOptions": {
+            "email": {
+                "title": "Send Email",
+                "desc": "Contact us via email for detailed support"
+            },
+            "chat": {
+                "title": "Live Chat",
+                "desc": "Chat with support team"
+            },
+            "community": {
+                "title": "Community",
+                "desc": "Join the learning community"
+            },
+            "video": {
+                "title": "Tutorial Videos",
+                "desc": "Watch usage tutorials"
+            }
+        }
+    },
+    "permissions": {
+        "settingsTitle": "Permission Required",
+        "settingsMessage": "This feature requires permission, but it has been permanently denied. Please go to app settings to enable it.",
+        "goToSettings": "Go to Settings",
+        "cancel": "Cancel",
+        "unavailable": "This feature is not available on your device",
+        "blocked_title": "Permission {{feature}} denied",
+        "enable_in_settings": "Please go to Settings and grant permission.",
+        "overlay": {
+            "title": "Overlay Permission",
+            "message": "This app needs permission to display over other apps (e.g., for chat bubbles or incoming call alerts)."
+        },
+        "notifications": {
+            "title": "Notification Permission",
+            "message": "Allow this app to send you notifications for updates and alerts."
+        },
+        "camera": {
+            "title": "Camera Permission",
+            "message": "This app needs access to your camera to take photos or scan QR codes."
+        },
+        "storage": {
+            "title": "Storage Permission",
+            "message": "This app needs access to your storage to read/save photos and videos."
+        },
+        "location": {
+            "title": "Location Permission",
+            "message": "This app needs access to your location to provide location-based services."
+        },
+        "microphone": {
+            "title": "Microphone Permission Required",
+            "message": "We need access to your microphone to enable speaking exercises."
+        }
+    },
+    "wallet": {
+        "availableBalance": "Available Balance",
+        "topup": "Top Up",
+        "withdraw": "Withdraw",
+        "transfer": "Transfer",
+        "transactionHistory": "Transaction History",
+        "noTransactions": "No transactions yet",
+        "topupTitle": "Top up wallet",
+        "quickAmount": "Quick Amount",
+        "customAmount": "Custom Amount",
+        "enterAmount": "Enter amount",
+        "minimumAmount": "Minimum amount",
+        "paymentMethod": "Payment Method",
+        "totalAmount": "Total Amount",
+        "topupNote": "Minimum top-up is 10,000 VND",
+        "proceed": "Proceed to payment"
+    },
+    "transaction": {
+        "type": {
+            "DEPOSIT": "Deposit",
+            "WITHDRAW": "Withdraw",
+            "TRANSFER": "Transfer",
+            "REFUND": "Refund",
+            "TRANSFER_RECEIVE": "Receive Money"
+        },
+        "status": {
+            "PENDING": "Pending",
+            "SUCCESS": "Success",
+            "FAILED": "Failed",
+            "PENDING_REFUND": "Pending Refund",
+            "REFUNDED": "Refunded"
+        }
+    },
+    "progress": {
+        "title": "Track Your Progress",
+        "subtitle": "See your improvement day by day",
+        "loading": "Loading your progress...",
+        "error": "Failed to load progress",
+        "completed": "Completed",
+        "next": "Next",
+        "retry": "Retry",
+        "back": "Back",
+        "unit": "Unit",
+        "lesson": "Lesson",
+        "continue": "Continue Learning",
+        "noData": "No progress available",
+        "percentage": "{{value}}% Completed",
+        "lessons": "Lessons",
+        "courses": "Courses",
+        "quizzes": "Quizzes",
+        "achievements": "Badges",
+        "weeklyActivity": "Weekly Activity",
+        "badgesTitle": "Your Badges"
+    },
+    "interests": {
+        "travel": "Travel",
+        "food": "Food",
+        "music": "Music",
+        "sports": "Sports",
+        "movies": "Movies",
+        "books": "Books",
+        "technology": "Technology",
+        "art": "Art",
+        "business": "Business",
+        "culture": "Culture"
+    }
+}

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Text,
   TextInput,
@@ -19,8 +20,7 @@ import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import instance from "../../api/axiosClient";
 import { createScaledSheet } from "../../utils/scaledStyles";
-
-type PythonTranslateResponse = { translated_text: string };
+import { Room } from "../../types/entity";
 
 type AiMessage = {
   id: string;
@@ -44,131 +44,77 @@ const ChatAIScreen = () => {
   const { user } = useUserStore();
   const { showToast } = useToast();
   const navigation = useNavigation();
-  const scrollViewRef = useRef<FlatList>(null);
 
   const [inputText, setInputText] = useState("");
   const [localTranslations, setLocalTranslations] = useState<LocalTranslationStore>({});
   const [messagesToggleState, setMessagesToggleState] = useState<MessageViewState>({});
   const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
-
-  // Bỏ qua loading nếu dữ liệu đã có
-  const [isInitializing, setIsInitializing] = useState(true);
-  const [initialLoadComplete, setInitialLoadComplete] = useState(false);
-
+  const [isHistoryVisible, setIsHistoryVisible] = useState(false);
   const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
 
-  // --- STORE SELECTORS ---
-  const aiHistory = useChatStore(s => s.aiChatHistory); // Lấy history
-  const isAiStreaming = useChatStore(s => s.isAiStreaming);
-  const sendAiPrompt = useChatStore(s => s.aiChatHistory); // FIX: Lỗi copy paste ở đây, phải là sendAiPrompt
-  const initChatService = useChatStore(s => s.initChatService);
-  const startAiChat = useChatStore(s => s.startAiChat);
+  // Store Selectors
   const activeAiRoomId = useChatStore(s => s.activeAiRoomId);
-  const isAiInitialMessageSent = useChatStore(s => s.isAiInitialMessageSent);
-  const sendAiWelcomeMessage = useChatStore(s => s.sendAiWelcomeMessage);
-  // Sửa lại cho đúng:
-  const sendAiPromptCorrected = useChatStore(s => s.sendAiPrompt);
+  const aiHistory = useChatStore(s => s.aiChatHistory);
+  const aiRooms = useChatStore(s => s.aiRoomList);
+  const isAiStreaming = useChatStore(s => s.isAiStreaming);
+  const loadingByRoom = useChatStore(s => s.loadingByRoom);
+  const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
+  const pageByRoom = useChatStore(s => s.pageByRoom);
 
+  const initChatService = useChatStore(s => s.initChatService);
+  const startNewAiChat = useChatStore(s => s.startNewAiChat);
+  const selectAiRoom = useChatStore(s => s.selectAiRoom);
+  const fetchAiRoomList = useChatStore(s => s.fetchAiRoomList);
+  const loadMessages = useChatStore(s => s.loadMessages);
+  const sendAiPrompt = useChatStore(s => s.sendAiPrompt);
 
-  // --- INIT CHAT & LOAD HISTORY ---
+  const isLoading = activeAiRoomId ? loadingByRoom[activeAiRoomId] : false;
+
+  // Inverted list: aiHistory needed in [Newest -> Oldest]
+  // Store keeps aiHistory as [Oldest -> Newest] for Context. 
+  // We reverse it for Display in Inverted FlatList.
+  const displayMessages = React.useMemo(() => [...aiHistory].reverse(), [aiHistory]);
+
   useEffect(() => {
     const initialize = async () => {
-      // Chỉ hiển thị loading nếu CHƯA có dữ liệu
-      if (aiHistory.length === 0) {
-        setIsInitializing(true);
-      } else {
-        // Nếu đã có dữ liệu, không cần hiển thị loading
-        setIsInitializing(false);
-      }
-
-      setInitialLoadComplete(false);
-      setTranslationTargetLang(i18n.language);
-
-      try {
-        initChatService();
-        if (user?.userId) {
-          // CHỈ GỌI START CHAT (VÀ LOAD HISTORY) NẾU LỊCH SỬ ĐANG TRỐNG
-          if (aiHistory.length === 0) {
-            await startAiChat();
-          }
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : t("error.unknown");
-        console.error("Failed to init AI Chat:", error);
-        showToast({
-          message: `${t("error.loadAiRoom")}: ${errorMessage}`,
-          type: "error"
-        });
-      } finally {
-        setIsInitializing(false);
-        setInitialLoadComplete(true);
+      initChatService();
+      await fetchAiRoomList();
+      if (!activeAiRoomId) {
+        await startNewAiChat();
       }
     };
+    initialize();
+  }, [user?.userId]);
 
-    const unsubscribe = navigation.addListener('focus', initialize);
-    return unsubscribe;
-    // THÊM aiHistory.length vào dependency để lắng nghe sự thay đổi của dữ liệu trong store
-  }, [user?.userId, initChatService, startAiChat, navigation, i18n.language, aiHistory.length]);
-
-  // --- SEND INITIAL WELCOME MESSAGE ---
-  useEffect(() => {
-    // CHỈ gửi tin nhắn chào mừng nếu load xong và lịch sử đang trống
-    if (initialLoadComplete && !isAiInitialMessageSent && aiHistory.length === 0) {
-      sendAiWelcomeMessage();
+  const handleLoadMore = () => {
+    if (activeAiRoomId && !isLoading && hasMoreByRoom[activeAiRoomId]) {
+      const nextPage = (pageByRoom[activeAiRoomId] || 0) + 1;
+      loadMessages(activeAiRoomId, nextPage, 10);
     }
-  }, [initialLoadComplete, isAiInitialMessageSent, sendAiWelcomeMessage, aiHistory.length]);
-
-
-  useEffect(() => {
-    if (aiHistory.length > 0) {
-      setTimeout(() => {
-        scrollViewRef.current?.scrollToEnd({ animated: true });
-      }, 100);
-    }
-  }, [aiHistory.length]);
+  };
 
   const handleSendMessage = async () => {
     if (!inputText.trim()) return;
     const textToSend = inputText.trim();
     setInputText("");
-    // Dùng biến sendAiPromptCorrected đã sửa
-    await sendAiPromptCorrected(textToSend);
+    await sendAiPrompt(textToSend);
   };
 
-  const { mutate: translateMutate } = useMutation<
-    { translatedText: string; messageId: string; targetLanguage: string },
-    Error,
-    { text: string, targetLanguage: string, messageId: string }
-  >({
-    mutationFn: async ({ text, targetLanguage, messageId }) => {
+  const { mutate: translateMutate } = useMutation({
+    mutationFn: async ({ text, targetLanguage, messageId }: { text: string, targetLanguage: string, messageId: string }) => {
       setTranslatingMessageId(messageId);
-
-      const payload = {
-        text: text,
-        source_lang: 'auto',
-        target_lang: targetLanguage,
-      };
-
+      const payload = { text, source_lang: 'auto', target_lang: targetLanguage };
       const response = await instance.post<any>('/api/py/translate', payload);
-      const responseData = response.data.result || response.data;
-      const translatedText = responseData?.translated_text;
-
-      if (!translatedText) {
-        throw new Error("Invalid translation response structure or missing 'translated_text' field.");
-      }
-
-      return { translatedText: translatedText, messageId, targetLanguage };
+      const translatedText = response.data.result?.translated_text;
+      if (!translatedText) throw new Error("Translation failed");
+      return { translatedText, messageId, targetLanguage };
     },
     onSuccess: (data) => {
       setLocalTranslations(prev => ({
         ...prev,
-        [data.messageId]: {
-          ...(prev[data.messageId] || {}),
-          [data.targetLanguage]: data.translatedText
-        }
+        [data.messageId]: { ...(prev[data.messageId] || {}), [data.targetLanguage]: data.translatedText }
       }));
       setMessagesToggleState(prev => ({ ...prev, [data.messageId]: data.targetLanguage }));
-      showToast({ message: t("translation.success") });
       setTranslatingMessageId(null);
     },
     onError: () => {
@@ -177,79 +123,42 @@ const ChatAIScreen = () => {
     },
   });
 
-  const handleTranslate = (messageId: string, messageText: string) => {
-    if (translatingMessageId === messageId) return;
-
-    const targetLang = translationTargetLang;
-    const localTranslation = localTranslations[messageId]?.[targetLang];
-    const currentView = messagesToggleState[messageId] || 'original';
-
-    if (currentView !== 'original') {
-      setMessagesToggleState(prev => ({ ...prev, [messageId]: 'original' }));
-      return;
-    }
-
-    if (currentView === 'original' && localTranslation) {
-      setMessagesToggleState(prev => ({ ...prev, [messageId]: targetLang }));
-      return;
-    }
-
-    translateMutate({ messageId, text: messageText, targetLanguage: targetLang });
-  };
-
   const handleToggleTranslation = (messageId: string, messageText: string) => {
     const currentView = messagesToggleState[messageId] || 'original';
-    const targetLang = translationTargetLang;
-    const hasCurrentTargetLangTranslation = localTranslations[messageId]?.[targetLang];
-
-    if (currentView === 'original') {
-      if (hasCurrentTargetLangTranslation) {
-        setMessagesToggleState(prev => ({ ...prev, [messageId]: targetLang }));
-      } else {
-        handleTranslate(messageId, messageText);
-      }
-    } else {
+    if (currentView !== 'original') {
       setMessagesToggleState(prev => ({ ...prev, [messageId]: 'original' }));
+    } else if (localTranslations[messageId]?.[translationTargetLang]) {
+      setMessagesToggleState(prev => ({ ...prev, [messageId]: translationTargetLang }));
+    } else {
+      translateMutate({ messageId, text: messageText, targetLanguage: translationTargetLang });
     }
-  }
+  };
 
   const changeLanguage = (lang: string) => {
     setTranslationTargetLang(lang);
     showToast({ message: t("translation.targetUpdated", { lang: lang.toUpperCase() }) });
   };
 
+  const handleSelectHistory = async (room: Room) => {
+    setIsHistoryVisible(false);
+    if (room.roomId !== activeAiRoomId) {
+      await selectAiRoom(room.roomId);
+    }
+  };
+
   const renderMessage = ({ item: message }: { item: AiMessage }) => {
     const isUser = message.role === 'user';
-    const showTranslationAction = message.role === 'assistant';
-
-    const targetLang = translationTargetLang;
     const currentView = messagesToggleState[message.id] || 'original';
-
-    const localTranslation = localTranslations[message.id]?.[currentView as string];
-    const displayedText = (currentView !== 'original' && localTranslation)
-      ? localTranslation
+    const displayedText = (currentView !== 'original' && localTranslations[message.id]?.[currentView])
+      ? localTranslations[message.id]?.[currentView]
       : message.content;
 
-    const isTranslatedView = currentView !== 'original';
-    const displayLang = isTranslatedView ? currentView : 'original';
-
-    const hasCurrentTargetLangTranslation = !!localTranslations[message.id]?.[targetLang];
-    const isCurrentTranslating = translatingMessageId === message.id;
-
-    const buttonStyle = hasCurrentTargetLangTranslation ? styles.translatedButton : {};
-    const iconColor = hasCurrentTargetLangTranslation ? "#3B82F6" : "#6B7280";
-
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          isUser ? styles.userMessageContainer : styles.aiMessageContainer,
-        ]}
-      >
+      <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.aiMessageContainer]}>
         <View style={styles.messageRow}>
           <TouchableOpacity
-            onPress={() => showTranslationAction && handleToggleTranslation(message.id, message.content)}
-            style={[styles.messageContentWrapper, { maxWidth: "80%" }]}
+            onPress={() => !isUser && handleToggleTranslation(message.id, message.content)}
+            style={{ maxWidth: "80%" }}
             disabled={isUser}
           >
             <View style={[styles.messageBubble, isUser ? styles.userMessage : styles.aiMessage]}>
@@ -257,99 +166,89 @@ const ChatAIScreen = () => {
                 {displayedText}
                 {message.isStreaming && "..."}
               </Text>
-              {isTranslatedView && (
-                <Text style={[styles.translationLangTag, isUser && styles.userTranslationLangTag]}>
-                  {displayLang.toUpperCase()} {t('translation.tag')}
-                </Text>
-              )}
-              <Text style={[styles.timestamp, isUser ? styles.userTimestamp : styles.aiTimestamp]}>
-                {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-              </Text>
             </View>
           </TouchableOpacity>
 
-          {showTranslationAction && (
-            <View style={styles.translateButtonContainer}>
-              <TouchableOpacity
-                style={[styles.translateButton, buttonStyle]}
-                onPress={() => handleTranslate(message.id, message.content)}
-                disabled={isCurrentTranslating}
-              >
-                {isCurrentTranslating ? (
-                  <ActivityIndicator size="small" color="#6B7280" />
-                ) : isTranslatedView ? (
-                  <Icon name={"undo"} size={16} color={iconColor} />
-                ) : (
-                  <Icon name={"language"} size={16} color={iconColor} />
-                )}
-              </TouchableOpacity>
-            </View>
+          {!isUser && (
+            <TouchableOpacity
+              style={styles.translateButtonIcon}
+              onPress={() => handleToggleTranslation(message.id, message.content)}
+              disabled={translatingMessageId === message.id}
+            >
+              {translatingMessageId === message.id ? (
+                <ActivityIndicator size="small" color="#9CA3AF" />
+              ) : (
+                <Icon name={currentView !== 'original' ? "undo" : "translate"} size={16} color="#9CA3AF" />
+              )}
+            </TouchableOpacity>
           )}
         </View>
       </View>
     );
   };
 
-  if (isInitializing && aiHistory.length === 0) { // CHỈ HIỂN THỊ LOADING NẾU ĐANG INIT VÀ CHƯA CÓ DỮ LIỆU
-    return (
-      <View style={styles.fullScreenLoading}>
-        <ActivityIndicator size="large" color="#3B82F6" />
-        <Text style={styles.loadingText}>{t("loading.aiRoom")}</Text>
-      </View>
-    );
-  }
-
   return (
     <ScreenLayout>
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 64 : 0}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
-        <View style={{ flex: 1, backgroundColor: "#FFFFFF" }}>
+        <View style={styles.container}>
+          {/* Custom Header */}
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Icon name="arrow-back" size={24} color="#374151" />
-            </TouchableOpacity>
-            <View style={styles.aiInfo}>
-              <Text style={styles.aiName}>{t("assistant.name")}</Text>
-              <Text style={styles.aiStatus}>{t("status.online")}</Text>
+            <View style={styles.headerLeft}>
+              <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
+                <Icon name="arrow-back" size={24} color="#1F2937" />
+              </TouchableOpacity>
+
+              <View style={styles.headerTitleContainer}>
+                {/* Logo & Title */}
+                <Icon name="smart-toy" size={24} color="#3B82F6" style={{ marginRight: 8 }} />
+                <Text style={styles.headerTitle}>AI Assistant</Text>
+              </View>
             </View>
-            <View style={styles.headerActions}>
-              <View style={styles.languageSwitcher}>
-                <TouchableOpacity onPress={() => changeLanguage("vi")}>
-                  <Text style={translationTargetLang === "vi" ? styles.activeLang : styles.lang}>VI</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => changeLanguage("en")}>
-                  <Text style={translationTargetLang === "en" ? styles.activeLang : styles.lang}>EN</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => changeLanguage("zh")}>
-                  <Text style={translationTargetLang === "zh" ? styles.activeLang : styles.lang}>ZH</Text>
-                </TouchableOpacity>
+
+            <View style={styles.headerRight}>
+              {/* History Button */}
+              <TouchableOpacity onPress={() => setIsHistoryVisible(true)} style={styles.iconButton}>
+                <Icon name="history" size={24} color="#4B5563" />
+              </TouchableOpacity>
+
+              {/* Language Switcher */}
+              <View style={styles.langContainer}>
+                {['vi', 'en'].map((lang) => (
+                  <TouchableOpacity key={lang} onPress={() => changeLanguage(lang)}>
+                    <Text style={[styles.langText, translationTargetLang === lang && styles.activeLangText]}>
+                      {lang.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
               </View>
             </View>
           </View>
 
+          {/* Chat List */}
           <FlatList
-            ref={scrollViewRef}
-            data={aiHistory}
+            data={displayMessages}
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
-            style={styles.chatContainer}
-            contentContainerStyle={{ paddingBottom: 20 }}
-            onContentSizeChange={() => {
-              scrollViewRef.current?.scrollToEnd({ animated: true });
-            }}
-            extraData={{ localTranslations, messagesToggleState }}
+            style={styles.chatList}
+            contentContainerStyle={styles.chatContent}
+            inverted={true}
+            onEndReached={handleLoadMore}
+            onEndReachedThreshold={0.2}
+            ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
           />
 
           {isAiStreaming && (
-            <View style={styles.loadingContainer}>
+            <View style={styles.streamingIndicator}>
               <ActivityIndicator size="small" color="#6B7280" />
-              <Text style={styles.loadingText}>{t("loading.ai")}</Text>
+              <Text style={styles.streamingText}>{t("loading.ai")}</Text>
             </View>
           )}
 
+          {/* Input Area */}
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -359,189 +258,155 @@ const ChatAIScreen = () => {
               onSubmitEditing={handleSendMessage}
               returnKeyType="send"
               multiline
-              editable={!isAiStreaming && !!activeAiRoomId}
+              editable={!isAiStreaming}
             />
             <TouchableOpacity
-              style={[styles.sendButton, (isAiStreaming || !activeAiRoomId) && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (!inputText.trim() || isAiStreaming) && styles.sendButtonDisabled]}
               onPress={handleSendMessage}
-              disabled={isAiStreaming || !activeAiRoomId}
+              disabled={!inputText.trim() || isAiStreaming}
             >
-              <Icon name="send" size={24} color="#FFFFFF" />
+              <Icon name="send" size={20} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* History Modal */}
+        <Modal
+          visible={isHistoryVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setIsHistoryVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalHeader}>
+                <Text style={styles.modalTitle}>{t("history.title") || "Conversation History"}</Text>
+                <TouchableOpacity onPress={() => setIsHistoryVisible(false)}>
+                  <Icon name="close" size={24} color="#1F2937" />
+                </TouchableOpacity>
+              </View>
+
+              <TouchableOpacity
+                style={styles.newChatButton}
+                onPress={async () => {
+                  setIsHistoryVisible(false);
+                  await startNewAiChat();
+                }}
+              >
+                <Icon name="add" size={20} color="#FFFFFF" />
+                <Text style={styles.newChatText}>New Chat</Text>
+              </TouchableOpacity>
+
+              <FlatList
+                data={aiRooms}
+                keyExtractor={(item) => item.roomId}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={[styles.historyItem, item.roomId === activeAiRoomId && styles.activeHistoryItem]}
+                    onPress={() => handleSelectHistory(item)}
+                  >
+                    <Icon name="chat-bubble-outline" size={20} color="#4B5563" />
+                    <View style={{ marginLeft: 12, flex: 1 }}>
+                      <Text style={styles.historyName} numberOfLines={1}>
+                        {item.roomName || `Chat ${item.roomId.substring(0, 6)}`}
+                      </Text>
+                      <Text style={styles.historyDate}>
+                        {item.updatedAt ? new Date(item.updatedAt).toLocaleDateString() : 'Unknown date'}
+                      </Text>
+                    </View>
+                    {item.roomId === activeAiRoomId && <Icon name="check" size={20} color="#3B82F6" />}
+                  </TouchableOpacity>
+                )}
+                contentContainerStyle={{ paddingVertical: 8 }}
+              />
+            </View>
+          </View>
+        </Modal>
+
       </KeyboardAvoidingView>
     </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 16,
-    paddingBottom: 12,
-    backgroundColor: "#FFFFFF",
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderBottomColor: "#F3F4F6",
+    backgroundColor: "#FFFFFF",
   },
-  aiInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  aiName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  aiStatus: {
-    fontSize: 12,
-    color: "#10B981",
-    marginTop: 2,
-  },
-  headerActions: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  languageSwitcher: {
-    flexDirection: "row",
-    marginLeft: 8,
-  },
-  lang: {
-    fontSize: 14,
-    color: "#6B7280",
-    padding: 8,
-  },
-  activeLang: {
-    fontSize: 14,
-    color: "#3B82F6",
-    fontWeight: "600",
-    padding: 8,
-  },
-  chatContainer: {
-    flex: 1,
-    padding: 16,
-  },
-  messageContainer: {
-    marginBottom: 12,
-  },
-  messageRow: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-  },
-  messageContentWrapper: {
-    flexShrink: 1,
-  },
-  userMessageContainer: {
-    alignSelf: "flex-end",
-  },
-  aiMessageContainer: {
-    alignSelf: "flex-start",
-  },
-  messageBubble: {
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    maxWidth: 'auto',
-  },
-  userMessage: {
-    backgroundColor: "#3B82F6",
-  },
-  aiMessage: {
-    backgroundColor: "#F3F4F6",
-  },
-  messageText: {
-    fontSize: 16,
-    color: "#1F2937",
-    lineHeight: 22,
-  },
-  userMessageText: {
-    color: "#FFFFFF",
-  },
-  aiMessageText: {
-    color: "#1F2937",
-  },
-  timestamp: {
-    fontSize: 11,
-    color: "#9CA3AF",
-    alignSelf: 'flex-end',
-  },
-  userTimestamp: {
-    color: "rgba(255, 255, 255, 0.7)",
-  },
-  aiTimestamp: {
-    color: "#9CA3AF",
-  },
-  translationLangTag: {
-    fontSize: 10,
-    fontWeight: '500',
-    color: '#9CA3AF',
-    marginTop: 4,
-    alignSelf: 'flex-start',
-  },
-  userTranslationLangTag: {
-    color: "rgba(255, 255, 255, 0.7)",
-  },
-  translateButtonContainer: {
-    width: 38,
-    height: 38,
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    paddingHorizontal: 4,
-    paddingTop: 4,
-  },
-  translateButton: {
-    padding: 6,
-    borderRadius: 12,
-    backgroundColor: "#F9FAFB",
-    alignSelf: "flex-start",
-  },
-  translatedButton: {
-    backgroundColor: "#E0F2FE",
-  },
-  loadingContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-  },
-  loadingText: {
-    marginLeft: 8,
-    color: "#6B7280",
-    fontSize: 14,
-  },
+  headerLeft: { flexDirection: "row", alignItems: "center" },
+  headerTitleContainer: { flexDirection: "row", alignItems: "center", marginLeft: 12 },
+  headerTitle: { fontSize: 18, fontWeight: "700", color: "#111827" },
+  headerRight: { flexDirection: "row", alignItems: "center" },
+  iconButton: { padding: 4 },
+  langContainer: { flexDirection: "row", marginLeft: 12, backgroundColor: "#F3F4F6", borderRadius: 8, padding: 4 },
+  langText: { fontSize: 12, color: "#6B7280", paddingHorizontal: 6, fontWeight: "600" },
+  activeLangText: { color: "#3B82F6" },
+
+  chatList: { flex: 1 },
+  chatContent: { paddingHorizontal: 16, paddingBottom: 16 },
+
+  messageContainer: { marginVertical: 6 },
+  userMessageContainer: { alignItems: "flex-end" },
+  aiMessageContainer: { alignItems: "flex-start" },
+  messageRow: { flexDirection: "row", alignItems: "flex-end" },
+
+  messageBubble: { borderRadius: 16, padding: 12, maxWidth: '100%' },
+  userMessage: { backgroundColor: "#3B82F6", borderBottomRightRadius: 4 },
+  aiMessage: { backgroundColor: "#F3F4F6", borderBottomLeftRadius: 4 },
+
+  messageText: { fontSize: 16, lineHeight: 22 },
+  userMessageText: { color: "#FFFFFF" },
+  aiMessageText: { color: "#1F2937" },
+
+  translateButtonIcon: { marginLeft: 8, padding: 4 },
+
+  streamingIndicator: { flexDirection: "row", alignItems: "center", padding: 8, justifyContent: "center" },
+  streamingText: { marginLeft: 8, color: "#6B7280", fontSize: 12 },
+
   inputContainer: {
     flexDirection: "row",
-    alignItems: "flex-end",
-    padding: 16,
-    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    padding: 12,
     borderTopWidth: 1,
     borderTopColor: "#E5E7EB",
+    backgroundColor: "#FFFFFF",
   },
   input: {
     flex: 1,
     backgroundColor: "#F9FAFB",
-    borderRadius: 20,
-    paddingVertical: 12,
+    borderRadius: 24,
     paddingHorizontal: 16,
-    marginRight: 12,
+    paddingVertical: 10,
     maxHeight: 100,
+    marginRight: 8,
     fontSize: 16,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
   },
-  sendButton: {
-    backgroundColor: "#3B82F6",
-    borderRadius: 25,
-    padding: 12,
+  sendButton: { backgroundColor: "#3B82F6", borderRadius: 24, padding: 10 },
+  sendButtonDisabled: { backgroundColor: "#D1D5DB" },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
+  modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "70%", padding: 16 },
+  modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937" },
+  newChatButton: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center",
+    backgroundColor: "#3B82F6", padding: 12, borderRadius: 12, marginBottom: 16
   },
-  sendButtonDisabled: {
-    backgroundColor: "#9CA3AF",
-  },
-  fullScreenLoading: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
+  newChatText: { color: "#FFFFFF", fontWeight: "600", marginLeft: 8 },
+  historyItem: { flexDirection: "row", alignItems: "center", padding: 12, borderBottomWidth: 1, borderBottomColor: "#F3F4F6" },
+  activeHistoryItem: { backgroundColor: "#EFF6FF", borderRadius: 8, borderBottomWidth: 0 },
+  historyName: { fontSize: 16, color: "#374151", fontWeight: "500" },
+  historyDate: { fontSize: 12, color: "#9CA3AF", marginTop: 2 },
 });
 
 export default ChatAIScreen;

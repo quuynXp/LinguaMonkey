@@ -15,6 +15,7 @@ public class CourseDiscountResponse {
     private Integer discountPercentage;
     private OffsetDateTime startDate;
     private OffsetDateTime endDate;
+    private String code;
     private boolean isActive;
     private boolean isDeleted;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

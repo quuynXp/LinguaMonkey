@@ -3,16 +3,15 @@ import {
     View,
     PanResponder,
     Animated,
-
     TouchableOpacity,
     Dimensions,
     Text,
     Modal,
-    SafeAreaView,
     StyleSheet
 } from 'react-native';
 import { useChatStore } from '../../stores/ChatStore';
 import ChatInnerView from './ChatInnerView';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 const { width, height } = Dimensions.get('window');
 const BUBBLE_SIZE = 60;
@@ -20,13 +19,11 @@ const BUBBLE_SIZE = 60;
 const ChatBubble = () => {
     const { activeBubbleRoomId, isBubbleOpen, openBubble, closeBubble, minimizeBubble } = useChatStore();
 
-    // Dragging State
     const pan = useRef(new Animated.ValueXY({ x: width - BUBBLE_SIZE - 20, y: height / 2 })).current;
 
     const panResponder = useRef(
         PanResponder.create({
             onMoveShouldSetPanResponder: (_, gestureState) => {
-                // Only drag if moved more than 2 pixels (prevent accidental drags on tap)
                 return Math.abs(gestureState.dx) > 2 || Math.abs(gestureState.dy) > 2;
             },
             onPanResponderGrant: () => {
@@ -40,15 +37,12 @@ const ChatBubble = () => {
             onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
             onPanResponderRelease: () => {
                 pan.flattenOffset();
-                // Snap to nearest edge logic could go here
             },
         })
     ).current;
 
-    // Don't render anything if no active bubble
     if (!activeBubbleRoomId) return null;
 
-    // Render the Modal (Full Chat) or the Bubble Head
     return (
         <>
             {/* 1. Floating Bubble Head */}
@@ -65,7 +59,6 @@ const ChatBubble = () => {
                         activeOpacity={0.8}
                         style={styles.touchable}
                     >
-                        {/* You can fetch the Room Avatar here using a small query or just a generic icon */}
                         <View style={styles.avatarCircle}>
                             <Text style={styles.avatarText}>💬</Text>
                         </View>
@@ -150,7 +143,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     modalContentWrapper: {
-        flex: 5, // Take up 80% of screen height from bottom
+        flex: 5,
         backgroundColor: 'transparent',
     },
     modalInner: {

@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react"
-import { Alert, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
+import { Alert, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, TextInput, Keyboard } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useUserStore } from "../../stores/UserStore"
 import * as WebBrowser from "expo-web-browser"
 import { useTransactionsApi } from "../../hooks/useTransaction"
 import { useWallet } from "../../hooks/useWallet"
+import { useCourses } from "../../hooks/useCourses"
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter"
 
 import { useTranslation } from "react-i18next"
@@ -20,7 +21,7 @@ interface CourseType {
   instructor: string;
 }
 
-const PaymentScreen = ({ navigation, route }) => {
+const PaymentScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
   const { course } = route.params as { course: CourseType };
   const { user } = useUserStore();
@@ -28,16 +29,56 @@ const PaymentScreen = ({ navigation, route }) => {
   const [selectedMethod, setSelectedMethod] = useState<"wallet" | "gateway">("gateway");
   const [gatewayProvider, setGatewayProvider] = useState<Enums.TransactionProvider>(Enums.TransactionProvider.VNPAY);
 
+  // Coupon State
+  const [couponCode, setCouponCode] = useState("");
+  const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; percent: number } | null>(null);
+
   // Hooks
   const { data: walletData, isLoading: loadingBalance } = useWallet().useWalletBalance(user?.userId);
   const createPaymentUrl = useTransactionsApi().useCreatePayment();
   const createTransaction = useTransactionsApi().useCreateTransaction();
   const { convert, isLoading: loadingRates } = useCurrencyConverter();
 
+  // NEW: Validate Coupon Hook
+  const { mutate: validateDiscount, isPending: isValidatingCoupon } = useCourses().useValidateDiscount();
+
+  // Calculation Logic
+  const originalPrice = course.price;
+  const discountAmount = appliedDiscount
+    ? (originalPrice * appliedDiscount.percent) / 100
+    : 0;
+  const finalAmount = Math.max(0, originalPrice - discountAmount);
+
   // Currency Logic
-  const userCurrency = user?.country ? (user.country === Enums.Country.VIETNAM ? 'VND' : 'USD') : 'VND'; // Fallback logic
-  const displayPrice = convert(course.price, userCurrency);
-  const isBalanceSufficient = (walletData?.balance || 0) >= course.price;
+  const userCurrency = user?.country ? (user.country === Enums.Country.VIETNAM ? 'VND' : 'USD') : 'VND';
+  const displayFinalPrice = convert(finalAmount, userCurrency);
+  const displayOriginalPrice = convert(originalPrice, userCurrency);
+
+  const isBalanceSufficient = (walletData?.balance || 0) >= finalAmount;
+
+  const handleApplyCoupon = () => {
+    Keyboard.dismiss();
+    if (!couponCode.trim()) return;
+
+    validateDiscount({ code: couponCode, courseId: course.courseId }, {
+      onSuccess: (data) => {
+        setAppliedDiscount({
+          code: data.code,
+          percent: data.discountPercentage
+        });
+        Alert.alert(t("success"), t("payment.couponApplied", { percent: data.discountPercentage }));
+      },
+      onError: () => {
+        setAppliedDiscount(null);
+        Alert.alert(t("error"), t("payment.invalidCoupon"));
+      }
+    });
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedDiscount(null);
+    setCouponCode("");
+  };
 
   const handlePayment = () => {
     if (!user?.userId) return;
@@ -54,14 +95,12 @@ const PaymentScreen = ({ navigation, route }) => {
   };
 
   const processWalletPayment = () => {
-    // Logic: Tạo transaction loại PAYMENT trừ tiền ví
     const payload: TransactionRequest = {
       userId: user!.userId,
-      amount: course.price,
+      amount: finalAmount, // Use final discounted amount
       provider: Enums.TransactionProvider.INTERNAL,
-      status: Enums.TransactionStatus.SUCCESS, // Internal xử lý sync
-      description: `Payment for course: ${course.title}`,
-      // Backend cần xử lý logic: Nếu provider=INTERNAL & Type=PAYMENT -> Trừ tiền ví
+      status: Enums.TransactionStatus.SUCCESS,
+      description: `Payment for course: ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
     };
 
     createTransaction.mutate(payload, {
@@ -76,11 +115,11 @@ const PaymentScreen = ({ navigation, route }) => {
   const processGatewayPayment = () => {
     const payload: PaymentRequest = {
       userId: user!.userId,
-      amount: course.price, // Gửi tiền gốc (VND), backend tự xử lý currency nếu cần
+      amount: finalAmount, // Use final discounted amount
       provider: gatewayProvider,
       currency: "VND",
       returnUrl: "linguamonkey://payment/success",
-      description: `Buy ${course.title}`,
+      description: `Buy ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
     };
 
     createPaymentUrl.mutate(payload, {
@@ -97,9 +136,16 @@ const PaymentScreen = ({ navigation, route }) => {
   const renderPriceDisplay = () => {
     if (loadingRates) return <ActivityIndicator size="small" color="#4F46E5" />;
     return (
-      <Text style={styles.totalValue}>
-        {displayPrice.toLocaleString()} {userCurrency}
-      </Text>
+      <View style={{ alignItems: 'flex-end' }}>
+        {appliedDiscount && (
+          <Text style={styles.originalPrice}>
+            {displayOriginalPrice.toLocaleString()} {userCurrency}
+          </Text>
+        )}
+        <Text style={styles.totalValue}>
+          {displayFinalPrice.toLocaleString()} {userCurrency}
+        </Text>
+      </View>
     );
   };
 
@@ -119,6 +165,44 @@ const PaymentScreen = ({ navigation, route }) => {
           <Text style={styles.courseTitle}>{course.title}</Text>
           <Text style={styles.instructor}>by {course.instructor}</Text>
           <View style={styles.divider} />
+
+          {/* Coupon Input Section */}
+          <View style={styles.couponContainer}>
+            <View style={styles.inputWrapper}>
+              <Icon name="local-offer" size={20} color="#6B7280" style={styles.inputIcon} />
+              <TextInput
+                style={styles.couponInput}
+                placeholder={t("payment.enterCode")}
+                value={couponCode}
+                onChangeText={setCouponCode}
+                editable={!appliedDiscount}
+                autoCapitalize="characters"
+              />
+            </View>
+            {appliedDiscount ? (
+              <TouchableOpacity style={styles.removeBtn} onPress={handleRemoveCoupon}>
+                <Icon name="close" size={20} color="#EF4444" />
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={[styles.applyBtn, (!couponCode || isValidatingCoupon) && styles.disabledBtn]}
+                onPress={handleApplyCoupon}
+                disabled={!couponCode || isValidatingCoupon}
+              >
+                {isValidatingCoupon ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.applyText}>{t("common.apply")}</Text>}
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {appliedDiscount && (
+            <View style={styles.discountRow}>
+              <Text style={styles.discountLabel}>{t("payment.discountApplied")}:</Text>
+              <Text style={styles.discountValue}>-{appliedDiscount.percent}% ({appliedDiscount.code})</Text>
+            </View>
+          )}
+
+          <View style={styles.divider} />
+
           <View style={styles.priceRow}>
             <Text style={styles.label}>{t('payment.total')}</Text>
             {renderPriceDisplay()}
@@ -207,8 +291,23 @@ const styles = createScaledSheet({
   courseTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937", marginBottom: 4 },
   instructor: { fontSize: 14, color: "#6B7280" },
   divider: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 12 },
+
+  // Coupon Styles
+  couponContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
+  inputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 10, marginRight: 8 },
+  inputIcon: { marginRight: 8 },
+  couponInput: { flex: 1, paddingVertical: 10, fontSize: 14, color: '#1F2937' },
+  applyBtn: { backgroundColor: '#4F46E5', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 },
+  disabledBtn: { backgroundColor: '#A5B4FC' },
+  applyText: { color: '#FFF', fontWeight: '600', fontSize: 12 },
+  removeBtn: { padding: 10, backgroundColor: '#FEF2F2', borderRadius: 8 },
+  discountRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  discountLabel: { color: '#059669', fontSize: 14 },
+  discountValue: { color: '#059669', fontWeight: 'bold', fontSize: 14 },
+
   priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   label: { fontSize: 16, color: "#4B5563" },
+  originalPrice: { fontSize: 14, color: '#9CA3AF', textDecorationLine: 'line-through', marginBottom: 2 },
   totalValue: { fontSize: 20, fontWeight: "700", color: "#4F46E5" },
 
   sectionTitle: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 12 },

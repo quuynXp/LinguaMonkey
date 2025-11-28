@@ -4,10 +4,13 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useShallow } from 'zustand/react/shallow';
+import { useAppStore, NotificationPreferences, PrivacySettings } from '../../stores/appStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { gotoTab } from '../../utils/navigationRef';
@@ -16,42 +19,51 @@ const SettingsScreen: React.FC = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<any>();
 
-  const settingsItems = [
-    {
-      label: t('settings.privacy'),
-      icon: 'lock',
-      screen: 'PrivacySettings',
-    },
-    {
-      label: t('settings.notifications'),
-      icon: 'notifications',
-      screen: 'NotificationSettingsScreen',
-    },
-    {
-      label: t('settings.transactionHistory'),
-      icon: 'history',
-      screen: 'TransactionHistoryScreen',
-    },
-    {
-      label: t('settings.leaderboard'),
-      icon: 'leaderboard',
-      screen: 'Leaderboard',
-    },
-    {
-      label: t('settings.about'),
-      icon: 'info',
-      screen: 'About',
-    },
-    {
-      label: t('settings.userManagement'),
-      icon: 'people',
-      screen: 'EnhancedUserManagement',
-    },
-  ];
+  const {
+    notificationPreferences,
+    privacySettings,
+    toggleNotification,
+    togglePrivacy,
+  } = useAppStore(
+    useShallow((state) => ({
+      notificationPreferences: state.notificationPreferences,
+      privacySettings: state.privacySettings,
+      toggleNotification: state.toggleNotification,
+      togglePrivacy: state.togglePrivacy,
+    }))
+  );
 
-  const handleNavigate = (screen: string) => {
-    gotoTab('Profile', screen);
-  };
+  const renderToggleItem = (
+    label: string,
+    value: boolean | undefined,
+    onToggle: () => void,
+    icon: string,
+    color: string
+  ) => (
+    <View style={styles.toggleRow}>
+      <View style={[styles.iconContainer, { backgroundColor: `${color}1A` }]}>
+        <Icon name={icon as any} size={20} color={color} />
+      </View>
+      <Text style={styles.toggleLabel}>{label}</Text>
+      <Switch
+        trackColor={{ false: '#E5E7EB', true: '#4F46E5' }}
+        thumbColor={'#FFFFFF'}
+        ios_backgroundColor="#E5E7EB"
+        onValueChange={onToggle}
+        value={value ?? false}
+      />
+    </View>
+  );
+
+  const renderLinkItem = (label: string, icon: string, color: string, onPress: () => void) => (
+    <TouchableOpacity style={styles.linkRow} onPress={onPress}>
+      <View style={[styles.iconContainer, { backgroundColor: `${color}1A` }]}>
+        <Icon name={icon as any} size={20} color={color} />
+      </View>
+      <Text style={styles.linkLabel}>{label}</Text>
+      <Icon name="chevron-right" size={24} color="#9CA3AF" />
+    </TouchableOpacity>
+  );
 
   return (
     <ScreenLayout>
@@ -59,24 +71,116 @@ const SettingsScreen: React.FC = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#1F2937" />
         </TouchableOpacity>
-        <Text style={styles.title}>{t('settings.title', 'Settings')}</Text>
+        <Text style={styles.headerTitle}>{t('settings.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.card}>
-          {settingsItems.map((item) => (
-            <TouchableOpacity
-              key={item.screen}
-              style={styles.actionButton}
-              onPress={() => handleNavigate(item.screen)}
-            >
-              <Icon name={item.icon as any} size={22} color="#4F46E5" />
-              <Text style={styles.actionText}>{item.label}</Text>
-              <Icon name="chevron-right" size={22} color="#9CA3AF" />
-            </TouchableOpacity>
-          ))}
+      <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+
+        {/* Notifications Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>{t('settings.notifications')}</Text>
+          <View style={styles.card}>
+            {renderToggleItem(
+              t('settings.studyReminders'),
+              notificationPreferences?.studyReminders,
+              () => toggleNotification('studyReminders'),
+              'alarm',
+              '#F59E0B'
+            )}
+            <View style={styles.separator} />
+            {renderToggleItem(
+              t('settings.streakReminders'),
+              notificationPreferences?.streakReminders,
+              () => toggleNotification('streakReminders'),
+              'whatshot',
+              '#EF4444'
+            )}
+            <View style={styles.separator} />
+            {renderToggleItem(
+              t('settings.soundEnabled'),
+              notificationPreferences?.soundEnabled,
+              () => toggleNotification('soundEnabled'),
+              'volume-up',
+              '#10B981'
+            )}
+            <View style={styles.separator} />
+            {renderToggleItem(
+              t('settings.vibrationEnabled'),
+              notificationPreferences?.vibrationEnabled,
+              () => toggleNotification('vibrationEnabled'),
+              'vibration',
+              '#6366F1'
+            )}
+          </View>
         </View>
+
+        {/* Privacy Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>{t('settings.privacy')}</Text>
+          <View style={styles.card}>
+            {renderToggleItem(
+              t('settings.profileVisibility'),
+              privacySettings?.profileVisibility,
+              () => togglePrivacy('profileVisibility'),
+              'visibility',
+              '#3B82F6'
+            )}
+            <View style={styles.separator} />
+            {renderToggleItem(
+              t('settings.progressSharing'),
+              privacySettings?.progressSharing,
+              () => togglePrivacy('progressSharing'),
+              'share',
+              '#8B5CF6'
+            )}
+            <View style={styles.separator} />
+            {renderToggleItem(
+              t('settings.locationTracking'),
+              privacySettings?.locationTracking,
+              () => togglePrivacy('locationTracking'),
+              'location-on',
+              '#EC4899'
+            )}
+            <View style={styles.separator} />
+            {renderToggleItem(
+              t('settings.contactSync'),
+              privacySettings?.contactSync,
+              () => togglePrivacy('contactSync'),
+              'contacts',
+              '#14B8A6'
+            )}
+          </View>
+        </View>
+
+        {/* General / Info Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>{t('settings.general')}</Text>
+          <View style={styles.card}>
+            {renderLinkItem(
+              t('settings.about'),
+              'info',
+              '#6B7280',
+              () => gotoTab('Profile', 'AboutScreen')
+            )}
+            <View style={styles.separator} />
+            {renderLinkItem(
+              t('settings.helpSupport'),
+              'help',
+              '#06B6D4',
+              () => gotoTab('Profile', 'HelpSupportScreen')
+            )}
+            <View style={styles.separator} />
+            {renderLinkItem(
+              t('settings.userManagement'),
+              'manage-accounts',
+              '#F43F5E',
+              () => gotoTab('Profile', 'EnhancedUserManagement')
+            )}
+          </View>
+        </View>
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </ScreenLayout>
   );
@@ -89,41 +193,27 @@ const styles = createScaledSheet({
     justifyContent: 'space-between',
     paddingHorizontal: 16,
     paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
     borderBottomColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
   },
-  backButton: {
-    padding: 8,
-    marginLeft: -8,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1F2937',
-  },
-  container: {
-    padding: 20,
-  },
-  card: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  actionText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#374151',
-    marginLeft: 16,
-  },
+  backButton: { padding: 8, marginLeft: -8 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  container: { padding: 20, paddingBottom: 40 },
+  section: { marginBottom: 24 },
+  sectionHeader: { fontSize: 14, fontWeight: '700', color: '#6B7280', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+  card: { backgroundColor: '#FFFFFF', borderRadius: 16, overflow: 'hidden', paddingHorizontal: 16, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 4 },
+
+  // Toggle Row
+  toggleRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  iconContainer: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', marginRight: 14 },
+  toggleLabel: { flex: 1, fontSize: 16, color: '#374151', fontWeight: '500' },
+
+  // Link Row
+  linkRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14 },
+  linkLabel: { flex: 1, fontSize: 16, color: '#374151', fontWeight: '500' },
+
+  separator: { height: 1, backgroundColor: '#F3F4F6', marginLeft: 50 },
 });
 
 export default SettingsScreen;

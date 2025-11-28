@@ -408,6 +408,8 @@
   "join": "Join",
   "common": {
     "skip": "Skip",
+    "server_unavailable_msg": "Server is unavailable, please try again later, we are sorry for this unpleasant experience.",
+    "reconnecting": "Reconnecting",
     "loading": "Loading...",
     "appName": "MonkeyLingua",
     "error": "Error",
@@ -2077,7 +2079,8 @@
     "B2": "B2",
     "C1": "C1",
     "C2": "C2",
-    "NATIVE": "Native Speaker"
+    "NATIVE": "Native Speaker",
+    "BEGINER": "Beginner"
   },
   "speaking": {
     "select_lesson": "Select a Lesson",
@@ -2130,5 +2133,12 @@
     "progress": "Tiến độ",
     "chat_ai": "AI Chat",
     "profile": "Hồ sơ"
-  }
+  },
+  "Target Language": "Target Language",
+  "Target Proficiency": "Target Proficiency",
+  "Target Completion Date": "Target Completion Date",
+  "Focus Areas": "Focus Areas",
+  "Study Time (minutes/day)": "Study Time (minutes/day)",
+  "Additional Requirements": "Additional Requirements",
+  "Any specific goals or interests?": "Any specific goals or interests?"
 }

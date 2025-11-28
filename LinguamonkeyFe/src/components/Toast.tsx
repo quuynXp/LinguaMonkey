@@ -1,70 +1,96 @@
-import Toast, { BaseToast } from "react-native-toast-message"
+import React from 'react';
+import { StyleSheet, Platform, View, Text, ViewStyle, TextStyle, Image, ImageStyle } from 'react-native'; // Import ImageStyle
+import Toast, { BaseToastProps, ToastShowParams } from 'react-native-toast-message';
 
-export const showToast = ({ message, type = "info" }) => {
+interface ShowToastParams {
+  title?: string;
+  message?: string;
+  type?: 'success' | 'error' | 'info' | 'warning';
+}
+
+const APP_LOGO_SOURCE = require('../assets/icons/icon_96.png');
+
+const getTitleByType = (type: string) => {
+  switch (type) {
+    case 'success': return 'Thành công';
+    case 'error': return 'Lỗi';
+    case 'warning': return 'Cảnh báo';
+    case 'info': default: return 'Thông báo';
+  }
+};
+
+export const showToast = ({ title, message, type = 'info' }: ShowToastParams) => {
+  const finalTitle = title || getTitleByType(type);
+
   Toast.show({
     type: type,
-    text1: message, // Hiển thị nội dung trực tiếp ở dòng 1
+    text1: message ? `${finalTitle}: ${message}` : finalTitle,
     position: 'top',
     visibilityTime: 4000,
     autoHide: true,
     topOffset: 50,
-  })
-}
-
-const commonStyle = {
-  height: 'auto',
-  paddingVertical: 12,
-  borderRadius: 8,
-  borderLeftWidth: 5,
-  width: '90%',
-  alignSelf: 'center'
+  } as ToastShowParams);
 };
 
-const commonTextStyle = {
-  fontSize: 14,
-  fontWeight: "500", // Độ đậm vừa phải, không quá đậm như Title
-  color: "#374151",
+const styles = StyleSheet.create({
+  container: {
+    height: 'auto',
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+    borderRadius: 10,
+    width: '94%',
+    alignSelf: 'center',
+    backgroundColor: '#FFFFFF',
+    flexDirection: 'row',
+    alignItems: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
+  } as ViewStyle,
+  // Đã sửa: Sử dụng ImageStyle thay vì ViewStyle
+  appLogo: {
+    width: 24,
+    height: 24,
+    marginRight: 10,
+    resizeMode: 'contain',
+  } as ImageStyle, // Chỉ định rõ kiểu là ImageStyle
+  text1: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#1F2937',
+    flexShrink: 1,
+  } as TextStyle,
+});
+
+interface CustomToastProps extends BaseToastProps {
+  type: 'success' | 'error' | 'info' | 'warning';
+}
+
+const CustomBaseToast = ({ type, ...props }: CustomToastProps) => {
+  return (
+    <View style={styles.container}>
+      {/* Không cần thay đổi gì ở đây, vì styles.appLogo đã đúng kiểu */}
+      <Image source={APP_LOGO_SOURCE} style={styles.appLogo} />
+      <Text style={styles.text1} numberOfLines={3}>
+        {props.text1}
+      </Text>
+    </View>
+  );
 };
 
 export const toastConfig = {
-  error: (props) => (
-    <BaseToast
-      {...props}
-      // Màu đỏ cho lỗi Server (5xx)
-      style={{ ...commonStyle, borderLeftColor: "#EF4444" }}
-      contentContainerStyle={{ paddingHorizontal: 15 }}
-      text1Style={commonTextStyle}
-      text1NumberOfLines={3} // Hỗ trợ hiển thị tối đa 3 dòng cho lỗi dài
-    />
-  ),
-  success: (props) => (
-    <BaseToast
-      {...props}
-      style={{ ...commonStyle, borderLeftColor: "#10B981" }}
-      contentContainerStyle={{ paddingHorizontal: 15 }}
-      text1Style={commonTextStyle}
-      text1NumberOfLines={3}
-    />
-  ),
-  info: (props) => (
-    <BaseToast
-      {...props}
-      style={{ ...commonStyle, borderLeftColor: "#3B82F6" }}
-      contentContainerStyle={{ paddingHorizontal: 15 }}
-      text1Style={commonTextStyle}
-      text1NumberOfLines={3}
-    />
-  ),
-  warning: (props) => (
-    <BaseToast
-      {...props}
-      // Màu vàng/cam cho lỗi Client (4xx)
-      style={{ ...commonStyle, borderLeftColor: "#F59E0B" }}
-      contentContainerStyle={{ paddingHorizontal: 15 }}
-      text1Style={commonTextStyle}
-      text1NumberOfLines={3}
-    />
-  ),
-}
+  error: (props: BaseToastProps) => <CustomBaseToast {...props} type="error" />,
+  success: (props: BaseToastProps) => <CustomBaseToast {...props} type="success" />,
+  info: (props: BaseToastProps) => <CustomBaseToast {...props} type="info" />,
+  warning: (props: BaseToastProps) => <CustomBaseToast {...props} type="warning" />,
+};
 
-export default Toast
+export default Toast;

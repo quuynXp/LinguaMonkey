@@ -94,10 +94,9 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
                 FROM leaderboard_entries le
                 JOIN users u ON le.user_id = u.user_id
                 WHERE le.leaderboard_id = (
-                    SELECT id
+                    SELECT leaderboard_id
                     FROM leaderboards
                     WHERE tab = :tab
-                    AND type = :type
                     AND is_deleted = false
                     ORDER BY created_at DESC
                     LIMIT 1
@@ -108,8 +107,7 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             """, nativeQuery = true)
     Integer findRankByUserAndTab(
             @Param("userId") UUID userId,
-            @Param("tab") String tab,
-            @Param("type") String type
+            @Param("tab") String tab
     );
 
     @Query("SELECT le FROM LeaderboardEntry le " +

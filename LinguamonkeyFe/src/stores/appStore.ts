@@ -101,9 +101,9 @@ export const useAppStore = create<AppState>()(
       selectedChapter: null,
       selectedGrammarTopic: null,
       selectedVideo: null,
-      supportLanguage: ['en', 'vi', 'jp', 'ko', 'fr', 'de'],
+      supportLanguage: ['en', 'vi', 'zh'],
       nativeLanguage: 'vi',
-      languages: ['en', 'jp'],
+      languages: ['en', 'vi'],
       theme: 'light',
       selectedNoteTopic: 'all',
       callPreferences: {

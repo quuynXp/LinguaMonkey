@@ -20,9 +20,11 @@ import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(true);
+  const [serverErrorMsg, setServerErrorMsg] = useState<string | null>(null);
 
   const accessToken = useTokenStore((state) => state.accessToken);
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
+  const clearTokens = useTokenStore((state) => state.clearTokens);
 
   const { setUser, setLocalNativeLanguage } = useUserStore();
 
@@ -34,7 +36,7 @@ const RootNavigation = () => {
       prefixes: [
         Linking.createURL("/"),
         "monkeylingua://",
-        "https://monkeylingua.vercle.app",
+        "https://monkeylingua.vercel.app",
       ],
       config: {
         screens: {
@@ -115,54 +117,88 @@ const RootNavigation = () => {
         if (hasValidToken) {
           const currentToken = useTokenStore.getState().accessToken;
           if (currentToken) {
-            try {
-              const payload = decodeToken(currentToken);
-              if (payload?.userId) {
-                const userId = payload.userId;
+            let userFetchSuccess = false;
+            const startTime = Date.now();
+            const TIMEOUT_THRESHOLD = 60000; // 60 giây
 
-                const userRes = await instance.get(`/api/v1/users/${userId}`);
-                const rawUser = userRes.data.result || {};
-                const normalizedUser = {
-                  ...rawUser,
-                  userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id,
-                  roles: getRoleFromToken(currentToken),
-                };
+            while (!userFetchSuccess && mounted) {
+              try {
+                const payload = decodeToken(currentToken);
+                if (payload?.userId) {
+                  const userId = payload.userId;
 
-                if (normalizedUser.nativeLanguageCode && normalizedUser.nativeLanguageCode !== savedLanguage) {
-                  await i18n.changeLanguage(normalizedUser.nativeLanguageCode);
-                  await AsyncStorage.setItem("userLanguage", normalizedUser.nativeLanguageCode);
-                  setLocalNativeLanguage(normalizedUser.nativeLanguageCode);
+                  const userRes = await instance.get(`/api/v1/users/${userId}`);
+
+                  // Nếu gọi thành công, clear lỗi ngay (nếu có)
+                  setServerErrorMsg(null);
+
+                  const rawUser = userRes.data.result || {};
+                  const normalizedUser = {
+                    ...rawUser,
+                    userId: rawUser.userId ?? rawUser.user_id ?? rawUser.id,
+                    roles: getRoleFromToken(currentToken),
+                  };
+
+                  if (normalizedUser.nativeLanguageCode && normalizedUser.nativeLanguageCode !== savedLanguage) {
+                    await i18n.changeLanguage(normalizedUser.nativeLanguageCode);
+                    await AsyncStorage.setItem("userLanguage", normalizedUser.nativeLanguageCode);
+                    setLocalNativeLanguage(normalizedUser.nativeLanguageCode);
+                  }
+
+                  setUser(normalizedUser, savedLanguage);
+                  await AsyncStorage.setItem("hasLoggedIn", "true");
+
+                  notificationService.registerTokenToBackend();
+
+                  const roles = normalizedUser.roles || [];
+                  const hasFinishedSetup = normalizedUser.hasFinishedSetup === true;
+                  const hasDonePlacementTest = normalizedUser.hasDonePlacementTest === true;
+                  const today = new Date().toISOString().split("T")[0];
+                  const lastDailyWelcomeAt = normalizedUser.lastDailyWelcomeAt;
+                  let isFirstOpenToday = true;
+
+                  if (lastDailyWelcomeAt) {
+                    const lastDate = new Date(lastDailyWelcomeAt).toISOString().split("T")[0];
+                    if (lastDate === today) isFirstOpenToday = false;
+                  }
+
+                  if (roles.includes("ROLE_ADMIN")) {
+                    setInitialMainRoute("AdminStack");
+                  } else if (!hasFinishedSetup) {
+                    setInitialMainRoute("SetupInitScreen");
+                  } else if (!hasDonePlacementTest) {
+                    setInitialMainRoute("ProficiencyTestScreen");
+                  } else {
+                    setInitialMainRoute(isFirstOpenToday ? "DailyWelcomeScreen" : "TabApp");
+                  }
                 }
+                userFetchSuccess = true;
+              } catch (e: any) {
+                console.error("Boot user fetch failed:", e);
+                const status = e?.response?.status;
 
-                setUser(normalizedUser, savedLanguage);
-                await AsyncStorage.setItem("hasLoggedIn", "true");
-
-                notificationService.registerTokenToBackend();
-
-                const roles = normalizedUser.roles || [];
-                const hasFinishedSetup = normalizedUser.hasFinishedSetup === true;
-                const hasDonePlacementTest = normalizedUser.hasDonePlacementTest === true;
-                const today = new Date().toISOString().split("T")[0];
-                const lastDailyWelcomeAt = normalizedUser.lastDailyWelcomeAt;
-                let isFirstOpenToday = true;
-
-                if (lastDailyWelcomeAt) {
-                  const lastDate = new Date(lastDailyWelcomeAt).toISOString().split("T")[0];
-                  if (lastDate === today) isFirstOpenToday = false;
-                }
-
-                if (roles.includes("ROLE_ADMIN")) {
-                  setInitialMainRoute("AdminStack");
-                } else if (!hasFinishedSetup) {
-                  setInitialMainRoute("SetupInitScreen");
-                } else if (!hasDonePlacementTest) {
-                  setInitialMainRoute("ProficiencyTestScreen");
+                if (status === 401 || status === 403) {
+                  // Token hết hạn thì cho logout luôn, không cần đợi server
+                  clearTokens();
+                  userFetchSuccess = true;
                 } else {
-                  setInitialMainRoute(isFirstOpenToday ? "DailyWelcomeScreen" : "TabApp");
+                  // Nếu không phải lỗi auth (nghĩa là lỗi mạng hoặc server die 500)
+                  const elapsed = Date.now() - startTime;
+
+                  // Nếu đợi quá 60s mà chưa được, hiển thị thông báo
+                  if (elapsed > TIMEOUT_THRESHOLD && mounted) {
+                    setServerErrorMsg(
+                      i18n.t("common.server_unavailable_msg", {
+                        defaultValue: "Server đang không khả dụng, vui lòng truy cập lại sau, chúng tôi rất tiếc vì trải nghiệm không tuyệt vời này."
+                      })
+                    );
+                  }
+
+                  console.log("Backend unavailable, retrying in 3s...");
+                  // Đợi 3s rồi loop lại
+                  await new Promise(resolve => setTimeout(resolve, 3000));
                 }
               }
-            } catch (e) {
-              console.error("Boot user fetch failed:", e);
             }
           }
         } else {
@@ -181,7 +217,7 @@ const RootNavigation = () => {
     boot();
 
     return () => { mounted = false; };
-  }, [initializeTokens, setUser, setLocalNativeLanguage]);
+  }, [initializeTokens, setUser, setLocalNativeLanguage, clearTokens]);
 
   if (!isConnected) {
     return (
@@ -191,15 +227,16 @@ const RootNavigation = () => {
     );
   }
 
+  // Truyền prop serverError vào SplashScreen
   if (isLoading) {
-    return <SplashScreen />;
+    return <SplashScreen serverError={serverErrorMsg} />;
   }
 
   return (
     <NavigationContainer
       ref={RootNavigationRef}
       linking={linking}
-      fallback={<SplashScreen />}
+      fallback={<SplashScreen serverError={serverErrorMsg} />}
       onReady={() => {
         console.log("Navigation Ready");
         flushPendingActions();

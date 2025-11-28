@@ -3,6 +3,7 @@ server:
 
 spring:
   datasource:
+    # url: ${SPRING_DATASOURCE_URL}
     url: ${DB_URL}
     username: ${DB_USERNAME}
     password: ${DB_PASSWORD}
@@ -23,7 +24,7 @@ spring:
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD}
       ssl:
-        enabled: false # Trong Docker network, không cần SSL
+        enabled: true
 
   cache:
     type: redis

@@ -15,8 +15,10 @@ import org.springframework.context.MessageSource;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 
@@ -45,13 +47,18 @@ public class MatchmakingController {
 
         // 2. Lấy danh sách các Candidates đang chờ trong hàng đợi
         List<MatchCandidate> candidates = queueService.getCandidatesFor(currentUserIdStr);
+        int currentQueueSize = queueService.getQueueSize();
 
         // Nếu không có ai khác đang chờ, trả về trạng thái WAITING ngay
         if (candidates.isEmpty()) {
+            Map<String, Object> waitResult = new HashMap<>();
+            waitResult.put("status", "WAITING");
+            waitResult.put("queueSize", currentQueueSize);
+
             return AppApiResponse.builder()
                     .code(202) // Accepted but not completed
                     .message("Added to queue. Waiting for other users...")
-                    .result(null)
+                    .result(waitResult)
                     .build();
         }
 
@@ -96,10 +103,14 @@ public class MatchmakingController {
         } else {
             // AI không thấy ai hợp trong list hiện tại (dù có người chờ)
             // Vẫn giữ user trong hàng đợi
+            Map<String, Object> waitResult = new HashMap<>();
+            waitResult.put("status", "WAITING");
+            waitResult.put("queueSize", currentQueueSize);
+
             return AppApiResponse.builder()
                     .code(202)
                     .message("No suitable match found yet based on AI analysis. Still in queue.")
-                    .result(null)
+                    .result(waitResult)
                     .build();
         }
     }

@@ -1,0 +1,604 @@
+{
+    "flashcards": {
+        "title": "Vocabulary Flashcards",
+        "searchPlaceholder": "Search flashcards...",
+        "studyModes": "Study Modes",
+        "definitionStudy": "Definition Study",
+        "imageStudy": "Image Study",
+        "loadError": "Error loading flashcards",
+        "noCardsTitle": "No Cards",
+        "noCardsMessage": "No flashcards available for study",
+        "studyCompleteTitle": "Study Complete",
+        "studyCompleteMessage": "You've reviewed all flashcards!",
+        "fillWordAndDefinition": "Please fill in word and definition",
+        "createLocalSuccess": "Flashcard created locally.",
+        "permissionDenied": "Permission denied",
+        "reviewDoneTitle": "Done",
+        "reviewDoneMessage": "Finished reviewing available cards.",
+        "reviewFailed": "Review failed. Try again.",
+        "favorite": "Favorite",
+        "implementFavorite": "Implement favorite API if needed",
+        "like": "Like",
+        "implementLike": "Implement like API if needed",
+        "exampleLabel": "Example:",
+        "noCardsAvailable": "No cards available",
+        "progress_flashcard": "{{current}} / {{total}}",
+        "imagePrompt": "What word does this image represent?",
+        "definitionPrompt": "What does this word mean?",
+        "answerLabel": "Answer:",
+        "showAnswer": "Show Answer",
+        "categories": {
+            "all": "All",
+            "general": "General",
+            "academic": "Academic",
+            "business": "Business",
+            "travel": "Travel",
+            "technology": "Technology"
+        },
+        "createTitle": "Create Flashcard",
+        "form": {
+            "word": "Word",
+            "wordPlaceholder": "Enter word",
+            "definition": "Definition",
+            "definitionPlaceholder": "Enter definition",
+            "image": "Image",
+            "addImage": "Add Image",
+            "difficulty": "Difficulty",
+            "public": "Public",
+            "example": "Example",
+            "examplePlaceholder": "Enter an example sentence"
+        }
+    },
+    "listening": {
+        "title": "Listening Practice",
+        "welcomeTitle": "Listening Exercises",
+        "welcomeSubtitle": "Improve your listening skills with various topics",
+        "chooseTopic": "Choose a Topic"
+    },
+    "learn": {
+        "title": "Learn English",
+        "courses": "Courses",
+        "certPreparation": "Certificate Preparation",
+        "simulation": "1-on-1 Simulation",
+        "subtitle": "Your daily English learning companion",
+        "description": "Practice speaking, listening, reading, and writing with interactive lessons and quizzes.",
+        "startNow": "Start Now",
+        "continue": "Continue Learning",
+        "dailyGoal": "Daily Goal",
+        "interactiveQuiz": "Interactive Quiz",
+        "vocabularyFlashcards": "Vocabulary Flashcards",
+        "ipaPronunciation": "IPA Pronunciation",
+        "quizLearning": "Quiz Learning",
+        "notes": "Notes",
+        "listeningLessons": "Listening Lessons",
+        "speakingLessons": "Speaking Lessons",
+        "readingLessons": "Reading Lessons",
+        "writingLessons": "Writing Lessons",
+        "learningTools": "Learning Tools",
+        "dailyGoalDescription": "Complete at least 1 lesson and practice for 15 minutes daily to maintain your learning streak.",
+        "dailyChallenge": "Daily Challenge",
+        "dailyChallengeDescription": "Complete today's challenge to earn bonus XP and rewards.",
+        "dailyStreak": "Daily Streak",
+        "dailyStreakDescription": "Keep your learning streak alive by completing lessons every day.",
+        "welcomeMessage": "Welcome to your daily English learning session!",
+        "welcome": "Hello, {{name}}!",
+        "defaultName": "Learner",
+        "level": "Level",
+        "dayStreak": "day streak",
+        "selectLanguage": "Select Language",
+        "categories": {
+            "listening": "Listening",
+            "speaking": "Speaking",
+            "reading": "Reading",
+            "writing": "Writing",
+            "advancedListening": "Advanced Listening",
+            "ipa": "IPA",
+            "certification": "Certification",
+            "quiz": "Quiz",
+            "vocabulary": "Vocabulary",
+            "grammar": "Grammar"
+        },
+        "listening": "Listening",
+        "speaking": "Speaking",
+        "reading": "Reading",
+        "writing": "Writing",
+        "soloQuiz": "Solo Quiz",
+        "teamQuiz": "Team Quiz",
+        "bilingual": "Bilingual Videos",
+        "certifications": "Certifications",
+        "lessonsCount": "{{count}} lessons",
+        "lessonsCount_plural": "{{count}} lessons",
+        "noContent": "No Courses Available",
+        "noContentMessage": "Let get started with some free courses to build your skills.",
+        "bilingualVideos": "Bilingual Videos",
+        "myCourses": "My Courses",
+        "freeCourses": "Free Courses",
+        "recommendedCourses": "Recommended Courses",
+        "viewAllCourses": "View All Courses"
+    },
+    "all": "All",
+    "learning": "Learning",
+    "lessons": {
+        "title": "Free Lessons",
+        "chooseChapter": "Choose a Chapter",
+        "lessonCompleted": "Lesson Completed!",
+        "quizScore": "Your Score: {{score}}%",
+        "submitQuiz": "Submit Quiz",
+        "tryAgain": "Try Again",
+        "difficulty": {
+            "beginner": "Beginner",
+            "intermediate": "Intermediate",
+            "advanced": "Advanced"
+        },
+        "types": {
+            "video": "Video",
+            "article": "Article",
+            "quiz": "Quiz",
+            "image": "Image",
+            "audio": "Audio"
+        }
+    },
+    "grammar": {
+        "title": "Grammar Learning",
+        "topics": "Grammar Topics",
+        "subtitle": "Master English grammar step by step",
+        "rules": "Grammar Rules",
+        "explanation": "Explanation",
+        "examples": "Examples",
+        "exercises": "Practice Exercises",
+        "checkAnswers": "Check Answers",
+        "correct": "✓ Correct!",
+        "incorrect": "✗ Incorrect. Answer: {{answer}}",
+        "score": "Your Score: {{score}}%",
+        "retryExercises": "Try Again"
+    },
+    "videos": {
+        "categories": "Categories",
+        "subtitles": "Subtitles",
+        "speed": "Speed",
+        "language": {
+            "original": "Original",
+            "translated": "Translated",
+            "both": "Both"
+        },
+        "title": "Videos",
+        "vocabulary": "Vocabulary",
+        "levels": {
+            "beginner": "Beginner",
+            "intermediate": "Intermediate",
+            "advanced": "Advanced"
+        },
+        "controls": {
+            "subtitles": "Subtitles"
+        },
+        "subtitleModes": {
+            "original": "Original",
+            "translated": "Translated",
+            "both": "Both"
+        }
+    },
+    "notes": {
+        "title": "My Notes",
+        "topics": "Topics",
+        "addNote": "Add New Note",
+        "addTopic": "Add New Topic",
+        "searchPlaceholder": "Search notes...",
+        "typeHint": "AI will automatically generate phonetic transcription and translation",
+        "types": {
+            "word": "Word",
+            "phrase": "Phrase",
+            "sentence": "Sentence"
+        },
+        "empty": {
+            "title": "No notes yet",
+            "description": "Start adding vocabulary notes to build your personal dictionary"
+        }
+    },
+    "course": {
+        "totalLessons": "{{count}} Lessons",
+        "progress": "Progress: {{progress}}%",
+        "continue": "Continue",
+        "courseNotFoundOrNotPublic": "Course not found or is not public",
+        "free": "Free"
+    },
+    "topics": {
+        "introduction": "Introduction",
+        "introductionPrompt": "Introduce yourself to others.",
+        "jobInterview": "Job Interview",
+        "jobInterviewPrompt": "Practice answering job interview questions.",
+        "dailyRoutine": "Daily Routine",
+        "dailyRoutinePrompt": "Talk about your daily routine.",
+        "hobbies": "Hobbies",
+        "hobbiesPrompt": "Share your hobbies and interests.",
+        "travelPlanning": "Travel Planning",
+        "travelPlanningPrompt": "Plan a trip with your group.",
+        "foodCulture": "Food & Culture",
+        "foodCulturePrompt": "Discuss your favorite foods and cultures.",
+        "technology": "Technology",
+        "technologyPrompt": "Talk about the latest technology trends.",
+        "environment": "Environment",
+        "environmentPrompt": "Discuss environmental issues and solutions."
+    },
+    "certifications": {
+        "title": "Certification Tests",
+        "loadingCertifications": "Loading certifications...",
+        "loadingQuestions": "Loading questions...",
+        "noCertificationsAvailable": "No certifications available",
+        "noQuestionsAvailable": "No questions available",
+        "checkBackLater": "Check back later for new certifications",
+        "practiceTest": "Practice Test",
+        "fullExam": "Full Exam",
+        "exam": "Exam",
+        "practice": "Practice",
+        "questions": "questions",
+        "pass": "Pass",
+        "attempts": "Attempts",
+        "bestScore": "Best Score",
+        "question": "Question",
+        "of": "of",
+        "submitTest": "Submit Test",
+        "testResults": "Test Results",
+        "passed": "PASSED",
+        "failed": "FAILED",
+        "outOf": "out of",
+        "correct": "correct",
+        "completedOn": "Completed on",
+        "skillBreakdown": "Skill Breakdown",
+        "improvementSuggestions": "Improvement Suggestions",
+        "takeAnotherTest": "Take Another Test",
+        "timeUp": "Time's Up!",
+        "timeUpMessage": "Your exam time has expired. Submitting your answers now.",
+        "testPassed": "Test Passed!",
+        "congratulations": "Congratulations on passing the test!",
+        "testFailed": "Test Failed",
+        "tryAgain": "Don't give up! Try again to improve your score.",
+        "skills": {
+            "reading": "Reading",
+            "listening": "Listening",
+            "grammar": "Grammar",
+            "vocabulary": "Vocabulary"
+        }
+    },
+    "courses": {
+        "title": "Courses",
+        "searchPlaceholder": "Search courses...",
+        "myPurchasedCourses": "📚 My Purchased Courses",
+        "recommendedForYou": "💡 Recommended for You",
+        "allCourses": "🌟 All Courses",
+        "purchased": "Purchased",
+        "free": "Free",
+        "progress": "Progress",
+        "lessons": "lessons",
+        "continueLearning": "Continue Learning",
+        "enrollNow": "Enroll Now",
+        "startLearning": "Start Learning",
+        "noCoursesFound": "No courses found",
+        "tryDifferentSearch": "Try a different search or filter",
+        "courseNotFound": "Course not found",
+        "purchaseRequired": "Purchase Required",
+        "purchaseModalText": "This content is locked. Purchase the full course to access all lessons and start your learning journey!",
+        "purchase": "Purchase",
+        "preview": "Preview",
+        "writeReview": "Write Review",
+        "helpful": "Helpful",
+        "noReviewsYet": "No reviews yet",
+        "noLessonsAvailable": "No lessons available",
+        "reviews": "reviews",
+        "rating": "Rating",
+        "students": "Students",
+        "courses": "Courses",
+        "level": "Level",
+        "defaultDescription": "Master essential skills with this comprehensive course designed for learners who want to excel.",
+        "whatYouWillLearn": "What you'll learn",
+        "requirements": "Requirements",
+        "courseContent": "Course Content",
+        "defaultFeature1": "Comprehensive learning materials",
+        "defaultFeature2": "Expert instruction and guidance",
+        "defaultRequirement1": "Basic understanding of the subject",
+        "defaultRequirement2": "Willingness to practice and learn",
+        "defaultInstructorTitle": "Expert Instructor",
+        "defaultInstructorBio": "{{instructor}} is an experienced educator with expertise in this field.",
+        "categories": {
+            "all": "All",
+            "business": "Business",
+            "conversation": "Conversation",
+            "grammar": "Grammar",
+            "vocabulary": "Vocabulary",
+            "pronunciation": "Pronunciation",
+            "technology": "Technology"
+        },
+        "sortBy": {
+            "title": "Sort By",
+            "popular": "Most Popular",
+            "newest": "Newest",
+            "priceLow": "Price: Low to High",
+            "priceHigh": "Price: High to Low",
+            "rating": "Highest Rated"
+        },
+        "tabs": {
+            "overview": "Overview",
+            "curriculum": "Curriculum",
+            "reviews": "Reviews",
+            "instructor": "Instructor"
+        }
+    },
+    "roadmap": {
+        "title": "Learning Roadmap",
+        "chooseRoadmap": "Choose a roadmap",
+        "noActiveRoadmap": "No active roadmap now!",
+        "suggestedAction": "Suggested action",
+        "browsePublic": "Browse public",
+        "loadingRoadmap": "Loading your personalized roadmap...",
+        "overallProgress": "Overall Progress",
+        "itemsCompleted": "items completed",
+        "estimatedTime": "Estimated completion",
+        "level": "Level",
+        "completedOn": "Completed on",
+        "milestones": "Milestones",
+        "noItemsFound": "No items found",
+        "tryDifferentFilter": "Try a different filter",
+        "itemDetail": "Item Details",
+        "itemNotFound": "Item not found",
+        "lockedItem": "Locked Item",
+        "lockedItemMessage": "Complete previous items to unlock this one",
+        "startItem": "Start Item",
+        "startItemConfirmation": "Ready to start '{{title}}'?",
+        "itemStarted": "Item started successfully!",
+        "completeItem": "Complete Item",
+        "completeItemConfirmation": "Mark '{{title}}' as completed?",
+        "itemCompleted": "Item completed successfully!",
+        "markComplete": "Mark Complete",
+        "progress": "Progress",
+        "skillsYouWillLearn": "Skills you will learn",
+        "prerequisites": "Prerequisites",
+        "nextItems": "Next Items",
+        "relatedItems": "Related Items",
+        "tips": "Tips",
+        "noGuidanceAvailable": "No guidance available for this item",
+        "noResourcesAvailable": "No resources available for this item",
+        "filters": {
+            "all": "All",
+            "available": "Available",
+            "completed": "Completed"
+        },
+        "types": {
+            "lesson": "Lesson",
+            "course": "Course",
+            "series": "Series",
+            "milestone": "Milestone",
+            "assessment": "Assessment"
+        },
+        "status": {
+            "locked": "Locked",
+            "available": "Available",
+            "in_progress": "In Progress",
+            "completed": "Completed"
+        },
+        "difficulty": {
+            "beginner": "Beginner",
+            "intermediate": "Intermediate",
+            "advanced": "Advanced"
+        },
+        "tabs": {
+            "overview": "Overview",
+            "guidance": "Guidance",
+            "resources": "Resources"
+        },
+        "publicRoadmaps": "Public Roadmaps",
+        "suggest": "Suggest",
+        "addSuggestion": "Add Your Suggestion",
+        "suggestionPlaceholder": "Share your idea to improve this roadmap..."
+    },
+    "quiz": {
+        "title": "Quiz",
+        "start": "Start Quiz",
+        "question": "Question",
+        "explanation": "Explanation",
+        "next": "Next Question",
+        "finish": "Finish Quiz",
+        "complete": "Quiz Complete!",
+        "greatJob": "Great job everyone!"
+    },
+    "proficiencyTest": {
+        "title": "Proficiency Test",
+        "description": "Start adding vocabulary notes to build your personal dictionary",
+        "selectTest": "Select Test",
+        "noTestsAvailable": "No proficiency tests are available at the moment.",
+        "selectLanguage": "Choose a language for the test",
+        "startTest": "Start Test",
+        "noQuestionsAvailable": "No questions are available for this test.",
+        "titleWithLanguage": "Proficiency Test ({{language}})",
+        "questionProgress": "Question {{current}} of {{total}}",
+        "completeTest": "Complete Test",
+        "continueNext": "Continue Next Test",
+        "errors": {
+            "noInitialCategory": "Could not find 'initial' category for language {{code}}",
+            "noLessonForInitial": "Could not find a lesson for 'initial' category and language {{code}}",
+            "noQuestions": "This test does not have any questions yet.",
+            "loadFailed": "Could not load the test. Please try again.",
+            "classifyLevelFailed": "Failed to update proficiency level."
+        },
+        "alerts": {
+            "testCompleteTitle": "Test Finished",
+            "nextLanguagePrompt": "You scored {{percentage}}%. Would you like to take the test for the next language ({{language}})?"
+        },
+        "results": {
+            "title": "Test Complete!",
+            "subtitle": "Your score: {{score}}%",
+            "overallScore": "Overall Score"
+        }
+    },
+    "aiLearning": {
+        "title": "Learn with Smart AI",
+        "subtitle": "Your AI assistant will guide you through your learning journey"
+    },
+    "reminder": {
+        "doLessonToKeepStreak": "Do a lesson today to keep your streak going!"
+    },
+    "home": {
+        
+        "challenge": {
+            "defaultDescShort": "Hoàn thành thử thách này để nhận thưởng.",
+            "xp": "+{{exp}} XP",
+            "currentTitle": "Your Challenges",
+            "defaultDesc": "Default desc",
+            "exp": "EXP",
+            "title": "Challenges today for you",
+            "add": "Get more",
+            "error": "Failed to load challenges"
+        },
+        "title": "Home",
+        "dailyStreak": "Daily Streak",
+        "subtitle": "Your daily English learning hub",
+        "welcomeMessage": "Welcome back, {{name}}!",
+        "dailyGoal": {
+            "title": "🎯 Today's Goal",
+            "completeLessons": "Complete {{total}} lessons",
+            "progress": "{{completed}}/{{total}} lessons",
+            "complete": "Daily goals had been completed",
+            "lesson": "Daily goals lesson"
+        },
+        "dailyGoalDescription": "Complete at least 1 lesson and practice for 15 minutes daily to maintain your learning streak.",
+        "dailyChallenge": {
+            "title": "🎮 Daily Challenges",
+            "challenge": "Challenge",
+            "completed": "(Completed)",
+            "getMore": "Get More"
+        },
+        "student": {
+            "searchCoursesPlaceholder": "Search courses...",
+            "enrolledCourses": "My Courses",
+            "allCourses": "All Courses",
+            "noCoursesFound": "No courses found.",
+            "exploreCourses": "Explore Courses"
+        },
+        "days": "{{count}} days",
+        "leaderboard": {
+            "title": "🏆 Leaderboard",
+            "error": "Unable to load leaderboard",
+            "viewMore": "View full leaderboard"
+        },
+        "character": {
+            "message": "Let's study together! 🚀"
+        },
+        "progress": {
+            "title": "📊 Learning Progress",
+            "level": "Level",
+            "streak": "Streak",
+            "xp": "XP Points"
+        },
+        "status": {
+            "default": "You're making good progress! Keep it up! 🌟"
+        },
+        "roadmap": {
+            "browsePublic": "Browse Public Roadmaps",
+            "title": "🗺️ Learning Roadmap",
+            "personal": "Personal Roadmap",
+            "completed": "{{count}} items completed",
+            "estimate": "Estimate: {{days}} days",
+            "selectTitle": "🗺️ Choose a Learning Roadmap",
+            "noDefault": "No default roadmap found.",
+            "noPersonal": "You don't have a personal roadmap for {{language}}. Please choose a default roadmap or create a new one.",
+            "createCustom": "Create Custom Roadmap",
+            "dialogTitle": "Enter info to create roadmap",
+            "targetProficiency": "Target Proficiency",
+            "targetDate": "Target Date",
+            "create": "Create",
+            "cancel": "Cancel",
+            "notFound": "Roadmap not found",
+            "targetCertification": "Target Certification",
+            "targetDateHint": "Set a goal date for your certification"
+        },
+        "recentLessons": {
+            "title": "📚 Continue Learning",
+            "lesson": "Lesson {{number}}"
+        },
+        "roadmapLoading": "Loading your roadmap...",
+        "roadmapError": "Failed to load roadmap",
+        "roadmapSelectDefault": "Select a default roadmap to get started",
+        "roadmapBrowsePublic": "Browse Public Roadmaps",
+        "dailyGoalComplete": "Complete {total} lessons today"
+    },
+    "motivationSection": "Motivational Message",
+    "progressSection": "Today's Progress",
+    "achievementsSection": "Recent Achievements",
+    "continueButton": "Continue Learning",
+    "quickActions": {
+        "flashcards": "Flashcards",
+        "karaoke": "Karaoke",
+        "quiz": "Quiz"
+    },
+    "streakTitle": "{{count}} Day Streak!",
+    "streakMessage": {
+        "start": "Great start!",
+        "momentum": "Keep the momentum going!",
+        "fire": "You're on fire!",
+        "unstoppable": "Unstoppable progress!",
+        "legend": "Legendary streak!"
+    },
+    "translation": {
+        "selectTarget": "Select Target Language",
+        "targetLang": "Target Language",
+        "quiz": {
+            "solo": "Solo Quiz",
+            "loading": "Loading Quiz...",
+            "error": {
+                "load": "Failed to load quiz. Please try again.",
+                "startTeam": "Failed to start team quiz. Please check your connection."
+            },
+            "questionCounter": "Question {{current}} of {{total}}",
+            "points": "{{count}} pts",
+            "pause": "Pause",
+            "resume": "Resume",
+            "correct": "Correct!",
+            "explanation": "Explanation",
+            "nextQuestion": "Next Question",
+            "finishQuiz": "Finish Quiz",
+            "timeUp": "Time's Up!",
+            "team": {
+                "waitingForHost": "Waiting for host to start the game...",
+                "startGame": "Start Game",
+                "chat": "Chat",
+                "players": "Players ({{count}}/10)",
+                "chatPlaceholder": "Send a message...",
+                "playerJoined": "{{name}} has joined the room!",
+                "playerLeft": "{{name}} has left the room."
+            },
+            "results": {
+                "title": "Quiz Complete!",
+                "score": "Your Score",
+                "correct": "{{correct}} / {{total}} Correct",
+                "points": "Points",
+                "xp": "XP",
+                "bestStreak": "Best Streak",
+                "time": "Time",
+                "skills": "Skills Practiced",
+                "home": "Home",
+                "retry": "Retry",
+                "share": "Share"
+            }
+        }
+    },
+    "speaking": {
+        "select_lesson": "Select a Lesson",
+        "no_lessons_available": "No lessons available. Please check back later.",
+        "practice": "Speaking Practice",
+        "ready_title": "Get Ready",
+        "tap_hold_record": "Tap and hold to record",
+        "recording": "Recording..."
+    },
+    "reading": {
+        "screenTitle": "Reading Practice",
+        "welcomeTitle": "Improve Your Reading Skills",
+        "welcomeText": "Generate a custom article based on your level and interests, or use a sample.",
+        "generateSample": "Generate Sample Article",
+        "generateButton": "Generate Article",
+        "generatedContentTitle": "Generated Content",
+        "errorLoadingContent": "Could not load content. Please try again.",
+        "startReading": "Start Reading",
+        "select_lesson": "Select a Lesson",
+        "practice": "Reading Practice",
+        "generating_content": "Generating content...",
+        "error_loading_content": "Error loading content"
+    }
+}

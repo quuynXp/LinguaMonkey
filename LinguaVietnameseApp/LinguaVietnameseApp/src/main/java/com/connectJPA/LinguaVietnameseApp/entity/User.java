@@ -22,7 +22,7 @@ import java.util.UUID;
 public class User extends BaseEntity {
 
     private static final long ONLINE_THRESHOLD_MINUTES = 5;
-    private static final int DEFAULT_MIN_LEARNING_DURATION_MINUTES = 15; // Mặc định 15 phút
+    private static final int DEFAULT_MIN_LEARNING_DURATION_MINUTES = 15;
 
     @org.springframework.data.annotation.Id
     @Id
@@ -99,15 +99,18 @@ public class User extends BaseEntity {
     @Column(name = "last_daily_welcome_at")
     private OffsetDateTime lastDailyWelcomeAt;
     
-    // THÊM: Mục tiêu học tập tối thiểu hàng ngày (phút)
     @Column(name = "min_learning_duration_minutes", nullable = false)
     @Builder.Default
     private int minLearningDurationMinutes = DEFAULT_MIN_LEARNING_DURATION_MINUTES;
 
-    // THÊM: Ngày cuối cùng user được tăng streak (hoặc giữ)
-    // Dùng để kiểm tra logic 1 lần tăng streak/ngày
     @Column(name = "last_streak_check_date")
     private LocalDate lastStreakCheckDate;
+
+    @Column(name = "gender")
+    private String gender;
+
+    @Column(name = "vip_expiration_date")
+    private OffsetDateTime vipExpirationDate;
 
     @Transient
     public boolean isOnline() {
@@ -116,5 +119,10 @@ public class User extends BaseEntity {
         }
         OffsetDateTime onlineThreshold = OffsetDateTime.now().minusMinutes(ONLINE_THRESHOLD_MINUTES);
         return this.lastActiveAt.isAfter(onlineThreshold);
+    }
+
+    @Transient
+    public boolean isVip() {
+        return vipExpirationDate != null && vipExpirationDate.isAfter(OffsetDateTime.now());
     }
 }

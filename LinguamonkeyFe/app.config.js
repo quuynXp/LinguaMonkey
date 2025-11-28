@@ -50,7 +50,7 @@ export default ({ config }) => {
               },
               {
                 scheme: "https",
-                host: "monkeylingua.vercle.app",
+                host: "monkeylingua.vercel.app",
                 pathPrefix: "/",
               },
             ],

@@ -23,6 +23,13 @@ public class LeaderboardEntryResponse {
     private String avatarUrl;
     private int level;
     private int exp;
+    private String gender;
+    private Integer rank;
+    private Double change;
+    private Integer streak;
+    private boolean isDeleted;
+    private OffsetDateTime createdAt;
+    private OffsetDateTime updatedAt;
 
     public static LeaderboardEntryResponse fromUser(User user) {
         return LeaderboardEntryResponse.builder()

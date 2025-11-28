@@ -1,49 +1,53 @@
-import React from 'react'
+import React from "react"
 import {
     View,
     Text,
-    FlatList,
     Image,
     TouchableOpacity,
     ActivityIndicator,
-} from 'react-native'
-import { useCourses } from '../../hooks/useCourses'
-import { useUserStore } from '../../stores/UserStore'
-import { useTranslation } from 'react-i18next'
-import { createScaledSheet } from '../../utils/scaledStyles'
-import ScreenLayout from '../../components/layout/ScreenLayout'
-import type { CourseResponse } from '../../types/dto'
-import Icon from 'react-native-vector-icons/MaterialIcons'
-import { formatCurrency } from '../../utils/formatCurrency'
+    FlatList,
+} from "react-native"
+import Icon from "react-native-vector-icons/MaterialIcons"
+import { useTranslation } from "react-i18next"
+import { useCourses } from "../../hooks/useCourses"
+import { useUserStore } from "../../stores/UserStore"
+import ScreenLayout from "../../components/layout/ScreenLayout"
+import { createScaledSheet } from "../../utils/scaledStyles"
+import { getCourseImage } from "../../utils/courseUtils"
 
 const SuggestedCoursesScreen = ({ navigation }: any) => {
     const { t } = useTranslation()
     const { user } = useUserStore()
-    const userId = user?.userId
+    const { data: courses, isLoading } = useCourses().useRecommendedCourses(user?.userId, 20)
 
-    const { data: coursesData, isLoading } = useCourses().useRecommendedCourses(userId, 10)
-
-    const courses: CourseResponse[] = coursesData || []
-
-    const renderCourse = ({ item }: { item: CourseResponse }) => {
+    const renderItem = ({ item }: any) => {
         const version = item.latestPublicVersion
         return (
             <TouchableOpacity
                 style={styles.card}
-                onPress={() => navigation.navigate('CourseDetailsScreen', { courseId: item.courseId })}
+                onPress={() => navigation.navigate("CourseDetailsScreen", { courseId: item.courseId })}
             >
-                <Image source={{ uri: version?.thumbnailUrl }} style={styles.thumbnail} />
+                <Image
+                    source={getCourseImage(version?.thumbnailUrl)}
+                    style={styles.thumbnail}
+                />
                 <View style={styles.info}>
-                    <Text style={styles.courseTitle} numberOfLines={2}>{item.title}</Text>
-                    <Text style={styles.creator}>
-                        {t('course.createdBy', { id: item.creatorId })}
-                    </Text>
-                    <View style={styles.priceRow}>
+                    <View style={styles.header}>
+                        <Text style={styles.title} numberOfLines={2}>{item.title}</Text>
+                        <View style={styles.aiBadge}>
+                            <Icon name="auto-awesome" size={12} color="#FFF" />
+                            <Text style={styles.aiText}>AI Pick</Text>
+                        </View>
+                    </View>
+                    <Text style={styles.creator}>{t("course.by")} {item.creatorId}</Text>
+
+                    <View style={styles.footer}>
                         <Text style={styles.price}>
-                            {item.price === 0 ? t('course.free') : formatCurrency(item.price)}
+                            {item.price === 0 ? t("course.free") : `$${item.price}`}
                         </Text>
-                        <View style={styles.levelBadge}>
-                            <Text style={styles.levelText}>{item.difficultyLevel}</Text>
+                        <View style={styles.ratingBox}>
+                            <Icon name="star" size={12} color="#F59E0B" />
+                            <Text style={styles.ratingText}>4.8</Text>
                         </View>
                     </View>
                 </View>
@@ -52,23 +56,25 @@ const SuggestedCoursesScreen = ({ navigation }: any) => {
     }
 
     return (
-        <ScreenLayout> {/* FIXED: Removed 'title' prop to match inferred ScreenLayoutProps */}
+        <ScreenLayout>
             <View style={styles.container}>
                 {isLoading ? (
-                    <View style={styles.loadingContainer}>
+                    <View style={styles.center}>
                         <ActivityIndicator size="large" color="#4F46E5" />
-                        <Text style={styles.loadingText}>{t("common.loadingData")}</Text>
+                        <Text style={styles.loadingText}>{t("course.findingBestMatches")}</Text>
                     </View>
                 ) : (
                     <FlatList
-                        data={courses}
-                        renderItem={renderCourse}
+                        data={courses || []}
+                        renderItem={renderItem}
                         keyExtractor={(item) => item.courseId}
-                        contentContainerStyle={styles.listContent}
-                        ListEmptyComponent={
-                            <View style={styles.emptyContainer}>
-                                <Icon name="sentiment-dissatisfied" size={48} color="#9CA3AF" />
-                                <Text style={styles.emptyText}>{t('suggested.noCoursesFound')}</Text>
+                        contentContainerStyle={styles.list}
+                        ListHeaderComponent={
+                            <View style={styles.aiHeader}>
+                                <Icon name="psychology" size={32} color="#4F46E5" />
+                                <Text style={styles.aiHeaderText}>
+                                    {t("course.aiSuggestionSubtitle")}
+                                </Text>
                             </View>
                         }
                     />
@@ -79,93 +85,26 @@ const SuggestedCoursesScreen = ({ navigation }: any) => {
 }
 
 const styles = createScaledSheet({
-    container: {
-        flex: 1,
-        backgroundColor: '#FFFFFF',
-    },
-    listContent: {
-        padding: 16,
-    },
-    loadingContainer: {
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        paddingVertical: 50,
-    },
-    loadingText: {
-        marginTop: 10,
-        fontSize: 16,
-        color: "#4F46E5",
-    },
-    card: {
-        flexDirection: 'row',
-        marginBottom: 16,
-        borderRadius: 12,
-        backgroundColor: '#F9FAFB',
-        elevation: 2,
-        shadowColor: '#000',
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-        overflow: 'hidden',
-    },
-    thumbnail: {
-        width: 100,
-        height: 100,
-        resizeMode: 'cover',
-    },
-    info: {
-        flex: 1,
-        padding: 12,
-        justifyContent: 'space-between',
-    },
-    courseTitle: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#1F2937',
-    },
-    creator: {
-        fontSize: 12,
-        color: '#6B7280',
-    },
-    priceRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginTop: 4,
-    },
-    price: {
-        fontSize: 16,
-        fontWeight: 'bold',
-        color: '#4F46E5',
-    },
-    levelBadge: {
-        backgroundColor: '#E5E7EB',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    levelText: {
-        fontSize: 12,
-        fontWeight: '600',
-        color: '#374151',
-    },
-    emptyContainer: {
-        alignItems: "center",
-        justifyContent: "center",
-        paddingVertical: 50,
-        backgroundColor: "#FFFFFF",
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-        marginTop: 20,
-    },
-    emptyText: {
-        fontSize: 16,
-        color: "#9CA3AF",
-        marginTop: 10,
-    },
+    container: { flex: 1, backgroundColor: "#F3F4F6" },
+    center: { flex: 1, justifyContent: "center", alignItems: "center" },
+    loadingText: { marginTop: 12, color: "#6B7280", fontSize: 14 },
+    list: { padding: 16 },
+
+    aiHeader: { flexDirection: "row", alignItems: "center", backgroundColor: "#EEF2FF", padding: 16, borderRadius: 12, marginBottom: 16 },
+    aiHeaderText: { flex: 1, marginLeft: 12, color: "#4338CA", fontSize: 14 },
+
+    card: { flexDirection: "row", backgroundColor: "#FFF", borderRadius: 12, marginBottom: 12, overflow: "hidden", elevation: 2, shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 4, shadowOffset: { width: 0, height: 2 } },
+    thumbnail: { width: 110, height: 110, backgroundColor: "#E5E7EB" },
+    info: { flex: 1, padding: 12, justifyContent: "space-between" },
+    header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" },
+    title: { fontSize: 16, fontWeight: "bold", color: "#1F2937", flex: 1, marginRight: 8 },
+    aiBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#8B5CF6", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    aiText: { color: "#FFF", fontSize: 10, fontWeight: "bold", marginLeft: 2 },
+    creator: { fontSize: 12, color: "#6B7280", marginTop: 4 },
+    footer: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
+    price: { fontSize: 16, fontWeight: "bold", color: "#10B981" },
+    ratingBox: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFBEB", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    ratingText: { fontSize: 12, fontWeight: "bold", color: "#D97706", marginLeft: 4 },
 })
 
-export default SuggestedCoursesScreen;
+export default SuggestedCoursesScreen
