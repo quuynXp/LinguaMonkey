@@ -3,9 +3,7 @@ import {
     View,
     Text,
     TouchableOpacity,
-    TextInput,
     Image,
-    ActivityIndicator,
     LayoutAnimation,
     Platform,
     UIManager,
@@ -13,8 +11,9 @@ import {
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import dayjs from "dayjs";
 import type { RoadmapItemUserResponse, RoadmapSuggestionResponse } from "../../types/dto";
+import { useUserStore } from "../../stores/UserStore";
+import ReviewInput from "../reviews/ReviewInput"; // Integrating the Review Input
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -49,15 +48,15 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
     onAddSuggestion,
     isOwner = false,
 }) => {
-    const [suggestionText, setSuggestionText] = useState("");
+    const { user } = useUserStore();
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    const handleSubmitSuggestion = async () => {
-        if (!suggestionText.trim() || !onAddSuggestion) return;
+    // Using ReviewInput requires a submit handler that matches its signature
+    const handleSubmitSuggestion = async (text: string) => {
+        if (!text.trim() || !onAddSuggestion) return;
         setIsSubmitting(true);
         try {
-            await onAddSuggestion(item.id, suggestionText);
-            setSuggestionText("");
+            await onAddSuggestion(item.id, text);
         } catch (error) {
             console.error(error);
         } finally {
@@ -163,6 +162,7 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
                                                 {s.applied && <Icon name="check-circle" size={12} color="#10B981" style={{ marginLeft: 4 }} />}
                                             </View>
                                             <Text style={styles.suggestionText}>{s.reason}</Text>
+                                            {/* Optional: Add Likes here if available in DTO */}
                                         </View>
                                     </View>
                                 ))
@@ -171,23 +171,18 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
                             )}
                         </View>
 
-                        {/* Add Suggestion Input */}
-                        <View style={styles.inputRow}>
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Share a tip..."
-                                value={suggestionText}
-                                onChangeText={setSuggestionText}
-                                multiline
-                            />
-                            <TouchableOpacity
-                                style={[styles.sendBtn, (!suggestionText.trim() || isSubmitting) && styles.disabledBtn]}
-                                onPress={handleSubmitSuggestion}
-                                disabled={!suggestionText.trim() || isSubmitting}
-                            >
-                                {isSubmitting ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="send" size={16} color="#FFF" />}
-                            </TouchableOpacity>
-                        </View>
+                        {/* Add Suggestion Input - Integrated ReviewInput */}
+                        {onAddSuggestion && (
+                            <View style={{ marginTop: 8 }}>
+                                <ReviewInput
+                                    currentUserAvatar={user?.avatarUrl}
+                                    isSubmitting={isSubmitting}
+                                    replyContext={{ id: null, name: null }} // Suggestions are flat list for now
+                                    onCancelReply={() => { }}
+                                    onSubmit={handleSubmitSuggestion}
+                                />
+                            </View>
+                        )}
                     </View>
                 )}
             </View>
@@ -362,33 +357,7 @@ const styles = createScaledSheet({
         fontSize: 12,
         color: "#9CA3AF",
         fontStyle: "italic",
-    },
-    inputRow: {
-        flexDirection: "row",
-        gap: 8,
-        alignItems: "center",
-    },
-    input: {
-        flex: 1,
-        backgroundColor: "#FFF",
-        borderWidth: 1,
-        borderColor: "#E5E7EB",
-        borderRadius: 20,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        fontSize: 13,
-        height: 40,
-    },
-    sendBtn: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: "#3B82F6",
-        justifyContent: "center",
-        alignItems: "center",
-    },
-    disabledBtn: {
-        backgroundColor: "#93C5FD",
+        marginBottom: 8,
     },
 });
 

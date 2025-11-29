@@ -1,13 +1,18 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from "react-native";
+import {
+  View, Text, TouchableOpacity, ScrollView, ActivityIndicator,
+  FlatList, Image, Alert,
+  RefreshControl
+} from "react-native";
 import { useTranslation } from "react-i18next";
 import {
   useAvailableTests,
   useStartTest,
-  useSubmitTest,
+  useTestHistory,
+  EXTERNAL_RESOURCES,
+  ExternalTestConfig
 } from "../../hooks/useTesting";
 import { useUserStore } from "../../stores/UserStore";
-import { gotoTab } from "../../utils/navigationRef";
 import { languageToCountry } from "../../types/api";
 import CountryFlag from "react-native-country-flag";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -15,65 +20,33 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import VipUpgradeModal from "../../components/modals/VipUpgradeModal";
+import { TestConfigResponse } from "../../types/dto";
+import { TestStatus } from "../../types/enums";
+import { getTestThumbnail } from "../../utils/imageUtil";
 
-type TestConfig = {
-  testConfigId: string;
-  title: string;
-  description: string;
-  testType?: string; // PLACEMENT, TOEIC, IELTS, SKILL
-  skillType?: string; // LISTENING, READING, WRITING, SPEAKING
-};
-
-type TestQuestion = {
-  questionId: string;
-  questionText: string;
-  options: string[];
-};
-
-type TestResult = {
-  score: number;
-  totalQuestions: number;
-  percentage: number;
-  proficiencyEstimate: string;
-  questions: (TestQuestion & { explanation: string; userAnswerIndex: number; correctAnswerIndex: number; isCorrect: boolean })[];
-};
-
-type Stage = "selection" | "testing" | "submitting" | "results";
+type Tab = "available" | "history";
 
 const ProficiencyTestScreen = () => {
   const { t } = useTranslation();
   const route = useRoute();
   const navigation = useNavigation();
-  const params = route.params as {
-    mode?: 'placement' | 'certification' | 'skill';
-    examType?: string; // TOEIC, IELTS
-    skillType?: string; // LISTENING, SPEAKING, etc.
-  } | undefined;
-
+  const params = route.params as { mode?: 'placement' | 'certification' | 'skill'; } | undefined;
   const mode = params?.mode || 'placement';
 
-  const [stage, setStage] = useState<Stage>("selection");
-  const [currentTest, setCurrentTest] = useState<TestConfig | null>(null);
-
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [questions, setQuestions] = useState<TestQuestion[]>([]);
-  const [currentQuestionIdx, setCurrentQuestionIdx] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [result, setResult] = useState<TestResult | null>(null);
-  const [showVipModal, setShowVipModal] = useState(false);
-
+  const vip = useUserStore(s => s.vip);
   const targetLanguages = useUserStore(s => s.user?.languages ?? []);
-  const hasDonePlacementTest = useUserStore(s => s.hasDonePlacementTest);
-  const finishPlacementTest = useUserStore(s => s.finishPlacementTest);
-  const isVip = useUserStore(s => s.isVip);
-  const registerVip = useUserStore(s => s.registerVip);
+
+  const [activeTab, setActiveTab] = useState<Tab>("available");
+  const [page, setPage] = useState(0);
+  const [testsList, setTestsList] = useState<TestConfigResponse[]>([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [showVipModal, setShowVipModal] = useState(false);
 
   const allLanguages: Record<string, { name: string, iso: string }> = {
     'en': { name: 'English', iso: 'US' },
     'vi': { name: 'Tiếng Việt', iso: 'VN' },
     'zh': { name: '中文', iso: 'CN' },
   };
-
   const countryMap: Record<string, string> = languageToCountry as Record<string, string>;
 
   const userTargetLanguages = useMemo(() => {
@@ -86,558 +59,226 @@ const ProficiencyTestScreen = () => {
       .filter(lang => lang.name);
   }, [targetLanguages]);
 
-  const [selectedLanguageCode, setSelectedLanguageCode] = useState<string | null>(
-    userTargetLanguages.length > 0 ? userTargetLanguages[0].code : null
-  );
+  const [selectedLanguageCode, setSelectedLanguageCode] = useState<string | null>(null);
 
-  const { data: availableTests, isLoading: isLoadingTests, isError } = useAvailableTests({
+  useEffect(() => {
+    if (userTargetLanguages.length > 0 && !selectedLanguageCode) {
+      setSelectedLanguageCode(userTargetLanguages[0].code);
+    }
+  }, [userTargetLanguages]);
+
+  // Hooks
+  const { data: testsPageData, isLoading: isLoadingTests, isFetching: isFetchingTests } = useAvailableTests({
     languageCode: selectedLanguageCode,
+    page: page,
+    size: 10,
   });
 
+  const { data: historyList = [], isLoading: loadingHistory, refetch: refetchHistory } = useTestHistory();
   const { mutateAsync: startTestMutate, isPending: isStarting } = useStartTest();
-  const { mutateAsync: submitTestMutate, isPending: isSubmitting } = useSubmitTest();
 
-  // Filter tests based on mode
-  const filteredTests = useMemo(() => {
-    if (!availableTests) return [];
-    return availableTests.filter((test: TestConfig) => {
-      if (mode === 'placement') {
-        return test.testType === 'PLACEMENT' || !test.testType;
-      }
-      if (mode === 'certification' && params?.examType) {
-        return test.testType === params.examType;
-      }
-      if (mode === 'skill' && params?.skillType) {
-        return test.skillType === params.skillType;
-      }
-      return true;
-    });
-  }, [availableTests, mode, params]);
-
-  const handleContinueToApp = async () => {
-    if (mode === 'placement' && !hasDonePlacementTest) {
-      await finishPlacementTest();
+  // Pagination Effect
+  useEffect(() => {
+    if (testsPageData) {
+      if (page === 0) setTestsList(testsPageData.content);
+      else setTestsList(prev => [...prev, ...testsPageData.content]);
+      setHasMore(!testsPageData.isLast);
     }
-    navigation.goBack();
+  }, [testsPageData, page]);
+
+  useEffect(() => {
+    setPage(0);
+    setTestsList([]);
+    setHasMore(true);
+  }, [selectedLanguageCode]);
+
+  useEffect(() => {
+    if (activeTab === 'history') refetchHistory();
+  }, [activeTab]);
+
+  const handleLoadMore = () => {
+    if (hasMore && !isFetchingTests) setPage(prev => prev + 1);
   };
 
-  const handleSelectTest = async (testConfig: TestConfig) => {
-    // Check VIP for non-placement tests
-    if (mode !== 'placement' && !isVip) {
+  const handleOpenWebView = (external: ExternalTestConfig) => {
+    (navigation as any).navigate('WebViewScreen', {
+      url: external.url,
+      title: external.title,
+    });
+  };
+
+  const handleSelectTest = async (testConfig: TestConfigResponse) => {
+    if (mode !== 'placement' && !vip) {
       setShowVipModal(true);
       return;
     }
-
     try {
-      setCurrentTest(testConfig);
+      // Call API to start test
       const response = await startTestMutate(testConfig.testConfigId);
+
       if (response && response.questions) {
-        setSessionId(response.sessionId);
-        setQuestions(response.questions);
-        setAnswers({});
-        setCurrentQuestionIdx(0);
-        setStage("testing");
-      } else {
-        Alert.alert(t("error.title"), t("error.startTestFailed", "Không thể bắt đầu bài test."));
+        // Navigate to the NEW Test Session Screen
+        (navigation as any).navigate('TestSessionScreen', {
+          sessionId: response.sessionId,
+          questions: response.questions,
+          durationSeconds: testConfig.durationSeconds || 2700, // Default 45m if null
+          title: testConfig.title,
+          testConfigId: testConfig.testConfigId
+        });
       }
     } catch (e: any) {
-      console.error("Failed to start test", e);
-      Alert.alert(t("error.title"), e.message || t("error.startTestFailed", "Không thể bắt đầu bài test."));
+      Alert.alert(t("error.title"), e.message);
     }
   };
 
-  const handleAnswer = (questionId: string, answerIndex: number) => {
-    setAnswers(prev => ({ ...prev, [questionId]: answerIndex }));
-    if (currentQuestionIdx < questions.length - 1) {
-      setCurrentQuestionIdx(idx => idx + 1);
-    }
-  };
-
-  const handleSubmitTest = async () => {
-    if (!sessionId) return;
-    setStage("submitting");
-    try {
-      const resultData = await submitTestMutate({ sessionId, answers });
-      if (mode === 'placement') {
-        await finishPlacementTest();
-      }
-      setResult(resultData);
-      setStage("results");
-    } catch (e: any) {
-      console.error("Failed to submit test", e);
-      Alert.alert(t("error.title"), e.message || t("error.submitTestFailed", "Nộp bài thất bại."));
-      setStage("testing");
-    }
-  };
-
-  const onVipConfirm = async () => {
-    try {
-      await registerVip();
-      setShowVipModal(false);
-      Alert.alert(t("common.success"), t("vip.successMsg", "Nâng cấp VIP thành công!"));
-    } catch (e) {
-      Alert.alert(t("error.title"), t("vip.failMsg", "Thanh toán thất bại"));
-    }
-  };
-
-  if (isStarting || isSubmitting) {
-    return (
-      <View style={styles.container}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-        <Text style={styles.loadingText}>
-          {isStarting
-            ? t("proficiencyTest.loadingTest", "Đang tải bài test...")
-            : t("proficiencyTest.submitting", "Đang nộp bài...")
-          }
-        </Text>
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
+      <Text style={styles.title}>{t("proficiencyTest.title", "Skill Assessment")}</Text>
+      <View style={styles.tabContainer}>
+        <TouchableOpacity style={[styles.tab, activeTab === 'available' && styles.activeTab]} onPress={() => setActiveTab('available')}>
+          <Text style={[styles.tabText, activeTab === 'available' && styles.activeTabText]}>{t("test.available", "Tests")}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.tab, activeTab === 'history' && styles.activeTab]} onPress={() => setActiveTab('history')}>
+          <Text style={[styles.tabText, activeTab === 'history' && styles.activeTabText]}>{t("test.history", "History")}</Text>
+        </TouchableOpacity>
       </View>
-    );
-  }
+    </View>
+  );
 
-  const renderHeader = () => {
-    if (mode === 'certification') {
-      return (
-        <>
-          <Text style={styles.title}>{t("test.certTitle", `${params?.examType} Preparation`)}</Text>
-          <Text style={styles.description}>
-            {t("test.certDesc", "Mô phỏng bài thi thực tế. Format chuẩn 2024.")}
-          </Text>
-        </>
-      );
-    }
-    if (mode === 'skill') {
-      return (
-        <>
-          <Text style={styles.title}>{t("test.skillTitle", `${params?.skillType} Practice`)}</Text>
-          <Text style={styles.description}>
-            {t("test.skillDesc", "Luyện tập chuyên sâu kỹ năng 1-1 với AI.")}
-          </Text>
-        </>
-      );
-    }
-    return (
-      <>
-        <Text style={styles.title}>{t("proficiencyTest.title", "Kiểm Tra Trình Độ")}</Text>
-        <Text style={styles.description}>
-          {t("proficiencyTest.description", "Hãy chọn ngôn ngữ bạn muốn kiểm tra. Việc này giúp chúng tôi cá nhân hóa lộ trình học cho bạn.")}
-        </Text>
-      </>
-    );
-  };
+  const renderAvailableTab = () => (
+    <>
+      <View style={styles.langContainer}>
+        <Text style={styles.sectionTitle}>1. Select Target Language</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.langScroll}>
+          {userTargetLanguages.map(lang => (
+            <TouchableOpacity key={lang.code} style={[styles.langChip, selectedLanguageCode === lang.code && styles.langChipSelected]} onPress={() => setSelectedLanguageCode(lang.code)}>
+              <CountryFlag isoCode={lang.iso} size={16} style={styles.flag} />
+              <Text style={[styles.langText, selectedLanguageCode === lang.code && styles.langTextSelected]}>{lang.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-  const renderSelectionStage = () => {
-    if (userTargetLanguages.length === 0) {
-      return (
-        <View style={styles.container}>
-          <Text style={styles.title}>{t("proficiencyTest.noLanguageTitle", "Bạn chưa chọn ngôn ngữ")}</Text>
-          <Text style={styles.description}>
-            {t("proficiencyTest.noLanguageDesc", "Vui lòng quay lại và chọn ít nhất một ngôn ngữ để học.")}
-          </Text>
-          <TouchableOpacity style={styles.submitButton} onPress={() => gotoTab("Home")}>
-            <Text style={styles.submitButtonText}>{t("common.continueToApp", "Tiếp Tục Vào App")}</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
+      <View style={styles.externalContainer}>
+        <Text style={styles.sectionTitle}>2. External Practice</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.externalScroll}>
+          {EXTERNAL_RESOURCES.map(item => (
+            <TouchableOpacity key={item.id} style={styles.externalCard} onPress={() => handleOpenWebView(item)}>
+              <View style={[styles.externalIcon, { backgroundColor: item.color }]}><Icon name={item.iconName} size={24} color="#FFF" /></View>
+              <Text style={styles.externalTitle}>{item.title}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
 
-    return (
-      <ScreenLayout style={styles.container}>
-        {renderHeader()}
-
-        <View style={styles.languageSelector}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.langScroll}>
-            {userTargetLanguages.map(lang => (
-              <TouchableOpacity
-                key={lang.code}
-                style={[
-                  styles.langChip,
-                  selectedLanguageCode === lang.code && styles.langChipSelected
-                ]}
-                onPress={() => setSelectedLanguageCode(lang.code)}
-              >
-                <CountryFlag isoCode={lang.iso} size={18} style={styles.flag} />
-                <Text style={[styles.langText, selectedLanguageCode === lang.code && styles.langTextSelected]}>
-                  {lang.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        <View style={styles.divider} />
-
-        <ScrollView style={styles.testList}>
-          {isLoadingTests && (
-            <ActivityIndicator size="large" color="#4F46E5" style={styles.loadingIndicator} />
-          )}
-
-          {!isLoadingTests && !isError && filteredTests.length === 0 && (
-            <View style={styles.noTestsContainer}>
-              <Text style={styles.noTestsText}>
-                {t("proficiencyTest.noTestsAvailable", "Hiện chưa có bài test nào cho mục này.")}
-              </Text>
-            </View>
-          )}
-
-          {!isLoadingTests && filteredTests.map((test: TestConfig) => (
-            <TouchableOpacity
-              key={test.testConfigId}
-              onPress={() => handleSelectTest(test)}
-              style={styles.testCard}
-            >
-              <View style={styles.testHeader}>
-                <Text style={styles.testTitle}>{test.title}</Text>
-                {mode !== 'placement' && !isVip && (
-                  <Icon name="lock" size={20} color="#EF4444" />
-                )}
+      <Text style={styles.sectionTitle}>3. Official Tests</Text>
+      {isLoadingTests && page === 0 ? (
+        <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 20 }} />
+      ) : (
+        <FlatList
+          data={testsList}
+          keyExtractor={item => item.testConfigId}
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.3}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.testCard} onPress={() => handleSelectTest(item)} disabled={isStarting}>
+              <Image source={getTestThumbnail(item)} style={styles.testImage} resizeMode="cover" />
+              <View style={styles.testContent}>
+                <Text style={styles.testTitle}>{item.title}</Text>
+                <Text style={styles.testDesc} numberOfLines={2}>{item.description}</Text>
+                <View style={styles.testMeta}>
+                  <Icon name="timer" size={14} color="#6B7280" />
+                  <Text style={styles.metaText}>{Math.floor((item.durationSeconds || 2700) / 60)} min</Text>
+                  <View style={styles.divider} />
+                  <Icon name="help-outline" size={14} color="#6B7280" />
+                  <Text style={styles.metaText}>{item.numQuestions} Qs</Text>
+                </View>
               </View>
-              <Text style={styles.testDescription}>{test.description}</Text>
+              {isStarting && <ActivityIndicator style={{ marginRight: 10 }} color="#4F46E5" />}
             </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        <TouchableOpacity style={styles.skipButton} onPress={handleContinueToApp}>
-          <Text style={styles.skipButtonText}>{t("common.back", "Quay lại")}</Text>
-        </TouchableOpacity>
-      </ScreenLayout>
-    );
-  }
-
-  const renderTestingStage = () => {
-    if (questions.length === 0) {
-      return (
-        <View style={styles.container}>
-          <Text style={styles.noTestsText}>{t("error.noQuestions", "Bài test này không có câu hỏi.")}</Text>
-          <TouchableOpacity style={styles.skipButton} onPress={() => setStage("selection")}>
-            <Text style={styles.skipButtonText}>{t("common.back", "Quay lại")}</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    const q = questions[currentQuestionIdx];
-    const progressPercent = ((currentQuestionIdx + 1) / questions.length) * 100;
-
-    return (
-      <ScreenLayout style={styles.container}>
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBar, { width: `${progressPercent}%` }]} />
-        </View>
-
-        <Text style={styles.questionProgress}>
-          {t("proficiencyTest.questionProgress", `Câu ${currentQuestionIdx + 1}/${questions.length}`)}
-        </Text>
-
-        <ScrollView>
-          <Text style={styles.questionText}>{q.questionText}</Text>
-          {q.options.map((opt, idx) => (
-            <TouchableOpacity
-              key={idx}
-              onPress={() => handleAnswer(q.questionId, idx)}
-              style={[
-                styles.option,
-                answers[q.questionId] === idx && styles.selectedOption
-              ]}
-            >
-              <Text style={styles.optionText}>{opt}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-
-        {Object.keys(answers).length === questions.length && (
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmitTest}>
-            <Text style={styles.submitButtonText}>{t("proficiencyTest.completeTest", "Hoàn thành bài Test")}</Text>
-          </TouchableOpacity>
-        )}
-      </ScreenLayout>
-    );
-  }
-
-  const renderResultsStage = () => {
-    if (!result) return <View />;
-
-    return (
-      <ScreenLayout style={styles.container}>
-        <Text style={styles.title}>{t("proficiencyTest.results.title", "Kết Quả Test")}</Text>
-        <Text style={styles.resultProficiency}>Trình độ: {result.proficiencyEstimate}</Text>
-        <Text style={styles.resultScore}>
-          Điểm: {result.score} / {result.totalQuestions} ({result.percentage.toFixed(1)}%)
-        </Text>
-
-        <ScrollView>
-          {result.questions.map((q, index) => (
-            <View key={q.questionId} style={[
-              styles.resultQuestionCard,
-              q.isCorrect ? styles.resultCorrect : styles.resultIncorrect
-            ]}>
-              <Text style={styles.resultQuestionText}>{index + 1}. {q.questionText}</Text>
-              <Text style={styles.resultAnswerText}>
-                {t("proficiencyTest.results.yourAnswer", "Bạn chọn")}: {q.options[q.userAnswerIndex ?? -1] ?? t("common.none", "Không chọn")}
-              </Text>
-              {!q.isCorrect && (
-                <Text style={styles.resultAnswerText}>
-                  {t("proficiencyTest.results.correctAnswer", "Đáp án đúng")}: {q.options[q.correctAnswerIndex]}
-                </Text>
-              )}
-              <Text style={styles.resultExplanation}>{q.explanation}</Text>
-            </View>
-          ))}
-        </ScrollView>
-
-        <TouchableOpacity style={styles.submitButton} onPress={handleContinueToApp}>
-          <Text style={styles.submitButtonText}>{t("common.continueToApp", "Tiếp Tục")}</Text>
-        </TouchableOpacity>
-      </ScreenLayout>
-    );
-  }
+          )}
+          ListEmptyComponent={<Text style={styles.emptyText}>No tests available.</Text>}
+        />
+      )}
+    </>
+  );
 
   return (
-    <>
-      {stage === "selection" && renderSelectionStage()}
-      {stage === "testing" && renderTestingStage()}
-      {stage === "submitting" && (
-        <ScreenLayout style={styles.container}>
-          <ActivityIndicator size="large" color="#4F46E5" />
-          <Text style={styles.loadingText}>{t("proficiencyTest.submitting", "Đang nộp bài...")}</Text>
-        </ScreenLayout>
-      )}
-      {stage === "results" && renderResultsStage()}
-
-      <VipUpgradeModal
-        visible={showVipModal}
-        onClose={() => setShowVipModal(false)}
-      />
-    </>
+    <ScreenLayout style={styles.container}>
+      {renderHeader()}
+      {activeTab === 'history' ? (
+        <FlatList
+          data={historyList}
+          refreshControl={<RefreshControl refreshing={loadingHistory} onRefresh={refetchHistory} />}
+          keyExtractor={item => item.sessionId}
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.historyCard} onPress={() => (navigation as any).navigate('TestResultScreen', { result: item })}>
+              <View style={styles.historyHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {item.status === 'REVIEW_PENDING' || item.status === 'GRADING' ? (
+                    <Icon name="schedule" size={16} color="#F59E0B" />
+                  ) : (
+                    <Icon name="check-circle" size={16} color="#059669" />
+                  )}
+                  <Text style={[styles.statusBadge, item.status === 'FINISHED' ? styles.statusSuccess : styles.statusPending]}>
+                    {item.status}
+                  </Text>
+                </View>
+                <Text style={styles.historyDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
+              </View>
+              <Text style={styles.historyScore}>
+                {item.status === 'FINISHED' ? `${item.proficiencyEstimate} (${item.score}/${item.totalQuestions})` : 'Waiting for results...'}
+              </Text>
+            </TouchableOpacity>
+          )}
+          ListEmptyComponent={<Text style={styles.emptyText}>No history available.</Text>}
+        />
+      ) : renderAvailableTab()}
+      <VipUpgradeModal visible={showVipModal} onClose={() => setShowVipModal(false)} />
+    </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: "#F8FAFC",
-    justifyContent: 'center',
-  },
-  loadingText: {
-    fontSize: 16,
-    color: '#4B5563',
-    textAlign: 'center',
-    marginTop: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  description: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 24,
-    lineHeight: 24,
-  },
-  languageSelector: {
-    marginBottom: 16,
-  },
-  langScroll: {
-    paddingVertical: 4,
-  },
-  langChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-  },
-  langChipSelected: {
-    backgroundColor: '#4F46E5',
-    borderColor: '#4F46E5',
-  },
-  flag: {
-    marginRight: 8,
-    borderRadius: 4,
-  },
-  langText: {
-    fontSize: 14,
-    color: '#374151',
-  },
-  langTextSelected: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#E5E7EB',
-    marginBottom: 20,
-  },
-  testList: {
-    flex: 1,
-  },
-  loadingIndicator: {
-    marginTop: 40,
-  },
-  noTestsContainer: {
-    padding: 20,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  noTestsText: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  testCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  testHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  testTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-  },
-  testDescription: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  skipButton: {
-    marginTop: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    backgroundColor: '#F3F4F6',
-  },
-  skipButtonText: {
-    fontSize: 16,
-    color: '#4B5563',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 4,
-    overflow: 'hidden',
-    marginBottom: 16,
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#4F46E5',
-  },
-  questionProgress: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 16,
-    fontWeight: '500',
-  },
-  questionText: {
-    fontSize: 20,
-    fontWeight: '500',
-    color: '#1F2937',
-    marginBottom: 24,
-    lineHeight: 30,
-    textAlign: 'center',
-  },
-  option: {
-    padding: 16,
-    marginVertical: 8,
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-  },
-  selectedOption: {
-    borderWidth: 2,
-    borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
-  },
-  optionText: {
-    fontSize: 16,
-    color: '#374151',
-    fontWeight: '500',
-  },
-  submitButton: {
-    marginTop: 16,
-    paddingVertical: 16,
-    borderRadius: 12,
-    backgroundColor: '#4F46E5',
-  },
-  submitButtonText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  resultProficiency: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#10B981',
-    textAlign: 'center',
-    marginVertical: 16,
-  },
-  resultScore: {
-    fontSize: 18,
-    color: '#374151',
-    textAlign: 'center',
-    marginBottom: 24,
-  },
-  resultQuestionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 2,
-  },
-  resultCorrect: {
-    borderColor: '#D1FAE5',
-    backgroundColor: '#F0FDF4',
-  },
-  resultIncorrect: {
-    borderColor: '#FEE2E2',
-    backgroundColor: '#FEF2F2',
-  },
-  resultQuestionText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 8,
-  },
-  resultAnswerText: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 4,
-  },
-  resultExplanation: {
-    fontSize: 14,
-    color: '#374151',
-    fontStyle: 'italic',
-    marginTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    paddingTop: 8,
-  },
+  container: { flex: 1, backgroundColor: "#F9FAFB" },
+  headerContainer: { padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E5E7EB' },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#111827', marginBottom: 12 },
+  tabContainer: { flexDirection: 'row', backgroundColor: '#F3F4F6', borderRadius: 8, padding: 4 },
+  tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
+  activeTab: { backgroundColor: '#FFF', elevation: 2 },
+  tabText: { fontWeight: '600', color: '#6B7280' },
+  activeTabText: { color: '#4F46E5' },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#374151', marginLeft: 16, marginTop: 16, marginBottom: 8 },
+  langContainer: { marginBottom: 8 },
+  langScroll: { paddingHorizontal: 16 },
+  langChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8, marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+  langChipSelected: { backgroundColor: '#EEF2FF', borderColor: '#4F46E5' },
+  flag: { marginRight: 8, borderRadius: 2 },
+  langText: { fontSize: 14, color: '#374151' },
+  langTextSelected: { color: '#4F46E5', fontWeight: '600' },
+  externalContainer: { marginBottom: 16 },
+  externalScroll: { paddingHorizontal: 16 },
+  externalCard: { width: 140, backgroundColor: '#FFF', borderRadius: 12, padding: 12, marginRight: 12, borderWidth: 1, borderColor: '#E5E7EB', elevation: 1 },
+  externalIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  externalTitle: { fontWeight: '700', fontSize: 14, color: '#111827', marginBottom: 4 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 20 },
+  testCard: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 12, marginBottom: 12, overflow: 'hidden', elevation: 2, borderWidth: 1, borderColor: '#E5E7EB' },
+  testImage: { width: 80, height: '100%', backgroundColor: '#E5E7EB' },
+  testContent: { flex: 1, padding: 12 },
+  testTitle: { fontSize: 16, fontWeight: '700', color: '#111827', marginBottom: 4 },
+  testDesc: { fontSize: 12, color: '#6B7280', marginBottom: 8 },
+  testMeta: { flexDirection: 'row', alignItems: 'center' },
+  metaText: { fontSize: 12, color: '#6B7280', marginLeft: 4 },
+  divider: { width: 1, height: 10, backgroundColor: '#D1D5DB', marginHorizontal: 8 },
+  emptyText: { textAlign: 'center', marginTop: 40, color: '#9CA3AF' },
+  historyCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 12, marginHorizontal: 16, marginBottom: 10, elevation: 1 },
+  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  statusBadge: { fontSize: 12, fontWeight: '700', marginLeft: 4 },
+  statusSuccess: { color: '#065F46' },
+  statusPending: { color: '#D97706' },
+  historyDate: { color: '#6B7280', fontSize: 12 },
+  historyScore: { fontSize: 16, fontWeight: '600', color: '#111827' },
 });
 
 export default ProficiencyTestScreen;

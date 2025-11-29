@@ -44,7 +44,8 @@ interface UseChatState {
   isBubbleOpen: boolean;
 
   // Actions
-  initChatService: () => void;
+  initStompClient: () => void;
+  initAiClient: () => void;
   startPrivateChat: (targetUserId: string) => Promise<Room | null>;
 
   // AI Actions
@@ -63,7 +64,10 @@ interface UseChatState {
 
   connectVideoSubtitles: (roomId: string, targetLang: string) => void;
   disconnectVideoSubtitles: () => void;
-  disconnect: () => void;
+
+  disconnectStomp: () => void;
+  disconnectAi: () => void;
+  disconnectAll: () => void;
 
   openBubble: (roomId: string) => void;
   closeBubble: () => void;
@@ -88,7 +92,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   activeBubbleRoomId: null,
   isBubbleOpen: false,
 
-  initChatService: () => {
+  initStompClient: () => {
+    // Sửa lỗi 6234: Dùng thuộc tính isConnected thay vì gọi hàm isConnected()
     if (!stompService.isConnected) {
       console.log('🚀 ChatStore: Initiating STOMP Connection...');
       stompService.connect(() => {
@@ -96,10 +101,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         console.log('✅ ChatStore: STOMP Connected');
       });
     }
+  },
 
+  initAiClient: () => {
+    // Sửa lỗi 6234: Dùng thuộc tính isConnected thay vì gọi hàm isConnected()
     if (!pythonAiWsService.isConnected) {
       console.log('🚀 ChatStore: Initiating AI WS Connection...');
-      pythonAiWsService.connect((msg) => {
+
+      const onMessageCallback = (msg: any) => {
         const state = get();
         if (msg.type === 'chat_response_chunk') {
           const lastMsg = state.aiChatHistory[state.aiChatHistory.length - 1];
@@ -126,8 +135,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           const lastMsg = state.aiChatHistory[state.aiChatHistory.length - 1];
           if (lastMsg) lastMsg.isStreaming = false;
         }
-      });
-      set({ aiWsConnected: true });
+      };
+
+      const onConnectedCallback = () => {
+        console.log('✅ ChatStore: AI WS Connected');
+        set({ aiWsConnected: true });
+      };
+
+      // Sửa lỗi 2554: Truyền onMessageCallback và onConnectedCallback
+      pythonAiWsService.connect(onMessageCallback, onConnectedCallback);
     }
   },
 
@@ -221,7 +237,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   sendAiWelcomeMessage: () => {
     const { activeAiRoomId, aiWsConnected, isAiInitialMessageSent, aiChatHistory } = get();
-    if (!activeAiRoomId || !aiWsConnected || isAiInitialMessageSent) return;
+    // Sửa lỗi 6234: Dùng thuộc tính isConnected thay vì gọi hàm isConnected()
+    if (!activeAiRoomId || !aiWsConnected || isAiInitialMessageSent || !pythonAiWsService.isConnected) return;
     const WELCOME_PROMPT = "INITIAL_WELCOME_MESSAGE";
     set({ isAiStreaming: true, isAiInitialMessageSent: true });
 
@@ -242,7 +259,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: true } }));
 
     try {
-      // FIX: Changed sort from 'sentAt,desc' to 'id.sentAt,desc' to match Composite Key structure
       const res = await instance.get<AppApiResponse<PageResponse<Message>>>(
         `/api/v1/chat/room/${roomId}/messages`,
         { params: { page, size, sort: 'id.sentAt,desc' } }
@@ -302,7 +318,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       await instance.put<AppApiResponse<Message>>(`/api/v1/chat/messages/${messageId}`, {
         content: newContent
       });
-      // Optimistic update handled by socket subscription
     } catch (error) {
       console.error("Edit message failed", error);
       throw error;
@@ -312,7 +327,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   deleteMessage: async (roomId: string, messageId: string) => {
     try {
       await instance.delete<AppApiResponse<void>>(`/api/v1/chat/messages/${messageId}`);
-      // Optimistic or waiting for socket is fine. But for delete, we can locally remove immediately for better UX
       set(state => ({
         messagesByRoom: {
           ...state.messagesByRoom,
@@ -370,21 +384,33 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     set({ videoSubtitleService: null, currentVideoSubtitles: null });
   },
 
-  disconnect: () => {
-    console.log('🛑 ChatStore: Disconnecting Services...');
+  disconnectStomp: () => {
+    console.log('🛑 ChatStore: Disconnecting STOMP...');
     stompService.disconnect();
+    set({ stompConnected: false });
+  },
+
+  disconnectAi: () => {
+    console.log('🛑 ChatStore: Disconnecting AI WS...');
     pythonAiWsService.disconnect();
-    get().disconnectVideoSubtitles();
     set({
-      stompConnected: false,
       aiWsConnected: false,
       aiChatHistory: [],
       isAiInitialMessageSent: false,
-      videoSubtitleService: null,
-      currentVideoSubtitles: null,
+      activeAiRoomId: null,
+    });
+  },
+
+  disconnectAll: () => {
+    console.log('🛑 ChatStore: Disconnecting ALL Services...');
+    get().disconnectStomp();
+    get().disconnectAi();
+    get().disconnectVideoSubtitles();
+    set({
       activeBubbleRoomId: null,
       isBubbleOpen: false,
-      activeAiRoomId: null,
+      currentVideoSubtitles: null,
+      videoSubtitleService: null
     });
   },
 

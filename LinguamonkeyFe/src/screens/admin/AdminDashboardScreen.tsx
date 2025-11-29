@@ -43,7 +43,7 @@ const AdminDashboardScreen = () => {
             try {
               await authService.logout();
             } catch (error) {
-              console.error("Logout failed", error);
+              console.error(error);
             }
           },
         },
@@ -174,8 +174,15 @@ const AdminDashboardScreen = () => {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>{t("admin.section.content")}</Text>
+          <Text style={styles.sectionHeader}>{t("admin.section.management")}</Text>
           <View style={styles.menuCard}>
+            <MenuStepItem
+              title={t("admin.screens.users")}
+              subtitle="User accounts & permissions"
+              icon="group"
+              color="#4F46E5"
+              route="AdminUserManagementScreen"
+            />
             <MenuStepItem
               title={t("admin.screens.courses")}
               subtitle="Manage courses & curriculum"
@@ -185,31 +192,24 @@ const AdminDashboardScreen = () => {
             />
             <MenuStepItem
               title={t("admin.screens.lessons")}
-              subtitle="Edit lessons and materials"
+              subtitle="Manage individual lessons"
               icon="class"
               color="#8B5CF6"
-              route="AdminLessonManagement"
-            />
-            <MenuStepItem
-              title={t("admin.screens.createVideo")}
-              subtitle="Upload and manage videos"
-              icon="video-library"
-              color="#EC4899"
-              route="AdminCreateVideoScreen"
+              route="AdminLessonManagementScreen"
               isLast
             />
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>{t("admin.section.business")}</Text>
+          <Text style={styles.sectionHeader}>{t("admin.section.content_business")}</Text>
           <View style={styles.menuCard}>
             <MenuStepItem
-              title={t("admin.screens.users")}
-              subtitle="User accounts & permissions"
-              icon="group"
-              color="#4F46E5"
-              route="AdminUserManagementScreen"
+              title={t("admin.screens.createVideo")}
+              subtitle="Upload and manage videos"
+              icon="video-library"
+              color="#EC4899"
+              route="AdminCreateVideoScreen"
             />
             <MenuStepItem
               title={t("admin.screens.analytics")}

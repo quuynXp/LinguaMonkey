@@ -70,6 +70,25 @@ service LearningService {
     rpc FindMatch (FindMatchRequest) returns (FindMatchResponse);
     rpc AnalyzeReviewQuality (ReviewQualityRequest) returns (ReviewQualityResponse);
     rpc GenerateLanguageQuiz (QuizGenerationRequest) returns (QuizGenerationResponse);
+
+    rpc GradeCertificationTest (GradeTestRequest) returns (GradeTestResponse);
+}
+
+service PersistenceService {
+    rpc SaveChatMessage (SaveChatRequest) returns (SaveChatResponse);
+}
+
+message SaveChatRequest {
+    string room_id = 1;
+    string sender_id = 2;
+    string content = 3;
+    string message_type = 4;
+    string timestamp = 5;
+}
+
+message SaveChatResponse {
+    bool success = 1;
+    string error = 2;
 }
 
 message CallPreferences {
@@ -447,4 +466,36 @@ message RoadmapMilestoneProto {
   repeated string requirements = 5;
   repeated string rewards = 6;
   int32 order_index = 7;
+}
+
+// === NEW ENTITIES FOR GRADING ===
+message GradeTestRequest {
+    string session_id = 1;
+    string test_type = 2; // "TOEIC", "IELTS", "HSK"
+    string language = 3;
+    repeated TestAnswerProto answers = 4;
+}
+
+message TestAnswerProto {
+    string question_id = 1;
+    string type = 2; // "CHOICE", "WRITING", "SPEAKING"
+    string text_content = 3;
+    bytes audio_content = 4;
+    string reference_text = 5; // Needed for speaking/pronunciation check
+}
+
+message GradeTestResponse {
+    string session_id = 1;
+    float final_score = 2;
+    string proficiency_level = 3;
+    repeated GradedAnswerProto graded_answers = 4;
+    string error = 5;
+}
+
+message GradedAnswerProto {
+    string question_id = 1;
+    bool is_correct = 2;
+    float score = 3;
+    string feedback = 4;
+    string explanation = 5;
 }

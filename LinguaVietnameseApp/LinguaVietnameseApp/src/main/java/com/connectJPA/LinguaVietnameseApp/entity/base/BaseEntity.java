@@ -21,7 +21,7 @@ import java.time.OffsetDateTime;
 @AllArgsConstructor
 public class BaseEntity {
     @CreationTimestamp
-    @Column(name = "created_at")
+    @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
 
     @UpdateTimestamp

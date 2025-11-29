@@ -1,19 +1,24 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   Switch,
+  Alert,
+  ActivityIndicator
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useShallow } from 'zustand/react/shallow';
-import { useAppStore, NotificationPreferences, PrivacySettings } from '../../stores/appStore';
+import { useAppStore, NotificationPreferences } from '../../stores/appStore';
+import { useUserStore } from '../../stores/UserStore';
+import { useTokenStore } from '../../stores/tokenStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
-import { gotoTab } from '../../utils/navigationRef';
+import { gotoTab, resetToAuth } from '../../utils/navigationRef';
+import { privateClient } from '../../api/axiosClient';
 
 const SettingsScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -22,16 +27,102 @@ const SettingsScreen: React.FC = () => {
   const {
     notificationPreferences,
     privacySettings,
+    setNotificationPreferences,
+    setPrivacySettings,
     toggleNotification,
     togglePrivacy,
   } = useAppStore(
     useShallow((state) => ({
       notificationPreferences: state.notificationPreferences,
       privacySettings: state.privacySettings,
+      setNotificationPreferences: state.setNotificationPreferences,
+      setPrivacySettings: state.setPrivacySettings,
       toggleNotification: state.toggleNotification,
       togglePrivacy: state.togglePrivacy,
     }))
   );
+
+  const { user } = useUserStore();
+
+  // Load settings from Backend on mount
+  useEffect(() => {
+    const fetchSettings = async () => {
+      if (!user?.userId) return;
+      try {
+        const res = await privateClient.get(`/api/v1/user-settings/${user.userId}`);
+        if (res.data.code === 200 && res.data.result) {
+          const remoteSettings = res.data.result;
+          // Map Backend Response to Frontend Stores
+          setNotificationPreferences({
+            ...notificationPreferences!,
+            studyReminders: remoteSettings.studyReminders,
+            streakReminders: remoteSettings.streakReminders,
+            soundEnabled: remoteSettings.soundEnabled,
+            vibrationEnabled: remoteSettings.vibrationEnabled,
+          });
+          setPrivacySettings({
+            ...privacySettings,
+            profileVisibility: remoteSettings.profileVisibility,
+            progressSharing: remoteSettings.progressSharing,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch settings", error);
+      }
+    };
+    fetchSettings();
+  }, [user?.userId]);
+
+  // Sync to Backend
+  const syncSettingToBackend = async (key: string, value: boolean) => {
+    if (!user?.userId) return;
+
+    // Construct payload based on current state + change
+    const payload = {
+      studyReminders: notificationPreferences?.studyReminders,
+      streakReminders: notificationPreferences?.streakReminders,
+      soundEnabled: notificationPreferences?.soundEnabled,
+      vibrationEnabled: notificationPreferences?.vibrationEnabled,
+      profileVisibility: privacySettings.profileVisibility,
+      progressSharing: privacySettings.progressSharing,
+      [key]: value // Override with new value
+    };
+
+    try {
+      await privateClient.patch(`/api/v1/user-settings/${user.userId}`, payload);
+    } catch (error) {
+      console.error("Failed to sync setting", error);
+      Alert.alert(t('errors.server'), "Failed to save setting");
+    }
+  };
+
+  const handleToggleNotification = (field: keyof NotificationPreferences) => {
+    const newValue = !notificationPreferences![field];
+    toggleNotification(field, newValue);
+    syncSettingToBackend(field, newValue);
+  };
+
+  const handleTogglePrivacy = (field: keyof typeof privacySettings) => {
+    const newValue = !privacySettings[field];
+    togglePrivacy(field, newValue);
+    syncSettingToBackend(field, newValue);
+  };
+
+  const handleLogout = () => {
+    Alert.alert(t('profile.logoutConfirmTitle'), t('profile.logoutConfirmMessage'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('profile.logout'),
+        style: 'destructive',
+        onPress: async () => {
+          useTokenStore.getState().clearTokens();
+          useUserStore.getState().logout();
+          useAppStore.getState().logout();
+          resetToAuth();
+        }
+      },
+    ]);
+  };
 
   const renderToggleItem = (
     label: string,
@@ -84,7 +175,7 @@ const SettingsScreen: React.FC = () => {
             {renderToggleItem(
               t('settings.studyReminders'),
               notificationPreferences?.studyReminders,
-              () => toggleNotification('studyReminders'),
+              () => handleToggleNotification('studyReminders'),
               'alarm',
               '#F59E0B'
             )}
@@ -92,7 +183,7 @@ const SettingsScreen: React.FC = () => {
             {renderToggleItem(
               t('settings.streakReminders'),
               notificationPreferences?.streakReminders,
-              () => toggleNotification('streakReminders'),
+              () => handleToggleNotification('streakReminders'),
               'whatshot',
               '#EF4444'
             )}
@@ -100,7 +191,7 @@ const SettingsScreen: React.FC = () => {
             {renderToggleItem(
               t('settings.soundEnabled'),
               notificationPreferences?.soundEnabled,
-              () => toggleNotification('soundEnabled'),
+              () => handleToggleNotification('soundEnabled'),
               'volume-up',
               '#10B981'
             )}
@@ -108,7 +199,7 @@ const SettingsScreen: React.FC = () => {
             {renderToggleItem(
               t('settings.vibrationEnabled'),
               notificationPreferences?.vibrationEnabled,
-              () => toggleNotification('vibrationEnabled'),
+              () => handleToggleNotification('vibrationEnabled'),
               'vibration',
               '#6366F1'
             )}
@@ -122,7 +213,7 @@ const SettingsScreen: React.FC = () => {
             {renderToggleItem(
               t('settings.profileVisibility'),
               privacySettings?.profileVisibility,
-              () => togglePrivacy('profileVisibility'),
+              () => handleTogglePrivacy('profileVisibility'),
               'visibility',
               '#3B82F6'
             )}
@@ -130,25 +221,9 @@ const SettingsScreen: React.FC = () => {
             {renderToggleItem(
               t('settings.progressSharing'),
               privacySettings?.progressSharing,
-              () => togglePrivacy('progressSharing'),
+              () => handleTogglePrivacy('progressSharing'),
               'share',
               '#8B5CF6'
-            )}
-            <View style={styles.separator} />
-            {renderToggleItem(
-              t('settings.locationTracking'),
-              privacySettings?.locationTracking,
-              () => togglePrivacy('locationTracking'),
-              'location-on',
-              '#EC4899'
-            )}
-            <View style={styles.separator} />
-            {renderToggleItem(
-              t('settings.contactSync'),
-              privacySettings?.contactSync,
-              () => togglePrivacy('contactSync'),
-              'contacts',
-              '#14B8A6'
             )}
           </View>
         </View>
@@ -179,6 +254,11 @@ const SettingsScreen: React.FC = () => {
             )}
           </View>
         </View>
+
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+          <Icon name="logout" size={22} color="#EF4444" />
+          <Text style={styles.logoutText}>{t('profile.logout')}</Text>
+        </TouchableOpacity>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -214,6 +294,9 @@ const styles = createScaledSheet({
   linkLabel: { flex: 1, fontSize: 16, color: '#374151', fontWeight: '500' },
 
   separator: { height: 1, backgroundColor: '#F3F4F6', marginLeft: 50 },
+
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FEF2F2', padding: 16, borderRadius: 16, marginTop: 8, borderWidth: 1, borderColor: '#FECACA' },
+  logoutText: { fontSize: 16, fontWeight: '700', color: '#EF4444', marginLeft: 10 },
 });
 
 export default SettingsScreen;

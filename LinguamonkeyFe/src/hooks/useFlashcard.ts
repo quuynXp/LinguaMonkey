@@ -11,6 +11,7 @@ import {
 export const flashcardKeys = {
   all: ["flashcards"] as const,
   lists: () => [...flashcardKeys.all, "list"] as const,
+  // Params bao gồm page, size, query và isPublic
   list: (lessonId: string, params: any) => [...flashcardKeys.lists(), lessonId, params] as const,
   due: (lessonId: string) => [...flashcardKeys.lists(), "due", lessonId] as const,
   details: () => [...flashcardKeys.all, "detail"] as const,
@@ -24,24 +25,28 @@ export const flashcardKeys = {
 export const useFlashcards = () => {
   const queryClient = useQueryClient();
 
-  // 1. GET /api/v1/lessons/{lessonId}/flashcards (Search & Pagination)
+  // 1. GET /api/v1/lessons/{lessonId}/flashcards (Search & Pagination & Filter Public)
   const useGetFlashcards = (
     lessonId: string | null,
-    params: { page?: number; size?: number; query?: string }
+    params: { page?: number; size?: number; query?: string; isPublic?: boolean }
   ) => {
-    const { page = 0, size = 20, query = "" } = params;
+    const { page = 0, size = 20, query = "", isPublic } = params;
+
     return useQuery({
-      queryKey: flashcardKeys.list(lessonId!, { page, size, query }),
+      // Thêm isPublic vào queryKey để cache riêng biệt nếu cần filter
+      queryKey: flashcardKeys.list(lessonId!, { page, size, query, isPublic }),
       queryFn: async () => {
         if (!lessonId) throw new Error("Lesson ID is required");
+
+        // Truyền isPublic vào params gửi lên server
         const { data } = await instance.get<AppApiResponse<PageResponse<FlashcardResponse>>>(
           `/api/v1/lessons/${lessonId}/flashcards`,
-          { params: { page, size, query } }
+          { params: { page, size, query, isPublic } }
         );
         return data.result;
       },
       enabled: !!lessonId,
-      placeholderData: (previousData) => previousData, // Keep previous data while fetching new page
+      placeholderData: (previousData) => previousData,
     });
   };
 
@@ -73,11 +78,11 @@ export const useFlashcards = () => {
         return data.result || [];
       },
       enabled: !!lessonId,
-      staleTime: 0, // Due cards should be fresh
+      staleTime: 0,
     });
   };
 
-  // 4. POST /api/v1/lessons/{lessonId}/flashcards (Create)
+  // 4. POST /api/v1/lessons/{lessonId}/flashcards (Create - Payload chứa isPublic)
   const useCreateFlashcard = () => {
     return useMutation({
       mutationFn: async ({ lessonId, payload }: { lessonId: string; payload: CreateFlashcardRequest }) => {
@@ -88,13 +93,13 @@ export const useFlashcards = () => {
         return data.result;
       },
       onSuccess: (_, vars) => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.lists() }); // Invalidate all lists
+        queryClient.invalidateQueries({ queryKey: flashcardKeys.lists() });
         queryClient.invalidateQueries({ queryKey: flashcardKeys.due(vars.lessonId) });
       },
     });
   };
 
-  // 5. PUT /api/v1/lessons/{lessonId}/flashcards/{id} (Update)
+  // 5. PUT /api/v1/lessons/{lessonId}/flashcards/{id} (Update - Payload chứa isPublic)
   const useUpdateFlashcard = () => {
     return useMutation({
       mutationFn: async ({
@@ -155,17 +160,15 @@ export const useFlashcards = () => {
         return data.result;
       },
       onSuccess: (updatedCard, vars) => {
-        // Remove from "Due" list optimistically
         queryClient.setQueryData(flashcardKeys.due(vars.lessonId), (old: FlashcardResponse[] | undefined) =>
           old ? old.filter((c) => c.flashcardId !== vars.flashcardId) : []
         );
-        // Update detail cache if exists
         queryClient.setQueryData(flashcardKeys.detail(vars.flashcardId), updatedCard);
       },
     });
   };
 
-  // 8. POST /api/v1/lessons/{lessonId}/flashcards/{id}/reset (Reset Progress)
+  // 8. POST /api/v1/lessons/{lessonId}/flashcards/{id}/reset
   const useResetProgress = () => {
     return useMutation({
       mutationFn: async ({ lessonId, flashcardId }: { lessonId: string; flashcardId: string }) => {
@@ -181,7 +184,7 @@ export const useFlashcards = () => {
     });
   };
 
-  // 9. POST /api/v1/lessons/{lessonId}/flashcards/{id}/suspend (Toggle Suspend)
+  // 9. POST /api/v1/lessons/{lessonId}/flashcards/{id}/suspend
   const useToggleSuspend = () => {
     return useMutation({
       mutationFn: async ({ lessonId, flashcardId }: { lessonId: string; flashcardId: string }) => {
@@ -197,7 +200,7 @@ export const useFlashcards = () => {
     });
   };
 
-  // 10. POST /api/v1/lessons/{lessonId}/flashcards/{id}/tts (Generate Audio)
+  // 10. POST /api/v1/lessons/{lessonId}/flashcards/{id}/tts
   const useGenerateTts = () => {
     return useMutation({
       mutationFn: async ({

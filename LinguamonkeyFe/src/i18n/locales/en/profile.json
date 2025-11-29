@@ -7,6 +7,11 @@
         "level": "Level"
     },
     "profile": {
+        "streak": "Streak",
+        "coins": "Coins",
+        "dayOfBirth": "Day of birth",
+        "joined": "Joined",
+        "nickname": "Nickname",
         "deactivateWarning": "Are you sure?",
         "accountActions": "Account Actions",
         "loadFailed": "Failed to load profile",
@@ -68,7 +73,6 @@
             "year": "Year"
         },
         "country": "Country",
-        "settings": "Settings",
         "settings": {
             "studyReminders": "Study Reminders",
             "streakReminders": "Streak Reminders",

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -60,31 +60,59 @@ const ChatAIScreen = () => {
   const loadingByRoom = useChatStore(s => s.loadingByRoom);
   const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
   const pageByRoom = useChatStore(s => s.pageByRoom);
+  const isAiInitialMessageSent = useChatStore(s => s.isAiInitialMessageSent);
+  const aiWsConnected = useChatStore(s => s.aiWsConnected); // Lấy trạng thái kết nối
 
-  const initChatService = useChatStore(s => s.initChatService);
+  // ACTIONS
+  const initAiClient = useChatStore(s => s.initAiClient);
+  const disconnectAi = useChatStore(s => s.disconnectAi);
   const startNewAiChat = useChatStore(s => s.startNewAiChat);
   const selectAiRoom = useChatStore(s => s.selectAiRoom);
   const fetchAiRoomList = useChatStore(s => s.fetchAiRoomList);
   const loadMessages = useChatStore(s => s.loadMessages);
   const sendAiPrompt = useChatStore(s => s.sendAiPrompt);
+  const sendAiWelcomeMessage = useChatStore(s => s.sendAiWelcomeMessage);
 
   const isLoading = activeAiRoomId ? loadingByRoom[activeAiRoomId] : false;
 
-  // Inverted list: aiHistory needed in [Newest -> Oldest]
-  // Store keeps aiHistory as [Oldest -> Newest] for Context. 
-  // We reverse it for Display in Inverted FlatList.
   const displayMessages = React.useMemo(() => [...aiHistory].reverse(), [aiHistory]);
 
+  // Lifecycle AI Connection
   useEffect(() => {
-    const initialize = async () => {
-      initChatService();
+    initAiClient();
+
+    const initializeData = async () => {
       await fetchAiRoomList();
       if (!activeAiRoomId) {
         await startNewAiChat();
       }
     };
-    initialize();
-  }, [user?.userId]);
+
+    if (user?.userId) {
+      initializeData();
+    }
+
+    return () => {
+      disconnectAi();
+    };
+  }, [user?.userId, initAiClient, disconnectAi]);
+
+  // Effect to trigger Welcome Message if history is empty
+  useEffect(() => {
+    // Thêm aiWsConnected vào điều kiện để đảm bảo socket đã sẵn sàng
+    if (activeAiRoomId && aiWsConnected && !isLoading && !isAiStreaming) {
+      // Check if we have history. 
+      // Note: aiHistory might be empty initially before loadMessages completes.
+      // But if loadMessages finished (isLoading false) and length is 0, send welcome.
+      if (aiHistory.length === 0 && !isAiInitialMessageSent) {
+
+        // Gửi tin nhắn chào mừng ngay lập tức vì aiWsConnected đã đảm bảo socket open
+        sendAiWelcomeMessage();
+
+      }
+    }
+    // Thay thế dependency isAiInitialMessageSent bằng aiWsConnected để kích hoạt khi kết nối hoàn tất
+  }, [activeAiRoomId, isLoading, aiHistory.length, isAiStreaming, aiWsConnected, sendAiWelcomeMessage]);
 
   const handleLoadMore = () => {
     if (activeAiRoomId && !isLoading && hasMoreByRoom[activeAiRoomId]) {
@@ -203,19 +231,16 @@ const ChatAIScreen = () => {
               </TouchableOpacity>
 
               <View style={styles.headerTitleContainer}>
-                {/* Logo & Title */}
                 <Icon name="smart-toy" size={24} color="#3B82F6" style={{ marginRight: 8 }} />
                 <Text style={styles.headerTitle}>AI Assistant</Text>
               </View>
             </View>
 
             <View style={styles.headerRight}>
-              {/* History Button */}
               <TouchableOpacity onPress={() => setIsHistoryVisible(true)} style={styles.iconButton}>
                 <Icon name="history" size={24} color="#4B5563" />
               </TouchableOpacity>
 
-              {/* Language Switcher */}
               <View style={styles.langContainer}>
                 {['vi', 'en'].map((lang) => (
                   <TouchableOpacity key={lang} onPress={() => changeLanguage(lang)}>
@@ -239,6 +264,11 @@ const ChatAIScreen = () => {
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.2}
             ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
+            ListEmptyComponent={!isLoading && !isAiStreaming ? (
+              <View style={{ alignItems: 'center', marginTop: 50 }}>
+                <Text style={{ color: '#9CA3AF' }}>Bắt đầu trò chuyện với AI...</Text>
+              </View>
+            ) : null}
           />
 
           {isAiStreaming && (

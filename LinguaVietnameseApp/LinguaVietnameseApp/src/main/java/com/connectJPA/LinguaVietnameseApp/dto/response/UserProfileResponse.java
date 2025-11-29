@@ -35,6 +35,7 @@ public class UserProfileResponse {
     private Character3dResponse character3d;
     private UserStatsResponse stats;
     private List<BadgeResponse> badges;
+    private boolean isVip;
 
     private boolean isFriend;
     private FriendRequestStatusResponse friendRequestStatus;

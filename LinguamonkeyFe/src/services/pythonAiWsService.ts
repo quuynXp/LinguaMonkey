@@ -13,11 +13,9 @@ interface AiChatMessage {
 }
 
 export type AiMessageCallback = (message: AiChatMessage) => void;
+export type AiOpenCallback = () => void;
 
-// === FIX: URL HANDLING ===
-// Loại bỏ http:// hoặc https:// nếu có trong API_BASE_URL để tránh lỗi "double protocol"
 const CLEAN_BASE_URL = API_BASE_URL.replace(/^https?:\/\//, '');
-// Nếu chạy local/dev qua Kong port 8000, dùng ws://. Nếu prod có SSL, dùng wss://
 const WS_PROTOCOL = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
 const KONG_WS_URL = `${WS_PROTOCOL}${CLEAN_BASE_URL}`;
 
@@ -25,15 +23,13 @@ export class PythonAiWsService {
   private ws: WebSocket | null = null;
   private url: string;
   private onMessageCallback?: AiMessageCallback;
+  private onOpenCallback?: AiOpenCallback;
   private reconnectInterval?: ReturnType<typeof setTimeout>;
   private isConnecting: boolean = false;
   private shouldReconnect: boolean = true;
   private appStateSubscription: any;
 
   constructor() {
-    // Kong route: /ws/py/ -> Python Service: /
-    // Endpoint tại Python: @app.websocket("/chat-stream")
-    // Client cần gọi: /ws/py/chat-stream
     this.url = `${KONG_WS_URL}/ws/py/chat-stream`;
     this.setupAppStateListener();
   }
@@ -42,7 +38,7 @@ export class PythonAiWsService {
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
   }
 
-  public connect(onMessage: AiMessageCallback): void {
+  public connect(onMessage: AiMessageCallback, onOpen: AiOpenCallback): void {
     if (this.ws?.readyState === WebSocket.OPEN || this.isConnecting) {
       console.log('🤖 AI WS: Already connected or connecting');
       return;
@@ -57,9 +53,10 @@ export class PythonAiWsService {
     this.isConnecting = true;
     this.shouldReconnect = true;
     this.onMessageCallback = onMessage;
+    this.onOpenCallback = onOpen; // Lưu callback onOpen
 
     const connectUrl = `${this.url}?token=${encodeURIComponent(token)}`;
-    console.log(`🤖 AI WS: Connecting to ${this.url}...`); // Log URL để debug
+    console.log(`🤖 AI WS: Connecting to ${this.url}...`);
 
     this.ws = new WebSocket(connectUrl);
 
@@ -67,6 +64,7 @@ export class PythonAiWsService {
       console.log('✅ AI WS connected successfully');
       this.isConnecting = false;
       if (this.reconnectInterval) clearTimeout(this.reconnectInterval);
+      if (this.onOpenCallback) this.onOpenCallback(); // Kích hoạt callback onOpen
     };
 
     this.ws.onmessage = (e) => {
@@ -81,7 +79,6 @@ export class PythonAiWsService {
     };
 
     this.ws.onerror = (e: any) => {
-      // Log chi tiết lỗi hơn
       console.log('❌ AI WS Error:', e?.message || JSON.stringify(e));
       this.isConnecting = false;
     };
@@ -103,8 +100,8 @@ export class PythonAiWsService {
     if (this.reconnectInterval) clearTimeout(this.reconnectInterval);
     this.reconnectInterval = setTimeout(() => {
       console.log('♻️ AI WS: Reconnecting...');
-      if (this.onMessageCallback && this.shouldReconnect) {
-        this.connect(this.onMessageCallback);
+      if (this.onMessageCallback && this.onOpenCallback && this.shouldReconnect) {
+        this.connect(this.onMessageCallback, this.onOpenCallback);
       }
     }, 5000);
   }
@@ -112,11 +109,11 @@ export class PythonAiWsService {
   private handleAppStateChange = (state: AppStateStatus): void => {
     if (state === 'active' && this.shouldReconnect && !this.isConnected) {
       console.log('♻️ App resumed, reconnecting AI WS...');
-      if (this.onMessageCallback) {
-        this.connect(this.onMessageCallback);
+      // Truyền cả 2 callback khi reconnect
+      if (this.onMessageCallback && this.onOpenCallback) {
+        this.connect(this.onMessageCallback, this.onOpenCallback);
       }
     } else if (state === 'background') {
-      console.log('App backgrounded, disconnecting AI WS');
       this.disconnect();
     }
   };
@@ -126,8 +123,9 @@ export class PythonAiWsService {
       this.ws.send(JSON.stringify(msg));
     } else {
       console.warn('🤖 AI WS: Not connected. Message dropped:', msg);
-      if (this.onMessageCallback && this.shouldReconnect) {
-        this.connect(this.onMessageCallback);
+      // Cố gắng reconnect nếu bị ngắt kết nối
+      if (this.onMessageCallback && this.onOpenCallback && this.shouldReconnect) {
+        this.connect(this.onMessageCallback, this.onOpenCallback);
       }
     }
   }

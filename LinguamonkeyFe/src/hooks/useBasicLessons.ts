@@ -24,17 +24,6 @@ export const useBasicLessons = () => {
         });
     };
 
-    const useBasicLessonDetail = (id: string) => {
-        return useQuery({
-            queryKey: basicLessonKeys.detail(id),
-            queryFn: async () => {
-                const { data } = await instance.get<AppApiResponse<BasicLessonResponse>>(`/api/v1/basic-lessons/${id}`);
-                return data.result;
-            },
-            enabled: !!id,
-        });
-    };
-
     const useEnrichBasicLesson = () => {
         return useMutation({
             mutationFn: async (id: string) => {
@@ -42,16 +31,32 @@ export const useBasicLessons = () => {
                 return data.result!;
             },
             onSuccess: (updatedData) => {
+                // Update cache
                 queryClient.setQueryData(basicLessonKeys.detail(updatedData.id), updatedData);
-                // Optionally update the list item
                 queryClient.invalidateQueries({ queryKey: basicLessonKeys.all });
+            }
+        });
+    };
+
+    // New Mutation for Pronunciation Check
+    const useCheckPronunciation = () => {
+        return useMutation({
+            mutationFn: async ({ audioBase64, referenceText, language }: { audioBase64: string, referenceText: string, language: string }) => {
+                // We assume there is an endpoint for this either in BasicLessonController or LearningController
+                // Since user provided BasicLessonController, we will add a practice endpoint there.
+                const { data } = await instance.post<AppApiResponse<{ feedback: string; score: number }>>(`/api/v1/basic-lessons/practice`, {
+                    audioData: audioBase64,
+                    referenceText,
+                    language
+                });
+                return data.result!;
             }
         });
     };
 
     return {
         useBasicLessonsList,
-        useBasicLessonDetail,
         useEnrichBasicLesson,
+        useCheckPronunciation,
     };
 };

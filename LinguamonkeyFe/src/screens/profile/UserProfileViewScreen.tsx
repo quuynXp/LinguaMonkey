@@ -12,16 +12,19 @@ import {
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { useTranslation } from "react-i18next";
-
 import { useUserStore } from "../../stores/UserStore";
 import { useUsers } from "../../hooks/useUsers";
 import { useFriendships } from "../../hooks/useFriendships";
 import { useGetStudyHistory } from "../../hooks/useUserActivity";
+import { useCourses } from "../../hooks/useCourses"; // <-- mới
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useToast } from "../../utils/useToast";
 import { FriendshipStatus } from "../../types/enums";
 import type { UserProfileResponse } from "../../types/dto";
+import { getCountryFlag } from "../../utils/flagUtils";
+import { getAvatarSource } from "../../utils/avatarUtils";
+import { getCourseImage } from "../../utils/courseUtils";
 
 const { width } = Dimensions.get("window");
 
@@ -37,17 +40,8 @@ type RootStackParamList = {
   };
 };
 
-const getFlagEmoji = (countryCode?: string) => {
-  if (!countryCode) return "🌍";
-  const codePoints = countryCode
-    .toUpperCase()
-    .split("")
-    .map((char) => 127397 + char.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
-};
-
 const InfoRow = ({ icon, label, value }: { icon: string; label: string; value?: string | number | null }) => {
-  if (!value) return null;
+  if (!value && value !== 0) return null;
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoLabelContainer}>
@@ -102,12 +96,16 @@ const UserProfileViewScreen = () => {
   const navigation = useNavigation<any>();
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { user: currentUser } = useUserStore();
+  const { user: currentUser, refreshUserProfile } = useUserStore();
   const { userId } = route.params;
 
   const { useUserProfile, useAdmireUser } = useUsers();
   const { useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
 
+  // courses hook
+  const { useCreatorCourses } = useCourses();
+
+  // profile data
   const { data: userProfile, isLoading, refetch } = useUserProfile(userId);
 
   const createFriendshipMutation = useCreateFriendship();
@@ -117,9 +115,13 @@ const UserProfileViewScreen = () => {
 
   const { data: historyData, isLoading: isHistoryLoading } = useGetStudyHistory(userId, "year");
 
+  // fetch public courses created by this user (enabled only when userId exists)
+  const { data: creatorCoursesPage, isLoading: creatorCoursesLoading, refetch: refetchCreatorCourses } = useCreatorCourses(userId, 0, 20);
+  const publicCourses = creatorCoursesPage?.data || [];
+
   const isSelf = currentUser?.userId === userId;
 
-  const profileData = useMemo(() => {
+  const profileData = useMemo<UserProfileResponse | null>(() => {
     if (!userProfile) return null;
     return userProfile;
   }, [userProfile]);
@@ -269,12 +271,13 @@ const UserProfileViewScreen = () => {
         <View style={styles.profileCard}>
           <View style={styles.avatarSection}>
             <Image
-              source={{ uri: profileData.avatarUrl || "https://via.placeholder.com/150" }}
+              source={getAvatarSource(profileData.avatarUrl, profileData.gender)}
               style={styles.avatar}
             />
             {profileData.country && (
               <View style={styles.flagBadge}>
-                <Text style={styles.flagText}>{getFlagEmoji(profileData.country)}</Text>
+                {/* render component flag trực tiếp */}
+                {getCountryFlag(profileData.country, 20)}
               </View>
             )}
             {character3d && (
@@ -373,9 +376,9 @@ const UserProfileViewScreen = () => {
             <InfoRow icon="flag" label={t("profile.country")} value={profileData.country} />
             <InfoRow icon="security" label={t("profile.chatAccess")} value={profileData.allowStrangerChat ? t("common.public") : t("common.private")} />
             {stats && (
-              <InfoRow icon="translate" label={t("profile.translationsUsed")} value={stats.translationsUsed.toLocaleString()} />
+              <InfoRow icon="translate" label={t("profile.translationsUsed")} value={stats.translationsUsed?.toLocaleString()} />
             )}
-            <InfoRow icon="military-tech" label={t("profile.totalExp")} value={profileData.exp.toLocaleString()} />
+            <InfoRow icon="military-tech" label={t("profile.totalExp")} value={profileData.exp?.toLocaleString()} />
           </View>
         </View>
 
@@ -414,9 +417,36 @@ const UserProfileViewScreen = () => {
           <ActivityHeatmap userId={userId} historyData={historyData} />
         )}
 
+        {/* Hiển thị các courses public của user (fetch riêng) */}
+        {(publicCourses && publicCourses.length > 0) && (
+          <View style={styles.sectionContainer}>
+            <Text style={styles.sectionTitle}>{t("profile.publicCourses", "Courses của người dùng")}</Text>
+            {publicCourses.map((course: any) => (
+              <TouchableOpacity
+                key={course.courseId}
+                style={styles.courseCard}
+                onPress={() => navigation.navigate("CourseStack", { screen: "CourseDetailScreen", params: { courseId: course.courseId } })}
+              >
+                <Image source={getCourseImage(course.latestPublicVersion?.thumbnailUrl)} style={styles.courseThumb} />
+                <View style={styles.courseInfo}>
+                  <Text style={styles.courseTitle} numberOfLines={2}>{course.title}</Text>
+                  <View style={styles.courseMeta}>
+                    <Text style={styles.courseLevel}>{course.difficultyLevel || course.level}</Text>
+                    <View style={styles.ratingContainer}>
+                      <Icon name="star" size={14} color="#FFC107" />
+                      <Text style={styles.ratingText}>{(course.averageRating ?? 0).toFixed(1)}</Text>
+                    </View>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Nếu profileData.isTeacher vẫn giữ section cũ (th teacherCourses) */}
         {profileData.isTeacher && teacherCourses && teacherCourses.length > 0 && (
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>{t("profile.courses")}</Text>
+            <Text style={styles.sectionTitle}>{t("profile.createdCourses", "Khóa học tạo bởi giáo viên")}</Text>
             {teacherCourses.map((course) => (
               <TouchableOpacity
                 key={course.courseId}
@@ -430,7 +460,7 @@ const UserProfileViewScreen = () => {
                     <Text style={styles.courseLevel}>{course.level}</Text>
                     <View style={styles.ratingContainer}>
                       <Icon name="star" size={14} color="#FFC107" />
-                      <Text style={styles.ratingText}>{course.averageRating.toFixed(1)}</Text>
+                      <Text style={styles.ratingText}>{(course.averageRating ?? 0).toFixed(1)}</Text>
                     </View>
                   </View>
                 </View>
@@ -510,7 +540,7 @@ const styles = createScaledSheet({
     shadowRadius: 3,
     elevation: 4,
   },
-  threeDBadge: { // Sửa từ 3dBadge
+  threeDBadge: {
     position: "absolute",
     top: 0,
     right: 0,
@@ -519,13 +549,10 @@ const styles = createScaledSheet({
     paddingHorizontal: 6,
     paddingVertical: 2,
   },
-  threeDBadgeText: { // Sửa từ 3dText
+  threeDBadgeText: {
     color: "#FFF",
     fontSize: 10,
     fontWeight: "bold",
-  },
-  flagText: {
-    fontSize: 18,
   },
   fullname: {
     fontSize: 22,

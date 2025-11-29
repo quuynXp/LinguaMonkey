@@ -15,15 +15,11 @@ interface ScreenLayoutProps {
     unsafe?: boolean;
     headerComponent?: React.ReactNode;
     bottomComponent?: React.ReactNode;
-    /** Tên Tab muốn điều hướng tới khi vuốt sang trái (Right-to-Left swipe) */
     swipeToTab?: string;
-    /** Cho phép vuốt sang phải để Go Back. Mặc định: true */
     enableSwipeBack?: boolean;
 }
 
-const SWIPE_AREA_WIDTH = 40;
-// Loại bỏ MIN_SWIPE_DISTANCE vì không dùng được trong FlingGesture
-// const MIN_SWIPE_DISTANCE = 5; 
+const SWIPE_AREA_WIDTH = 80;
 
 const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     children,
@@ -60,20 +56,16 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
         }
     };
 
-    // 1. Cử chỉ vuốt sang Trái (Cho vùng mép phải)
     const swipeLeftGesture = Gesture.Fling()
         .direction(Directions.LEFT)
-        // Loại bỏ .minDistance() để sửa lỗi
         .onEnd(() => {
             if (swipeToTab) {
                 runOnJS(handleNavigateTab)();
             }
         });
 
-    // 2. Cử chỉ vuốt sang Phải (Cho vùng mép trái)
     const swipeRightGesture = Gesture.Fling()
         .direction(Directions.RIGHT)
-        // Loại bỏ .minDistance() để sửa lỗi
         .onEnd(() => {
             if (enableSwipeBack) {
                 runOnJS(handleGoBack)();
@@ -88,7 +80,6 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 translucent={true}
             />
 
-            {/* Header: Giữ nguyên */}
             {headerComponent ? (
                 <View
                     style={[
@@ -102,32 +93,25 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 <View style={{ height: headerSpacerHeight, backgroundColor: statusBarColor }} />
             )}
 
-            {/* Nội dung chính: Đặt nội dung và các vùng gesture sát hai bên */}
             <View style={[styles.contentWrapper, style]}>
 
-                {/* 1. Vùng Vuốt Phải (Go Back) */}
                 {enableSwipeBack && (
                     <GestureDetector gesture={swipeRightGesture}>
-                        {/* Area cho phép vuốt phải (Go Back) */}
                         <View style={[styles.gestureAreaLeft, { left: 0 }]} />
                     </GestureDetector>
                 )}
 
-                {/* 2. Nội dung Màn hình */}
                 <View style={styles.content}>
                     {children}
                 </View>
 
-                {/* 3. Vùng Vuốt Trái (Goto Tab) */}
                 {swipeToTab && (
                     <GestureDetector gesture={swipeLeftGesture}>
-                        {/* Area cho phép vuốt trái (Goto Tab) */}
                         <View style={[styles.gestureAreaRight, { right: 0 }]} />
                     </GestureDetector>
                 )}
             </View>
 
-            {/* Footer: Giữ nguyên */}
             {bottomComponent ? (
                 <View
                     style={[
@@ -173,7 +157,6 @@ const styles = createScaledSheet({
         bottom: 0,
         width: SWIPE_AREA_WIDTH,
         zIndex: 5,
-        // Dùng `opacity: 0` nếu bạn muốn ẩn vùng này hoàn toàn
     },
     gestureAreaRight: {
         position: 'absolute',
@@ -181,7 +164,6 @@ const styles = createScaledSheet({
         bottom: 0,
         width: SWIPE_AREA_WIDTH,
         zIndex: 5,
-        // Dùng `opacity: 0` nếu bạn muốn ẩn vùng này hoàn toàn
     }
 });
 

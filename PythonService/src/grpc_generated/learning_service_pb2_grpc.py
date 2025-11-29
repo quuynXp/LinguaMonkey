@@ -112,6 +112,11 @@ class LearningServiceStub(object):
                 request_serializer=learning__service__pb2.QuizGenerationRequest.SerializeToString,
                 response_deserializer=learning__service__pb2.QuizGenerationResponse.FromString,
                 )
+        self.GradeCertificationTest = channel.unary_unary(
+                '/learning.LearningService/GradeCertificationTest',
+                request_serializer=learning__service__pb2.GradeTestRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.GradeTestResponse.FromString,
+                )
 
 
 class LearningServiceServicer(object):
@@ -240,6 +245,12 @@ class LearningServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GradeCertificationTest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_LearningServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -337,6 +348,11 @@ def add_LearningServiceServicer_to_server(servicer, server):
                     servicer.GenerateLanguageQuiz,
                     request_deserializer=learning__service__pb2.QuizGenerationRequest.FromString,
                     response_serializer=learning__service__pb2.QuizGenerationResponse.SerializeToString,
+            ),
+            'GradeCertificationTest': grpc.unary_unary_rpc_method_handler(
+                    servicer.GradeCertificationTest,
+                    request_deserializer=learning__service__pb2.GradeTestRequest.FromString,
+                    response_serializer=learning__service__pb2.GradeTestResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -671,5 +687,83 @@ class LearningService(object):
         return grpc.experimental.unary_unary(request, target, '/learning.LearningService/GenerateLanguageQuiz',
             learning__service__pb2.QuizGenerationRequest.SerializeToString,
             learning__service__pb2.QuizGenerationResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GradeCertificationTest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/GradeCertificationTest',
+            learning__service__pb2.GradeTestRequest.SerializeToString,
+            learning__service__pb2.GradeTestResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+
+class PersistenceServiceStub(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.SaveChatMessage = channel.unary_unary(
+                '/learning.PersistenceService/SaveChatMessage',
+                request_serializer=learning__service__pb2.SaveChatRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.SaveChatResponse.FromString,
+                )
+
+
+class PersistenceServiceServicer(object):
+    """Missing associated documentation comment in .proto file."""
+
+    def SaveChatMessage(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_PersistenceServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'SaveChatMessage': grpc.unary_unary_rpc_method_handler(
+                    servicer.SaveChatMessage,
+                    request_deserializer=learning__service__pb2.SaveChatRequest.FromString,
+                    response_serializer=learning__service__pb2.SaveChatResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'learning.PersistenceService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+
+
+ # This class is part of an EXPERIMENTAL API.
+class PersistenceService(object):
+    """Missing associated documentation comment in .proto file."""
+
+    @staticmethod
+    def SaveChatMessage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.PersistenceService/SaveChatMessage',
+            learning__service__pb2.SaveChatRequest.SerializeToString,
+            learning__service__pb2.SaveChatResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

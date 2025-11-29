@@ -10,7 +10,12 @@ import lombok.experimental.SuperBuilder;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
+
+import org.hibernate.annotations.Where;
+
 
 @Data
 @Entity
@@ -35,6 +40,18 @@ public class CourseReview extends BaseEntity {
 
     @Column(name = "rating", nullable = false)
     private BigDecimal rating;
+
+    private int likeCount;
+    private int dislikeCount;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "parent_id")
+    private CourseReview parent;
+
+    @OneToMany(mappedBy = "parent", cascade = CascadeType.ALL)
+    @Where(clause = "is_deleted = false")
+    @OrderBy("createdAt ASC")
+    private List<CourseReview> replies = new ArrayList<>();
 
     @Column(name = "comment")
     private String comment;

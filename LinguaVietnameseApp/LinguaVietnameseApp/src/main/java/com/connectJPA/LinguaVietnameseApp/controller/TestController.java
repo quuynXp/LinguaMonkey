@@ -1,20 +1,19 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.TestSubmissionRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.TestSessionResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.TestConfigResponse; // Bạn cần tạo DTO này
-import com.connectJPA.LinguaVietnameseApp.dto.response.TestResultResponse; // Bạn cần tạo DTO này
+import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
-import com.connectJPA.LinguaVietnameseApp.service.TestService; // Bạn cần tạo Service này
+import com.connectJPA.LinguaVietnameseApp.service.TestService;
 import com.connectJPA.LinguaVietnameseApp.utils.SecurityUtil;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,37 +30,62 @@ public class TestController {
 
     private final TestService testService;
     private final MessageSource messageSource;
-     private final SecurityUtil securityUtil;
+    private final SecurityUtil securityUtil;
 
-    @Operation(summary = "Get available test configurations", description = "Get all active tests user can take (placement, grammar, vocab, etc.)")
+    @Operation(summary = "Get available test configurations (Paginated)")
     @GetMapping("/available")
-    // (Endpoint này có thể không cần xác thực nếu ai cũng xem được)
-    public AppApiResponse<List<TestConfigResponse>> getAvailableTests(
+    public AppApiResponse<PageResponse<TestConfigResponse>> getAvailableTests(
             @RequestParam String languageCode,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
             Locale locale) {
+        
+        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Page<TestConfigResponse> testsPage = testService.getAvailableTests(languageCode, pageable);
+        
+        // Convert Spring Page to Custom PageResponse
+        PageResponse<TestConfigResponse> pageResponse = new PageResponse<>();
+        pageResponse.setContent(testsPage.getContent());
+        pageResponse.setPageNumber(testsPage.getNumber());
+        pageResponse.setPageSize(testsPage.getSize());
+        pageResponse.setTotalElements(testsPage.getTotalElements());
+        pageResponse.setTotalPages(testsPage.getTotalPages());
+        pageResponse.setIsFirst(testsPage.isLast());
+        pageResponse.setIsLast(testsPage.isFirst());
+        pageResponse.setHasNext(testsPage.hasNext());
+        pageResponse.setHasPrevious(testsPage.hasPrevious());
 
-        List<TestConfigResponse> tests = testService.getAvailableTests(languageCode);
-        return AppApiResponse.<List<TestConfigResponse>>builder()
+        return AppApiResponse.<PageResponse<TestConfigResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("test.available.success", null, locale))
-                .result(tests)
+                .result(pageResponse)
+                .build();
+    }
+    
+    @Operation(summary = "Get test history for user")
+    @GetMapping("/history")
+    @PreAuthorize("isAuthenticated()")
+    public AppApiResponse<List<TestResultResponse>> getTestHistory(Locale locale) {
+        UUID userId = securityUtil.getCurrentUserId();
+        List<TestResultResponse> history = testService.getTestHistory(userId);
+        return AppApiResponse.<List<TestResultResponse>>builder()
+                .code(200)
+                .message("History retrieved")
+                .result(history)
                 .build();
     }
 
-    @Operation(summary = "Start a new test session", description = "Calls AI to generate questions and creates a test session")
+    @Operation(summary = "Start a new test session")
     @PostMapping("/start")
-    @PreAuthorize("isAuthenticated()") // Đảm bảo endpoint này yêu cầu xác thực
+    @PreAuthorize("isAuthenticated()")
     public AppApiResponse<TestSessionResponse> startTest(
             @RequestParam UUID testConfigId,
             @RequestHeader("Authorization") String authorizationHeader,
             Locale locale) {
-
         UUID userId = securityUtil.getCurrentUserId();
-
         try {
             String token = authorizationHeader.replace("Bearer ", "");
             TestSessionResponse session = testService.startTest(testConfigId, userId, token);
-
             return AppApiResponse.<TestSessionResponse>builder()
                     .code(201)
                     .message(messageSource.getMessage("test.session.started", null, locale))
@@ -70,42 +94,46 @@ public class TestController {
         } catch (AppException e) {
             return AppApiResponse.<TestSessionResponse>builder()
                     .code(e.getErrorCode().getStatusCode().value())
-                    .message(e.getErrorCode().getMessage()) 
+                    .message(e.getErrorCode().getMessage())
                     .build();
-        } catch (java.util.concurrent.CompletionException e) { // <-- THÊM KHỐI NÀY
-            if (e.getCause() instanceof AppException appEx) {
-                return AppApiResponse.<TestSessionResponse>builder()
-                        .code(appEx.getErrorCode().getStatusCode().value())
-                        .message(appEx.getErrorCode().getMessage())
-                        .build();
-            } else {
-                log.error("Unhandled completion exception: {}", e.getMessage(), e);
-                return AppApiResponse.<TestSessionResponse>builder()
-                        .code(500)
-                        .message("Unexpected error during test generation: " + e.getMessage())
-                        .build();
-            }
         }
     }
 
-    @Operation(summary = "Submit test answers", description = "Submits user answers, grades the test, and returns the result")
+    @Operation(summary = "Submit test answers")
     @PostMapping("/sessions/{sessionId}/submit")
-    @PreAuthorize("isAuthenticated()") // Đảm bảo endpoint này yêu cầu xác thực
+    @PreAuthorize("isAuthenticated()")
     public AppApiResponse<TestResultResponse> submitTest(
             @PathVariable UUID sessionId,
-            // @Parameter(description = "User ID (lấy từ security context hoặc token)") @RequestParam UUID userId, // <-- BỎ ĐI
             @RequestBody TestSubmissionRequest submission,
             Locale locale) {
-
-        // === SỬA ĐỔI: Lấy userId từ SecurityUtil ===
         UUID userId = securityUtil.getCurrentUserId();
-
         try {
             TestResultResponse result = testService.submitTest(sessionId, userId, submission);
-
             return AppApiResponse.<TestResultResponse>builder()
                     .code(200)
-                    .message(messageSource.getMessage("test.session.submitted", null, locale))
+                    .message("Submitted successfully")
+                    .result(result)
+                    .build();
+        } catch (AppException e) {
+            return AppApiResponse.<TestResultResponse>builder()
+                    .code(e.getErrorCode().getStatusCode().value())
+                    .message(e.getErrorCode().getMessage())
+                    .build();
+        }
+    }
+    
+    @Operation(summary = "Poll test result status")
+    @GetMapping("/sessions/{sessionId}/result")
+    @PreAuthorize("isAuthenticated()")
+    public AppApiResponse<TestResultResponse> getTestResult(
+            @PathVariable UUID sessionId,
+            Locale locale) {
+        UUID userId = securityUtil.getCurrentUserId();
+        try {
+            TestResultResponse result = testService.getTestResult(sessionId, userId);
+            return AppApiResponse.<TestResultResponse>builder()
+                    .code(200)
+                    .message("Status retrieved")
                     .result(result)
                     .build();
         } catch (AppException e) {

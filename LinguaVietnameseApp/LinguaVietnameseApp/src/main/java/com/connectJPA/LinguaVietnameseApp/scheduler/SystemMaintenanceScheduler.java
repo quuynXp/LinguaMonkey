@@ -19,21 +19,13 @@ public class SystemMaintenanceScheduler {
     private final InvalidatedTokenRepository invalidatedTokenRepository;
     private final RefreshTokenRepository refreshTokenRepository;
 
-    /**
-     * Chạy mỗi ngày lúc 4 giờ sáng để dọn dẹp các token cũ.
-     */
-    @Scheduled(cron = "0 0 4 * * ?") // 4 AM hàng ngày
+    @Scheduled(cron = "0 0 4 * * ?")
     @Transactional
     public void cleanupExpiredTokens() {
         log.info("Running daily token cleanup job...");
 
-        // FIX: Log lỗi báo cần OffsetDateTime, trước đó truyền Instant bị sai
         invalidatedTokenRepository.deleteByExpiryTimeBefore(OffsetDateTime.now());
-
-        // FIX: Log lỗi báo cần Instant, trước đó truyền OffsetDateTime bị sai
         refreshTokenRepository.deleteByExpiresAtBefore(Instant.now());
-
-        // Xóa các refresh token đã bị thu hồi (revoked)
         refreshTokenRepository.deleteByIsRevokedTrue();
 
         log.info("Token cleanup job finished.");

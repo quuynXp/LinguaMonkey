@@ -21,4 +21,7 @@ public interface UserFcmTokenRepository extends JpaRepository<UserFcmToken, UUID
 
     Optional<UserFcmToken> findByUserIdAndDeviceId(UUID userId, String deviceId);
 
+    // MỚI: Chỉ lấy ID của những user thực sự có Token (distinct để tránh trùng lặp nếu user đăng nhập nhiều máy)
+    @Query("SELECT DISTINCT t.userId FROM UserFcmToken t WHERE t.isDeleted = false")
+    List<UUID> findAllUserIdsWithTokens();
 }

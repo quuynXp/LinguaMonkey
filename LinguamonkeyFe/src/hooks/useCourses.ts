@@ -22,7 +22,6 @@ import {
 } from "../types/dto";
 import { CourseType } from "../types/enums";
 
-// --- Query Keys Factory ---
 export const courseKeys = {
   all: ["courses"] as const,
   lists: () => [...courseKeys.all, "list"] as const,
@@ -34,8 +33,6 @@ export const courseKeys = {
   recommended: (userId: string) => [...courseKeys.all, "recommended", userId] as const,
   levels: () => [...courseKeys.all, "levels"] as const,
   categories: () => [...courseKeys.all, "categories"] as const,
-
-  // Sub-entities
   enrollments: (params: any) => [...courseKeys.all, "enrollments", params] as const,
   lessons: (params: any) => [...courseKeys.all, "lessons", params] as const,
   discounts: (params: any) => [...courseKeys.all, "discounts", params] as const,
@@ -44,10 +41,6 @@ export const courseKeys = {
 
 export const useCourses = () => {
   const queryClient = useQueryClient();
-
-  // ==========================================
-  // === 1. COURSE (General, Creator & Admin) ===
-  // ==========================================
 
   const useAllCourses = (params?: {
     page?: number;
@@ -92,7 +85,44 @@ export const useCourses = () => {
     });
   };
 
-  // ADDED: Missing hook definition
+  const useReviews = (params?: { courseId?: string; userId?: string; rating?: number; page?: number; size?: number }) => {
+    const { courseId, userId, rating, page = 0, size = 10 } = params || {};
+    return useQuery({
+      queryKey: courseKeys.reviews({ courseId, userId, rating, page, size }),
+      queryFn: async () => {
+        const qp = new URLSearchParams({ page: String(page), size: String(size) });
+        if (courseId) qp.append("courseId", courseId);
+        if (userId) qp.append("userId", userId);
+        if (rating) qp.append("rating", String(rating));
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseReviewResponse>>>(`/api/v1/course-reviews?${qp.toString()}`);
+        return mapPageResponse(data.result, page, size);
+      },
+      enabled: !!(courseId || userId),
+    });
+  };
+
+  const useLoadReplies = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, page, size }: { reviewId: string; page: number; size: number }) => {
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseReviewResponse>>>(
+          `/api/v1/course-reviews/${reviewId}/replies`,
+          { params: { page, size } }
+        );
+        return mapPageResponse(data.result, page, size);
+      }
+    });
+  };
+
+  const useCreateReview = () => {
+    return useMutation({
+      mutationFn: async (req: CourseReviewRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseReviewResponse>>("/api/v1/course-reviews", req);
+        return data.result!;
+      },
+      onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
+    });
+  };
+
   const useGetVersion = (versionId: string) => {
     return useQuery({
       queryKey: courseKeys.version(versionId),
@@ -256,10 +286,6 @@ export const useCourses = () => {
     });
   };
 
-  // ==========================================
-  // === 2. ENROLLMENTS (Full CRUD) ===
-  // ==========================================
-
   const useEnrollments = (params?: { courseId?: string; userId?: string; page?: number; size?: number }) => {
     const { courseId, userId, page = 0, size = 10 } = params || {};
     return useQuery({
@@ -338,10 +364,6 @@ export const useCourses = () => {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) }),
     });
   };
-
-  // ==========================================
-  // === 3. LESSONS (Full CRUD + Upload) ===
-  // ==========================================
 
   const useCourseLessons = (params?: { courseId?: string; lessonId?: string; page?: number; size?: number }) => {
     const { courseId, lessonId, page = 0, size = 50 } = params || {};
@@ -431,29 +453,6 @@ export const useCourses = () => {
     });
   };
 
-  // ==========================================
-  // === 4. REVIEWS (Full CRUD) ===
-  // ==========================================
-
-  const useReviews = (params?: { courseId?: string; userId?: string; rating?: number; page?: number; size?: number }) => {
-    const { courseId, userId, rating, page = 0, size = 10 } = params || {};
-    return useQuery({
-      queryKey: courseKeys.reviews({ courseId, userId, rating, page, size }),
-      queryFn: async () => {
-        const qp = new URLSearchParams({ page: String(page), size: String(size) });
-        if (courseId) qp.append("courseId", courseId);
-        if (userId) qp.append("userId", userId);
-        if (rating) qp.append("rating", String(rating));
-
-        const { data } = await instance.get<AppApiResponse<PageResponse<CourseReviewResponse>>>(
-          `/api/v1/course-reviews?${qp.toString()}`
-        );
-        return mapPageResponse(data.result, page, size);
-      },
-      enabled: !!(courseId || userId),
-    });
-  };
-
   const useReviewDetail = (courseId?: string, userId?: string) => {
     return useQuery({
       queryKey: courseKeys.reviews({ courseId, userId, type: "detail" }),
@@ -465,16 +464,6 @@ export const useCourses = () => {
         return data.result!;
       },
       enabled: !!(courseId && userId),
-    });
-  };
-
-  const useCreateReview = () => {
-    return useMutation({
-      mutationFn: async (req: CourseReviewRequest) => {
-        const { data } = await instance.post<AppApiResponse<CourseReviewResponse>>("/api/v1/course-reviews", req);
-        return data.result!;
-      },
-      onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
     });
   };
 
@@ -499,10 +488,6 @@ export const useCourses = () => {
       onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
     });
   };
-
-  // ==========================================
-  // === 5. DISCOUNTS (Full CRUD) ===
-  // ==========================================
 
   const useDiscounts = (params?: { courseId?: string; percentage?: number; page?: number; size?: number }) => {
     const { courseId, percentage, page = 0, size = 10 } = params || {};
@@ -581,8 +566,9 @@ export const useCourses = () => {
   return {
     useAllCourses,
     useCourse,
-    useGetVersion, // EXPORTED NOW
+    useGetVersion,
     useCreatorCourses,
+    useLoadReplies,
     useRecommendedCourses,
     useCourseLevels,
     useCourseCategories,
@@ -619,7 +605,6 @@ export const useCourses = () => {
   };
 };
 
-// Helper to standardize pagination return
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   data: (result?.content as T[]) || [],
   pagination: {

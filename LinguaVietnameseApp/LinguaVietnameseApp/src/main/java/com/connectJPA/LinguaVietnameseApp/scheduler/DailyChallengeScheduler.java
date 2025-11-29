@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.scheduler;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserFcmTokenRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
@@ -12,6 +13,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -23,26 +25,78 @@ public class DailyChallengeScheduler {
     private final DailyChallengeService dailyChallengeService;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    // Inject thêm Repo này để lọc user
+    private final UserFcmTokenRepository userFcmTokenRepository;
+
+    private static final String TIME_ZONE = "Asia/Ho_Chi_Minh";
 
     /**
-     * Chạy 3 lần mỗi ngày để gợi ý nhận challenges
-     * 08:00, 14:00, 20:00 (UTC+7 = 01:00, 07:00, 13:00 UTC)
+     * --- TEST METHOD: FORCE PUSH ---
+     * TỐI ƯU: Chỉ gửi cho users có FCM Token.
      */
-    @Scheduled(cron = "0 0 1 * * *") // 08:00 UTC+7
-    @Scheduled(cron = "0 0 7 * * *") // 14:00 UTC+7
-    @Scheduled(cron = "0 0 13 * * *") // 20:00 UTC+7
+    @Scheduled(cron = "0/60 * * * * ?", zone = TIME_ZONE)
+    @Transactional
+    public void forceTestNotification() {
+        log.info(">>> [DEBUG-SCHEDULER] Running Force Test Notification (Every 60s)...");
+
+        // 1. Lấy danh sách ID có token trước
+        List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
+
+        if (userIdsWithToken.isEmpty()) {
+            log.warn(">>> [DEBUG-SCHEDULER] No users with FCM tokens found! Skipping.");
+            return;
+        }
+
+        // 2. Chỉ query thông tin của những user này
+        List<User> users = userRepository.findAllById(userIdsWithToken);
+
+        log.info(">>> [DEBUG-SCHEDULER] Found {} users with valid tokens. Sending pings...", users.size());
+
+        int sentCount = 0;
+        for (User user : users) {
+            // Check lại active cho chắc
+            if (user.isDeleted()) continue;
+
+            try {
+                log.info(">>> [DEBUG-SCHEDULER] Sending test ping to User: {} (Email: {})", user.getUserId(), user.getEmail());
+
+                NotificationRequest request = NotificationRequest.builder()
+                        .userId(user.getUserId())
+                        .title("DEBUG: Test Ping " + LocalDateTime.now().toLocalTime())
+                        .content("System heartbeat. Push working for verified devices only!")
+                        .type("SYSTEM_TEST")
+                        .payload("{\"screen\":\"Home\"}")
+                        .build();
+
+                notificationService.createPushNotification(request);
+                sentCount++;
+            } catch (Exception e) {
+                log.error(">>> [DEBUG-SCHEDULER] FAILED to send ping to user {}: {}", user.getUserId(), e.getMessage());
+            }
+        }
+        log.info(">>> [DEBUG-SCHEDULER] Test run finished. Sent: {}", sentCount);
+    }
+
+    @Scheduled(cron = "0 0/5 * * * ?", zone = TIME_ZONE)
     @Transactional
     public void suggestDailyChallenges() {
-        log.info("Daily Challenge Suggestion Scheduler started");
+        log.info("[DailyChallengeScheduler] Checking candidates for challenges...");
 
-        List<User> activeUsers = userRepository.findAllByIsDeletedFalse();
+        // Tương tự: Chỉ gợi ý cho người có Token (để họ nhận đc Noti vào App học)
+        // Nếu muốn gợi ý cho cả web user thì dùng lại findAllByIsDeletedFalse()
+        List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
+        if (userIdsWithToken.isEmpty()) return;
+        
+        List<User> activeUsers = userRepository.findAllById(userIdsWithToken);
 
         for (User user : activeUsers) {
+            if (user.isDeleted()) continue;
             try {
                 var stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
                 Boolean canAssignMore = (Boolean) stats.get("canAssignMore");
 
-                if (canAssignMore) {
+                if (Boolean.TRUE.equals(canAssignMore)) {
+                    log.info(">>> User {} is eligible. Sending suggestion...", user.getUserId());
                     String langCode = user.getNativeLanguageCode();
                     String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE_SUGGESTION", langCode);
 
@@ -55,26 +109,17 @@ public class DailyChallengeScheduler {
                             .build();
 
                     notificationService.createPushNotification(suggestion);
-                    log.debug("Suggestion sent to user: {}", user.getUserId());
                 }
             } catch (Exception e) {
-                log.error("Error processing daily challenge suggestion for user {}: {}",
-                        user.getUserId(), e.getMessage());
+                log.error("Error processing user {}: {}", user.getUserId(), e.getMessage());
             }
         }
-
-        log.info("Daily Challenge Suggestion Scheduler completed");
     }
 
-    /**
-     * Reset challenges hàng ngày lúc 00:00 (Midnight UTC+7 = 17:00 UTC)
-     * Xóa/Archive những challenges cũ và chuẩn bị cho ngày mới
-     */
-    @Scheduled(cron = "0 0 17 * * *") // 00:00 UTC+7
+    @Scheduled(cron = "0 0 0 * * ?", zone = TIME_ZONE)
     @Transactional
     public void resetDailyChallengesForNewDay() {
         log.info("Daily Challenge Reset Scheduler started");
-
         try {
             log.info("Daily Challenges reset completed for new day");
         } catch (Exception e) {
@@ -82,11 +127,7 @@ public class DailyChallengeScheduler {
         }
     }
 
-    /**
-     * Nhắc nhở người dùng hoàn thành challenges
-     * Nếu còn 2 giờ đến hết ngày và chưa hoàn thành
-     */
-    @Scheduled(cron = "0 0 22 * * *") // 05:00 UTC+7 (ngày hôm sau)
+    @Scheduled(cron = "0 0 22 * * ?", zone = TIME_ZONE)
     @Transactional
     public void remindIncompleteChallenge() {
         log.info("Incomplete Challenge Reminder Scheduler started");

@@ -9,6 +9,8 @@ public enum ActivityType {
     GRAMMAR_EXERCISE,
     LESSON_COMPLETED,
     DAILY_CHALLENGE_COMPLETED,
+    AI_CHAT,
+    CHAT,CALL, QUIZ,
 
     // Bổ sung để đồng bộ từ service khác
     COURSE_ENROLL,

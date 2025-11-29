@@ -5,9 +5,9 @@ export const RootNavigationRef = createNavigationContainerRef();
 let pendingActions: (() => void)[] = [];
 
 interface NotificationPayload {
-  screen?: string;      // Ví dụ: "Chat", "Home"
+  screen?: string; 			// Ví dụ: "Chat", "Home"
   stackScreen?: string; // Ví dụ: "ChatDetail"
-  [key: string]: any;   // Các params khác: chatId, courseId...
+  [key: string]: any; 	// Các params khác: chatId, courseId...
 }
 
 function queuePending(fn: () => void) {
@@ -49,7 +49,7 @@ export const handleNotificationNavigation = (raw: any) => {
 export function resetToTab(
   destination:
     | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
-    | 'AdminStack' | 'SetupInitScreen' | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'ResetPasswordScreen',
+    | 'AdminStack' | 'SetupInitScreen' | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'ResetPasswordScreen' | 'PaymentStack' | 'CourseStack' | 'RoadmapStack',
   stackScreen?: string,
   stackParams?: object
 ) {
@@ -141,16 +141,5 @@ export function goBack() {
 }
 
 export function resetToAuth(screen: 'LoginScreen' | 'RegisterScreen' = 'LoginScreen') {
-  console.log('[navigationRef] resetToAuth triggered');
-
-  const action = CommonActions.reset({
-    index: 0,
-    routes: [{ name: 'AuthStack', params: { screen } }],
-  });
-
-  if (RootNavigationRef.isReady()) {
-    RootNavigationRef.dispatch(action);
-  } else {
-    queuePending(() => RootNavigationRef.dispatch(action));
-  }
+  console.log('[navigationRef] resetToAuth triggered. Access token expected to be cleared by caller.');
 }

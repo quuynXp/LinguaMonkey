@@ -95,11 +95,18 @@ twilio:
 google:
   client-id: ${GOOGLE_CLIENT_ID}
   credentials-file-url: ${GOOGLE_CREDENTIALS_FILE_URL}
+  drive:
+    folderId: ${GOOGLE_FOLDER_ID}
+    serviceAccountKey: ${GOOGLE_SERVICE_ACCOUNT_FILE_URL}
 
 grpc:
   server:
-    host: ${GRPC_SERVER_HOST}
-    port: ${GRPC_SERVER_PORT}
+    port: 9090
+    address: 0.0.0.0
+  client:
+    learning-service:
+      address: "static://${GRPC_SERVER_HOST}:${GRPC_SERVER_PORT}"
+      negotiation-type: plaintext
 
 # Reminder
 exam:

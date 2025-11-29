@@ -1,4 +1,3 @@
-# LinguaVietnameseApp/Dockerfile.dev
 FROM eclipse-temurin:21-jdk
 
 WORKDIR /app
@@ -13,9 +12,10 @@ COPY LinguaVietnameseApp/pom.xml .
 RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
 RUN ./mvnw dependency:go-offline
 
-# 3. COPY SOURCE CODE
 COPY LinguaVietnameseApp/src ./src
+COPY start_java_local.sh .
+RUN chmod +x start_java_local.sh
 
-# 4. RUN APP (Chạy trực tiếp Spring Boot để tiện debug local, hoặc build jar)
-# Dùng spring-boot:run để log đẹp hơn và nhanh hơn ở local
-CMD ["./mvnw", "spring-boot:run"]
+# 4. RUN APP (Chạy bằng script đã thêm lệnh compile)
+# Thay thế CMD cũ bằng script
+CMD ["./start_java_local.sh"]

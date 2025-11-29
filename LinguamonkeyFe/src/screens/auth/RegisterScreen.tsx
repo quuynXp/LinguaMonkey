@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { View, Text, TouchableOpacity, Animated, TextInput, Alert, ScrollView, ActivityIndicator } from "react-native";
+import { View, Text, TouchableOpacity, Animated, TextInput, Alert, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { authService } from '../../services/authService';
@@ -133,71 +133,89 @@ const RegisterScreen = ({ navigation }) => {
     else if (provider === 'Facebook') fbRequest ? fbPromptAsync() : showError("Facebook not ready");
   };
 
+  // Khuyến nghị bao bọc nội dung trong ScrollView để đảm bảo cuộn được khi bàn phím hiện lên
+  const Content = (
+    <Animated.View
+      style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
+      // Đặt pointerEvents="box-none" cho container Animated để tránh chặn touch events
+      pointerEvents="box-none"
+    >
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color="#374151" />
+        </TouchableOpacity>
+      </View>
+      <Text style={styles.title}>{t('createAccount')}</Text>
+      <Text style={styles.subtitle}>{t('joinLearners')}</Text>
+
+      <View style={styles.formContainer}>
+        <View style={styles.nameRow}>
+          <View style={[styles.inputContainer, styles.halfWidth]}>
+            <Icon name="person" size={20} color="#6B7280" style={styles.inputIcon} />
+            <TextInput style={styles.textInput} placeholder={t('firstName')} value={formData.firstName} onChangeText={(text) => setFormData({ ...formData, firstName: text })} />
+          </View>
+          <View style={[styles.inputContainer, styles.halfWidth]}>
+            <Icon name="person-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+            <TextInput style={styles.textInput} placeholder={t('lastName')} value={formData.lastName} onChangeText={(text) => setFormData({ ...formData, lastName: text })} />
+          </View>
+        </View>
+        <View style={styles.inputContainer}>
+          <Icon name="email" size={20} color="#6B7280" style={styles.inputIcon} />
+          <TextInput style={styles.textInput} placeholder={t('emailAddress')} value={formData.email} onChangeText={(text) => setFormData({ ...formData, email: text })} keyboardType="email-address" autoCapitalize="none" />
+        </View>
+        <View style={styles.inputContainer}>
+          <Icon name="lock" size={20} color="#6B7280" style={styles.inputIcon} />
+          <TextInput style={styles.textInput} placeholder={t('password')} value={formData.password} onChangeText={(text) => setFormData({ ...formData, password: text })} secureTextEntry={!showPassword} />
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}><Icon name={showPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" /></TouchableOpacity>
+        </View>
+        <View style={styles.inputContainer}>
+          <Icon name="lock-outline" size={20} color="#6B7280" style={styles.inputIcon} />
+          <TextInput style={styles.textInput} placeholder={t('confirmPassword')} value={formData.confirmPassword} onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })} secureTextEntry={!showConfirmPassword} />
+          <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}><Icon name={showConfirmPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" /></TouchableOpacity>
+        </View>
+
+        {/* VÙNG ĐÃ SỬA: Đặt pointerEvents="none" cho các phần tử con không tương tác */}
+        <TouchableOpacity style={styles.termsContainer} onPress={() => setAcceptTerms(!acceptTerms)}>
+          {/* Checkbox VIEW: Đặt pointerEvents="none" */}
+          <View style={[styles.checkbox, acceptTerms && styles.checkboxChecked]} pointerEvents="none">
+            {acceptTerms && <Icon name="check" size={16} color="#FFFFFF" />}
+          </View>
+          {/* Text: Đặt pointerEvents="none" */}
+          <Text style={styles.termsText} pointerEvents="none">
+            {t('agreeTo')} <Text style={styles.linkText}>{t('termsOfService')}</Text> {t('and')} <Text style={styles.linkText}>{t('privacyPolicy')}</Text>
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={[styles.registerButton, (isLoading || isSocialLoading) && styles.buttonDisabled]} onPress={handleRegister} disabled={isLoading || isSocialLoading}>
+          {isLoading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <><Text style={styles.registerButtonText}>{t('createAccount')}</Text><Icon name="arrow-forward" size={20} color="#FFFFFF" /></>}
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.divider}>
+        <View style={styles.dividerLine} />
+        <Text style={styles.dividerText}>{t('orSignUpWith')}</Text>
+        <View style={styles.dividerLine} />
+      </View>
+
+      <View style={styles.socialContainer}>
+        <TouchableOpacity style={[styles.socialButton, (isLoading || isSocialLoading) && styles.buttonDisabled]} onPress={() => handleSocialRegister("Google")} disabled={isLoading || isSocialLoading}>
+          <Icon name="g-translate" size={24} color="#DB4437" /><Text style={styles.socialButtonText}>{t('google')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.socialButton, (isLoading || isSocialLoading) && styles.buttonDisabled]} onPress={() => handleSocialRegister("Facebook")} disabled={isLoading || isSocialLoading}>
+          <Icon name="facebook" size={24} color="#4267B2" /><Text style={styles.socialButtonText}>{t('facebook')}</Text>
+        </TouchableOpacity>
+      </View>
+      <View style={styles.signinContainer}>
+        <Text style={styles.signinText}>{t('haveAccount')}</Text>
+        <TouchableOpacity onPress={() => navigation.navigate("LoginScreen")}><Text style={styles.signinLink}>{t('signIn')}</Text></TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+
   return (
     <ScreenLayout>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => navigation.goBack()}>
-              <Icon name="arrow-back" size={24} color="#374151" />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.title}>{t('createAccount')}</Text>
-          <Text style={styles.subtitle}>{t('joinLearners')}</Text>
-
-          <View style={styles.formContainer}>
-            <View style={styles.nameRow}>
-              <View style={[styles.inputContainer, styles.halfWidth]}>
-                <Icon name="person" size={20} color="#6B7280" style={styles.inputIcon} />
-                <TextInput style={styles.textInput} placeholder={t('firstName')} value={formData.firstName} onChangeText={(text) => setFormData({ ...formData, firstName: text })} />
-              </View>
-              <View style={[styles.inputContainer, styles.halfWidth]}>
-                <Icon name="person-outline" size={20} color="#6B7280" style={styles.inputIcon} />
-                <TextInput style={styles.textInput} placeholder={t('lastName')} value={formData.lastName} onChangeText={(text) => setFormData({ ...formData, lastName: text })} />
-              </View>
-            </View>
-            <View style={styles.inputContainer}>
-              <Icon name="email" size={20} color="#6B7280" style={styles.inputIcon} />
-              <TextInput style={styles.textInput} placeholder={t('emailAddress')} value={formData.email} onChangeText={(text) => setFormData({ ...formData, email: text })} keyboardType="email-address" autoCapitalize="none" />
-            </View>
-            <View style={styles.inputContainer}>
-              <Icon name="lock" size={20} color="#6B7280" style={styles.inputIcon} />
-              <TextInput style={styles.textInput} placeholder={t('password')} value={formData.password} onChangeText={(text) => setFormData({ ...formData, password: text })} secureTextEntry={!showPassword} />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}><Icon name={showPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" /></TouchableOpacity>
-            </View>
-            <View style={styles.inputContainer}>
-              <Icon name="lock-outline" size={20} color="#6B7280" style={styles.inputIcon} />
-              <TextInput style={styles.textInput} placeholder={t('confirmPassword')} value={formData.confirmPassword} onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })} secureTextEntry={!showConfirmPassword} />
-              <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}><Icon name={showConfirmPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" /></TouchableOpacity>
-            </View>
-            <TouchableOpacity style={styles.termsContainer} onPress={() => setAcceptTerms(!acceptTerms)}>
-              <View style={[styles.checkbox, acceptTerms && styles.checkboxChecked]}>{acceptTerms && <Icon name="check" size={16} color="#FFFFFF" />}</View>
-              <Text style={styles.termsText}>{t('agreeTo')} <Text style={styles.linkText}>{t('termsOfService')}</Text> {t('and')} <Text style={styles.linkText}>{t('privacyPolicy')}</Text></Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.registerButton, (isLoading || isSocialLoading) && styles.buttonDisabled]} onPress={handleRegister} disabled={isLoading || isSocialLoading}>
-              {isLoading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <><Text style={styles.registerButtonText}>{t('createAccount')}</Text><Icon name="arrow-forward" size={20} color="#FFFFFF" /></>}
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.divider}>
-            <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>{t('orSignUpWith')}</Text>
-            <View style={styles.dividerLine} />
-          </View>
-
-          <View style={styles.socialContainer}>
-            <TouchableOpacity style={[styles.socialButton, (isLoading || isSocialLoading) && styles.buttonDisabled]} onPress={() => handleSocialRegister("Google")} disabled={isLoading || isSocialLoading}>
-              <Icon name="g-translate" size={24} color="#DB4437" /><Text style={styles.socialButtonText}>{t('google')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.socialButton, (isLoading || isSocialLoading) && styles.buttonDisabled]} onPress={() => handleSocialRegister("Facebook")} disabled={isLoading || isSocialLoading}>
-              <Icon name="facebook" size={24} color="#4267B2" /><Text style={styles.socialButtonText}>{t('facebook')}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.signinContainer}>
-            <Text style={styles.signinText}>{t('haveAccount')}</Text>
-            <TouchableOpacity onPress={() => navigation.navigate("LoginScreen")}><Text style={styles.signinLink}>{t('signIn')}</Text></TouchableOpacity>
-          </View>
-        </Animated.View>
+        {Content}
       </ScrollView>
     </ScreenLayout>
   );

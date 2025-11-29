@@ -1,7 +1,5 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { useFocusEffect } from '@react-navigation/native';
-import { useChatStore } from '../../stores/ChatStore';
 
 // Screens
 import ChatRoomListScreen from '../../screens/chat/ChatRoomListScreen';
@@ -16,16 +14,6 @@ import ChatScreen from '../../screens/chat/ChatScreen';
 const Stack = createNativeStackNavigator();
 
 const ChatStack = () => {
-  const initChatService = useChatStore((state) => state.initChatService);
-  const disconnectChatService = useChatStore((state) => state.disconnect);
-
-  useEffect(() => {
-    initChatService();
-
-    return () => {
-      disconnectChatService();
-    };
-  }, [initChatService, disconnectChatService]);
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }} id={undefined}>

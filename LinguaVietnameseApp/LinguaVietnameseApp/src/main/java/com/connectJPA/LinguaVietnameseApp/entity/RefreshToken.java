@@ -36,6 +36,8 @@ public class RefreshToken {
 
     private String deviceId;
     private String ip;
+    
+    @Column(name = "user_agent", length = 1024)
     private String userAgent;
 
     public void setToken(String token) {

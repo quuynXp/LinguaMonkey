@@ -1,27 +1,27 @@
-import { useMemo, useState, useCallback } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import {
     View,
     Text,
     ScrollView,
     TouchableOpacity,
-    Alert,
-    Image,
-    ActivityIndicator,
-    Modal,
     TextInput,
+    Alert,
+    ActivityIndicator,
+    Image,
+    FlatList,
     Switch,
 } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useRoute, useNavigation } from "@react-navigation/native"
 import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
-import { useLessons } from "../../hooks/useLessons"
 import { useUserStore } from "../../stores/UserStore"
-
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import type { CourseVersionResponse, LessonResponse } from "../../types/dto"
 import { createScaledSheet } from "../../utils/scaledStyles"
-import { LessonType, DifficultyLevel } from "../../types/enums"
+import { DifficultyLevel } from "../../types/enums"
+import type { CourseReviewResponse } from "../../types/dto"
+
+type TabType = "INFO" | "CURRICULUM" | "REVIEWS"
 
 const CourseManagerScreen = () => {
     const { t } = useTranslation()
@@ -30,457 +30,454 @@ const CourseManagerScreen = () => {
     const { courseId } = route.params
     const user = useUserStore((state) => state.user)
 
+    const [activeTab, setActiveTab] = useState<TabType>("INFO")
+
+    // --- Hooks ---
     const {
         useCourse,
+        useUpdateCourseDetails,
+        useUpdateCourseVersion,
         useCreateDraftVersion,
         usePublishVersion,
-        useUpdateCourseVersion,
+        useReviews,
     } = useCourses()
 
-    const {
-        useCreateLesson,
-        useUpdateLesson,
-    } = useLessons()
+    const { data: course, isLoading: courseLoading, refetch } = useCourse(courseId)
+    const { data: reviewsData, isLoading: reviewsLoading } = useReviews({ courseId })
 
-    const { data: course, isLoading: courseLoading, refetch: refetchCourse } = useCourse(courseId)
-    const { mutate: createDraft, isPending: isCreatingDraft } = useCreateDraftVersion()
-    const { mutate: publishVersion, isPending: isPublishing } = usePublishVersion()
+    const { mutate: updateDetails, isPending: isUpdatingDetails } = useUpdateCourseDetails()
     const { mutate: updateVersion, isPending: isUpdatingVersion } = useUpdateCourseVersion()
+    const { mutate: createDraft, isPending: isCreatingDraft } = useCreateDraftVersion()
+    const { mutate: publish, isPending: isPublishing } = usePublishVersion()
 
-    // Lesson Mutations
-    const { mutate: createLesson, isPending: isCreatingLesson } = useCreateLesson()
-    const { mutate: updateLesson, isPending: isUpdatingLesson } = useUpdateLesson()
-
-    // State for Lesson Modal
-    const [isLessonModalVisible, setLessonModalVisible] = useState(false)
-    const [editingLesson, setEditingLesson] = useState<LessonResponse | null>(null)
-    const [lessonForm, setLessonForm] = useState({
+    // --- State for Forms ---
+    const [formState, setFormState] = useState({
         title: "",
-        description: "", // Acts as the "Post" content
-        isFree: false,
-        videoUrl: "",
-        imageUrl: "",
-        durationSeconds: 300,
+        price: "0",
+        description: "",
+        thumbnailUrl: "",
+        difficulty: DifficultyLevel.A1,
     })
 
-    const isLoading = courseLoading || isCreatingDraft || isPublishing || isUpdatingVersion
-
-    const currentVersion: CourseVersionResponse | undefined = useMemo(() => {
-        // Prefer draft if exists, else public
-        if (!course) return undefined;
-        // Logic to find draft vs public would typically be here, 
-        // assuming course.latestPublicVersion is the one we see, 
-        // but often we want to see the DRAFT if we are the creator.
-        // For simplicity, we use the provided structure.
-        return course.latestPublicVersion
+    useEffect(() => {
+        if (course) {
+            const version = course.latestPublicVersion
+            setFormState({
+                title: course.title,
+                price: course.price.toString(),
+                description: version?.description || "",
+                thumbnailUrl: version?.thumbnailUrl || "",
+                difficulty: course.difficultyLevel || DifficultyLevel.A1,
+            })
+        }
     }, [course])
 
+    const currentVersion = course?.latestPublicVersion
     const isDraft = currentVersion?.status === "DRAFT"
+    const isLoading = courseLoading || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing
 
-    // --- Validation Logic for Publishing ---
-    const validationErrors = useMemo(() => {
-        const errors: string[] = []
-        if (!course) return errors
-        if (!course.price && course.price !== 0) errors.push(t("course.validation.price"))
-        if (!currentVersion?.description || currentVersion.description.length < 20) errors.push(t("course.validation.description"))
-        if (!currentVersion?.thumbnailUrl) errors.push(t("course.validation.thumbnail"))
-        if (!currentVersion?.lessons || currentVersion.lessons.length === 0) errors.push(t("course.validation.noLessons"))
-        return errors
-    }, [course, currentVersion, t])
+    // --- Logic for Reordering ---
+    const handleMoveLesson = (fromIndex: number, direction: 'up' | 'down') => {
+        if (!currentVersion?.lessons) return
+        const lessons = [...currentVersion.lessons]
+        const toIndex = direction === 'up' ? fromIndex - 1 : fromIndex + 1
 
-    const isReadyToPublish = validationErrors.length === 0
+        if (toIndex < 0 || toIndex >= lessons.length) return
 
-    // --- Handlers ---
+        // Swap
+        const temp = lessons[fromIndex]
+        lessons[fromIndex] = lessons[toIndex]
+        lessons[toIndex] = temp
 
-    const handleCreateDraft = async () => {
-        createDraft(courseId, {
-            onSuccess: () => {
-                Alert.alert(t("success"), t("course.draftCreated"))
-                refetchCourse()
+        // Extract Ids
+        const newLessonIds = lessons.map(l => l.lessonId)
+
+        // FIX: Truyền đủ các trường bắt buộc của UpdateCourseVersionRequest
+        if (isDraft) {
+            updateVersion(
+                {
+                    versionId: currentVersion.versionId,
+                    req: {
+                        lessonIds: newLessonIds,
+                        description: formState.description, // Gửi kèm thông tin hiện tại
+                        thumbnailUrl: formState.thumbnailUrl, // Gửi kèm thông tin hiện tại
+                    }
+                },
+                { onSuccess: () => refetch() }
+            )
+        } else {
+            Alert.alert(t("info"), t("course.editInDraftMode"))
+        }
+    }
+
+    // --- Actions ---
+
+    const handleSaveInfo = () => {
+        if (!course) return
+        // 1. Cập nhật Course Details (Title, Price, Difficulty)
+        updateDetails(
+            {
+                id: courseId,
+                req: {
+                    title: formState.title,
+                    price: parseFloat(formState.price) || 0,
+                    languageCode: course.languageCode || "en",
+                    difficultyLevel: formState.difficulty,
+                },
             },
-            onError: (error: any) => {
-                Alert.alert(t("error"), error?.message || t("common.error"))
-            },
+            {
+                onSuccess: () => {
+                    // 2. Cập nhật Course Version (Description, Thumbnail)
+                    if (isDraft && currentVersion) {
+                        // FIX: Đảm bảo lessonIds luôn được gửi đi để tránh lỗi thiếu trường
+                        const currentLessonIds = currentVersion.lessons?.map((l) => l.lessonId) || []
+                        updateVersion(
+                            {
+                                versionId: currentVersion.versionId,
+                                req: {
+                                    description: formState.description,
+                                    thumbnailUrl: formState.thumbnailUrl,
+                                    lessonIds: currentLessonIds, // Gửi lessonIds hiện tại
+                                },
+                            },
+                            { onSuccess: () => Alert.alert(t("success"), t("course.saved")) }
+                        )
+                    } else if (!isDraft) {
+                        Alert.alert(
+                            t("course.liveVersion"),
+                            t("course.createDraftPrompt"),
+                            [
+                                { text: t("common.cancel") },
+                                { text: t("common.ok"), onPress: () => createDraft(courseId) },
+                            ]
+                        )
+                    }
+                },
+            }
+        )
+    }
+
+    const handlePublish = () => {
+        if (!currentVersion || !isDraft) return
+        Alert.prompt(t("course.publish"), t("course.publishReason"), (reason) => {
+            if (reason) {
+                publish(
+                    { versionId: currentVersion.versionId, req: { reasonForChange: reason } },
+                    {
+                        onSuccess: () => {
+                            Alert.alert(t("success"), t("course.published"))
+                            refetch()
+                        },
+                    }
+                )
+            }
         })
     }
 
-    const handlePublish = (versionId: string) => {
-        if (!isReadyToPublish) {
-            Alert.alert(t("course.cannotPublish"), validationErrors.join("\n"))
-            return
-        }
-
-        Alert.prompt(
-            t("course.publishTitle"),
-            t("course.publishPrompt"),
-            (reason) => {
-                if (reason?.trim()) {
-                    publishVersion(
-                        {
-                            versionId,
-                            req: { reasonForChange: reason },
-                        },
-                        {
-                            onSuccess: () => {
-                                Alert.alert(t("success"), t("course.publishSubmitted"))
-                                refetchCourse()
-                            },
-                            onError: (error: any) => {
-                                Alert.alert(t("error"), error?.message || t("common.error"))
-                            },
-                        }
-                    )
-                }
-            }
-        )
+    const handlePreview = () => {
+        // Navigate to the CourseDetailScreen (Public View) with params
+        navigation.navigate("CourseDetailsScreen", { courseId })
     }
 
-    const openLessonModal = (lesson?: LessonResponse) => {
-        if (lesson) {
-            setEditingLesson(lesson)
-            setLessonForm({
-                title: lesson.lessonName,
-                description: lesson.description || "",
-                isFree: lesson.isFree,
-                videoUrl: lesson.videoUrls?.[0] || "",
-                imageUrl: lesson.thumbnailUrl || "",
-                durationSeconds: lesson.durationSeconds || 300,
-            })
-        } else {
-            setEditingLesson(null)
-            setLessonForm({
-                title: "",
-                description: "",
-                isFree: false,
-                videoUrl: "",
-                imageUrl: "",
-                durationSeconds: 300,
-            })
-        }
-        setLessonModalVisible(true)
-    }
+    // --- Renderers ---
 
-    const handleSaveLesson = () => {
-        if (!lessonForm.title || !user?.userId || !currentVersion) return
+    const renderInfoTab = () => (
+        <ScrollView style={styles.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t("course.title")}</Text>
+                <TextInput
+                    style={styles.input}
+                    value={formState.title}
+                    onChangeText={(t) => setFormState({ ...formState, title: t })}
+                />
+            </View>
 
-        const lessonData: any = {
-            lessonName: lessonForm.title,
-            description: lessonForm.description, // Rich text content area
-            isFree: lessonForm.isFree,
-            thumbnailUrl: lessonForm.imageUrl,
-            durationSeconds: lessonForm.durationSeconds,
-            creatorId: user.userId,
-            languageCode: course?.languageCode || "en",
-            lessonType: LessonType.VIDEO, // Defaulting for simplicity
-            difficultyLevel: DifficultyLevel.A1,
-            // Link to course for organization
-            courseId: courseId,
-        }
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t("course.price")}</Text>
+                <TextInput
+                    style={styles.input}
+                    value={formState.price}
+                    onChangeText={(t) => setFormState({ ...formState, price: t })}
+                    keyboardType="numeric"
+                />
+            </View>
 
-        const onSuccess = () => {
-            setLessonModalVisible(false)
-            refetchCourse() // Refresh to show new lesson in list
-            // Also need to link lesson to version if it's new
-            if (!editingLesson && currentVersion.versionId) {
-                // In a real app, the `createLesson` might not auto-link to version 
-                // without a specific endpoint or if we passed versionId.
-                // Assuming backend handles linking if courseId provided, or we rely on `updateVersion` to add it.
-                // For P2P flow, usually adding a lesson in context of a draft adds it to that draft.
-                // Let's assume createLesson + refetch works, or we'd add to version lessons list here.
-                const currentLessonIds = currentVersion.lessons?.map((l: any) => l.lessonId) || []
-                // We would need the new ID to update the version. 
-                // This flow implies createLesson returns the ID.
-            }
-        }
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t("course.difficulty")}</Text>
+                <TextInput // Cần thay bằng Picker/Dropdown
+                    style={styles.input}
+                    value={formState.difficulty}
+                    onChangeText={(t) => setFormState({ ...formState, difficulty: t as DifficultyLevel })}
+                />
+            </View>
 
-        if (editingLesson) {
-            updateLesson({ id: editingLesson.lessonId, req: lessonData }, { onSuccess })
-        } else {
-            // Logic to create and THEN link to version would happen here or in backend
-            createLesson(lessonData, {
-                onSuccess: (newLesson) => {
-                    // Explicitly link to draft version
-                    const currentLessonIds = currentVersion.lessons?.map((l: any) => l.lessonId) || []
-                    updateVersion({
-                        versionId: currentVersion.versionId,
-                        req: {
-                            description: currentVersion.description,
-                            thumbnailUrl: currentVersion.thumbnailUrl,
-                            lessonIds: [...currentLessonIds, newLesson.lessonId]
-                        }
-                    }, { onSuccess })
-                }
-            })
-        }
-    }
 
-    if (courseLoading) {
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t("course.description")}</Text>
+                <TextInput
+                    style={[styles.input, styles.textArea]}
+                    value={formState.description}
+                    onChangeText={(t) => setFormState({ ...formState, description: t })}
+                    multiline
+                />
+            </View>
+
+            <View style={styles.inputGroup}>
+                <Text style={styles.label}>{t("course.thumbnailUrl")}</Text>
+                <TextInput
+                    style={styles.input}
+                    value={formState.thumbnailUrl}
+                    onChangeText={(t) => setFormState({ ...formState, thumbnailUrl: t })}
+                />
+                {formState.thumbnailUrl ? (
+                    <Image source={{ uri: formState.thumbnailUrl }} style={styles.previewImage} />
+                ) : null}
+            </View>
+
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSaveInfo} disabled={isUpdatingDetails || isUpdatingVersion}>
+                {(isUpdatingDetails || isUpdatingVersion) ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>{t("common.saveChanges")}</Text>}
+            </TouchableOpacity>
+        </ScrollView>
+    )
+
+    const renderCurriculumTab = () => {
+        const lessons = currentVersion?.lessons || []
+
         return (
-            <ScreenLayout>
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color="#4F46E5" />
+            <View style={styles.tabContent}>
+                <View style={styles.curriculumHeader}>
+                    <Text style={styles.sectionTitle}>
+                        {lessons.length} {t("course.lessons")}
+                    </Text>
+                    {isDraft ? (
+                        <TouchableOpacity
+                            style={styles.addLessonBtn}
+                            onPress={() =>
+                                navigation.navigate("LessonEditorScreen", {
+                                    courseId,
+                                    versionId: currentVersion?.versionId,
+                                })
+                            }
+                        >
+                            <Icon name="add" size={20} color="#FFF" />
+                            <Text style={styles.addLessonText}>{t("course.addLesson")}</Text>
+                        </TouchableOpacity>
+                    ) : (
+                        <TouchableOpacity style={styles.draftBtn} onPress={() => createDraft(courseId)} disabled={isCreatingDraft}>
+                            {isCreatingDraft ? <ActivityIndicator color="#FFF" /> : <Text style={styles.draftBtnText}>{t("course.enableEditing")}</Text>}
+                        </TouchableOpacity>
+                    )}
                 </View>
-            </ScreenLayout>
+
+                <FlatList
+                    data={lessons}
+                    keyExtractor={(item) => item.lessonId}
+                    renderItem={({ item, index }) => (
+                        <View style={styles.lessonItem}>
+                            <View style={styles.lessonIndexBox}>
+                                <Text style={styles.lessonIndex}>{index + 1}</Text>
+                            </View>
+                            <TouchableOpacity
+                                style={styles.lessonInfo}
+                                onPress={() => {
+                                    if (isDraft) {
+                                        navigation.navigate("LessonEditorScreen", {
+                                            courseId,
+                                            versionId: currentVersion?.versionId,
+                                            lessonId: item.lessonId,
+                                        })
+                                    }
+                                }}
+                            >
+                                <Text style={styles.lessonTitle}>{item.title}</Text>
+                                <View style={styles.lessonMeta}>
+                                    {item.isFree && <View style={styles.freeBadge}><Text style={styles.freeText}>FREE</Text></View>}
+                                </View>
+                            </TouchableOpacity>
+
+                            {isDraft && (
+                                <View style={styles.orderActions}>
+                                    <TouchableOpacity onPress={() => handleMoveLesson(index, 'up')} disabled={index === 0 || isUpdatingVersion}>
+                                        <Icon name="keyboard-arrow-up" size={24} color={index === 0 || isUpdatingVersion ? "#E5E7EB" : "#6B7280"} />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => handleMoveLesson(index, 'down')} disabled={index === lessons.length - 1 || isUpdatingVersion}>
+                                        <Icon name="keyboard-arrow-down" size={24} color={index === lessons.length - 1 || isUpdatingVersion ? "#E5E7EB" : "#6B7280"} />
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+                    )}
+                    ListEmptyComponent={<Text style={styles.emptyText}>{t("course.noLessonsSetup")}</Text>}
+                />
+            </View>
         )
     }
 
-    if (!course) return null
+    const renderReviewsTab = () => {
+        const reviews = (reviewsData?.data as CourseReviewResponse[]) || []
+        return (
+            <View style={styles.tabContent}>
+                {reviewsLoading ? (
+                    <ActivityIndicator />
+                ) : (
+                    <FlatList
+                        data={reviews}
+                        keyExtractor={(item) => item.reviewId}
+                        ListEmptyComponent={<Text style={styles.emptyText}>{t("course.noReviews")}</Text>}
+                        renderItem={({ item }) => (
+                            <View style={styles.reviewCard}>
+                                <View style={styles.reviewHeader}>
+                                    <Text style={styles.reviewerName}>User {item.userId.substring(0, 5)}</Text>
+                                    <View style={styles.ratingRow}>
+                                        <Icon name="star" size={14} color="#F59E0B" />
+                                        <Text style={styles.ratingText}>{item.rating}</Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.reviewComment}>{item.comment}</Text>
+                                <View style={styles.reviewActions}>
+                                    <TouchableOpacity style={styles.actionLink} onPress={() => Alert.alert("Liked")}>
+                                        <Icon name="thumb-up" size={16} color="#4F46E5" />
+                                        <Text style={styles.actionText}>{t("common.like")}</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={styles.actionLink} onPress={() => Alert.alert(t("info"), "Reply feature coming soon")}>
+                                        <Icon name="reply" size={16} color="#4F46E5" />
+                                        <Text style={styles.actionText}>{t("common.reply")}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
+                    />
+                )}
+            </View>
+        )
+    }
+
+    if (courseLoading) return <ScreenLayout><ActivityIndicator style={{ marginTop: 50 }} size="large" /></ScreenLayout>
 
     return (
         <ScreenLayout>
-            <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-                {/* Header Image */}
-                <Image
-                    source={{ uri: currentVersion?.thumbnailUrl || "https://via.placeholder.com/300x200" }}
-                    style={styles.cover}
-                />
-
-                {/* Course Info Header */}
-                <View style={styles.header}>
-                    <Text style={styles.title} numberOfLines={2}>{course.title}</Text>
-                    <View style={styles.statusRow}>
-                        <View style={[styles.badge,
-                        { backgroundColor: course.approvalStatus === 'APPROVED' ? '#10B981' : '#F59E0B' }
-                        ]}>
-                            <Text style={styles.badgeText}>{course.approvalStatus}</Text>
-                        </View>
-                        <Text style={styles.priceText}>
-                            {course.price === 0 ? t("courses.free") : `$${course.price}`}
-                        </Text>
-                    </View>
-                </View>
-
-                {/* Validation Warnings */}
-                {!isReadyToPublish && isDraft && (
-                    <View style={styles.warningBox}>
-                        <Text style={styles.warningTitle}>{t("course.setupRequired")}</Text>
-                        {validationErrors.map((err, idx) => (
-                            <Text key={idx} style={styles.warningText}>• {err}</Text>
-                        ))}
-                    </View>
-                )}
-
-                {/* AI Evaluation Stub */}
-                <View style={styles.aiBox}>
-                    <Icon name="auto-awesome" size={20} color="#7C3AED" />
-                    <Text style={styles.aiText}>
-                        {t("course.aiEvaluationInfo", "AI Content Evaluation will run upon submission.")}
+            {/* Header */}
+            <View style={styles.header}>
+                <TouchableOpacity onPress={() => navigation.goBack()}>
+                    <Icon name="arrow-back" size={24} color="#1F2937" />
+                </TouchableOpacity>
+                <View style={styles.headerTitleContainer}>
+                    <Text style={styles.headerTitle} numberOfLines={1}>
+                        {course?.title || "Manage Course"}
                     </Text>
-                </View>
-
-                {/* Actions */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionHeader}>{t("course.actions")}</Text>
-
-                    <TouchableOpacity
-                        style={styles.actionButton}
-                        onPress={() => navigation.navigate("EditCourseScreen", { courseId })}
-                    >
-                        <Icon name="edit" size={20} color="#4F46E5" />
-                        <Text style={styles.actionButtonText}>{t("course.editDetails")}</Text>
-                    </TouchableOpacity>
-
-                    {/* Publish Button */}
-                    {isDraft && (
-                        <TouchableOpacity
-                            style={[
-                                styles.actionButton,
-                                styles.publishButton,
-                                !isReadyToPublish && styles.disabledButton
-                            ]}
-                            onPress={() => currentVersion && handlePublish(currentVersion.versionId)}
-                            disabled={!isReadyToPublish || isLoading}
-                        >
-                            <Icon name="publish" size={20} color="#FFFFFF" />
-                            <Text style={[styles.actionButtonText, styles.publishButtonText]}>
-                                {t("course.publish")}
+                    <View style={styles.statusRow}>
+                        <View style={[styles.badge, isDraft ? styles.badgeDraft : styles.badgePublic]}>
+                            <Text style={[styles.badgeText, isDraft ? styles.textDraft : styles.textPublic]}>
+                                {isDraft ? "DRAFT" : "PUBLIC"}
                             </Text>
-                        </TouchableOpacity>
-                    )}
-                </View>
-
-                {/* Lessons Management */}
-                <View style={styles.section}>
-                    <View style={styles.sectionTitleRow}>
-                        <Text style={styles.sectionHeader}>{t("course.lessons")}</Text>
-                        {isDraft && (
-                            <TouchableOpacity onPress={() => openLessonModal()} style={styles.addLessonBtn}>
-                                <Icon name="add" size={20} color="#4F46E5" />
-                                <Text style={styles.addLessonText}>{t("common.add")}</Text>
-                            </TouchableOpacity>
-                        )}
-                    </View>
-
-                    {currentVersion?.lessons?.map((lesson: any, index: number) => (
-                        <TouchableOpacity
-                            key={lesson.lessonId}
-                            style={styles.lessonCard}
-                            onPress={() => isDraft && openLessonModal(lesson)} // Edit on click if draft
-                        >
-                            <View style={styles.lessonRow}>
-                                <Text style={styles.lessonIndex}>{index + 1}</Text>
-                                <View style={styles.lessonInfo}>
-                                    <Text style={styles.lessonTitle}>{lesson.title || lesson.lessonName}</Text>
-                                    <View style={styles.lessonMeta}>
-                                        {lesson.isFree ? (
-                                            <View style={styles.freeBadge}>
-                                                <Text style={styles.freeText}>FREE</Text>
-                                            </View>
-                                        ) : (
-                                            <Icon name="lock" size={14} color="#6B7280" />
-                                        )}
-                                        <Text style={styles.lessonDuration}>
-                                            {Math.floor(lesson.durationSeconds / 60)} min
-                                        </Text>
-                                    </View>
-                                </View>
-                                {isDraft && <Icon name="edit" size={18} color="#9CA3AF" />}
-                            </View>
-                        </TouchableOpacity>
-                    ))}
-
-                    {(!currentVersion?.lessons || currentVersion.lessons.length === 0) && (
-                        <Text style={styles.emptyText}>{t("course.noLessonsYet")}</Text>
-                    )}
-                </View>
-
-                <View style={{ height: 100 }} />
-            </ScrollView>
-
-            {/* Create/Edit Lesson Modal */}
-            <Modal visible={isLessonModalVisible} animationType="slide" transparent>
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalTitle}>
-                            {editingLesson ? t("course.editLesson") : t("course.createLesson")}
-                        </Text>
-
-                        <ScrollView style={styles.modalScroll}>
-                            <Text style={styles.label}>{t("course.lessonTitle")}</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={lessonForm.title}
-                                onChangeText={(t) => setLessonForm({ ...lessonForm, title: t })}
-                                placeholder="Lesson Title"
-                            />
-
-                            <Text style={styles.label}>{t("course.content")}</Text>
-                            <TextInput
-                                style={[styles.input, styles.textArea]}
-                                value={lessonForm.description}
-                                onChangeText={(t) => setLessonForm({ ...lessonForm, description: t })}
-                                placeholder="Write content here (supports markdown)..."
-                                multiline
-                            />
-
-                            <Text style={styles.label}>{t("course.videoUrl")}</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={lessonForm.videoUrl}
-                                onChangeText={(t) => setLessonForm({ ...lessonForm, videoUrl: t })}
-                                placeholder="https://..."
-                            />
-
-                            <Text style={styles.label}>{t("course.imageUrl")}</Text>
-                            <TextInput
-                                style={styles.input}
-                                value={lessonForm.imageUrl}
-                                onChangeText={(t) => setLessonForm({ ...lessonForm, imageUrl: t })}
-                                placeholder="https://..."
-                            />
-
-                            <View style={styles.switchRow}>
-                                <Text style={styles.label}>{t("course.isFreePreview")}</Text>
-                                <Switch
-                                    value={lessonForm.isFree}
-                                    onValueChange={(v) => setLessonForm({ ...lessonForm, isFree: v })}
-                                    trackColor={{ false: "#767577", true: "#4F46E5" }}
-                                />
-                            </View>
-                        </ScrollView>
-
-                        <View style={styles.modalButtons}>
-                            <TouchableOpacity
-                                style={styles.modalCancel}
-                                onPress={() => setLessonModalVisible(false)}
-                            >
-                                <Text style={styles.modalCancelText}>{t("common.cancel")}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.modalSave}
-                                onPress={handleSaveLesson}
-                                disabled={isCreatingLesson || isUpdatingLesson}
-                            >
-                                {isCreatingLesson || isUpdatingLesson ? (
-                                    <ActivityIndicator color="#FFF" />
-                                ) : (
-                                    <Text style={styles.modalSaveText}>{t("common.save")}</Text>
-                                )}
-                            </TouchableOpacity>
                         </View>
                     </View>
                 </View>
-            </Modal>
+                <View style={styles.headerActions}>
+                    <TouchableOpacity onPress={handlePreview} style={styles.iconBtn}>
+                        <Icon name="visibility" size={28} color="#4F46E5" />
+                    </TouchableOpacity>
+                    {isDraft && (
+                        <TouchableOpacity onPress={handlePublish} style={styles.iconBtn} disabled={isPublishing}>
+                            <Icon name="publish" size={28} color={isPublishing ? "#D1D5DB" : "#059669"} />
+                        </TouchableOpacity>
+                    )}
+                </View>
+            </View>
+
+            {/* Tabs */}
+            <View style={styles.tabBar}>
+                {(["INFO", "CURRICULUM", "REVIEWS"] as TabType[]).map((tab) => (
+                    <TouchableOpacity
+                        key={tab}
+                        style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
+                        onPress={() => setActiveTab(tab)}
+                    >
+                        <Text style={[styles.tabText, activeTab === tab && styles.tabTextActive]}>
+                            {t(`course.tab${tab.toLowerCase()}`)}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </View>
+
+            {/* Content */}
+            <View style={styles.contentContainer}>
+                {activeTab === "INFO" && renderInfoTab()}
+                {activeTab === "CURRICULUM" && renderCurriculumTab()}
+                {activeTab === "REVIEWS" && renderReviewsTab()}
+            </View>
         </ScreenLayout>
     )
 }
 
 const styles = createScaledSheet({
-    container: { flex: 1, backgroundColor: "#F8FAFC" },
-    loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
-    cover: { width: "100%", height: 200, backgroundColor: "#E5E7EB" },
-    header: { padding: 20, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
-    title: { fontSize: 22, fontWeight: "700", color: "#1F2937", marginBottom: 12 },
-    statusRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-    badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-    badgeText: { color: "#FFF", fontSize: 12, fontWeight: "bold" },
-    priceText: { fontSize: 18, fontWeight: "700", color: "#4F46E5" },
+    header: {
+        flexDirection: "row",
+        alignItems: "center",
+        padding: 16,
+        backgroundColor: "#FFF",
+        borderBottomWidth: 1,
+        borderBottomColor: "#E5E7EB",
+    },
+    headerTitleContainer: { flex: 1, marginLeft: 16 },
+    headerTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937" },
+    statusRow: { flexDirection: "row", marginTop: 4 },
+    badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    badgeDraft: { backgroundColor: "#DBEAFE" },
+    badgePublic: { backgroundColor: "#DCFCE7" },
+    badgeText: { fontSize: 10, fontWeight: "700" },
+    textDraft: { color: "#1E40AF" },
+    textPublic: { color: "#166534" },
+    headerActions: { flexDirection: "row", gap: 12 },
+    iconBtn: { padding: 4 },
 
-    warningBox: { margin: 20, padding: 12, backgroundColor: "#FFF7ED", borderRadius: 8, borderWidth: 1, borderColor: "#FDBA74" },
-    warningTitle: { color: "#C2410C", fontWeight: "700", marginBottom: 4 },
-    warningText: { color: "#9A3412", fontSize: 13, marginBottom: 2 },
+    tabBar: { flexDirection: "row", backgroundColor: "#FFF", paddingHorizontal: 16 },
+    tabItem: { paddingVertical: 14, marginRight: 24, borderBottomWidth: 2, borderBottomColor: "transparent" },
+    tabItemActive: { borderBottomColor: "#4F46E5" },
+    tabText: { fontSize: 14, color: "#6B7280", fontWeight: "600" },
+    tabTextActive: { color: "#4F46E5" },
 
-    aiBox: { flexDirection: "row", marginHorizontal: 20, marginTop: 10, padding: 12, backgroundColor: "#F5F3FF", borderRadius: 8, gap: 8, alignItems: "center" },
-    aiText: { color: "#5B21B6", fontSize: 13, flex: 1 },
+    contentContainer: { flex: 1, backgroundColor: "#F8FAFC" },
+    tabContent: { padding: 20, flex: 1 },
 
-    section: { padding: 20 },
-    sectionTitleRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 },
-    sectionHeader: { fontSize: 18, fontWeight: "700", color: "#1F2937" },
-
-    actionButton: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", padding: 16, borderRadius: 10, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 10 },
-    publishButton: { backgroundColor: "#10B981", borderColor: "#10B981" },
-    disabledButton: { opacity: 0.5, backgroundColor: "#D1D5DB", borderColor: "#D1D5DB" },
-    actionButtonText: { marginLeft: 12, fontSize: 16, fontWeight: "600", color: "#4F46E5" },
-    publishButtonText: { color: "#FFFFFF" },
-
-    addLessonBtn: { flexDirection: "row", alignItems: "center" },
-    addLessonText: { color: "#4F46E5", fontWeight: "600", marginLeft: 4 },
-
-    lessonCard: { backgroundColor: "#FFF", padding: 16, borderRadius: 8, marginBottom: 8, flexDirection: "row", alignItems: "center" },
-    lessonRow: { flexDirection: "row", alignItems: "center", flex: 1 },
-    lessonIndex: { fontSize: 16, fontWeight: "bold", color: "#9CA3AF", width: 30 },
-    lessonInfo: { flex: 1 },
-    lessonTitle: { fontSize: 15, fontWeight: "600", color: "#1F2937", marginBottom: 4 },
-    lessonMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
-    freeBadge: { backgroundColor: "#DCFCE7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-    freeText: { fontSize: 10, color: "#166534", fontWeight: "bold" },
-    lessonDuration: { fontSize: 12, color: "#6B7280" },
-    emptyText: { textAlign: "center", color: "#9CA3AF", marginTop: 20, fontStyle: "italic" },
-
-    // Modal
-    modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", padding: 20 },
-    modalContent: { backgroundColor: "#FFF", borderRadius: 12, padding: 20, maxHeight: "80%" },
-    modalTitle: { fontSize: 20, fontWeight: "700", marginBottom: 16 },
-    modalScroll: { marginBottom: 16 },
-    label: { fontSize: 14, fontWeight: "600", color: "#374151", marginTop: 12, marginBottom: 4 },
-    input: { borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, padding: 12, fontSize: 16 },
+    // Info Form
+    inputGroup: { marginBottom: 16 },
+    label: { fontSize: 14, fontWeight: "600", color: "#374151", marginBottom: 6 },
+    input: { backgroundColor: "#FFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, padding: 12, fontSize: 15, color: "#1F2937" },
     textArea: { height: 100, textAlignVertical: "top" },
-    switchRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 },
-    modalButtons: { flexDirection: "row", gap: 12 },
-    modalCancel: { flex: 1, padding: 14, alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8 },
-    modalSave: { flex: 1, padding: 14, alignItems: "center", backgroundColor: "#4F46E5", borderRadius: 8 },
-    modalCancelText: { color: "#374151", fontWeight: "600" },
-    modalSaveText: { color: "#FFF", fontWeight: "600" },
+    previewImage: { width: "100%", height: 150, marginTop: 8, borderRadius: 8, backgroundColor: "#E5E7EB" },
+    saveBtn: { backgroundColor: "#4F46E5", padding: 14, borderRadius: 8, alignItems: "center", marginTop: 10 },
+    saveBtnText: { color: "#FFF", fontWeight: "700", fontSize: 16 },
+
+    // Curriculum
+    curriculumHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+    sectionTitle: { fontSize: 16, fontWeight: "700", color: "#374151" },
+    addLessonBtn: { flexDirection: "row", backgroundColor: "#4F46E5", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6, alignItems: "center", gap: 4 },
+    addLessonText: { color: "#FFF", fontWeight: "600", fontSize: 13 },
+    draftBtn: { backgroundColor: "#F59E0B", paddingHorizontal: 12, paddingVertical: 8, borderRadius: 6 },
+    draftBtnText: { color: "#FFF", fontWeight: "600", fontSize: 13 },
+    lessonItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", padding: 12, borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: "#E5E7EB" },
+    lessonIndexBox: { width: 32, height: 32, backgroundColor: "#F3F4F6", borderRadius: 16, alignItems: "center", justifyContent: "center", marginRight: 12 },
+    lessonIndex: { fontWeight: "700", color: "#6B7280" },
+    lessonInfo: { flex: 1 },
+    lessonTitle: { fontSize: 15, fontWeight: "600", color: "#1F2937" },
+    lessonMeta: { flexDirection: "row", marginTop: 4, alignItems: 'center', gap: 6 },
+    freeBadge: { backgroundColor: "#DCFCE7", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+    freeText: { fontSize: 10, color: "#166534", fontWeight: "700" },
+    lessonType: { fontSize: 11, color: "#6B7280", textTransform: 'uppercase' },
+    orderActions: { flexDirection: 'column', marginLeft: 8 },
+    emptyText: { color: "#9CA3AF", fontStyle: "italic", textAlign: 'center', marginTop: 20 },
+
+    // Reviews
+    reviewCard: { backgroundColor: "#FFF", padding: 16, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: "#E5E7EB" },
+    reviewHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
+    reviewerName: { fontWeight: "600", color: "#1F2937" },
+    ratingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+    ratingText: { fontSize: 12, fontWeight: "700", color: "#F59E0B" },
+    reviewComment: { color: "#4B5563", fontSize: 14, lineHeight: 20 },
+    reviewActions: { flexDirection: "row", marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#F3F4F6", gap: 20 },
+    actionLink: { flexDirection: "row", alignItems: "center", gap: 4 },
+    actionText: { color: "#4F46E5", fontSize: 13, fontWeight: "600" },
 })
 
 export default CourseManagerScreen

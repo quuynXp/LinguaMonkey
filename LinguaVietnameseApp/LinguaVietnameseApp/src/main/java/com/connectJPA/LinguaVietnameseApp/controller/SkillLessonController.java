@@ -28,7 +28,9 @@ import reactor.core.publisher.Flux;
 import reactor.core.scheduler.Schedulers;
 
 import java.time.OffsetDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -59,41 +61,31 @@ public class SkillLessonController {
         String token = extractToken(authorization);
         UUID userId = extractUserId(token);
 
-        return Flux.<String>create(sink -> {
+        return Flux.create(sink -> {
             try {
-                Lesson lesson = lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
+                // Validate DB
+                lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
                         .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
-                userRepository.findByUserIdAndIsDeletedFalse(userId)
-                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
                 byte[] audioBytes = audio.getBytes();
-                log.info("Streaming pronunciation: lesson={}, user={}, audioSize={}", lessonId, userId, audioBytes.length);
+                log.info("Start streaming: lesson={}, user={}", lessonId, userId);
 
+                // GỌI SERVICE MỚI, TRUYỀN SINK VÀO
                 grpcClientService.streamPronunciationAsync(
                     token,
                     audioBytes,
                     languageCode,
                     referenceText,
                     userId.toString(),
-                    lessonId.toString()
-                ).whenComplete((result, ex) -> {
-                    if (ex != null) {
-                        log.error("Streaming error: {}", ex.getMessage(), ex);
-                        sink.error(ex);
-                    } else {
-                        log.info("Streaming completed for lesson: {}", lessonId);
-                        sink.next("{\"status\":\"completed\"}");
-                        sink.complete();
-                        saveLessonProgressAsync(lessonId, userId, 0);
-                    }
-                });
+                    lessonId.toString(),
+                    sink // <--- QUAN TRỌNG NHẤT
+                );
 
             } catch (Exception e) {
-                log.error("Error in streamPronunciation: {}", e.getMessage(), e);
+                log.error("Error init streaming: {}", e.getMessage(), e);
                 sink.error(e);
             }
-        }).subscribeOn(Schedulers.boundedElastic());
+        });
     }
 
     @PostMapping(value = "/listening/transcribe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -193,11 +185,23 @@ public class SkillLessonController {
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
         try {
+            // Gọi gRPC
             String passage = grpcClientService
                     .callGeneratePassageAsync(token, userId.toString(), 
-                        lesson.getTitle() == null ? "" : lesson.getTitle(), languageCode)
+                        lesson.getTitle() == null ? "General Topic" : lesson.getTitle(), languageCode)
                     .get();
 
+            // CLEAN UP: Đôi khi Python trả về vẫn còn dư ký tự, clean lần nữa ở Java cho chắc
+            passage = passage.replaceAll("^\"|\"$", "").trim(); // Xóa dấu ngoặc kép đầu cuối nếu có
+            if (passage.startsWith("```")) {
+                 passage = passage.replaceAll("```(json|xml|markdown)?", "").trim();
+            }
+
+            // LƯU DATA QUAN TRỌNG: Lưu passage vào description của Lesson
+            lesson.setDescription(passage);
+            lessonRepository.save(lesson); // Hibernate sẽ lo việc commit
+
+            // Tạo câu hỏi và lưu progress
             List<ComprehensionQuestion> questions = generateComprehensionQuestions(passage, languageCode);
             saveLessonProgress(lessonId, userId, questions);
 
@@ -332,7 +336,7 @@ public class SkillLessonController {
                     .optionD(q.getOptions().get(3))
                     .correctOption(q.getCorrectOption())
                     .skillType(SkillType.READING)
-                    .weight(1) // Fixed: Added default weight to satisfy NOT NULL constraint
+                    .weight(1)
                     .createdAt(OffsetDateTime.now())
                     .updatedAt(OffsetDateTime.now())
                     .isDeleted(false)

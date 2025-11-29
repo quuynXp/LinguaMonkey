@@ -1,5 +1,5 @@
-import instance from '../api/axiosClient';
-import { MediaType, UserMedia } from "../types/api"
+import { publicClient } from "../api/axiosClient";
+import { MediaType, UserMedia } from "../types/api";
 
 export async function uploadTemp(file: { uri: string; name: string; type: string }) {
   const form = new FormData();
@@ -11,10 +11,10 @@ export async function uploadTemp(file: { uri: string; name: string; type: string
   } as any);
 
   try {
-    const res = await instance.post("/api/v1/files/upload-temp", form, {
-      // No manual headers needed. 
-      // The Axios interceptor now detects FormData and removes 'Content-Type',
-      // allowing the browser/native networking to set the correct multipart boundary.
+    const res = await publicClient.post("/api/v1/files/upload-temp", form, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
 
     return res.data as string;
@@ -25,14 +25,14 @@ export async function uploadTemp(file: { uri: string; name: string; type: string
 }
 
 export async function deleteTempFile(publicId: string) {
-  const res = await instance.delete("/api/v1/files/temp", {
+  const res = await publicClient.delete("/api/v1/files/temp", {
     params: { path: publicId },
   });
   return res.data;
 }
 
 export async function getUserMedia(userId: string, mediaType?: MediaType) {
-  const res = await instance.get("/api/v1/files/user/" + userId, {
+  const res = await publicClient.get("/api/v1/files/user/" + userId, {
     params: mediaType ? { type: mediaType } : {},
   });
   return res.data as UserMedia[];

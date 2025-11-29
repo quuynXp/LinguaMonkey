@@ -19,13 +19,13 @@ import { gotoTab } from '../../utils/navigationRef';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import * as Enums from '../../types/enums';
-import { getFlagEmoji } from '../../utils/flagUtils';
+import { getCountryFlag } from '../../utils/flagUtils';
 
 const ENUM_OPTIONS = {
   country: Object.values(Enums.Country).map(v => ({
     value: v,
     label: v.replace(/_/g, ' '),
-    flag: getFlagEmoji(v)
+    flag: getCountryFlag(v)
   })),
   learningPace: Object.values(Enums.LearningPace).map(v => ({
     value: v,
@@ -342,7 +342,7 @@ const EditProfileScreen: React.FC = () => {
             <Text style={styles.label}>{t('profile.country') ?? 'Country'}</Text>
             <View style={styles.pillRight}>
               <Text style={styles.flagStyle}>
-                {getFlagEmoji(local.country)}
+                {getCountryFlag(local.country)}
               </Text>
               <Text style={styles.rightText}>{getDisplayValue('country', local.country)}</Text>
               <Icon name="chevron-right" size={20} color="#9CA3AF" />

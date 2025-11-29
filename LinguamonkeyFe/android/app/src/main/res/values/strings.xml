@@ -2,4 +2,5 @@
     <string name="app_name">MonkeyLingua</string>
     <string name="facebook_app_id">1230650165201263</string>
     <string name="facebook_client_token">0f51e6aa63371c4c26c4609cbd0f299b</string>
+    <string name="fb_login_protocol_scheme">monkeylingua</string>
 </resources>

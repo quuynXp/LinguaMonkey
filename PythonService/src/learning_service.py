@@ -81,6 +81,85 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             return None
         return await get_user_profile(user_id, db_session, self.redis_client)
 
+
+    @authenticated_grpc_method
+    async def GradeCertificationTest(self, request, context, claims) -> learning_pb2.GradeTestResponse:
+        logging.info(f"Grading test session {request.session_id} type {request.test_type}")
+        
+        graded_answers = []
+        total_score = 0
+        total_possible = 0
+        
+        for answer in request.answers:
+            graded_answer = learning_pb2.GradedAnswerProto(question_id=answer.question_id)
+            points = 10.0 # Standardize points per question for now
+            total_possible += points
+
+            try:
+                if answer.type == "SPEAKING":
+                    audio_data = answer.audio_content if answer.audio_content else b""
+                    if not audio_data:
+                        graded_answer.score = 0
+                        graded_answer.is_correct = False
+                        graded_answer.feedback = "No audio provided"
+                    else:
+                        # Use existing pronunciation module
+                        feedback, score, error = await check_pronunciation(audio_data, answer.reference_text)
+                        if error:
+                            graded_answer.score = 0
+                            graded_answer.feedback = f"Error: {error}"
+                        else:
+                            # Standardize 0-100 score to points
+                            graded_answer.score = (score / 100.0) * points
+                            graded_answer.is_correct = score > 60
+                            graded_answer.feedback = feedback
+
+                elif answer.type == "WRITING":
+                    prompt = f"Grade this writing for a {request.test_type} exam. Topic/Prompt: '{answer.reference_text}'. Student Answer: '{answer.text_content}'. Provide a score out of 100 and brief feedback."
+                    response_text, error = await chat_with_ai(prompt, [], "en")
+                    
+                    if error:
+                        graded_answer.score = 0
+                        graded_answer.feedback = "AI Grading failed"
+                    else:
+                    #   Simple heuristics to parse score (In production, use structured JSON output)
+                        import re
+                        score_match = re.search(r'\b(\d{1,3})/100', response_text)
+                        ai_score = float(score_match.group(1)) if score_match else 70.0 # Fallback
+                            
+                        graded_answer.score = (ai_score / 100.0) * points
+                        graded_answer.is_correct = ai_score > 60
+                        graded_answer.feedback = response_text
+                            
+                else: 
+                    # Choice questions should ideally be graded by Java, but if passed here, assume incorrect or skip
+                    graded_answer.score = 0
+                    graded_answer.feedback = "Passed to AI but not AI type"
+
+                total_score += graded_answer.score
+                graded_answers.append(graded_answer)
+                
+            except Exception as e:
+                logging.error(f"Error grading question {answer.question_id}: {e}")
+                graded_answer.score = 0
+                graded_answer.feedback = "System Error"
+                graded_answers.append(graded_answer)
+
+        proficiency = "A1" # Calculate based on score logic
+        percent = (total_score / total_possible * 100) if total_possible > 0 else 0
+        if percent > 90: proficiency = "C2"
+        elif percent > 80: proficiency = "C1"
+        elif percent > 65: proficiency = "B2"
+        elif percent > 50: proficiency = "B1"
+        elif percent > 35: proficiency = "A2"
+
+        return learning_pb2.GradeTestResponse(
+            session_id=request.session_id,
+            final_score=total_score,
+            proficiency_level=proficiency,
+            graded_answers=graded_answers
+        )
+    
     @authenticated_grpc_method
     async def SpeechToText(self, request, context, claims) -> learning_pb2.SpeechResponse:
         audio_data = (

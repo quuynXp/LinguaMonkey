@@ -22,21 +22,22 @@ type TabRoute = keyof typeof iconMap;
 type IconName = typeof iconMap[TabRoute];
 
 export default function TabNavigator() {
-  
+
   return (
     <Tab.Navigator
+      id={undefined}
       initialRouteName="Home"
       screenOptions={({ route }) => ({
         tabBarIcon: ({ color, size }) => {
           const iconName = iconMap[route.name as TabRoute] as IconName;
           return <MaterialIcons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: '#4F46E5',
+        tabBarActiveTintColor: '#3B82F6',
         tabBarInactiveTintColor: '#9CA3AF',
         tabBarStyle: {
-          backgroundColor: '#FFFFFF',
+          backgroundColor: '#24528fff',
           borderTopWidth: 1,
-          borderTopColor: '#E5E7EB',
+          borderTopColor: '#729ceeff',
           paddingBottom: 5,
           height: 60,
         },

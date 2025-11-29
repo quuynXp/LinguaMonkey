@@ -16,4 +16,5 @@ public class CreateFlashcardRequest {
     private String imageUrl;
     private String audioUrl;
     private String tags;
+    private Boolean isPublic;
 }

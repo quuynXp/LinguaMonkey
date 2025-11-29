@@ -7,36 +7,24 @@ import {
   Dimensions,
   FlatList,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   Text,
   TextInput,
   TouchableOpacity,
   View,
+  Switch,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useFlashcards } from "../../hooks/useFlashcard";
 import { useTranslation } from 'react-i18next';
+import { useFlashcards } from "../../hooks/useFlashcard";
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { FlashcardResponse, CreateFlashcardRequest } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 
-const { width } = Dimensions.get("window")
-
-const categories = ["All", "General", "Academic", "Business", "Travel", "Technology"];
-
-type Flashcard = FlashcardResponse & {
-  author?: string;
-  isFavorite?: boolean;
-  isLiked?: boolean;
-  likes?: number;
-  difficulty?: string;
-  category?: string;
-  word?: string;
-  definition?: string;
-  image?: string;
-  example?: string;
-};
+const { width } = Dimensions.get("window");
 
 interface NewCardState {
   front: string;
@@ -44,6 +32,7 @@ interface NewCardState {
   exampleSentence: string;
   imageUrl: string;
   tags: string;
+  isPublic: boolean;
 }
 
 const initialNewCardState: NewCardState = {
@@ -52,85 +41,68 @@ const initialNewCardState: NewCardState = {
   exampleSentence: "",
   imageUrl: "",
   tags: "",
+  isPublic: false,
 };
-
 
 const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
   const lessonIdFromRoute: string | null = route?.params?.lessonId ?? null;
-  const limit = 50;
 
-  const { useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
+  // Hooks
+  const { useGetFlashcards, useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
 
+  // Queries
+  // 1. Get ALL flashcards for this lesson (Public + Private) for the list view
+  const [page, setPage] = useState(0);
+  const flashcardsQuery = useGetFlashcards(lessonIdFromRoute, { page, size: 50 });
+
+  // 2. Get DUE flashcards specifically for study session
+  const dueQuery = useGetDue(lessonIdFromRoute, 20);
+
+  // Mutations
   const { mutateAsync: createFlashcard, isPending: isCreating } = useCreateFlashcard();
-  const dueQuery = useGetDue(lessonIdFromRoute, limit);
   const { mutateAsync: reviewFlashcard, isPending: isReviewing } = useReviewFlashcard();
 
+  // State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All")
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [studyMode, setStudyMode] = useState<"definition" | "image">("definition")
-  const [currentCardIndex, setCurrentCardIndex] = useState(0)
-  const [showAnswer, setShowAnswer] = useState(false)
-  const [isStudying, setIsStudying] = useState(false)
+  // Study State
+  const [studyMode, setStudyMode] = useState<"definition" | "image">("definition");
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [isStudying, setIsStudying] = useState(false);
+  const [studyList, setStudyList] = useState<FlashcardResponse[]>([]);
 
-  const [newCard, setNewCard] = useState<NewCardState>(initialNewCardState)
+  // Form State
+  const [newCard, setNewCard] = useState<NewCardState>(initialNewCardState);
 
-  const apiFlashcards: Flashcard[] = useMemo(() => {
-    return (dueQuery.data || []).map(card => ({
-      ...card,
-      word: card.front,
-      definition: card.back,
-      image: card.imageUrl,
-      example: card.exampleSentence,
-      author: "User",
-      isFavorite: false,
-      isLiked: false,
-      likes: 0,
-      difficulty: 'beginner',
-      category: 'General'
-    })) as Flashcard[];
-  }, [dueQuery.data]);
+  // Filter logic for the List View (Client side filtering for search)
+  const allFlashcards = flashcardsQuery.data?.content || [];
 
-  const filteredFlashcards: Flashcard[] = useMemo(() => {
-    return apiFlashcards.filter((card) => {
-      const matchesSearch =
-        card.word?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (card.definition ?? "").toLowerCase().includes(searchQuery.toLowerCase())
-
-      const matchesCategory = selectedCategory === "All" || (card.tags ?? "General").includes(selectedCategory);
-
-      return matchesSearch && matchesCategory;
-    })
-  }, [apiFlashcards, searchQuery, selectedCategory])
-
-  useEffect(() => {
-    if (currentCardIndex >= filteredFlashcards.length && filteredFlashcards.length > 0) {
-      setCurrentCardIndex(0)
-    }
-  }, [filteredFlashcards.length])
+  const filteredList = useMemo(() => {
+    if (!searchQuery) return allFlashcards;
+    return allFlashcards.filter(card =>
+      card.front.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      card.back.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [allFlashcards, searchQuery]);
 
   const startStudySession = (mode: "definition" | "image") => {
-    if (filteredFlashcards.length === 0) {
-      Alert.alert(t("flashcards.noCardsTitle") ?? "No Cards", t("flashcards.noCardsMessage") ?? "No cards available for study.");
-      return
-    }
-    setStudyMode(mode)
-    setCurrentCardIndex(0)
-    setShowAnswer(false)
-    setIsStudying(true)
-  }
+    // Prefer Due cards, but if empty, fall back to all cards
+    const sourceList = (dueQuery.data && dueQuery.data.length > 0) ? dueQuery.data : allFlashcards;
 
-  const nextCard = () => {
-    if (currentCardIndex < filteredFlashcards.length - 1) {
-      setCurrentCardIndex((prev) => prev + 1)
-      setShowAnswer(false)
-    } else {
-      setIsStudying(false)
-      Alert.alert(t("flashcards.studyCompleteTitle") ?? "Study Complete", t("flashcards.studyCompleteMessage") ?? "You have finished this study session!")
+    if (sourceList.length === 0) {
+      Alert.alert(t("flashcards.noCardsTitle") ?? "No Cards", t("flashcards.noCardsMessage") ?? "No cards available for study.");
+      return;
     }
-  }
+
+    setStudyList(sourceList);
+    setStudyMode(mode);
+    setCurrentCardIndex(0);
+    setShowAnswer(false);
+    setIsStudying(true);
+  };
 
   const handleCreateCard = async () => {
     if (!createFlashcard) return Alert.alert(t("common.error"), "Create API not available.");
@@ -138,7 +110,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 
     if (!newCard.front || !newCard.back) {
       Alert.alert(t("common.error"), t("flashcards.fillWordAndDefinition") ?? "Please fill in the word and definition.");
-      return
+      return;
     }
 
     try {
@@ -149,18 +121,19 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
         exampleSentence: newCard.exampleSentence,
         imageUrl: newCard.imageUrl,
         tags: newCard.tags,
-        audioUrl: "",
+        audioUrl: "", // Handled by Backend/TTS usually
+        isPublic: newCard.isPublic,
       };
 
       await createFlashcard({ lessonId: lessonIdFromRoute, payload });
       Alert.alert(t("common.success"), t("flashcards.createSuccess") ?? "Flashcard created successfully!");
       setNewCard(initialNewCardState);
       setShowCreateModal(false);
-      dueQuery.refetch();
+      flashcardsQuery.refetch();
     } catch (err) {
       Alert.alert(t("common.error"), t("flashcards.createFailed") ?? "Failed to create flashcard.");
     }
-  }
+  };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -172,7 +145,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
-      quality: 1,
+      quality: 0.8,
     });
 
     if (!result.canceled) {
@@ -180,110 +153,72 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
     }
   };
 
-  const onPressQuality = async (flashcard: Flashcard, q: number) => {
-    if (!lessonIdFromRoute) return Alert.alert(t("common.error"), t("flashcards.lessonIdMissing") ?? "Lesson ID is missing.");
+  const onPressQuality = async (flashcard: FlashcardResponse, q: number) => {
+    if (!lessonIdFromRoute) return;
 
     try {
       await reviewFlashcard({ lessonId: lessonIdFromRoute, flashcardId: flashcard.flashcardId, quality: q });
 
-      if (currentCardIndex < filteredFlashcards.length - 1) {
+      if (currentCardIndex < studyList.length - 1) {
         setCurrentCardIndex((prev) => prev + 1);
         setShowAnswer(false);
       } else {
         setIsStudying(false);
-        Alert.alert(t("flashcards.reviewDoneTitle") ?? "Review Done", t("flashcards.reviewDoneMessage") ?? "All due cards reviewed!");
+        setStudyList([]);
+        dueQuery.refetch(); // Refresh due list
+        Alert.alert(t("flashcards.reviewDoneTitle") ?? "Review Done", t("flashcards.reviewDoneMessage") ?? "Session complete!");
       }
     } catch (err) {
       console.error(err);
       Alert.alert(t("common.error"), t("flashcards.reviewFailed") ?? "Review failed.");
     }
-  }
+  };
 
-  const renderFlashcard = ({ item }: { item: Flashcard }) => {
-    const difficulty = item.difficulty ?? "beginner";
-    const category = item.category ?? "General";
-    const image = item.image;
-
+  const renderFlashcardItem = ({ item }: { item: FlashcardResponse }) => {
     return (
       <View style={styles.flashcardItem}>
         <View style={styles.cardHeader}>
-          <View>
-            <Text style={styles.cardWord}>{item.word}</Text>
-            <Text style={styles.cardAuthor}>by {item.author ?? t("common.unknown")}</Text>
-          </View>
-          <View style={styles.cardActions}>
-            <TouchableOpacity onPress={() => Alert.alert(t("flashcards.favorite"), t("flashcards.implementFavorite"))}>
-              <Icon
-                name={item.isFavorite ? "favorite" : "favorite-border"}
-                size={24}
-                color={item.isFavorite ? "#FF6B6B" : "#666"}
-              />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => Alert.alert(t("flashcards.like"), t("flashcards.implementLike"))} style={styles.likeButton}>
-              <Icon
-                name={item.isLiked ? "thumb-up" : "thumb-up-off-alt"}
-                size={20}
-                color={item.isLiked ? "#4ECDC4" : "#666"}
-              />
-              <Text style={styles.likeCount}>{item.likes ?? 0}</Text>
-            </TouchableOpacity>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.cardWord}>{item.front}</Text>
+            <View style={styles.badgesRow}>
+              {item.tags ? (
+                <View style={styles.tagContainer}>
+                  <Text style={styles.tagText}>{item.tags}</Text>
+                </View>
+              ) : null}
+              {/* Public/Private Badge */}
+              <View style={[styles.tagContainer, item.isPublic ? styles.publicBadge : styles.privateBadge]}>
+                <Text style={[styles.tagText, item.isPublic ? styles.publicText : styles.privateText]}>
+                  {item.isPublic ? "Public" : "Private"}
+                </Text>
+              </View>
+            </View>
           </View>
         </View>
 
-        {image && <Image source={{ uri: image }} style={styles.cardImage} />}
+        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.cardImage} /> : null}
 
-        <Text style={styles.cardDefinition}>{item.definition}</Text>
-        {item.example && <Text style={styles.cardExample}>{t("flashcards.exampleLabel") ?? "Example:"} {item.example}</Text>}
+        <Text style={styles.cardDefinition}>{item.back}</Text>
+        {item.exampleSentence ? (
+          <Text style={styles.cardExample}>{"{item.exampleSentence}"}</Text>
+        ) : null}
 
         <View style={styles.cardFooter}>
-          <View style={[styles.difficultyBadge, { backgroundColor: getDifficultyColor(difficulty) }]}>
-            <Text style={styles.difficultyText}>{difficulty}</Text>
-          </View>
-          <Text style={styles.categoryText}>{category}</Text>
+          <Text style={styles.lastReviewText}>
+            {t("flashcards.nextReview")}: {new Date(item.nextReviewAt).toLocaleDateString()}
+          </Text>
         </View>
       </View>
     );
   };
 
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case "beginner":
-        return "#4CAF50"
-      case "intermediate":
-        return "#FF9800"
-      case "advanced":
-        return "#F44336"
-      default:
-        return "#9E9E9E"
-    }
-  }
-
+  // --- STUDY MODE RENDER ---
   if (isStudying) {
-    if (dueQuery.isLoading) {
-      // FIX LỖI STYLE ARRAY: Trả về View thay vì ScreenLayout
-      return (
-        <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
-          <ActivityIndicator size="large" color="#4ECDC4" />
-        </View>
-      );
-    }
+    const currentCard = studyList[currentCardIndex];
 
-    const currentCard = filteredFlashcards[currentCardIndex];
     if (!currentCard) {
-      return (
-        <ScreenLayout style={styles.container}>
-          <View style={styles.studyHeader}>
-            <TouchableOpacity onPress={() => setIsStudying(false)}>
-              <Icon name="close" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.studyProgress}>0 / 0</Text>
-            <View />
-          </View>
-          <View style={styles.studyCard}>
-            <Text>{t("flashcards.noCardsAvailable") ?? "No cards available."}</Text>
-          </View>
-        </ScreenLayout>
-      );
+      setIsStudying(false);
+      return null;
     }
 
     return (
@@ -293,20 +228,20 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
             <Icon name="close" size={24} color="#333" />
           </TouchableOpacity>
           <Text style={styles.studyProgress}>
-            {t("flashcards.progress", { current: currentCardIndex + 1, total: filteredFlashcards.length })}
+            {currentCardIndex + 1} / {studyList.length}
           </Text>
           <View style={{ width: 24 }} />
         </View>
 
         <View style={styles.studyCard}>
-          {studyMode === "image" && currentCard.image ? (
+          {studyMode === "image" && currentCard.imageUrl ? (
             <View style={styles.studyContentWrap}>
-              <Image source={{ uri: currentCard.image }} style={styles.studyImage} />
+              <Image source={{ uri: currentCard.imageUrl }} style={styles.studyImage} />
               <Text style={styles.studyPrompt}>{t("flashcards.imagePrompt") ?? "What is this word?"}</Text>
             </View>
           ) : (
             <View style={styles.studyContentWrap}>
-              <Text style={styles.studyWord}>{currentCard.word}</Text>
+              <Text style={styles.studyWord}>{currentCard.front}</Text>
               <Text style={styles.studyPrompt}>{t("flashcards.definitionPrompt") ?? "What is the definition?"}</Text>
             </View>
           )}
@@ -315,11 +250,13 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
             <View style={styles.answerSection}>
               <Text style={styles.answerLabel}>{t("flashcards.answerLabel") ?? "Answer:"}</Text>
               {studyMode === "image" ? (
-                <Text style={styles.answerText}>{currentCard.word}</Text>
+                <Text style={styles.answerText}>{currentCard.front}</Text>
               ) : (
-                <Text style={styles.answerText}>{currentCard.definition}</Text>
+                <Text style={styles.answerText}>{currentCard.back}</Text>
               )}
-              {currentCard.example && <Text style={styles.exampleText}>{t("flashcards.exampleLabel") ?? "Example:"} {currentCard.example}</Text>}
+              {currentCard.exampleSentence && (
+                <Text style={styles.exampleText}>{currentCard.exampleSentence}</Text>
+              )}
             </View>
           )}
         </View>
@@ -330,12 +267,13 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
               <Text style={styles.showAnswerText}>{t("flashcards.showAnswer") ?? "Show Answer"}</Text>
             </TouchableOpacity>
           ) : (
-            <>
+            <View style={styles.qualityContainer}>
+              <Text style={styles.rateText}>{t("flashcards.howWell") ?? "How well did you know this?"}</Text>
               <View style={styles.qualityButtonsRow}>
-                {[0, 1, 2, 3, 4, 5].map(q => (
+                {[1, 2, 3, 4, 5].map(q => (
                   <TouchableOpacity
                     key={q}
-                    style={[styles.qualityButton, isReviewing && styles.qualityButtonDisabled]}
+                    style={[styles.qualityButton, isReviewing && styles.qualityButtonDisabled, { backgroundColor: getQualityColor(q) }]}
                     disabled={isReviewing}
                     onPress={() => onPressQuality(currentCard, q)}
                   >
@@ -343,150 +281,207 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
                   </TouchableOpacity>
                 ))}
               </View>
-            </>
+            </View>
           )}
         </View>
       </ScreenLayout>
-    )
+    );
   }
 
-  // MAIN LIST VIEW
+  // --- LIST VIEW RENDER ---
   return (
     <ScreenLayout style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.title}>{t("flashcards.title") ?? "Flashcards"}</Text>
         <TouchableOpacity onPress={() => setShowCreateModal(true)}>
-          <Icon name="add" size={24} color="#4ECDC4" />
+          <Icon name="add" size={28} color="#4ECDC4" />
         </TouchableOpacity>
       </View>
 
+      {/* Search */}
       <View style={styles.searchSection}>
         <View style={styles.searchBar}>
           <Icon name="search" size={20} color="#666" />
           <TextInput
             style={styles.searchInput}
-            placeholder={t("flashcards.searchPlaceholder") ?? "Search vocabulary"}
+            placeholder={t("flashcards.searchPlaceholder") ?? "Search..."}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
       </View>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll}>
-        {categories.map((category) => (
-          <TouchableOpacity
-            key={category}
-            style={[styles.categoryChip, selectedCategory === category && styles.selectedCategoryChip]}
-            onPress={() => setSelectedCategory(category)}
-          >
-            <Text style={[styles.categoryChipText, selectedCategory === category && styles.selectedCategoryChipText]}>
-              {t(`flashcards.categories.${category.toLowerCase()}`) ?? category}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-
+      {/* Study Modes Section */}
       <View style={styles.studyModeSection}>
-        <Text style={styles.sectionTitle}>{t("flashcards.studyModes") ?? "Study Modes"}</Text>
+        <Text style={styles.sectionTitle}>
+          {t("flashcards.study") ?? "Start Study Session"}
+          <Text style={styles.dueCount}> ({dueQuery.data?.length ?? 0} due)</Text>
+        </Text>
         <View style={styles.studyModeButtons}>
           <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("definition")}>
-            <Icon name="quiz" size={24} color="#4ECDC4" />
-            <Text style={styles.studyModeText}>{t("flashcards.definitionStudy") ?? "Definition Study"}</Text>
+            <View style={[styles.iconCircle, { backgroundColor: '#E3FDFD' }]}>
+              <Icon name="school" size={24} color="#4ECDC4" />
+            </View>
+            <Text style={styles.studyModeText}>{t("flashcards.review") ?? "Review"}</Text>
           </TouchableOpacity>
+
           <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("image")}>
-            <Icon name="image" size={24} color="#FF6B6B" />
-            <Text style={styles.studyModeText}>{t("flashcards.imageStudy") ?? "Image Study"}</Text>
+            <View style={[styles.iconCircle, { backgroundColor: '#FFEAEA' }]}>
+              <Icon name="image" size={24} color="#FF6B6B" />
+            </View>
+            <Text style={styles.studyModeText}>{t("flashcards.visual") ?? "Visual"}</Text>
           </TouchableOpacity>
         </View>
       </View>
 
-      {dueQuery.isLoading ? (
-        <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View style={styles.listHeaderContainer}>
+        <Text style={styles.sectionTitle}>{t("flashcards.allCards") ?? "Lesson Vocabulary"}</Text>
+      </View>
+
+      {/* Main List */}
+      {flashcardsQuery.isLoading ? (
+        <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#4ECDC4" />
-        </View>
-      ) : dueQuery.isError ? (
-        <View style={{ padding: 20 }}>
-          <Text style={{ color: '#F44336' }}>{t("flashcards.loadError") ?? "Failed to load due flashcards."}</Text>
         </View>
       ) : (
         <FlatList
-          data={filteredFlashcards}
-          renderItem={renderFlashcard}
+          data={filteredList}
+          renderItem={renderFlashcardItem}
           keyExtractor={(item) => item.flashcardId}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.flashcardsList}
+          contentContainerStyle={styles.listContentContainer}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>{t("flashcards.empty") ?? "No flashcards found in this lesson."}</Text>
+            </View>
+          }
         />
       )}
 
       {/* Create Modal */}
-      <Modal visible={showCreateModal} animationType="slide">
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-              <Icon name="close" size={24} color="#333" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>{t("flashcards.createTitle") ?? "Create Flashcard"}</Text>
-            <TouchableOpacity onPress={handleCreateCard} disabled={isCreating}>
-              {isCreating ? (
-                <ActivityIndicator size="small" color="#4ECDC4" />
-              ) : (
-                <Text style={styles.saveButton}>{t("common.save") ?? "Save"}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-
-          <ScrollView style={styles.modalContent}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t("flashcards.form.word") ?? "Word"} *</Text>
-              <TextInput
-                style={styles.textInput}
-                value={newCard.front}
-                onChangeText={(text) => setNewCard((prev) => ({ ...prev, front: text }))}
-                placeholder={t("flashcards.form.wordPlaceholder") ?? "Enter new word"}
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t("flashcards.form.definition") ?? "Definition"} *</Text>
-              <TextInput
-                style={[styles.textInput, styles.multilineInput]}
-                value={newCard.back}
-                onChangeText={(text) => setNewCard((prev) => ({ ...prev, back: text }))}
-                placeholder={t("flashcards.form.definitionPlaceholder") ?? "Enter definition"}
-                multiline
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t("flashcards.form.example") ?? "Example Sentence"} ({t("common.optional")})</Text>
-              <TextInput
-                style={[styles.textInput, styles.multilineInput]}
-                value={newCard.exampleSentence}
-                onChangeText={(text) => setNewCard((prev) => ({ ...prev, exampleSentence: text }))}
-                placeholder={t("flashcards.form.examplePlaceholder") ?? "Enter example sentence"}
-                multiline
-              />
-            </View>
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t("flashcards.form.image")} ({t("common.optional")})</Text>
-              <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                <Icon name="add-a-photo" size={24} color="#666" />
-                <Text style={styles.imageButtonText}>{t("flashcards.form.addImage") ?? "Add Image"}</Text>
+      <Modal visible={showCreateModal} animationType="slide" presentationStyle="pageSheet">
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+          <SafeAreaView style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
+                <Text style={styles.cancelButton}>{t("common.cancel") ?? "Cancel"}</Text>
               </TouchableOpacity>
-              {newCard.imageUrl && <Image source={{ uri: newCard.imageUrl }} style={styles.previewImage} />}
+              <Text style={styles.modalTitle}>{t("flashcards.createTitle") ?? "New Flashcard"}</Text>
+              <TouchableOpacity onPress={handleCreateCard} disabled={isCreating}>
+                {isCreating ? (
+                  <ActivityIndicator size="small" color="#4ECDC4" />
+                ) : (
+                  <Text style={styles.saveButton}>{t("common.save") ?? "Save"}</Text>
+                )}
+              </TouchableOpacity>
             </View>
-          </ScrollView>
-        </SafeAreaView>
+
+            <ScrollView style={styles.modalContent} contentContainerStyle={{ paddingBottom: 40 }}>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>{t("flashcards.form.word") ?? "Word / Term"} *</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={newCard.front}
+                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, front: text }))}
+                  placeholder="e.g. Hello"
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>{t("flashcards.form.definition") ?? "Definition / Meaning"} *</Text>
+                <TextInput
+                  style={[styles.textInput, styles.multilineInput]}
+                  value={newCard.back}
+                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, back: text }))}
+                  placeholder="e.g. Used as a greeting"
+                  multiline
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>{t("flashcards.form.example") ?? "Example Sentence"}</Text>
+                <TextInput
+                  style={[styles.textInput, styles.multilineInput]}
+                  value={newCard.exampleSentence}
+                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, exampleSentence: text }))}
+                  placeholder="e.g. Hello, how are you?"
+                  multiline
+                />
+              </View>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>{t("flashcards.form.tags") ?? "Tags"}</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={newCard.tags}
+                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, tags: text }))}
+                  placeholder="e.g. greeting, basic, noun (comma separated)"
+                />
+              </View>
+
+              {/* Public Toggle Switch */}
+              <View style={styles.switchContainer}>
+                <Text style={styles.switchLabel}>{t("flashcards.form.isPublic") ?? "Make Public?"}</Text>
+                <Switch
+                  value={newCard.isPublic}
+                  onValueChange={(val) => setNewCard((prev) => ({ ...prev, isPublic: val }))}
+                  trackColor={{ false: "#767577", true: "#4ECDC4" }}
+                  thumbColor={newCard.isPublic ? "#FFFFFF" : "#f4f3f4"}
+                />
+              </View>
+              <Text style={styles.switchHint}>
+                {newCard.isPublic
+                  ? t("flashcards.publicHint") ?? "Everyone in this lesson can see this card."
+                  : t("flashcards.privateHint") ?? "Only you can see this card."}
+              </Text>
+
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>{t("flashcards.form.image") ?? "Image"}</Text>
+                <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
+                  {newCard.imageUrl ? (
+                    <Image source={{ uri: newCard.imageUrl }} style={styles.previewImage} />
+                  ) : (
+                    <View style={styles.imagePlaceholder}>
+                      <Icon name="add-a-photo" size={24} color="#666" />
+                      <Text style={styles.imageButtonText}>{t("flashcards.form.addImage") ?? "Select Image"}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+            </ScrollView>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
       </Modal>
     </ScreenLayout>
   );
+};
+
+const getQualityColor = (q: number) => {
+  switch (q) {
+    case 1: return "#FF6B6B"; // Hard
+    case 2: return "#FF9800";
+    case 3: return "#FFC107";
+    case 4: return "#8BC34A";
+    case 5: return "#4CAF50"; // Easy
+    default: return "#E0E0E0";
+  }
 }
 
 const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: "#F8F9FA",
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   header: {
     flexDirection: "row",
@@ -500,7 +495,7 @@ const styles = createScaledSheet({
   },
   title: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#333",
   },
   searchSection: {
@@ -511,10 +506,10 @@ const styles = createScaledSheet({
   searchBar: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#F5F5F5",
-    borderRadius: 25,
+    backgroundColor: "#F0F2F5",
+    borderRadius: 12,
     paddingHorizontal: 15,
-    paddingVertical: 10,
+    paddingVertical: 12,
   },
   searchInput: {
     flex: 1,
@@ -522,162 +517,141 @@ const styles = createScaledSheet({
     fontSize: 16,
     color: "#333",
   },
-  categoryScroll: {
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 10,
-  },
-  categoryChip: {
-    backgroundColor: "#F0F0F0",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginHorizontal: 5,
-    marginLeft: 15,
-  },
-  selectedCategoryChip: {
-    backgroundColor: "#4ECDC4",
-  },
-  categoryChipText: {
-    fontSize: 14,
-    color: "#666",
-    fontWeight: "500",
-  },
-  selectedCategoryChipText: {
-    color: "#FFFFFF",
-  },
   studyModeSection: {
-    backgroundColor: "#FFFFFF",
     padding: 20,
-    marginTop: 10,
+    backgroundColor: "#FFFFFF",
     marginBottom: 10,
+  },
+  listHeaderContainer: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   sectionTitle: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#333",
-    marginBottom: 15,
+    marginBottom: 10,
+  },
+  dueCount: {
+    fontWeight: '400',
+    color: '#FF6B6B',
+    fontSize: 14
   },
   studyModeButtons: {
     flexDirection: "row",
-    justifyContent: "space-around",
+    justifyContent: "space-between",
   },
   studyModeButton: {
+    flexDirection: 'row',
     alignItems: "center",
-    backgroundColor: "#F8F9FA",
-    padding: 20,
+    backgroundColor: "#FFFFFF",
+    padding: 15,
     borderRadius: 12,
-    flex: 0.45,
+    flex: 0.48,
     borderWidth: 1,
-    borderColor: '#E0E0E0'
+    borderColor: '#EEEEEE',
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10
   },
   studyModeText: {
-    marginTop: 8,
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#333",
-  },
-  qualityButtonsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginVertical: 12,
-  },
-  qualityButton: {
-    flex: 1,
-    marginHorizontal: 4,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: "#E5E7EB",
-    alignItems: "center",
-  },
-  qualityButtonDisabled: {
-    opacity: 0.5,
-  },
-  qualityText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#333",
   },
-  flashcardsList: {
-    padding: 20,
+  listContentContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
   },
   flashcardItem: {
     backgroundColor: "#FFFFFF",
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    marginBottom: 15,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "flex-start",
-    marginBottom: 12,
+    marginBottom: 10,
   },
   cardWord: {
     fontSize: 18,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#333",
   },
-  cardAuthor: {
-    fontSize: 12,
-    color: "#666",
-    marginTop: 2,
+  badgesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4
   },
-  cardActions: {
-    flexDirection: "row",
-    alignItems: "center",
+  tagContainer: {
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
   },
-  likeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginLeft: 15,
+  tagText: {
+    fontSize: 11,
+    color: '#2E7D32',
+    fontWeight: '500'
   },
-  likeCount: {
-    marginLeft: 4,
-    fontSize: 12,
-    color: "#666",
-  },
+  publicBadge: { backgroundColor: '#E3FDFD' },
+  publicText: { color: '#0097A7' },
+  privateBadge: { backgroundColor: '#FFEBEE' },
+  privateText: { color: '#C62828' },
+
   cardImage: {
     width: "100%",
-    height: 150,
-    borderRadius: 8,
+    height: 160,
+    borderRadius: 12,
     marginBottom: 12,
+    backgroundColor: '#F5F5F5'
   },
   cardDefinition: {
-    fontSize: 14,
-    color: "#333",
-    lineHeight: 20,
+    fontSize: 15,
+    color: "#444",
+    lineHeight: 22,
     marginBottom: 8,
   },
   cardExample: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#666",
     fontStyle: "italic",
     marginBottom: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: '#4ECDC4',
+    paddingLeft: 8
   },
   cardFooter: {
+    borderTopWidth: 1,
+    borderTopColor: '#F5F5F5',
+    paddingTop: 8,
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
+    justifyContent: "flex-end",
   },
-  difficultyBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  difficultyText: {
-    fontSize: 11,
-    color: "#FFFFFF",
-    fontWeight: "500",
-  },
-  categoryText: {
+  lastReviewText: {
     fontSize: 12,
-    color: "#666",
+    color: "#999",
   },
+  // Study Screen Styles
   studyHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -685,8 +659,6 @@ const styles = createScaledSheet({
     paddingHorizontal: 20,
     paddingVertical: 15,
     backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
   },
   studyProgress: {
     fontSize: 16,
@@ -697,7 +669,7 @@ const styles = createScaledSheet({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    padding: 30,
+    padding: 20,
   },
   studyContentWrap: {
     alignItems: 'center',
@@ -705,63 +677,106 @@ const styles = createScaledSheet({
   },
   studyImage: {
     width: width - 60,
-    height: 200,
-    borderRadius: 12,
+    height: 220,
+    borderRadius: 16,
     marginBottom: 20,
+    resizeMode: 'contain'
   },
   studyWord: {
-    fontSize: 32,
-    fontWeight: "700",
+    fontSize: 34,
+    fontWeight: "800",
     color: "#333",
     textAlign: "center",
-    marginBottom: 20,
+    marginBottom: 15,
   },
   studyPrompt: {
     fontSize: 16,
-    color: "#666",
+    color: "#888",
     textAlign: "center",
   },
   answerSection: {
-    marginTop: 30,
-    padding: 20,
-    backgroundColor: "#F8F9FA",
-    borderRadius: 12,
+    marginTop: 40,
+    padding: 24,
+    backgroundColor: "#F8FAFC",
+    borderRadius: 16,
     width: "100%",
+    borderWidth: 1,
+    borderColor: '#E2E8F0'
   },
   answerLabel: {
-    fontSize: 14,
-    fontWeight: "600",
+    fontSize: 13,
+    fontWeight: "700",
     color: "#4ECDC4",
     marginBottom: 8,
+    textTransform: 'uppercase'
   },
   answerText: {
-    fontSize: 18,
+    fontSize: 20,
     color: "#333",
-    marginBottom: 8,
+    marginBottom: 12,
+    fontWeight: '500'
   },
   exampleText: {
-    fontSize: 14,
+    fontSize: 15,
     color: "#666",
     fontStyle: "italic",
+    lineHeight: 22
   },
   studyActions: {
     padding: 20,
     backgroundColor: "#FFFFFF",
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0'
   },
   showAnswerButton: {
     backgroundColor: "#4ECDC4",
-    paddingVertical: 15,
-    borderRadius: 25,
+    paddingVertical: 16,
+    borderRadius: 16,
     alignItems: "center",
+    shadowColor: "#4ECDC4",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   showAnswerText: {
     color: "#FFFFFF",
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
   },
+  qualityContainer: {
+    alignItems: 'center',
+    width: '100%'
+  },
+  rateText: {
+    marginBottom: 12,
+    color: '#666',
+    fontSize: 14
+  },
+  qualityButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    width: '100%'
+  },
+  qualityButton: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: "center",
+  },
+  qualityButtonDisabled: {
+    opacity: 0.5,
+  },
+  qualityText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#FFFFFF",
+  },
+  // Modal Styles
   modalContainer: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#FFFFFF",
   },
   modalHeader: {
     flexDirection: "row",
@@ -769,18 +784,21 @@ const styles = createScaledSheet({
     alignItems: "center",
     paddingHorizontal: 20,
     paddingVertical: 15,
-    backgroundColor: "#FFFFFF",
     borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
+    borderBottomColor: "#F0F0F0",
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
     color: "#333",
   },
+  cancelButton: {
+    fontSize: 16,
+    color: "#666"
+  },
   saveButton: {
     fontSize: 16,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#4ECDC4",
   },
   modalContent: {
@@ -788,7 +806,7 @@ const styles = createScaledSheet({
     padding: 20,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   inputLabel: {
     fontSize: 14,
@@ -797,41 +815,77 @@ const styles = createScaledSheet({
     marginBottom: 8,
   },
   textInput: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F9FAFB",
     borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderColor: "#E5E7EB",
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 16,
     color: "#333",
   },
   multilineInput: {
-    height: 80,
+    height: 100,
     textAlignVertical: "top",
   },
+  switchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+    backgroundColor: '#F9FAFB',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB'
+  },
+  switchLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+  },
+  switchHint: {
+    fontSize: 12,
+    color: '#888',
+    marginBottom: 24,
+    paddingHorizontal: 4
+  },
   imageButton: {
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  imagePlaceholder: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#F9FAFB",
     borderWidth: 1,
-    borderColor: "#E0E0E0",
-    borderRadius: 8,
-    paddingVertical: 15,
+    borderColor: "#E5E7EB",
     borderStyle: "dashed",
+    paddingVertical: 30,
+    borderRadius: 10
   },
   imageButtonText: {
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: 10,
+    fontSize: 15,
     color: "#666",
+    fontWeight: '500'
   },
   previewImage: {
     width: "100%",
-    height: 150,
-    borderRadius: 8,
-    marginTop: 10,
+    height: 200,
+    borderRadius: 10,
+    resizeMode: 'cover'
   },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center'
+  },
+  emptyStateText: {
+    color: '#999',
+    textAlign: 'center',
+    fontSize: 15
+  }
 });
 
-export default VocabularyFlashcardsScreen
+export default VocabularyFlashcardsScreen;

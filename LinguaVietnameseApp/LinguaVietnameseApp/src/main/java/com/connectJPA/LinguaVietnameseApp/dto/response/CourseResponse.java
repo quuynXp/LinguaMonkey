@@ -1,6 +1,7 @@
 // LinguaVietnameseApp/LinguaVietnameseApp/src/main/java/com/connectJPA/LinguaVietnameseApp/dto/response/CourseResponse.java
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
@@ -23,6 +24,12 @@ public class CourseResponse {
     private UUID creatorId;
     private BigDecimal price;
     private String languageCode;
+    private String creatorName;
+    private String creatorAvatar;
+    private String creatorNickname;
+    private Country creatorCountry;
+    private Boolean creatorVip;
+    private Integer creatorLevel;
     private DifficultyLevel difficultyLevel;
     private CourseType type;
     private CourseApprovalStatus approvalStatus;

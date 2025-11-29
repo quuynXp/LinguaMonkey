@@ -55,7 +55,8 @@
         "card": "Card"
     },
     "common": {
-        "overview" : "Overview",
+        "webViewTitle": "Trang Web",
+        "overview": "Overview",
         "year": "Year",
         "skip": "Skip",
         "hot": "Hot",
@@ -199,6 +200,7 @@
         }
     },
     "errors": {
+        "webview_load_failed": "Không thể tải trang. Vui lòng kiểm tra kết nối mạng.",
         "network": "Network error. Please check your connection.",
         "server": "Server Error",
         "loading": "Loading...",
@@ -247,7 +249,8 @@
         }
     },
     "action": {
-        "retry": "Retry"
+        "retry": "Retry",
+        "reload": "Tải lại"
     },
     "days": {
         "mon": "Mon",

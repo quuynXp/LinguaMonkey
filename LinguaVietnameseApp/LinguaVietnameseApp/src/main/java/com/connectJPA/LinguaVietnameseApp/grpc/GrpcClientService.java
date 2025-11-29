@@ -5,6 +5,8 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody
 import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
 import io.grpc.StatusRuntimeException;
@@ -12,10 +14,14 @@ import io.grpc.stub.StreamObserver;
 import learning.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import reactor.core.publisher.FluxSink;
+
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
@@ -24,14 +30,13 @@ import java.util.stream.Collectors;
 @Slf4j
 public class GrpcClientService {
 
-    @Value("${grpc.server.host}")
-    private String grpcServerAddress;
+    @Value("${grpc.client.learning-service.address}")
+    private String grpcTarget;
 
-    @Value("${grpc.server.port}")
-    private int grpcServerPort;
+    private ObjectMapper objectMapper;
 
     private ManagedChannel createChannelWithToken(String token) {
-        return ManagedChannelBuilder.forAddress(grpcServerAddress, grpcServerPort)
+                return ManagedChannelBuilder.forTarget(grpcTarget.replace("static://", ""))
                 .usePlaintext()
                 .intercept(new GrpcAuthInterceptor(token))
                 .build();
@@ -223,98 +228,113 @@ public class GrpcClientService {
         });
     }
 
-    public CompletableFuture<Void> streamPronunciationAsync(
+    public void streamPronunciationAsync(
             String token,
             byte[] audioData,
             String language,
             String referenceText,
             String userId,
-            String lessonId) {
+            String lessonId,
+            FluxSink<String> sink) { // <--- THÊM THAM SỐ SINK
 
         ManagedChannel channel = createChannelWithToken(token);
         LearningServiceGrpc.LearningServiceStub asyncStub = LearningServiceGrpc.newStub(channel);
 
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                final boolean[] completed = {false};
-                final Exception[] streamError = {null};
-
-                StreamObserver<PronunciationChunkResponse> responseObserver =
-                        new StreamObserver<PronunciationChunkResponse>() {
-                            @Override
-                            public void onNext(PronunciationChunkResponse response) {
-                                try {
-                                    log.debug("Received pronunciation chunk: type={}, score={}, feedback={}",
-                                            response.getChunkType(),
-                                            response.getScore(),
-                                            response.getFeedback());
-                                    forwardChunkToClients(lessonId, response);
-                                } catch (Exception e) {
-                                    log.error("Error processing chunk: {}", e.getMessage(), e);
-                                }
-                            }
-
-                            @Override
-                            public void onError(Throwable t) {
-                                log.error("Stream error: {}", t.getMessage(), t);
-                                streamError[0] = new Exception(t);
-                                completed[0] = true;
-                            }
-
-                            @Override
-                            public void onCompleted() {
-                                log.info("Streaming completed");
-                                completed[0] = true;
-                            }
-                        };
-
-                StreamObserver<PronunciationChunk> requestObserver =
-                        asyncStub.streamPronunciation(responseObserver);
-
+        // Observer để nhận dữ liệu từ Python trả về
+        StreamObserver<PronunciationChunkResponse> responseObserver = new StreamObserver<PronunciationChunkResponse>() {
+            @Override
+            public void onNext(PronunciationChunkResponse response) {
                 try {
-                    PronunciationChunk chunk = PronunciationChunk.newBuilder()
-                            .setAudioChunk(com.google.protobuf.ByteString.copyFrom(audioData))
-                            .setReferenceText(referenceText)
-                            .setSequence(0)
-                            .setIsFinal(true)
-                            .build();
-
-                    log.info("Sending pronunciation chunk: size={}, referenceText={}, userId={}",
-                            audioData.length,
-                            referenceText,
-                            userId);
-
-                    requestObserver.onNext(chunk);
-                    requestObserver.onCompleted();
-
-                    long startTime = System.currentTimeMillis();
-                    while (!completed[0] && System.currentTimeMillis() - startTime < 30000) {
-                        Thread.sleep(100);
+                    // Logic mapping data từ Protobuf sang JSON mà Frontend mong đợi
+                    Map<String, Object> chunkData = new HashMap<>();
+                    
+                    // Mapping dựa trên chunk_type từ Python (xem file learning_service.py)
+                    String type = response.getChunkType(); // metadata, chunk, suggestion, final, error
+                    
+                    // Nếu Python không gửi type (do version cũ), tự suy luận
+                    if (type == null || type.isEmpty()) {
+                        type = response.getIsFinal() ? "final" : "chunk";
                     }
 
-                    if (streamError[0] != null) {
-                        throw new RuntimeException(streamError[0]);
-                    }
+                    chunkData.put("type", type);
+                    chunkData.put("feedback", response.getFeedback());
 
-                    log.info("Stream completed successfully");
-                    return null;
+                    // Xử lý các trường hợp cụ thể
+                    if ("final".equals(type) || response.getIsFinal()) {
+                        chunkData.put("score", response.getScore());
+                        // Metadata giả lập nếu Python chưa trả về đủ
+                        Map<String, Object> meta = new HashMap<>();
+                        meta.put("accuracy_score", response.getScore());
+                        meta.put("fluency_score", response.getScore());
+                        chunkData.put("metadata", meta);
+                    }
+                    
+                    // Nếu là phân tích từng từ (cần Python trả về cấu trúc chi tiết hơn trong tương lai)
+                    // Hiện tại Python trả về text feedback gộp, ta gửi thẳng text đó
+                    
+                    String jsonChunk = objectMapper.writeValueAsString(chunkData);
+                    
+                    log.debug("Forwarding chunk to Flux: {}", jsonChunk);
+                    sink.next(jsonChunk); // <--- ĐẨY DATA VỀ FRONTEND NGAY LẬP TỨC
 
                 } catch (Exception e) {
-                    log.error("Error during streaming: {}", e.getMessage(), e);
-                    requestObserver.onError(e);
-                    throw new RuntimeException(e);
+                    log.error("Error processing chunk: {}", e.getMessage(), e);
+                    sink.error(e);
                 }
+            }
 
-            } finally {
+            @Override
+            public void onError(Throwable t) {
+                log.error("Stream error from Python: {}", t.getMessage());
+                sink.error(t);
                 channel.shutdown();
             }
-        }).handle((result, exception) -> {
-            if (exception != null) {
-                log.error("Fatal streaming error: {}", exception.getMessage(), exception);
-                throw new AppException(ErrorCode.GRPC_SERVICE_ERROR);
+
+            @Override
+            public void onCompleted() {
+                log.info("Streaming completed from Python");
+                sink.complete(); // <--- Đóng luồng về Frontend
+                channel.shutdown();
             }
-            return null;
-        });
+        };
+
+        // Observer để gửi Audio lên Python
+        StreamObserver<PronunciationChunk> requestObserver = asyncStub.streamPronunciation(responseObserver);
+
+        // Logic gửi Audio (giữ nguyên, nhưng bỏ cái CompletableFuture đi vì ta dùng Flux)
+        new Thread(() -> {
+            try {
+                // Chia nhỏ file audio để giả lập streaming (hoặc gửi 1 cục nếu file nhỏ)
+                // Python đang join lại nên gửi 1 cục cũng được, nhưng đúng chuẩn là nên chia.
+                int chunkSize = 16 * 1024; // 16KB
+                int length = audioData.length;
+                int offset = 0;
+                int sequence = 0;
+
+                while (offset < length) {
+                    int end = Math.min(length, offset + chunkSize);
+                    byte[] chunkBytes = java.util.Arrays.copyOfRange(audioData, offset, end);
+                    
+                    PronunciationChunk chunk = PronunciationChunk.newBuilder()
+                            .setAudioChunk(com.google.protobuf.ByteString.copyFrom(chunkBytes))
+                            .setReferenceText(referenceText) // Chỉ cần gửi ở gói đầu, nhưng gửi hết cũng ko sao
+                            .setSequence(sequence++)
+                            .setIsFinal(end == length)
+                            .build();
+
+                    requestObserver.onNext(chunk);
+                    offset = end;
+                    Thread.sleep(10); 
+                }
+                
+                requestObserver.onCompleted();
+
+            } catch (Exception e) {
+                log.error("Error sending audio to Python: {}", e.getMessage());
+                requestObserver.onError(e);
+                sink.error(e);
+            }
+        }).start();
     }
 
     private void forwardChunkToClients(String lessonId, PronunciationChunkResponse response) {

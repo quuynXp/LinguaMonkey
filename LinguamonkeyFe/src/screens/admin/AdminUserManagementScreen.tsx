@@ -1,132 +1,155 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
-  ScrollView,
+  FlatList,
   TouchableOpacity,
-  ActivityIndicator,
+  TextInput,
   RefreshControl,
-  Dimensions,
+  ActivityIndicator,
+  Alert,
+  Image,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "@tanstack/react-query";
-import { getUserCounts, getUserGrowth } from "../../services/statisticsApi";
+import { useUsers } from "../../hooks/useUsers";
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import { BarChart } from "react-native-chart-kit";
 import { createScaledSheet } from "../../utils/scaledStyles";
-
-const { width } = Dimensions.get("window");
 
 const AdminUserManagementScreen = () => {
   const { t } = useTranslation();
-  const [period, setPeriod] = useState<"day" | "month" | "year">("month");
+  const { useAllUsers, useDeleteUser } = useUsers();
 
-  // Fetch Total Counts
-  const { data: counts, isLoading: loadCounts, refetch: refetchCounts } = useQuery({
-    queryKey: ["user-counts", period],
-    queryFn: () => getUserCounts({ period }),
+  const [searchQuery, setSearchQuery] = useState("");
+  const [page, setPage] = useState(0);
+
+  const { data, isLoading, refetch, isFetching } = useAllUsers({
+    page,
+    size: 20,
+    email: searchQuery || undefined,
   });
 
-  // Fetch Growth Data
-  const { data: growth, isLoading: loadGrowth, refetch: refetchGrowth } = useQuery({
-    queryKey: ["user-growth", period],
-    queryFn: () => getUserGrowth({ period }),
-  });
+  const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
 
-  const isLoading = loadCounts || loadGrowth;
-
-  const onRefresh = () => {
-    refetchCounts();
-    refetchGrowth();
+  const handleSearch = () => {
+    setPage(0);
+    refetch();
   };
 
-  // Safe chart data construction
-  const chartData = {
-    labels: growth?.labels || ["Jan", "Feb", "Mar", "Apr"],
-    datasets: [{ data: growth?.data || [10, 20, 15, 30] }]
+  const handleDelete = (userId: string, userName: string) => {
+    Alert.alert(
+      t("admin.users.deleteTitle"),
+      t("admin.users.deleteConfirm", { name: userName }),
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("common.delete"),
+          style: "destructive",
+          onPress: () => deleteUser(userId),
+        },
+      ]
+    );
   };
+
+  const renderItem = ({ item }: { item: any }) => (
+    <View style={styles.userCard}>
+      <Image
+        source={{ uri: item.avatarUrl || "https://via.placeholder.com/50" }}
+        style={styles.avatar}
+      />
+      <View style={styles.userInfo}>
+        <Text style={styles.userName}>{item.fullName || item.username}</Text>
+        <Text style={styles.userEmail}>{item.email}</Text>
+        <Text style={styles.userMeta}>
+          Level {item.level} • {item.country}
+        </Text>
+      </View>
+      <TouchableOpacity
+        style={styles.deleteBtn}
+        onPress={() => handleDelete(item.userId, item.fullName)}
+        disabled={isDeleting}
+      >
+        <Icon name="delete-outline" size={24} color="#EF4444" />
+      </TouchableOpacity>
+    </View>
+  );
 
   return (
     <ScreenLayout>
-      <ScrollView
-        style={styles.container}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
-      >
-        <View style={styles.headerArea}>
-          <Text style={styles.subtitle}>{t("admin.users.overview")}</Text>
-          <View style={styles.periodRow}>
-            {(["day", "month", "year"] as const).map(p => (
-              <TouchableOpacity
-                key={p}
-                style={[styles.pBtn, period === p && styles.pBtnActive]}
-                onPress={() => setPeriod(p)}
-              >
-                <Text style={[styles.pText, period === p && styles.pTextActive]}>
-                  {t(`common.period.${p}`)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+      <View style={styles.container}>
+        <View style={styles.searchContainer}>
+          <Icon name="search" size={20} color="#94A3B8" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder={t("admin.users.searchPlaceholder")}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            onSubmitEditing={handleSearch}
+          />
         </View>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Icon name="group" size={28} color="#4F46E5" />
-            <Text style={styles.statValue}>{counts?.totalUsers || 0}</Text>
-            <Text style={styles.statLabel}>{t("admin.users.total")}</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Icon name="person-add" size={28} color="#10B981" />
-            <Text style={styles.statValue}>{counts?.newUsers || 0}</Text>
-            <Text style={styles.statLabel}>{t("admin.users.new")}</Text>
-          </View>
-        </View>
-
-        <View style={styles.chartSection}>
-          <Text style={styles.chartTitle}>{t("admin.users.growthChart")}</Text>
-          {isLoading ? (
-            <ActivityIndicator color="#4F46E5" />
-          ) : (
-            <BarChart
-              data={chartData}
-              width={width - 32}
-              height={220}
-              yAxisLabel=""
-              yAxisSuffix=""
-              chartConfig={{
-                backgroundColor: "#ffffff",
-                backgroundGradientFrom: "#ffffff",
-                backgroundGradientTo: "#ffffff",
-                color: (opacity = 1) => `rgba(79, 70, 229, ${opacity})`,
-                labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                barPercentage: 0.7,
-              }}
-              style={styles.chart}
-            />
-          )}
-        </View>
-      </ScrollView>
+        {isLoading && page === 0 ? (
+          <ActivityIndicator size="large" color="#4F46E5" style={styles.loader} />
+        ) : (
+          <FlatList
+            data={data?.data}
+            keyExtractor={(item) => item.userId}
+            renderItem={renderItem}
+            contentContainerStyle={styles.listContent}
+            refreshControl={
+              <RefreshControl refreshing={isFetching} onRefresh={refetch} />
+            }
+            onEndReached={() => {
+              if (data?.pagination?.hasNext) setPage((prev) => prev + 1);
+            }}
+            onEndReachedThreshold={0.5}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>{t("admin.users.noUsers")}</Text>
+            }
+          />
+        )}
+      </View>
     </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
-  headerArea: { padding: 16, backgroundColor: "#fff", flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  subtitle: { fontSize: 18, fontWeight: "700", color: "#1F2937" },
-  periodRow: { flexDirection: 'row', backgroundColor: '#F1F5F9', borderRadius: 8, padding: 2 },
-  pBtn: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 6 },
-  pBtnActive: { backgroundColor: '#fff', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 1 },
-  pText: { fontSize: 12, fontWeight: '600', color: '#64748B' },
-  pTextActive: { color: '#4F46E5' },
-  statsRow: { flexDirection: "row", gap: 12, padding: 16 },
-  statCard: { flex: 1, backgroundColor: "#fff", padding: 16, borderRadius: 12, alignItems: "center", shadowColor: "#000", shadowOpacity: 0.05, elevation: 1 },
-  statValue: { fontSize: 24, fontWeight: "700", color: "#1F2937", marginVertical: 4 },
-  statLabel: { fontSize: 14, color: "#6B7280" },
-  chartSection: { margin: 16, marginTop: 0, padding: 16, backgroundColor: "#fff", borderRadius: 12 },
-  chartTitle: { fontSize: 16, fontWeight: "600", marginBottom: 16, color: "#1F2937" },
-  chart: { borderRadius: 8 }
+  searchContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    margin: 16,
+    paddingHorizontal: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#E2E8F0",
+    height: 48,
+  },
+  searchIcon: { marginRight: 8 },
+  searchInput: { flex: 1, fontSize: 15, color: "#1E293B" },
+  loader: { marginTop: 40 },
+  listContent: { paddingHorizontal: 16, paddingBottom: 24 },
+  userCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    padding: 16,
+    borderRadius: 16,
+    marginBottom: 12,
+    shadowColor: "#64748B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  avatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#F1F5F9" },
+  userInfo: { flex: 1, marginLeft: 16 },
+  userName: { fontSize: 16, fontWeight: "700", color: "#1E293B" },
+  userEmail: { fontSize: 13, color: "#64748B", marginTop: 2 },
+  userMeta: { fontSize: 12, color: "#94A3B8", marginTop: 4 },
+  deleteBtn: { padding: 8 },
+  emptyText: { textAlign: "center", marginTop: 40, color: "#94A3B8" },
 });
 
 export default AdminUserManagementScreen;

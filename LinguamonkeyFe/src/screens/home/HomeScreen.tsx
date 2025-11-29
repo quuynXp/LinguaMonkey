@@ -13,15 +13,15 @@ import { getGreetingKey } from "../../utils/motivationHelper";
 import type { UserDailyChallengeResponse } from "../../types/dto";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import HomeCarousel from "../../components/home/HomeCarousel";
-
-// Đã xoá các import liên quan đến Form tạo Roadmap (DateTimePicker, Picker, Modal,...)
+import RoadmapTimeline from "../../components/roadmap/RoadmapTimeline";
+import RoadmapSkeleton from "../../components/common/RoadmapSkeleton";
 
 const HomeScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
-  // --- LEADERBOARD LOGIC (GIỮ NGUYÊN) ---
+  // --- LEADERBOARD LOGIC ---
   const { useTopThree } = useLeaderboards();
   const { data: rawTopThreeData, isLoading: topThreeLoading } = useTopThree(null);
   const rawTopThreeUsers = rawTopThreeData || [];
@@ -33,7 +33,7 @@ const HomeScreen = ({ navigation }: any) => {
     topThreeUsers = rawTopThreeUsers.slice(0, 3);
   }
 
-  // --- USER & CHALLENGE LOGIC (GIỮ NGUYÊN) ---
+  // --- USER & CHALLENGE LOGIC ---
   const {
     name = "",
     streak = 0,
@@ -48,13 +48,26 @@ const HomeScreen = ({ navigation }: any) => {
   const assignChallengeMutation = useAssignChallenge();
   const completeMutation = useCompleteChallenge();
 
-  // --- ROADMAP LOGIC (ĐÃ SỬA: Chỉ lấy data, không xử lý tạo) ---
-  const { useUserRoadmaps } = useRoadmap();
+  // --- ROADMAP LOGIC ---
+  const {
+    useUserRoadmaps,
+    useSuggestions,
+    useAddSuggestion,
+    useCompleteRoadmapItem
+  } = useRoadmap();
+
   const mainLanguage = languages[0] || "en";
   const { data: roadmapData, isLoading: roadmapLoading } = useUserRoadmaps(mainLanguage);
 
-  // Lấy roadmap đầu tiên đang active
+  // Take the first active roadmap
   const roadmap = (roadmapData && roadmapData.length > 0) ? roadmapData[0] : null;
+
+  // Suggestions Logic
+  const { data: suggestionsData } = useSuggestions(roadmap?.roadmapId || null);
+  const suggestions = suggestionsData || [];
+
+  const addSuggestionMutation = useAddSuggestion();
+  const completeItemMutation = useCompleteRoadmapItem();
 
   const [refreshing, setRefreshing] = useState(false);
 
@@ -83,12 +96,22 @@ const HomeScreen = ({ navigation }: any) => {
 
   // --- HANDLERS ---
   const handleLeaderboardPress = () => gotoTab("EnhancedLeaderboardScreen");
-
-  // Đổi logic: Bấm vào Roadmap sẽ nhảy sang RoadmapScreen (nơi quản lý chi tiết)
   const handleRoadmapPress = () => navigation.navigate('RoadmapStack', { screen: 'RoadmapScreen' });
-
-  // Nút Browse nếu chưa có roadmap
   const handleFindRoadmap = () => navigation.navigate('RoadmapStack', { screen: 'PublicRoadmapsScreen' });
+
+  const handleAddSuggestion = async (itemId: string, text: string) => {
+    if (!roadmap?.roadmapId) return;
+    await addSuggestionMutation.mutateAsync({
+      roadmapId: roadmap.roadmapId,
+      itemId,
+      reason: text,
+      suggestedOrderIndex: 0 // Default or calculated
+    });
+  };
+
+  const handleCompleteItem = (itemId: string) => {
+    completeItemMutation.mutate({ itemId });
+  };
 
   const greetingKey = getGreetingKey();
 
@@ -128,7 +151,7 @@ const HomeScreen = ({ navigation }: any) => {
       >
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
 
-          {/* HEADER (GIỮ NGUYÊN) */}
+          {/* HEADER */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <Text style={styles.greeting}>{t(greetingKey)} 👋</Text>
@@ -140,7 +163,7 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* LEADERBOARD PODIUM (GIỮ NGUYÊN) */}
+          {/* LEADERBOARD PODIUM */}
           {topThreeLoading ? (
             <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />
           ) : Array.isArray(topThreeUsers) && topThreeUsers.length > 0 ? (
@@ -194,6 +217,7 @@ const HomeScreen = ({ navigation }: any) => {
 
           <HomeCarousel navigation={navigation} />
 
+          {/* AI CHARACTER */}
           <Animated.View style={[styles.characterSection, { transform: [{ scale: bounceAnim }] }]}>
             <TouchableOpacity style={styles.characterContainer} onPress={goToChatAISCreen} activeOpacity={0.8}>
               <View style={styles.characterCircle}>
@@ -206,6 +230,7 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </Animated.View>
 
+          {/* PROGRESS */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("home.progress.title")}</Text>
             <View style={styles.progressCard}>
@@ -220,6 +245,7 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
           </View>
 
+          {/* CURRENT CHALLENGE */}
           {currentChallenge && !currentChallenge.completed ? (
             <TouchableOpacity
               style={styles.section}
@@ -257,7 +283,7 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           ) : null}
 
-          {/* --- ROADMAP SECTION ĐÃ SỬA --- */}
+          {/* --- ROADMAP SECTION WITH TIMELINE & SKELETON --- */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
@@ -269,31 +295,26 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
 
             {roadmapLoading ? (
-              <ActivityIndicator size="large" color="#3B82F6" />
+              <RoadmapSkeleton />
             ) : roadmap ? (
-              // Hiển thị Card Roadmap hiện tại
-              <TouchableOpacity style={styles.roadmapCard} onPress={handleRoadmapPress} activeOpacity={0.9}>
-                <View style={styles.roadmapInfo}>
+              <View>
+                <View style={styles.roadmapHeaderCard}>
                   <Text style={styles.roadmapTitle}>{roadmap.title}</Text>
                   <Text style={styles.roadmapSubtitle}>
                     {t("home.roadmap.completed", { count: roadmap.completedItems })} / {roadmap.totalItems} {t('common.items')}
                   </Text>
-                  {/* Progress Bar nhỏ trong card thay vì circular để tối ưu không gian */}
-                  <View style={styles.miniProgressBarBg}>
-                    <View
-                      style={[
-                        styles.miniProgressBarFill,
-                        { width: `${roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0}%` }
-                      ]}
-                    />
-                  </View>
                 </View>
-                <View style={styles.roadmapIconContainer}>
-                  <Icon name="map" size={28} color="#FFF" />
-                </View>
-              </TouchableOpacity>
+
+                <RoadmapTimeline
+                  items={roadmap.items || []}
+                  suggestions={suggestions}
+                  isOwner={true}
+                  onCompleteItem={handleCompleteItem}
+                  onAddSuggestion={handleAddSuggestion}
+                />
+              </View>
             ) : (
-              // Hiển thị Empty State mời gọi sang RoadmapScreen
+              // Empty State
               <TouchableOpacity style={styles.emptyStateContainer} onPress={handleFindRoadmap}>
                 <View style={styles.emptyIconCircle}>
                   <Icon name="add-road" size={24} color="#9CA3AF" />
@@ -307,7 +328,7 @@ const HomeScreen = ({ navigation }: any) => {
             )}
           </View>
 
-          {/* CHALLENGES LIST (GIỮ NGUYÊN) */}
+          {/* CHALLENGES LIST */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("home.challenge.title")}</Text>
             {dailyLoading ? (
@@ -379,7 +400,6 @@ const HomeScreen = ({ navigation }: any) => {
           </View>
         </Animated.View>
       </ScrollView>
-      {/* ĐÃ XÓA MODAL TẠO ROADMAP KHỎI ĐÂY */}
     </ScreenLayout>
   );
 };
@@ -648,57 +668,20 @@ const styles = createScaledSheet({
     color: "#6B7280",
     textAlign: "right",
   },
-
-  // --- ROADMAP STYLES MỚI ---
-  roadmapCard: {
-    backgroundColor: "#4F46E5",
-    borderRadius: 20,
-    padding: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    shadowColor: "#4F46E5",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  roadmapInfo: {
-    flex: 1,
-    marginRight: 16,
+  roadmapHeaderCard: {
+    marginBottom: 8,
+    paddingHorizontal: 12,
   },
   roadmapTitle: {
     fontSize: 18,
     fontWeight: "bold",
-    color: "#FFFFFF",
+    color: "#1F2937",
     marginBottom: 4,
   },
   roadmapSubtitle: {
     fontSize: 14,
-    color: "rgba(255,255,255,0.8)",
-    marginBottom: 12,
+    color: "#6B7280",
   },
-  miniProgressBarBg: {
-    height: 6,
-    backgroundColor: "rgba(0,0,0,0.2)",
-    borderRadius: 3,
-    overflow: "hidden"
-  },
-  miniProgressBarFill: {
-    height: "100%",
-    backgroundColor: "#FFF",
-    borderRadius: 3
-  },
-  roadmapIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: "rgba(255,255,255,0.2)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-  // Empty State cho Roadmap
   emptyStateContainer: {
     backgroundColor: "#fff",
     borderRadius: 20,
@@ -728,8 +711,6 @@ const styles = createScaledSheet({
     color: "#6B7280",
     marginTop: 2,
   },
-
-  // --- CHALLENGE STYLES (GIỮ NGUYÊN) ---
   challengeList: {
     paddingRight: 24,
   },

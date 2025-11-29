@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
@@ -24,10 +25,10 @@ public class CourseReviewRequest {
     @NotNull(message = "Rating is required")
     @Min(value = 1, message = "Rating must be at least 1")
     @Max(value = 5, message = "Rating must not exceed 5")
-    private Integer rating;
+    private BigDecimal rating;
 
     private String comment;
-
+    private UUID parentId;
     private OffsetDateTime reviewedAt = OffsetDateTime.now();
     private boolean isDeleted = false;
 }

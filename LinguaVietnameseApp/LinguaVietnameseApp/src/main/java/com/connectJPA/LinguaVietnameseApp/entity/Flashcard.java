@@ -64,4 +64,7 @@ public class Flashcard extends BaseEntity {
 
     @Column(name = "is_deleted")
     private Boolean isDeleted;
+
+    @Column(name = "is_public")
+    private Boolean isPublic;
 }

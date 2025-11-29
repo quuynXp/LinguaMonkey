@@ -23,5 +23,6 @@ public class FlashcardResponse {
     private Integer repetitions;
     private Float easeFactor;
     private String tags;
+    private Boolean isPublic;
 }
 

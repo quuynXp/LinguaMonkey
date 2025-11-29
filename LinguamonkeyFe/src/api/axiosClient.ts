@@ -9,6 +9,7 @@ import i18n from '../i18n/index';
 
 interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
+    _startTime?: number;
 }
 
 interface AppApiResponseError {
@@ -37,41 +38,94 @@ const getCommonHeaders = async () => {
     return {
         'Device-Id': deviceId,
         'Accept-Language': userLocale,
-        'Content-Type': 'application/json',
     };
 };
 
 const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (global as any).__DEV__;
 
-// --- PUBLIC CLIENT ---
+const logRequest = (config: CustomAxiosRequestConfig) => {
+    if (!DEV_LOG_ENABLED) return;
+    const { method, url, headers } = config;
+    console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url}`, { headers });
+};
+
+const logResponse = (response: AxiosResponse) => {
+    if (!DEV_LOG_ENABLED) return;
+    const { config, status } = response;
+    console.log(`✅ [RES] ${status} ${config.url}`);
+};
+
+const logError = (error: AxiosError) => {
+    if (!DEV_LOG_ENABLED) return;
+    const config = error.config as CustomAxiosRequestConfig;
+    const status = error.response?.status;
+    console.log(`🔥 [ERR] ${status || 'Unknown'} ${config?.url}`, error.message);
+};
+
 export const publicClient = axios.create({
     baseURL: API_BASE_URL,
     timeout: 30000,
+    headers: { 'Content-Type': 'application/json' },
 });
 
 publicClient.interceptors.request.use(async (config) => {
     const commonHeaders = await getCommonHeaders();
-
-    // Fix: Common headers are defaults, config.headers must override them
     config.headers = Object.assign({}, commonHeaders, config.headers) as any;
-
-    if (config.data instanceof FormData) {
-        delete config.headers['Content-Type'];
-    }
-
-    if (DEV_LOG_ENABLED && config.data) {
-        // Avoid stringifying FormData to prevent crash/noise
-        const logBody = config.data instanceof FormData ? '[FormData]' : JSON.stringify(config.data);
-        console.log(`[REQ][PUBLIC] ${config.method?.toUpperCase()} ${config.url}\nBody: ${logBody}`);
-    }
-
+    logRequest(config);
     return config;
 });
 
-const isUserFacing = (errorCode: number): boolean => {
-    const status = Math.floor(errorCode / 1000);
-    return status === 1 || status === 4 || status === 6;
-}
+export const privateClient = axios.create({
+    baseURL: API_BASE_URL,
+    withCredentials: true,
+    timeout: 30000,
+    headers: { 'Content-Type': 'application/json' },
+});
+
+privateClient.interceptors.request.use(
+    async (config: InternalAxiosRequestConfig) => {
+        const commonHeaders = await getCommonHeaders();
+        config.headers = Object.assign({}, commonHeaders, config.headers) as any;
+
+        const { accessToken } = useTokenStore.getState();
+        if (accessToken && !config.headers['Authorization']) {
+            config.headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+
+        logRequest(config);
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
+
+export const mediaClient = axios.create({
+    baseURL: API_BASE_URL,
+    timeout: 60000,
+    headers: {
+        'Accept': 'application/json',
+    },
+});
+
+mediaClient.interceptors.request.use(
+    async (config: InternalAxiosRequestConfig) => {
+        const commonHeaders = await getCommonHeaders();
+        config.headers = Object.assign({}, commonHeaders, config.headers) as any;
+
+        const { accessToken } = useTokenStore.getState();
+        if (accessToken && !config.headers['Authorization']) {
+            config.headers['Authorization'] = `Bearer ${accessToken}`;
+        }
+
+        // Explicitly let the browser/engine set Content-Type for FormData with boundary
+        if (config.data instanceof FormData) {
+            delete config.headers['Content-Type'];
+        }
+
+        logRequest(config);
+        return config;
+    },
+    (error) => Promise.reject(error)
+);
 
 const handleErrorResponse = (error: AxiosError) => {
     const httpStatus = error.response?.status;
@@ -85,202 +139,107 @@ const handleErrorResponse = (error: AxiosError) => {
         return;
     }
 
-    if (httpStatus === 401 || httpStatus === 403) {
-        return;
-    }
+    if (httpStatus === 401 || httpStatus === 403) return;
 
-    if (data?.message && data.code) {
-        let toastType: 'error' | 'warning' | 'info' = 'info';
-        let defaultTitleKey: string;
-
-        if (httpStatus >= 400 && httpStatus < 500) {
-            toastType = 'warning';
-            defaultTitleKey = 'error.warning_title';
-        } else if (httpStatus >= 500) {
-            toastType = 'error';
-            defaultTitleKey = 'error.server_error_title';
-        } else {
-            defaultTitleKey = 'error.info_title';
-        }
-
-        if (isUserFacing(data.code)) {
-            showToast({
-                title: i18n.t(defaultTitleKey),
-                type: toastType,
-                message: data.message,
-            });
-            return;
-        }
-    }
-
-    if (httpStatus >= 400) {
-        let titleKey: string;
-        let messageKey: string;
-
-        if (httpStatus >= 500) {
-            titleKey = 'error.system_error_title';
-        } else {
-            titleKey = 'error.request_error_title';
-        }
-
-        messageKey = 'error.generic_message';
-
+    if (data?.message) {
         showToast({
-            title: i18n.t(titleKey),
+            title: i18n.t('error.info_title'),
             type: 'error',
-            message: i18n.t(messageKey),
+            message: data.message,
         });
-        return;
     }
 };
 
-publicClient.interceptors.response.use(
-    (response) => {
-        if (DEV_LOG_ENABLED) {
-            console.log(`[RES][PUBLIC] ${response.config.method?.toUpperCase()} ${response.config.url}\nStatus: ${response.status}`);
-        }
-        return response;
-    },
-    (error: AxiosError) => {
-        if (DEV_LOG_ENABLED) {
-            const status = error.response?.status;
-            const data = error.response?.data;
-            const url = error.config?.url;
-            console.error(`[ERR][PUBLIC] ${error.config?.method?.toUpperCase()} ${url}\nStatus: ${status}\nBody: ${JSON.stringify(data || error.message)}`);
-        }
-        handleErrorResponse(error);
-        return Promise.reject(error);
-    }
-);
+const setupInterceptors = (client: any) => {
+    let isRefreshing = false;
+    let failedQueue: any[] = [];
 
-export const privateClient = axios.create({
-    baseURL: API_BASE_URL,
-    withCredentials: true,
-    timeout: 30000,
-});
+    const processQueue = (error: any, token: string | null = null) => {
+        failedQueue.forEach((prom) => {
+            if (error) prom.reject(error);
+            else prom.resolve(token);
+        });
+        failedQueue = [];
+    };
 
-privateClient.interceptors.request.use(
-    async (config: InternalAxiosRequestConfig) => {
-        const commonHeaders = await getCommonHeaders();
+    client.interceptors.response.use(
+        (response: AxiosResponse) => {
+            logResponse(response);
+            return response;
+        },
+        async (error: AxiosError) => {
+            const originalRequest = error.config as CustomAxiosRequestConfig;
+            const httpStatus = error.response?.status;
 
-        // Fix: Common headers are defaults, config.headers must override them
-        config.headers = Object.assign({}, commonHeaders, config.headers) as any;
+            logError(error);
 
-        const { accessToken } = useTokenStore.getState();
-        if (accessToken && !config.headers['Authorization']) {
-            config.headers['Authorization'] = `Bearer ${accessToken}`;
-        }
-
-        if (config.data instanceof FormData) {
-            delete config.headers['Content-Type'];
-        }
-
-        if (DEV_LOG_ENABLED && config.data) {
-            const logBody = config.data instanceof FormData ? '[FormData]' : JSON.stringify(config.data);
-            console.log(`[REQ][PRIVATE] ${config.method?.toUpperCase()} ${config.url}\nBody: ${logBody}`);
-        }
-
-        return config;
-    },
-    (error) => Promise.reject(error)
-);
-
-let isRefreshing = false;
-let failedQueue: any[] = [];
-
-const processQueue = (error: any, token: string | null = null) => {
-    failedQueue.forEach((prom) => {
-        if (error) {
-            prom.reject(error);
-        } else {
-            prom.resolve(token);
-        }
-    });
-    failedQueue = [];
-};
-
-privateClient.interceptors.response.use(
-    (response: AxiosResponse) => {
-        if (DEV_LOG_ENABLED) {
-            console.log(`[RES][PRIVATE] ${response.config.method?.toUpperCase()} ${response.config.url}\nStatus: ${response.status}`);
-        }
-        return response;
-    },
-    async (error: AxiosError) => {
-        const originalRequest = error.config as CustomAxiosRequestConfig;
-        const httpStatus = error.response?.status;
-
-        if (DEV_LOG_ENABLED) {
-            const data = error.response?.data;
-            const url = error.config?.url;
-            console.error(`[ERR][PRIVATE] ${error.config?.method?.toUpperCase()} ${url}\nStatus: ${httpStatus}\nBody: ${JSON.stringify(data || error.message)}`);
-        }
-
-        if (httpStatus !== 401 && httpStatus !== 403) {
-            handleErrorResponse(error);
-        } else if (!httpStatus && error.message) {
-            handleErrorResponse(error);
-        }
-
-        if (httpStatus !== 401 || originalRequest._retry) {
-            return Promise.reject(error);
-        }
-
-        if (originalRequest.url?.includes('/auth/login')) {
-            return Promise.reject(error);
-        }
-
-        if (isRefreshing) {
-            return new Promise(function (resolve, reject) {
-                failedQueue.push({ resolve, reject });
-            })
-                .then((token) => {
-                    if (originalRequest.headers) {
-                        originalRequest.headers['Authorization'] = `Bearer ${token}`;
-                    }
-                    return privateClient(originalRequest);
-                })
-                .catch((err) => Promise.reject(err));
-        }
-
-        originalRequest._retry = true;
-        isRefreshing = true;
-
-        const { refreshToken, setTokens } = useTokenStore.getState();
-
-        if (!refreshToken) {
-            eventBus.emit('logout');
-            return Promise.reject(error);
-        }
-
-        try {
-            const deviceId = await getDeviceIdSafe();
-            const res = await publicClient.post('/api/v1/auth/refresh-token', {
-                refreshToken: refreshToken,
-                deviceId: deviceId,
-            });
-
-            const newAccess = res.data?.result?.token;
-            const newRefresh = res.data?.result?.refreshToken;
-
-            if (newAccess && newRefresh) {
-                setTokens(newAccess, newRefresh);
-                if (originalRequest.headers) {
-                    originalRequest.headers['Authorization'] = `Bearer ${newAccess}`;
-                }
-                processQueue(null, newAccess);
-                return privateClient(originalRequest);
-            } else {
-                throw new Error('Invalid tokens received');
+            if (httpStatus !== 401 && httpStatus !== 403) {
+                handleErrorResponse(error);
             }
-        } catch (err) {
-            processQueue(err, null);
-            eventBus.emit('logout');
-            return Promise.reject(err);
-        } finally {
-            isRefreshing = false;
+
+            if (httpStatus !== 401 || originalRequest._retry) {
+                return Promise.reject(error);
+            }
+
+            if (originalRequest.url?.includes('/auth/login')) {
+                return Promise.reject(error);
+            }
+
+            if (isRefreshing) {
+                return new Promise(function (resolve, reject) {
+                    failedQueue.push({ resolve, reject });
+                })
+                    .then((token) => {
+                        if (originalRequest.headers) {
+                            originalRequest.headers['Authorization'] = `Bearer ${token}`;
+                        }
+                        return client(originalRequest);
+                    })
+                    .catch((err) => Promise.reject(err));
+            }
+
+            originalRequest._retry = true;
+            isRefreshing = true;
+
+            const { refreshToken, setTokens } = useTokenStore.getState();
+
+            if (!refreshToken) {
+                eventBus.emit('logout');
+                return Promise.reject(error);
+            }
+
+            try {
+                const deviceId = await getDeviceIdSafe();
+                const res = await publicClient.post('/api/v1/auth/refresh-token', {
+                    refreshToken: refreshToken,
+                    deviceId: deviceId,
+                });
+
+                const newAccess = res.data?.result?.token;
+                const newRefresh = res.data?.result?.refreshToken;
+
+                if (newAccess && newRefresh) {
+                    setTokens(newAccess, newRefresh);
+                    if (originalRequest.headers) {
+                        originalRequest.headers['Authorization'] = `Bearer ${newAccess}`;
+                    }
+                    processQueue(null, newAccess);
+                    return client(originalRequest);
+                } else {
+                    throw new Error('Invalid tokens');
+                }
+            } catch (err) {
+                processQueue(err, null);
+                eventBus.emit('logout');
+                return Promise.reject(err);
+            } finally {
+                isRefreshing = false;
+            }
         }
-    }
-);
+    );
+};
+
+setupInterceptors(privateClient);
+setupInterceptors(mediaClient);
 
 export default privateClient;

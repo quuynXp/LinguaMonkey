@@ -10,6 +10,12 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface CourseReviewRepository extends JpaRepository<CourseReview, UUID> {
+    Page<CourseReview> findByCourseIdAndParentIsNullAndIsDeletedFalseOrderByCreatedAtDesc(UUID courseId, Pageable pageable);
+
+    Page<CourseReview> findByParentReviewIdAndIsDeletedFalseOrderByCreatedAtAsc(UUID parentReviewId, Pageable pageable);
+
+    long countByParentReviewIdAndIsDeletedFalse(UUID parentReviewId);
+    
     Page<CourseReview> findAllByCourseIdAndUserIdAndRatingAndIsDeletedFalse(UUID courseId, UUID userId, BigDecimal rating, Pageable pageable);
     Optional<CourseReview> findByCourseIdAndUserIdAndIsDeletedFalse(UUID courseId, UUID userId);
 }

@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 import type { UserResponse, Character3dResponse } from '../types/dto';
-import instance from '../api/axiosClient';
+import { privateClient, mediaClient } from '../api/axiosClient';
 
 interface DailyGoal {
   completedLessons: number;
@@ -46,7 +47,8 @@ interface UserState {
   hasFinishedSetup?: boolean;
   lastDailyWelcomeAt?: string;
   isDailyGoalAchieved: boolean;
-  isVip: boolean;
+  vip: boolean;
+  vipDaysRemaining: number;
 
   setToken: (token: string) => void;
   setDeviceId: (id: string) => void;
@@ -71,28 +73,7 @@ interface UserState {
   refreshUserProfile: () => Promise<void>;
 }
 
-const defaultUserState: Omit<UserState, keyof {
-  setUser: any;
-  setAuthenticated: any;
-  setProfileData: any;
-  logout: any;
-  saveProfileToServer: any;
-  fetchCharacter3d: any;
-  uploadTemp: any;
-  deleteTempFile: any;
-  updateUserAvatar: any;
-  setLocalNativeLanguage: any;
-  updateNativeLanguageOnServer: any;
-  setToken: any;
-  setDeviceId: any;
-  setTokenRegistered: any;
-  finishSetup: any;
-  finishPlacementTest: any;
-  trackDailyWelcome: any;
-  updateStreakAndDailyGoal: any;
-  registerVip: any;
-  refreshUserProfile: any;
-}> = {
+const defaultUserState: any = {
   user: null,
   isAuthenticated: false,
   fcmToken: null,
@@ -123,7 +104,8 @@ const defaultUserState: Omit<UserState, keyof {
   hasFinishedSetup: undefined,
   lastDailyWelcomeAt: undefined,
   isDailyGoalAchieved: false,
-  isVip: false,
+  vip: false,
+  vipDaysRemaining: 0,
 };
 
 const getInitialState = (): Partial<UserState> => ({
@@ -148,9 +130,6 @@ export const useUserStore = create<UserState>()(
         const rawUser = user as any;
         const todayDate = new Date().toISOString().split('T')[0];
         const lastStreakCheckDate = rawUser.lastStreakCheckDate;
-
-        // Debug log để kiểm tra dữ liệu đầu vào
-        console.log("Setting user to store. isVip:", rawUser.isVip, "Name:", user.fullname || user.nickname);
 
         set({
           user: user,
@@ -178,8 +157,8 @@ export const useUserStore = create<UserState>()(
           hasFinishedSetup: rawUser.hasFinishedSetup,
           lastDailyWelcomeAt: rawUser.lastDailyWelcomeAt,
           isDailyGoalAchieved: !!lastStreakCheckDate && lastStreakCheckDate === todayDate,
-          // Quan trọng: Map chính xác trường isVip
-          isVip: (rawUser.isVip === true || rawUser.isVip === 'true'),
+          vip: (rawUser.vip === true || rawUser.vip === 'true'),
+          vipDaysRemaining: rawUser.vipDaysRemaining || 0,
         });
 
         if (user.nativeLanguageCode) {
@@ -204,7 +183,7 @@ export const useUserStore = create<UserState>()(
         if (!user?.userId) return;
 
         try {
-          await instance.patch(`/api/v1/users/${user.userId}/native-language`, null, {
+          await privateClient.patch(`/api/v1/users/${user.userId}/native-language`, null, {
             params: { nativeLanguageCode: languageId },
           });
         } catch (err) {
@@ -214,7 +193,7 @@ export const useUserStore = create<UserState>()(
 
       saveProfileToServer: async (userId, payload) => {
         try {
-          const res = await instance.put<any>(`/api/v1/users/${userId}`, payload);
+          const res = await privateClient.put<any>(`/api/v1/users/${userId}`, payload);
           if (res?.data?.result) {
             get().setUser(res.data.result);
             return res.data.result;
@@ -229,7 +208,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return null;
         try {
-          const res = await instance.get<any>(`/api/v1/users/${user.userId}/character3d`);
+          const res = await privateClient.get<any>(`/api/v1/users/${user.userId}/character3d`);
           if (res.data.code === 200 && res.data.result) {
             return res.data.result;
           }
@@ -241,25 +220,32 @@ export const useUserStore = create<UserState>()(
 
       uploadTemp: async (file: UploadFile) => {
         const form = new FormData();
+
+        // Ensure URI format for Android
+        const uri = Platform.OS === 'android' ? file.uri : file.uri.replace('file://', '');
+        const filename = file.name || uri.split('/').pop() || 'upload.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = file.type || (match ? `image/${match[1]}` : 'image/jpeg');
+
         form.append('file', {
-          uri: file.uri,
-          type: file.type,
-          name: file.name,
+          uri: uri,
+          name: filename,
+          type: type,
         } as any);
 
         try {
-          const res = await instance.post('/api/v1/files/upload-temp', form, {
-            headers: { 'Content-Type': 'multipart/form-data' },
-          });
+          // Use mediaClient for multipart/form-data
+          const res = await mediaClient.post('/api/v1/files/upload-temp', form);
           return res.data as string;
         } catch (error) {
+          console.error("Upload error details:", error);
           throw error;
         }
       },
 
       deleteTempFile: async (path: string) => {
         try {
-          await instance.delete('/api/v1/files/temp', { params: { path } });
+          await privateClient.delete('/api/v1/files/temp', { params: { path } });
         } catch (error) {
           console.error('Delete temp file failed:', error);
         }
@@ -270,7 +256,7 @@ export const useUserStore = create<UserState>()(
         if (!user || !user.userId) throw new Error('User not authenticated');
 
         try {
-          const res = await instance.patch<any>(`/api/v1/users/${user.userId}/avatar`, null, {
+          const res = await privateClient.patch<any>(`/api/v1/users/${user.userId}/avatar`, null, {
             params: { tempPath },
           });
 
@@ -289,7 +275,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
-          const res = await instance.patch(`/api/v1/users/${user.userId}/setup-status`, null, {
+          const res = await privateClient.patch(`/api/v1/users/${user.userId}/setup-status`, null, {
             params: { isFinished: true },
           });
           if (res.data.code === 200) {
@@ -304,7 +290,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
-          const res = await instance.patch(`/api/v1/users/${user.userId}/placement-test-status`, null, {
+          const res = await privateClient.patch(`/api/v1/users/${user.userId}/placement-test-status`, null, {
             params: { isDone: true },
           });
           if (res.data.code === 200) {
@@ -319,7 +305,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
-          const res = await instance.patch(`/api/v1/users/${user.userId}/daily-welcome`);
+          const res = await privateClient.patch(`/api/v1/users/${user.userId}/daily-welcome`);
           if (res.data.code === 200) {
             get().setUser(res.data.result);
           }
@@ -330,18 +316,10 @@ export const useUserStore = create<UserState>()(
 
       updateStreakAndDailyGoal: async (id: string) => {
         try {
-          const res = await instance.patch<any>(`/api/v1/users/${id}/streak`);
+          const res = await privateClient.patch<any>(`/api/v1/users/${id}/streak`);
           if (res.data && res.data.code === 200 && res.data.result) {
             const updatedUser = res.data.result;
             get().setUser(updatedUser);
-
-            const rawUser = updatedUser as any;
-            const todayDate = new Date().toISOString().split('T')[0];
-
-            if (rawUser.lastStreakCheckDate === todayDate) {
-              set({ isDailyGoalAchieved: true });
-            }
-
             return updatedUser as UserResponse;
           } else {
             throw new Error(res.data.message || 'Streak update failed');
@@ -363,8 +341,7 @@ export const useUserStore = create<UserState>()(
             description: 'VIP 14-Day Trial Activation',
             returnUrl: 'yourapp://vip-result'
           };
-
-          const res = await instance.post('/api/v1/transactions/payment-url', payload);
+          const res = await privateClient.post('/api/v1/transactions/payment-url', payload);
           if (res.data && res.data.result) {
             return res.data.result;
           }
@@ -375,15 +352,12 @@ export const useUserStore = create<UserState>()(
         }
       },
 
-      // Hàm quan trọng nhất: Lấy dữ liệu mới nhất từ server và cập nhật đè vào Store
       refreshUserProfile: async () => {
         const { user } = get();
         if (!user?.userId) return;
         try {
-          console.log("Refreshing user profile from server...");
-          const res = await instance.get<any>(`/api/v1/users/${user.userId}`);
+          const res = await privateClient.get<any>(`/api/v1/users/${user.userId}`);
           if (res.data && res.data.code === 200 && res.data.result) {
-            console.log("Refreshed user data:", res.data.result);
             get().setUser(res.data.result);
           }
         } catch (e) {
@@ -424,7 +398,8 @@ export const useUserStore = create<UserState>()(
         hasFinishedSetup: state.hasFinishedSetup,
         lastDailyWelcomeAt: state.lastDailyWelcomeAt,
         isDailyGoalAchieved: state.isDailyGoalAchieved,
-        isVip: state.isVip,
+        vip: state.vip,
+        vipDaysRemaining: state.vipDaysRemaining,
       }),
     },
   ),

@@ -205,6 +205,7 @@ export interface CourseReviewRequest {
     userId: string;
     rating: number;
     comment: string;
+    parentId: string;
 }
 
 export interface CreateCourseRequest {
@@ -245,6 +246,7 @@ export interface CreateFlashcardRequest {
     imageUrl: string;
     audioUrl: string;
     tags: string;
+    isPublic: boolean;
 }
 
 export interface CreateGroupCallRequest {
@@ -723,7 +725,7 @@ export interface UserRequest {
     badgeId?: string;
     ageRange?: Enums.AgeRange;
     learningPace?: Enums.LearningPace;
-    interestestIds?: string[];
+    interestIds?: string[];
     goalIds?: string[];
     certificationIds?: string[];
     nativeLanguageCode?: string;
@@ -978,6 +980,12 @@ export interface CourseResponse {
     categoryCode?: string;
     thumbnailUrl?: string;
     languageCode?: string;
+    creatorNickname?: string;
+    creatorCountry?: Enums.Country;
+    creatorVip?: boolean;
+    creatorLevel?: number;
+    creatorName?: string;
+    creatorAvatar?: string;
     difficultyLevel?: Enums.DifficultyLevel;
 }
 
@@ -987,8 +995,14 @@ export interface CourseReviewResponse {
     userId: string;
     rating: number;
     comment: string;
-    reviewedAt: string;
+    likeCount: number;
+    topReplies: CourseReviewResponse[] | null;
+    replyCount: number;
+    userFullname: string;
+    userNickname: string;
+    userAvatar: string;
     isDeleted: boolean;
+    reviewedAt: string;
 }
 
 export interface CourseSummaryResponse {
@@ -1077,6 +1091,7 @@ export interface FlashcardResponse {
     easeFactor: number;
     isSuspended: boolean;
     isDeleted: boolean;
+    isPublic: boolean;
 }
 
 export interface FriendRequestResponse {
@@ -1257,10 +1272,10 @@ export interface LessonQuestionResponse {
     lessonQuestionId: string;
     lessonId: string;
     question: string;
-    optiona: string;
-    optionb: string;
-    optionc: string;
-    optiond: string;
+    optionA: string;
+    optionB: string;
+    optionC: string;
+    optionD: string;
     correctOption: string;
     isDeleted: boolean;
     createdAt: string;
@@ -1763,6 +1778,8 @@ export interface TestConfigResponse {
     title: string;
     description: string;
     numQuestions: number;
+    languageCode: string;
+    durationSeconds: number;
 }
 
 export interface TestResultResponse {
@@ -1770,6 +1787,8 @@ export interface TestResultResponse {
     score: number;
     totalQuestions: number;
     percentage: number;
+    createdAt: string;
+    status: string;
     proficiencyEstimate: string;
     questions: ResultQuestionDto[];
 }
@@ -1961,6 +1980,7 @@ export interface UserProfileResponse {
     flag?: string;
     gender: string;
     country?: Enums.Country;
+    vip?: boolean;
 
     ageRange?: Enums.AgeRange;
     proficiency?: Enums.ProficiencyLevel;
@@ -2012,12 +2032,13 @@ export interface UserResponse {
     character3dId?: string;
     dayOfBirth?: string;
     badgeId?: string;
+    vipDaysRemaining?: number;
     nativeLanguageCode?: string;
     authProvider?: string;
     country?: Enums.Country;
 
     certificationIds?: string[] | null;
-    interestestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
+    interestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
     goalIds?: string[] | null;
     vip?: boolean;
 
@@ -2082,6 +2103,7 @@ export interface UserStatsResponse {
     level: number;
     exp: number;
     streak: number;
+    vip: boolean;
 }
 
 export interface VideoCallParticipantResponse {

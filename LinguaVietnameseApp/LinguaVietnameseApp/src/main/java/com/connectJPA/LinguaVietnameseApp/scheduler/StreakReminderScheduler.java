@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.scheduler;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserFcmTokenRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserLearningActivityRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
@@ -23,120 +24,147 @@ public class StreakReminderScheduler {
     private final UserRepository userRepository;
     private final UserLearningActivityRepository userLearningActivityRepository;
     private final NotificationService notificationService;
+    private final UserFcmTokenRepository userFcmTokenRepository; // Inject thêm
 
-    // --- SỬA ĐỔI: Phân tách logic theo thời điểm ---
+    private static final String TIME_ZONE = "Asia/Ho_Chi_Minh";
 
-    @Scheduled(cron = "0 0 12 * * ?") // 12:00 daily
-    @Transactional
-    public void sendStreakRemindersMidday() {
-        log.info("Running Midday Streak Reminder (12:00).");
+    // Test method
+    public void testSchedulerImmediate() {
+        log.info(">>> [TEST SCHEDULER] Triggering immediate test for notification...");
         sendStreakReminders("MIDDAY");
     }
 
-    @Scheduled(cron = "0 0 17 * * ?") // 17:00 daily
+    @Scheduled(cron = "0 0 12 * * ?", zone = TIME_ZONE)
+    @Transactional
+    public void sendStreakRemindersMidday() {
+        log.info("Running Midday Streak Reminder");
+        sendStreakReminders("MIDDAY");
+    }
+
+    @Scheduled(cron = "0 0 17 * * ?", zone = TIME_ZONE)
     @Transactional
     public void sendStreakRemindersAfternoon() {
-        log.info("Running Afternoon Streak Reminder (17:00).");
+        log.info("Running Afternoon Streak Reminder");
         sendStreakReminders("AFTERNOON");
     }
 
-    @Scheduled(cron = "0 0 22 * * ?") // 22:00 daily
+    @Scheduled(cron = "0 0 22 * * ?", zone = TIME_ZONE)
     @Transactional
     public void sendStreakRemindersEvening() {
-        log.info("Running Evening Streak Reminder (22:00).");
+        log.info("Running Evening Streak Reminder");
         sendStreakReminders("EVENING");
     }
 
-    // Hàm logic cốt lõi
     public void sendStreakReminders(String timeSlot) {
-        List<User> users = userRepository.findAllByIsDeletedFalse();
+        log.info("Start checking users (with tokens) for {} reminders...", timeSlot);
+        
+        // TỐI ƯU: Chỉ lấy users có Token
+        List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
+        
+        if (userIdsWithToken.isEmpty()) {
+            log.warn("No users with tokens found.");
+            return;
+        }
+
+        List<User> users = userRepository.findAllById(userIdsWithToken);
         LocalDate today = LocalDate.now();
 
-        String notificationKey;
+        // ... (Logic switch case notificationKey giữ nguyên)
+        String notificationKey = "STREAK_REMINDER_MIDDAY"; // Simplification for snippet logic
         switch (timeSlot) {
-            case "AFTERNOON":
-                notificationKey = "STREAK_REMINDER_AFTERNOON";
-                break;
-            case "EVENING":
-                notificationKey = "STREAK_REMINDER_EVENING";
-                break;
-            case "MIDDAY":
-            default:
-                notificationKey = "STREAK_REMINDER_MIDDAY";
-                break;
+            case "AFTERNOON": notificationKey = "STREAK_REMINDER_AFTERNOON"; break;
+            case "EVENING": notificationKey = "STREAK_REMINDER_EVENING"; break;
         }
+
+        int sentCount = 0;
 
         for (User user : users) {
-            UUID userId = user.getUserId();
-            // Cần giả định user.getMinLearningDurationMinutes() trả về 15 hoặc tương đương
-            Long minGoal = user.getMinLearningDurationMinutes() != 0 ? user.getMinLearningDurationMinutes() : 15L;
-
-            // Giả định sumDurationMinutesByUserIdAndDate trả về Long (tổng số phút)
-            Long totalDurationToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, today);
-            if (totalDurationToday == null) totalDurationToday = 0L;
+            if (user.isDeleted()) continue;
             
-            boolean hasHitDailyGoal = totalDurationToday >= minGoal;
+            try {
+                UUID userId = user.getUserId();
+                Long minGoal = user.getMinLearningDurationMinutes() != 0 ? user.getMinLearningDurationMinutes() : 15L;
 
-            if (!hasHitDailyGoal && user.getStreak() > 0) {
-                long minutesRemaining = minGoal - totalDurationToday;
+                Long totalDurationToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, today);
+                if (totalDurationToday == null) totalDurationToday = 0L;
                 
-                String langCode = user.getNativeLanguageCode();
-                String[] message = NotificationI18nUtil.getLocalizedMessage(notificationKey, langCode);
-                
-                // Content format: (minutesRemaining, currentStreak)
-                String content = String.format(message[1], minutesRemaining, user.getStreak());
+                boolean hasHitDailyGoal = totalDurationToday >= minGoal;
 
-                NotificationRequest notificationRequest = NotificationRequest.builder()
-                        .userId(userId)
-                        .title(message[0])
-                        .content(content)
-                        .type("STREAK_REMINDER")
-                        .payload("{\"screen\":\"Learn\"}")
-                        .build();
-                notificationService.createPushNotification(notificationRequest);
-                log.info("Sent {} reminder to user {} (Remaining: {}m, Streak: {})", 
-                         timeSlot, userId, minutesRemaining, user.getStreak());
+                if (!hasHitDailyGoal && user.getStreak() > 0) {
+                    long minutesRemaining = minGoal - totalDurationToday;
+                    
+                    String langCode = user.getNativeLanguageCode();
+                    if (langCode == null) langCode = "en"; 
+
+                    String[] message = NotificationI18nUtil.getLocalizedMessage(notificationKey, langCode);
+                    if (message == null || message.length < 2) message = new String[]{"Study Reminder", "Keep going!"};
+
+                    String content = String.format(message[1], minutesRemaining, user.getStreak());
+
+                    NotificationRequest notificationRequest = NotificationRequest.builder()
+                            .userId(userId)
+                            .title(message[0])
+                            .content(content)
+                            .type("STREAK_REMINDER")
+                            .payload("{\"screen\":\"Learn\"}")
+                            .build();
+                    
+                    notificationService.createPushNotification(notificationRequest);
+                    sentCount++;
+                    
+                    log.info("Sent {} reminder to user {}", timeSlot, userId);
+                }
+            } catch (Exception e) {
+                log.error("Failed to process reminder for user {}: {}", user.getUserId(), e.getMessage());
             }
         }
+        log.info("Finished {} reminders. Total sent: {}", timeSlot, sentCount);
     }
 
-    // --- Logic reset chuỗi vẫn giữ nguyên ---
-
-    @Scheduled(cron = "0 0 0 * * ?") // 00:00 daily
+    @Scheduled(cron = "0 0 0 * * ?", zone = TIME_ZONE)
     @Transactional
     public void resetStreaks() {
-        log.info("Running Streak Reset (00:00).");
+        log.info("Running Streak Reset (Vietnam Time)");
         List<User> users = userRepository.findAllByIsDeletedFalse();
         LocalDate yesterday = LocalDate.now().minusDays(1);
 
         for (User user : users) {
-            UUID userId = user.getUserId();
-            // Cần giả định user.getMinLearningDurationMinutes() trả về 15 hoặc tương đương
-            Long minGoal = user.getMinLearningDurationMinutes() != 0 ? user.getMinLearningDurationMinutes() : 15L;
+            try {
+                UUID userId = user.getUserId();
+                Long minGoal = user.getMinLearningDurationMinutes() != 0 ? user.getMinLearningDurationMinutes() : 15L;
 
-            Long totalDurationYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, yesterday);
-            if (totalDurationYesterday == null) totalDurationYesterday = 0L;
-            
-            boolean hasHitDailyGoalYesterday = totalDurationYesterday >= minGoal;
-
-            if (!hasHitDailyGoalYesterday && user.getStreak() > 0) {
+                Long totalDurationYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(userId, yesterday);
+                if (totalDurationYesterday == null) totalDurationYesterday = 0L;
                 
-                String langCode = user.getNativeLanguageCode();
-                String[] message = NotificationI18nUtil.getLocalizedMessage("STREAK_RESET", langCode);
+                boolean hasHitDailyGoalYesterday = totalDurationYesterday >= minGoal;
 
-                NotificationRequest notificationRequest = NotificationRequest.builder()
-                        .userId(userId)
-                        .title(message[0])
-                        .content(message[1])
-                        .type("STREAK_RESET")
-                        .payload("{\"screen\":\"Home\"}")
-                        .build();
-                notificationService.createPushNotification(notificationRequest);
-                log.warn("Resetting streak for user {} (Streak: {})", userId, user.getStreak());
+                if (!hasHitDailyGoalYesterday && user.getStreak() > 0) {
+                    
+                    String langCode = user.getNativeLanguageCode();
+                    if (langCode == null) langCode = "en";
 
-                user.setStreak(0);
-                user.setLastStreakCheckDate(null);
-                userRepository.save(user);
+                    String[] message = NotificationI18nUtil.getLocalizedMessage("STREAK_RESET", langCode);
+                    if (message == null || message.length < 2) {
+                        message = new String[]{"Streak Lost", "Your streak has been reset."};
+                    }
+
+                    NotificationRequest notificationRequest = NotificationRequest.builder()
+                            .userId(userId)
+                            .title(message[0])
+                            .content(message[1])
+                            .type("STREAK_RESET")
+                            .payload("{\"screen\":\"Home\"}")
+                            .build();
+                    
+                    notificationService.createPushNotification(notificationRequest);
+                    log.warn("Resetting streak for user {} (Streak: {})", userId, user.getStreak());
+
+                    user.setStreak(0);
+                    user.setLastStreakCheckDate(null);
+                    userRepository.save(user);
+                }
+            } catch (Exception e) {
+                log.error("Failed to reset streak for user {}: {}", user.getUserId(), e.getMessage());
             }
         }
     }

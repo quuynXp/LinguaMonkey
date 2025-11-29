@@ -8,5 +8,6 @@ public enum TransactionStatus {
     CANCELLED,
     PENDING_REFUND, // Chờ admin duyệt refund
     REFUNDED,
-    REJECTED
+    REJECTED,
+    COMPLETED
 }

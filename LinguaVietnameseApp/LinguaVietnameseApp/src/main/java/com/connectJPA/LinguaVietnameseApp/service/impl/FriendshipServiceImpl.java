@@ -35,7 +35,6 @@ public class FriendshipServiceImpl implements FriendshipService {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
             UUID requesterUuid = (requesterId != null) ? UUID.fromString(requesterId) : null;
-            // GIẢ ĐỊNH: FriendshipRepository có findByIdRequesterIdAndStatusAndIsDeletedFalse
             Page<Friendship> friendships = friendshipRepository.findByIdRequesterIdAndStatusAndIsDeletedFalse(requesterUuid, status, pageable);
             return friendships.map(friendshipMapper::toResponse);
         } catch (Exception e) {
@@ -51,12 +50,10 @@ public class FriendshipServiceImpl implements FriendshipService {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
             
-            // Tìm kiếm yêu cầu gửi đi: currentUserId là Requester, otherUserId là Receiver
             boolean hasSent = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(currentUserId, otherUserId)
                     .filter(f -> f.getStatus() == FriendshipStatus.PENDING)
                     .isPresent();
             
-            // Tìm kiếm yêu cầu nhận được: otherUserId là Requester, currentUserId là Receiver
             boolean hasReceived = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(otherUserId, currentUserId)
                     .filter(f -> f.getStatus() == FriendshipStatus.PENDING)
                     .isPresent();
@@ -73,7 +70,6 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     @Override
     public Page<FriendshipResponse> getPendingRequestsForUser(UUID userId, Pageable pageable) {
-        // GIẢ ĐỊNH: findPendingRequests tìm theo ReceiverId là userId
         Page<Friendship> requests = friendshipRepository.findPendingRequests(userId, pageable);
         return requests.map(f -> new FriendshipResponse(f.getId().getRequesterId(), f.getId().getReceiverId(), f.getStatus(), f.getCreatedAt()));
     }
@@ -84,12 +80,11 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (user1Id == null || user2Id == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            // Kiểm tra kết bạn trực tiếp (user1Id là Requester, user2Id là Receiver)
+            
             boolean direct = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(user1Id, user2Id)
                     .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
                     .isPresent();
             
-            // Kiểm tra kết bạn ngược lại (user2Id là Requester, user1Id là Receiver)
             boolean reverse = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(user2Id, user1Id)
                     .filter(f -> f.getStatus() == FriendshipStatus.ACCEPTED)
                     .isPresent();
@@ -108,7 +103,6 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (user1Id == null || user2Id == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            // GIẢ ĐỊNH: user1Id là Requester, user2Id là Receiver
             Friendship friendship = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(user1Id, user2Id)
                     .orElseThrow(() -> new AppException(ErrorCode.FRIENDSHIP_NOT_FOUND));
             return friendshipMapper.toResponse(friendship);
@@ -128,11 +122,9 @@ public class FriendshipServiceImpl implements FriendshipService {
             
             Friendship friendship = friendshipMapper.toEntity(request);
             
-            // FIX: Khởi tạo ID thủ công vì Composite Key không tự sinh và Mapper có thể bỏ sót
             FriendshipId id = new FriendshipId(request.getRequesterId(), request.getReceiverId());
             friendship.setId(id);
             
-            // Đảm bảo status mặc định nếu mapper chưa set (thường logic gửi request là PENDING)
             if (friendship.getStatus() == null) {
                 friendship.setStatus(FriendshipStatus.PENDING);
             }
@@ -152,10 +144,11 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (requesterId == null || receiverId == null || request == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-            // Tìm kiếm bản ghi theo RequesterId và ReceiverId
             Friendship friendship = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(requesterId, receiverId)
                     .orElseThrow(() -> new AppException(ErrorCode.FRIENDSHIP_NOT_FOUND));
+            
             friendshipMapper.updateEntityFromRequest(request, friendship);
+            
             friendship = friendshipRepository.save(friendship);
             return friendshipMapper.toResponse(friendship);
         } catch (Exception e) {
@@ -173,7 +166,7 @@ public class FriendshipServiceImpl implements FriendshipService {
             }
             Friendship friendship = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(requesterId, receiverId)
                     .orElseThrow(() -> new AppException(ErrorCode.FRIENDSHIP_NOT_FOUND));
-            // GIẢ ĐỊNH: softDeleteByUserIds được sửa để chấp nhận RequesterId và ReceiverId
+            
             friendshipRepository.softDeleteByUserIds(requesterId, receiverId);
         } catch (Exception e) {
             log.error("Error while deleting friendship between {} and {}: {}", requesterId, receiverId, e.getMessage());

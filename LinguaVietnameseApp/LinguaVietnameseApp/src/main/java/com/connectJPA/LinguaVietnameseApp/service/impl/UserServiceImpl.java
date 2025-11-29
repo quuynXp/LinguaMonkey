@@ -15,7 +15,6 @@ import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.*;
-import com.connectJPA.LinguaVietnameseApp.utils.CloudinaryHelper;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
@@ -56,10 +55,8 @@ public class UserServiceImpl implements UserService {
     private final RoleService roleService;
     private final Character3dRepository character3dRepository;
     private final NotificationService notificationService;
-    private final CloudinaryService cloudinaryService;
     private final UserGoalRepository userGoalRepository;
     private final UserInterestRepository userInterestRepository;
-    private final CloudinaryHelper cloudinaryHelper;
     private final LeaderboardEntryService leaderboardEntryService;
     private static final int EXP_PER_LEVEL = 1000;
     private final UserLearningActivityService userLearningActivityService;
@@ -76,7 +73,7 @@ public class UserServiceImpl implements UserService {
     private final CoupleService coupleService;
     private final EventService eventService;
     private final DatingInviteRepository datingInviteRepository;
-    private final StorageService storageService;
+    private final StorageService storageService; // Sử dụng Interface chung (Drive Impl)
     private final UserFcmTokenRepository userFcmTokenRepository;
     @PersistenceContext
     private EntityManager entityManager;
@@ -86,24 +83,20 @@ public class UserServiceImpl implements UserService {
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonRepository lessonRepository;
 
-    // --- NEW METHODS FOR VIP LOGIC ---
-
     @Transactional
-    @Override // Explicitly overriding interface method
+    @Override
     public void activateVipTrial(UUID userId) {
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
         
-        // 14 days trial
         user.setVipExpirationDate(OffsetDateTime.now().plusDays(14));
         userRepository.saveAndFlush(user);
 
-        // Call the centralized notification service (Handles Push + DB + Email)
         notificationService.sendVipSuccessNotification(userId, false, "14-Day Trial");
     }
 
     @Transactional
-    @Override // Explicitly overriding interface method
+    @Override
     public void extendVipSubscription(UUID userId, BigDecimal amount) {
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -114,26 +107,19 @@ public class UserServiceImpl implements UserService {
         }
 
         String planType;
-        // Determine duration based on amount (Simple logic: ~9.99 = 1 month, ~99 = 1 year)
-        // In production, pass a PlanType Enum instead of guessing by amount
         if (amount.compareTo(new BigDecimal("90")) > 0) {
-             // Yearly
             user.setVipExpirationDate(currentExpiry.plusYears(1));
             planType = "Yearly";
         } else {
-            // Monthly
             user.setVipExpirationDate(currentExpiry.plusMonths(1));
             planType = "Monthly";
         }
         
         userRepository.saveAndFlush(user);
 
-        // Call the centralized notification service (Handles Push + DB + Email)
         notificationService.sendVipSuccessNotification(userId, true, planType);
     }
     
-    // --- EXISTING METHODS (No changes below, just keeping context) ---
-
     private UserResponse mapUserToResponseWithAllDetails(User user) {
         if (user == null) {
             return null;
@@ -145,7 +131,16 @@ public class UserServiceImpl implements UserService {
         response.setHasDonePlacementTest(user.isHasDonePlacementTest());
         response.setLastDailyWelcomeAt(user.getLastDailyWelcomeAt());
         response.setGender(user.getGender());
-        response.setVip(user.isVip()); 
+        
+        boolean isVip = user.isVip();
+        response.setVip(isVip); 
+        
+        if (isVip && user.getVipExpirationDate() != null) {
+             long days = Duration.between(OffsetDateTime.now(), user.getVipExpirationDate()).toDays();
+             response.setVipDaysRemaining(Math.max(0, days)); 
+        } else {
+             response.setVipDaysRemaining(0L);
+        }
 
         int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
         response.setExpToNextLevel(nextLevelExp);
@@ -492,12 +487,10 @@ public class UserServiceImpl implements UserService {
         if (request.getAvatarUrl() != null) user.setAvatarUrl(request.getAvatarUrl());
         if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
         
-        // Automatic Age Range Calculation based on Day of Birth
         if (request.getDayOfBirth() != null) {
             user.setDayOfBirth(request.getDayOfBirth());
             calculateAndSetAgeRange(user);
         } else if (request.getAgeRange() != null) {
-            // Fallback only if DOB is not provided (though UI restricts this now)
             user.setAgeRange(request.getAgeRange());
         }
 
@@ -881,49 +874,24 @@ public class UserServiceImpl implements UserService {
 
     @Transactional
     public UserResponse updateAvatarUrl(UUID id, String avatarUrl) {
-        try {
+         // Phương thức này hiện tại chỉ update URL string, không upload file
+         // Nếu cần logic upload, hãy dùng updateUserAvatar
+         try {
             if (id == null || avatarUrl == null || avatarUrl.isBlank()) {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
             if (!isValidUrl(avatarUrl)) {
                 throw new AppException(ErrorCode.INVALID_URL);
             }
-
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-            String fromPublicId = cloudinaryHelper.extractPublicId(avatarUrl);
-
-            String fileName = fromPublicId.substring(fromPublicId.lastIndexOf("/") + 1);
-            String toPublicId = "users/" + id + "/" + fileName;
-
-            MoveRequest moveRequest = MoveRequest.builder()
-                    .fromPublicId(fromPublicId)
-                    .toPublicId(toPublicId)
-                    .overwrite(true)
-                    .resourceType("image")
-                    .build();
-
-            Map<?, ?> result = cloudinaryService.move(moveRequest);
-
-            String newUrl = (String) result.get("secure_url");
-
-            user.setAvatarUrl(newUrl);
+            
+            user.setAvatarUrl(avatarUrl);
             user = userRepository.saveAndFlush(user);
-
-            NotificationRequest notificationRequest = NotificationRequest.builder()
-                    .userId(id)
-                    .title("Avatar Updated")
-                    .content("Your profile avatar has been updated successfully.")
-                    .type("AVATAR_UPDATE")
-                    .build();
-            notificationService.createNotification(notificationRequest);
-
             return mapUserToResponseWithAllDetails(user);
-        } catch (Exception e) {
-            log.error("Error while updating avatar URL for user ID {}: {}", id, e.getMessage(), e);
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+         } catch (Exception e) {
+             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+         }
     }
 
 
@@ -1060,6 +1028,7 @@ public class UserServiceImpl implements UserService {
     @Override
     @Transactional
     public UserResponse updateUserAvatar(UUID userId, String tempPath) {
+        // Đây là phương thức chính để upload avatar sử dụng Google Drive StorageService
         try {
             if (tempPath == null || tempPath.isBlank()) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
@@ -1069,15 +1038,14 @@ public class UserServiceImpl implements UserService {
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
-            String originalFilename = tempPath.substring(tempPath.indexOf("_") + 1);
-            String newPath = String.format("users/%s/avatars/%s_%s",
-                    userId,
-                    timestamp,
-                    originalFilename);
+            // Trong Drive implementation, 'tempPath' là File ID.
+            // 'newPath' ở đây đóng vai trò là tên file mới (nếu ta muốn rename) hoặc tham số định danh
+            String newFilename = String.format("avatar_%s_%s", timestamp, userId);
 
+            // StorageService.commit trong Drive Implementation sẽ trả về URL download
             UserMedia committedMedia = storageService.commit(
                     tempPath,
-                    newPath,
+                    newFilename,
                     userId,
                     MediaType.IMAGE
             );
@@ -1095,7 +1063,7 @@ public class UserServiceImpl implements UserService {
 
             return mapUserToResponseWithAllDetails(savedUser);
         } catch (Exception e) {
-            log.error("Error while updating avatar (MinIO flow) for user ID {}: {}", userId, e.getMessage(), e);
+            log.error("Error while updating avatar (Drive flow) for user ID {}: {}", userId, e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }

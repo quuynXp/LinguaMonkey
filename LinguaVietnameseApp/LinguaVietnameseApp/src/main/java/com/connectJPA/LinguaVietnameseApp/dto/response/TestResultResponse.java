@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -21,6 +22,8 @@ public class TestResultResponse {
     private double percentage;
     private String proficiencyEstimate;
     private List<ResultQuestionDto> questions;
+    private String status;
+    private OffsetDateTime createdAt;
 
     @Data
     @Builder

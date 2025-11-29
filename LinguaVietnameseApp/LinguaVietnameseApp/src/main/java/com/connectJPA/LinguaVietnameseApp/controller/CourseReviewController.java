@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CourseReviewRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseReviewResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PageResponse;
 import com.connectJPA.LinguaVietnameseApp.service.CourseReviewService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -12,7 +13,9 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
@@ -44,6 +47,36 @@ public class CourseReviewController {
                 .code(200)
                 .message(messageSource.getMessage("courseReview.list.success", null, locale))
                 .result(reviews)
+                .build();
+    }
+
+    @GetMapping("/{reviewId}/replies")
+    public ResponseEntity<AppApiResponse<PageResponse<CourseReviewResponse>>> getReviewReplies(
+            @PathVariable UUID reviewId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size // Default load thêm 20
+    ) {
+        Pageable pageable = PageRequest.of(page, size);
+        Page<CourseReviewResponse> result = courseReviewService.getRepliesByParentId(reviewId, pageable);
+        
+        return ResponseEntity.ok(AppApiResponse.<PageResponse<CourseReviewResponse>>builder()
+                .code(200)
+                .message("Replies fetched successfully")
+                .result(mapToPageResponse(result))
+                .build());
+    }
+
+    private <T> PageResponse<T> mapToPageResponse(Page<T> page) {
+        return PageResponse.<T>builder()
+                .content(page.getContent())
+                .pageNumber(page.getNumber())
+                .pageSize(page.getSize())
+                .totalElements(page.getTotalElements())
+                .totalPages(page.getTotalPages())
+                .isLast(page.isLast())
+                .isFirst(page.isFirst())
+                .hasNext(page.hasNext())
+                .hasPrevious(page.hasPrevious())
                 .build();
     }
 

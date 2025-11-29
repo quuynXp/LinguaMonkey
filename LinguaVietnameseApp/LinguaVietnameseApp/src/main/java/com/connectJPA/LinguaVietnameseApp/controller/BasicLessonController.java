@@ -1,8 +1,10 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.BasicLessonRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.PronunciationPracticeRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.BasicLessonResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
 import com.connectJPA.LinguaVietnameseApp.service.BasicLessonService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -13,6 +15,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
 
 @RestController
 @RequestMapping("/api/v1/basic-lessons")
@@ -43,7 +46,7 @@ public class BasicLessonController {
     }
 
     @PostMapping("/{id}/enrich")
-    @Operation(summary = "Enrich basic lesson data using AI", description = "Checks if audio/examples are missing and calls AI services to generate them on-demand.")
+    @Operation(summary = "Enrich basic lesson data using AI", description = "Checks if audio/examples/video are missing and populates them.")
     public AppApiResponse<BasicLessonResponse> enrich(@PathVariable UUID id) {
         return AppApiResponse.<BasicLessonResponse>builder()
                 .code(200)
@@ -64,5 +67,22 @@ public class BasicLessonController {
                 .result(service.getByLanguageAndType(languageCode, lessonType, pageable))
                 .message("Success")
                 .build();
+    }
+
+    @PostMapping("/practice")
+    @Operation(summary = "Check pronunciation for a basic lesson symbol")
+    public AppApiResponse<PronunciationResponseBody> checkPronunciation(@RequestBody @Valid PronunciationPracticeRequest request) {
+        try {
+            return AppApiResponse.<PronunciationResponseBody>builder()
+                    .code(200)
+                    .result(service.checkPronunciation(request))
+                    .message("Analyzed successfully")
+                    .build();
+        } catch (Exception e) {
+            return AppApiResponse.<PronunciationResponseBody>builder()
+                    .code(500)
+                    .message("Analysis failed: " + e.getMessage())
+                    .build();
+        }
     }
 }

@@ -1,467 +1,901 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <project xmlns="http://maven.apache.org/POM/4.0.0"
+
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
     <modelVersion>4.0.0</modelVersion>
 
+    <repositories>
+
+        <repository>
+
+            <id>google-repository</id>
+
+            <name>Google Maven Repository</name>
+
+            <url>https://dl.google.com/dl/android/maven2/</url>
+
+        </repository>
+
+        
+
+        <repository>
+
+            <id>central</id>
+
+            <url>https://repo.maven.apache.org/maven2</url>
+
+        </repository>
+
+    </repositories>
+
+
+
     <parent>
+
         <groupId>org.springframework.boot</groupId>
+
         <artifactId>spring-boot-starter-parent</artifactId>
+
         <version>3.3.5</version>
+
         <relativePath/>
+
     </parent>
 
+
+
     <groupId>com.connectJPA</groupId>
+
     <artifactId>LinguaVietnameseApp</artifactId>
+
     <version>0.0.1-SNAPSHOT</version>
+
     <name>LinguaVietnameseApp</name>
+
     <description>LinguaVietnameseApp</description>
+
     <packaging>jar</packaging>
 
+
+
+
+
     <properties>
+
         <java.version>21</java.version>
-        <!-- UPGRADE: MapStruct 1.6.2 fixes Java 21 compiler compatibility issues -->
+
         <mapstruct.version>1.6.2</mapstruct.version>
-        <!-- Lombok 1.18.34 is correct for Java 21 -->
+
         <lombok.version>1.18.34</lombok.version>
+
         <lombok-mapstruct-binding.version>0.2.0</lombok-mapstruct-binding.version>
+
         <encoding>UTF-8</encoding>
+
+        <grpc.version>1.64.0</grpc.version>
+
+        <protobuf.version>3.25.3</protobuf.version>
+
     </properties>
 
+    
+
     <dependencies>
+
         <dependency>
+
             <groupId>io.grpc</groupId>
+
             <artifactId>grpc-netty-shaded</artifactId>
-            <version>1.64.0</version>
+
+            <version>${grpc.version}</version>
+
         </dependency>
+
         <dependency>
+
             <groupId>com.googlecode.libphonenumber</groupId>
+
             <artifactId>libphonenumber</artifactId>
+
             <version>8.13.12</version>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-actuator</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>jakarta.persistence</groupId>
-            <artifactId>jakarta.persistence-api</artifactId>
-            <version>3.1.0</version>
-        </dependency>
-        <!-- <dependency>
-            <groupId>com.google.cloud</groupId>
-            <artifactId>google-cloud-translate</artifactId>
-            <version>2.29.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.github.sealedtx</groupId>
-            <artifactId>java-youtube-subtitles-extractor</artifactId>
-            <version>1.0.0</version>
-        </dependency> -->
-<!--        <dependency>-->
-<!--            <groupId>org.springframework.kafka</groupId>-->
-<!--            <artifactId>spring-kafka</artifactId>-->
-<!--        </dependency>-->
 
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-orm</artifactId>
         </dependency>
 
-        <dependency>
-            <groupId>org.apache.xmlgraphics</groupId>
-            <artifactId>batik-svggen</artifactId>
-            <version>1.17</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.xmlgraphics</groupId>
-            <artifactId>batik-dom</artifactId>
-            <version>1.17</version>
-        </dependency>
 
-<!--        <dependency>-->
-<!--            <groupId>io.minio</groupId>-->
-<!--            <artifactId>minio</artifactId>-->
-<!--            <version>8.5.7</version>-->
-<!--        </dependency>-->
-<!--        <dependency>-->
-<!--            <groupId>org.springframework.boot</groupId>-->
-<!--            <artifactId>spring-boot-starter-data-elasticsearch</artifactId>-->
-<!--        </dependency>-->
-        <dependency>
-            <groupId>org.springframework.retry</groupId>
-            <artifactId>spring-retry</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-aspects</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.cloudinary</groupId>
-            <artifactId>cloudinary-http45</artifactId>
-            <version>1.38.0</version>
-        </dependency>
-        <dependency>
-            <groupId>com.fasterxml.jackson.datatype</groupId>
-            <artifactId>jackson-datatype-jsr310</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.twilio.sdk</groupId>
-            <artifactId>twilio</artifactId>
-            <version>10.9.1</version>
-            <exclusions>
-                <exclusion>
-                    <groupId>commons-logging</groupId>
-                    <artifactId>commons-logging</artifactId>
-                </exclusion>
-            </exclusions>
-        </dependency>
-        <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-protobuf</artifactId>
-            <version>1.64.0</version>
-        </dependency>
 
         <dependency>
-            <groupId>io.grpc</groupId>
-            <artifactId>grpc-stub</artifactId>
-            <version>1.64.0</version>
+
+            <groupId>net.devh</groupId>
+
+            <artifactId>grpc-server-spring-boot-starter</artifactId>
+
+            <version>2.14.0.RELEASE</version>
+
         </dependency>
-        <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-redis</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>com.google.protobuf</groupId>
-            <artifactId>protobuf-java</artifactId>
-            <version>3.25.3</version>
-        </dependency>
-        <dependency>
-            <groupId>com.stripe</groupId>
-            <artifactId>stripe-java</artifactId>
-            <version>20.128.0</version>
-        </dependency>
+
         
-        <!-- Bucket4j -->
+
         <dependency>
+
+            <groupId>com.google.api-client</groupId>
+
+            <artifactId>google-api-client</artifactId>
+
+            <version>2.4.0</version>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>com.google.auth</groupId>
+
+            <artifactId>google-auth-library-oauth2-http</artifactId>
+
+            <version>1.24.0</version>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>com.google.apis</groupId>
+
+            <artifactId>google-api-services-drive</artifactId>
+
+            <version>v3-rev20230815-2.0.0</version>
+
+        </dependency>
+
+
+
+        <dependency>
+
+            <groupId>org.springframework.boot</groupId>
+
+            <artifactId>spring-boot-starter-actuator</artifactId>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>jakarta.persistence</groupId>
+
+            <artifactId>jakarta.persistence-api</artifactId>
+
+            <version>3.1.0</version>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>org.springframework</groupId>
+
+            <artifactId>spring-orm</artifactId>
+
+        </dependency>
+
+
+
+        <dependency>
+
+            <groupId>org.apache.xmlgraphics</groupId>
+
+            <artifactId>batik-svggen</artifactId>
+
+            <version>1.17</version>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>org.apache.xmlgraphics</groupId>
+
+            <artifactId>batik-dom</artifactId>
+
+            <version>1.17</version>
+
+        </dependency>
+
+
+
+        <dependency>
+
+            <groupId>org.springframework.retry</groupId>
+
+            <artifactId>spring-retry</artifactId>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>org.springframework</groupId>
+
+            <artifactId>spring-aspects</artifactId>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>com.cloudinary</groupId>
+
+            <artifactId>cloudinary-http45</artifactId>
+
+            <version>1.38.0</version>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+
+            <artifactId>jackson-datatype-jsr310</artifactId>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>com.twilio.sdk</groupId>
+
+            <artifactId>twilio</artifactId>
+
+            <version>10.9.1</version>
+
+            <exclusions>
+
+                <exclusion>
+
+                    <groupId>commons-logging</groupId>
+
+                    <artifactId>commons-logging</artifactId>
+
+                </exclusion>
+
+            </exclusions>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>io.grpc</groupId>
+
+            <artifactId>grpc-protobuf</artifactId>
+
+            <version>${grpc.version}</version>
+
+        </dependency>
+
+
+
+        <dependency>
+
+            <groupId>io.grpc</groupId>
+
+            <artifactId>grpc-stub</artifactId>
+
+            <version>${grpc.version}</version>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>org.springframework.boot</groupId>
+
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>com.google.protobuf</groupId>
+
+            <artifactId>protobuf-java</artifactId>
+
+            <version>${protobuf.version}</version>
+
+        </dependency>
+
+        <dependency>
+
+            <groupId>com.stripe</groupId>
+
+            <artifactId>stripe-java</artifactId>
+
+            <version>20.128.0</version>
+
+        </dependency>
+
+        
+
+        <dependency>
+
             <groupId>com.github.vladimir-bukhtoyarov</groupId>
+
             <artifactId>bucket4j-core</artifactId>
+
             <version>7.6.0</version>
+
         </dependency>
 
-        <!-- Quartz -->
+
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-quartz</artifactId>
+
         </dependency>
 
-        <!-- JJWT -->
+
+
         <dependency>
+
             <groupId>io.jsonwebtoken</groupId>
+
             <artifactId>jjwt-api</artifactId>
+
             <version>0.11.5</version>
+
         </dependency>
+
         <dependency>
+
             <groupId>io.jsonwebtoken</groupId>
+
             <artifactId>jjwt-impl</artifactId>
+
             <version>0.11.5</version>
+
             <scope>runtime</scope>
+
         </dependency>
+
         <dependency>
+
             <groupId>io.jsonwebtoken</groupId>
+
             <artifactId>jjwt-jackson</artifactId>
+
             <version>0.11.5</version>
+
             <scope>runtime</scope>
+
         </dependency>
 
-        <!-- Apache POI -->
+
+
         <dependency>
+
             <groupId>org.apache.poi</groupId>
+
             <artifactId>poi</artifactId>
+
             <version>5.2.3</version>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.apache.poi</groupId>
+
             <artifactId>poi-ooxml</artifactId>
+
             <version>5.4.0</version>
+
         </dependency>
 
-        <!-- Dotenv -->
+
+
         <dependency>
+
             <groupId>io.github.cdimascio</groupId>
+
             <artifactId>java-dotenv</artifactId>
+
             <version>5.2.2</version>
+
         </dependency>
+
         <dependency>
+
             <groupId>io.github.cdimascio</groupId>
+
             <artifactId>dotenv-java</artifactId>
+
             <version>3.0.0</version>
+
         </dependency>
 
-        <!-- MapStruct -->
+
+
         <dependency>
+
             <groupId>org.mapstruct</groupId>
+
             <artifactId>mapstruct</artifactId>
+
             <version>${mapstruct.version}</version>
+
         </dependency>
 
-        <!-- SLF4J -->
+
+
         <dependency>
+
             <groupId>org.slf4j</groupId>
+
             <artifactId>slf4j-api</artifactId>
+
         </dependency>
 
-        <!-- Spring Boot Starters -->
+
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-data-jpa</artifactId>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-web</artifactId>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-websocket</artifactId>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-security</artifactId>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-validation</artifactId>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-test</artifactId>
+
             <scope>test</scope>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-devtools</artifactId>
+
             <scope>runtime</scope>
+
             <optional>true</optional>
+
         </dependency>
 
-        <!-- OpenAPI (Swagger) -->
+
+
         <dependency>
+
             <groupId>org.springdoc</groupId>
+
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+
             <version>2.2.0</version>
+
         </dependency>
 
-        <!-- Firebase -->
+
+
         <dependency>
+
             <groupId>com.google.firebase</groupId>
+
             <artifactId>firebase-admin</artifactId>
+
             <version>9.1.1</version>
+
         </dependency>
 
-        <!-- OpenAI -->
+
+
         <dependency>
+
             <groupId>com.theokanning.openai-gpt3-java</groupId>
+
             <artifactId>client</artifactId>
+
             <version>0.12.0</version>
+
         </dependency>
 
-        <!-- JSON -->
+
+
         <dependency>
+
             <groupId>com.fasterxml.jackson.core</groupId>
+
             <artifactId>jackson-databind</artifactId>
+
         </dependency>
 
-        <!-- File Upload -->
+
+
         <dependency>
+
             <groupId>commons-fileupload</groupId>
+
             <artifactId>commons-fileupload</artifactId>
+
             <version>1.5</version>
+
         </dependency>
 
-        <!-- DB -->
+
+
         <dependency>
+
             <groupId>org.postgresql</groupId>
+
             <artifactId>postgresql</artifactId>
+
             <version>42.7.3</version>
+
         </dependency>
+
         <dependency>
+
             <groupId>com.mysql</groupId>
+
             <artifactId>mysql-connector-j</artifactId>
+
             <scope>runtime</scope>
+
         </dependency>
 
-        <!-- Servlet -->
-<!--        <dependency>-->
-<!--            <groupId>javax.servlet</groupId>-->
-<!--            <artifactId>javax.servlet-api</artifactId>-->
-<!--            <version>4.0.1</version>-->
-<!--            <scope>provided</scope>-->
-<!--        </dependency>-->
 
-        <!-- JWT + Crypto -->
+
         <dependency>
+
             <groupId>com.nimbusds</groupId>
+
             <artifactId>nimbus-jose-jwt</artifactId>
+
             <version>9.37.2</version>
+
         </dependency>
+
         <dependency>
+
             <groupId>org.springframework.security</groupId>
+
             <artifactId>spring-security-crypto</artifactId>
+
         </dependency>
 
-        <!-- Validation -->
+
+
         <dependency>
+
             <groupId>jakarta.validation</groupId>
+
             <artifactId>jakarta.validation-api</artifactId>
+
             <version>3.0.2</version>
+
         </dependency>
 
+
+
         <dependency>
+
             <groupId>com.sun.mail</groupId>
+
             <artifactId>jakarta.mail</artifactId>
+
             <version>2.0.1</version>
+
         </dependency>
 
-        <!-- Hibernate -->
+
+
         <dependency>
+
             <groupId>org.hibernate.orm</groupId>
+
             <artifactId>hibernate-core</artifactId>
+
             <version>6.5.2.Final</version>
+
         </dependency>
 
-        <!-- Lombok -->
+
+
         <dependency>
+
             <groupId>org.projectlombok</groupId>
+
             <artifactId>lombok</artifactId>
+
             <version>${lombok.version}</version>
+
             <scope>provided</scope>
+
         </dependency>
 
+
+
         <dependency>
+
             <groupId>org.springframework.boot</groupId>
+
             <artifactId>spring-boot-starter-webflux</artifactId>
+
         </dependency>
+
     </dependencies>
 
+
+
     <profiles>
-        <profile>
-            <id>windows</id>
-            <activation>
-                <os>
-                    <family>Windows</family>
-                </os>
-            </activation>
-            <properties>
-                <protoc.classifier>windows-x86_64</protoc.classifier>
-            </properties>
-        </profile>
 
         <profile>
-            <id>linux</id>
+
+            <id>windows</id>
+
             <activation>
+
                 <os>
-                    <family>unix</family>
+
+                    <family>Windows</family>
+
                 </os>
+
             </activation>
+
             <properties>
-                <protoc.classifier>linux-x86_64</protoc.classifier>
+
+                <protoc.classifier>windows-x86_64</protoc.classifier>
+
             </properties>
+
         </profile>
+
+
+
+        <profile>
+
+            <id>linux</id>
+
+            <activation>
+
+                <os>
+
+                    <family>unix</family>
+
+                </os>
+
+            </activation>
+
+            <properties>
+
+                <protoc.classifier>linux-x86_64</protoc.classifier>
+
+            </properties>
+
+        </profile>
+
     </profiles>
 
+
+
     <build>
+
         <extensions>
+
             <extension>
+
                 <groupId>kr.motd.maven</groupId>
+
                 <artifactId>os-maven-plugin</artifactId>
+
                 <version>1.7.0</version>
+
             </extension>
+
         </extensions>
 
+
+
         <pluginManagement>
+
             <plugins>
+
                 <plugin>
+
                     <groupId>kr.motd.maven</groupId>
+
                     <artifactId>os-maven-plugin</artifactId>
+
                     <version>1.7.0</version>
+
                     <executions>
+
                         <execution>
+
                             <goals>
+
                                 <goal>detect</goal>
+
                             </goals>
+
                         </execution>
+
                     </executions>
+
                 </plugin>
+
             </plugins>
+
         </pluginManagement>
 
+
+
         <plugins>
-            <!-- Protobuf Plugin -->
+
             <plugin>
+
                 <groupId>org.xolstice.maven.plugins</groupId>
+
                 <artifactId>protobuf-maven-plugin</artifactId>
+
                 <version>0.6.1</version>
+
                 <configuration>
-                    <protocArtifact>com.google.protobuf:protoc:3.24.0:exe:${protoc.classifier}</protocArtifact>
+
+                                        <protocArtifact>com.google.protobuf:protoc:${protobuf.version}:exe:${protoc.classifier}</protocArtifact>
+
                     <pluginId>grpc-java</pluginId>
-                    <pluginArtifact>io.grpc:protoc-gen-grpc-java:1.59.0:exe:${protoc.classifier}</pluginArtifact>
+
+                                        <pluginArtifact>io.grpc:protoc-gen-grpc-java:${grpc.version}:exe:${protoc.classifier}</pluginArtifact>
+
                     <protoSourceRoot>${project.basedir}/src/main/proto</protoSourceRoot>
+
                 </configuration>
+
                 <executions>
+
                     <execution>
+
                         <id>compile</id>
+
                         <goals>
+
                             <goal>compile</goal>
+
                         </goals>
+
                     </execution>
+
                     <execution>
+
                         <id>compile-custom</id>
+
                         <goals>
+
                             <goal>compile-custom</goal>
+
                         </goals>
+
                     </execution>
+
                 </executions>
+
             </plugin>
 
-            <!-- Compiler Plugin -->
+
+
             <plugin>
+
                 <groupId>org.apache.maven.plugins</groupId>
+
                 <artifactId>maven-compiler-plugin</artifactId>
+
                 <version>3.11.0</version>
+
                 <configuration>
+
                     <source>${java.version}</source>
+
                     <target>${java.version}</target>
+
                     <encoding>${encoding}</encoding>
+
                     <annotationProcessorPaths>
+
                         <path>
+
                             <groupId>org.projectlombok</groupId>
+
                             <artifactId>lombok</artifactId>
+
                             <version>${lombok.version}</version>
+
                         </path>
+
                          <path>
+
                             <groupId>org.projectlombok</groupId>
+
                             <artifactId>lombok-mapstruct-binding</artifactId>
+
                             <version>${lombok-mapstruct-binding.version}</version>
+
                         </path>
+
                         <path>
+
                             <groupId>org.mapstruct</groupId>
+
                             <artifactId>mapstruct-processor</artifactId>
+
                             <version>${mapstruct.version}</version>
+
                         </path>
+
                     </annotationProcessorPaths>
+
                     <compilerArgs>
+
                         <arg>-Amapstruct.verbose=true</arg>
+
                     </compilerArgs>
+
                 </configuration>
+
             </plugin>
 
+
+
             <plugin>
+
                 <groupId>org.springframework.boot</groupId>
+
                 <artifactId>spring-boot-maven-plugin</artifactId>
+
             </plugin>
+
         </plugins>
+
     </build>
+
 </project>

@@ -7,6 +7,7 @@ export enum ActivityType {
     QUIZ_ATTEMPT = "QUIZ_ATTEMPT",
     CHAT_START = "CHAT_START",
     FLASHCARD = "FLASHCARD",
+    AI_CHAT = "AI_CHAT",
     CHAT_END = "CHAT_END",
     GRAMMAR_EXERCISE = "GRAMMAR_EXERCISE",
     LESSON_COMPLETED = "LESSON_COMPLETED",
@@ -187,6 +188,8 @@ export enum LearningPace {
 }
 
 export enum LessonType {
+    DOCUMENT = "DOCUMENT",
+    AUDIO = "AUDIO",
     COURSE_LESSON = "COURSE_LESSON",
     FLASHCARD_SET = "FLASHCARD_SET",
     FLASHCARD = "FLASHCARD",

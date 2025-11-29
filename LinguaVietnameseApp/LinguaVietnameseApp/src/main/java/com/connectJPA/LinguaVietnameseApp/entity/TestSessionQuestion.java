@@ -10,7 +10,6 @@ import java.util.UUID;
 @Entity
 @Table(name = "test_session_questions")
 public class TestSessionQuestion {
-
     @Id
     @UuidGenerator
     @Column(name = "question_id")

@@ -7,7 +7,6 @@ import {
   Alert,
   Animated,
   ActivityIndicator,
-  FlatList,
   TextInput,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -21,8 +20,8 @@ import {
   LessonResponse,
   ReadingResponse,
   TranslationRequestBody,
+  LessonQuestionResponse,
 } from '../../types/dto';
-import { SkillType } from '../../types/enums';
 import { createScaledSheet } from '../../utils/scaledStyles';
 
 interface ReadingScreenProps {
@@ -35,42 +34,37 @@ interface ReadingScreenProps {
   };
 }
 
-// Giả định LessonResponse có thể chứa ReadingResponse
-// Dựa trên logic của backend, nếu nội dung đọc được tạo (POST /reading), nó sẽ được lưu
-// và có thể được trả về trong LessonResponse (GET /lessons/{id}).
-// Chúng ta sẽ giả định LessonResponse có trường 'readingContent' hoặc tương tự
-// Nếu LessonResponse không có trường này, bạn cần phải thêm nó vào file types/dto.ts
-// Hoặc thay thế `activeLesson?.readingContent` bằng cách kiểm tra các trường
-// Passage/Questions nếu chúng nằm trực tiếp trong LessonResponse.
-// Dựa trên pattern "Zero Mocking", tôi sẽ dùng một field giả định thông minh.
-// Để KHÔNG MOCKING schema, tôi sẽ kiểm tra nếu LessonResponse chứa các thuộc tính của ReadingResponse
-// (passage, questions) hoặc giả định chúng được lồng vào trong một field tên là 'readingContent'.
-// Để giữ tính clean code, tôi sẽ tạo hàm helper để kiểm tra.
-const extractReadingData = (lesson: LessonResponse | undefined): ReadingResponse | null => {
+// Helper: Trích xuất dữ liệu Reading từ Lesson Detail
+// Ưu tiên lấy từ field description (nơi lưu passage)
+const extractReadingData = (lesson: LessonResponse | undefined, questions: LessonQuestionResponse[] = []): ReadingResponse | null => {
   if (!lesson) return null;
-  // Dựa vào cấu trúc ReadingResponse: {passage: string, questions: Array}
-  // Giả định backend trả ReadingResponse trực tiếp hoặc lồng trong content
-  const content = (lesson as any).readingContent || lesson; // Thử lấy từ readingContent hoặc từ root object
 
-  if (content && typeof content.passage === 'string' && Array.isArray(content.questions)) {
-    return content as ReadingResponse;
+  // Kiểm tra nếu description có dữ liệu dài (giả định là bài đọc)
+  const hasContent = lesson.description && lesson.description.length > 50;
+
+  if (hasContent) {
+    return {
+      passage: lesson.description || '',
+      questions: questions.map(q => ({
+        id: q.lessonId,
+        question: q.question,
+        options: [q.optionA, q.optionB, q.optionC, q.optionD],
+        correctAnswer: q.correctOption,
+      }))
+    } as unknown as ReadingResponse;
   }
+
   return null;
 };
-
 
 const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // Params handling
-  const paramLessonId = route.params?.lessonId || route.params?.lesson?.lessonId;
-  const paramLesson = route.params?.lesson;
+  // Chỉ lấy ID từ params, không tin tưởng object lesson truyền qua vì nó có thể cũ
+  const lessonId = route.params?.lessonId || route.params?.lesson?.lessonId;
 
-  // State
-  const [currentLessonId, setCurrentLessonId] = useState<string | undefined>(paramLessonId);
-  // Reading content state: Được set từ lessonDetailData hoặc từ mutation (tạo mới)
   const [readingData, setReadingData] = useState<ReadingResponse | null>(null);
   const [currentMode, setCurrentMode] = useState<"read" | "translate" | "quiz">("read");
 
@@ -86,41 +80,38 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
   const [translationResults, setTranslationResults] = useState<any[]>([]);
 
   // Hooks
-  const { useAllLessons, useLesson } = useLessons();
+  const { useLesson, useAllQuestions } = useLessons(); // Chỉ dùng useLesson
   const { useGenerateReading, useCheckTranslation } = useSkillLessons();
   const generateReadingMutation = useGenerateReading();
   const checkTranslationMutation = useCheckTranslation();
 
-  // Data Fetching: List
+  // 1. Fetch Lesson Detail (Nguồn dữ liệu chính)
   const {
-    data: lessonsListResponse,
-    isLoading: isLoadingList,
-    refetch: refetchList
-  } = useAllLessons({
-    skillType: SkillType.READING,
-    page: 0,
-    size: 50,
-  });
-  const lessonsList = (lessonsListResponse?.data || []) as LessonResponse[];
-
-  // Data Fetching: Detail (useLesson)
-  const {
-    data: lessonDetailData,
+    data: lessonDetail,
     isLoading: isLoadingDetail,
-    refetch: refetchDetail
-  } = useLesson(currentLessonId || null);
+    refetch: refetchDetail,
+    isError
+  } = useLesson(lessonId || null);
 
-  const activeLesson = lessonDetailData || paramLesson;
+  // 2. Fetch Questions liên quan
+  const {
+    data: questionsData,
+    refetch: refetchQuestions
+  } = useAllQuestions({
+    lessonId: lessonId,
+    size: 50 // Lấy hết câu hỏi
+  });
 
-  // Effects
+  const existingQuestions = (questionsData?.data || []) as LessonQuestionResponse[];
+
+  // Refetch khi màn hình được focus
   useFocusEffect(
     useCallback(() => {
-      if (!currentLessonId) {
-        refetchList();
-      } else {
+      if (lessonId) {
         refetchDetail();
+        refetchQuestions();
       }
-    }, [currentLessonId, refetchList, refetchDetail])
+    }, [lessonId, refetchDetail, refetchQuestions])
   );
 
   useEffect(() => {
@@ -131,42 +122,42 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
     }).start();
   }, []);
 
-  // [NEW LOGIC] Load reading content from lessonDetailData when available or reset state
+  // Sync state khi data từ API trả về
   useEffect(() => {
-    // 1. Reset state khi currentLessonId thay đổi
-    if (currentLessonId) {
-      setReadingData(null);
-      setCurrentMode('read');
-      setTranslationResults([]);
-    }
-
-    // 2. Load content từ lessonDetailData
-    if (lessonDetailData) {
-      const content = extractReadingData(lessonDetailData);
+    if (lessonDetail) {
+      const content = extractReadingData(lessonDetail, existingQuestions);
       if (content) {
         setReadingData(content);
+        // Reset translation state khi có content mới
         const sentences = content.passage?.match(/[^.!?]+[.!?]/g) || [content.passage];
         setTranslationResults(new Array(sentences.length).fill(null));
+      } else {
+        setReadingData(null);
       }
     }
+  }, [lessonDetail, existingQuestions]);
 
-  }, [currentLessonId, lessonDetailData]); // Chỉ re-run khi lessonDetailData hoặc ID thay đổi
+  const loadReadingContent = () => {
+    if (!lessonId) return;
 
-  const loadReadingContent = (lessonId: string, forceRegenerate: boolean = false) => {
-    // Không cần setReadingData(null) thủ công vì useEffect trên đã làm điều đó
     setCurrentMode('read');
     setTranslationResults([]);
 
-    // Gọi Mutation (POST/AI Generation)
     generateReadingMutation.mutate({
       lessonId: lessonId,
-      languageCode: activeLesson?.languageCode || 'en',
+      languageCode: lessonDetail?.languageCode || 'en',
     }, {
       onSuccess: (data) => {
-        // Sau khi tạo thành công, `useGenerateReading` (trong useSkillLessons.ts) 
-        // sẽ gọi invalidateQueries cho `useLesson`
-        // `lessonDetailData` sẽ refetch, và useEffect ở trên sẽ tự động set `readingData`
-        Alert.alert(t('common.success', { defaultValue: 'Success' }), t('reading.content_generated', { defaultValue: 'Content generated successfully.' }));
+        // Cập nhật ngay lập tức UI với dữ liệu trả về từ mutation để user không phải đợi refetch
+        setReadingData(data);
+        const sentences = data.passage?.match(/[^.!?]+[.!?]/g) || [data.passage];
+        setTranslationResults(new Array(sentences.length).fill(null));
+
+        Alert.alert(t('common.success'), t('reading.content_generated'));
+
+        // Gọi refetch ngầm để đồng bộ lại dữ liệu server cho lần vào sau
+        refetchDetail();
+        refetchQuestions();
       },
       onError: () => {
         Alert.alert(t('common.error'), t('reading.error_loading_content'));
@@ -174,35 +165,22 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
     });
   };
 
-  const handleSelectLesson = (lesson: LessonResponse) => {
-    setCurrentLessonId(lesson.lessonId);
-  };
-
   const handleBack = () => {
-    if (currentLessonId && !paramLessonId) {
-      setCurrentLessonId(undefined);
-      setReadingData(null);
-    } else {
-      navigation.goBack();
-    }
+    navigation.goBack();
   };
 
   const handleRegenerate = () => {
-    if (!currentLessonId) return;
     Alert.alert(
       t('reading.regenerate_title'),
       t('reading.regenerate_confirm'),
       [
         { text: t('common.cancel'), style: 'cancel' },
-        {
-          text: t('common.ok'),
-          onPress: () => loadReadingContent(currentLessonId, true)
-        }
+        { text: t('common.ok'), onPress: loadReadingContent }
       ]
     );
   };
 
-  // --- Quiz Logic ---
+  // --- Quiz Logic & Translation Logic (Giữ nguyên logic cũ nhưng clean code) ---
   const startQuiz = () => {
     if (!readingData?.questions || readingData.questions.length === 0) {
       Alert.alert(t('common.notice'), t('reading.no_quiz_available'));
@@ -217,12 +195,10 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
 
   const submitQuizAnswer = () => {
     if (selectedAnswer === null || !readingData?.questions) return;
-
     const currentQ = readingData.questions[currentQuestionIndex];
-    const isCorrect = currentQ.options[selectedAnswer] === currentQ.correctAnswer;
-
-    if (isCorrect) setQuizScore(prev => prev + 1);
-
+    if (currentQ.options[selectedAnswer] === currentQ.correctAnswer) {
+      setQuizScore(prev => prev + 1);
+    }
     if (currentQuestionIndex < readingData.questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
       setSelectedAnswer(null);
@@ -231,25 +207,22 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
     }
   };
 
-  // --- Translation Logic ---
   const submitTranslation = () => {
-    if (!currentLessonId || selectedSentenceIndex === null || !userTranslation.trim() || !readingData?.passage) return;
-
+    if (!lessonId || selectedSentenceIndex === null || !userTranslation.trim() || !readingData?.passage) return;
     const sentences = readingData.passage.match(/[^.!?]+[.!?]/g) || [readingData.passage];
-    const originalSentence = sentences[selectedSentenceIndex];
 
     checkTranslationMutation.mutate({
-      lessonId: currentLessonId,
+      lessonId: lessonId,
       req: {
         translatedText: userTranslation,
-        targetLanguage: activeLesson?.languageCode || 'en'
+        targetLanguage: lessonDetail?.languageCode || 'en'
       } as unknown as TranslationRequestBody
     }, {
       onSuccess: (result) => {
         setTranslationResults(prev => {
           const next = [...prev];
           next[selectedSentenceIndex] = {
-            original: originalSentence,
+            original: sentences[selectedSentenceIndex],
             translated: userTranslation,
             isCorrect: result.score > 80,
             suggestion: result.score <= 80 ? result.feedback : undefined
@@ -262,241 +235,173 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
     });
   };
 
-  // --- Render Methods ---
+  // --- Renders ---
 
-  const renderLessonList = () => {
-    if (isLoadingList) {
-      return (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#4F46E5" />
-        </View>
-      );
-    }
-
-    if (!lessonsList || lessonsList.length === 0) {
-      return (
-        <View style={styles.centerContainer}>
-          <Icon name="menu-book" size={48} color="#9CA3AF" />
-          <Text style={styles.emptyText}>{t('reading.no_lessons_found')}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={() => refetchList()}>
-            <Text style={styles.retryButtonText}>{t('common.reload')}</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
+  // Loading ban đầu
+  if (isLoadingDetail) {
     return (
-      <FlatList
-        data={lessonsList}
-        keyExtractor={(item) => item.lessonId}
-        contentContainerStyle={styles.listContent}
-        refreshing={isLoadingList}
-        onRefresh={refetchList}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.lessonItem} onPress={() => handleSelectLesson(item)}>
-            <View style={styles.lessonIcon}>
-              <Icon name="article" size={24} color="#4F46E5" />
-            </View>
-            <View style={styles.lessonInfo}>
-              <Text style={styles.lessonTitle} numberOfLines={2}>{item.title || item.lessonName}</Text>
-              <Text style={styles.lessonExp}>{item.expReward || 10} XP • {item.difficultyLevel || 'A1'}</Text>
-            </View>
-            <Icon name="chevron-right" size={24} color="#9CA3AF" />
-          </TouchableOpacity>
-        )}
-      />
+      <View style={[styles.container, styles.centerContainer, { paddingTop: insets.top }]}>
+        <ActivityIndicator size="large" color="#4F46E5" />
+      </View>
     );
-  };
+  }
 
-  const renderReadingContent = () => {
-    // 1. Loading State (Loading lesson detail OR generating new content)
-    if (isLoadingDetail || generateReadingMutation.isPending) {
-      return (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#4F46E5" />
-          <Text style={styles.loadingText}>
-            {generateReadingMutation.isPending ? t('reading.generating_content') : t('common.loading')}
-          </Text>
-        </View>
-      );
-    }
+  // Lỗi không tìm thấy Lesson
+  if (!lessonDetail || isError) {
+    return (
+      <View style={[styles.container, styles.centerContainer, { paddingTop: insets.top }]}>
+        <Icon name="error-outline" size={48} color="#EF4444" />
+        <Text style={styles.emptyText}>{t('common.error_occurred')}</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={handleBack}>
+          <Text style={styles.retryButtonText}>{t('common.go_back')}</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
-    // 2. Start/Init State (Lesson detail loaded, but NO reading content found)
+  // Render nội dung chính
+  const renderContent = () => {
+    // Trường hợp chưa có nội dung (Passage rỗng) -> Hiện nút Generate AI
     if (!readingData) {
       return (
         <View style={styles.centerContainer}>
           <View style={styles.startIconContainer}>
-            <Icon name="auto-stories" size={64} color="#4F46E5" />
+            <Icon name="smart-toy" size={64} color="#4F46E5" />
           </View>
-          <Text style={styles.startTitle}>{activeLesson?.title || activeLesson?.lessonName}</Text>
+          <Text style={styles.startTitle}>{lessonDetail.title || t('reading.new_lesson')}</Text>
           <Text style={styles.startSubtitle}>
-            {activeLesson?.description || t('reading.practice_desc', { defaultValue: 'Practice reading comprehension with AI-generated content.' })}
+            {t('reading.no_content_desc', { defaultValue: 'This lesson has no content yet. Generate one using AI?' })}
           </Text>
+
           <TouchableOpacity
             style={styles.primaryButton}
-            onPress={() => currentLessonId && loadReadingContent(currentLessonId, false)}
+            onPress={loadReadingContent}
             disabled={generateReadingMutation.isPending}
           >
             {generateReadingMutation.isPending ? (
               <ActivityIndicator color="#FFFFFF" />
             ) : (
-              <Text style={styles.primaryButtonText}>{t('common.start', { defaultValue: 'Start Practice' })}</Text>
-            )}
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    // 3. Content Display State
-    return (
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.passageHeader}>
-          <Text style={styles.passageTitle}>{activeLesson?.title}</Text>
-          <TouchableOpacity
-            style={styles.regenerateButton}
-            onPress={handleRegenerate}
-          >
-            <Icon name="refresh" size={20} color="#4F46E5" />
-          </TouchableOpacity>
-        </View>
-        <Text style={styles.passageText}>{readingData.passage}</Text>
-
-        <View style={styles.actionsContainer}>
-          <TouchableOpacity
-            style={[styles.actionButton, currentMode === 'translate' && styles.actionButtonActive]}
-            onPress={() => setCurrentMode('translate')}
-          >
-            <Icon name="translate" size={20} color={currentMode === 'translate' ? '#FFF' : '#4F46E5'} />
-            <Text style={[styles.actionButtonText, currentMode === 'translate' && styles.actionButtonTextActive]}>
-              {t('reading.translate_mode')}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, currentMode === 'quiz' && styles.actionButtonActive]}
-            onPress={startQuiz}
-          >
-            <Icon name="quiz" size={20} color={currentMode === 'quiz' ? '#FFF' : '#4F46E5'} />
-            <Text style={[styles.actionButtonText, currentMode === 'quiz' && styles.actionButtonTextActive]}>
-              {t('reading.take_quiz')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    );
-  };
-
-  const renderTranslationMode = () => {
-    if (!readingData?.passage) return null;
-    const sentences = readingData.passage.match(/[^.!?]+[.!?]/g) || [readingData.passage];
-
-    return (
-      <ScrollView style={styles.content}>
-        <Text style={styles.sectionTitle}>{t('reading.translate_practice')}</Text>
-        {sentences.map((sentence, index) => (
-          <TouchableOpacity
-            key={index}
-            style={[
-              styles.sentenceContainer,
-              selectedSentenceIndex === index && styles.sentenceSelected,
-              translationResults[index]?.isCorrect && styles.sentenceCorrect
-            ]}
-            onPress={() => setSelectedSentenceIndex(index)}
-          >
-            <Text style={styles.sentenceText}>{sentence.trim()}</Text>
-            {translationResults[index] && (
-              <View style={styles.feedbackContainer}>
-                <Text style={styles.feedbackLabel}>{t('reading.your_translation')}:</Text>
-                <Text style={styles.feedbackUserText}>{translationResults[index].translated}</Text>
-                {!translationResults[index].isCorrect && (
-                  <Text style={styles.feedbackSuggestion}>
-                    <Icon name="info" size={14} /> {translationResults[index].suggestion}
-                  </Text>
-                )}
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Icon name="auto-awesome" size={20} color="#FFF" />
+                <Text style={styles.primaryButtonText}>{t('reading.generate_content', { defaultValue: 'Generate with AI' })}</Text>
               </View>
             )}
           </TouchableOpacity>
-        ))}
-
-        {selectedSentenceIndex !== null && (
-          <View style={styles.inputContainer}>
-            <Text style={styles.inputLabel}>{t('reading.translate_selected')}</Text>
-            <TextInput
-              style={styles.textInput}
-              value={userTranslation}
-              onChangeText={setUserTranslation}
-              placeholder={t('reading.enter_translation')}
-              multiline
-            />
-            <TouchableOpacity
-              style={styles.submitButton}
-              onPress={submitTranslation}
-              disabled={checkTranslationMutation.isPending}
-            >
-              {checkTranslationMutation.isPending ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.submitButtonText}>{t('common.check')}</Text>
-              )}
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
-    );
-  };
-
-  const renderQuizMode = () => {
-    if (!readingData?.questions) return null;
-
-    if (showQuizResult) {
-      return (
-        <View style={styles.quizResultContainer}>
-          <Icon name="emoji-events" size={64} color="#F59E0B" />
-          <Text style={styles.quizResultScore}>{quizScore} / {readingData.questions.length}</Text>
-          <Text style={styles.quizResultLabel}>{t('reading.correct_answers')}</Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={() => {
-            setShowQuizResult(false);
-            setCurrentMode('read');
-          }}>
-            <Text style={styles.primaryButtonText}>{t('common.finish')}</Text>
-          </TouchableOpacity>
         </View>
       );
     }
 
-    const question = readingData.questions[currentQuestionIndex];
+    // Trường hợp đã có nội dung -> Hiển thị bài đọc/Quiz/Translate
     return (
-      <ScrollView style={styles.content}>
-        <Text style={styles.progressText}>
-          {t('common.question')} {currentQuestionIndex + 1} / {readingData.questions.length}
-        </Text>
-        <View style={styles.questionCard}>
-          <Text style={styles.questionText}>{question.question}</Text>
-          {question.options.map((option, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[
-                styles.optionButton,
-                selectedAnswer === idx && styles.optionSelected
-              ]}
-              onPress={() => setSelectedAnswer(idx)}
-            >
-              <Text style={[
-                styles.optionText,
-                selectedAnswer === idx && styles.optionTextSelected
-              ]}>{option}</Text>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {currentMode === 'read' && (
+          <>
+            <View style={styles.passageHeader}>
+              <Text style={styles.passageTitle}>{lessonDetail.title}</Text>
+              <TouchableOpacity style={styles.regenerateButton} onPress={handleRegenerate}>
+                <Icon name="refresh" size={20} color="#4F46E5" />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.passageText}>{readingData.passage}</Text>
+          </>
+        )}
+
+        {currentMode === 'translate' && (
+          <View>
+            <Text style={styles.sectionTitle}>{t('reading.translate_practice')}</Text>
+            {(readingData.passage.match(/[^.!?]+[.!?]/g) || [readingData.passage]).map((sentence, index) => (
+              <TouchableOpacity
+                key={index}
+                style={[
+                  styles.sentenceContainer,
+                  selectedSentenceIndex === index && styles.sentenceSelected,
+                  translationResults[index]?.isCorrect && styles.sentenceCorrect
+                ]}
+                onPress={() => setSelectedSentenceIndex(index)}
+              >
+                <Text style={styles.sentenceText}>{sentence.trim()}</Text>
+                {translationResults[index] && (
+                  <View style={styles.feedbackContainer}>
+                    <Text style={styles.feedbackLabel}>{t('reading.your_translation')}:</Text>
+                    <Text style={styles.feedbackUserText}>{translationResults[index].translated}</Text>
+                    {!translationResults[index].isCorrect && (
+                      <Text style={styles.feedbackSuggestion}>
+                        <Icon name="info" size={14} /> {translationResults[index].suggestion}
+                      </Text>
+                    )}
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+            {selectedSentenceIndex !== null && (
+              <View style={styles.inputContainer}>
+                <Text style={styles.inputLabel}>{t('reading.translate_selected')}</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={userTranslation}
+                  onChangeText={setUserTranslation}
+                  placeholder={t('reading.enter_translation')}
+                  multiline
+                />
+                <TouchableOpacity
+                  style={styles.submitButton}
+                  onPress={submitTranslation}
+                  disabled={checkTranslationMutation.isPending}
+                >
+                  {checkTranslationMutation.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitButtonText}>{t('common.check')}</Text>}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        )}
+
+        {currentMode === 'quiz' && (
+          <View>
+            {showQuizResult ? (
+              <View style={styles.quizResultContainer}>
+                <Icon name="emoji-events" size={64} color="#F59E0B" />
+                <Text style={styles.quizResultScore}>{quizScore} / {readingData.questions.length}</Text>
+                <TouchableOpacity style={styles.primaryButton} onPress={() => { setShowQuizResult(false); setCurrentMode('read'); }}>
+                  <Text style={styles.primaryButtonText}>{t('common.finish')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.progressText}>{t('common.question')} {currentQuestionIndex + 1} / {readingData.questions.length}</Text>
+                <View style={styles.questionCard}>
+                  <Text style={styles.questionText}>{readingData.questions[currentQuestionIndex].question}</Text>
+                  {readingData.questions[currentQuestionIndex].options.map((option, idx) => (
+                    <TouchableOpacity key={idx} style={[styles.optionButton, selectedAnswer === idx && styles.optionSelected]} onPress={() => setSelectedAnswer(idx)}>
+                      <Text style={[styles.optionText, selectedAnswer === idx && styles.optionTextSelected]}>{option}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={[styles.primaryButton, { marginTop: 24 }]} onPress={submitQuizAnswer} disabled={selectedAnswer === null}>
+                  <Text style={styles.primaryButtonText}>{currentQuestionIndex === readingData.questions.length - 1 ? t('common.finish') : t('common.next')}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        )}
+
+        {/* Action Buttons Footer - Only show in Read mode or to switch modes */}
+        {currentMode !== 'quiz' && (
+          <View style={styles.actionsContainer}>
+            <TouchableOpacity style={[styles.actionButton, currentMode === 'read' && styles.actionButtonActive]} onPress={() => setCurrentMode('read')}>
+              <Icon name="article" size={20} color={currentMode === 'read' ? '#FFF' : '#4F46E5'} />
+              <Text style={[styles.actionButtonText, currentMode === 'read' && styles.actionButtonTextActive]}>{t('reading.read_mode')}</Text>
             </TouchableOpacity>
-          ))}
-        </View>
-        <TouchableOpacity
-          style={[styles.primaryButton, { marginTop: 24 }]}
-          onPress={submitQuizAnswer}
-          disabled={selectedAnswer === null}
-        >
-          <Text style={styles.primaryButtonText}>
-            {currentQuestionIndex === readingData.questions.length - 1 ? t('common.finish') : t('common.next')}
-          </Text>
-        </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionButton, currentMode === 'translate' && styles.actionButtonActive]} onPress={() => setCurrentMode('translate')}>
+              <Icon name="translate" size={20} color={currentMode === 'translate' ? '#FFF' : '#4F46E5'} />
+              <Text style={[styles.actionButtonText, currentMode === 'translate' && styles.actionButtonTextActive]}>{t('reading.translate_mode')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionButton]} onPress={startQuiz}>
+              <Icon name="quiz" size={20} color={'#4F46E5'} />
+              <Text style={[styles.actionButtonText]}>{t('reading.take_quiz')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        <View style={{ height: 40 }} />
       </ScrollView>
     );
   };
@@ -508,343 +413,66 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {!currentLessonId ? t('reading.select_lesson') : (activeLesson?.title || t('reading.practice'))}
+          {lessonDetail?.title || t('reading.practice')}
         </Text>
         <View style={{ width: 24 }} />
       </View>
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-        {!currentLessonId ? renderLessonList() : (
-          <>
-            {currentMode === 'read' && renderReadingContent()}
-            {currentMode === 'translate' && renderTranslationMode()}
-            {currentMode === 'quiz' && renderQuizMode()}
-          </>
-        )}
+        {renderContent()}
       </Animated.View>
     </View>
   );
 };
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: '#FFFFFF',
-    borderBottomWidth: 1,
-    borderBottomColor: '#E5E7EB',
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    flex: 1,
-    textAlign: 'center',
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  emptyText: {
-    marginTop: 12,
-    color: '#6B7280',
-    fontSize: 16,
-    textAlign: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    color: '#4F46E5',
-    fontWeight: '500',
-  },
-  retryButton: {
-    marginTop: 16,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    backgroundColor: '#4F46E5',
-    borderRadius: 8,
-  },
-  retryButtonText: {
-    color: '#FFF',
-    fontWeight: '600',
-  },
-  startIconContainer: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 24,
-  },
-  startTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  startSubtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 32,
-    lineHeight: 24,
-    paddingHorizontal: 20,
-  },
-  listContent: {
-    padding: 16,
-  },
-  lessonItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  lessonIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#EEF2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  lessonInfo: {
-    flex: 1,
-  },
-  lessonTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 4,
-  },
-  lessonExp: {
-    fontSize: 12,
-    color: '#6B7280',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  passageHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  passageTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    flex: 1,
-  },
-  regenerateButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-  },
-  passageText: {
-    fontSize: 16,
-    color: '#374151',
-    lineHeight: 28,
-    marginBottom: 24,
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 32,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: '#4F46E5',
-    backgroundColor: '#FFFFFF',
-    gap: 8,
-  },
-  actionButtonActive: {
-    backgroundColor: '#4F46E5',
-  },
-  actionButtonText: {
-    color: '#4F46E5',
-    fontWeight: '600',
-  },
-  actionButtonTextActive: {
-    color: '#FFFFFF',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    color: '#1F2937',
-  },
-  sentenceContainer: {
-    padding: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-  },
-  sentenceSelected: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
-  },
-  sentenceCorrect: {
-    borderColor: '#10B981',
-    backgroundColor: '#ECFDF5',
-  },
-  sentenceText: {
-    fontSize: 16,
-    color: '#374151',
-    lineHeight: 24,
-  },
-  feedbackContainer: {
-    marginTop: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-  },
-  feedbackLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    fontWeight: '600',
-  },
-  feedbackUserText: {
-    fontSize: 14,
-    color: '#1F2937',
-    marginTop: 2,
-  },
-  feedbackSuggestion: {
-    fontSize: 13,
-    color: '#EF4444',
-    marginTop: 4,
-    fontStyle: 'italic',
-  },
-  inputContainer: {
-    backgroundColor: '#FFFFFF',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.1,
-    elevation: 4,
-    marginBottom: 32,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 8,
-  },
-  textInput: {
-    borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: '#1F2937',
-    minHeight: 80,
-    textAlignVertical: 'top',
-    marginBottom: 16,
-  },
-  submitButton: {
-    backgroundColor: '#4F46E5',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  submitButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-  },
-  progressText: {
-    textAlign: 'center',
-    color: '#6B7280',
-    marginBottom: 16,
-  },
-  questionCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOpacity: 0.05,
-    elevation: 2,
-  },
-  questionText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    marginBottom: 20,
-  },
-  optionButton: {
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  optionSelected: {
-    borderColor: '#4F46E5',
-    backgroundColor: '#EEF2FF',
-  },
-  optionText: {
-    fontSize: 16,
-    color: '#374151',
-  },
-  optionTextSelected: {
-    color: '#4F46E5',
-    fontWeight: '500',
-  },
-  primaryButton: {
-    backgroundColor: '#4F46E5',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  primaryButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  quizResultContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 20,
-  },
-  quizResultScore: {
-    fontSize: 48,
-    fontWeight: 'bold',
-    color: '#1F2937',
-    marginVertical: 16,
-  },
-  quizResultLabel: {
-    fontSize: 18,
-    color: '#6B7280',
-    marginBottom: 32,
-  },
+  // ... (Giữ nguyên styles như file cũ của bạn, đảm bảo đủ các style được dùng)
+  container: { flex: 1, backgroundColor: '#F8FAFC' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937', flex: 1, textAlign: 'center' },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  content: { flex: 1, padding: 20 },
+  passageHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
+  passageTitle: { fontSize: 22, fontWeight: 'bold', color: '#1F2937', flex: 1 },
+  regenerateButton: { padding: 8, borderRadius: 20, backgroundColor: '#F3F4F6' },
+  passageText: { fontSize: 16, color: '#374151', lineHeight: 28, marginBottom: 24 },
+  startIconContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#EEF2FF', alignItems: 'center', justifyContent: 'center', marginBottom: 24 },
+  startTitle: { fontSize: 24, fontWeight: 'bold', color: '#1F2937', marginBottom: 12, textAlign: 'center' },
+  startSubtitle: { fontSize: 16, color: '#6B7280', textAlign: 'center', marginBottom: 32, lineHeight: 24, paddingHorizontal: 20 },
+  primaryButton: { backgroundColor: '#4F46E5', paddingVertical: 16, paddingHorizontal: 32, borderRadius: 12, alignItems: 'center' },
+  primaryButtonText: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  actionsContainer: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 32, marginTop: 16 },
+  actionButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1, borderColor: '#4F46E5', backgroundColor: '#FFFFFF', gap: 4 },
+  actionButtonActive: { backgroundColor: '#4F46E5' },
+  actionButtonText: { color: '#4F46E5', fontWeight: '600', fontSize: 12 },
+  actionButtonTextActive: { color: '#FFFFFF' },
+  // ... (Thêm các styles cho Quiz, Translation, Error, EmptyText từ file cũ)
+  emptyText: { marginTop: 12, color: '#6B7280', fontSize: 16, textAlign: 'center' },
+  retryButton: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#4F46E5', borderRadius: 8 },
+  retryButtonText: { color: '#FFF', fontWeight: '600' },
+  sectionTitle: { fontSize: 18, fontWeight: '600', marginBottom: 16, color: '#1F2937' },
+  sentenceContainer: { padding: 12, backgroundColor: '#FFFFFF', borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+  sentenceSelected: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
+  sentenceCorrect: { borderColor: '#10B981', backgroundColor: '#ECFDF5' },
+  sentenceText: { fontSize: 16, color: '#374151', lineHeight: 24 },
+  feedbackContainer: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#E5E7EB' },
+  feedbackLabel: { fontSize: 12, color: '#6B7280', fontWeight: '600' },
+  feedbackUserText: { fontSize: 14, color: '#1F2937', marginTop: 2 },
+  feedbackSuggestion: { fontSize: 13, color: '#EF4444', marginTop: 4, fontStyle: 'italic' },
+  inputContainer: { backgroundColor: '#FFFFFF', padding: 16, borderRadius: 12, marginTop: 16, shadowColor: '#000', shadowOpacity: 0.1, elevation: 4, marginBottom: 32 },
+  inputLabel: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
+  textInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, fontSize: 16, color: '#1F2937', minHeight: 80, textAlignVertical: 'top', marginBottom: 16 },
+  submitButton: { backgroundColor: '#4F46E5', padding: 12, borderRadius: 8, alignItems: 'center' },
+  submitButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 },
+  quizResultContainer: { alignItems: 'center', justifyContent: 'center', padding: 20 },
+  quizResultScore: { fontSize: 48, fontWeight: 'bold', color: '#1F2937', marginVertical: 16 },
+  progressText: { textAlign: 'center', color: '#6B7280', marginBottom: 16 },
+  questionCard: { backgroundColor: '#FFFFFF', borderRadius: 12, padding: 20, shadowColor: '#000', shadowOpacity: 0.05, elevation: 2 },
+  questionText: { fontSize: 18, fontWeight: '600', color: '#1F2937', marginBottom: 20 },
+  optionButton: { borderWidth: 1, borderColor: '#E5E7EB', padding: 16, borderRadius: 8, marginBottom: 12 },
+  optionSelected: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
+  optionText: { fontSize: 16, color: '#374151' },
+  optionTextSelected: { color: '#4F46E5', fontWeight: '500' },
 });
 
 export default ReadingScreen;

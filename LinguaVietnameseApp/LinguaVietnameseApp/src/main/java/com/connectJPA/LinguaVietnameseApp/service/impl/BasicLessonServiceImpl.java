@@ -1,7 +1,9 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.BasicLessonRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.PronunciationPracticeRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.BasicLessonResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
 import com.connectJPA.LinguaVietnameseApp.entity.BasicLesson;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -20,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Base64;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 
 @Service
 @RequiredArgsConstructor
@@ -96,7 +98,19 @@ public class BasicLessonServiceImpl implements BasicLessonService {
             }
         }
 
-        // 2. Generate Content (Meaning, Examples) if missing
+        // 2. Generate Video URL if missing (Fallback to YouGlish/YouTube Search)
+        // Since we can't easily generate video content via AI yet, we create a smart link for the frontend WebView
+        if (lesson.getVideoUrl() == null || lesson.getVideoUrl().isEmpty()) {
+            // Construct a search URL. 
+            // Ideally, we might use YouGlish for English, but YouTube search is generic.
+            // We store it so the frontend doesn't have to guess.
+            String searchQuery = String.format("https://www.youtube.com/results?search_query=pronounce+%s+in+%s", 
+                    lesson.getSymbol(), lesson.getLanguageCode());
+            lesson.setVideoUrl(searchQuery);
+            updated = true;
+        }
+
+        // 3. Generate Content (Meaning, Examples) if missing
         if (lesson.getMeaning() == null || lesson.getExampleSentence() == null) {
             try {
                 String prompt = String.format(
@@ -148,5 +162,19 @@ public class BasicLessonServiceImpl implements BasicLessonService {
         }
 
         return new BasicLessonResponse(lesson);
+    }
+
+    @Override
+    public PronunciationResponseBody checkPronunciation(PronunciationPracticeRequest request) throws ExecutionException, InterruptedException {
+        // Decode Base64 audio
+        byte[] audioData = Base64.getDecoder().decode(request.getAudioData());
+        
+        // Call gRPC service
+        return grpcClientService.callCheckPronunciationAsync(
+                systemToken, 
+                audioData, 
+                request.getLanguage(), 
+                request.getReferenceText()
+        ).get();
     }
 }

@@ -38,6 +38,7 @@ public class UserResponse {
 
     private AgeRange ageRange;
     private LocalDate dayOfBirth;
+    private Long vipDaysRemaining;
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
 

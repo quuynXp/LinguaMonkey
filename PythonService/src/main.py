@@ -27,7 +27,8 @@ from src.core.user_profile_service import get_user_profile
 from src.api.translation import translate_text
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
 from src.api.speech_to_text import speech_to_text
-from src.core.http_producer import send_chat_to_java_persistence, stop_http_client
+# Use gRPC client instead of HTTP
+from src.core.java_persistence_client import send_chat_to_java_via_grpc
 
 load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
@@ -99,7 +100,6 @@ BUFFER_SIZE_LIMIT = int(BYTES_PER_SECOND * BUFFER_THRESHOLD_SECONDS)
 async def lifespan(app: FastAPI):
     yield
     await close_redis_client()
-    await stop_http_client()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -159,9 +159,18 @@ async def translate(
         )
         if error: 
             logger.error(f"Translation API error: {error}")
-            
-        return {"translated_text": translated_text}
+            # Vẫn trả về text gốc nếu lỗi để UI không bị vỡ, nhưng frontend sẽ nhận biết qua cấu trúc
+        
+        # SỬA LỖI QUAN TRỌNG: Bọc trong "result" để khớp với Frontend
+        return {
+            "code": 200,
+            "result": {
+                "translated_text": translated_text
+            },
+            "error": error
+        }
     except Exception as e:
+        logger.error(f"Translate endpoint exception: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @protected_router.post("/chat-ai")
@@ -218,7 +227,7 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
             msg = json.loads(data)
             
             if msg.get("type") == "chat_request":
-                prompt = msg.get("prompt", "")
+                raw_prompt = msg.get("prompt", "")
                 history = msg.get("history", [])
                 room_id = msg.get("roomId")
                 
@@ -226,8 +235,12 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                     await websocket.send_text(json.dumps({"type": "error", "content": "roomId required"}))
                     continue
 
+                actual_prompt = raw_prompt
+                if raw_prompt == "INITIAL_WELCOME_MESSAGE":
+                    actual_prompt = "Hello AI, please introduce yourself briefly in English and ask me what I want to learn today. Act as a friendly tutor."
+
                 full_ai_response = ""
-                async for chunk in chat_with_ai_stream(prompt, history, user_profile):
+                async for chunk in chat_with_ai_stream(actual_prompt, history, user_profile):
                     full_ai_response += chunk
                     await websocket.send_text(json.dumps({
                         "type": "chat_response_chunk",
@@ -236,13 +249,25 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                 
                 await websocket.send_text(json.dumps({"type": "chat_response_complete"}))
                 
-                http_payload = {
-                    "userId": user_id, "roomId": room_id,
-                    "userPrompt": prompt, "aiResponse": full_ai_response,
-                    "messageType": msg.get("messageType", "TEXT"),
+                # 1. Save User's Message (gRPC to Java)
+                if raw_prompt != "INITIAL_WELCOME_MESSAGE":
+                    user_msg_payload = {
+                        "userId": user_id, "roomId": room_id,
+                        "content": raw_prompt,
+                        "messageType": msg.get("messageType", "TEXT"),
+                        "sentAt": datetime.now().isoformat()
+                    }
+                    asyncio.create_task(send_chat_to_java_via_grpc(user_msg_payload))
+
+                # 2. Save AI's Response (gRPC to Java)
+                ai_msg_payload = {
+                    "userId": "AI_BOT", 
+                    "roomId": room_id,
+                    "content": full_ai_response,
+                    "messageType": "TEXT",
                     "sentAt": datetime.now().isoformat()
                 }
-                asyncio.create_task(send_chat_to_java_persistence(http_payload))
+                asyncio.create_task(send_chat_to_java_via_grpc(ai_msg_payload))
 
     except WebSocketDisconnect:
         pass

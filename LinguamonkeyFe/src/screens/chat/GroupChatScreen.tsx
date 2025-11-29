@@ -1070,13 +1070,13 @@
 //     },
 // });
 
-// export default GroupChatScreen;
-import React, { useEffect } from "react";
+import React, { useEffect, useCallback } from "react";
 import { View } from "react-native";
-import { useRoute, RouteProp } from "@react-navigation/native";
+import { useRoute, RouteProp, useFocusEffect } from "@react-navigation/native";
 import ChatInnerView from "../../components/chat/ChatInnerView";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { useChatStore } from "../../stores/ChatStore";
+import { useUserStore } from "../../stores/UserStore";
 
 type ChatRoomParams = {
     ChatRoom: {
@@ -1088,16 +1088,26 @@ type ChatRoomParams = {
 const GroupChatScreen = () => {
     const route = useRoute<RouteProp<ChatRoomParams, 'ChatRoom'>>();
     const { roomId, roomName } = route.params;
+    const user = useUserStore((state) => state.user);
 
-    // Optional: When entering the full screen, we might want to close the bubble for this specific room
-    // to avoid duplication, or sync them.
-    const { activeBubbleRoomId, closeBubble } = useChatStore();
+    const { activeBubbleRoomId, closeBubble, initStompClient, disconnectStomp } = useChatStore();
+
+    useFocusEffect(
+        useCallback(() => {
+            if (user) {
+                initStompClient();
+            }
+            return () => {
+                disconnectStomp();
+            };
+        }, [user, initStompClient, disconnectStomp])
+    );
 
     useEffect(() => {
         if (activeBubbleRoomId === roomId) {
             closeBubble();
         }
-    }, [roomId, activeBubbleRoomId]);
+    }, [roomId, activeBubbleRoomId, closeBubble]);
 
     return (
         <ScreenLayout>

@@ -17,14 +17,25 @@ public class TestConfigResponse {
     private String title;
     private String description;
     private Integer numQuestions;
+    private String languageCode;
+private Integer durationSeconds;
 
-    public static TestConfigResponse fromEntity(ProficiencyTestConfig config) {
+    public static TestConfigResponse fromEntity(ProficiencyTestConfig entity) {
+        // Simple logic to estimate duration based on test type if not in DB
+        // IELTS/TOEIC usually ~1 minute per question for simple mocks, or fixed 45-60 mins
+        int estimatedDuration = 45 * 60; 
+        if (entity.getTitle().contains("IELTS")) estimatedDuration = 40 * 60;
+        else if (entity.getTitle().contains("TOEIC")) estimatedDuration = 120 * 60;
+        else if (entity.getNumQuestions() != null) estimatedDuration = entity.getNumQuestions() * 60;
+
         return TestConfigResponse.builder()
-                .testConfigId(config.getTestConfigId())
-                .testType(config.getTestType())
-                .title(config.getTitle())
-                .description(config.getDescription())
-                .numQuestions(config.getNumQuestions())
+                .testConfigId(entity.getTestConfigId())
+                .testType(entity.getTestType())
+                .languageCode(entity.getLanguageCode())
+                .title(entity.getTitle())
+                .description(entity.getDescription())
+                .numQuestions(entity.getNumQuestions())
+                .durationSeconds(estimatedDuration) 
                 .build();
     }
 }

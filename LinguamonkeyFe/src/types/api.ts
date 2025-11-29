@@ -557,7 +557,7 @@ export interface UserResponse {
   proficiency?: string; // Ví dụ: 'beginner', 'intermediate', etc.
   certificationIds?: string[]; // Hoặc kiểu dữ liệu đúng của nó
   goalIds?: string[]; // Hoặc kiểu dữ liệu đúng của nó
-  interestestIds?: string[];
+  interestIds?: string[];
   streak: number; // SQL: streak
   isDeleted: boolean; // SQL: is_deleted
   createdAt: string; // SQL: created_at
@@ -827,7 +827,7 @@ export interface CreateUserPayload {
   badgeId?: string | null;
   ageRange?: string | null;
   learningPace?: LearningPace;
-  interestestIds?: string[];
+  interestIds?: string[];
   goalIds?: string[]; // ["CONVERSATION","BUSINESS"]
   certificationIds?: string[]; // e.g. ["TOEFL","IELTS"]
   nativeLanguageCode?: string | null; // "EN","VI",...
@@ -1067,7 +1067,7 @@ export interface UserProfile {
   streak: number;
   languages: string[];
   certificationIds: string[];
-  interestestIds: string[];
+  interestIds: string[];
   goalIds: string[];
   learningPace: string;
   hasDonePlacementTest: boolean;

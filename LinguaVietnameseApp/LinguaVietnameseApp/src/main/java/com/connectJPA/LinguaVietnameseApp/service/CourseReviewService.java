@@ -10,6 +10,9 @@ import java.util.UUID;
 
 public interface CourseReviewService {
     Page<CourseReviewResponse> getAllCourseReviews(UUID courseId, UUID userId, BigDecimal rating, Pageable pageable);
+    
+    Page<CourseReviewResponse> getRepliesByParentId(UUID parentId, Pageable pageable);
+
     CourseReviewResponse getCourseReviewByIds(UUID courseId, UUID userId);
     CourseReviewResponse createCourseReview(CourseReviewRequest request);
     CourseReviewResponse updateCourseReview(UUID courseId, UUID userId, CourseReviewRequest request);

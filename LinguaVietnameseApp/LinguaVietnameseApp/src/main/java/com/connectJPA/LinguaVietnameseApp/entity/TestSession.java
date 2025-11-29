@@ -11,7 +11,6 @@ import java.util.UUID;
 @Entity
 @Table(name = "test_sessions")
 public class TestSession {
-
     @Id
     @UuidGenerator
     @Column(name = "test_session_id")
@@ -26,8 +25,8 @@ public class TestSession {
     @Column(name = "status", nullable = false)
     private String status; // PENDING, COMPLETED
 
-    @Column(name = "started_at")
-    private OffsetDateTime startedAt = OffsetDateTime.now();
+    @Column(name = "started_at", updatable = false)
+    private OffsetDateTime createdAt = OffsetDateTime.now();
 
     @Column(name = "completed_at")
     private OffsetDateTime completedAt;

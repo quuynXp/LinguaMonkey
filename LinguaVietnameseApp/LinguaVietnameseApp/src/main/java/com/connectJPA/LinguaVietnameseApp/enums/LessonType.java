@@ -9,6 +9,8 @@ public enum LessonType {
     READING,
     WRITING,
     VOCABULARY,
-    VIDEO
+    VIDEO,
+    DOCUMENT,
+    AUDIO
 }
 

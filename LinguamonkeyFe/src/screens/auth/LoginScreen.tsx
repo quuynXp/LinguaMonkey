@@ -12,6 +12,7 @@ import { goBack, gotoTab } from '../../utils/navigationRef';
 import PhoneInput from 'react-native-phone-number-input';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
+import * as AuthSession from 'expo-auth-session';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -19,6 +20,9 @@ const GOOGLE_CLIENT_ID_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROI
 const GOOGLE_CLIENT_ID_IOS = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS;
 const GOOGLE_CLIENT_ID_WEB = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
 const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
+
+const redirectUri = AuthSession.getDefaultReturnUrl();
+console.log("Redirect URI CẦN PHẢI THÊM VÀO FACEBOOK DEVELOPER LÀ:", redirectUri);
 
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -48,7 +52,7 @@ const LoginScreen = ({ navigation }) => {
 
   const [fbRequest, fbResponse, fbPromptAsync] = Facebook.useAuthRequest({
     clientId: FACEBOOK_CLIENT_ID,
-    scopes: ['public_profile', 'email'],
+    scopes: ['public_profile'],
   });
 
   useEffect(() => {

@@ -336,7 +336,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
 
       if (selectedInterests?.length) {
-        payload.interestestIds = selectedInterests
+        payload.interestIds = selectedInterests
           .map(id => (id ? String(id) : null))
           .filter(Boolean) as string[]
       }

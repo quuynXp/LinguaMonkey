@@ -8,6 +8,23 @@ export const getCourseImage = (url?: string | null): ImageSourcePropType => {
     return require("../assets/images/ImagePlacehoderCourse.png")
 }
 
+export const getLessonImage = (url?: string | null): ImageSourcePropType => {
+    if (url && url.length > 0) {
+        return { uri: url }
+    }
+    return require("../assets/images/ImagePlacehoderCourse.png")
+}
+
+export const getRatingStarProps = (rating: number, index: number) => {
+    if (index < Math.floor(rating)) {
+        return { name: "star", color: "#F59E0B" } // Full star
+    } else if (index < rating) {
+        return { name: "star-half", color: "#F59E0B" } // Half star
+    } else {
+        return { name: "star-border", color: "#E5E7EB" } // Empty star
+    }
+}
+
 export const getSafeCourseSharePayload = (course: CourseResponse, version?: CourseVersionResponse) => {
     return {
         type: "COURSE_SHARE_CARD",

@@ -13,6 +13,9 @@ import ProgressStack from './ProgressStack';
 import CourseStack from './CourseStack';
 import RoadmapStack from './RoadmapStack';
 import ResetPasswordScreen from '../../screens/auth/ResetPasswordScreen';
+import WebViewScreen from '../../screens/profile/WebViewScreen';
+import TestSessionScreen from '../../screens/appLaunch/TestSessionScreen';
+import TestResultScreen from '../../screens/appLaunch/TestResultScreen';
 
 export type MainStackParamList = {
   TabApp: undefined;
@@ -29,6 +32,9 @@ export type MainStackParamList = {
   CourseStack: undefined;
   RoadmapStack: undefined;
   ResetPasswordScreen: undefined;
+  WebViewScreen: undefined;
+  TestSessionScreen: undefined;
+  TestResultScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -61,12 +67,15 @@ const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
       <Stack.Screen name="ProgressStack" component={ProgressStack} />
       <Stack.Screen name="CourseStack" component={CourseStack} />
       <Stack.Screen name="RoadmapStack" component={RoadmapStack} />
+      <Stack.Screen name="WebViewScreen" component={WebViewScreen} />
+      <Stack.Screen name="TestSessionScreen" component={TestSessionScreen} />
+      <Stack.Screen name="TestResultScreen" component={TestResultScreen} />
 
       {/* 3. Onboarding / Setup Flows */}
       <Stack.Screen
         name="DailyWelcomeScreen"
         component={DailyWelcomeScreen}
-        options={{ gestureEnabled: false }} // Chặn vuốt back ở màn hình này nếu cần
+        options={{ gestureEnabled: false }}
       />
       <Stack.Screen
         name="ProficiencyTestScreen"

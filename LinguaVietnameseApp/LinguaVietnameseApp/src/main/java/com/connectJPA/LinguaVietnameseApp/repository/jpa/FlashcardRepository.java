@@ -12,6 +12,14 @@ import java.util.List;
 import java.util.UUID;
 
 public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
+
+    @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.isDeleted = false AND (f.isPublic = true OR f.userId = :userId)")
+    Page<Flashcard> findPublicOrPrivateFlashcards(@Param("lessonId") UUID lessonId, @Param("userId") UUID userId, Pageable pageable);
+
+    @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.isDeleted = false AND (f.isPublic = true OR f.userId = :userId) AND LOWER(f.front) LIKE LOWER(CONCAT('%', :query, '%'))")
+    Page<Flashcard> searchPublicOrPrivateFlashcards(@Param("lessonId") UUID lessonId, @Param("userId") UUID userId, @Param("query") String query, Pageable pageable);
+
+    // Kept for internal logic if needed, but UI fetch should use the methods above
     Page<Flashcard> findByLessonIdAndIsDeletedFalse(UUID lessonId, Pageable pageable);
 
     List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
@@ -24,7 +32,6 @@ public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
     List<Flashcard> findByLessonIdAndIsDeletedFalseAndNextReviewAtBefore(UUID lessonId, OffsetDateTime time);
 
     List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBefore(UUID userId, OffsetDateTime now);
-
 
     @Query("select f from Flashcard f where f.userId = :userId and f.lessonId = :lessonId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
     List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(

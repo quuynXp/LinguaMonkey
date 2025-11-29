@@ -1,28 +1,34 @@
 package com.connectJPA.LinguaVietnameseApp;
 
-import io.github.cdimascio.dotenv.Dotenv;
+import jakarta.annotation.PostConstruct;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.ConfigurableApplicationContext;
-//import org.springframework.data.elasticsearch.repository.config.EnableElasticsearchRepositories;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableScheduling;
+
+import java.util.TimeZone;
 
 @SpringBootApplication
-// @EnableScheduling -> Removed to avoid conflict with Quartz
+@EnableScheduling
 @EnableJpaRepositories(basePackages = "com.connectJPA.LinguaVietnameseApp.repository.jpa")
-//@EnableElasticsearchRepositories(basePackages = "com.connectJPA.LinguaVietnameseApp.repository.elasticsearch")
 public class LinguaVietnameseAppApplication {
+
     public static void main(String[] args) {
-        // Dotenv dotenv = Dotenv.configure().load();
-        // dotenv.entries().forEach(entry -> System.setProperty(entry.getKey(), entry.getValue()));
         SpringApplication app = new SpringApplication(LinguaVietnameseAppApplication.class);
         app.setAddCommandLineProperties(true);
         ConfigurableApplicationContext context = app.run(args);
 
-        // Add shutdown hook to ensure graceful shutdown
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             context.close();
             System.out.println("Application context closed gracefully");
         }));
+    }
+
+    // FIX: Thiết lập múi giờ mặc định là Việt Nam để Scheduler chạy đúng giờ
+    @PostConstruct
+    public void init() {
+        TimeZone.setDefault(TimeZone.getTimeZone("Asia/Ho_Chi_Minh"));
+        System.out.println("Current TimeZone set to: " + TimeZone.getDefault().getID());
     }
 }

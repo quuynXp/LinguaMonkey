@@ -34,10 +34,12 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
     public Page<FlashcardResponse> getFlashcardsByLesson(UUID userId, UUID lessonId, String query, int page, int size) {
         PageRequest pageable = PageRequest.of(page, size);
         Page<Flashcard> flashcards;
+        
+        // Use the new queries that handle (isPublic OR isOwner)
         if (query != null && !query.isEmpty()) {
-            flashcards = flashcardRepository.findByLessonIdAndFrontContainingIgnoreCaseAndIsDeletedFalse(lessonId, query, pageable);
+            flashcards = flashcardRepository.searchPublicOrPrivateFlashcards(lessonId, userId, query, pageable);
         } else {
-            flashcards = flashcardRepository.findByLessonIdAndIsDeletedFalse(lessonId, pageable);
+            flashcards = flashcardRepository.findPublicOrPrivateFlashcards(lessonId, userId, pageable);
         }
         return flashcards.map(flashcardMapper::toResponse);
     }
@@ -46,7 +48,12 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
     public FlashcardResponse getFlashcard(UUID id, UUID userId) {
         Flashcard f = flashcardRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT));
-        if (!f.getUserId().equals(userId)) {
+        
+        // Allow access if owner OR if public
+        boolean isOwner = f.getUserId().equals(userId);
+        boolean isPublic = Boolean.TRUE.equals(f.getIsPublic());
+
+        if (!isOwner && !isPublic) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
         return flashcardMapper.toResponse(f);
@@ -64,6 +71,9 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         entity.setDeleted(false);
         entity.setCreatedAt(OffsetDateTime.now());
         entity.setNextReviewAt(OffsetDateTime.now());
+        
+        // Set public status, default to false if null
+        entity.setIsPublic(req.getIsPublic() != null ? req.getIsPublic() : false);
 
         Flashcard saved = flashcardRepository.save(entity);
         return flashcardMapper.toResponse(saved);
@@ -74,6 +84,8 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
     public FlashcardResponse updateFlashcard(UUID id, CreateFlashcardRequest req, UUID userId) {
         Flashcard f = flashcardRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT));
+        
+        // Only owner can update
         if (!f.getUserId().equals(userId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
@@ -83,6 +95,11 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         f.setExampleSentence(req.getExampleSentence());
         f.setImageUrl(req.getImageUrl());
         f.setTags(req.getTags());
+        
+        if (req.getIsPublic() != null) {
+            f.setIsPublic(req.getIsPublic());
+        }
+        
         // Not updating audioUrl here to avoid overwriting TTS unless explicitly intended
 
         Flashcard saved = flashcardRepository.save(f);
@@ -123,6 +140,8 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         }
         Flashcard f = flashcardRepository.findById(flashcardId)
                 .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT));
+        
+        // Only owner can review/study their own progress
         if (!f.getUserId().equals(reviewerId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
