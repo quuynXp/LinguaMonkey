@@ -146,9 +146,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
 
 
-                            UsernamePasswordAuthenticationToken auth =
-
-                                    new UsernamePasswordAuthenticationToken(userId, null, authorities);
+                            UsernamePasswordAuthenticationToken auth = new UsernamePasswordAuthenticationToken(userId, null, authorities);
 
 
 

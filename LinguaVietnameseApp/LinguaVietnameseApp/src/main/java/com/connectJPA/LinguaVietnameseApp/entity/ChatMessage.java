@@ -15,6 +15,9 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.UpdateTimestamp;
+
 @Entity
 @Data
 @Table(name = "chat_messages")
@@ -47,7 +50,10 @@ public class ChatMessage{
     private UUID receiverId;
 
     private boolean isDeleted;
+
+    @UpdateTimestamp
     private OffsetDateTime updatedAt;
+
     private OffsetDateTime deletedAt;
 
     @Column(name = "is_read", nullable = false)

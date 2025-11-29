@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Platform, View, Text, ViewStyle, TextStyle, Image, ImageStyle } from 'react-native'; // Import ImageStyle
+import { StyleSheet, Platform, View, Text, ViewStyle, TextStyle, Image, ImageStyle } from 'react-native';
 import Toast, { BaseToastProps, ToastShowParams } from 'react-native-toast-message';
 
 interface ShowToastParams {
@@ -10,21 +10,21 @@ interface ShowToastParams {
 
 const APP_LOGO_SOURCE = require('../assets/icons/icon_96.png');
 
-const getTitleByType = (type: string) => {
-  switch (type) {
-    case 'success': return 'Thành công';
-    case 'error': return 'Lỗi';
-    case 'warning': return 'Cảnh báo';
-    case 'info': default: return 'Thông báo';
-  }
-};
+// Hàm này không còn được sử dụng vì đã bỏ dòng title
+// const getTitleByType = (type: string) => {
+//   switch (type) {
+//     case 'success': return 'Thành công';
+//     case 'error': return 'Lỗi';
+//     case 'warning': return 'Cảnh báo';
+//     case 'info': default: return 'Thông báo';
+//   }
+// };
 
-export const showToast = ({ title, message, type = 'info' }: ShowToastParams) => {
-  const finalTitle = title || getTitleByType(type);
-
+export const showToast = ({ message, type = 'info' }: ShowToastParams) => {
+  // text1 chỉ còn là message, bỏ title
   Toast.show({
     type: type,
-    text1: message ? `${finalTitle}: ${message}` : finalTitle,
+    text1: message, // Chỉ dùng message
     position: 'top',
     visibilityTime: 4000,
     autoHide: true,
@@ -35,10 +35,10 @@ export const showToast = ({ title, message, type = 'info' }: ShowToastParams) =>
 const styles = StyleSheet.create({
   container: {
     height: 'auto',
-    paddingVertical: 12,
-    paddingHorizontal: 15,
+    paddingVertical: 5,
+    paddingHorizontal: 7,
     borderRadius: 10,
-    width: '94%',
+    width: '95%',
     alignSelf: 'center',
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
@@ -55,13 +55,12 @@ const styles = StyleSheet.create({
       },
     }),
   } as ViewStyle,
-  // Đã sửa: Sử dụng ImageStyle thay vì ViewStyle
   appLogo: {
-    width: 24,
-    height: 24,
-    marginRight: 10,
+    width: 32, // Tăng kích thước icon
+    height: 32, // Tăng kích thước icon
+    marginRight: 12, // Điều chỉnh margin cho cân đối
     resizeMode: 'contain',
-  } as ImageStyle, // Chỉ định rõ kiểu là ImageStyle
+  } as ImageStyle,
   text1: {
     fontSize: 15,
     fontWeight: '700',
@@ -74,10 +73,9 @@ interface CustomToastProps extends BaseToastProps {
   type: 'success' | 'error' | 'info' | 'warning';
 }
 
-const CustomBaseToast = ({ type, ...props }: CustomToastProps) => {
+const CustomBaseToast = ({ ...props }: CustomToastProps) => {
   return (
     <View style={styles.container}>
-      {/* Không cần thay đổi gì ở đây, vì styles.appLogo đã đúng kiểu */}
       <Image source={APP_LOGO_SOURCE} style={styles.appLogo} />
       <Text style={styles.text1} numberOfLines={3}>
         {props.text1}

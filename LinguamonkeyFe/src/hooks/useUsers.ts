@@ -9,7 +9,7 @@ import {
   Character3dResponse,
   RegisterResponse,
   UserRequest,
-  NotificationRequest,
+  // NotificationRequest,
 } from "../types/dto";
 
 import { Country } from "../types/enums";
@@ -263,12 +263,12 @@ export const useUsers = () => {
 
   const useSendFriendRequest = () => {
     return useMutation({
-      mutationFn: async (targetUserId: string) => {
-        await instance.post<AppApiResponse<void>>(`/api/v1/friendships`, { targetUserId });
+      mutationFn: async ({ requesterId, receiverId }: { requesterId: string, receiverId: string }) => {
+        await instance.post<AppApiResponse<void>>(`/api/v1/friendships`, { requesterId, receiverId });
       },
-      onSuccess: (_, targetId) => {
-        queryClient.invalidateQueries({ queryKey: userKeys.profile(targetId) });
-        queryClient.invalidateQueries({ queryKey: ["friendship"] });
+      onSuccess: (_, payload) => {
+        queryClient.invalidateQueries({ queryKey: userKeys.profile(payload.receiverId) });
+        queryClient.invalidateQueries({ queryKey: userKeys.friendship.status(payload.requesterId, payload.receiverId) });
       },
     });
   };
@@ -281,7 +281,20 @@ export const useUsers = () => {
       onSuccess: (_, payload) => {
         queryClient.invalidateQueries({ queryKey: userKeys.profile(payload.currentUserId) });
         queryClient.invalidateQueries({ queryKey: userKeys.profile(payload.otherUserId) });
-        queryClient.invalidateQueries({ queryKey: ["friendship"] });
+        queryClient.invalidateQueries({ queryKey: userKeys.friendship.status(payload.currentUserId, payload.otherUserId) });
+      },
+    });
+  };
+
+  const useDeleteFriendship = () => {
+    return useMutation({
+      mutationFn: async ({ user1Id, user2Id }: { user1Id: string; user2Id: string }) => {
+        await instance.delete<AppApiResponse<void>>(`/api/v1/friendships/${user1Id}/${user2Id}`);
+      },
+      onSuccess: (_, vars) => {
+        queryClient.invalidateQueries({ queryKey: userKeys.profile(vars.user2Id) });
+        queryClient.invalidateQueries({ queryKey: userKeys.friendship.status(vars.user1Id, vars.user2Id) });
+        queryClient.invalidateQueries({ queryKey: userKeys.friendship.check(vars.user1Id, vars.user2Id) });
       },
     });
   };
@@ -332,6 +345,7 @@ export const useUsers = () => {
     useUpdateLastActive,
     useSendFriendRequest,
     useAcceptFriendRequest,
+    useDeleteFriendship, // New export
     useFriendRequestStatus,
     useCheckIfFriends,
   };

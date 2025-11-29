@@ -314,6 +314,7 @@ public class SkillLessonController {
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .isDeleted(false)
+                .needsReview(false)
                 .build();
         lessonProgressRepository.save(progress);
         log.info("Saved lesson progress: lesson={}, user={}, score={}", lessonId, userId, score);
@@ -331,6 +332,7 @@ public class SkillLessonController {
                     .optionD(q.getOptions().get(3))
                     .correctOption(q.getCorrectOption())
                     .skillType(SkillType.READING)
+                    .weight(1) // Fixed: Added default weight to satisfy NOT NULL constraint
                     .createdAt(OffsetDateTime.now())
                     .updatedAt(OffsetDateTime.now())
                     .isDeleted(false)
@@ -344,6 +346,7 @@ public class SkillLessonController {
                 .createdAt(OffsetDateTime.now())
                 .updatedAt(OffsetDateTime.now())
                 .isDeleted(false)
+                .needsReview(false)
                 .build();
         lessonProgressRepository.save(progress);
     }

@@ -3,18 +3,19 @@ import { SupportedCurrency } from '../utils/currency';
 
 interface ExchangeRateResponse {
     date: string;
-    vnd: Record<string, number>;
+    usd: Record<string, number>; // Sửa từ vnd -> usd
 }
 
 interface UseCurrencyConverterResult {
-    convert: (amountInVND: number, targetCurrency: SupportedCurrency) => number;
+    convert: (amountInUSD: number, targetCurrency: SupportedCurrency) => number;
     rates: Record<string, number>;
     isLoading: boolean;
     error: string | null;
     lastUpdated: string | null;
 }
 
-const API_URL = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/vnd.json';
+// ĐỔI API SANG USD BASE
+const API_URL = 'https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/usd.json';
 
 export const useCurrencyConverter = (): UseCurrencyConverterResult => {
     const [rates, setRates] = useState<Record<string, number>>({});
@@ -30,10 +31,11 @@ export const useCurrencyConverter = (): UseCurrencyConverterResult => {
                 if (!response.ok) throw new Error('Failed to fetch exchange rates');
 
                 const data: ExchangeRateResponse = await response.json();
-                setRates(data.vnd);
+                setRates(data.usd); // Lấy data.usd
                 setLastUpdated(data.date);
                 setError(null);
             } catch (err) {
+                console.error("Currency fetch error:", err);
                 setError(err instanceof Error ? err.message : 'Unknown error');
             } finally {
                 setIsLoading(false);
@@ -43,11 +45,20 @@ export const useCurrencyConverter = (): UseCurrencyConverterResult => {
         fetchRates();
     }, []);
 
-    const convert = useCallback((amountInVND: number, targetCurrency: SupportedCurrency): number => {
-        if (targetCurrency === 'VND') return amountInVND;
-        if (!rates[targetCurrency.toLowerCase()]) return amountInVND;
+    // Hàm này nhận vào tiền USD và đổi ra tiền target
+    const convert = useCallback((amountInUSD: number, targetCurrency: SupportedCurrency): number => {
+        // Nếu target là USD thì trả về nguyên bản
+        if (targetCurrency === 'USD') return amountInUSD;
 
-        return amountInVND * rates[targetCurrency.toLowerCase()];
+        const targetKey = targetCurrency.toLowerCase();
+
+        // Nếu chưa load xong rate hoặc không tìm thấy rate, dùng hardcode fallback cho VND để UI không bị ngáo 0 đồng
+        if (!rates[targetKey]) {
+            if (targetCurrency === 'VND') return amountInUSD * 25400; // Fallback rate
+            return amountInUSD;
+        }
+
+        return amountInUSD * rates[targetKey];
     }, [rates]);
 
     return { convert, rates, isLoading, error, lastUpdated };

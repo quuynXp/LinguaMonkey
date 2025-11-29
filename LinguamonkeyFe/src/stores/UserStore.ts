@@ -23,6 +23,7 @@ interface UserState {
   isTokenRegistered: boolean;
   name: string;
   streak: number;
+  coins: number;
   level?: number;
   exp?: number;
   expToNextLevel?: number;
@@ -40,6 +41,7 @@ interface UserState {
   dailyGoal: DailyGoal;
   statusMessage: string;
   gender?: string;
+  dayOfBirth?: string;
   hasDonePlacementTest?: boolean;
   hasFinishedSetup?: boolean;
   lastDailyWelcomeAt?: string;
@@ -65,7 +67,8 @@ interface UserState {
   finishPlacementTest: () => Promise<void>;
   trackDailyWelcome: () => Promise<void>;
   updateStreakAndDailyGoal: (id: string) => Promise<UserResponse | null>;
-  registerVip: () => Promise<string | null>; // Returns Payment URL
+  registerVip: () => Promise<string | null>;
+  refreshUserProfile: () => Promise<void>;
 }
 
 const defaultUserState: Omit<UserState, keyof {
@@ -88,6 +91,7 @@ const defaultUserState: Omit<UserState, keyof {
   trackDailyWelcome: any;
   updateStreakAndDailyGoal: any;
   registerVip: any;
+  refreshUserProfile: any;
 }> = {
   user: null,
   isAuthenticated: false,
@@ -96,6 +100,7 @@ const defaultUserState: Omit<UserState, keyof {
   isTokenRegistered: false,
   name: '',
   streak: 0,
+  coins: 0,
   level: undefined,
   exp: undefined,
   expToNextLevel: undefined,
@@ -113,6 +118,7 @@ const defaultUserState: Omit<UserState, keyof {
   dailyGoal: { completedLessons: 0, totalLessons: 0 },
   statusMessage: '',
   gender: undefined,
+  dayOfBirth: undefined,
   hasDonePlacementTest: undefined,
   hasFinishedSetup: undefined,
   lastDailyWelcomeAt: undefined,
@@ -143,11 +149,15 @@ export const useUserStore = create<UserState>()(
         const todayDate = new Date().toISOString().split('T')[0];
         const lastStreakCheckDate = rawUser.lastStreakCheckDate;
 
+        // Debug log để kiểm tra dữ liệu đầu vào
+        console.log("Setting user to store. isVip:", rawUser.isVip, "Name:", user.fullname || user.nickname);
+
         set({
           user: user,
           isAuthenticated: true,
           name: user.fullname ?? user.nickname ?? '',
           streak: user.streak ?? 0,
+          coins: rawUser.coins ?? 0,
           level: user.level,
           exp: user.exp,
           expToNextLevel: user.expToNextLevel,
@@ -163,11 +173,13 @@ export const useUserStore = create<UserState>()(
           statusMessage: user.bio ?? '',
           languages: user.languages ?? [],
           gender: user.gender,
+          dayOfBirth: rawUser.dayOfBirth,
           hasDonePlacementTest: rawUser.hasDonePlacementTest,
           hasFinishedSetup: rawUser.hasFinishedSetup,
           lastDailyWelcomeAt: rawUser.lastDailyWelcomeAt,
           isDailyGoalAchieved: !!lastStreakCheckDate && lastStreakCheckDate === todayDate,
-          isVip: rawUser.isVip ?? false,
+          // Quan trọng: Map chính xác trường isVip
+          isVip: (rawUser.isVip === true || rawUser.isVip === 'true'),
         });
 
         if (user.nativeLanguageCode) {
@@ -344,23 +356,38 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return null;
         try {
-          // Call Transaction Service to create payment session for $1 trial
           const payload = {
             userId: user.userId,
             amount: 1.00,
             currency: 'USD',
             description: 'VIP 14-Day Trial Activation',
-            returnUrl: 'yourapp://vip-result' // Deep link back to app
+            returnUrl: 'yourapp://vip-result'
           };
 
           const res = await instance.post('/api/v1/transactions/payment-url', payload);
           if (res.data && res.data.result) {
-            return res.data.result; // Returns Stripe URL
+            return res.data.result;
           }
           return null;
         } catch (e) {
           console.error("VIP registration failed", e);
           throw e;
+        }
+      },
+
+      // Hàm quan trọng nhất: Lấy dữ liệu mới nhất từ server và cập nhật đè vào Store
+      refreshUserProfile: async () => {
+        const { user } = get();
+        if (!user?.userId) return;
+        try {
+          console.log("Refreshing user profile from server...");
+          const res = await instance.get<any>(`/api/v1/users/${user.userId}`);
+          if (res.data && res.data.code === 200 && res.data.result) {
+            console.log("Refreshed user data:", res.data.result);
+            get().setUser(res.data.result);
+          }
+        } catch (e) {
+          console.error("Failed to refresh user profile", e);
         }
       }
     }),
@@ -374,6 +401,7 @@ export const useUserStore = create<UserState>()(
         deviceId: state.deviceId,
         name: state.name,
         streak: state.streak,
+        coins: state.coins,
         level: state.level,
         exp: state.exp,
         expToNextLevel: state.expToNextLevel,
@@ -391,6 +419,7 @@ export const useUserStore = create<UserState>()(
         dailyGoal: state.dailyGoal,
         statusMessage: state.statusMessage,
         gender: state.gender,
+        dayOfBirth: state.dayOfBirth,
         hasDonePlacementTest: state.hasDonePlacementTest,
         hasFinishedSetup: state.hasFinishedSetup,
         lastDailyWelcomeAt: state.lastDailyWelcomeAt,

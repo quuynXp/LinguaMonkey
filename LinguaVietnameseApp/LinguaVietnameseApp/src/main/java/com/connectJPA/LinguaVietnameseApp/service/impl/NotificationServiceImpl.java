@@ -18,9 +18,6 @@ import com.google.firebase.messaging.*;
 import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -139,33 +136,29 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-    @Override
-    @Transactional
+   @Override
     public void createPushNotification(NotificationRequest request) {
-        Notification savedNotification = notificationMapper.toEntity(request);
-        savedNotification.setCreatedAt(OffsetDateTime.now());
-        notificationRepository.save(savedNotification);
+        // 1. Save to DB directly using Repo (Repo.save is Transactional)
+        Notification notification = notificationMapper.toEntity(request);
+        notification.setCreatedAt(OffsetDateTime.now());
+        notificationRepository.save(notification); 
+        // -> COMMITTED to DB here because Repository.save() starts and ends its own transaction.
 
+        // 2. Send FCM (Now safe to send because DB is updated)
+        sendFcmToUser(request);
+    }
+
+    // Removed @Transactional helper method to avoid confusion about self-invocation. 
+    // Logic moved inside createPushNotification above.
+
+    private void sendFcmToUser(NotificationRequest request) {
         List<UserFcmToken> tokens = userFcmTokenRepository.findByUserIdAndIsDeletedFalse(request.getUserId());
 
         if (tokens.isEmpty()) {
-            log.warn("No FCM tokens found for user {}", request.getUserId());
             return;
         }
 
-        AndroidConfig androidConfig = AndroidConfig.builder()
-                .setNotification(AndroidNotification.builder()
-                        .setSound("notification")
-                        .setIcon("ic_notification")
-                        .setChannelId("default_channel_id")
-                        .build())
-                .build();
-
-        ApnsConfig apnsConfig = ApnsConfig.builder()
-                .setAps(Aps.builder()
-                        .setSound("notification.mp3")
-                        .build())
-                .build();
+        AndroidConfig androidConfig = AndroidConfig.builder().setNotification(AndroidNotification.builder().setSound("notification").build()).build();
 
         for (UserFcmToken token : tokens) {
             try {
@@ -175,16 +168,14 @@ public class NotificationServiceImpl implements NotificationService {
                                 .setTitle(request.getTitle())
                                 .setBody(request.getContent())
                                 .build())
-                        .setAndroidConfig(androidConfig)
-                        .setApnsConfig(apnsConfig);
+                        .setAndroidConfig(androidConfig);
 
                 if (request.getPayload() != null && !request.getPayload().isEmpty()) {
-                    Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
-                    messageBuilder.putAllData(dataPayload);
+                     Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
+                     messageBuilder.putAllData(dataPayload);
                 }
 
-                Message message = messageBuilder.build();
-                firebaseMessaging.send(message);
+                firebaseMessaging.send(messageBuilder.build());
 
             } catch (Exception e) {
                 log.error("Failed to send push notification to user {}: {}", request.getUserId(), e.getMessage());
@@ -423,7 +414,6 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-    // --- IMPLEMENTATION OF THE NEW VIP METHOD ---
     @Override
     @Transactional
     public void sendVipSuccessNotification(UUID userId, boolean isRenewal, String planType) {
@@ -438,7 +428,6 @@ public class NotificationServiceImpl implements NotificationService {
                 : "Welcome to VIP! Your " + planType + " plan is now active. Enjoy unlimited access!";
             String type = isRenewal ? "VIP_EXTENDED" : "VIP_ACTIVATED";
 
-            // 1. In-App Notification (and potentially Push via generic flow if needed, but we do explicitly below)
             NotificationRequest request = NotificationRequest.builder()
                     .userId(userId)
                     .title(title)
@@ -446,26 +435,15 @@ public class NotificationServiceImpl implements NotificationService {
                     .type(type)
                     .build();
             
-            // This method in this class saves to DB
-            createNotification(request);
-            // This method sends to FCM
-            createPushNotification(request);
+            createNotification(request); // This saves to DB
+            createPushNotification(request); // This checks DB then sends to FCM
 
-            // 2. Email Notification (The TODO part)
             String email = getUserEmailByUserId(userId);
             Locale locale = getLocaleByUserId(userId);
             
-            // Assuming EmailService has a generic send method or you will add this specific method.
-            // Since I cannot see EmailService code, I will use a theoretical method name that follows your convention.
-            // IMPORTANT: You must add `sendVipSuccessEmail(String to, boolean isRenewal, String planType, Locale locale)` to your EmailService.
-            // If it doesn't exist, this line will break. I'm adding it as requested to "add the todo part".
             try {
-                // Using reflection or just calling it if you update EmailService
                 // emailService.sendVipSuccessEmail(email, isRenewal, planType, locale);
-                
-                // Fallback to a log if method doesn't exist yet to prevent runtime crash if you copy-paste blindly without updating EmailService
                 log.info("TODO: Implement emailService.sendVipSuccessEmail for user {}", email);
-                
             } catch (Exception ex) {
                 log.warn("Could not send VIP email: {}", ex.getMessage());
             }

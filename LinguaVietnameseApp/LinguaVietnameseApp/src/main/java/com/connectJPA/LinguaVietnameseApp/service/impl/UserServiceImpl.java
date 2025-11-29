@@ -35,6 +35,7 @@ import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
+import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -378,6 +379,10 @@ public class UserServiceImpl implements UserService {
             if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
             if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
             if (request.getGender() != null) user.setGender(request.getGender());
+            if (request.getDayOfBirth() != null) {
+                user.setDayOfBirth(request.getDayOfBirth());
+                calculateAndSetAgeRange(user);
+            }
 
             if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
                 authenticationService.findOrCreateUserAccount(
@@ -408,7 +413,6 @@ public class UserServiceImpl implements UserService {
                     .build());
 
             final User savedUser = user;
-
             if (request.getGoalIds() != null && !request.getGoalIds().isEmpty()) {
                 List<UserGoal> userGoals = request.getGoalIds().stream()
                         .filter(Objects::nonNull)
@@ -419,48 +423,12 @@ public class UserServiceImpl implements UserService {
                                         .goalType(GoalType.valueOf(goalStr.toUpperCase()))
                                         .build();
                             } catch (IllegalArgumentException ex) {
-                                log.warn("Unknown GoalType from request: {}", goalStr);
                                 return null;
                             }
                         })
                         .filter(Objects::nonNull)
                         .collect(Collectors.toList());
-
                 if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
-            }
-
-            if (request.getCertificationIds() != null && !request.getCertificationIds().isEmpty()) {
-                List<UserCertificate> certs = request.getCertificationIds().stream()
-                        .filter(Objects::nonNull)
-                        .map(certStr -> {
-                            try {
-                                return UserCertificate.builder()
-                                        .id(new UserCertificateId(savedUser.getUserId(),
-                                                Certification.valueOf(certStr).toString()))
-                                        .build();
-                            } catch (IllegalArgumentException ex) {
-                                log.warn("Unknown Certification: {}", certStr);
-                                return null;
-                            }
-                        })
-                        .filter(Objects::nonNull)
-                        .toList();
-
-                if (!certs.isEmpty()) userCertificateRepository.saveAllAndFlush(certs);
-            }
-
-            if (request.getInterestestIds() != null && !request.getInterestestIds().isEmpty()) {
-                List<UserInterest> interests = request.getInterestestIds().stream()
-                        .filter(Objects::nonNull)
-                        .map(interestId -> UserInterest.builder()
-                                .id(new UserInterestId(savedUser.getUserId(), interestId))
-                                .user(savedUser)
-                                .interest(interestRepository.findByInterestId(interestId).orElse(null))
-                                .build())
-                        .filter(ui -> ui.getInterest() != null)
-                        .collect(Collectors.toList());
-
-                if (!interests.isEmpty()) userInterestRepository.saveAllAndFlush(interests);
             }
 
             return mapUserToResponseWithAllDetails(savedUser);
@@ -468,7 +436,6 @@ public class UserServiceImpl implements UserService {
         } catch (AppException ae) {
             throw ae;
         } catch (Exception e) {
-            log.error("Error while creating user: {}", e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -493,8 +460,8 @@ public class UserServiceImpl implements UserService {
                 updateUserCertifications(userId, request.getCertificationIds());
             }
             
-            if (request.getInterestestIds() != null) {
-                updateUserInterests(userId, request.getInterestestIds());
+            if (request.getInterestIds() != null) {
+                updateUserInterests(userId, request.getInterestIds());
             }
             
             if (request.getLanguages() != null) {
@@ -524,7 +491,16 @@ public class UserServiceImpl implements UserService {
         if (request.getPhone() != null) user.setPhone(request.getPhone());
         if (request.getAvatarUrl() != null) user.setAvatarUrl(request.getAvatarUrl());
         if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
-        if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
+        
+        // Automatic Age Range Calculation based on Day of Birth
+        if (request.getDayOfBirth() != null) {
+            user.setDayOfBirth(request.getDayOfBirth());
+            calculateAndSetAgeRange(user);
+        } else if (request.getAgeRange() != null) {
+            // Fallback only if DOB is not provided (though UI restricts this now)
+            user.setAgeRange(request.getAgeRange());
+        }
+
         if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
         if (request.getCountry() != null) user.setCountry(request.getCountry());
         if (request.getNativeLanguageCode() != null) user.setNativeLanguageCode(request.getNativeLanguageCode());
@@ -534,6 +510,19 @@ public class UserServiceImpl implements UserService {
         if (request.getGender() != null) user.setGender(request.getGender());
         
         return userRepository.saveAndFlush(user);
+    }
+
+    private void calculateAndSetAgeRange(User user) {
+        if (user.getDayOfBirth() == null) return;
+        
+        int age = Period.between(user.getDayOfBirth(), LocalDate.now()).getYears();
+        
+        for (AgeRange range : AgeRange.values()) {
+            if (range.isInRange(age)) {
+                user.setAgeRange(range);
+                break;
+            }
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -685,6 +674,12 @@ public class UserServiceImpl implements UserService {
                 .proficiency(target.getProficiency())
                 .learningPace(target.getLearningPace());
 
+        try {
+             respB.allowStrangerChat(true); 
+        } catch (Exception e) {
+             respB.allowStrangerChat(true);
+        }
+        
         if (target.getCountry() != null) {
             respB.flag(target.getCountry().name());
         }

@@ -5,5 +5,5 @@ public enum TransactionProvider {
     VNPAY,
     STRIPE,
     INTERNAL,
-    ZALOPAY
+    ZALOPAY, MOMO
 }

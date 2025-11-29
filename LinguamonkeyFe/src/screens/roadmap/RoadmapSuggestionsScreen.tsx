@@ -5,6 +5,8 @@ import {
   TouchableOpacity,
   Text,
   View,
+  Image,
+  ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from "react-native-vector-icons/MaterialIcons";
@@ -13,34 +15,36 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import { useRoadmap } from "../../hooks/useRoadmap";
 import { useUserStore } from "../../stores/UserStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import dayjs from "dayjs";
 
-const RoadmapSuggestionsScreen = ({ route }) => {
+const RoadmapSuggestionsScreen = ({ route, navigation }) => {
   const { t } = useTranslation();
   const { roadmapId, isOwner } = route.params;
   const userId = useUserStore((state) => state.user?.userId);
 
   const { useSuggestions, useAddSuggestion, useApplySuggestion } = useRoadmap();
-  const { data: suggestions = [] } = useSuggestions(roadmapId);
+  const { data: suggestions = [], isLoading } = useSuggestions(roadmapId);
   const addMut = useAddSuggestion();
   const applyMut = useApplySuggestion();
 
-  const [reason, setReason] = useState("");
-  const [itemId, setItemId] = useState("");
-  const [newOrder, setNewOrder] = useState("");
+  const [comment, setComment] = useState("");
+  const [activeTab, setActiveTab] = useState<'reviews' | 'write'>('reviews');
 
-  const handleAdd = async () => {
-    if (!userId || !itemId || !newOrder || !reason) return;
+  const handleSubmit = async () => {
+    if (!userId || !comment.trim()) return;
 
-    await addMut.mutateAsync({
-      roadmapId,
-      itemId,
-      suggestedOrderIndex: parseInt(newOrder, 10),
-      reason,
-    });
-
-    setReason("");
-    setItemId("");
-    setNewOrder("");
+    try {
+      await addMut.mutateAsync({
+        roadmapId,
+        itemId: null, // General roadmap comment
+        suggestedOrderIndex: 0,
+        reason: comment,
+      });
+      setComment("");
+      setActiveTab('reviews');
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const handleApply = async (suggestionId: string) => {
@@ -48,126 +52,152 @@ const RoadmapSuggestionsScreen = ({ route }) => {
     await applyMut.mutateAsync({ suggestionId });
   };
 
-  return (
-    <ScreenLayout backgroundColor="#fff">
-      <SafeAreaView style={styles.container}>
-        <ScrollView>
-          {suggestions.map((sug) => (
-            <View key={sug.suggestionId} style={styles.suggestionCard}>
-              <Text style={styles.reason}>{sug.reason}</Text>
-              <View style={styles.footer}>
-                <Text style={styles.infoText}>
-                  {t("roadmap.suggestions.from")} {sug.user?.fullname || sug.user?.userId}
-                </Text>
-                {isOwner && (
-                  <TouchableOpacity
-                    onPress={() => handleApply(sug.suggestionId)}
-                    disabled={applyMut.isPending}
-                  >
-                    <Icon name="check-circle" size={28} color="#10B981" />
-                  </TouchableOpacity>
-                )}
-              </View>
+  const renderReviewItem = (item: any) => (
+    <View key={item.suggestionId} style={styles.reviewCard}>
+      <View style={styles.reviewHeader}>
+        <View style={styles.userInfo}>
+          {item.userAvatar ? (
+            <Image source={{ uri: item.userAvatar }} style={styles.avatar} />
+          ) : (
+            <View style={[styles.avatar, styles.placeholderAvatar]}>
+              <Text style={styles.placeholderText}>{item.fullname?.charAt(0) || 'U'}</Text>
             </View>
-          ))}
-        </ScrollView>
-
-        {!isOwner && (
-          <View style={styles.form}>
-            <TextInput
-              style={styles.input}
-              value={itemId}
-              onChangeText={setItemId}
-              placeholder={t("roadmap.suggestions.itemIdPlaceholder")}
-            />
-            <TextInput
-              style={styles.input}
-              value={newOrder}
-              onChangeText={setNewOrder}
-              placeholder={t("roadmap.suggestions.orderPlaceholder")}
-              keyboardType="numeric"
-            />
-            <TextInput
-              style={[styles.input, styles.multiline]}
-              value={reason}
-              onChangeText={setReason}
-              placeholder={t("roadmap.suggestions.reasonPlaceholder")}
-              multiline
-              numberOfLines={4}
-            />
-            <TouchableOpacity
-              style={[
-                styles.submitButton,
-                (!itemId || !newOrder || !reason || addMut.isPending) && styles.submitButtonDisabled,
-              ]}
-              onPress={handleAdd}
-              disabled={!itemId || !newOrder || !reason || addMut.isPending}
-            >
-              <Text style={styles.submitText}>
-                {t("roadmap.suggestions.submit")}
-              </Text>
-            </TouchableOpacity>
+          )}
+          <View>
+            <Text style={styles.fullname}>{item.fullname || 'Anonymous'}</Text>
+            <Text style={styles.date}>{dayjs(item.createdAt).format('MMM D, YYYY')}</Text>
+          </View>
+        </View>
+        {item.applied && (
+          <View style={styles.badge}>
+            <Icon name="check" size={12} color="#065F46" />
+            <Text style={styles.badgeText}>{t('roadmap.suggestionApplied')}</Text>
           </View>
         )}
-      </SafeAreaView>
+      </View>
+
+      <Text style={styles.reviewContent}>{item.reason}</Text>
+
+      {isOwner && !item.applied && (
+        <View style={styles.ownerActions}>
+          <TouchableOpacity
+            style={styles.applyBtn}
+            onPress={() => handleApply(item.suggestionId)}
+            disabled={applyMut.isPending}
+          >
+            <Text style={styles.applyBtnText}>{t('roadmap.acceptSuggestion')}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+    </View>
+  );
+
+  return (
+    <ScreenLayout style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color="#1F2937" />
+        </TouchableOpacity>
+        <Text style={styles.title}>{t('roadmap.reviewsAndSuggestions')}</Text>
+        <View style={{ width: 24 }} />
+      </View>
+
+      <View style={styles.tabs}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'reviews' && styles.activeTab]}
+          onPress={() => setActiveTab('reviews')}
+        >
+          <Text style={[styles.tabText, activeTab === 'reviews' && styles.activeTabText]}>
+            {t('roadmap.allReviews')} ({suggestions.length})
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'write' && styles.activeTab]}
+          onPress={() => setActiveTab('write')}
+        >
+          <Text style={[styles.tabText, activeTab === 'write' && styles.activeTabText]}>
+            {t('roadmap.writeReview')}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {activeTab === 'reviews' ? (
+        <ScrollView contentContainerStyle={styles.listContent}>
+          {isLoading ? (
+            <ActivityIndicator color="#3B82F6" />
+          ) : suggestions.length > 0 ? (
+            suggestions.map(renderReviewItem)
+          ) : (
+            <View style={styles.emptyState}>
+              <Icon name="chat-bubble-outline" size={48} color="#D1D5DB" />
+              <Text style={styles.emptyText}>{t('roadmap.noReviewsYet')}</Text>
+            </View>
+          )}
+        </ScrollView>
+      ) : (
+        <View style={styles.writeContainer}>
+          <Text style={styles.writeLabel}>{t('roadmap.shareThoughts')}</Text>
+          <TextInput
+            style={styles.input}
+            multiline
+            numberOfLines={6}
+            placeholder={t('roadmap.reviewPlaceholder')}
+            value={comment}
+            onChangeText={setComment}
+            textAlignVertical="top"
+          />
+          <TouchableOpacity
+            style={[styles.submitBtn, (!comment.trim() || addMut.isPending) && styles.disabledBtn]}
+            onPress={handleSubmit}
+            disabled={!comment.trim() || addMut.isPending}
+          >
+            {addMut.isPending ? <ActivityIndicator color="#fff" /> : <Text style={styles.submitBtnText}>{t('common.submit')}</Text>}
+          </TouchableOpacity>
+        </View>
+      )}
     </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
-  container: { flex: 1 },
-  suggestionCard: {
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e5e7eb",
-    backgroundColor: "#fff",
-  },
-  reason: {
-    fontSize: 15,
-    lineHeight: 22,
-    marginBottom: 8,
-  },
-  footer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-  },
-  infoText: {
-    fontSize: 13,
-    color: "#6b7280",
-  },
-  form: {
-    padding: 20,
-    gap: 12,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#d1d5db",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    backgroundColor: "#fff",
-  },
-  multiline: {
-    height: 100,
-    textAlignVertical: "top",
-  },
-  submitButton: {
-    backgroundColor: "#3b82f6",
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  submitButtonDisabled: {
-    backgroundColor: "#9ca3af",
-  },
-  submitText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "600",
-  },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", padding: 16, backgroundColor: "#fff", borderBottomWidth: 1, borderColor: "#E5E7EB" },
+  title: { fontSize: 18, fontWeight: "600", color: "#1F2937" },
+
+  tabs: { flexDirection: "row", padding: 16, gap: 12 },
+  tab: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: "#E5E7EB" },
+  activeTab: { backgroundColor: "#3B82F6" },
+  tabText: { color: "#4B5563", fontWeight: "500" },
+  activeTabText: { color: "#fff" },
+
+  listContent: { padding: 16 },
+  reviewCard: { backgroundColor: "#fff", borderRadius: 12, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: "#E5E7EB" },
+  reviewHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 },
+  userInfo: { flexDirection: "row", gap: 10 },
+  avatar: { width: 36, height: 36, borderRadius: 18 },
+  placeholderAvatar: { backgroundColor: "#DBEAFE", justifyContent: "center", alignItems: "center" },
+  placeholderText: { color: "#2563EB", fontWeight: "bold" },
+  fullname: { fontWeight: "600", color: "#1F2937", fontSize: 14 },
+  date: { color: "#9CA3AF", fontSize: 12 },
+
+  badge: { flexDirection: "row", alignItems: "center", backgroundColor: "#D1FAE5", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, gap: 4 },
+  badgeText: { fontSize: 10, color: "#065F46", fontWeight: "600" },
+
+  reviewContent: { fontSize: 14, color: "#374151", lineHeight: 22 },
+
+  ownerActions: { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderColor: "#F3F4F6" },
+  applyBtn: { alignSelf: "flex-start" },
+  applyBtnText: { color: "#3B82F6", fontWeight: "600", fontSize: 14 },
+
+  writeContainer: { padding: 20 },
+  writeLabel: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 12 },
+  input: { backgroundColor: "#fff", borderWidth: 1, borderColor: "#D1D5DB", borderRadius: 8, padding: 12, fontSize: 16, minHeight: 120, marginBottom: 20 },
+  submitBtn: { backgroundColor: "#3B82F6", padding: 16, borderRadius: 8, alignItems: "center" },
+  disabledBtn: { backgroundColor: "#93C5FD" },
+  submitBtnText: { color: "#fff", fontWeight: "bold", fontSize: 16 },
+
+  emptyState: { alignItems: "center", marginTop: 40 },
+  emptyText: { color: "#9CA3AF", marginTop: 10 }
 });
 
 export default RoadmapSuggestionsScreen;

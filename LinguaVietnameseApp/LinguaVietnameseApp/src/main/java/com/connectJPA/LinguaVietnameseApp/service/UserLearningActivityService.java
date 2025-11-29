@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.service;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.LearningActivityEventRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserLearningActivityRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.ActivityCompletionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.StudyHistoryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserLearningActivityResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
@@ -18,6 +20,6 @@ public interface UserLearningActivityService {
     void deleteUserLearningActivity(UUID id);
 
     StudyHistoryResponse getAggregatedStudyHistory(UUID userId, String period);
-
+    ActivityCompletionResponse logActivityEndAndCheckChallenges(LearningActivityEventRequest request);
     UserLearningActivityResponse logUserActivity(UUID userId, ActivityType activityType, UUID relatedEntityId, Integer durationInSeconds, int expReward, String details, SkillType skillTypes);
 }

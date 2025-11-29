@@ -51,14 +51,14 @@ export const useWallet = () => {
   // === QUERIES ===
   // ==========================================
 
-  // GET /api/v1/wallet/balance
+  // GET /api/v1/wallets/balance
   const useWalletBalance = (userId?: string) => {
     return useQuery({
       queryKey: walletKeys.balance(userId!),
       queryFn: async () => {
         if (!userId) throw new Error("User ID required");
         const { data } = await instance.get<AppApiResponse<WalletResponse>>(
-          `/api/v1/wallet/balance`,
+          `/api/v1/wallets/balance`,
           { params: { userId } }
         );
         return data.result!;
@@ -68,7 +68,7 @@ export const useWallet = () => {
     });
   };
 
-  // GET /api/v1/wallet/history
+  // GET /api/v1/wallets/history
   const useTransactionHistory = (userId?: string, page = 0, size = 10) => {
     const params = { page, size };
     return useQuery({
@@ -76,7 +76,7 @@ export const useWallet = () => {
       queryFn: async () => {
         if (!userId) throw new Error("User ID required");
         const { data } = await instance.get<AppApiResponse<PageResponse<TransactionResponse>>>(
-          `/api/v1/wallet/history`,
+          `/api/v1/wallets/history`,
           { params: { userId, page, size } }
         );
         const pageResult = mapPageResponse(data.result, page, size);
@@ -94,12 +94,12 @@ export const useWallet = () => {
   // === MUTATIONS (Transactions) ===
   // ==========================================
 
-  // POST /api/v1/wallet/deposit (Returns payment URL string)
+  // POST /api/v1/wallets/deposit (Returns payment URL string)
   const useDeposit = () => {
     return useMutation({
       mutationFn: async (payload: DepositRequest) => {
         const { data } = await instance.post<AppApiResponse<string>>(
-          "/api/v1/wallet/deposit",
+          "/api/v1/wallets/deposit",
           payload
         );
         return data.result!;
@@ -110,12 +110,12 @@ export const useWallet = () => {
     });
   };
 
-  // POST /api/v1/wallet/withdraw
+  // POST /api/v1/wallets/withdraw
   const useWithdraw = () => {
     return useMutation({
       mutationFn: async (payload: WithdrawRequest) => {
         const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
-          "/api/v1/wallet/withdraw",
+          "/api/v1/wallets/withdraw",
           payload
         );
         return data.result!;
@@ -128,12 +128,12 @@ export const useWallet = () => {
     });
   };
 
-  // POST /api/v1/wallet/transfer
+  // POST /api/v1/wallets/transfer
   const useTransfer = () => {
     return useMutation({
       mutationFn: async (payload: TransferRequest) => {
         const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
-          "/api/v1/wallet/transfer",
+          "/api/v1/wallets/transfer",
           payload
         );
         return data.result!;
@@ -148,12 +148,12 @@ export const useWallet = () => {
     });
   };
 
-  // POST /api/v1/wallet/refund
+  // POST /api/v1/wallets/refund
   const useRequestRefund = () => {
     return useMutation({
       mutationFn: async (payload: RefundRequest) => {
         const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
-          "/api/v1/wallet/refund",
+          "/api/v1/wallets/refund",
           payload
         );
         return data.result!;
@@ -165,12 +165,12 @@ export const useWallet = () => {
     });
   };
 
-  // POST /api/v1/wallet/webhook
+  // POST /api/v1/wallets/webhook
   const useHandleWebhook = () => {
     return useMutation({
       mutationFn: async (payload: WebhookRequest) => {
         const { data } = await instance.post<AppApiResponse<string>>(
-          "/api/v1/wallet/webhook",
+          "/api/v1/wallets/webhook",
           payload
         );
         return data.result!;
@@ -182,12 +182,12 @@ export const useWallet = () => {
   // === MUTATIONS (Admin) ===
   // ==========================================
 
-  // POST /api/v1/wallet/admin/approve-refund
+  // POST /api/v1/wallets/admin/approve-refund
   const useApproveRefund = () => {
     return useMutation({
       mutationFn: async (payload: ApproveRefundRequest) => {
         const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
-          "/api/v1/wallet/admin/approve-refund",
+          "/api/v1/wallets/admin/approve-refund",
           payload
         );
         return data.result!;
@@ -200,12 +200,12 @@ export const useWallet = () => {
     });
   };
 
-  // POST /api/v1/wallet/admin/reject-refund
+  // POST /api/v1/wallets/admin/reject-refund
   const useRejectRefund = () => {
     return useMutation({
       mutationFn: async ({ refundTransactionId, adminId, reason }: { refundTransactionId: string, adminId: string, reason: string }) => {
         const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
-          "/api/v1/wallet/admin/reject-refund",
+          "/api/v1/wallets/admin/reject-refund",
           null,
           { params: { refundTransactionId, adminId, reason } }
         );

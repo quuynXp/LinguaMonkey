@@ -35,7 +35,7 @@ spring:
   mail:
     host: ${MAIL_HOST}
     port: ${MAIL_PORT}
-    username: ${MAIL_USERNAME}
+    USERNAME: ${MAIL_USERNAME}
     password: ${MAIL_PASSWORD}
     properties:
       mail:
@@ -126,3 +126,10 @@ logging:
     org.hibernate.SQL: DEBUG
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+vip:
+  price:
+    monthly: 9.99
+    yearly: 99.99
+coin:
+  exchange:
+    rate: 1000

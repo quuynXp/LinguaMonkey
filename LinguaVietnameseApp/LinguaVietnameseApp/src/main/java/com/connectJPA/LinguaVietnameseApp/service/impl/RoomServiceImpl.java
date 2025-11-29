@@ -45,7 +45,7 @@ public class RoomServiceImpl implements RoomService {
     private final RoomMapper roomMapper;
 
 
-@Override
+    @Override
     @Transactional(readOnly = true)
     public Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pageable) {
         try {
@@ -58,6 +58,34 @@ public class RoomServiceImpl implements RoomService {
             });
         } catch (Exception e) {
             log.error("Error fetching joined rooms for user {}: {}", userId, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<RoomResponse> getAiChatHistory(UUID userId) {
+        try {
+            if (userId == null) {
+                throw new AppException(ErrorCode.INVALID_KEY);
+            }
+            // Fetch all active AI rooms created by this user
+            List<Room> rooms = roomRepository.findByCreatorIdAndPurposeAndIsDeletedFalse(userId, RoomPurpose.AI_CHAT);
+
+            // Sort in memory if repository method doesn't support OrderByUpdatedAtDesc directly
+            // to avoid 500 errors if the method signature is missing in Repo
+            return rooms.stream()
+                    .sorted(Comparator.comparing(Room::getUpdatedAt, Comparator.nullsLast(Comparator.reverseOrder())))
+                    .map(room -> {
+                        RoomResponse response = roomMapper.toResponse(room);
+                        // AI rooms typically have 1 member (the user) or 2 (user + AI bot placeholder)
+                        // We can set member count explicitly or query it.
+                        response.setMemberCount(1);
+                        return response;
+                    })
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            log.error("Error fetching AI chat history for user {}: {}", userId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -122,6 +150,7 @@ public class RoomServiceImpl implements RoomService {
                 .room(room)
                 .user(user1)
                 .role(RoomRole.ADMIN)
+                .isAdmin(true)
                 .joinedAt(OffsetDateTime.now())
                 .build();
         roomMemberRepository.save(member1);
@@ -131,6 +160,7 @@ public class RoomServiceImpl implements RoomService {
                 .room(room)
                 .user(user2)
                 .role(RoomRole.MEMBER)
+                .isAdmin(false)
                 .joinedAt(OffsetDateTime.now())
                 .build();
         roomMemberRepository.save(member2);
@@ -147,6 +177,12 @@ public class RoomServiceImpl implements RoomService {
 
         RoomPurpose aiPurpose = RoomPurpose.AI_CHAT;
         RoomType aiRoomType = RoomType.PRIVATE;
+
+        // For "Create New Session", we might want to ignore existing and force create.
+        // But based on current simple logic, we find existing.
+        // If the frontend specifically requested a new session, that logic should be in controller 
+        // calling a specific create method or we modify this signature.
+        // Currently preserving existing logic.
 
         Room room = roomRepository.findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(
                 userId, aiPurpose, aiRoomType
@@ -209,6 +245,7 @@ public class RoomServiceImpl implements RoomService {
                     .room(room)
                     .user(creator)
                     .role(RoomRole.ADMIN)
+                    .isAdmin(true)
                     .joinedAt(OffsetDateTime.now())
                     .build();
             roomMemberRepository.save(member);
@@ -271,6 +308,7 @@ public class RoomServiceImpl implements RoomService {
                 .room(room)
                 .user(user)
                 .role(RoomRole.MEMBER)
+                .isAdmin(false)
                 .joinedAt(OffsetDateTime.now())
                 .build();
         roomMemberRepository.save(member);
@@ -386,6 +424,7 @@ public class RoomServiceImpl implements RoomService {
                         .room(room)
                         .user(user)
                         .role(req.getRole() != null ? RoomRole.valueOf(req.getRole()) : RoomRole.MEMBER)
+                        .isAdmin(req.getRole() != null && RoomRole.valueOf(req.getRole()) == RoomRole.ADMIN)
                         .joinedAt(OffsetDateTime.now())
                         .build();
                 roomMemberRepository.save(member);
@@ -466,6 +505,7 @@ public class RoomServiceImpl implements RoomService {
                     .room(roomToJoin)
                     .user(user)
                     .role(RoomRole.MEMBER)
+                    .isAdmin(false)
                     .joinedAt(OffsetDateTime.now())
                     .build();
             roomMemberRepository.save(member);

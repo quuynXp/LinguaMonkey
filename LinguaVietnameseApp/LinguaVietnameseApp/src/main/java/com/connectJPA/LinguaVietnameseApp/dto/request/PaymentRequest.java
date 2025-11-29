@@ -27,6 +27,8 @@ public class PaymentRequest {
     @NotBlank(message = "Return URL is required")
     private String returnUrl;
 
+    private Integer coins;
+
     @NotBlank(message = "Currency is required")
     private String currency;
 

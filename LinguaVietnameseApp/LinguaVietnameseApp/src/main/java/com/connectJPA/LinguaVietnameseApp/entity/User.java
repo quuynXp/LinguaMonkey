@@ -24,7 +24,7 @@ public class User extends BaseEntity {
     private static final long ONLINE_THRESHOLD_MINUTES = 5;
     private static final int DEFAULT_MIN_LEARNING_DURATION_MINUTES = 15;
 
-    @org.springframework.data.annotation.Id
+    // @org.springframework.data.annotation.Id
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "user_id")
@@ -51,6 +51,9 @@ public class User extends BaseEntity {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
+    @Column(name = "allow_stranger_chat")
+    private boolean allowStrangerChat = true;
+
     @Column(name = "character3d_id")
     private UUID character3dId;
 
@@ -64,6 +67,9 @@ public class User extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "age_range")
     private AgeRange ageRange;
+
+    @Column(name = "day_of_birth")
+    private LocalDate dayOfBirth;
 
     @Convert(converter = ProficiencyLevelConverter.class)
     @Column(name = "proficiency")
@@ -106,8 +112,13 @@ public class User extends BaseEntity {
     @Column(name = "last_streak_check_date")
     private LocalDate lastStreakCheckDate;
 
+
+    @Column(name = "coins", nullable = false)
+    @Builder.Default
+    private int coins = 0;
+
     @Column(name = "gender")
-    private String gender;
+    private String gender = "any";
 
     @Column(name = "vip_expiration_date")
     private OffsetDateTime vipExpirationDate;

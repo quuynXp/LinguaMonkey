@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
@@ -18,46 +19,13 @@ import { gotoTab } from '../../utils/navigationRef';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import * as Enums from '../../types/enums';
-
-const getCountryCode = (countryEnum: Enums.Country) => {
-  const codeMap: Record<Enums.Country, string> = {
-    [Enums.Country.VIETNAM]: 'VN',
-    [Enums.Country.UNITED_STATES]: 'US',
-    [Enums.Country.JAPAN]: 'JP',
-    [Enums.Country.SOUTH_KOREA]: 'KR',
-    [Enums.Country.CHINA]: 'CN',
-    [Enums.Country.FRANCE]: 'FR',
-    [Enums.Country.GERMANY]: 'DE',
-    [Enums.Country.ITALY]: 'IT',
-    [Enums.Country.SPAIN]: 'ES',
-    [Enums.Country.INDIA]: 'IN',
-    [Enums.Country.TONGA]: 'TO',
-    [Enums.Country.ICELAND]: 'IS',
-    [Enums.Country.Tonga]: 'TO',
-    [Enums.Country.Korea]: 'KR',
-    [Enums.Country.Japan]: 'JP',
-    [Enums.Country.KOREA]: 'KR',
-  };
-  return codeMap[countryEnum] || null;
-};
-
-const ccToFlag = (code?: string | null) => {
-  if (!code) return '🏳️';
-  const cc = code.toUpperCase();
-  if (!/^[A-Z]{2}$/.test(cc)) return '🏳️';
-  const A = 127397;
-  return String.fromCodePoint(...[...cc].map(c => A + c.charCodeAt(0)));
-};
+import { getFlagEmoji } from '../../utils/flagUtils';
 
 const ENUM_OPTIONS = {
   country: Object.values(Enums.Country).map(v => ({
     value: v,
     label: v.replace(/_/g, ' '),
-    flag: ccToFlag(getCountryCode(v))
-  })),
-  ageRange: Object.values(Enums.AgeRange).map(v => ({
-    value: v,
-    label: v.replace('AGE_', '').replace('_', '-')
+    flag: getFlagEmoji(v)
   })),
   learningPace: Object.values(Enums.LearningPace).map(v => ({
     value: v,
@@ -67,9 +35,9 @@ const ENUM_OPTIONS = {
     value: v,
     label: v
   })),
-  level: Array.from({ length: 20 }, (_, i) => String(i + 1)).map(l => ({
-    value: l,
-    label: `Level ${l}`
+  gender: Object.values(Enums.Gender).map(v => ({
+    value: v,
+    label: v.charAt(0) + v.slice(1).toLowerCase()
   })),
 };
 
@@ -95,6 +63,65 @@ const OptionModal = ({ visible, onClose, options, onSelect, title, t }: any) => 
     </View>
   </Modal>
 );
+
+const DatePickerModal = ({ visible, onClose, onSelect, currentDate, t }: any) => {
+  const [day, setDay] = useState(currentDate ? currentDate.getDate() : 1);
+  const [month, setMonth] = useState(currentDate ? currentDate.getMonth() + 1 : 1);
+  const [year, setYear] = useState(currentDate ? currentDate.getFullYear() : 2000);
+
+  const days = Array.from({ length: 31 }, (_, i) => i + 1);
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  const years = Array.from({ length: 100 }, (_, i) => new Date().getFullYear() - i);
+
+  const handleConfirm = () => {
+    const validDate = new Date(year, month - 1, day);
+    if (validDate.getMonth() + 1 !== month) {
+      onSelect(new Date(year, month, 0));
+    } else {
+      onSelect(validDate);
+    }
+    onClose();
+  };
+
+  const PickerColumn = ({ data, selected, onSelectVal, suffix }: any) => (
+    <View style={styles.pickerColumn}>
+      <ScrollView showsVerticalScrollIndicator={false}>
+        {data.map((item: number) => (
+          <TouchableOpacity
+            key={item}
+            style={[styles.pickerItem, selected === item && styles.pickerItemSelected]}
+            onPress={() => onSelectVal(item)}
+          >
+            <Text style={[styles.pickerText, selected === item && styles.pickerTextSelected]}>
+              {item < 10 ? `0${item}` : item}{suffix}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    </View>
+  );
+
+  return (
+    <Modal visible={visible} animationType="fade" transparent>
+      <View style={styles.modalWrap}>
+        <View style={styles.modalCard}>
+          <Text style={styles.modalTitle}>{t('profile.selectDateOfBirth') ?? 'Select Date of Birth'}</Text>
+          <View style={{ flexDirection: 'row', height: 200, marginBottom: 20 }}>
+            <PickerColumn data={days} selected={day} onSelectVal={setDay} suffix="" />
+            <PickerColumn data={months} selected={month} onSelectVal={setMonth} suffix="/" />
+            <PickerColumn data={years} selected={year} onSelectVal={setYear} suffix="" />
+          </View>
+          <TouchableOpacity style={styles.saveBtn} onPress={handleConfirm}>
+            <Text style={styles.saveBtnText}>{t('common.confirm') ?? 'Confirm'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.modalClose} onPress={onClose}>
+            <Text style={styles.modalCloseText}>{t('common.close') ?? 'Close'}</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const ConfirmDeleteModal = ({ visible, onClose, onDelete, t, remainingDays }: any) => (
   <Modal visible={visible} animationType="fade" transparent>
@@ -123,21 +150,25 @@ const EditProfileScreen: React.FC = () => {
   const [local, setLocal] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<{ key?: keyof typeof ENUM_OPTIONS, visible: boolean }>({ visible: false });
+  const [dateModalVisible, setDateModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [isProcessingDelete, setIsProcessingDelete] = useState(false);
 
   useEffect(() => {
     if (user) {
       setLocal({
-        fullname: user.fullname ?? user.nickname ?? '',
+        fullname: user.fullname ?? '',
+        nickname: user.nickname ?? '',
         bio: user.bio ?? '',
         country: user.country ?? null,
-        email: user?.email ?? '', // Lấy email từ user object trong store
-        ageRange: user.ageRange ?? null,
+        email: user?.email ?? '',
+        dayOfBirth: user.dayOfBirth ? new Date(user.dayOfBirth) : null,
         learningPace: user.learningPace ?? null,
-        proficiency: user.proficiency ?? null, // Thêm trường Proficiency
-        level: user.level ? String(user.level) : null, // Thêm trường Level
+        proficiency: user.proficiency ?? null,
         phone: user.phone ?? '',
+        gender: user.gender ?? null,
+        vip: user.vip ?? false,
+        userId: user.userId,
       });
     }
   }, [user]);
@@ -150,6 +181,14 @@ const EditProfileScreen: React.FC = () => {
     setLocal((s: any) => ({ ...s, [modal.key!]: item.value }));
   };
 
+  const handleDateSelect = (date: Date) => {
+    setLocal((s: any) => ({ ...s, dayOfBirth: date }));
+  };
+
+  const handleLinkProvider = (provider: string) => {
+    Alert.alert(t('profile.linkAccount'), `Feature to link ${provider} is coming soon.`);
+  };
+
   const handleSave = async () => {
     if (!user?.userId || !local) return Alert.alert(t('errors.missingData') ?? 'Error', t('errors.userNotFound') ?? 'User data not loaded');
     setSaving(true);
@@ -157,17 +196,15 @@ const EditProfileScreen: React.FC = () => {
     try {
       const payload: any = {
         fullname: local.fullname,
+        nickname: local.nickname,
         bio: local.bio,
         phone: local.phone,
         country: local.country,
-        ageRange: local.ageRange,
         learningPace: local.learningPace,
-        proficiency: local.proficiency, // Thêm Proficiency
-        level: local.level ? Number(local.level) : user.level, // Thêm Level
+        proficiency: local.proficiency,
+        gender: local.gender,
+        dayOfBirth: local.dayOfBirth ? local.dayOfBirth.toISOString().split('T')[0] : null,
       };
-
-      // Loại bỏ email khỏi payload vì nó không được phép update qua PUT /users/{id} theo logic chung
-      // Nếu cần update email, cần API riêng có xác thực.
 
       await saveProfileToServer(user.userId, payload);
 
@@ -216,32 +253,56 @@ const EditProfileScreen: React.FC = () => {
 
   const getDisplayValue = (key: keyof typeof ENUM_OPTIONS, value: string | null) => {
     if (!value) return t('common.select') ?? 'Select';
-
     const translatedValue = t(`enums.${key}.${value}`, { defaultValue: value });
-
-    if (key === 'level') return `${t('profile.level') ?? 'Level'} ${value}`;
-
     return translatedValue;
   };
 
   if (!local) return <ActivityIndicator style={{ flex: 1 }} size="large" color="#4F46E5" />;
 
+  const isEmailAuth = user?.authProvider === 'EMAIL';
+  const isGoogleAuth = user?.authProvider === 'GOOGLE';
+  const isFacebookAuth = user?.authProvider === 'FACEBOOK';
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
-      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+
         <View style={styles.card}>
           <Text style={styles.title}>{t('profile.editProfile') ?? 'Edit profile'}</Text>
+
+          {/* User ID (Read-only) */}
+          <View style={styles.field}>
+            <Text style={styles.label}>User ID</Text>
+            <TextInput value={local.userId} style={[styles.input, styles.readOnlyInput]} editable={false} />
+          </View>
+
+          {/* VIP Status (Read-only) */}
+          <View style={styles.field}>
+            <Text style={styles.label}>VIP Status</Text>
+            <View style={[styles.input, styles.readOnlyInput, { flexDirection: 'row', justifyContent: 'space-between' }]}>
+              <Text style={{ color: local.vip ? '#D97706' : '#9CA3AF', fontWeight: 'bold' }}>
+                {local.vip ? 'ACTIVE VIP' : 'FREE ACCOUNT'}
+              </Text>
+              {local.vip && <Icon name="verified" size={20} color="#D97706" />}
+            </View>
+          </View>
 
           {/* Email (Read-only) */}
           <View style={styles.field}>
             <Text style={styles.label}>{t('profile.email') ?? 'Email'}</Text>
-            <TextInput value={local.email} style={[styles.input, styles.readOnlyInput]} />
+            <TextInput value={local.email} style={[styles.input, styles.readOnlyInput]} editable={false} />
           </View>
 
           {/* Full name */}
           <View style={styles.field}>
             <Text style={styles.label}>{t('profile.fullname') ?? 'Full name'}</Text>
             <TextInput value={local.fullname} onChangeText={(v) => setLocal((s: any) => ({ ...s, fullname: v }))} style={styles.input} />
+          </View>
+
+          {/* Nickname */}
+          <View style={styles.field}>
+            <Text style={styles.label}>{t('profile.nickname') ?? 'Nickname'}</Text>
+            <TextInput value={local.nickname} onChangeText={(v) => setLocal((s: any) => ({ ...s, nickname: v }))} style={styles.input} />
           </View>
 
           {/* Bio */}
@@ -256,23 +317,34 @@ const EditProfileScreen: React.FC = () => {
             <TextInput value={local.phone} keyboardType="phone-pad" onChangeText={(v) => setLocal((s: any) => ({ ...s, phone: v }))} style={styles.input} />
           </View>
 
+          {/* Date of Birth */}
+          <TouchableOpacity style={styles.fieldRow} onPress={() => setDateModalVisible(true)}>
+            <Text style={styles.label}>{t('profile.dayOfBirth') ?? 'Date of Birth'}</Text>
+            <View style={styles.pillRight}>
+              <Text style={styles.rightText}>
+                {local.dayOfBirth ? local.dayOfBirth.toLocaleDateString() : (t('common.select') ?? 'Select')}
+              </Text>
+              <Icon name="calendar-today" size={20} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+
+          {/* Gender */}
+          <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('gender')}>
+            <Text style={styles.label}>{t('profile.gender') ?? 'Gender'}</Text>
+            <View style={styles.pillRight}>
+              <Text style={styles.rightText}>{getDisplayValue('gender', local.gender)}</Text>
+              <Icon name="chevron-right" size={20} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+
           {/* Country */}
           <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('country')}>
             <Text style={styles.label}>{t('profile.country') ?? 'Country'}</Text>
             <View style={styles.pillRight}>
               <Text style={styles.flagStyle}>
-                {local.country ? ccToFlag(getCountryCode(local.country)) : '—'}
+                {getFlagEmoji(local.country)}
               </Text>
               <Text style={styles.rightText}>{getDisplayValue('country', local.country)}</Text>
-              <Icon name="chevron-right" size={20} color="#9CA3AF" />
-            </View>
-          </TouchableOpacity>
-
-          {/* Age Range */}
-          <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('ageRange')}>
-            <Text style={styles.label}>{t('profile.ageRange') ?? 'Age range'}</Text>
-            <View style={styles.pillRight}>
-              <Text style={styles.rightText}>{getDisplayValue('ageRange', local.ageRange)}</Text>
               <Icon name="chevron-right" size={20} color="#9CA3AF" />
             </View>
           </TouchableOpacity>
@@ -286,20 +358,11 @@ const EditProfileScreen: React.FC = () => {
             </View>
           </TouchableOpacity>
 
-          {/* Proficiency (New Field) */}
+          {/* Proficiency */}
           <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('proficiency')}>
             <Text style={styles.label}>{t('profile.proficiency') ?? 'Proficiency'}</Text>
             <View style={styles.pillRight}>
               <Text style={styles.rightText}>{getDisplayValue('proficiency', local.proficiency)}</Text>
-              <Icon name="chevron-right" size={20} color="#9CA3AF" />
-            </View>
-          </TouchableOpacity>
-
-          {/* Level (New Field - optional if calculated on backend) */}
-          <TouchableOpacity style={styles.fieldRow} onPress={() => showPicker('level')}>
-            <Text style={styles.label}>{t('profile.level') ?? 'Level'}</Text>
-            <View style={styles.pillRight}>
-              <Text style={styles.rightText}>{getDisplayValue('level', local.level)}</Text>
               <Icon name="chevron-right" size={20} color="#9CA3AF" />
             </View>
           </TouchableOpacity>
@@ -315,15 +378,47 @@ const EditProfileScreen: React.FC = () => {
         </View>
 
         <View style={styles.actionCard}>
+          <Text style={styles.title}>{t('profile.linkedAccounts') ?? 'Linked Accounts'}</Text>
+
+          <View style={styles.linkedRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="email" size={24} color={isEmailAuth ? "#4F46E5" : "#9CA3AF"} />
+              <Text style={[styles.linkedText, isEmailAuth && styles.linkedTextActive]}>Email</Text>
+            </View>
+            {isEmailAuth && <Text style={styles.connectedBadge}>{t('common.connected') ?? 'Connected'}</Text>}
+          </View>
+
+          <TouchableOpacity style={styles.linkedRow} onPress={() => !isGoogleAuth && handleLinkProvider("Google")} disabled={isGoogleAuth}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="language" size={24} color={isGoogleAuth ? "#DB4437" : "#9CA3AF"} />
+              <Text style={[styles.linkedText, isGoogleAuth && styles.linkedTextActive]}>Google</Text>
+            </View>
+            {isGoogleAuth
+              ? <Text style={styles.connectedBadge}>{t('common.connected') ?? 'Connected'}</Text>
+              : <Text style={styles.connectLink}>{t('common.connect') ?? 'Connect'}</Text>
+            }
+          </TouchableOpacity>
+
+          <TouchableOpacity style={[styles.linkedRow, { borderBottomWidth: 0 }]} onPress={() => !isFacebookAuth && handleLinkProvider("Facebook")} disabled={isFacebookAuth}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Icon name="facebook" size={24} color={isFacebookAuth ? "#4267B2" : "#9CA3AF"} />
+              <Text style={[styles.linkedText, isFacebookAuth && styles.linkedTextActive]}>Facebook</Text>
+            </View>
+            {isFacebookAuth
+              ? <Text style={styles.connectedBadge}>{t('common.connected') ?? 'Connected'}</Text>
+              : <Text style={styles.connectLink}>{t('common.connect') ?? 'Connect'}</Text>
+            }
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.actionCard}>
           <Text style={styles.title}>{t('profile.accountActions') ?? 'Account Actions'}</Text>
 
-          {/* Change Password */}
           <TouchableOpacity style={styles.actionRow} onPress={handleChangePassword}>
             <Text style={styles.actionText}>{t('profile.changePassword') ?? 'Change Password'}</Text>
             <Icon name="vpn-key" size={24} color="#374151" />
           </TouchableOpacity>
 
-          {/* Deactivate Account */}
           <TouchableOpacity
             style={[styles.actionRow, { borderBottomWidth: 0, marginTop: 10 }]}
             onPress={() => setDeleteModalVisible(true)}
@@ -336,7 +431,6 @@ const EditProfileScreen: React.FC = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Option modal */}
         <OptionModal
           visible={modal.visible}
           onClose={closePicker}
@@ -346,7 +440,14 @@ const EditProfileScreen: React.FC = () => {
           t={t}
         />
 
-        {/* Delete Confirmation Modal */}
+        <DatePickerModal
+          visible={dateModalVisible}
+          onClose={() => setDateModalVisible(false)}
+          onSelect={handleDateSelect}
+          currentDate={local.dayOfBirth}
+          t={t}
+        />
+
         <ConfirmDeleteModal
           visible={deleteModalVisible}
           onClose={() => setDeleteModalVisible(false)}
@@ -354,6 +455,8 @@ const EditProfileScreen: React.FC = () => {
           t={t}
           remainingDays={30}
         />
+
+        <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -362,14 +465,12 @@ const EditProfileScreen: React.FC = () => {
 export default EditProfileScreen;
 
 const styles = createScaledSheet({
-  // Global Styles
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  scrollContent: { padding: 20 },
-  card: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginBottom: 20 },
-  actionCard: { backgroundColor: '#fff', padding: 16, borderRadius: 12, marginTop: 0 },
+  scrollContent: { padding: 0 },
+  card: { backgroundColor: '#fff', padding: 16, marginBottom: 12 },
+  actionCard: { backgroundColor: '#fff', padding: 16, marginBottom: 12 },
   title: { fontSize: 18, fontWeight: '700', color: '#1F2937', marginBottom: 12 },
 
-  // Input/Field Styles
   field: { marginBottom: 12 },
   label: { fontSize: 13, color: '#6B7280', marginBottom: 6 },
   input: {
@@ -384,20 +485,31 @@ const styles = createScaledSheet({
   readOnlyInput: { backgroundColor: '#F3F4F6', color: '#9CA3AF' },
   bioInput: { height: 80, textAlignVertical: 'top' },
 
-  // Row Styles (Picker/Display)
   fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
+    paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6'
   },
   pillRight: { flexDirection: 'row', alignItems: 'center' },
-  rightText: { color: '#374151', marginRight: 8, fontSize: 14 },
+  rightText: { color: '#374151', marginRight: 8, fontSize: 15, fontWeight: '500' },
   flagStyle: { marginRight: 8, fontSize: 20 },
 
-  // Action Row Styles
+  linkedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6'
+  },
+  linkedText: { marginLeft: 10, fontSize: 16, color: '#9CA3AF', fontWeight: '500' },
+  linkedTextActive: { color: '#374151', fontWeight: '600' },
+  connectedBadge: { fontSize: 13, color: '#10B981', fontWeight: '600' },
+  connectLink: { fontSize: 14, color: '#4F46E5', fontWeight: '600' },
+
   actionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -408,23 +520,26 @@ const styles = createScaledSheet({
   },
   actionText: { color: '#374151', fontSize: 16, fontWeight: '500' },
 
-  // Button Group Styles
   buttonGroup: { marginTop: 18, flexDirection: 'row', gap: 8 },
   saveBtn: { flex: 1, backgroundColor: '#4F46E5', padding: 12, borderRadius: 8, alignItems: 'center' },
   saveBtnText: { color: '#fff', fontWeight: '600' },
   cancelBtn: { padding: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: '#D1D5DB', marginLeft: 8 },
   cancelBtnText: { color: '#374151', fontWeight: '600' },
 
-  // Modal Styles
   modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalCard: { backgroundColor: '#fff', padding: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '70%' },
-  modalTitle: { fontWeight: '700', fontSize: 18, color: '#1F2937', marginBottom: 12 },
+  modalCard: { backgroundColor: '#fff', padding: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '80%' },
+  modalTitle: { fontWeight: '700', fontSize: 18, color: '#1F2937', marginBottom: 12, textAlign: 'center' },
   optionRow: { paddingVertical: 12, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   optionText: { color: '#1F2937', fontSize: 16 },
   modalClose: { marginTop: 12, alignItems: 'center', paddingVertical: 8 },
   modalCloseText: { color: '#4F46E5', fontWeight: '600' },
 
-  // Confirmation Delete Modal Styles
+  pickerColumn: { flex: 1, alignItems: 'center' },
+  pickerItem: { paddingVertical: 10, paddingHorizontal: 20, alignItems: 'center' },
+  pickerItemSelected: { backgroundColor: '#EEF2FF', borderRadius: 8, width: '100%' },
+  pickerText: { fontSize: 16, color: '#9CA3AF' },
+  pickerTextSelected: { fontSize: 18, color: '#4F46E5', fontWeight: 'bold' },
+
   confirmModalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   confirmModalCard: { backgroundColor: '#fff', padding: 20, borderRadius: 12, width: '85%' },
   confirmModalTitle: { fontWeight: '700', fontSize: 18, color: '#EF4444', marginBottom: 10 },

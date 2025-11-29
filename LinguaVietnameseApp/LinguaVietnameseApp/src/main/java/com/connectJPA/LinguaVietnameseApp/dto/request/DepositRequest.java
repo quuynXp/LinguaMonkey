@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionProvider;
+import com.connectJPA.LinguaVietnameseApp.enums.TransactionType;
+
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.validation.constraints.Min;
@@ -28,6 +30,8 @@ public class DepositRequest {
 
     @NotNull
     private String currency;
+
+    private TransactionType type;
 
     @NotNull
     private String returnUrl;

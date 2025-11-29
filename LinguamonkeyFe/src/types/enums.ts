@@ -3,6 +3,8 @@
 export enum ActivityType {
     LESSON_START = "LESSON_START",
     LESSON_END = "LESSON_END",
+    DAILY_LOGIN = "DAILY_LOGIN",
+    QUIZ_ATTEMPT = "QUIZ_ATTEMPT",
     CHAT_START = "CHAT_START",
     FLASHCARD = "FLASHCARD",
     CHAT_END = "CHAT_END",
@@ -24,6 +26,17 @@ export enum ActivityType {
     LESSON_COMPLETION = "LESSON_COMPLETION"
 }
 
+
+export enum ChallengeType {
+    LESSON_COMPLETED = "LESSON_COMPLETED",
+    STREAK_MAINTAIN = "STREAK_MAINTAIN",
+    EXP_EARNED = "EXP_EARNED",
+    FRIEND_ADDED = "FRIEND_ADDED",
+    SPEAKING_PRACTICE = "SPEAKING_PRACTICE",
+    QUIZ_COMPLETED = "QUIZ_COMPLETED"
+}
+
+
 export enum AgeRange {
     AGE_13_17 = "AGE_13_17",
     AGE_18_24 = "AGE_18_24",
@@ -31,6 +44,12 @@ export enum AgeRange {
     AGE_35_44 = "AGE_35_44",
     AGE_45_54 = "AGE_45_54",
     AGE_55_PLUS = "AGE_55_PLUS"
+}
+
+export enum Gender {
+    male = 'male',
+    female = 'female',
+    any = 'any'
 }
 
 export enum AuthProvider {

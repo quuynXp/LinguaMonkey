@@ -16,6 +16,7 @@ public class CourseSummaryResponse {
     private String title;
     private UUID ownerId;
     private String ownerName;
+    private String thumbnailUrl;
     private double averageRating;
     private long reviewCount;
     private int star; // nếu cần hiển thị star integer

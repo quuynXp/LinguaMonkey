@@ -1,11 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import jakarta.validation.constraints.*;
-import lombok.Builder;
-import lombok.Getter;
 import lombok.*;
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class LanguageRequest {
     @NotBlank(message = "Language name is required")
     @Size(max = 50, message = "Language name must not exceed 50 characters")

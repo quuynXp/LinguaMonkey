@@ -9,11 +9,9 @@ import {
   Modal,
   Animated,
   Easing,
-  Platform,
-  StyleSheet
 } from 'react-native';
 import Video from 'react-native-video';
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import * as AudioRecorderPlayerModule from 'react-native-audio-recorder-player';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useBasicLessons } from '../../hooks/useBasicLessons';
@@ -33,42 +31,72 @@ interface Props {
 }
 
 const IPAScreen: React.FC<Props> = ({ navigation, route, languageCode: propLang, lessonType: propType }) => {
-  // Resolve props from direct pass or navigation params
   const languageCode = propLang || route?.params?.languageCode || 'en';
   const lessonType = propType || route?.params?.lessonType || 'IPA';
 
-  const { useBasicLessonsList } = useBasicLessons();
-  const { data: pageData, isLoading: loading, error } = useBasicLessonsList(languageCode, lessonType, 0, 100);
+  const { useBasicLessonsList, useEnrichBasicLesson } = useBasicLessons();
+  const { data: pageData, isLoading: loadingList, error } = useBasicLessonsList(languageCode, lessonType, 0, 100);
+  const enrichMutation = useEnrichBasicLesson();
 
-  const items = (pageData?.data || []) as BasicLessonResponse[];
+  // FIX: Changed pageData?.data to pageData?.content
+  // Spring Data 'Page' object uses 'content' for the list of items
+  const items = (pageData?.content || []) as BasicLessonResponse[];
 
   const [selected, setSelected] = useState<BasicLessonResponse | null>(null);
+  const [enriching, setEnriching] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
-
-  // FIX: Xử lý lỗi TypeError: constructor is not callable bằng cách kiểm tra thuộc tính .default
-  const PlayerConstructor = (AudioRecorderPlayer as any)?.default || AudioRecorderPlayer;
-  const audioPlayer = useRef(new PlayerConstructor()).current;
+  const audioPlayerRef = useRef<any>(null);
 
   useEffect(() => {
-    return () => {
+    let isMounted = true;
+    const initPlayer = async () => {
       try {
-        audioPlayer.stopPlayer();
-        audioPlayer.removePlayBackListener();
-      } catch (e) {
+        const Module: any = AudioRecorderPlayerModule;
+        let PlayerClass = Module.default || Module;
+        if (typeof PlayerClass !== 'function' && Module.AudioRecorderPlayer) {
+          PlayerClass = Module.AudioRecorderPlayer;
+        }
+
+        if (typeof PlayerClass === 'function') {
+          if (isMounted && !audioPlayerRef.current) {
+            audioPlayerRef.current = new PlayerClass();
+          }
+        } else {
+          audioPlayerRef.current = {
+            startPlayer: async () => { },
+            stopPlayer: async () => { },
+            addPlayBackListener: () => { },
+            removePlayBackListener: () => { },
+          };
+        }
+      } catch (err) {
+        console.error('CRITICAL ERROR initializing audio player:', err);
       }
     };
-  }, [audioPlayer]);
+
+    initPlayer();
+
+    return () => {
+      isMounted = false;
+      try {
+        if (audioPlayerRef.current && typeof audioPlayerRef.current.stopPlayer === 'function') {
+          audioPlayerRef.current.stopPlayer();
+          audioPlayerRef.current.removePlayBackListener();
+        }
+      } catch (e) { }
+    };
+  }, []);
 
   const playSound = async (url?: string) => {
-    if (!url) return;
+    if (!url || !audioPlayerRef.current) return;
     try {
-      await audioPlayer.stopPlayer();
-      audioPlayer.removePlayBackListener();
-      await audioPlayer.startPlayer(url);
-      audioPlayer.addPlayBackListener((e: any) => {
+      await audioPlayerRef.current.stopPlayer();
+      audioPlayerRef.current.removePlayBackListener();
+      await audioPlayerRef.current.startPlayer(url);
+      audioPlayerRef.current.addPlayBackListener((e: any) => {
         if (e.currentPosition === e.duration && e.duration > 0) {
-          audioPlayer.stopPlayer();
-          audioPlayer.removePlayBackListener();
+          audioPlayerRef.current.stopPlayer();
+          audioPlayerRef.current.removePlayBackListener();
         }
       });
     } catch (err) {
@@ -76,14 +104,33 @@ const IPAScreen: React.FC<Props> = ({ navigation, route, languageCode: propLang,
     }
   };
 
+  const handleItemPress = async (item: BasicLessonResponse) => {
+    setSelected(item);
+    fadeIn();
+    setEnriching(true);
+
+    try {
+      const enrichedData = await enrichMutation.mutateAsync(item.id);
+      setSelected(enrichedData);
+      if (enrichedData.pronunciationAudioUrl) {
+        setTimeout(() => playSound(enrichedData.pronunciationAudioUrl), 500);
+      }
+    } catch (err) {
+      console.error("Failed to enrich lesson data", err);
+    } finally {
+      setEnriching(false);
+    }
+  };
+
   const handleCloseModal = async () => {
     try {
-      await audioPlayer.stopPlayer();
-      audioPlayer.removePlayBackListener();
-    } catch (e) {
-      console.log('Error stopping audio player on close:', e);
-    }
+      if (audioPlayerRef.current) {
+        await audioPlayerRef.current.stopPlayer();
+        audioPlayerRef.current.removePlayBackListener();
+      }
+    } catch (e) { }
     setSelected(null);
+    setEnriching(false);
   };
 
   const fadeIn = () => {
@@ -100,6 +147,7 @@ const IPAScreen: React.FC<Props> = ({ navigation, route, languageCode: propLang,
     switch (languageCode) {
       case 'zh': return 'Chinese Characters';
       case 'vi': return 'Vietnamese Alphabet';
+      case 'ja': return 'Japanese Kana';
       default: return 'English Pronunciation';
     }
   };
@@ -118,7 +166,7 @@ const IPAScreen: React.FC<Props> = ({ navigation, route, languageCode: propLang,
         </Text>
       </LinearGradient>
 
-      {loading && (
+      {loadingList && (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#4ECDC4" />
         </View>
@@ -130,17 +178,14 @@ const IPAScreen: React.FC<Props> = ({ navigation, route, languageCode: propLang,
         </View>
       )}
 
-      {!loading && !error && (
+      {!loadingList && !error && (
         <ScrollView contentContainerStyle={styles.gridContainer}>
           {items.map((item, index) => (
             <TouchableOpacity
               key={item.id || index}
               activeOpacity={0.85}
               style={styles.card}
-              onPress={() => {
-                setSelected(item);
-                fadeIn();
-              }}
+              onPress={() => handleItemPress(item)}
             >
               <Text style={styles.cardSymbol}>{item.symbol}</Text>
               {item.romanization && (
@@ -159,56 +204,68 @@ const IPAScreen: React.FC<Props> = ({ navigation, route, languageCode: propLang,
               { opacity: fadeAnim }
             ]}
           >
-            <ScrollView contentContainerStyle={styles.modalScrollContent}>
-              <Text style={styles.modalSymbol}>{selected?.symbol}</Text>
+            {enriching ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#4ECDC4" />
+                <Text style={styles.loadingText}>Generating AI Content...</Text>
+              </View>
+            ) : (
+              <ScrollView contentContainerStyle={styles.modalScrollContent}>
+                <Text style={styles.modalSymbol}>{selected?.symbol}</Text>
 
-              {selected?.romanization && (
-                <Text style={styles.modalRomanization}>{selected.romanization}</Text>
-              )}
+                {selected?.romanization && (
+                  <Text style={styles.modalRomanization}>{selected.romanization}</Text>
+                )}
 
-              {selected?.meaning && (
-                <Text style={styles.modalMeaning}>{selected.meaning}</Text>
-              )}
+                {selected?.meaning && (
+                  <Text style={styles.modalMeaning}>{selected.meaning}</Text>
+                )}
 
-              {selected?.imageUrl && (
-                <Image
-                  source={{ uri: selected.imageUrl }}
-                  style={styles.modalImage}
-                  resizeMode="contain"
-                />
-              )}
-
-              {selected?.videoUrl && (
-                <View style={styles.videoContainer}>
-                  <Video
-                    source={{ uri: selected.videoUrl }}
-                    style={styles.video}
-                    resizeMode="cover"
-                    controls={true}
-                    paused={false}
+                {selected?.imageUrl && (
+                  <Image
+                    source={{ uri: selected.imageUrl }}
+                    style={styles.modalImage}
+                    resizeMode="contain"
                   />
-                </View>
-              )}
+                )}
 
-              <TouchableOpacity
-                onPress={() => playSound(selected?.pronunciationAudioUrl)}
-                style={styles.listenButton}
-              >
-                <Icon name="volume-up" size={24} color="#fff" />
-                <Text style={styles.listenButtonText}>Listen</Text>
-              </TouchableOpacity>
+                {selected?.videoUrl && (
+                  <View style={styles.videoContainer}>
+                    <Video
+                      source={{ uri: selected.videoUrl }}
+                      style={styles.video}
+                      resizeMode="cover"
+                      controls={true}
+                      paused={false}
+                    />
+                  </View>
+                )}
 
-              {selected?.exampleSentence && (
-                <View style={styles.exampleContainer}>
-                  <Text style={styles.exampleSentence}>{selected.exampleSentence}</Text>
-                  <Text style={styles.exampleTranslation}>{selected.exampleTranslation}</Text>
-                </View>
-              )}
+                <TouchableOpacity
+                  onPress={() => playSound(selected?.pronunciationAudioUrl)}
+                  style={[
+                    styles.listenButton,
+                    !selected?.pronunciationAudioUrl && styles.disabledButton
+                  ]}
+                  disabled={!selected?.pronunciationAudioUrl}
+                >
+                  <Icon name="volume-up" size={24} color="#fff" />
+                  <Text style={styles.listenButtonText}>Listen</Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity style={styles.closeButton} onPress={handleCloseModal}>
-                <Text style={styles.closeButtonText}>Close</Text>
-              </TouchableOpacity>
-            </ScrollView>
+                {selected?.exampleSentence && (
+                  <View style={styles.exampleContainer}>
+                    <Text style={styles.exampleLabel}>Example:</Text>
+                    <Text style={styles.exampleSentence}>{selected.exampleSentence}</Text>
+                    <Text style={styles.exampleTranslation}>{selected.exampleTranslation}</Text>
+                  </View>
+                )}
+
+                <TouchableOpacity style={styles.closeButton} onPress={handleCloseModal}>
+                  <Text style={styles.closeButtonText}>Close</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            )}
           </Animated.View>
         </View>
       </Modal>
@@ -225,14 +282,11 @@ const styles = createScaledSheet({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
+    paddingTop: 50,
     paddingBottom: 20,
     borderBottomLeftRadius: 20,
     borderBottomRightRadius: 20,
     elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
   },
   backButton: {
     padding: 4,
@@ -247,6 +301,17 @@ const styles = createScaledSheet({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  loadingContainer: {
+    padding: 40,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
   },
   errorText: {
     color: '#EF4444',
@@ -351,6 +416,9 @@ const styles = createScaledSheet({
     marginTop: 12,
     elevation: 2,
   },
+  disabledButton: {
+    backgroundColor: '#D1D5DB',
+  },
   listenButtonText: {
     color: '#fff',
     marginLeft: 8,
@@ -364,6 +432,13 @@ const styles = createScaledSheet({
     borderRadius: 12,
     width: '100%',
     alignItems: 'center',
+  },
+  exampleLabel: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    marginBottom: 4,
+    fontWeight: '700',
   },
   exampleSentence: {
     fontWeight: 'bold',

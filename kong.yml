@@ -90,6 +90,9 @@ services:
           - /api/v1/user-learning-activities
           - /api/v1/video-calls
           - /api/v1/wallets
+          - /api/v1/wallets/
+          - /api/v1/files/
+          - /api/v1/files/user/
       - name: java-stomp
         strip_path: false
         protocols: [http, https]
@@ -106,6 +109,9 @@ services:
           limit_by: consumer
           second: 20
           minute: 500
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 100
 
   # ==============================================================================
   # 3. PYTHON SERVICE

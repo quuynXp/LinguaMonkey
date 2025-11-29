@@ -2,29 +2,37 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionProvider;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.TransactionType;
+
 import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.util.UUID;
 
-@Getter
+@Data // Bao gồm Getter, Setter, ToString, v.v.
 @Builder
+@NoArgsConstructor // Cần thiết cho Jackson deserialization (Fix lỗi 500)
+@AllArgsConstructor // Cần thiết cho Builder pattern hoạt động cùng NoArgsConstructor
 public class TransactionRequest {
     @NotNull(message = "User ID is required")
     private UUID userId;
 
-    @NotNull(message = "Amount is required")
-    @DecimalMin(value = "0.0", inclusive = false, message = "Amount must be greater than 0")
+    @DecimalMin(value = "0.0")
     private BigDecimal amount;
 
     @NotNull(message = "Provider is required")
     private TransactionProvider provider;
 
+    private Integer coins;
+
+    private TransactionType type;
+    
     private String description;
+    private String currency;
 
     private TransactionStatus status;
 }

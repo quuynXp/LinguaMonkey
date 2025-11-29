@@ -1,8 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Animated, Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, Modal, TextInput, RefreshControl, Platform, KeyboardAvoidingView, SafeAreaView } from "react-native";
+import { Animated, Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, RefreshControl } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useUserStore } from "../../stores/UserStore";
 import { useRoadmap } from "../../hooks/useRoadmap";
 import { useDailyChallenges, useAssignChallenge, useCompleteChallenge } from "../../hooks/useDailyChallenge";
@@ -12,24 +11,17 @@ import { gotoTab } from "../../utils/navigationRef";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { getGreetingKey } from "../../utils/motivationHelper";
 import type { UserDailyChallengeResponse } from "../../types/dto";
-import { Picker } from "@react-native-picker/picker";
-import { ProficiencyLevel, GoalType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import HomeCarousel from "../../components/home/HomeCarousel";
 
-const SUPPORTED_LANGUAGES = [
-  { code: 'en', label: 'English' },
-  { code: 'vi', label: 'Vietnamese' },
-  { code: 'ja', label: 'Japanese' },
-  { code: 'ko', label: 'Korean' },
-  { code: 'zh', label: 'Chinese' },
-];
+// Đã xoá các import liên quan đến Form tạo Roadmap (DateTimePicker, Picker, Modal,...)
 
 const HomeScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
+  // --- LEADERBOARD LOGIC (GIỮ NGUYÊN) ---
   const { useTopThree } = useLeaderboards();
   const { data: rawTopThreeData, isLoading: topThreeLoading } = useTopThree(null);
   const rawTopThreeUsers = rawTopThreeData || [];
@@ -41,7 +33,7 @@ const HomeScreen = ({ navigation }: any) => {
     topThreeUsers = rawTopThreeUsers.slice(0, 3);
   }
 
-  const { useUserRoadmaps, useDefaultRoadmaps, useAssignDefaultRoadmap, useGenerateRoadmap } = useRoadmap();
+  // --- USER & CHALLENGE LOGIC (GIỮ NGUYÊN) ---
   const {
     name = "",
     streak = 0,
@@ -51,35 +43,22 @@ const HomeScreen = ({ navigation }: any) => {
 
   const { data: dailyChallengesData, isLoading: dailyLoading, refetch: refetchDaily } = useDailyChallenges(user?.userId);
   const dailyChallenges = dailyChallengesData || [];
-
-  const currentChallenge = dailyChallenges.find((c: UserDailyChallengeResponse) => !c.isCompleted);
+  const currentChallenge = dailyChallenges.find((c: UserDailyChallengeResponse) => !c.completed);
 
   const assignChallengeMutation = useAssignChallenge();
   const completeMutation = useCompleteChallenge();
 
+  // --- ROADMAP LOGIC (ĐÃ SỬA: Chỉ lấy data, không xử lý tạo) ---
+  const { useUserRoadmaps } = useRoadmap();
   const mainLanguage = languages[0] || "en";
   const { data: roadmapData, isLoading: roadmapLoading } = useUserRoadmaps(mainLanguage);
+
+  // Lấy roadmap đầu tiên đang active
   const roadmap = (roadmapData && roadmapData.length > 0) ? roadmapData[0] : null;
 
-  const { data: defaultRoadmapsData, isLoading: defaultLoading } = useDefaultRoadmaps(mainLanguage);
-  const defaultRoadmaps = defaultRoadmapsData || [];
-
-  const assignDefaultRoadmapMutation = useAssignDefaultRoadmap();
-  const generateRoadmapMutation = useGenerateRoadmap();
-
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const [formState, setFormState] = useState({
-    languageCode: mainLanguage,
-    targetProficiency: ProficiencyLevel.B2,
-    targetDate: new Date(),
-    showDatePicker: false,
-    focusAreas: [] as GoalType[],
-    studyTime: '30',
-    prompt: ''
-  });
-
+  // --- ANIMATIONS & EFFECTS ---
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
     const bounceAnimation = () => {
@@ -102,69 +81,16 @@ const HomeScreen = ({ navigation }: any) => {
     setRefreshing(false);
   }, [refetchDaily]);
 
+  // --- HANDLERS ---
   const handleLeaderboardPress = () => gotoTab("EnhancedLeaderboardScreen");
-  const handleRoadmapPress = () => gotoTab('RoadmapStack', 'RoadmapScreen');
-  const handlePublicRoadmapsPress = () => gotoTab('RoadmapStack', "PublicRoadmapsScreen");
+
+  // Đổi logic: Bấm vào Roadmap sẽ nhảy sang RoadmapScreen (nơi quản lý chi tiết)
+  const handleRoadmapPress = () => navigation.navigate('RoadmapStack', { screen: 'RoadmapScreen' });
+
+  // Nút Browse nếu chưa có roadmap
+  const handleFindRoadmap = () => navigation.navigate('RoadmapStack', { screen: 'PublicRoadmapsScreen' });
+
   const greetingKey = getGreetingKey();
-
-  const handleAssignDefaultRoadmap = async (roadmapId: string) => {
-    try {
-      await assignDefaultRoadmapMutation.mutate({ roadmapId });
-    } catch (error) {
-      console.error("Failed to assign roadmap", error);
-    }
-  };
-
-  const toggleFocusArea = (area: GoalType) => {
-    setFormState(prev => {
-      const exists = prev.focusAreas.includes(area);
-      return {
-        ...prev,
-        focusAreas: exists
-          ? prev.focusAreas.filter(a => a !== area)
-          : [...prev.focusAreas, area]
-      };
-    });
-  };
-
-  const handleDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || formState.targetDate;
-    setFormState(prev => ({
-      ...prev,
-      showDatePicker: Platform.OS === 'ios',
-      targetDate: currentDate
-    }));
-  };
-
-  const handleGenerateRoadmap = async () => {
-    if (!user?.userId) return;
-
-    if (!formState.studyTime || isNaN(Number(formState.studyTime))) {
-      alert(t("Please enter a valid study time"));
-      return;
-    }
-
-    if (formState.focusAreas.length === 0) {
-      alert(t("Please select at least one focus area"));
-      return;
-    }
-
-    try {
-      await generateRoadmapMutation.mutate({
-        userId: user.userId,
-        languageCode: formState.languageCode,
-        targetProficiency: formState.targetProficiency,
-        targetDate: formState.targetDate.toISOString().split('T')[0],
-        focusAreas: formState.focusAreas.map(area => area.toString()),
-        studyTimePerDay: parseInt(formState.studyTime, 10),
-        isCustom: true,
-        additionalPrompt: formState.prompt,
-      });
-      setShowGenerateDialog(false);
-    } catch (error) {
-      console.error("Failed to generate roadmap", error);
-    }
-  };
 
   const handleAssignChallenge = async () => {
     if (!user?.userId) return;
@@ -192,11 +118,9 @@ const HomeScreen = ({ navigation }: any) => {
     gotoTab("ChatStack", 'ChatAIScreen');
   };
 
-  const proficiencyLevels = Object.values(ProficiencyLevel);
-  const goalTypes = Object.values(GoalType);
-
+  // --- RENDER ---
   return (
-    <ScreenLayout backgroundColor="#F8FAFC">
+    <ScreenLayout backgroundColor="#F8FAFC" swipeToTab="Chat">
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
@@ -204,10 +128,11 @@ const HomeScreen = ({ navigation }: any) => {
       >
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
 
+          {/* HEADER (GIỮ NGUYÊN) */}
           <View style={styles.header}>
             <View style={styles.headerContent}>
               <Text style={styles.greeting}>{t(greetingKey)} 👋</Text>
-              <Text style={styles.userName}>{name || t("home.student")}</Text>
+              <Text style={styles.fullname}>{name || t("home.student")}</Text>
             </View>
             <TouchableOpacity style={styles.streakContainer} onPress={() => gotoTab('DailyWelcomeScreen')}>
               <Icon name="local-fire-department" size={20} color="#FF6B35" />
@@ -215,6 +140,7 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
+          {/* LEADERBOARD PODIUM (GIỮ NGUYÊN) */}
           {topThreeLoading ? (
             <ActivityIndicator style={{ margin: 20 }} color="#3B82F6" />
           ) : Array.isArray(topThreeUsers) && topThreeUsers.length > 0 ? (
@@ -252,7 +178,7 @@ const HomeScreen = ({ navigation }: any) => {
                         <Text style={styles.medalText}>{rank}</Text>
                       </View>
                       <Image source={{ uri: u.avatarUrl || 'https://via.placeholder.com/50' }} style={styles.podiumAvatar} />
-                      <Text style={styles.podiumName} numberOfLines={1}>{u.fullname || u.username || "User"}</Text>
+                      <Text style={styles.podiumName} numberOfLines={1}>{u.fullname || u.fullname || "User"}</Text>
                       <View style={styles.levelBadge}>
                         <Icon name="star" size={12} color="#FFFFFF" />
                         <Text style={styles.levelText}>{u.level || 1}</Text>
@@ -266,7 +192,6 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           ) : null}
 
-          {/* New Carousel Feature */}
           <HomeCarousel navigation={navigation} />
 
           <Animated.View style={[styles.characterSection, { transform: [{ scale: bounceAnim }] }]}>
@@ -295,7 +220,7 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
           </View>
 
-          {currentChallenge && !currentChallenge.isCompleted ? (
+          {currentChallenge && !currentChallenge.completed ? (
             <TouchableOpacity
               style={styles.section}
               onPress={() => handleCompleteChallenge(currentChallenge.challengeId)}
@@ -332,6 +257,7 @@ const HomeScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           ) : null}
 
+          {/* --- ROADMAP SECTION ĐÃ SỬA --- */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
@@ -345,54 +271,43 @@ const HomeScreen = ({ navigation }: any) => {
             {roadmapLoading ? (
               <ActivityIndicator size="large" color="#3B82F6" />
             ) : roadmap ? (
-              <TouchableOpacity style={styles.roadmapCard} onPress={handleRoadmapPress}>
+              // Hiển thị Card Roadmap hiện tại
+              <TouchableOpacity style={styles.roadmapCard} onPress={handleRoadmapPress} activeOpacity={0.9}>
                 <View style={styles.roadmapInfo}>
                   <Text style={styles.roadmapTitle}>{roadmap.title}</Text>
                   <Text style={styles.roadmapSubtitle}>
-                    {t("home.roadmap.completed", { count: roadmap.completedItems })}
+                    {t("home.roadmap.completed", { count: roadmap.completedItems })} / {roadmap.totalItems} {t('common.items')}
                   </Text>
+                  {/* Progress Bar nhỏ trong card thay vì circular để tối ưu không gian */}
+                  <View style={styles.miniProgressBarBg}>
+                    <View
+                      style={[
+                        styles.miniProgressBarFill,
+                        { width: `${roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0}%` }
+                      ]}
+                    />
+                  </View>
                 </View>
-                <View style={styles.circularProgress}>
-                  <Text style={styles.percentageText}>
-                    {Math.round(roadmap.totalItems > 0 ? (roadmap.completedItems / roadmap.totalItems) * 100 : 0)}%
-                  </Text>
+                <View style={styles.roadmapIconContainer}>
+                  <Icon name="map" size={28} color="#FFF" />
                 </View>
               </TouchableOpacity>
             ) : (
-              <View style={styles.emptyStateContainer}>
-                {defaultLoading ? (
-                  <ActivityIndicator color="#3B82F6" />
-                ) : (
-                  <>
-                    <Text style={styles.emptyStateText}>{t("home.roadmap.noPersonal")}</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.defaultRoadmapScroll}>
-                      {defaultRoadmaps?.map((def: any) => (
-                        <TouchableOpacity
-                          key={def.id}
-                          onPress={() => handleAssignDefaultRoadmap(def.id)}
-                          style={styles.defaultCard}
-                        >
-                          <Text style={styles.defaultCardTitle}>{def.title}</Text>
-                          <Text style={styles.defaultCardLang}>{def.language}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                    <View style={styles.actionButtons}>
-                      <TouchableOpacity style={styles.primaryButton} onPress={() => setShowGenerateDialog(true)}>
-                        <Icon name="add" size={20} color="#fff" />
-                        <Text style={styles.primaryButtonText}>{t("home.roadmap.createCustom")}</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.secondaryButton} onPress={handlePublicRoadmapsPress}>
-                        <Icon name="public" size={20} color="#4ECDC4" />
-                        <Text style={styles.secondaryButtonText}>{t("home.roadmap.browsePublic")}</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </>
-                )}
-              </View>
+              // Hiển thị Empty State mời gọi sang RoadmapScreen
+              <TouchableOpacity style={styles.emptyStateContainer} onPress={handleFindRoadmap}>
+                <View style={styles.emptyIconCircle}>
+                  <Icon name="add-road" size={24} color="#9CA3AF" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.emptyStateTitle}>{t("home.roadmap.noPersonal")}</Text>
+                  <Text style={styles.emptyStateSub}>{t("home.roadmap.browsePublic")}</Text>
+                </View>
+                <Icon name="arrow-forward-ios" size={16} color="#9CA3AF" />
+              </TouchableOpacity>
             )}
           </View>
 
+          {/* CHALLENGES LIST (GIỮ NGUYÊN) */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("home.challenge.title")}</Text>
             {dailyLoading ? (
@@ -401,27 +316,27 @@ const HomeScreen = ({ navigation }: any) => {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.challengeList}>
                 {dailyChallenges?.map((item: UserDailyChallengeResponse) => {
                   const progressPercentage = calculateChallengeProgress(item) * 100;
-                  const showProgressBar = item.progress > 0 && !item.isCompleted;
+                  const showProgressBar = item.progress > 0 && !item.completed;
 
                   return (
                     <TouchableOpacity
                       key={item.challengeId}
-                      style={[styles.challengeCard, item.isCompleted && styles.challengeCompleted]}
-                      onPress={() => !item.isCompleted && handleCompleteChallenge(item.challengeId)}
-                      disabled={item.isCompleted}
-                      activeOpacity={item.isCompleted ? 1 : 0.7}
+                      style={[styles.challengeCard, item.completed && styles.challengeCompleted]}
+                      onPress={() => !item.completed && handleCompleteChallenge(item.challengeId)}
+                      disabled={item.completed}
+                      activeOpacity={item.completed ? 1 : 0.7}
                     >
-                      <View style={[styles.challengeIcon, { backgroundColor: item.isCompleted ? 'rgba(255,255,255,0.2)' : '#FFF7ED' }]}>
+                      <View style={[styles.challengeIcon, { backgroundColor: item.completed ? 'rgba(255,255,255,0.2)' : '#FFF7ED' }]}>
                         <Icon
-                          name={item.isCompleted ? "check-circle" : "sports-esports"}
+                          name={item.completed ? "check-circle" : "sports-esports"}
                           size={24}
-                          color={item.isCompleted ? "#fff" : "#F59E0B"}
+                          color={item.completed ? "#fff" : "#F59E0B"}
                         />
                       </View>
-                      <Text style={[styles.challengeTitleText, item.isCompleted && { color: '#fff' }]} numberOfLines={1}>
+                      <Text style={[styles.challengeTitleText, item.completed && { color: '#fff' }]} numberOfLines={1}>
                         {item.title}
                       </Text>
-                      <Text style={[styles.challengeDescriptionText, item.isCompleted && { color: 'rgba(255,255,255,0.8)' }]} numberOfLines={2}>
+                      <Text style={[styles.challengeDescriptionText, item.completed && { color: 'rgba(255,255,255,0.8)' }]} numberOfLines={2}>
                         {item.description || t("home.challenge.defaultDescShort")}
                       </Text>
                       {showProgressBar && (
@@ -429,27 +344,27 @@ const HomeScreen = ({ navigation }: any) => {
                           <View style={styles.progressBarContainer}>
                             <View style={[styles.progressBarFill, { width: `${progressPercentage}%`, backgroundColor: '#F59E0B' }]} />
                           </View>
-                          <Text style={[styles.progressValue, { fontSize: 10, textAlign: 'right', color: item.isCompleted ? '#fff' : '#6B7280', fontWeight: 'bold' }]}>
+                          <Text style={[styles.progressValue, { fontSize: 10, textAlign: 'right', color: item.completed ? '#fff' : '#6B7280', fontWeight: 'bold' }]}>
                             {item.progress}%
                           </Text>
                         </View>
                       )}
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: showProgressBar ? 0 : 8 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Text style={[styles.xpBadge, item.isCompleted && { backgroundColor: 'rgba(255,255,255,0.3)', color: '#fff' }]}>
+                          <Text style={[styles.xpBadge, item.completed && { backgroundColor: 'rgba(255,255,255,0.3)', color: '#fff' }]}>
                             +{item.expReward} XP
                           </Text>
                           {item.rewardCoins > 0 && (
-                            <View style={[styles.coinBadge, item.isCompleted && { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
-                              <Icon name="monetization-on" size={12} color={item.isCompleted ? "#fff" : "#059669"} />
-                              <Text style={[styles.coinText, item.isCompleted && { color: '#fff' }]}>
+                            <View style={[styles.coinBadge, item.completed && { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
+                              <Icon name="monetization-on" size={12} color={item.completed ? "#fff" : "#059669"} />
+                              <Text style={[styles.coinText, item.completed && { color: '#fff' }]}>
                                 {item.rewardCoins}
                               </Text>
                             </View>
                           )}
                         </View>
-                        {!item.isCompleted && (
-                          <Icon name="chevron-right" size={24} color={item.isCompleted ? "#fff" : "#6B7280"} />
+                        {!item.completed && (
+                          <Icon name="chevron-right" size={24} color={item.completed ? "#fff" : "#6B7280"} />
                         )}
                       </View>
                     </TouchableOpacity>
@@ -464,152 +379,7 @@ const HomeScreen = ({ navigation }: any) => {
           </View>
         </Animated.View>
       </ScrollView>
-
-      <Modal visible={showGenerateDialog} animationType="slide" transparent>
-        <SafeAreaView style={styles.modalOverlay}>
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            style={styles.modalContentContainer}
-          >
-            <View style={styles.modalContent}>
-              <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{t("home.roadmap.dialogTitle")}</Text>
-                <TouchableOpacity onPress={() => setShowGenerateDialog(false)}>
-                  <Icon name="close" size={24} color="#6B7280" />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.formScrollContent}>
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>{t("Target Language")}</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-                    {SUPPORTED_LANGUAGES.map((lang) => (
-                      <TouchableOpacity
-                        key={lang.code}
-                        style={[
-                          styles.chip,
-                          formState.languageCode === lang.code && styles.chipSelected
-                        ]}
-                        onPress={() => setFormState(prev => ({ ...prev, languageCode: lang.code }))}
-                      >
-                        <Text style={[
-                          styles.chipText,
-                          formState.languageCode === lang.code && styles.chipTextSelected
-                        ]}>
-                          {lang.label}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </View>
-
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>{t("Target Proficiency")}</Text>
-                  <View style={styles.pickerContainer}>
-                    <Picker
-                      selectedValue={formState.targetProficiency}
-                      onValueChange={(itemValue) =>
-                        setFormState(prev => ({ ...prev, targetProficiency: itemValue as ProficiencyLevel }))
-                      }
-                      style={styles.picker}
-                      itemStyle={styles.pickerItem}
-                    >
-                      {proficiencyLevels.map((level) => (
-                        <Picker.Item key={level} label={t(`proficiency.${level}`)} value={level} />
-                      ))}
-                    </Picker>
-                  </View>
-                </View>
-
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>{t("Target Completion Date")}</Text>
-                  <TouchableOpacity
-                    style={styles.dateButton}
-                    onPress={() => setFormState(prev => ({ ...prev, showDatePicker: true }))}
-                  >
-                    <Text style={styles.dateText}>
-                      {formState.targetDate.toLocaleDateString()}
-                    </Text>
-                    <Icon name="calendar-today" size={20} color="#666" />
-                  </TouchableOpacity>
-                  {formState.showDatePicker && (
-                    <DateTimePicker
-                      value={formState.targetDate}
-                      mode="date"
-                      display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-                      minimumDate={new Date()}
-                      onChange={handleDateChange}
-                    />
-                  )}
-                </View>
-
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>{t("Focus Areas")}</Text>
-                  <View style={styles.grid}>
-                    {goalTypes.map((area) => (
-                      <TouchableOpacity
-                        key={area}
-                        style={[
-                          styles.gridChip,
-                          formState.focusAreas.includes(area) && styles.chipSelected
-                        ]}
-                        onPress={() => toggleFocusArea(area)}
-                      >
-                        <Text style={[
-                          styles.chipText,
-                          formState.focusAreas.includes(area) && styles.chipTextSelected
-                        ]}>
-                          {area.replace(/_/g, ' ')}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </View>
-
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>{t("Study Time (minutes/day)")}</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={formState.studyTime}
-                    onChangeText={(val) => setFormState(prev => ({ ...prev, studyTime: val }))}
-                    keyboardType="numeric"
-                    placeholder="e.g. 30"
-                  />
-                </View>
-
-                <View style={styles.formSection}>
-                  <Text style={styles.label}>{t("Additional Requirements")}</Text>
-                  <TextInput
-                    style={[styles.input, styles.textArea]}
-                    value={formState.prompt}
-                    onChangeText={(val) => setFormState(prev => ({ ...prev, prompt: val }))}
-                    multiline
-                    placeholder={t("Any specific goals or interests?")}
-                    textAlignVertical="top"
-                  />
-                </View>
-
-                <View style={styles.modalActions}>
-                  <TouchableOpacity style={[styles.modalButton, styles.cancelButton]} onPress={() => setShowGenerateDialog(false)}>
-                    <Text style={styles.cancelButtonText}>{t("common.cancel")}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.modalButton, styles.confirmButton]}
-                    onPress={handleGenerateRoadmap}
-                    disabled={generateRoadmapMutation.isPending}
-                  >
-                    {generateRoadmapMutation.isPending ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
-                      <Text style={styles.confirmButtonText}>{t("common.create")}</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              </ScrollView>
-            </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
-      </Modal>
+      {/* ĐÃ XÓA MODAL TẠO ROADMAP KHỎI ĐÂY */}
     </ScreenLayout>
   );
 };
@@ -636,7 +406,7 @@ const styles = createScaledSheet({
     color: "#6B7280",
     fontWeight: "500",
   },
-  userName: {
+  fullname: {
     fontSize: 22,
     fontWeight: "bold",
     color: "#1F2937",
@@ -878,6 +648,8 @@ const styles = createScaledSheet({
     color: "#6B7280",
     textAlign: "right",
   },
+
+  // --- ROADMAP STYLES MỚI ---
   roadmapCard: {
     backgroundColor: "#4F46E5",
     borderRadius: 20,
@@ -885,6 +657,11 @@ const styles = createScaledSheet({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    shadowColor: "#4F46E5",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
   },
   roadmapInfo: {
     flex: 1,
@@ -899,86 +676,60 @@ const styles = createScaledSheet({
   roadmapSubtitle: {
     fontSize: 14,
     color: "rgba(255,255,255,0.8)",
+    marginBottom: 12,
   },
-  circularProgress: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 4,
-    borderColor: "rgba(255,255,255,0.3)",
+  miniProgressBarBg: {
+    height: 6,
+    backgroundColor: "rgba(0,0,0,0.2)",
+    borderRadius: 3,
+    overflow: "hidden"
+  },
+  miniProgressBarFill: {
+    height: "100%",
+    backgroundColor: "#FFF",
+    borderRadius: 3
+  },
+  roadmapIconContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: "rgba(255,255,255,0.2)",
     alignItems: "center",
     justifyContent: "center",
   },
-  percentageText: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-    fontSize: 14,
-  },
+
+  // Empty State cho Roadmap
   emptyStateContainer: {
     backgroundColor: "#fff",
     borderRadius: 20,
     padding: 20,
+    flexDirection: "row",
     alignItems: "center",
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+    borderStyle: "dashed",
   },
-  emptyStateText: {
-    color: "#6B7280",
-    marginBottom: 16,
-    textAlign: "center",
-  },
-  defaultRoadmapScroll: {
-    marginBottom: 16,
-  },
-  defaultCard: {
+  emptyIconCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: "#F3F4F6",
-    padding: 12,
-    borderRadius: 12,
-    marginRight: 12,
-    width: 140,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 16,
   },
-  defaultCardTitle: {
+  emptyStateTitle: {
+    fontSize: 16,
     fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
+    color: "#374151",
   },
-  defaultCardLang: {
-    fontSize: 12,
+  emptyStateSub: {
+    fontSize: 13,
     color: "#6B7280",
+    marginTop: 2,
   },
-  actionButtons: {
-    flexDirection: "row",
-    gap: 12,
-    width: "100%",
-  },
-  primaryButton: {
-    flex: 1,
-    backgroundColor: "#4F46E5",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-    borderRadius: 12,
-  },
-  primaryButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-    marginLeft: 4,
-    fontSize: 13,
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: "#EFF6FF",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 12,
-    borderRadius: 12,
-  },
-  secondaryButtonText: {
-    color: "#4F46E5",
-    fontWeight: "600",
-    marginLeft: 4,
-    fontSize: 13,
-  },
+
+  // --- CHALLENGE STYLES (GIỮ NGUYÊN) ---
   challengeList: {
     paddingRight: 24,
   },
@@ -1063,134 +814,6 @@ const styles = createScaledSheet({
     color: "#3B82F6",
     fontWeight: "600",
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-  },
-  modalContentContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    padding: 24,
-  },
-  modalContent: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    maxHeight: '85%',
-    overflow: 'hidden',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  formScrollContent: {
-    padding: 20,
-  },
-  formSection: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 10,
-  },
-  horizontalScroll: {
-    flexGrow: 0,
-  },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
-  chipSelected: {
-    backgroundColor: '#EFF6FF',
-    borderColor: '#3B82F6',
-  },
-  chipText: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  chipTextSelected: {
-    color: '#3B82F6',
-    fontWeight: '600',
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  gridChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    backgroundColor: '#F3F4F6',
-    borderWidth: 1,
-    borderColor: 'transparent',
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: "#F3F4F6",
-    padding: 12,
-    borderRadius: 12,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  textArea: {
-    height: 100,
-  },
-  dateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: '#F3F4F6',
-    padding: 12,
-    borderRadius: 12,
-  },
-  dateText: {
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  modalActions: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 20,
-    marginBottom: 20,
-  },
-  modalButton: {
-    flex: 1,
-    padding: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  cancelButton: {
-    backgroundColor: "#F3F4F6",
-  },
-  confirmButton: {
-    backgroundColor: "#4F46E5",
-  },
-  confirmButtonText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-  cancelButtonText: {
-    color: "#6B7280",
-    fontWeight: "600",
-  },
   completeButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1206,20 +829,6 @@ const styles = createScaledSheet({
     fontWeight: '700',
     fontSize: 14,
   },
-  pickerContainer: {
-    backgroundColor: "#F3F4F6",
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  picker: {
-    height: 40,
-    width: '100%',
-    color: "#1F2937",
-  },
-  pickerItem: {
-    height: 40,
-  }
 });
 
 export default HomeScreen;

@@ -5,6 +5,7 @@ import { useTokenStore } from '../stores/tokenStore';
 import eventBus from '../events/appEvents';
 import { showToast } from '../components/Toast';
 import { API_BASE_URL } from './apiConfig';
+import i18n from '../i18n/index';
 
 interface CustomAxiosRequestConfig extends InternalAxiosRequestConfig {
     _retry?: boolean;
@@ -45,15 +46,23 @@ const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (globa
 // --- PUBLIC CLIENT ---
 export const publicClient = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 15000,
+    timeout: 30000,
 });
 
 publicClient.interceptors.request.use(async (config) => {
     const commonHeaders = await getCommonHeaders();
-    config.headers = Object.assign({}, config.headers, commonHeaders);
+
+    // Fix: Common headers are defaults, config.headers must override them
+    config.headers = Object.assign({}, commonHeaders, config.headers) as any;
+
+    if (config.data instanceof FormData) {
+        delete config.headers['Content-Type'];
+    }
 
     if (DEV_LOG_ENABLED && config.data) {
-        console.log(`[REQ][PUBLIC] ${config.method?.toUpperCase()} ${config.url}\nBody: ${JSON.stringify(config.data)}`);
+        // Avoid stringifying FormData to prevent crash/noise
+        const logBody = config.data instanceof FormData ? '[FormData]' : JSON.stringify(config.data);
+        console.log(`[REQ][PUBLIC] ${config.method?.toUpperCase()} ${config.url}\nBody: ${logBody}`);
     }
 
     return config;
@@ -70,9 +79,8 @@ const handleErrorResponse = (error: AxiosError) => {
 
     if (!httpStatus) {
         showToast({
-            title: 'Lỗi kết nối',
+            title: i18n.t('error.connection_message'),
             type: 'error',
-            message: error.message || 'Lỗi kết nối mạng hoặc timeout.',
         });
         return;
     }
@@ -83,19 +91,21 @@ const handleErrorResponse = (error: AxiosError) => {
 
     if (data?.message && data.code) {
         let toastType: 'error' | 'warning' | 'info' = 'info';
-        let title = 'Thông báo';
+        let defaultTitleKey: string;
 
         if (httpStatus >= 400 && httpStatus < 500) {
             toastType = 'warning';
-            title = 'Cảnh báo';
+            defaultTitleKey = 'error.warning_title';
         } else if (httpStatus >= 500) {
             toastType = 'error';
-            title = 'Lỗi máy chủ';
+            defaultTitleKey = 'error.server_error_title';
+        } else {
+            defaultTitleKey = 'error.info_title';
         }
 
         if (isUserFacing(data.code)) {
             showToast({
-                title: title,
+                title: i18n.t(defaultTitleKey),
                 type: toastType,
                 message: data.message,
             });
@@ -103,19 +113,31 @@ const handleErrorResponse = (error: AxiosError) => {
         }
     }
 
-    if (httpStatus >= 500) {
+    if (httpStatus >= 400) {
+        let titleKey: string;
+        let messageKey: string;
+
+        if (httpStatus >= 500) {
+            titleKey = 'error.system_error_title';
+        } else {
+            titleKey = 'error.request_error_title';
+        }
+
+        messageKey = 'error.generic_message';
+
         showToast({
-            title: 'Hệ thống',
+            title: i18n.t(titleKey),
             type: 'error',
-            message: `Lỗi hệ thống (${httpStatus}). Vui lòng thử lại sau.`,
+            message: i18n.t(messageKey),
         });
+        return;
     }
 };
 
 publicClient.interceptors.response.use(
     (response) => {
         if (DEV_LOG_ENABLED) {
-            console.log(`[RES][PUBLIC] ${response.config.method?.toUpperCase()} ${response.config.url}\nStatus: ${response.status}\nBody: ${JSON.stringify(response.data)}`);
+            console.log(`[RES][PUBLIC] ${response.config.method?.toUpperCase()} ${response.config.url}\nStatus: ${response.status}`);
         }
         return response;
     },
@@ -140,15 +162,22 @@ export const privateClient = axios.create({
 privateClient.interceptors.request.use(
     async (config: InternalAxiosRequestConfig) => {
         const commonHeaders = await getCommonHeaders();
-        config.headers = Object.assign({}, config.headers, commonHeaders);
+
+        // Fix: Common headers are defaults, config.headers must override them
+        config.headers = Object.assign({}, commonHeaders, config.headers) as any;
 
         const { accessToken } = useTokenStore.getState();
         if (accessToken && !config.headers['Authorization']) {
             config.headers['Authorization'] = `Bearer ${accessToken}`;
         }
 
+        if (config.data instanceof FormData) {
+            delete config.headers['Content-Type'];
+        }
+
         if (DEV_LOG_ENABLED && config.data) {
-            console.log(`[REQ][PRIVATE] ${config.method?.toUpperCase()} ${config.url}\nBody: ${JSON.stringify(config.data)}`);
+            const logBody = config.data instanceof FormData ? '[FormData]' : JSON.stringify(config.data);
+            console.log(`[REQ][PRIVATE] ${config.method?.toUpperCase()} ${config.url}\nBody: ${logBody}`);
         }
 
         return config;
@@ -173,7 +202,7 @@ const processQueue = (error: any, token: string | null = null) => {
 privateClient.interceptors.response.use(
     (response: AxiosResponse) => {
         if (DEV_LOG_ENABLED) {
-            console.log(`[RES][PRIVATE] ${response.config.method?.toUpperCase()} ${response.config.url}\nStatus: ${response.status}\nBody: ${JSON.stringify(response.data)}`);
+            console.log(`[RES][PRIVATE] ${response.config.method?.toUpperCase()} ${response.config.url}\nStatus: ${response.status}`);
         }
         return response;
     },

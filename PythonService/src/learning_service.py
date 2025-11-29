@@ -273,12 +273,14 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
-                image_data, error = generate_image(
+                # Assuming generate_image returns a URL string in the first return value
+                image_url, error = generate_image(
                     user_id, request.prompt, request.language, user_profile
                 )
+            
             return learning_pb2.GenerateImageResponse(
-                image_urls=["https://example.com/mock_image.png"], 
-                model_used="mock_model",
+                image_urls=[image_url] if image_url else [], 
+                model_used="gemini-imagen",
                 error=error,
             )
         except Exception as e:
@@ -291,7 +293,8 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
-                text, error = generate_text(
+                # Now awaiting the async Gemini call
+                text, error = await generate_text(
                     user_id, request.prompt, request.language, user_profile
                 )
             return learning_pb2.GenerateTextResponse(text=text, error=error)
@@ -329,6 +332,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     async def CreateOrUpdateRoadmapDetailed(self, request, context, claims) -> learning_pb2.RoadmapDetailedResponse:
         user_id = request.user_id or claims.get("sub")
         try:
+            logging.info(f"Start generating roadmap for user: {user_id}") 
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
                 generated_text, items, milestones, guidances, resources, totals, error = (

@@ -150,7 +150,7 @@
                 "growth": "Growth"
             },
             "listTitle": "Users",
-            "defaultUserName": "User",
+            "defaultfullname": "User",
             "noUsers": "No users to display",
             "searchPlaceholder": "Search users by name or email..."
         }

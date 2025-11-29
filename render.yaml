@@ -74,7 +74,7 @@ services:
         fromDatabase:
           name: shared-postgres
           property: database
-      - key: SPRING_DATASOURCE_USERNAME
+      - key: SPRING_DATASOURCE_fullname
         fromDatabase:
           name: shared-postgres
           property: user

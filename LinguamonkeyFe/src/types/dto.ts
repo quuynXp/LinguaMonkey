@@ -378,13 +378,7 @@ export interface LeaderboardRequest {
     snapshotDate: string;
 }
 
-export interface LearningActivityEventRequest {
-    userId: string;
-    activityType: Enums.ActivityType;
-    relatedEntityId: string;
-    durationInSeconds?: number;
-    details?: string;
-}
+
 export interface LessonCategoryRequest {
     lessonCategoryName: string;
     languageCode: string;
@@ -625,7 +619,10 @@ export interface TestSubmissionRequest {
 export interface TransactionRequest {
     userId: string;
     amount: number;
+    coins: number;
+    currency: string;
     provider: Enums.TransactionProvider;
+    type: Enums.TransactionType;
     description: string;
     status: Enums.TransactionStatus;
 }
@@ -711,16 +708,9 @@ export interface UserLanguageRequest {
     isDeleted: boolean;
 }
 
-export interface UserLearningActivityRequest {
-    userId: string;
-    activityType: Enums.ActivityType;
-    durationInSeconds: number;
-    details: string;
-    relatedEntityId: string;
-}
 
 export interface UserRequest {
-    username?: string;
+    // fullname?: string;
     email?: string;
     password?: string;
     fullname?: string;
@@ -729,6 +719,7 @@ export interface UserRequest {
     phone?: string;
     avatarUrl?: string;
     character3dId?: string;
+    dayOfBirth?: string;
     badgeId?: string;
     ageRange?: Enums.AgeRange;
     learningPace?: Enums.LearningPace;
@@ -859,6 +850,7 @@ export interface BasicLessonResponse {
     romanization: string;
     meaning: string;
     pronunciationAudioUrl: string;
+    data: string;
     videoUrl: string;
     imageUrl: string;
     exampleSentence: string;
@@ -1003,7 +995,9 @@ export interface CourseSummaryResponse {
     courseId: string;
     title: string;
     ownerId: string;
+    level: Enums.DifficultyLevel;
     ownerName: string;
+    thumbnailUrl: string;
     averageRating: number;
     reviewCount: number;
     star: number;
@@ -1434,20 +1428,6 @@ export interface CoupleProfileSummary {
     coupleBadges: BadgeResponse[];
 }
 
-
-export interface UserDailyChallengeResponse {
-    userId: string;
-    challengeId: string;
-    title: string;
-    description?: string;
-    progress: number;
-    isCompleted: boolean;
-    expReward: number;
-    rewardCoins: number;
-    assignedAt?: string;
-    completedAt?: string;
-}
-
 export interface PermissionResponse {
     permissionId: string;
     name: string;
@@ -1606,7 +1586,7 @@ export interface RoadmapResponse {
 export interface RoadmapSuggestionDetailResponse {
     suggestionId: string;
     userId: string;
-    userName: string;
+    // fullname: string;
     userAvatar: string;
     userLevel: number;
     roadmapId: string;
@@ -1627,7 +1607,7 @@ export interface RoadmapSuggestionDetailResponse {
 export interface RoadmapSuggestionResponse {
     suggestionId: string;
     userId: string;
-    userName: string;
+    fullname: string;
     userAvatar: string;
     roadmapId: string;
     itemId: string;
@@ -1746,11 +1726,6 @@ export interface StatsResponse {
     totalTime: number;
     totalExperience: number;
     averageScore: number;
-}
-
-export interface StudyHistoryResponse {
-    sessions: StudySessionResponse[];
-    stats: StatsResponse;
 }
 
 export interface StudySessionResponse {
@@ -1919,9 +1894,63 @@ export interface UserLanguageResponse {
 export interface UserLearningActivityResponse {
     activityId: string;
     userId: string;
-    activityType: string;
+    activityType: Enums.ActivityType;
+    relatedEntityId?: string;
+    durationInSeconds?: number;
+    details?: string;
     createdAt: string;
-    updatedAt: string;
+}
+export interface UserLearningActivityRequest {
+    userId: string;
+    activityType: Enums.ActivityType;
+    relatedEntityId?: string;
+    durationInSeconds?: number;
+    details?: string;
+}
+
+export interface LearningActivityEventRequest {
+    userId: string;
+    activityType: Enums.ActivityType;
+    relatedEntityId?: string;
+    durationInSeconds?: number;
+    details?: string;
+}
+
+export interface StudyHistoryResponse {
+    sessions?: StudySessionResponse[];
+    stats?: StatsResponse;
+    // totalDuration: number;
+    // activitiesCount: number;
+}
+
+// === NEW DTOs ===
+export interface DailyChallengeUpdateResponse {
+    challengeId: string;
+    title: string;
+    progress: number;
+    target: number;
+    isCompleted: boolean;
+    expReward: number;
+    rewardCoins: number;
+}
+
+export interface ActivityCompletionResponse {
+    activityLog: UserLearningActivityResponse;
+    challengeUpdate?: DailyChallengeUpdateResponse;
+}
+
+export interface UserDailyChallengeResponse {
+    userId: string;
+    challengeId: string;
+    title: string;
+    description: string;
+    progress: number;
+    expReward: number;
+    rewardCoins: number;
+    assignedAt: string;
+    completedAt?: string;
+    completed: boolean;
+    challengeType?: Enums.ChallengeType;
 }
 
 export interface UserProfileResponse {
@@ -1930,12 +1959,13 @@ export interface UserProfileResponse {
     nickname?: string;
     avatarUrl?: string;
     flag?: string;
+    gender: string;
     country?: Enums.Country;
 
     ageRange?: Enums.AgeRange;
     proficiency?: Enums.ProficiencyLevel;
     learningPace?: Enums.LearningPace;
-
+    allowStrangerChat?: boolean;
     level: number;
     exp: number;
     bio?: string;
@@ -1977,8 +2007,10 @@ export interface UserResponse {
     nickname?: string;
     bio?: string;
     phone?: string;
+    coins: number;
     avatarUrl?: string;
     character3dId?: string;
+    dayOfBirth?: string;
     badgeId?: string;
     nativeLanguageCode?: string;
     authProvider?: string;
@@ -1987,7 +2019,7 @@ export interface UserResponse {
     certificationIds?: string[] | null;
     interestestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
     goalIds?: string[] | null;
-    isVip?: boolean;
+    vip?: boolean;
 
     // Synced Enum Fields
     ageRange?: Enums.AgeRange;
@@ -2118,7 +2150,7 @@ export interface VideoSubtitleResponse {
 export interface WalletResponse {
     walletId: string;
     userId: string;
-    username: string;
+    // fullname: string;
     balance: number;
 }
 

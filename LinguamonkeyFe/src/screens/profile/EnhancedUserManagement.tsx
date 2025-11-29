@@ -40,7 +40,7 @@ const UserItemComponent = ({
                 style={styles.avatar}
             />
             <View style={styles.userInfo}>
-                <Text style={styles.userName} numberOfLines={1}>{user.nickname || user.fullname || 'Unknown'}</Text>
+                <Text style={styles.fullname} numberOfLines={1}>{user.nickname || user.fullname || 'Unknown'}</Text>
                 <Text style={styles.userEmail} numberOfLines={1}>{user.email}</Text>
                 <View style={styles.badgesRow}>
                     <View style={[styles.badge, { backgroundColor: '#E0E7FF' }]}>
@@ -351,7 +351,7 @@ const styles = createScaledSheet({
     },
     avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E5E7EB' },
     userInfo: { flex: 1, marginLeft: 12 },
-    userName: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
+    fullname: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
     userEmail: { fontSize: 13, color: '#6B7280', marginTop: 2 },
     badgesRow: { flexDirection: 'row', marginTop: 6 },
     badge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginRight: 6 },

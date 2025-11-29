@@ -2,12 +2,8 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LearningActivityEventRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserLearningActivityRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.StudyHistoryResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.UserLearningActivityResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
-import com.connectJPA.LinguaVietnameseApp.entity.LessonSeries;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
 import com.connectJPA.LinguaVietnameseApp.service.UserLearningActivityService;
@@ -23,6 +19,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Collections;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -59,8 +56,6 @@ public class UserLearningActivityController {
             @ApiResponse(responseCode = "404", description = "User not found")
     })
     @GetMapping("/history")
-    // Bảo mật: Chỉ user đó hoặc Admin mới được xem
-//    @PreAuthorize("#userId.toString() == authentication.name or hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<StudyHistoryResponse> getStudyHistory(
             @Parameter(description = "User ID") @RequestParam UUID userId,
             @Parameter(description = "Time filter period (week, month, year)") @RequestParam(defaultValue = "month") String period,
@@ -68,9 +63,22 @@ public class UserLearningActivityController {
 
         StudyHistoryResponse history = userLearningActivityService.getAggregatedStudyHistory(userId, period);
 
+        // Handle null result to ensure frontend always receives a valid object structure
+        if (history == null) {
+            history = StudyHistoryResponse.builder()
+                    .sessions(Collections.emptyList())
+                    .stats(StatsResponse.builder()
+                            .totalSessions(0)
+                            .totalTime(0L)
+                            .totalExperience(0)
+                            .averageScore(0.0)
+                            .build())
+                    .build();
+        }
+
         return AppApiResponse.<StudyHistoryResponse>builder()
                 .code(200)
-                .message(messageSource.getMessage("userLearningActivity.history.success", null, locale)) // Thêm key này vào messages.properties
+                .message(messageSource.getMessage("userLearningActivity.history.success", null, locale))
                 .result(history)
                 .build();
     }
@@ -104,8 +112,6 @@ public class UserLearningActivityController {
 
         LessonResponse lesson = lessonService.getLessonById(request.getRelatedEntityId());
 
-
-        // Validate
         if (request.getActivityType() != ActivityType.LESSON_START &&
                 request.getActivityType() != ActivityType.CHAT_START) {
             throw new IllegalArgumentException("ActivityType must be a START event (e.g., LESSON_START, CHAT_START)");
@@ -115,7 +121,7 @@ public class UserLearningActivityController {
                 request.getUserId(),
                 request.getActivityType(),
                 request.getRelatedEntityId(),
-                null, // Duration là null khi START
+                null,
                 lesson.getExpReward(), request.getDetails(),
                 lesson.getSkillTypes());
 
@@ -126,41 +132,15 @@ public class UserLearningActivityController {
                 .build();
     }
 
-    @Operation(summary = "Log the end of a learning activity", description = "Call this when a user ends an activity (e.g., closes a lesson or chat), providing the duration.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Activity end logged successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid data")
-    })
+    @Operation(summary = "Log an activity END event and check daily challenges")
     @PostMapping("/end")
-    public AppApiResponse<UserLearningActivityResponse> logActivityEnd(
-            @Valid @RequestBody LearningActivityEventRequest request,
-            Locale locale) {
-
-        LessonResponse lesson = lessonService.getLessonById(request.getRelatedEntityId());
-
-
-        // Validate
-        if (request.getActivityType() != ActivityType.LESSON_END &&
-                request.getActivityType() != ActivityType.CHAT_END) {
-            throw new IllegalArgumentException("ActivityType must be an END event (e.g., LESSON_END, CHAT_END)");
-        }
-
-        if (request.getDurationInSeconds() == null || request.getDurationInSeconds() <= 0) {
-            throw new IllegalArgumentException("DurationInSeconds is required and must be positive for END events.");
-        }
-
-        UserLearningActivityResponse activity = userLearningActivityService.logUserActivity(
-                request.getUserId(),
-                request.getActivityType(),
-                request.getRelatedEntityId(),
-                request.getDurationInSeconds(),
-                lesson.getExpReward(), request.getDetails(),
-                lesson.getSkillTypes());
-
-        return AppApiResponse.<UserLearningActivityResponse>builder()
-                .code(201)
-                .message(messageSource.getMessage("userLearningActivity.end.success", null, locale))
-                .result(activity)
+    public AppApiResponse<ActivityCompletionResponse> logActivityEnd(@RequestBody LearningActivityEventRequest request) {
+        ActivityCompletionResponse response = userLearningActivityService.logActivityEndAndCheckChallenges(request);
+        
+        return AppApiResponse.<ActivityCompletionResponse>builder()
+                .code(200)
+                .message("Activity logged and challenges checked successfully")
+                .result(response)
                 .build();
     }
 

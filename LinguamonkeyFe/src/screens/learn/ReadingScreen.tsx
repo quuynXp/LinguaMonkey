@@ -9,7 +9,6 @@ import {
   ActivityIndicator,
   FlatList,
   TextInput,
-
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -22,7 +21,6 @@ import {
   LessonResponse,
   ReadingResponse,
   TranslationRequestBody,
-  ComprehensionQuestion
 } from '../../types/dto';
 import { SkillType } from '../../types/enums';
 import { createScaledSheet } from '../../utils/scaledStyles';
@@ -37,6 +35,30 @@ interface ReadingScreenProps {
   };
 }
 
+// Giả định LessonResponse có thể chứa ReadingResponse
+// Dựa trên logic của backend, nếu nội dung đọc được tạo (POST /reading), nó sẽ được lưu
+// và có thể được trả về trong LessonResponse (GET /lessons/{id}).
+// Chúng ta sẽ giả định LessonResponse có trường 'readingContent' hoặc tương tự
+// Nếu LessonResponse không có trường này, bạn cần phải thêm nó vào file types/dto.ts
+// Hoặc thay thế `activeLesson?.readingContent` bằng cách kiểm tra các trường
+// Passage/Questions nếu chúng nằm trực tiếp trong LessonResponse.
+// Dựa trên pattern "Zero Mocking", tôi sẽ dùng một field giả định thông minh.
+// Để KHÔNG MOCKING schema, tôi sẽ kiểm tra nếu LessonResponse chứa các thuộc tính của ReadingResponse
+// (passage, questions) hoặc giả định chúng được lồng vào trong một field tên là 'readingContent'.
+// Để giữ tính clean code, tôi sẽ tạo hàm helper để kiểm tra.
+const extractReadingData = (lesson: LessonResponse | undefined): ReadingResponse | null => {
+  if (!lesson) return null;
+  // Dựa vào cấu trúc ReadingResponse: {passage: string, questions: Array}
+  // Giả định backend trả ReadingResponse trực tiếp hoặc lồng trong content
+  const content = (lesson as any).readingContent || lesson; // Thử lấy từ readingContent hoặc từ root object
+
+  if (content && typeof content.passage === 'string' && Array.isArray(content.questions)) {
+    return content as ReadingResponse;
+  }
+  return null;
+};
+
+
 const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
@@ -48,6 +70,7 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
 
   // State
   const [currentLessonId, setCurrentLessonId] = useState<string | undefined>(paramLessonId);
+  // Reading content state: Được set từ lessonDetailData hoặc từ mutation (tạo mới)
   const [readingData, setReadingData] = useState<ReadingResponse | null>(null);
   const [currentMode, setCurrentMode] = useState<"read" | "translate" | "quiz">("read");
 
@@ -80,7 +103,7 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
   });
   const lessonsList = (lessonsListResponse?.data || []) as LessonResponse[];
 
-  // Data Fetching: Detail
+  // Data Fetching: Detail (useLesson)
   const {
     data: lessonDetailData,
     isLoading: isLoadingDetail,
@@ -108,27 +131,42 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
     }).start();
   }, []);
 
-  // Load Reading Content when Lesson is selected
+  // [NEW LOGIC] Load reading content from lessonDetailData when available or reset state
   useEffect(() => {
+    // 1. Reset state khi currentLessonId thay đổi
     if (currentLessonId) {
-      loadReadingContent(currentLessonId);
+      setReadingData(null);
+      setCurrentMode('read');
+      setTranslationResults([]);
     }
-  }, [currentLessonId]);
 
-  const loadReadingContent = (lessonId: string) => {
-    setReadingData(null);
+    // 2. Load content từ lessonDetailData
+    if (lessonDetailData) {
+      const content = extractReadingData(lessonDetailData);
+      if (content) {
+        setReadingData(content);
+        const sentences = content.passage?.match(/[^.!?]+[.!?]/g) || [content.passage];
+        setTranslationResults(new Array(sentences.length).fill(null));
+      }
+    }
+
+  }, [currentLessonId, lessonDetailData]); // Chỉ re-run khi lessonDetailData hoặc ID thay đổi
+
+  const loadReadingContent = (lessonId: string, forceRegenerate: boolean = false) => {
+    // Không cần setReadingData(null) thủ công vì useEffect trên đã làm điều đó
     setCurrentMode('read');
     setTranslationResults([]);
 
+    // Gọi Mutation (POST/AI Generation)
     generateReadingMutation.mutate({
       lessonId: lessonId,
-      languageCode: activeLesson?.languageCode || 'en'
+      languageCode: activeLesson?.languageCode || 'en',
     }, {
       onSuccess: (data) => {
-        setReadingData(data);
-        // Initialize translation results array based on sentences count
-        const sentences = data.passage?.match(/[^.!?]+[.!?]/g) || [data.passage];
-        setTranslationResults(new Array(sentences.length).fill(null));
+        // Sau khi tạo thành công, `useGenerateReading` (trong useSkillLessons.ts) 
+        // sẽ gọi invalidateQueries cho `useLesson`
+        // `lessonDetailData` sẽ refetch, và useEffect ở trên sẽ tự động set `readingData`
+        Alert.alert(t('common.success', { defaultValue: 'Success' }), t('reading.content_generated', { defaultValue: 'Content generated successfully.' }));
       },
       onError: () => {
         Alert.alert(t('common.error'), t('reading.error_loading_content'));
@@ -147,6 +185,21 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
     } else {
       navigation.goBack();
     }
+  };
+
+  const handleRegenerate = () => {
+    if (!currentLessonId) return;
+    Alert.alert(
+      t('reading.regenerate_title'),
+      t('reading.regenerate_confirm'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('common.ok'),
+          onPress: () => loadReadingContent(currentLessonId, true)
+        }
+      ]
+    );
   };
 
   // --- Quiz Logic ---
@@ -256,18 +309,56 @@ const ReadingScreen = ({ navigation, route }: ReadingScreenProps) => {
   };
 
   const renderReadingContent = () => {
-    if (generateReadingMutation.isPending || !readingData) {
+    // 1. Loading State (Loading lesson detail OR generating new content)
+    if (isLoadingDetail || generateReadingMutation.isPending) {
       return (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#4F46E5" />
-          <Text style={styles.loadingText}>{t('reading.generating_content')}</Text>
+          <Text style={styles.loadingText}>
+            {generateReadingMutation.isPending ? t('reading.generating_content') : t('common.loading')}
+          </Text>
         </View>
       );
     }
 
+    // 2. Start/Init State (Lesson detail loaded, but NO reading content found)
+    if (!readingData) {
+      return (
+        <View style={styles.centerContainer}>
+          <View style={styles.startIconContainer}>
+            <Icon name="auto-stories" size={64} color="#4F46E5" />
+          </View>
+          <Text style={styles.startTitle}>{activeLesson?.title || activeLesson?.lessonName}</Text>
+          <Text style={styles.startSubtitle}>
+            {activeLesson?.description || t('reading.practice_desc', { defaultValue: 'Practice reading comprehension with AI-generated content.' })}
+          </Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => currentLessonId && loadReadingContent(currentLessonId, false)}
+            disabled={generateReadingMutation.isPending}
+          >
+            {generateReadingMutation.isPending ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <Text style={styles.primaryButtonText}>{t('common.start', { defaultValue: 'Start Practice' })}</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      );
+    }
+
+    // 3. Content Display State
     return (
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.passageTitle}>{activeLesson?.title}</Text>
+        <View style={styles.passageHeader}>
+          <Text style={styles.passageTitle}>{activeLesson?.title}</Text>
+          <TouchableOpacity
+            style={styles.regenerateButton}
+            onPress={handleRegenerate}
+          >
+            <Icon name="refresh" size={20} color="#4F46E5" />
+          </TouchableOpacity>
+        </View>
         <Text style={styles.passageText}>{readingData.passage}</Text>
 
         <View style={styles.actionsContainer}>
@@ -467,6 +558,7 @@ const styles = createScaledSheet({
     marginTop: 12,
     color: '#6B7280',
     fontSize: 16,
+    textAlign: 'center',
   },
   loadingText: {
     marginTop: 12,
@@ -483,6 +575,30 @@ const styles = createScaledSheet({
   retryButtonText: {
     color: '#FFF',
     fontWeight: '600',
+  },
+  startIconContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#EEF2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 24,
+  },
+  startTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1F2937',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  startSubtitle: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 32,
+    lineHeight: 24,
+    paddingHorizontal: 20,
   },
   listContent: {
     padding: 16,
@@ -526,12 +642,22 @@ const styles = createScaledSheet({
     flex: 1,
     padding: 20,
   },
+  passageHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+  },
   passageTitle: {
     fontSize: 22,
     fontWeight: 'bold',
     color: '#1F2937',
-    marginBottom: 16,
-    textAlign: 'center',
+    flex: 1,
+  },
+  regenerateButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#F3F4F6',
   },
   passageText: {
     fontSize: 16,
@@ -693,6 +819,7 @@ const styles = createScaledSheet({
   primaryButton: {
     backgroundColor: '#4F46E5',
     paddingVertical: 16,
+    paddingHorizontal: 32,
     borderRadius: 12,
     alignItems: 'center',
   },

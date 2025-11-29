@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.FriendshipRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FriendRequestStatusResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FriendshipResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Friendship;
+import com.connectJPA.LinguaVietnameseApp.entity.id.FriendshipId;
 import com.connectJPA.LinguaVietnameseApp.enums.FriendshipStatus;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -124,7 +125,18 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (request == null || request.getRequesterId() == null || request.getReceiverId() == null) {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
+            
             Friendship friendship = friendshipMapper.toEntity(request);
+            
+            // FIX: Khởi tạo ID thủ công vì Composite Key không tự sinh và Mapper có thể bỏ sót
+            FriendshipId id = new FriendshipId(request.getRequesterId(), request.getReceiverId());
+            friendship.setId(id);
+            
+            // Đảm bảo status mặc định nếu mapper chưa set (thường logic gửi request là PENDING)
+            if (friendship.getStatus() == null) {
+                friendship.setStatus(FriendshipStatus.PENDING);
+            }
+
             friendship = friendshipRepository.save(friendship);
             return friendshipMapper.toResponse(friendship);
         } catch (Exception e) {

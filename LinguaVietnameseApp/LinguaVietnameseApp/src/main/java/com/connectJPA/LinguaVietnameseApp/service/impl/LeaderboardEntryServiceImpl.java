@@ -45,7 +45,8 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             dto.setFullname(u.getFullname());
             dto.setNickname(u.getNickname());
             dto.setLevel(u.getLevel());
-            dto.setGender(u.getGender()); 
+            dto.setGender(u.getGender());
+            dto.setExp(u.getExp()); // Map EXP từ User để hiển thị riêng
         }
         return dto;
     }
@@ -68,10 +69,12 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             String tab = leaderboard.getTab();
             Page<LeaderboardEntry> entries;
 
+            // Global, Couples, Country dùng logic sort Level -> Score
             if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
                 Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
                 entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardUuid, unsortedPageable);
             } else {
+                // Admire hoặc các loại khác sort theo Score (điểm ngưỡng mộ) DESC
                 Pageable effectivePageable = pageable;
                 if (pageable.getSort().isUnsorted()) {
                     effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "score"));

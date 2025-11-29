@@ -87,7 +87,6 @@ const TransactionHistoryScreen = ({ navigation }) => {
   )
 }
 
-// --- Stylesheet (Đã chuyển đổi từ className sang createScaledSheet) ---
 const styles = createScaledSheet({
   container: {
     flex: 1,
@@ -98,7 +97,6 @@ const styles = createScaledSheet({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 50,
     paddingBottom: 16,
     backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,

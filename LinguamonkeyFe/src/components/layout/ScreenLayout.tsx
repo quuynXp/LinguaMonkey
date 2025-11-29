@@ -1,7 +1,10 @@
 import React from 'react';
 import { View, StatusBar, ViewStyle, StatusBarStyle, Platform } from 'react-native';
-import { useSafeAreaInsets, EdgeInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
+import { runOnJS } from 'react-native-reanimated';
+import { goBack, gotoTab } from '../../utils/navigationRef';
 
 interface ScreenLayoutProps {
     children: React.ReactNode;
@@ -12,7 +15,15 @@ interface ScreenLayoutProps {
     unsafe?: boolean;
     headerComponent?: React.ReactNode;
     bottomComponent?: React.ReactNode;
+    /** Tên Tab muốn điều hướng tới khi vuốt sang trái (Right-to-Left swipe) */
+    swipeToTab?: string;
+    /** Cho phép vuốt sang phải để Go Back. Mặc định: true */
+    enableSwipeBack?: boolean;
 }
+
+const SWIPE_AREA_WIDTH = 40;
+// Loại bỏ MIN_SWIPE_DISTANCE vì không dùng được trong FlingGesture
+// const MIN_SWIPE_DISTANCE = 5; 
 
 const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     children,
@@ -23,26 +34,51 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     unsafe = true,
     headerComponent,
     bottomComponent,
+    swipeToTab,
+    enableSwipeBack = true,
 }) => {
     const insets = useSafeAreaInsets();
 
-    // Lấy khoảng cách an toàn. Nếu unsafe=true, tất cả đều bằng 0 để nội dung full màn hình.
     const safeInsets = unsafe
         ? { top: 0, bottom: 0, left: 0, right: 0 }
         : insets;
 
-    // Khoảng cách an toàn chỉ được áp dụng nếu:
-    // 1. `unsafe` là `false`
-    // 2. Component tương ứng (Header/Bottom) không tồn tại, ta cần chèn một View spacer
-    //    HOẶC Component tương ứng tồn tại và ta cần đẩy nó xuống/lên.
-    //
-    // Để nội dung full màn hình (khi unsafe=true), ta chỉ cần đảm bảo **KHÔNG** áp dụng
-    // `paddingTop: safeInsets.top` hay `height: safeInsets.top`
     const headerPaddingTop = headerComponent && !unsafe ? safeInsets.top : 0;
     const bottomPaddingBottom = bottomComponent && !unsafe ? safeInsets.bottom : 0;
     const headerSpacerHeight = !headerComponent && !unsafe ? safeInsets.top : 0;
     const bottomSpacerHeight = !bottomComponent && !unsafe ? safeInsets.bottom : 0;
 
+    const handleNavigateTab = () => {
+        if (swipeToTab) {
+            gotoTab(swipeToTab);
+        }
+    };
+
+    const handleGoBack = () => {
+        if (enableSwipeBack) {
+            goBack();
+        }
+    };
+
+    // 1. Cử chỉ vuốt sang Trái (Cho vùng mép phải)
+    const swipeLeftGesture = Gesture.Fling()
+        .direction(Directions.LEFT)
+        // Loại bỏ .minDistance() để sửa lỗi
+        .onEnd(() => {
+            if (swipeToTab) {
+                runOnJS(handleNavigateTab)();
+            }
+        });
+
+    // 2. Cử chỉ vuốt sang Phải (Cho vùng mép trái)
+    const swipeRightGesture = Gesture.Fling()
+        .direction(Directions.RIGHT)
+        // Loại bỏ .minDistance() để sửa lỗi
+        .onEnd(() => {
+            if (enableSwipeBack) {
+                runOnJS(handleGoBack)();
+            }
+        });
 
     return (
         <View style={[styles.container, { backgroundColor }]}>
@@ -52,7 +88,7 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                 translucent={true}
             />
 
-            {/* Header: Chỉ áp dụng padding an toàn nếu có headerComponent VÀ unsafe=false */}
+            {/* Header: Giữ nguyên */}
             {headerComponent ? (
                 <View
                     style={[
@@ -63,16 +99,35 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                     {headerComponent}
                 </View>
             ) : (
-                /* Nếu không có headerComponent và unsafe=false, thêm View để tạo khoảng cách an toàn cho StatusBar */
                 <View style={{ height: headerSpacerHeight, backgroundColor: statusBarColor }} />
             )}
 
-            {/* Nội dung chính: Đảm bảo flex: 1 để chiếm hết không gian còn lại */}
-            <View style={[styles.content, style]}>
-                {children}
+            {/* Nội dung chính: Đặt nội dung và các vùng gesture sát hai bên */}
+            <View style={[styles.contentWrapper, style]}>
+
+                {/* 1. Vùng Vuốt Phải (Go Back) */}
+                {enableSwipeBack && (
+                    <GestureDetector gesture={swipeRightGesture}>
+                        {/* Area cho phép vuốt phải (Go Back) */}
+                        <View style={[styles.gestureAreaLeft, { left: 0 }]} />
+                    </GestureDetector>
+                )}
+
+                {/* 2. Nội dung Màn hình */}
+                <View style={styles.content}>
+                    {children}
+                </View>
+
+                {/* 3. Vùng Vuốt Trái (Goto Tab) */}
+                {swipeToTab && (
+                    <GestureDetector gesture={swipeLeftGesture}>
+                        {/* Area cho phép vuốt trái (Goto Tab) */}
+                        <View style={[styles.gestureAreaRight, { right: 0 }]} />
+                    </GestureDetector>
+                )}
             </View>
 
-            {/* Footer: Chỉ áp dụng padding an toàn nếu có bottomComponent VÀ unsafe=false */}
+            {/* Footer: Giữ nguyên */}
             {bottomComponent ? (
                 <View
                     style={[
@@ -83,7 +138,6 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
                     {bottomComponent}
                 </View>
             ) : (
-                /* Nếu không có bottomComponent và unsafe=false, thêm View để tạo khoảng cách an toàn cho vùng dưới */
                 <View style={{ height: bottomSpacerHeight, backgroundColor: backgroundColor }} />
             )}
         </View>
@@ -93,14 +147,17 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
 const styles = createScaledSheet({
     container: {
         flex: 1,
-        // Khi dùng View này, nội dung đã full màn hình về kích thước (100% width/height)
-        // và thuộc tính `flex: 1` sẽ giúp nó mở rộng tối đa.
         overflow: 'hidden',
+    },
+    contentWrapper: {
+        flex: 1,
+        position: 'relative',
+        width: '100%',
     },
     content: {
         flex: 1,
         width: '100%',
-        overflow: 'hidden',
+        zIndex: 1,
     },
     headerWrapper: {
         zIndex: 10,
@@ -109,6 +166,22 @@ const styles = createScaledSheet({
     bottomWrapper: {
         zIndex: 10,
         width: '100%',
+    },
+    gestureAreaLeft: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: SWIPE_AREA_WIDTH,
+        zIndex: 5,
+        // Dùng `opacity: 0` nếu bạn muốn ẩn vùng này hoàn toàn
+    },
+    gestureAreaRight: {
+        position: 'absolute',
+        top: 0,
+        bottom: 0,
+        width: SWIPE_AREA_WIDTH,
+        zIndex: 5,
+        // Dùng `opacity: 0` nếu bạn muốn ẩn vùng này hoàn toàn
     }
 });
 

@@ -7,7 +7,11 @@ import {
   UserLearningActivityRequest,
   StudyHistoryResponse,
   LearningActivityEventRequest,
+  ActivityCompletionResponse,
+  UserDailyChallengeResponse,
 } from "../types/dto";
+import { useUserStore } from "../stores/UserStore";
+import { useToast } from "../utils/useToast";
 
 // --- Keys Factory ---
 export const activityKeys = {
@@ -16,6 +20,11 @@ export const activityKeys = {
   detail: (id: string) => [...activityKeys.all, "detail", id] as const,
   history: (userId: string | undefined, period: string) =>
     [...activityKeys.all, "history", userId || "anonymous", period] as const,
+};
+
+export const dailyChallengeKeys = {
+  all: ["dailyChallenges"] as const,
+  today: (userId: string | undefined) => [...dailyChallengeKeys.all, "today", userId || "anonymous"] as const,
 };
 
 // --- Helper to standardize pagination return ---
@@ -34,6 +43,17 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 });
 
 const BASE = "/api/v1/user-learning-activities";
+
+// Default Zero Object to ensure UI never crashes or shows empty
+const DEFAULT_STUDY_HISTORY: StudyHistoryResponse = {
+  sessions: [],
+  stats: {
+    totalSessions: 0,
+    totalTime: 0,
+    totalExperience: 0,
+    averageScore: 0,
+  },
+};
 
 // ==========================================
 // === 1. QUERIES ===
@@ -87,18 +107,15 @@ export const useGetStudyHistory = (
   return useQuery({
     queryKey: activityKeys.history(userId, period),
     queryFn: async () => {
-      // Logic bảo vệ: Nếu userId undefined, chặn ngay tại đây hoặc để backend trả lỗi.
-      // Tuy nhiên, do enabled: !!userId nên hàm này chỉ chạy khi có userId.
       if (!userId) throw new Error("User ID is missing");
 
       const { data } = await instance.get<AppApiResponse<StudyHistoryResponse>>(
         `${BASE}/history`,
         { params: { userId, period } }
       );
-      return data.result!;
+      // Fallback to default zero object if result is null
+      return data.result || DEFAULT_STUDY_HISTORY;
     },
-    // Quan trọng: Chỉ gọi API khi userId tồn tại (truthy).
-    // Nếu userId là undefined, status sẽ là 'idle' hoặc 'loading' tùy version React Query, nhưng fetchStatus là 'idle'.
     enabled: !!userId,
     staleTime: 300_000,
   });
@@ -173,17 +190,60 @@ export const useLogActivityStart = () => {
 
 export const useLogActivityEnd = () => {
   const queryClient = useQueryClient();
+  const currentUserId = useUserStore((state) => state.user?.userId);
+  const { showToast } = useToast();
+
   return useMutation({
     mutationFn: async (payload: LearningActivityEventRequest) => {
       if (payload.durationInSeconds === undefined) {
         throw new Error("DurationInSeconds is required for END events.");
       }
       const { data } = await instance.post<
-        AppApiResponse<UserLearningActivityResponse>
+        AppApiResponse<ActivityCompletionResponse>
       >(`${BASE}/end`, payload);
       return data.result!;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: activityKeys.all }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: activityKeys.all });
+
+      const update = data.challengeUpdate;
+
+      if (update && currentUserId) {
+        queryClient.invalidateQueries({ queryKey: dailyChallengeKeys.today(currentUserId) });
+
+        if (update.isCompleted) {
+          showToast({
+            type: "success",
+            title: "Thử thách hoàn thành!",
+            message: `Bạn đã hoàn thành "${update.title}" và nhận ${update.expReward} EXP!`,
+          });
+        } else if (update.progress > 0) {
+          showToast({
+            type: "info",
+            title: "Cập nhật tiến độ",
+            message: `${update.title}: ${update.progress}/${update.target}`,
+          });
+        }
+      }
+    },
+  });
+};
+
+export const useTodayChallenges = (userId: string | undefined) => {
+  return useQuery({
+    queryKey: dailyChallengeKeys.today(userId),
+    queryFn: async () => {
+      if (!userId) throw new Error("User ID is missing");
+      const qp = new URLSearchParams();
+      qp.append("userId", userId);
+
+      const { data } = await instance.get<
+        AppApiResponse<UserDailyChallengeResponse[]>
+      >(`/api/v1/daily-challenges/today?${qp.toString()}`);
+
+      return data.result!;
+    },
+    enabled: !!userId,
+    staleTime: 60_000,
   });
 };

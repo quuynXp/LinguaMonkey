@@ -48,6 +48,19 @@ public class RoomController {
                 .build();
     }
 
+    @Operation(summary = "Get AI Chat History", description = "Get list of AI chat rooms for a user")
+    @GetMapping("/ai-history")
+    public AppApiResponse<List<RoomResponse>> getAiChatHistory(
+            @RequestParam UUID userId,
+            Locale locale) {
+        List<RoomResponse> rooms = roomService.getAiChatHistory(userId);
+        return AppApiResponse.<List<RoomResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("room.list.success", null, locale))
+                .result(rooms)
+                .build();
+    }
+
     @Operation(summary = "Get Joined Rooms (My Inbox)", description = "Get rooms the current user is a member of (Private, AI, etc.)")
     @GetMapping("/joined")
     public AppApiResponse<Page<RoomResponse>> getJoinedRooms(

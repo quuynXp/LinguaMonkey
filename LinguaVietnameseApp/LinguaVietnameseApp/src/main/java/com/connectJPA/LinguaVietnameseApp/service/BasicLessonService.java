@@ -11,4 +11,5 @@ public interface BasicLessonService {
     BasicLessonResponse create(BasicLessonRequest request);
     BasicLessonResponse getById(UUID id);
     Page<BasicLessonResponse> getByLanguageAndType(String languageCode, String lessonType, Pageable pageable);
+    BasicLessonResponse enrichLesson(UUID id);
 }

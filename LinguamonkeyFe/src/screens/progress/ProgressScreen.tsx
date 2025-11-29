@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import {
     Animated,
     ScrollView,
@@ -7,6 +7,7 @@ import {
     View,
     ActivityIndicator,
     RefreshControl,
+    Dimensions,
 } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useNavigation } from "@react-navigation/native"
@@ -26,16 +27,10 @@ type Period = "week" | "month" | "year"
 const ProgressScreen = () => {
     const navigation = useNavigation()
     const { t } = useTranslation()
+    const screenWidth = Dimensions.get('window').width
 
-    // DEBUG: Kiểm tra xem UserStore có thực sự trả về ID không
     const user = useUserStore((state) => state.user)
     const userId = user?.userId
-
-    useEffect(() => {
-        if (!userId) {
-            console.warn("ProgressScreen: Missing userId from UserStore. API call will be disabled.")
-        }
-    }, [userId])
 
     const [currentTab, setCurrentTab] = useState<Tab>("stats")
     const [timeFilter, setTimeFilter] = useState<Period>("month")
@@ -46,14 +41,56 @@ const ProgressScreen = () => {
         isLoading,
         error,
         refetch,
-        // isFetching - Có thể dùng thay cho isLoading trong refreshControl
     } = useGetStudyHistory(
         userId,
         timeFilter
     )
 
+    // Fallback constants used when data is null (handled by Hook, but extra safe here)
     const studySessions: StudySessionResponse[] = studyHistory?.sessions || []
-    const stats: StatsResponse | null = studyHistory?.stats || null
+    const stats: StatsResponse = studyHistory?.stats || {
+        totalSessions: 0,
+        totalTime: 0,
+        totalExperience: 0,
+        averageScore: 0
+    }
+
+    // --- CHART LOGIC (Aggregation for Visualization) ---
+    // Aggregates sessions into last 7 days for the Bar Chart
+    const chartData = useMemo(() => {
+        const days = 7
+        const data = new Array(days).fill(0).map((_, i) => {
+            const d = new Date()
+            d.setDate(d.getDate() - (days - 1 - i))
+            return {
+                date: d,
+                label: d.toLocaleDateString('vi-VN', { weekday: 'short' }),
+                value: 0
+            }
+        })
+
+        // Map sessions to days
+        studySessions.forEach(session => {
+            const sessionDate = new Date(session.date)
+            // Normalize to start of day
+            sessionDate.setHours(0, 0, 0, 0)
+
+            const foundDay = data.find(d => {
+                const chartDate = new Date(d.date)
+                chartDate.setHours(0, 0, 0, 0)
+                return chartDate.getTime() === sessionDate.getTime()
+            })
+
+            if (foundDay && session.duration) {
+                // Convert seconds to minutes for the chart
+                foundDay.value += Math.round(session.duration / 60)
+            }
+        })
+
+        const maxValue = Math.max(...data.map(d => d.value), 10) // Min height 10 mins scale
+        return { data, maxValue }
+    }, [studySessions])
+
 
     useEffect(() => {
         fadeAnim.setValue(0)
@@ -118,16 +155,6 @@ const ProgressScreen = () => {
                 </View>
             </View>
 
-            {session.skills && session.skills.length > 0 && (
-                <View style={styles.skillsRow}>
-                    {session.skills.map((skill, index) => (
-                        <View key={index} style={styles.skillTag}>
-                            <Text style={styles.skillText}>{skill}</Text>
-                        </View>
-                    ))}
-                </View>
-            )}
-
             {session.score != null && session.maxScore != null && session.maxScore > 0 && (
                 <View style={styles.progressBar}>
                     <View
@@ -164,14 +191,40 @@ const ProgressScreen = () => {
         </View>
     )
 
-    const renderStatsTab = () => {
-        if (!stats) return (
-            <View style={styles.centerContent}>
-                <Icon name="sentiment-dissatisfied" size={48} color="#6B7280" />
-                <Text style={styles.loadingText}>{t("history.noStats")}</Text>
+    const renderCustomChart = () => {
+        return (
+            <View style={styles.chartContainer}>
+                <View style={styles.chartHeader}>
+                    <Text style={styles.chartTitle}>{t("history.stats.studyTimeChart", "Thời gian học (phút)")}</Text>
+                    <View style={styles.chartLegend}>
+                        <View style={[styles.legendDot, { backgroundColor: "#4F46E5" }]} />
+                        <Text style={styles.legendText}>Last 7 Days</Text>
+                    </View>
+                </View>
+
+                <View style={styles.chartBody}>
+                    {chartData.data.map((item, index) => {
+                        // Calculate height relative to max, max bar height is 120px
+                        const height = (item.value / chartData.maxValue) * 120
+                        return (
+                            <View key={index} style={styles.chartColumn}>
+                                <View style={styles.barContainer}>
+                                    <View style={[styles.bar, { height: Math.max(height, 4), backgroundColor: height === 0 ? '#E5E7EB' : '#4F46E5' }]} />
+                                    {item.value > 0 && (
+                                        <Text style={styles.barValue}>{item.value}</Text>
+                                    )}
+                                </View>
+                                <Text style={styles.axisLabel}>{item.label}</Text>
+                            </View>
+                        )
+                    })}
+                </View>
             </View>
         )
+    }
 
+    const renderStatsTab = () => {
+        // We ALWAYS render this, using default zero-values if actual data is missing
         return (
             <View style={styles.statsContainer}>
                 <Text style={styles.sectionHeader}>{t("history.stats.summary")}</Text>
@@ -206,22 +259,18 @@ const ProgressScreen = () => {
                     })}
                 </View>
 
-                <View style={styles.chartSection}>
-                    <Text style={styles.chartTitle}>{t("history.stats.progressChart")}</Text>
-                    <Text style={styles.chartPlaceholderText}>({t("common.chartComponent")})</Text>
-                </View>
+                {renderCustomChart()}
             </View>
         )
     }
 
     const renderContent = () => {
-        // Fallback: Nếu không có userId, hook bị disable nên sẽ không có API call.
         if (!userId) {
             return (
                 <View style={styles.centerContent}>
                     <Icon name="account-circle" size={48} color="#F59E0B" />
                     <Text style={styles.errorText}>
-                        {t("common.userNotIdentified", "Không tìm thấy thông tin người dùng. Vui lòng đăng nhập lại.")}
+                        {t("common.userNotIdentified", "Không tìm thấy thông tin người dùng.")}
                     </Text>
                 </View>
             )
@@ -236,20 +285,7 @@ const ProgressScreen = () => {
             )
         }
 
-        if (error) {
-            console.error("API Error in ProgressScreen:", error);
-            return (
-                <View style={styles.centerContent}>
-                    <Icon name="error-outline" size={48} color="#EF4444" />
-                    <Text style={styles.errorText}>
-                        {t("common.errorLoadingData")}
-                    </Text>
-                    <TouchableOpacity onPress={() => refetch()} style={{ marginTop: 16 }}>
-                        <Text style={{ color: "#4F46E5", fontWeight: "600" }}>{t("common.retry")}</Text>
-                    </TouchableOpacity>
-                </View>
-            )
-        }
+        // Removed the "No Stats" block. Now passes through to render empty/zero data.
 
         return (
             <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
@@ -258,17 +294,17 @@ const ProgressScreen = () => {
                         {studySessions.length > 0 ? (
                             studySessions.map(renderSessionCard)
                         ) : (
-                            <View style={styles.centerContent}>
-                                <Icon name="sentiment-dissatisfied" size={48} color="#6B7280" />
-                                <Text style={styles.loadingText}>{t("history.noSessions")}</Text>
+                            <View style={styles.emptySessionContainer}>
+                                <Icon name="history" size={48} color="#E5E7EB" />
+                                <Text style={styles.emptySessionText}>{t("history.noSessions", "Chưa có lịch sử học tập")}</Text>
                             </View>
                         )}
                     </View>
                 )}
                 {currentTab === "tests" && (
-                    <View style={styles.centerContent}>
-                        <Icon name="build-circle" size={48} color="#6B7280" />
-                        <Text style={styles.loadingText}>{t("history.tests.notImplemented")}</Text>
+                    <View style={styles.emptySessionContainer}>
+                        <Icon name="assignment" size={48} color="#E5E7EB" />
+                        <Text style={styles.emptySessionText}>{t("history.tests.empty", "Chưa có bài kiểm tra nào")}</Text>
                     </View>
                 )}
                 {currentTab === "stats" && renderStatsTab()}
@@ -327,7 +363,6 @@ const ProgressScreen = () => {
                     style={styles.content}
                     contentContainerStyle={styles.scrollContentContainer}
                     showsVerticalScrollIndicator={false}
-                    // Sửa lỗi: refreshing chỉ là isLoading VÀ khi userId tồn tại (để tránh loop khi disabled)
                     refreshControl={
                         <RefreshControl refreshing={isLoading && !!userId} onRefresh={refetch} tintColor="#4F46E5" />
                     }
@@ -519,27 +554,6 @@ const styles = createScaledSheet({
         color: "#D97706",
         fontWeight: "600",
     },
-    skillsRow: {
-        flexDirection: "row",
-        flexWrap: "wrap",
-        gap: 6,
-        marginBottom: 12,
-        borderTopWidth: 1,
-        borderTopColor: "#F3F4F6",
-        paddingTop: 12,
-        marginLeft: 52,
-    },
-    skillTag: {
-        backgroundColor: "#F3F4F6",
-        paddingHorizontal: 8,
-        paddingVertical: 2,
-        borderRadius: 12,
-    },
-    skillText: {
-        fontSize: 10,
-        color: "#6B7280",
-        fontWeight: "500",
-    },
     progressBar: {
         height: 4,
         backgroundColor: "#E5E7EB",
@@ -597,28 +611,86 @@ const styles = createScaledSheet({
         marginBottom: 12,
         textTransform: "uppercase",
     },
-    chartSection: {
+    emptySessionContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 40
+    },
+    emptySessionText: {
+        marginTop: 12,
+        color: "#9CA3AF",
+        fontSize: 14
+    },
+    // Custom Chart Styles
+    chartContainer: {
         backgroundColor: "#FFFFFF",
         borderRadius: 12,
-        padding: 20,
+        padding: 16,
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
         shadowOpacity: 0.05,
         shadowRadius: 3,
         elevation: 2,
-        minHeight: 200,
+    },
+    chartHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
     },
     chartTitle: {
         fontSize: 16,
-        fontWeight: "600",
-        color: "#1F2937",
-        marginBottom: 16,
+        fontWeight: '600',
+        color: '#1F2937',
     },
-    chartPlaceholderText: {
+    chartLegend: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    legendDot: {
+        width: 8,
+        height: 8,
+        borderRadius: 4,
+        marginRight: 6,
+    },
+    legendText: {
         fontSize: 12,
-        color: "#9CA3AF",
-        fontStyle: 'italic',
-        textAlign: 'center'
+        color: '#6B7280',
+    },
+    chartBody: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'flex-end',
+        height: 150,
+        paddingBottom: 10,
+    },
+    chartColumn: {
+        alignItems: 'center',
+        flex: 1,
+    },
+    barContainer: {
+        height: 120,
+        justifyContent: 'flex-end',
+        alignItems: 'center',
+        width: '100%',
+        marginBottom: 8,
+    },
+    bar: {
+        width: 12,
+        borderRadius: 6,
+        backgroundColor: '#4F46E5',
+    },
+    barValue: {
+        position: 'absolute',
+        top: -20,
+        fontSize: 10,
+        color: '#4F46E5',
+        fontWeight: '600',
+    },
+    axisLabel: {
+        fontSize: 10,
+        color: '#9CA3AF',
+        fontWeight: '500',
     }
 })
 

@@ -3,7 +3,6 @@ import React from 'react';
 import DailyWelcomeScreen from '../../screens/appLaunch/DailyWelcomeScreen';
 import ProficiencyTestScreen from '../../screens/appLaunch/ProficiencyTestScreen';
 import SetupInitScreen from '../../screens/appLaunch/SetupInitScreen';
-import TransactionHistoryScreen from '../../screens/payment/TransactionHistoryScreen';
 import TabNavigator from '../TabNavigator';
 import AdminStack from './AdminStack';
 import LearnStack from './LearnStack';
@@ -13,6 +12,7 @@ import ProfileStack from './ProfileStack';
 import ProgressStack from './ProgressStack';
 import CourseStack from './CourseStack';
 import RoadmapStack from './RoadmapStack';
+import ResetPasswordScreen from '../../screens/auth/ResetPasswordScreen';
 
 export type MainStackParamList = {
   TabApp: undefined;
@@ -28,6 +28,7 @@ export type MainStackParamList = {
   ProgressStack: undefined;
   CourseStack: undefined;
   RoadmapStack: undefined;
+  ResetPasswordScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -38,11 +39,21 @@ interface MainStackProps {
 
 const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }} initialRouteName={initialRouteName} id={undefined}>
+    <Stack.Navigator
+      initialRouteName={initialRouteName}
+      id={undefined}
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+        gestureEnabled: true,
+        gestureDirection: 'horizontal',
+        fullScreenGestureEnabled: true,
+      }}
+    >
       {/* 1. Main Tabs */}
       <Stack.Screen name="TabApp" component={TabNavigator} />
 
-      {/* 2. Feature Stacks (Nằm ngoài Tab để hiển thị Full Screen) */}
+      {/* 2. Feature Stacks */}
       <Stack.Screen name="LearnStack" component={LearnStack} />
       <Stack.Screen name="AdminStack" component={AdminStack} />
       <Stack.Screen name="ChatStack" component={ChatStack} />
@@ -52,9 +63,22 @@ const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
       <Stack.Screen name="RoadmapStack" component={RoadmapStack} />
 
       {/* 3. Onboarding / Setup Flows */}
-      <Stack.Screen name="DailyWelcomeScreen" component={DailyWelcomeScreen} />
-      <Stack.Screen name="ProficiencyTestScreen" component={ProficiencyTestScreen} />
-      <Stack.Screen name="SetupInitScreen" component={SetupInitScreen} />
+      <Stack.Screen
+        name="DailyWelcomeScreen"
+        component={DailyWelcomeScreen}
+        options={{ gestureEnabled: false }} // Chặn vuốt back ở màn hình này nếu cần
+      />
+      <Stack.Screen
+        name="ProficiencyTestScreen"
+        component={ProficiencyTestScreen}
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen
+        name="SetupInitScreen"
+        component={SetupInitScreen}
+        options={{ gestureEnabled: false }}
+      />
+      <Stack.Screen name="ResetPasswordScreen" component={ResetPasswordScreen} />
 
       {/* 4. Payment & Transactions */}
       <Stack.Screen name="PaymentStack" component={PaymentStack} />

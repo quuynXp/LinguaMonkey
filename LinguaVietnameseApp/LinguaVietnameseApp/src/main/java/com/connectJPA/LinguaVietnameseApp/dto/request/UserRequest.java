@@ -6,20 +6,17 @@ import com.connectJPA.LinguaVietnameseApp.enums.LearningPace;
 import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import jakarta.validation.constraints.*;
 import lombok.*;
-import lombok.Getter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
-@Setter
-@Getter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class UserRequest {
-    @Size(max = 50, message = "Username must not exceed 50 characters")
-    private String username;
 
     @Size(max = 255, message = "Email must not exceed 255 characters")
     private String email;
@@ -32,10 +29,12 @@ public class UserRequest {
 
     @Size(max = 50, message = "Nickname must not exceed 50 characters")
     private String nickname;
+
     private String gender;
 
     private String bio;
 
+    private LocalDate dayOfBirth;
 
     private String phone;
 
@@ -45,16 +44,18 @@ public class UserRequest {
     private UUID badgeId;
     private AgeRange ageRange;
     private LearningPace learningPace;
-    private List<UUID> interestestIds;
+    private List<UUID> interestIds;
     private List<String> goalIds;
     private List<String> certificationIds;
     private String nativeLanguageCode;
     private ProficiencyLevel proficiency;
     private List<String> languages;
     private Country country;
-    private Integer level = 1;
+    private Integer level;
     private String authProvider;
-    private Integer score = 0;
-    private Integer streak = 0;
+    private Integer score;
+    private Integer streak;
+    private Boolean isVip;
+    private Integer exp;
 
 }

@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.UUID;
 
 @RestController
-@RequestMapping("/api/v1/wallet")
+@RequestMapping("/api/v1/wallets")
 @RequiredArgsConstructor
 public class WalletController {
 

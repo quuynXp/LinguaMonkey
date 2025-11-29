@@ -41,13 +41,28 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
         LIMIT :limit
     """, nativeQuery = true)
     List<Course> findRecommendedCourses(
-            @Param("proficiency") String proficiency, // Đổi sang String để Hibernate binding chính xác với VARCHAR
+            @Param("proficiency") String proficiency,
             @Param("languageCode") String languageCode,
             @Param("excluded") List<UUID> excluded,
             @Param("limit") int limit);
 
     Page<Course> findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
             String title, String languageCode, CourseApprovalStatus approvalStatus, Pageable pageable);
+
+
+    Page<Course> findByDifficultyLevelInAndCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
+            List<String> difficultyLevel, 
+                List<UUID> courseId, 
+                CourseApprovalStatus approvalStatus, 
+                Pageable pageable
+            );
+
+    Page<Course> findByCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
+            List<UUID> courseId, 
+            CourseApprovalStatus approvalStatus, 
+            boolean isDeleted, 
+            Pageable pageable
+    );
 
     Page<Course> findByTypeAndApprovalStatusAndIsDeletedFalse(CourseType type, CourseApprovalStatus approvalStatus, Pageable pageable);
 

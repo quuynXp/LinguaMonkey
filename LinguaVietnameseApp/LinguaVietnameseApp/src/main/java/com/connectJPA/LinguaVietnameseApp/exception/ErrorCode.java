@@ -27,6 +27,7 @@ ACCOUNT_RECOVERY_EXPIRED(400, "Account.recoveryExpired", HttpStatus.BAD_REQUEST,
     INVALID_INPUT_DATA(1009, "error.invalid_input_data", HttpStatus.BAD_REQUEST, true),
 
     DUPLICATE_SUGGESTION(409, "roadmap.duplicate_suggestion", HttpStatus.BAD_REQUEST, true),
+    MESSAGE_EDIT_EXPIRED(410, "roadmap.duplicate_suggestion", HttpStatus.BAD_REQUEST, true),
 
 
     // Nhóm: User & Auth Logic (400) (11xx)

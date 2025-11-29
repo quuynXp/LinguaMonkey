@@ -13,6 +13,8 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { useLeaderboards } from "../../hooks/useLeaderboards";
+import { useUsers } from "../../hooks/useUsers";
+import { useToast } from "../../utils/useToast"; // Sử dụng Toast thay vì Alert
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import type { LeaderboardEntryResponse, LeaderboardResponse } from "../../types/dto";
@@ -20,16 +22,17 @@ import { gotoTab } from "../../utils/navigationRef";
 
 const PAGE_LIMIT = 20;
 
-// Placeholder giống Facebook
-const PLACEHOLDER_MALE = "https://avatar.iran.liara.run/public/boy";
-const PLACEHOLDER_FEMALE = "https://avatar.iran.liara.run/public/girl";
-const PLACEHOLDER_DEFAULT = "https://via.placeholder.com/150/9CA3AF/FFFFFF?text=User";
+// Sử dụng require cho assets images
+const PLACEHOLDER_MALE = require("../../assets/images/placeholder_male.png");
+const PLACEHOLDER_FEMALE = require("../../assets/images/placeholder_female.png");
+const PLACEHOLDER_DEFAULT = require("../../assets/images/placeholder_male.png");
 
 const tabsStatic = [
     { id: "global", titleKey: "leaderboard.tabs.global", icon: "leaderboard" },
     { id: "friends", titleKey: "leaderboard.tabs.friends", icon: "people" },
     { id: "couple", titleKey: "leaderboard.tabs.couples", icon: "favorite" },
     { id: "country", titleKey: "leaderboard.tabs.country", icon: "location-on" },
+    { id: "admire", titleKey: "leaderboard.tabs.admire", icon: "star" }, // Thêm tab Admire
 ];
 
 const EnhancedLeaderboardScreen = () => {
@@ -37,8 +40,13 @@ const EnhancedLeaderboardScreen = () => {
     const { t } = useTranslation();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const { user } = useUserStore();
+    const currentUserId = user?.userId;
 
+    const { showToast } = useToast();
     const { useLeaderboardList, useEntries } = useLeaderboards();
+    const { useSendFriendRequest } = useUsers();
+
+    const sendFriendRequestMutation = useSendFriendRequest();
 
     const [selectedTab, setSelectedTab] = useState<string>("global");
     const [leaderboardId, setLeaderboardId] = useState<string | null>(null);
@@ -54,7 +62,6 @@ const EnhancedLeaderboardScreen = () => {
         }).start();
     }, [fadeAnim]);
 
-    // 1. Gọi API lấy Leaderboard tương ứng với Tab (Metadata)
     const {
         data: leaderboardsData,
         isLoading: leaderboardsLoading,
@@ -66,7 +73,6 @@ const EnhancedLeaderboardScreen = () => {
         return leaderboardsData.data as LeaderboardResponse[];
     }, [leaderboardsData]);
 
-    // 2. Khi Tab thay đổi hoặc API Metadata trả về, lấy ID mới và reset list
     useEffect(() => {
         setPage(0);
         setHasMore(true);
@@ -80,7 +86,6 @@ const EnhancedLeaderboardScreen = () => {
         }
     }, [resolvedLeaderboardList, selectedTab]);
 
-    // 3. Gọi API lấy Entries dựa trên Leaderboard ID (Lazy load 20 items)
     const {
         data: entriesData,
         isLoading: entriesLoading,
@@ -116,23 +121,39 @@ const EnhancedLeaderboardScreen = () => {
 
     const onPressUser = (entry: LeaderboardEntryResponse) => {
         const resolvedUserId = entry.userId ?? entry.leaderboardEntryId?.userId;
+
         if (!resolvedUserId) return;
+
+        if (resolvedUserId !== currentUserId) {
+            // Logic gửi kết bạn tạm thời comment lại để focus vào hiển thị
+            // Nếu cần kích hoạt lại, sử dụng showToast thay vì Alert
+            /*
+            sendFriendRequestMutation.mutate(
+                { requesterId: currentUserId, receiverId: resolvedUserId },
+                {
+                    onSuccess: () => {
+                        showToast({ message: t("leaderboard.friendRequest.success"), type: "success" });
+                    },
+                    onError: (error: any) => {
+                        showToast({ message: error.message, type: "error" });
+                    },
+                }
+            );
+            */
+        }
         gotoTab("ProfileStack", "UserProfileViewScreen", { userId: resolvedUserId });
     };
 
     const getAvatarSource = (url?: string, gender?: string) => {
         if (url) return { uri: url };
-        if (gender === "MALE" || gender === "Nam") return { uri: PLACEHOLDER_MALE };
-        if (gender === "FEMALE" || gender === "Nữ") return { uri: PLACEHOLDER_FEMALE };
-        return { uri: PLACEHOLDER_DEFAULT };
+        if (gender === "MALE" || gender === "Nam") return PLACEHOLDER_MALE;
+        if (gender === "FEMALE" || gender === "Nữ") return PLACEHOLDER_FEMALE;
+        return PLACEHOLDER_DEFAULT;
     };
-
-    // --- RENDER COMPONENTS ---
 
     const renderHeader = () => {
         return (
             <View>
-                {/* Custom Header Bar */}
                 <View style={styles.headerBar}>
                     <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                         <Icon name="arrow-back" size={24} color="#374151" />
@@ -143,7 +164,6 @@ const EnhancedLeaderboardScreen = () => {
                     <View style={{ width: 24 }} />
                 </View>
 
-                {/* Tabs */}
                 <View style={styles.tabsContainer}>
                     <FlatList
                         horizontal
@@ -185,7 +205,6 @@ const EnhancedLeaderboardScreen = () => {
                     />
                 </View>
 
-                {/* Podium Section */}
                 <View style={styles.podiumContainer}>
                     {entriesLoading && page === 0 && top3Data.length === 0 ? (
                         <ActivityIndicator size="small" style={{ marginVertical: 40 }} />
@@ -218,8 +237,13 @@ const EnhancedLeaderboardScreen = () => {
             default: placeColor = "#6B7280"; medalIcon = "";
         }
 
-        const height = position === 1 ? 120 : position === 2 ? 100 : 80;
+        // Hạ thấp chiều cao podium: 90 / 70 / 50
+        const height = position === 1 ? 90 : position === 2 ? 70 : 50;
         const avatarSource = getAvatarSource(entry.avatarUrl, entry.gender);
+
+        // Dữ liệu hiển thị riêng
+        const score = entry.score ?? 0;
+        const exp = entry.exp ?? 0;
 
         return (
             <TouchableOpacity
@@ -247,12 +271,18 @@ const EnhancedLeaderboardScreen = () => {
                 </Text>
 
                 <Text style={styles.podiumLevel}>
-                    {t("leaderboard.level")} {entry.level ?? "-"}
+                    Lv.{entry.level ?? 0}
                 </Text>
 
-                <Text style={styles.podiumScore}>
-                    {(entry.score ?? entry.exp ?? 0).toLocaleString()}
-                </Text>
+                {/* Hiển thị riêng Score và Exp */}
+                <View style={styles.statsContainer}>
+                    <Text style={[styles.podiumScore, { color: placeColor }]}>
+                        {score.toLocaleString()} <Text style={styles.unitText}>pts</Text>
+                    </Text>
+                    <Text style={styles.podiumExp}>
+                        {exp.toLocaleString()} <Text style={styles.unitText}>exp</Text>
+                    </Text>
+                </View>
 
                 <View style={[styles.podiumBar, { height: height, backgroundColor: placeColor }]} />
             </TouchableOpacity>
@@ -263,9 +293,12 @@ const EnhancedLeaderboardScreen = () => {
         if (!item) return null;
 
         const rank = index + 4;
-        const currentUserId = item.userId ?? item.leaderboardEntryId?.userId;
-        const isMe = currentUserId === user?.userId;
+        const currentEntryUserId = item.userId ?? item.leaderboardEntryId?.userId;
+        const isMe = currentEntryUserId === user?.userId;
         const avatarSource = getAvatarSource(item.avatarUrl, item.gender);
+
+        const score = item.score ?? 0;
+        const exp = item.exp ?? 0;
 
         return (
             <TouchableOpacity
@@ -287,15 +320,18 @@ const EnhancedLeaderboardScreen = () => {
                         {item.nickname ? ` (${item.nickname})` : ""}
                     </Text>
                     <Text style={styles.listLevel}>
-                        {t("leaderboard.level")} {item.level ?? "-"}
+                        Lv.{item.level ?? 0}
                     </Text>
                 </View>
 
+                {/* Hiển thị riêng Score và Exp trong list */}
                 <View style={{ alignItems: "flex-end" }}>
                     <Text style={styles.listScore}>
-                        {(item.score ?? item.exp ?? 0).toLocaleString()}
+                        {score.toLocaleString()} <Text style={styles.unitTextSmall}>pts</Text>
                     </Text>
-                    <Text style={styles.listScoreLabel}>EXP</Text>
+                    <Text style={styles.listExp}>
+                        {exp.toLocaleString()} <Text style={styles.unitTextSmall}>exp</Text>
+                    </Text>
                 </View>
             </TouchableOpacity>
         );
@@ -435,10 +471,21 @@ const styles = StyleSheet.create({
         fontSize: 11,
         marginTop: 4,
     },
+    statsContainer: {
+        alignItems: 'center',
+        marginTop: 4
+    },
     podiumScore: {
         fontWeight: "700",
-        fontSize: 14,
-        marginTop: 4,
+        fontSize: 13,
+    },
+    podiumExp: {
+        fontSize: 11,
+        color: "#6B7280",
+    },
+    unitText: {
+        fontSize: 10,
+        fontWeight: "400"
     },
     podiumBar: {
         width: "100%",
@@ -482,10 +529,15 @@ const styles = StyleSheet.create({
     },
     listScore: {
         fontWeight: "700",
+        fontSize: 14,
+        color: "#374151"
     },
-    listScoreLabel: {
-        fontSize: 11,
+    listExp: {
+        fontSize: 12,
         color: "#9CA3AF",
+    },
+    unitTextSmall: {
+        fontSize: 10,
     },
     centerEmpty: {
         flex: 1,

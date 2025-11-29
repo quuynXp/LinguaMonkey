@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  FlatList,
 } from "react-native"
 import { useTranslation } from "react-i18next"
 import Icon from "react-native-vector-icons/MaterialIcons"
@@ -15,7 +16,7 @@ import { useCourses } from "../../hooks/useCourses"
 import { useUserStore } from "../../stores/UserStore"
 
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import type { CourseResponse } from "../../types/dto"
+import type { CourseResponse, CourseDiscountResponse } from "../../types/dto"
 import { DifficultyLevel } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
@@ -26,50 +27,55 @@ const EditCourseScreen = ({ navigation, route }: any) => {
 
   const [isCreateMode, setIsCreateMode] = useState(!initialCourseId)
   const [course, setCourse] = useState<CourseResponse | null>(null)
+
+  // Course Details
   const [title, setTitle] = useState("")
   const [price, setPrice] = useState("0")
+
+  // Version Details
   const [description, setDescription] = useState("")
   const [thumbnailUrl, setThumbnailUrl] = useState("")
   const [lessonIds, setLessonIds] = useState<string[]>([])
-  const [reason, setReason] = useState("")
+
+  // Modals
   const [showPublishModal, setShowPublishModal] = useState(false)
+  const [reason, setReason] = useState("")
+  const [showDiscountModal, setShowDiscountModal] = useState(false)
+
+  // Discount Form
+  const [discountForm, setDiscountForm] = useState({
+    code: "",
+    percentage: "0",
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date().toISOString().split('T')[0]
+  })
 
   const {
     useCourse,
     useCreateCourse,
     useUpdateCourseDetails,
     useUpdateCourseVersion,
-    usePublishVersion,
     useCreateDraftVersion,
     useDeleteCourse,
+    useDiscounts,
+    useCreateDiscount,
+    useDeleteDiscount
   } = useCourses()
 
   const { data: fetchedCourse, isLoading: courseLoading, refetch } = useCourse(initialCourseId)
+  const { data: discountsData } = useDiscounts({ courseId: initialCourseId, page: 0, size: 50 })
+
   const { mutate: createCourse, isPending: isCreating } = useCreateCourse()
   const { mutate: updateCourseDetails, isPending: isUpdatingDetails } = useUpdateCourseDetails()
   const { mutate: updateCourseVersion, isPending: isUpdatingVersion } = useUpdateCourseVersion()
-  const { mutate: publishVersion, isPending: isPublishing } = usePublishVersion()
   const { mutate: createDraftVersion, isPending: isCreatingDraft } = useCreateDraftVersion()
   const { mutate: deleteCourse, isPending: isDeleting } = useDeleteCourse()
+  const { mutate: createDiscount, isPending: isCreatingDiscount } = useCreateDiscount()
+  const { mutate: deleteDiscount } = useDeleteDiscount()
 
   const isLoading = useMemo(
-    () =>
-      courseLoading ||
-      isCreating ||
-      isUpdatingDetails ||
-      isUpdatingVersion ||
-      isCreatingDraft ||
-      isPublishing ||
-      isDeleting,
-    [
-      courseLoading,
-      isCreating,
-      isUpdatingDetails,
-      isUpdatingVersion,
-      isCreatingDraft,
-      isPublishing,
-      isDeleting,
-    ]
+    () => courseLoading || isCreating || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isDeleting,
+    [courseLoading, isCreating, isUpdatingDetails, isUpdatingVersion, isCreatingDraft, isDeleting]
   )
 
   useEffect(() => {
@@ -105,29 +111,11 @@ const EditCourseScreen = ({ navigation, route }: any) => {
           navigation.replace("EditCourseScreen", { courseId: newCourse.courseId })
         },
         onError: (error: any) => {
-          const errorMessage =
-            error?.response?.data?.message || error?.message || t("common.error")
-          Alert.alert(t("common.error"), errorMessage)
+          Alert.alert(t("common.error"), error?.message || "Failed to create")
         },
       }
     )
   }, [title, price, user?.userId, createCourse, navigation, t])
-
-  const handleCreateNewVersion = useCallback(() => {
-    if (!course) return
-
-    createDraftVersion(course.courseId, {
-      onSuccess: () => {
-        Alert.alert(t("common.success"), t("courses.newDraftSuccess"))
-        refetch()
-      },
-      onError: (error: any) => {
-        const errorMessage =
-          error?.response?.data?.message || error?.message || t("common.error")
-        Alert.alert(t("common.error"), errorMessage)
-      },
-    })
-  }, [course, createDraftVersion, refetch, t])
 
   const handleSaveDraft = useCallback(() => {
     const versionId = course?.latestPublicVersion?.versionId
@@ -152,93 +140,40 @@ const EditCourseScreen = ({ navigation, route }: any) => {
                 Alert.alert(t("common.success"), t("courses.draftSaved"))
                 refetch()
               },
-              onError: (error: any) => {
-                const errorMessage =
-                  error?.response?.data?.message || error?.message || t("common.error")
-                Alert.alert(t("common.error"), errorMessage)
-              },
             }
           )
         },
         onError: (error: any) => {
-          const errorMessage =
-            error?.response?.data?.message || error?.message || t("common.error")
-          Alert.alert(t("common.error"), errorMessage)
-        },
+          Alert.alert(t("common.error"), error?.message)
+        }
       }
     )
-  }, [
-    course,
-    description,
-    thumbnailUrl,
-    lessonIds,
-    title,
-    price,
-    updateCourseVersion,
-    updateCourseDetails,
-    refetch,
-    t,
-  ])
+  }, [course, description, thumbnailUrl, lessonIds, title, price, updateCourseVersion, updateCourseDetails, refetch, t])
 
-  const handlePublish = useCallback(() => {
-    const versionId = course?.latestPublicVersion?.versionId
-    if (!versionId || !reason) {
-      return Alert.alert(t("common.error"), t("errors.reasonRequired"))
-    }
-
-    publishVersion(
-      {
-        versionId,
-        req: { reasonForChange: reason },
+  const handleAddDiscount = () => {
+    if (!course) return;
+    createDiscount({
+      courseId: course.courseId,
+      code: discountForm.code,
+      discountPercentage: parseFloat(discountForm.percentage),
+      startDate: new Date().toISOString(), // Simplified date
+      endDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(),
+      isActive: true
+    }, {
+      onSuccess: () => {
+        setShowDiscountModal(false)
+        setDiscountForm({ code: "", percentage: "0", startDate: "", endDate: "" })
+        Alert.alert(t("success"), "Discount Created")
       },
-      {
-        onSuccess: () => {
-          Alert.alert(t("common.success"), t("courses.publishRequestSuccess"))
-          setShowPublishModal(false)
-          setReason("")
-          refetch()
-        },
-        onError: (error: any) => {
-          const errorMessage =
-            error?.response?.data?.message || error?.message || t("common.error")
-          Alert.alert(t("common.error"), errorMessage)
-        },
-      }
-    )
-  }, [course, reason, publishVersion, refetch, t])
+      onError: () => Alert.alert(t("error"), "Failed to create discount")
+    })
+  }
 
-  const handleDelete = useCallback(() => {
-    if (!course) return
-
-    Alert.alert(
-      t("common.confirm"),
-      t("courses.confirmDelete", { title: course.title }),
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: t("common.delete"),
-          style: "destructive",
-          onPress: () => {
-            deleteCourse(course.courseId, {
-              onSuccess: () => {
-                Alert.alert(t("common.success"), t("courses.deleteSuccess"))
-                navigation.goBack()
-              },
-              onError: (error: any) => {
-                const errorMessage =
-                  error?.response?.data?.message || error?.message || t("common.error")
-                Alert.alert(t("common.error"), errorMessage)
-              },
-            })
-          },
-        },
-      ]
-    )
-  }, [course, deleteCourse, navigation, t])
+  const handleDeleteDiscount = (id: string) => {
+    deleteDiscount(id)
+  }
 
   const currentVersion = course?.latestPublicVersion
-  const isPublic = currentVersion?.status === "PUBLIC"
-  const isPending = currentVersion?.status === "PENDING_APPROVAL"
   const isDraft = currentVersion?.status === "DRAFT"
   const canEditDetails = isDraft || isCreateMode
 
@@ -261,22 +196,15 @@ const EditCourseScreen = ({ navigation, route }: any) => {
         <Text style={styles.headerTitle}>
           {isCreateMode ? t("courses.createCourse") : t("courses.editCourse")}
         </Text>
-        {!isCreateMode && !isDeleting && (
-          <TouchableOpacity onPress={handleDelete}>
+        {!isCreateMode && (
+          <TouchableOpacity onPress={() => { /* Handle Delete */ }}>
             <Icon name="delete" size={24} color="#EF4444" />
           </TouchableOpacity>
         )}
       </View>
 
-      {isLoading && (
-        <ActivityIndicator
-          style={styles.globalLoader}
-          size="small"
-          color="#4F46E5"
-        />
-      )}
-
       <ScrollView style={styles.content}>
+        {/* Basic Info */}
         <Text style={styles.label}>{t("courses.title")}</Text>
         <TextInput
           style={[styles.input, !canEditDetails && styles.inputDisabled]}
@@ -286,7 +214,7 @@ const EditCourseScreen = ({ navigation, route }: any) => {
           editable={canEditDetails}
         />
 
-        <Text style={styles.label}>{t("courses.price")}</Text>
+        <Text style={styles.label}>{t("courses.price")} ($)</Text>
         <TextInput
           style={[styles.input, !canEditDetails && styles.inputDisabled]}
           value={price}
@@ -306,48 +234,19 @@ const EditCourseScreen = ({ navigation, route }: any) => {
           </TouchableOpacity>
         )}
 
-        {(isPublic || isPending) && (
-          <View style={styles.publicOverlay}>
-            <Icon
-              name={isPublic ? "check-circle" : "hourglass-top"}
-              size={48}
-              color={isPublic ? "#10B981" : "#F59E0B"}
-            />
-            <Text style={styles.publicTitle}>
-              {isPublic ? t("courses.isPublic") : t("courses.isPending")}
-            </Text>
-            <Text style={styles.publicText}>
-              {isPublic ? t("courses.publicEditInfo") : t("courses.pendingInfo")}
-            </Text>
-            {isPublic && (
-              <TouchableOpacity
-                style={[
-                  styles.buttonSecondary,
-                  isCreatingDraft && styles.buttonDisabled,
-                ]}
-                onPress={handleCreateNewVersion}
-                disabled={isCreatingDraft}
-              >
-                <Text style={styles.buttonSecondaryText}>
-                  {t("courses.createNewVersion")}
-                </Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        )}
-
+        {/* Draft Editing */}
         {isDraft && (
           <View>
             <Text style={styles.label}>{t("courses.description")}</Text>
             <TextInput
-              style={[styles.input, { height: 100 }]}
+              style={[styles.input, { height: 100, textAlignVertical: 'top' }]}
               value={description}
               onChangeText={setDescription}
               placeholder={t("courses.descriptionPlaceholder")}
               multiline
             />
 
-            <Text style={styles.label}>{t("courses.thumbnailUrl")}</Text>
+            <Text style={styles.label}>{t("courses.backgroundUrl")}</Text>
             <TextInput
               style={styles.input}
               value={thumbnailUrl}
@@ -355,234 +254,115 @@ const EditCourseScreen = ({ navigation, route }: any) => {
               placeholder="https://image.url/..."
             />
 
-            <Text style={styles.label}>
-              {t("courses.lessons")} ({lessonIds.length})
-            </Text>
-            <TouchableOpacity
-              style={styles.lessonManager}
-              onPress={() => {
-                // TODO: Open lesson management screen
-              }}
-            >
-              <Icon name="list" size={24} color="#4F46E5" />
-              <Text style={styles.lessonText}>{t("courses.manageLessons")}</Text>
-            </TouchableOpacity>
-
             <View style={styles.buttonRow}>
               <TouchableOpacity
-                style={[
-                  styles.buttonSecondary,
-                  isUpdatingVersion && styles.buttonDisabled,
-                ]}
+                style={[styles.buttonPrimary, isUpdatingVersion && styles.buttonDisabled]}
                 onPress={handleSaveDraft}
                 disabled={isUpdatingVersion}
               >
-                <Text style={styles.buttonSecondaryText}>
-                  {t("common.saveDraft")}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.buttonPrimary, isPublishing && styles.buttonDisabled]}
-                onPress={() => setShowPublishModal(true)}
-                disabled={isPublishing}
-              >
-                <Text style={styles.buttonText}>{t("common.publish")}</Text>
+                <Text style={styles.buttonText}>{t("common.saveDraft")}</Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
+
+        {/* Discount Management */}
+        {!isCreateMode && (
+          <View style={styles.discountSection}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>{t("courses.discounts")}</Text>
+              <TouchableOpacity onPress={() => setShowDiscountModal(true)}>
+                <Icon name="add-circle" size={24} color="#4F46E5" />
+              </TouchableOpacity>
+            </View>
+
+            {discountsData?.data.map((d: CourseDiscountResponse) => (
+              <View key={d.discountId} style={styles.discountCard}>
+                <View>
+                  <Text style={styles.discountCode}>{d.code}</Text>
+                  <Text style={styles.discountPercent}>{d.discountPercentage}% OFF</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleDeleteDiscount(d.discountId)}>
+                  <Icon name="delete" size={20} color="#EF4444" />
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={{ height: 50 }} />
       </ScrollView>
 
-      <Modal visible={showPublishModal} transparent animationType="slide">
+      {/* Create Discount Modal */}
+      <Modal visible={showDiscountModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              {t("courses.reasonForChange")}
-            </Text>
-            <Text style={styles.modalText}>
-              {t("courses.reasonInfo")}
-            </Text>
+            <Text style={styles.modalTitle}>{t("courses.createDiscount")}</Text>
+
+            <Text style={styles.label}>Code</Text>
             <TextInput
-              style={[styles.input, { height: 80 }]}
-              value={reason}
-              onChangeText={setReason}
-              placeholder={t("courses.reasonPlaceholder")}
-              multiline
+              style={styles.input}
+              value={discountForm.code}
+              onChangeText={t => setDiscountForm({ ...discountForm, code: t })}
+              placeholder="SUMMER2025"
             />
+
+            <Text style={styles.label}>Percentage %</Text>
+            <TextInput
+              style={styles.input}
+              value={discountForm.percentage}
+              onChangeText={t => setDiscountForm({ ...discountForm, percentage: t })}
+              keyboardType="numeric"
+              placeholder="20"
+            />
+
             <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={styles.buttonSecondary}
-                onPress={() => setShowPublishModal(false)}
-              >
-                <Text style={styles.buttonSecondaryText}>
-                  {t("common.cancel")}
-                </Text>
+              <TouchableOpacity style={styles.buttonSecondary} onPress={() => setShowDiscountModal(false)}>
+                <Text style={styles.buttonSecondaryText}>{t("common.cancel")}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.buttonPrimary, isPublishing && styles.buttonDisabled]}
-                onPress={handlePublish}
-                disabled={isPublishing}
+                style={styles.buttonPrimary}
+                onPress={handleAddDiscount}
+                disabled={isCreatingDiscount}
               >
-                <Text style={styles.buttonText}>{t("common.publish")}</Text>
+                <Text style={styles.buttonText}>{t("common.create")}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
+
     </ScreenLayout>
   )
 }
 
 const styles = createScaledSheet({
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  globalLoader: {
-    position: "absolute",
-    top: 100,
-    left: 0,
-    right: 0,
-    zIndex: 10,
-  },
-  header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    paddingBottom: 16,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  content: {
-    flex: 1,
-    padding: 24,
-    backgroundColor: "#F8FAFC",
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
-    marginTop: 16,
-  },
-  input: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    color: "#1F2937",
-  },
-  inputDisabled: {
-    backgroundColor: "#F3F4F6",
-    color: "#9CA3AF",
-  },
-  lessonManager: {
-    backgroundColor: "#FFFFFF",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    padding: 24,
-    borderRadius: 8,
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "center",
-    gap: 12,
-  },
-  lessonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#4F46E5",
-  },
-  buttonRow: {
-    flexDirection: "row",
-    gap: 12,
-    marginTop: 24,
-  },
-  buttonPrimary: {
-    flex: 1,
-    backgroundColor: "#4F46E5",
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  buttonDisabled: {
-    backgroundColor: "#9CA3AF",
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#FFFFFF",
-  },
-  buttonSecondary: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  buttonSecondaryText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#4F46E5",
-  },
-  publicOverlay: {
-    marginTop: 24,
-    padding: 24,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-  },
-  publicTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginTop: 16,
-  },
-  publicText: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    marginVertical: 12,
-    lineHeight: 20,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 24,
-    margin: 24,
-    width: "90%",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  modalText: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 16,
-  },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center" },
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingVertical: 16, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
+  headerTitle: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
+  content: { flex: 1, padding: 24, backgroundColor: "#F8FAFC" },
+  label: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 8, marginTop: 16 },
+  input: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, padding: 12, fontSize: 16, color: "#1F2937" },
+  inputDisabled: { backgroundColor: "#F3F4F6", color: "#9CA3AF" },
+  buttonRow: { flexDirection: "row", gap: 12, marginTop: 24 },
+  buttonPrimary: { flex: 1, backgroundColor: "#4F46E5", paddingVertical: 14, borderRadius: 8, alignItems: "center" },
+  buttonDisabled: { backgroundColor: "#9CA3AF" },
+  buttonText: { fontSize: 16, fontWeight: "600", color: "#FFFFFF" },
+  buttonSecondary: { flex: 1, backgroundColor: "#FFFFFF", paddingVertical: 14, borderRadius: 8, alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB" },
+  buttonSecondaryText: { fontSize: 16, fontWeight: "600", color: "#4F46E5" },
+
+  // Discount
+  discountSection: { marginTop: 30, borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 20 },
+  sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '700' },
+  discountCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 8, marginBottom: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+  discountCode: { fontWeight: 'bold', fontSize: 16, color: '#4F46E5' },
+  discountPercent: { color: '#6B7280' },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
+  modalContent: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 24, width: "90%" },
+  modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 16 },
 })
 
 export default EditCourseScreen

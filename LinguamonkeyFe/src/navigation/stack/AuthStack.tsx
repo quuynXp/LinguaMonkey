@@ -14,7 +14,6 @@ export type AuthStackParamList = {
   RegisterScreen: undefined;
   VerifyCodeScreen: { email: string };
   ForgotPasswordScreen: undefined;
-  ResetPasswordScreen: undefined;
   SetupInitScreen: undefined;
 };
 
@@ -33,7 +32,6 @@ export default function AuthStack({ initialParams }: { initialParams?: any }) {
       <Stack.Screen name="ForgotPasswordScreen" component={ForgotPasswordScreen} />
       <Stack.Screen name="VerifyCodeScreen" component={VerifyCodeScreen} />
       <Stack.Screen name="SetupInitScreen" component={SetupInitScreen} />
-      <Stack.Screen name="ResetPasswordScreen" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 }

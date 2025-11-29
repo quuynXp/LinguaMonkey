@@ -133,7 +133,7 @@ const DepositScreen = ({ navigation, route }) => {
 
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#F8FAFC' },
-    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 50, paddingBottom: 15, backgroundColor: '#FFF' },
+    header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 15, backgroundColor: '#FFF' },
     headerTitle: { fontSize: 18, fontWeight: '700', color: '#1F2937' },
     content: { padding: 20 },
     card: { backgroundColor: '#FFF', padding: 20, borderRadius: 16, marginBottom: 24, elevation: 2 },

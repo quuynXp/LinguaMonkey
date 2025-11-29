@@ -15,7 +15,7 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.TransactionRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.WalletRepository;
 import com.connectJPA.LinguaVietnameseApp.service.TransactionService;
-import com.connectJPA.LinguaVietnameseApp.service.UserService; // Import User Service
+import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.connectJPA.LinguaVietnameseApp.service.WalletService;
 import com.stripe.Stripe;
 import com.stripe.exception.SignatureVerificationException;
@@ -33,6 +33,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Map;
 import java.util.UUID;
 
@@ -46,13 +47,27 @@ public class TransactionServiceImpl implements TransactionService {
     private final TransactionMapper transactionMapper;
     private final WalletRepository walletRepository;
     private final WalletService walletService;
-    private final UserService userService; // Inject UserService
+    private final UserService userService;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
 
     @Value("${stripe.webhook-secret}")
     private String stripeWebhookSecret;
+
+    // --- CONFIGURABLE PRICES ---
+    @Value("${vip.price.monthly:9.99}")
+    private BigDecimal vipPriceMonthly;
+
+    @Value("${vip.price.yearly:99.00}")
+    private BigDecimal vipPriceYearly;
+    
+    // NEW: Trial price (e.g., 1.00 USD)
+    @Value("${vip.price.trial:1.00}")
+    private BigDecimal vipPriceTrial;
+
+    @Value("${coin.exchange.rate:1000}")
+    private int coinExchangeRate; // 1000 coins = 1 USD
 
     @Override
     @Transactional(readOnly = true)
@@ -82,14 +97,85 @@ public class TransactionServiceImpl implements TransactionService {
                 .user(user)
                 .wallet(wallet)
                 .amount(request.getAmount())
-                .provider(TransactionProvider.STRIPE) 
+                .currency(request.getCurrency()) // Ensure currency is set here too if DepositRequest has it
+                .provider(TransactionProvider.STRIPE)
                 .type(TransactionType.DEPOSIT)
                 .description("Deposit to wallet")
                 .status(TransactionStatus.PENDING)
                 .build();
+        
+        // Safety check for currency in Deposit flow as well
+        if (transaction.getCurrency() == null) transaction.setCurrency("USD");
+
         transaction = transactionRepository.save(transaction);
 
         return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl());
+    }
+
+    /**
+     * Logic bảo mật:
+     * 1. Xác định gói VIP (tháng/năm/trial) qua description.
+     * 2. Tính giá gốc từ .env.
+     * 3. Kiểm tra số coins user gửi lên có hợp lệ.
+     * 4. Tính toán số tiền phải trả.
+     * 5. So sánh với request amount.
+     */
+    private BigDecimal validateAndProcessVipPurchase(User user, BigDecimal requestedAmount, Integer coinsToUse, String description) {
+        BigDecimal basePrice;
+        
+        // 1. Determine Base Price based on Description
+        String descLower = description.toLowerCase();
+        if (descLower.contains("monthly")) {
+            basePrice = vipPriceMonthly;
+        } else if (descLower.contains("yearly")) {
+            basePrice = vipPriceYearly;
+        } else if (descLower.contains("trial")) {
+            // NEW: Handle Trial Logic
+            basePrice = vipPriceTrial; // Usually 1.00
+        } else {
+            // Unknown plan, assume normal payment but strictly for VIP flow return requestedAmount to avoid blocking generic payments if mixed
+            return requestedAmount; 
+        }
+
+        // 2. Validate Coins
+        int coins = (coinsToUse != null) ? coinsToUse : 0;
+        
+        // NEW: Disable coins for Trial (1$ is already cheap)
+        if (descLower.contains("trial") && coins > 0) {
+             throw new AppException(ErrorCode.INVALID_REQUEST); // Cannot use coins for trial
+        }
+
+        if (coins > 0) {
+            if (user.getCoins() < coins) {
+                throw new AppException(ErrorCode.INVALID_AMOUNT);
+            }
+        }
+
+        // 3. Calculate Discount
+        BigDecimal discount = BigDecimal.ZERO;
+        if (coins > 0) {
+            discount = BigDecimal.valueOf(coins).divide(BigDecimal.valueOf(coinExchangeRate), 2, RoundingMode.HALF_UP);
+        }
+
+        BigDecimal expectedAmount = basePrice.subtract(discount);
+        if (expectedAmount.compareTo(BigDecimal.ZERO) < 0) {
+            expectedAmount = BigDecimal.ZERO;
+        }
+
+        // 4. Verify Request Amount matches Server Calculation
+        // Allow small delta 0.05
+        if (requestedAmount.subtract(expectedAmount).abs().compareTo(new BigDecimal("0.05")) > 0) {
+            log.error("Price Mismatch! Expected: {}, Received: {}, Description: {}", expectedAmount, requestedAmount, description);
+            throw new AppException(ErrorCode.INVALID_AMOUNT);
+        }
+
+        // 5. Deduct Coins
+        if (coins > 0) {
+            user.setCoins(user.getCoins() - coins);
+            userRepository.save(user);
+        }
+
+        return expectedAmount;
     }
 
     @Override
@@ -97,27 +183,46 @@ public class TransactionServiceImpl implements TransactionService {
     public String createPaymentUrl(PaymentRequest request, String clientIp) {
         User user = getUser(request.getUserId());
 
+        // Validate Price and Coins securely
+        BigDecimal finalAmount = validateAndProcessVipPurchase(
+            user, 
+            request.getAmount(), 
+            request.getCoins(), 
+            request.getDescription()
+        );
+
+        // Security check: Stripe Payment Mode requires amount > 0
+        // If 1$ trial, finalAmount is 1.00 -> OK.
+        if (finalAmount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new AppException(ErrorCode.INVALID_AMOUNT);
+        }
+
         Transaction transaction = Transaction.builder()
                 .transactionId(UUID.randomUUID())
                 .user(user)
-                .amount(request.getAmount())
+                .amount(finalAmount)
+                .currency(request.getCurrency()) // FIXED: Set currency from request
                 .provider(TransactionProvider.STRIPE)
-                .type(TransactionType.PAYMENT) 
+                .type(TransactionType.PAYMENT)
                 .description(request.getDescription())
                 .status(TransactionStatus.PENDING)
                 .build();
+        
+        // Safety Fallback
+        if (transaction.getCurrency() == null) {
+            transaction.setCurrency("USD");
+        }
+
         transaction = transactionRepository.save(transaction);
 
-        return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), request.getDescription(), request.getReturnUrl());
+        return createStripeCheckoutSession(transaction, finalAmount, request.getCurrency(), request.getDescription(), request.getReturnUrl());
     }
 
     private String createStripeCheckoutSession(Transaction transaction, BigDecimal amount, String currency, String description, String returnUrl) {
         Stripe.apiKey = stripeApiKey;
-
+        
         SessionCreateParams.Builder paramsBuilder = SessionCreateParams.builder()
                 .addPaymentMethodType(SessionCreateParams.PaymentMethodType.CARD)
-                .addPaymentMethodType(SessionCreateParams.PaymentMethodType.ALIPAY)
-                .addPaymentMethodType(SessionCreateParams.PaymentMethodType.WECHAT_PAY)
                 .setMode(SessionCreateParams.Mode.PAYMENT)
                 .setSuccessUrl(returnUrl + "?status=success&transactionId=" + transaction.getTransactionId())
                 .setCancelUrl(returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId())
@@ -133,12 +238,6 @@ public class TransactionServiceImpl implements TransactionService {
                                 .build())
                         .build());
         
-        SessionCreateParams.PaymentMethodOptions.Builder optionsBuilder = SessionCreateParams.PaymentMethodOptions.builder()
-                .setWechatPay(SessionCreateParams.PaymentMethodOptions.WechatPay.builder()
-                        .setClient(SessionCreateParams.PaymentMethodOptions.WechatPay.Client.WEB)
-                        .build());
-        paramsBuilder.setPaymentMethodOptions(optionsBuilder.build());
-
         try {
             Session session = Session.create(paramsBuilder.build());
             return session.getUrl();
@@ -198,19 +297,23 @@ public class TransactionServiceImpl implements TransactionService {
             if (transaction.getType() == TransactionType.DEPOSIT) {
                 walletService.credit(userId, amount);
             } else if (transaction.getType() == TransactionType.PAYMENT) {
-                // Determine if this is VIP purchase based on amount/description
-                // Trial: 1.00 USD
-                if (amount.compareTo(new BigDecimal("1.00")) == 0) {
-                    userService.activateVipTrial(userId);
-                }
-                // Monthly/Yearly: > 9.00 USD
-                else if (amount.compareTo(new BigDecimal("9.00")) > 0) {
-                    userService.extendVipSubscription(userId, amount);
+                String descLower = transaction.getDescription().toLowerCase();
+                
+                // VIP Logic
+                if (descLower.contains("vip") || descLower.contains("trial")) {
+                      if (descLower.contains("monthly")) {
+                        userService.extendVipSubscription(userId, new BigDecimal("30"));
+                      } else if (descLower.contains("yearly")) {
+                        userService.extendVipSubscription(userId, new BigDecimal("365"));
+                      } else if (descLower.contains("trial")) {
+                        // Activate 14 days trial
+                        userService.extendVipSubscription(userId, new BigDecimal("14")); 
+                        // OR userService.activateVipTrial(userId); depending on your UserService
+                      }
                 }
             }
             
             transactionRepository.save(transaction);
-            log.info("Transaction {} completed successfully via Stripe", transactionId);
         }
     }
 
@@ -232,7 +335,6 @@ public class TransactionServiceImpl implements TransactionService {
         if (request.getIdempotencyKey() != null) {
             var existingTx = transactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
             if (existingTx.isPresent()) {
-                log.warn("Idempotent request re-detected: {}", request.getIdempotencyKey());
                 return transactionMapper.toResponse(existingTx.get());
             }
         }
@@ -243,6 +345,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .sender(sender)
                 .receiver(receiver)
                 .amount(request.getAmount())
+                .currency("USD") // Ensure defaults for transfers
                 .type(TransactionType.TRANSFER)
                 .status(TransactionStatus.PENDING)
                 .provider(TransactionProvider.INTERNAL)
@@ -262,7 +365,6 @@ public class TransactionServiceImpl implements TransactionService {
         } catch (Exception e) {
             transaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(transaction);
-            log.error("Transfer failed: {}", e.getMessage());
             if (e instanceof AppException) throw e;
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
@@ -282,6 +384,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .user(user)
                 .wallet(wallet)
                 .amount(request.getAmount())
+                .currency("USD") // Ensure defaults
                 .type(TransactionType.WITHDRAW)
                 .status(TransactionStatus.PENDING)
                 .provider(TransactionProvider.INTERNAL)
@@ -314,6 +417,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .sender(originalTx.getReceiver())
                 .receiver(originalTx.getSender())
                 .amount(originalTx.getAmount())
+                .currency(originalTx.getCurrency()) // Inherit currency from original
                 .type(TransactionType.REFUND)
                 .status(TransactionStatus.PENDING)
                 .provider(TransactionProvider.INTERNAL)
@@ -347,7 +451,6 @@ public class TransactionServiceImpl implements TransactionService {
             originalTx.setStatus(TransactionStatus.SUCCESS);
             transactionRepository.save(refundTx);
             transactionRepository.save(originalTx);
-            log.error("Refund approval failed: {}", e.getMessage());
             if (e instanceof AppException) throw e;
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
@@ -368,7 +471,7 @@ public class TransactionServiceImpl implements TransactionService {
 
         return transactionMapper.toResponse(refundTx);
     }
-
+    
     @Override
     public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) {
         try {
@@ -383,11 +486,48 @@ public class TransactionServiceImpl implements TransactionService {
     @Override
     @Transactional
     public TransactionResponse createTransaction(TransactionRequest request) {
-        userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
+        User user = userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        BigDecimal finalAmount = validateAndProcessVipPurchase(
+            user, 
+            request.getAmount(), 
+            request.getCoins(), 
+            request.getDescription()
+        );
+
+        Wallet wallet = getWallet(user.getUserId());
+        if (wallet.getBalance().compareTo(finalAmount) < 0) {
+            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS);
+        }
+
         Transaction transaction = transactionMapper.toEntity(request);
+        transaction.setUser(user);
+        transaction.setAmount(finalAmount);
         transaction.setStatus(request.getStatus() != null ? request.getStatus() : TransactionStatus.PENDING);
+        
+        // FIXED: Ensure currency is set (if DTO mapper didn't handle it)
+        if (transaction.getCurrency() == null) {
+            transaction.setCurrency("USD");
+        }
+
         transaction = transactionRepository.save(transaction);
+        
+        walletService.debit(user.getUserId(), finalAmount);
+
+        if (transaction.getStatus() == TransactionStatus.SUCCESS) {
+             String descLower = request.getDescription().toLowerCase();
+             if (descLower.contains("vip") || descLower.contains("trial")) {
+                 if (descLower.contains("monthly")) {
+                    userService.extendVipSubscription(user.getUserId(), new BigDecimal("30"));
+                 } else if (descLower.contains("yearly")) {
+                    userService.extendVipSubscription(user.getUserId(), new BigDecimal("365"));
+                 } else if (descLower.contains("trial")) {
+                    userService.extendVipSubscription(user.getUserId(), new BigDecimal("14"));
+                 }
+            }
+        }
+
         return transactionMapper.toResponse(transaction);
     }
 
@@ -396,8 +536,7 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionResponse updateTransaction(UUID id, TransactionRequest request) {
         Transaction transaction = transactionRepository.findByTransactionIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-        userRepository.findByUserIdAndIsDeletedFalse(request.getUserId())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
         transactionMapper.updateEntityFromRequest(request, transaction);
         transaction = transactionRepository.save(transaction);
         return transactionMapper.toResponse(transaction);

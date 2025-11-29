@@ -29,7 +29,7 @@ public class VideoCallParticipant extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @MapsId("videoCallId")
-    @JoinColumn(name = "videoCall_id")
+    @JoinColumn(name = "video_call_id")
     private VideoCall videoCall;
 
     @Column(name = "joined_at")

@@ -1,4 +1,3 @@
-// LinguaVietnameseApp/LinguaVietnameseApp/src/main/java/com/connectJPA/LinguaVietnameseApp/dto/response/UserProfileResponse.java
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.entity.CoupleProfileSummary;
@@ -27,13 +26,11 @@ public class UserProfileResponse {
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
 
-
     private int level;
     private int exp;
     private String bio;
     private int streak;
     private List<String> languages;
-
 
     private Character3dResponse character3d;
     private UserStatsResponse stats;
@@ -44,6 +41,9 @@ public class UserProfileResponse {
     private boolean canSendFriendRequest;
     private boolean canUnfriend;
     private boolean canBlock;
+    
+    // New field for privacy setting
+    private boolean allowStrangerChat;
 
     private List<FriendshipResponse> privateFriendRequests;
     private List<DatingInviteSummary> privateDatingInvites;

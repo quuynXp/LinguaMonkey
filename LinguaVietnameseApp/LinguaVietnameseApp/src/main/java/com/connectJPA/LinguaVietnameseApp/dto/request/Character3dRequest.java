@@ -1,11 +1,15 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import jakarta.validation.constraints.*;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class Character3dRequest {
     @NotBlank(message = "Character3D name is required")
     @Size(max = 50, message = "Character3D name must not exceed 50 characters")

@@ -19,7 +19,6 @@ public class GrammarTopic extends BaseEntity {
     @Column(name = "topic_id")
     private UUID topicId;
 
-    @Column(name = "topic_name", nullable = false)
     private String topicName;
 
     @Column(name = "language_code")

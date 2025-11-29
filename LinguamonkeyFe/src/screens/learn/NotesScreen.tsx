@@ -24,7 +24,6 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 const NotesScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
 
-  // Sử dụng string literals để đại diện cho các loại ghi chú UI
   const [selectedContentType, setSelectedContentType] = useState<string>("all")
   const [showAddModal, setShowAddModal] = useState(false)
   const [newNote, setNewNote] = useState("")

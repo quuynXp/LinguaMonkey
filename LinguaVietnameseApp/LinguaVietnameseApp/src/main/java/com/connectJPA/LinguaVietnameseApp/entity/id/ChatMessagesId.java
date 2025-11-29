@@ -10,6 +10,8 @@ import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import org.hibernate.annotations.CreationTimestamp;
+
 @Data
 @Embeddable
 @AllArgsConstructor
@@ -18,6 +20,7 @@ public class ChatMessagesId implements Serializable {
     @Column(name = "chat_message_id", nullable = false)
     private UUID chatMessageId;
 
+    @CreationTimestamp
     @Column(name = "sentAt", nullable = false)
     private OffsetDateTime sentAt;
 }

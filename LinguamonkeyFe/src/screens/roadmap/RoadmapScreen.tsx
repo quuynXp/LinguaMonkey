@@ -1,794 +1,368 @@
-import { useEffect, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
-import { Alert, Animated, Modal, RefreshControl, ScrollView, Text, TouchableOpacity, View } from "react-native"
-import Icon from "react-native-vector-icons/MaterialIcons"
-import { useRoadmap } from "../../hooks/useRoadmap"
+import React, { useState, useEffect, useRef } from "react";
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+} from "react-native";
+import Icon from "react-native-vector-icons/MaterialIcons";
+import { useTranslation } from "react-i18next";
+import { useRoadmap } from "../../hooks/useRoadmap";
+import ScreenLayout from "../../components/layout/ScreenLayout";
+import RoadmapTimeline from "../../components/roadmap/RoadmapTimeline";
+import { createScaledSheet } from "../../utils/scaledStyles";
+import { useUserStore } from "../../stores/UserStore";
 
-import ScreenLayout from "../../components/layout/ScreenLayout"
-import type { RoadmapUserResponse, RoadmapItemUserResponse, MilestoneUserResponse } from "../../types/dto"
-import { createScaledSheet } from "../../utils/scaledStyles"
-
+const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const RoadmapScreen = ({ navigation, route }: any) => {
-  const { languageCode } = route.params || {}
-  const { t } = useTranslation()
-  const [selectedFilter, setSelectedFilter] = useState<'all' | 'available' | 'completed'>('all')
-  const [showMilestones, setShowMilestones] = useState(false)
-  const [refreshing, setRefreshing] = useState(false)
+  const { t } = useTranslation();
+  const { user } = useUserStore();
+  const [activeTab, setActiveTab] = useState<'my_roadmap' | 'explore'>('my_roadmap');
 
-  // Animation cho Fade/Slide chính (có thể dùng Native Driver)
-  const fadeAnim = useRef(new Animated.Value(0)).current
-  const slideAnim = useRef(new Animated.Value(50)).current
+  // Animation for tab indicator
+  const tabAnim = useRef(new Animated.Value(0)).current;
 
-  // Animation cho Progress Bar (phải dùng Native Driver FALSE)
-  const progressBarAnim = useRef(new Animated.Value(0)).current
+  // --- Hooks ---
+  const {
+    useUserRoadmaps,
+    usePublicRoadmaps,
+    useSuggestions,
+    useCompleteRoadmapItem,
+    useAddSuggestion
+  } = useRoadmap();
 
-  const { useUserRoadmaps } = useRoadmap()
-  const { data: userRoadmaps, isLoading, error, refetch } = useUserRoadmaps(languageCode)
-  const roadmap: RoadmapUserResponse | undefined = userRoadmaps && userRoadmaps.length > 0 ? userRoadmaps[0] : undefined
+  // Data for "My Roadmap"
+  const {
+    data: userRoadmaps,
+    isLoading: userLoading,
+    refetch: refetchUser
+  } = useUserRoadmaps("en"); // Default language
 
-  useEffect(() => {
-    // Animation khi màn hình được load
-    Animated.parallel([
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 800,
-        useNativeDriver: true,
-      }),
-    ]).start()
-  }, [fadeAnim, slideAnim])
+  const myRoadmap = userRoadmaps?.[0]; // Assuming single active roadmap for now
 
-  useEffect(() => {
-    // Animation cho Progress Bar
-    if (roadmap) {
-      const progressPercentage = roadmap.totalItems > 0
-        ? (roadmap.completedItems / roadmap.totalItems) * 100
-        : 0
+  // Data for "Explore"
+  const {
+    data: publicRoadmaps,
+    isLoading: publicLoading,
+    refetch: refetchPublic
+  } = usePublicRoadmaps();
 
-      Animated.timing(progressBarAnim, {
-        toValue: progressPercentage, // Target là phần trăm (0-100)
-        duration: 1000,
-        useNativeDriver: false, // Bắt buộc là FALSE khi animate chiều rộng (%)
-      }).start()
+  // Suggestions for the active roadmap
+  const { data: suggestions } = useSuggestions(myRoadmap?.roadmapId || null);
+
+  // Mutations
+  const completeItemMut = useCompleteRoadmapItem();
+  const addSuggestionMut = useAddSuggestion();
+
+  // --- Handlers ---
+  const handleTabChange = (tab: 'my_roadmap' | 'explore') => {
+    setActiveTab(tab);
+    Animated.spring(tabAnim, {
+      toValue: tab === 'my_roadmap' ? 0 : 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handleRefresh = async () => {
+    if (activeTab === 'my_roadmap') refetchUser();
+    else refetchPublic();
+  };
+
+  const handleCompleteItem = async (itemId: string) => {
+    try {
+      await completeItemMut.mutateAsync({ itemId });
+    } catch (error) {
+      console.error("Failed to complete item", error);
     }
-  }, [roadmap]) // Chạy lại khi roadmap được load hoặc thay đổi
+  };
 
-  const onRefresh = async () => {
-    setRefreshing(true)
-    await refetch()
-    setRefreshing(false)
-  }
-
-  const getFilteredItems = () => {
-    if (!roadmap?.items) return []
-    switch (selectedFilter) {
-      case 'available':
-        return roadmap.items.filter(item => item.status === 'available' || item.status === 'in_progress')
-      case 'completed':
-        return roadmap.items.filter(item => item.status === 'completed')
-      default:
-        return roadmap.items
+  const handleAddSuggestion = async (itemId: string, text: string) => {
+    if (!myRoadmap) return;
+    try {
+      await addSuggestionMut.mutateAsync({
+        roadmapId: myRoadmap.roadmapId,
+        itemId,
+        suggestedOrderIndex: 0,
+        reason: text,
+      });
+    } catch (error) {
+      console.error("Failed to add suggestion", error);
     }
-  }
+  };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return '#10B981'
-      case 'in_progress':
-        return '#3B82F6'
-      case 'available':
-        return '#F59E0B'
-      case 'locked':
-        return '#9CA3AF'
-      default:
-        return '#6B7280'
-    }
-  }
-
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'check-circle'
-      case 'in_progress':
-        return 'play-circle-filled'
-      case 'available':
-        return 'radio-button-unchecked'
-      case 'locked':
-        return 'lock'
-      default:
-        return 'help'
-    }
-  }
-
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case 'lesson':
-        return 'school'
-      case 'course':
-        return 'book'
-      case 'series':
-        return 'playlist-play'
-      case 'milestone':
-        return 'flag'
-      case 'assessment':
-        return 'quiz'
-      default:
-        return 'circle'
-    }
-  }
-
-  const formatEstimatedTime = (minutes: number) => {
-    if (minutes < 60) {
-      return `${minutes}${t('common.minutes')}`
-    }
-    const hours = Math.floor(minutes / 60)
-    const remainingMinutes = minutes % 60
-    if (remainingMinutes === 0) {
-      return `${hours}${t('common.hours')}`
-    }
-    return `${hours}${t('common.hours')} ${remainingMinutes}${t('common.minutes')}`
-  }
-
-  const handleItemPress = (item: RoadmapItemUserResponse) => {
-    if (item.status === 'locked') {
-      Alert.alert(
-        t('roadmap.lockedItem'),
-        t('roadmap.lockedItemMessage'),
-        [{ text: t('common.ok') }]
-      )
-      return
-    }
-    navigation.navigate('RoadmapItemDetailScreen', {
-      itemId: item.id,
-      roadmapId: roadmap?.roadmapId
-    })
-  }
-
-  const renderProgressBar = () => {
-    if (!roadmap) return null
-
-    const progressPercentage = roadmap.totalItems > 0
-      ? (roadmap.completedItems / roadmap.totalItems) * 100
-      : 0
-
-    const interpolatedWidth = progressBarAnim.interpolate({
-      inputRange: [0, 100],
-      outputRange: ['0%', '100%'],
-    })
-
-    return (
-      <View style={styles.progressContainer}>
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressTitle}>{t('roadmap.overallProgress')}</Text>
-          <Text style={styles.progressPercentage}>{Math.round(progressPercentage)}%</Text>
-        </View>
-        <View style={styles.progressBarContainer}>
-          <Animated.View
-            style={[
-              styles.progressBar,
-              {
-                width: interpolatedWidth, // SỬ DỤNG ANIMATED WIDTH
-              },
-            ]}
-          />
-        </View>
-        <View style={styles.progressStats}>
-          <Text style={styles.progressStat}>
-            {roadmap.completedItems} / {roadmap.totalItems} {t('roadmap.itemsCompleted')}
-          </Text>
-          <Text style={styles.progressStat}>
-            {t('roadmap.estimatedTime')}: {roadmap.estimatedCompletionTime} {t('common.days')}
-          </Text>
-        </View>
-      </View>
-    )
-  }
-
-  const renderRoadmapItem = (item: RoadmapItemUserResponse, index: number) => {
-    const isEven = index % 2 === 0
-    return (
-      <Animated.View
-        key={item.id}
-        style={[
-          styles.roadmapItemContainer,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
-        {index > 0 && (
-          <View style={[styles.connectionLine, isEven ? styles.connectionLineLeft : styles.connectionLineRight]} />
-        )}
-        <TouchableOpacity
-          style={[
-            styles.roadmapItem,
-            isEven ? styles.roadmapItemLeft : styles.roadmapItemRight,
-            { borderLeftColor: getStatusColor(item.status) },
-          ]}
-          onPress={() => handleItemPress(item)}
-          disabled={item.status === 'locked'}
-        >
-          <View style={styles.itemHeader}>
-            <View style={styles.itemTypeContainer}>
-              <Icon name={getTypeIcon('lesson')} size={20} color={getStatusColor(item.status)} />
-              <Text style={[styles.itemType, { color: getStatusColor(item.status) }]}>
-                {t(`roadmap.types.lesson`)}
-              </Text>
-            </View>
-            <View style={[styles.statusBadge, { backgroundColor: getStatusColor(item.status) }]}>
-              <Icon name={getStatusIcon(item.status)} size={12} color="#FFFFFF" />
-            </View>
-          </View>
-          <Text style={styles.itemTitle}>{item.name}</Text>
-          <Text style={styles.itemDescription} numberOfLines={2}>
-            {item.description}
-          </Text>
-          <View style={styles.itemDetails}>
-            <View style={styles.itemDetailRow}>
-              <Icon name="schedule" size={16} color="#6B7280" />
-              <Text style={styles.itemDetailText}>
-                {formatEstimatedTime(0)}
-              </Text>
-            </View>
-            <View style={styles.itemDetailRow}>
-              <Icon name="star" size={16} color="#F59E0B" />
-              <Text style={styles.itemDetailText}>
-                0 XP
-              </Text>
-            </View>
-          </View>
-          {item.status === 'in_progress' && (
-            <View style={styles.progressIndicator}>
-              <View style={styles.progressIndicatorBar}>
-                <View
-                  style={[
-                    styles.progressIndicatorFill,
-                    { width: `${item.progress}%` }
-                  ]}
-                />
-              </View>
-              <Text style={styles.progressIndicatorText}>{item.progress}%</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-        <View style={[styles.levelIndicator, isEven ? styles.levelIndicatorRight : styles.levelIndicatorLeft]}>
-          <Text style={styles.levelText}>{index + 1}</Text>
-        </View>
-      </Animated.View>
-    )
-  }
-
-  const renderMilestone = (milestone: MilestoneUserResponse) => (
-    <View key={milestone.milestoneId} style={styles.milestoneContainer}>
-      <View style={[styles.milestoneIcon, { backgroundColor: '#3B82F6' }]}>
-        <Icon name="flag" size={24} color="#FFFFFF" />
-      </View>
-      <View style={styles.milestoneContent}>
-        <Text style={styles.milestoneTitle}>{milestone.title}</Text>
-        <Text style={styles.milestoneLevel}>
-          {milestone.completed ? t('roadmap.completed') : t('roadmap.incomplete')}
-        </Text>
-      </View>
+  const renderHeader = () => (
+    <View style={styles.header}>
+      <TouchableOpacity onPress={() => navigation.goBack()}>
+        <Icon name="arrow-back" size={24} color="#1F2937" />
+      </TouchableOpacity>
+      <Text style={styles.headerTitle}>{t('roadmap.title')}</Text>
+      <TouchableOpacity onPress={() => navigation.navigate("ChatStack")}>
+        <Icon name="chat" size={24} color="#3B82F6" />
+      </TouchableOpacity>
     </View>
-  )
+  );
 
-  if (error) {
-    return (
-      <ScreenLayout>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Icon name="arrow-back" size={24} color="#1F2937" />
-          </TouchableOpacity>
-          <Text style={styles.title}>{t('roadmap.title')}</Text>
-          <View style={styles.headerRight} />
-        </View>
-        <View style={styles.errorContainer}>
-          <Icon name="error" size={64} color="#EF4444" />
-          <Text style={styles.errorText}>{t('errors.loadRoadmapFailed')}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={onRefresh}>
-            <Text style={styles.retryText}>{t('common.retry')}</Text>
-          </TouchableOpacity>
-        </View>
-      </ScreenLayout>
-    )
-  }
+  const renderTabs = () => (
+    <View style={styles.tabContainer}>
+      <TouchableOpacity
+        style={styles.tabItem}
+        onPress={() => handleTabChange('my_roadmap')}
+      >
+        <Text style={[styles.tabText, activeTab === 'my_roadmap' && styles.tabTextActive]}>
+          {t('roadmap.myRoadmap')}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.tabItem}
+        onPress={() => handleTabChange('explore')}
+      >
+        <Text style={[styles.tabText, activeTab === 'explore' && styles.tabTextActive]}>
+          {t('roadmap.explore')}
+        </Text>
+      </TouchableOpacity>
 
-  if (isLoading) {
-    return (
-      <ScreenLayout>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Icon name="arrow-back" size={24} color="#1F2937" />
-          </TouchableOpacity>
-          <Text style={styles.title}>{t('roadmap.title')}</Text>
-          <View style={styles.headerRight} />
-        </View>
-        <View style={styles.loadingContainer}>
-          <Text style={styles.loadingText}>{t('roadmap.loadingRoadmap')}</Text>
-        </View>
-      </ScreenLayout>
-    )
-  }
+      {/* Animated Indicator */}
+      <Animated.View
+        style={[
+          styles.tabIndicator,
+          {
+            transform: [{
+              translateX: tabAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: [0, SCREEN_WIDTH / 2]
+              })
+            }]
+          }
+        ]}
+      />
+    </View>
+  );
 
-  // THÊM KIỂM TRA: Nếu không có roadmap nào được gán cho user
-  if (!roadmap) {
-    return (
-      <ScreenLayout>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Icon name="arrow-back" size={24} color="#1F2937" />
-          </TouchableOpacity>
-          <Text style={styles.title}>{t('roadmap.title')}</Text>
-          <View style={styles.headerRight} />
-        </View>
-        <View style={styles.emptyContainer}>
-          <Icon name="map-marker-off" size={64} color="#9CA3AF" />
-          <Text style={styles.emptyText}>{t('roadmap.noActiveRoadmap')}</Text>
-          <Text style={styles.emptySubtext}>{t('roadmap.suggestedAction')}</Text>
+  const renderMyRoadmap = () => {
+    if (userLoading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
+
+    if (!myRoadmap) {
+      return (
+        <View style={styles.emptyState}>
+          <Icon name="map" size={64} color="#E5E7EB" />
+          <Text style={styles.emptyTitle}>{t('roadmap.noActiveRoadmap')}</Text>
+          <Text style={styles.emptyDesc}>{t('roadmap.startJourneyDescription')}</Text>
           <TouchableOpacity
-            style={styles.retryButton}
-            onPress={() => navigation.navigate('PublicRoadmapsScreen')} // Chuyển hướng đến màn hình chọn/tạo Roadmap
+            style={styles.ctaButton}
+            onPress={() => handleTabChange('explore')}
           >
-            <Text style={styles.retryText}>{t('roadmap.chooseRoadmap')}</Text>
+            <Text style={styles.ctaButtonText}>{t('roadmap.browsePublic')}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.ctaButton, styles.secondaryButton]}
+            onPress={() => navigation.navigate('CreateRoadmapScreen')}
+          >
+            <Text style={[styles.ctaButtonText, styles.secondaryButtonText]}>{t('roadmap.createCustom')}</Text>
           </TouchableOpacity>
         </View>
-      </ScreenLayout>
-    )
-  }
+      );
+    }
 
-  const filteredItems = getFilteredItems()
+    // Calculate Progress
+    const progress = myRoadmap.totalItems > 0
+      ? Math.round((myRoadmap.completedItems / myRoadmap.totalItems) * 100)
+      : 0;
+
+    return (
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={userLoading} onRefresh={handleRefresh} />}
+      >
+        {/* Progress Header Card */}
+        <View style={styles.progressCard}>
+          <View style={styles.progressInfo}>
+            <Text style={styles.roadmapTitle}>{myRoadmap.title}</Text>
+            <Text style={styles.roadmapStats}>
+              {myRoadmap.completedItems}/{myRoadmap.totalItems} {t('roadmap.stepsCompleted')}
+            </Text>
+          </View>
+          <View style={styles.circularProgress}>
+            <Text style={styles.progressPercent}>{progress}%</Text>
+          </View>
+        </View>
+
+        {/* The Timeline */}
+        <RoadmapTimeline
+          items={myRoadmap.items}
+          suggestions={suggestions || []}
+          isOwner={true}
+          onCompleteItem={handleCompleteItem}
+          onAddSuggestion={handleAddSuggestion}
+        />
+      </ScrollView>
+    );
+  };
+
+  const renderExplore = () => {
+    if (publicLoading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
+
+    return (
+      <ScrollView
+        contentContainerStyle={styles.exploreList}
+        refreshControl={<RefreshControl refreshing={publicLoading} onRefresh={handleRefresh} />}
+      >
+        {publicRoadmaps?.map((roadmap) => (
+          <TouchableOpacity
+            key={roadmap.id}
+            style={styles.exploreCard}
+            onPress={() => navigation.navigate('RoadmapSuggestionsScreen', { roadmapId: roadmap.id, isOwner: false })}
+          >
+            <View style={styles.exploreHeader}>
+              <Text style={styles.exploreTitle}>{roadmap.title}</Text>
+              <View style={styles.ratingBadge}>
+                <Icon name="star" size={14} color="#F59E0B" />
+                <Text style={styles.ratingText}>4.8</Text>
+              </View>
+            </View>
+            <Text style={styles.exploreDesc} numberOfLines={2}>{roadmap.description}</Text>
+            <View style={styles.exploreFooter}>
+              <View style={styles.exploreMeta}>
+                <Icon name="list" size={14} color="#6B7280" />
+                <Text style={styles.exploreMetaText}>{roadmap.items?.length || 0} Items</Text>
+              </View>
+              <Text style={styles.exploreLink}>{t('common.viewDetails')}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    );
+  };
 
   return (
-    <ScreenLayout>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <Text style={styles.title}>{t('roadmap.title')}</Text>
-        <TouchableOpacity onPress={() => setShowMilestones(true)}>
-          <Icon name="flag" size={24} color="#3B82F6" />
-        </TouchableOpacity>
+    <ScreenLayout style={styles.container}>
+      {renderHeader()}
+      {renderTabs()}
+      <View style={styles.content}>
+        {activeTab === 'my_roadmap' ? renderMyRoadmap() : renderExplore()}
       </View>
-      <ScrollView
-        style={styles.content}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        {renderProgressBar()}
-        <View style={styles.filterContainer}>
-          {(['all', 'available', 'completed'] as const).map((filter) => (
-            <TouchableOpacity
-              key={filter}
-              style={[
-                styles.filterTab,
-                selectedFilter === filter && styles.filterTabActive,
-              ]}
-              onPress={() => setSelectedFilter(filter)}
-            >
-              <Text
-                style={[
-                  styles.filterTabText,
-                  selectedFilter === filter && styles.filterTabTextActive,
-                ]}
-              >
-                {t(`roadmap.filters.${filter}`)}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        <View style={styles.roadmapContainer}>
-          {filteredItems.length > 0 ? (
-            filteredItems.map((item, index) => renderRoadmapItem(item, index))
-          ) : (
-            <View style={styles.emptyContainer}>
-              <Icon name="map" size={64} color="#D1D5DB" />
-              <Text style={styles.emptyText}>{t('roadmap.noItemsFound')}</Text>
-              <Text style={styles.emptySubtext}>{t('roadmap.tryDifferentFilter')}</Text>
-            </View>
-          )}
-        </View>
-      </ScrollView>
-      <Modal
-        visible={showMilestones}
-        animationType="slide"
-        onRequestClose={() => setShowMilestones(false)}
-      >
-        <ScreenLayout>
-          <View style={styles.modalHeader}>
-            <TouchableOpacity onPress={() => setShowMilestones(false)}>
-              <Icon name="close" size={24} color="#6B7280" />
-            </TouchableOpacity>
-            <Text style={styles.modalTitle}>{t('roadmap.milestones')}</Text>
-            <View style={styles.headerRight} />
-          </View>
-          <ScrollView style={styles.modalContent}>
-            {roadmap?.milestones?.map(renderMilestone)}
-          </ScrollView>
-        </ScreenLayout>
-      </Modal>
     </ScreenLayout>
-  )
-}
+  );
+};
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 16,
-    backgroundColor: "#FFFFFF",
+    backgroundColor: "#FFF",
     borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
+    borderColor: "#F1F5F9",
   },
-  title: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
+  headerTitle: { fontSize: 18, fontWeight: "bold", color: "#1F2937" },
+
+  // Tabs
+  tabContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderBottomWidth: 1,
+    borderColor: '#E5E7EB',
+    position: 'relative',
   },
-  headerRight: {
-    width: 24,
-  },
-  content: {
+  tabItem: {
     flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#6B7280',
   },
-  loadingAnimation: {
-    width: 100,
-    height: 100,
-    marginBottom: 16,
+  tabTextActive: {
+    color: '#3B82F6',
   },
-  loadingText: {
-    fontSize: 16,
-    color: "#6B7280",
-    textAlign: "center",
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    width: '50%',
+    height: 3,
+    backgroundColor: '#3B82F6',
+    borderTopLeftRadius: 3,
+    borderTopRightRadius: 3,
   },
-  errorContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  errorText: {
-    fontSize: 16,
-    color: "#6B7280",
-    textAlign: "center",
-    marginVertical: 16,
-  },
-  retryButton: {
-    backgroundColor: "#3B82F6",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  retryText: {
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  progressContainer: {
-    backgroundColor: "#FFFFFF",
+
+  content: { flex: 1 },
+  loader: { marginTop: 40 },
+
+  // My Roadmap Styles
+  progressCard: {
     margin: 20,
-    borderRadius: 16,
     padding: 20,
-    shadowColor: "#000",
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    elevation: 3,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 4,
   },
-  progressHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
+  progressInfo: { flex: 1 },
+  roadmapTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 4 },
+  roadmapStats: { fontSize: 14, color: '#6B7280' },
+  circularProgress: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 4,
+    borderColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  progressTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  progressPercentage: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#3B82F6",
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 4,
-    overflow: "hidden",
-    marginBottom: 12,
-  },
-  progressBar: {
-    height: "100%",
-    backgroundColor: "#3B82F6",
-    borderRadius: 4,
-  },
-  progressStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  progressStat: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  filterContainer: {
-    flexDirection: "row",
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  filterTab: {
-    flex: 1,
+  progressPercent: { fontSize: 14, fontWeight: 'bold', color: '#3B82F6' },
+
+  // Empty State
+  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 40 },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginTop: 16 },
+  emptyDesc: { fontSize: 14, color: '#6B7280', textAlign: 'center', marginVertical: 12 },
+  ctaButton: {
+    backgroundColor: '#3B82F6',
     paddingVertical: 12,
-    paddingHorizontal: 16,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 8,
-    marginHorizontal: 4,
-    alignItems: "center",
-  },
-  filterTabActive: {
-    backgroundColor: "#3B82F6",
-  },
-  filterTabText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#6B7280",
-  },
-  filterTabTextActive: {
-    color: "#FFFFFF",
-  },
-  roadmapContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  roadmapItemContainer: {
-    position: "relative",
-    marginBottom: 40,
-  },
-  connectionLine: {
-    position: "absolute",
-    top: -20,
-    width: 2,
-    height: 20,
-    backgroundColor: "#D1D5DB",
-  },
-  connectionLineLeft: {
-    left: 40,
-  },
-  connectionLineRight: {
-    right: 40,
-  },
-  roadmapItem: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    borderLeftWidth: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  roadmapItemLeft: {
-    marginRight: 60,
-  },
-  roadmapItemRight: {
-    marginLeft: 60,
-  },
-  itemHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  itemTypeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  itemType: {
-    fontSize: 12,
-    fontWeight: "600",
-    textTransform: "uppercase",
-  },
-  statusBadge: {
-    width: 24,
-    height: 24,
+    paddingHorizontal: 24,
     borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
+    marginTop: 12,
+    width: '100%',
+    alignItems: 'center',
   },
-  itemTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  itemDescription: {
-    fontSize: 14,
-    color: "#6B7280",
-    lineHeight: 20,
-    marginBottom: 16,
-  },
-  itemDetails: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 12,
-  },
-  itemDetailRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  itemDetailText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  progressIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    marginBottom: 12,
-  },
-  progressIndicatorBar: {
-    flex: 1,
-    height: 4,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 2,
-  },
-  progressIndicatorFill: {
-    height: "100%",
-    backgroundColor: "#3B82F6",
-    borderRadius: 2,
-  },
-  progressIndicatorText: {
-    fontSize: 12,
-    color: "#3B82F6",
-    fontWeight: "600",
-  },
-  skillsContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 6,
-  },
-  skillChip: {
-    backgroundColor: "#EEF2FF",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  skillText: {
-    fontSize: 10,
-    color: "#3B82F6",
-    fontWeight: "500",
-  },
-  moreSkills: {
-    fontSize: 10,
-    color: "#9CA3AF",
-    alignSelf: "center",
-  },
-  levelIndicator: {
-    position: "absolute",
-    top: 20,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#3B82F6",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  levelIndicatorLeft: {
-    left: -16,
-  },
-  levelIndicatorRight: {
-    right: -16,
-  },
-  levelText: {
-    fontSize: 12,
-    fontWeight: "bold",
-    color: "#FFFFFF",
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 40,
-    minHeight: 400, // Đảm bảo chiếm đủ không gian
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#9CA3AF",
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: "#D1D5DB",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: "#E5E7EB",
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  modalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  milestoneContainer: {
-    flexDirection: "row",
-    backgroundColor: "#F9FAFB",
-    borderRadius: 12,
+  ctaButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
+  secondaryButton: { backgroundColor: '#EFF6FF' },
+  secondaryButtonText: { color: '#3B82F6' },
+
+  // Explore Styles
+  exploreList: { padding: 20 },
+  exploreCard: {
+    backgroundColor: '#FFF',
     padding: 16,
+    borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#E5E7EB",
+    borderColor: '#E5E7EB',
   },
-  milestoneIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 16,
-  },
-  milestoneContent: {
-    flex: 1,
-  },
-  milestoneTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  milestoneDescription: {
-    fontSize: 14,
-    color: "#6B7280",
-    marginBottom: 8,
-  },
-  milestoneLevel: {
-    fontSize: 12,
-    color: "#9CA3AF",
-    marginBottom: 4,
-  },
-  milestoneCompletedDate: {
-    fontSize: 12,
-    color: "#10B981",
-    fontWeight: "500",
-  },
-})
+  exploreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  exploreTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937', flex: 1, marginRight: 8 },
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  ratingText: { fontSize: 12, fontWeight: 'bold', color: '#B45309', marginLeft: 2 },
+  exploreDesc: { fontSize: 13, color: '#6B7280', marginVertical: 8, lineHeight: 18 },
+  exploreFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  exploreMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  exploreMetaText: { fontSize: 12, color: '#6B7280' },
+  exploreLink: { fontSize: 13, fontWeight: '600', color: '#3B82F6' },
+});
 
-export default RoadmapScreen
+export default RoadmapScreen;

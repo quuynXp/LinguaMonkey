@@ -15,7 +15,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+// import org.springframework.transaction.annotation.Transactional; -> Bỏ Transactional ở class level hoặc method cha để tránh giữ lock lâu
 
 import java.time.Duration;
 import java.time.OffsetDateTime;
@@ -32,11 +32,9 @@ public class ReminderServiceImpl implements ReminderService {
     private final UserReminderRepository reminderRepository;
 
     @Override
-    @Transactional
     public void runReminderJob() {
         OffsetDateTime nowTime = OffsetDateTime.now().withSecond(0).withNano(0);
         OffsetDateTime today = OffsetDateTime.now();
-
 
         expireDatingInvites();
         expireExploringCouples();
@@ -67,70 +65,51 @@ public class ReminderServiceImpl implements ReminderService {
     private void expireDatingInvites() {
         OffsetDateTime now = OffsetDateTime.now();
         List<DatingInvite> expired = inviteRepo.findByExpiresAtBeforeAndStatus(now, DatingInviteStatus.PENDING);
-        if (expired.isEmpty()) {
-            log.debug("No expired invites found");
-            return;
-        }
-        expired.forEach(inv -> {
-            inv.setStatus(DatingInviteStatus.EXPIRED);
-        });
-        inviteRepo.saveAll(expired);
+        if (expired.isEmpty()) return;
 
-        // Gửi thông báo bằng NotificationRequest
+        // 1. Update status
+        expired.forEach(inv -> inv.setStatus(DatingInviteStatus.EXPIRED));
+        // Repo.saveAll mặc định có @Transactional -> Commit ngay khi xong dòng này
+        inviteRepo.saveAll(expired); 
+
+        // 2. Gửi noti (Lúc này DB đã có status EXPIRED)
         expired.forEach(inv -> {
             try {
-                // Gửi cho người gửi
-                notificationService.createPushNotification(NotificationRequest.builder()
-                        .userId(inv.getSenderId())
-                        .title("Lời mời hẹn hò đã hết hạn")
-                        .content("Lời mời hẹn hò của bạn tới " + inv.getTargetId() + " đã hết hạn.")
-                        .type("DATING_INVITE_EXPIRED")
-                        .build());
-
-                // Gửi cho người nhận
-                notificationService.createPushNotification(NotificationRequest.builder()
-                        .userId(inv.getTargetId())
-                        .title("Lời mời hẹn hò đã hết hạn")
-                        .content("Lời mời hẹn hò từ " + inv.getSenderId() + " đã hết hạn.")
-                        .type("DATING_INVITE_EXPIRED")
-                        .build());
+                sendInviteExpirationNoti(inv);
             } catch (Exception e) {
                 log.error("Notify error for invite {}", inv.getInviteId(), e);
             }
         });
         log.info("Expired {} dating invites", expired.size());
     }
+    
+    private void sendInviteExpirationNoti(DatingInvite inv) {
+         notificationService.createPushNotification(NotificationRequest.builder()
+                        .userId(inv.getSenderId())
+                        .title("Lời mời hẹn hò đã hết hạn")
+                        .content("Lời mời hẹn hò của bạn tới " + inv.getTargetId() + " đã hết hạn.")
+                        .type("DATING_INVITE_EXPIRED")
+                        .build());
+
+        notificationService.createPushNotification(NotificationRequest.builder()
+                        .userId(inv.getTargetId())
+                        .title("Lời mời hẹn hò đã hết hạn")
+                        .content("Lời mời hẹn hò từ " + inv.getSenderId() + " đã hết hạn.")
+                        .type("DATING_INVITE_EXPIRED")
+                        .build());
+    }
 
     private void expireExploringCouples() {
         OffsetDateTime now = OffsetDateTime.now();
         List<Couple> expired = coupleRepo.findExploringExpired(CoupleStatus.EXPLORING, now);
-        if (expired.isEmpty()) {
-            log.debug("No exploring couples expired");
-            return;
-        }
-        expired.forEach(c -> {
-            c.setStatus(CoupleStatus.EXPIRED);
-            // clear exploring fields if needed
-        });
-        coupleRepo.saveAll(expired);
+        if (expired.isEmpty()) return;
+
+        expired.forEach(c -> c.setStatus(CoupleStatus.EXPIRED));
+        coupleRepo.saveAll(expired); // Commit Transaction ngay tại đây
 
         expired.forEach(c -> {
             try {
-                // Gửi cho user 1
-                notificationService.createPushNotification(NotificationRequest.builder()
-                        .userId(c.getUser1().getUserId())
-                        .title("Giai đoạn tìm hiểu đã hết hạn")
-                        .content("Giai đoạn tìm hiểu của bạn với user " + c.getUser2().getUserId() + " đã kết thúc.")
-                        .type("COUPLE_EXPLORING_EXPIRED")
-                        .build());
-
-                // Gửi cho user 2
-                notificationService.createPushNotification(NotificationRequest.builder()
-                        .userId(c.getUser2().getUserId())
-                        .title("Giai đoạn tìm hiểu đã hết hạn")
-                        .content("Giai đoạn tìm hiểu của bạn với user " + c.getUser1().getUserId() + " đã kết thúc.")
-                        .type("COUPLE_EXPLORING_EXPIRED")
-                        .build());
+                sendCoupleExpirationNoti(c);
             } catch (Exception e) {
                 log.error("Notify error for couple {}", c.getId(), e);
             }
@@ -138,10 +117,25 @@ public class ReminderServiceImpl implements ReminderService {
         log.info("Expired {} exploring couples", expired.size());
     }
 
+    private void sendCoupleExpirationNoti(Couple c) {
+        notificationService.createPushNotification(NotificationRequest.builder()
+                .userId(c.getUser1().getUserId())
+                .title("Giai đoạn tìm hiểu đã hết hạn")
+                .content("Giai đoạn tìm hiểu của bạn với user " + c.getUser2().getUserId() + " đã kết thúc.")
+                .type("COUPLE_EXPLORING_EXPIRED").build());
+        
+        notificationService.createPushNotification(NotificationRequest.builder()
+                .userId(c.getUser2().getUserId())
+                .title("Giai đoạn tìm hiểu đã hết hạn")
+                .content("Giai đoạn tìm hiểu của bạn với user " + c.getUser1().getUserId() + " đã kết thúc.")
+                .type("COUPLE_EXPLORING_EXPIRED").build());
+    }
+
+
     private void warnExploringExpiringSoon() {
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime threshold = now.plusDays(2);
-        // fetch couples with exploringExpiresAt between now and threshold
+        
         List<Couple> soon = coupleRepo.findAll().stream()
                 .filter(c -> c.getStatus() == CoupleStatus.EXPLORING && c.getExploringExpiresAt() != null)
                 .filter(c -> !c.getExploringExpiresAt().isBefore(now) && !c.getExploringExpiresAt().isAfter(threshold))
@@ -154,7 +148,6 @@ public class ReminderServiceImpl implements ReminderService {
             String human = String.format("Chỉ còn %d ngày %d giờ là hết hạn tìm hiểu", days, hours);
 
             try {
-                // Gửi cho user 1
                 notificationService.createPushNotification(NotificationRequest.builder()
                         .userId(c.getUser1().getUserId())
                         .title("Giai đoạn tìm hiểu sắp hết hạn")
@@ -162,7 +155,6 @@ public class ReminderServiceImpl implements ReminderService {
                         .type("COUPLE_EXPLORING_WARNING")
                         .build());
 
-                // Gửi cho user 2
                 notificationService.createPushNotification(NotificationRequest.builder()
                         .userId(c.getUser2().getUserId())
                         .title("Giai đoạn tìm hiểu sắp hết hạn")
@@ -178,10 +170,8 @@ public class ReminderServiceImpl implements ReminderService {
         }
     }
 
-    /** Refresh materialized view leaderboard_snapshot */
     private void refreshLeaderboardSnapshot() {
         try {
-            // try concurrent refresh (requires unique index on view)
             jdbcTemplate.execute("REFRESH MATERIALIZED VIEW CONCURRENTLY leaderboard_snapshot");
             log.info("Refreshed materialized view leaderboard_snapshot CONCURRENTLY");
         } catch (Exception ex) {
@@ -196,15 +186,13 @@ public class ReminderServiceImpl implements ReminderService {
     }
 
     private void sendNotification(UserReminder reminder) {
-        // Tạo request từ thông tin của reminder
         NotificationRequest request = NotificationRequest.builder()
                 .userId(reminder.getUserId())
-                .title("Nhắc nhở của bạn") // Đặt một tiêu đề chung, hoặc thêm trường title vào UserReminder
+                .title("Nhắc nhở của bạn")
                 .content(reminder.getMessage())
-                .type("USER_REMINDER") // Định nghĩa một loại thông báo cho reminder
+                .type("USER_REMINDER")
                 .build();
 
-        // Sử dụng createPushNotification để lưu DB và gửi push
         notificationService.createPushNotification(request);
 
         log.info("🔔 Sent reminder notification for user {}: {}", reminder.getUserId(), reminder.getMessage());

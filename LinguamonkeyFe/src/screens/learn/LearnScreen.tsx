@@ -23,6 +23,7 @@ import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CourseResponse, LessonResponse } from "../../types/dto"
 import { CourseType, SkillType } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import { getCourseImage } from "../../utils/courseUtils"
 import VipUpgradeModal from "../../components/modals/VipUpgradeModal"
 
 // --- TYPES ---
@@ -78,7 +79,7 @@ const FilterBar = ({
 
 const OverviewView = ({ navigation }: any) => {
   const { t } = useTranslation()
-  const { user, isAuthenticated, isVip, registerVip } = useUserStore()
+  const { user, isAuthenticated, isVip, registerVip, refreshUserProfile } = useUserStore()
   const { useEnrollments, useRecommendedCourses } = useCourses()
   const [showVipModal, setShowVipModal] = useState(false);
 
@@ -102,9 +103,10 @@ const OverviewView = ({ navigation }: any) => {
     { name: t("learn.certifications"), icon: "card-membership", screen: "CertificationLearningScreen", color: "#EC4899" },
   ]
 
-  const handleRefresh = () => {
-    refetchEnrolled()
-    refetchRec()
+  const handleRefresh = async () => {
+    refetchEnrolled();
+    refetchRec();
+    await refreshUserProfile(); // Ensure we have latest VIP status
   }
 
   const handleVipFeature = (mode: string, type: string) => {
@@ -244,14 +246,14 @@ const OverviewView = ({ navigation }: any) => {
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-            {purchasedCourses.map((enrollment: any) => (
+            {purchasedCourses.map((enrollment: any, index: number) => (
               <TouchableOpacity
-                key={`my-course-${enrollment.id}`}
+                key={`my-course-${enrollment.id || index}`}
                 style={styles.myCourseCard}
                 onPress={() => navigation.navigate("CourseDetailsScreen", { course: enrollment.course, isPurchased: true })}
               >
                 <Image
-                  source={{ uri: enrollment.course?.latestPublicVersion?.thumbnailUrl || "https://via.placeholder.com/150" }}
+                  source={getCourseImage(enrollment.course?.latestPublicVersion?.thumbnailUrl)}
                   style={styles.myCourseImage}
                 />
                 <View style={styles.myCourseInfo}>
@@ -278,7 +280,10 @@ const OverviewView = ({ navigation }: any) => {
                 style={styles.recCourseCard}
                 onPress={() => navigation.navigate("CourseDetailsScreen", { course, isPurchased: false })}
               >
-                <Image source={{ uri: course.latestPublicVersion?.thumbnailUrl }} style={styles.recCourseImage} />
+                <Image
+                  source={getCourseImage(course.latestPublicVersion?.thumbnailUrl)}
+                  style={styles.recCourseImage}
+                />
                 <Text style={styles.recCourseTitle} numberOfLines={2}>{course.title}</Text>
                 <Text style={styles.recPrice}>{course.price === 0 ? "Free" : `$${course.price}`}</Text>
               </TouchableOpacity>
@@ -316,7 +321,7 @@ const CourseListView = ({ navigation }: any) => {
       onPress={() => navigation.navigate("CourseDetailsScreen", { course: item })}
     >
       <Image
-        source={{ uri: item.latestPublicVersion?.thumbnailUrl }}
+        source={getCourseImage(item.latestPublicVersion?.thumbnailUrl)}
         style={styles.verticalCardImage}
       />
       <View style={styles.verticalCardContent}>
@@ -461,7 +466,7 @@ const LearnScreen = ({ navigation }: any) => {
 
   return (
     <ScreenLayout>
-      <View style={[styles.container, { paddingTop: insets.top }]}>
+      <ScrollView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.headerTitle}>{t("learn.title")}</Text>
           <TouchableOpacity onPress={() => navigation.navigate("SearchScreen")}>
@@ -474,7 +479,7 @@ const LearnScreen = ({ navigation }: any) => {
         <View style={styles.contentArea}>
           {renderContent()}
         </View>
-      </View>
+      </ScrollView>
     </ScreenLayout>
   )
 }
@@ -485,8 +490,6 @@ const styles = createScaledSheet({
     backgroundColor: "#F8FAFC",
   },
   header: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",

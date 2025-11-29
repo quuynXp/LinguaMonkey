@@ -36,4 +36,6 @@ Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pag
     void removeRoomMembers(UUID roomId, List<UUID> userIds);
 
     RoomResponse findOrCreateQuizRoom(UUID userId);
+
+    List<RoomResponse> getAiChatHistory(UUID userId);
 }

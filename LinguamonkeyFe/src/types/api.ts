@@ -816,7 +816,7 @@ export type LearningPace = "SLOW" | "MAINTAIN" | "FAST" | "ACCELERATED";
 
 // DTO - No direct table
 export interface CreateUserPayload {
-  username?: string;
+  fullname?: string;
   email?: string | null;
   password?: string;
   fullname?: string | null;

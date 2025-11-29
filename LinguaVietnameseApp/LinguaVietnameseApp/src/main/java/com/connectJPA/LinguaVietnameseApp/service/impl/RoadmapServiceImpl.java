@@ -3,15 +3,14 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateRoadmapRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.GenerateRoadmapRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
-        import com.connectJPA.LinguaVietnameseApp.entity.*;
-        import com.connectJPA.LinguaVietnameseApp.entity.id.UserRoadmapId;
+import com.connectJPA.LinguaVietnameseApp.entity.*;
+import com.connectJPA.LinguaVietnameseApp.entity.id.UserRoadmapId;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
-        import com.connectJPA.LinguaVietnameseApp.service.RoadmapService;
+import com.connectJPA.LinguaVietnameseApp.service.RoadmapService;
 import lombok.RequiredArgsConstructor;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -20,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.util.*;
-        import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 
 @Service
@@ -41,8 +40,6 @@ public class RoadmapServiceImpl implements RoadmapService {
     private final InterestRepository interestRepository;
     private final RoadmapSuggestionRepository roadmapSuggestionRepository;
     private final RoadmapRatingRepository roadmapRatingRepository;
-
-    // ==================== USER ROADMAPS ====================
 
     @Override
     public List<RoadmapUserResponse> getUserRoadmaps(UUID userId, String language) {
@@ -101,8 +98,6 @@ public class RoadmapServiceImpl implements RoadmapService {
         log.info("Assigned roadmap {} to user {}", roadmapId, userId);
     }
 
-    // ==================== PUBLIC ROADMAPS ====================
-
     @Override
     public List<RoadmapResponse> getPublicRoadmaps(String language) {
         return userRoadmapRepository.findByIsPublicTrueAndLanguage(language).stream()
@@ -139,8 +134,8 @@ public class RoadmapServiceImpl implements RoadmapService {
                     .difficulty(roadmap.getType())
                     .type(roadmap.getType())
                     .createdAt(ur.getCreatedAt())
-                    .viewCount(0) // Add view tracking later
-                    .favoriteCount(0) // Add favorite tracking later
+                    .viewCount(0)
+                    .favoriteCount(0)
                     .build();
         });
     }
@@ -160,8 +155,6 @@ public class RoadmapServiceImpl implements RoadmapService {
         log.info("Set roadmap {} visibility to {}", roadmapId, isPublic);
     }
 
-    // ==================== ROADMAP SUGGESTIONS ====================
-
     @Override
     public List<RoadmapSuggestion> getSuggestions(UUID roadmapId) {
         return roadmapSuggestionRepository.findByRoadmapRoadmapId(roadmapId);
@@ -176,7 +169,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                 .map(suggestion -> RoadmapSuggestionResponse.builder()
                         .suggestionId(suggestion.getSuggestionId())
                         .userId(suggestion.getUser().getUserId())
-                        .userName(suggestion.getUser().getFullname())
+                        .fullname(suggestion.getUser().getFullname())
                         .userAvatar(suggestion.getUser().getAvatarUrl())
                         .itemId(suggestion.getItemId())
                         .suggestedOrderIndex(suggestion.getSuggestedOrderIndex())
@@ -194,17 +187,17 @@ public class RoadmapServiceImpl implements RoadmapService {
     @Override
     public RoadmapSuggestion addSuggestion(UUID userId, UUID roadmapId, UUID itemId,
                                            Integer suggestedOrderIndex, String reason) {
-        UserRoadmap ur = userRoadmapRepository.findById(new UserRoadmapId(userId, roadmapId))
+        
+        // Ensure roadmap exists, but allow suggestions on public roadmaps even if user hasn't started it
+        Roadmap roadmap = roadmapRepository.findById(roadmapId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
 
-        if (!ur.isPublic()) {
-            throw new AppException(ErrorCode.ROADMAP_NOT_PUBLIC);
+        RoadmapItem item = null;
+        if (itemId != null) {
+             item = roadmapItemRepository.findById(itemId)
+                    .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
         }
 
-        RoadmapItem item = roadmapItemRepository.findById(itemId)
-                .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
-
-        // Check for duplicate
         if (roadmapSuggestionRepository.existsByUserAndRoadmapAndItem(userId, roadmapId, itemId)) {
             throw new AppException(ErrorCode.DUPLICATE_SUGGESTION);
         }
@@ -213,15 +206,15 @@ public class RoadmapServiceImpl implements RoadmapService {
                 .suggestionId(UUID.randomUUID())
                 .user(userRepository.findById(userId)
                         .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND)))
-                .roadmap(roadmapRepository.findById(roadmapId)
-                        .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND)))
+                .roadmap(roadmap)
                 .itemId(itemId)
                 .suggestedOrderIndex(suggestedOrderIndex)
                 .reason(reason)
                 .applied(false)
+                .createdAt(OffsetDateTime.now())
                 .build();
 
-        log.info("Added suggestion from user {} for roadmap {}", userId, roadmapId);
+        log.info("Added review/suggestion from user {} for roadmap {}", userId, roadmapId);
         return roadmapSuggestionRepository.save(suggestion);
     }
 
@@ -254,8 +247,6 @@ public class RoadmapServiceImpl implements RoadmapService {
         roadmapSuggestionRepository.save(suggestion);
         log.info("Applied suggestion {} for roadmap {}", suggestionId, suggestion.getRoadmap().getRoadmapId());
     }
-
-    // ==================== ROADMAP CRUD ====================
 
     @Override
     public List<RoadmapResponse> getAllRoadmaps(String language) {
@@ -389,6 +380,11 @@ public class RoadmapServiceImpl implements RoadmapService {
     @Override
     public RoadmapResponse generateFromAI(String token, GenerateRoadmapRequest req) {
         try {
+            String sanitizedToken = token;
+            if (sanitizedToken != null && sanitizedToken.startsWith("Bearer ")) {
+                sanitizedToken = sanitizedToken.substring(7);
+            }
+
             StringBuilder prompt = new StringBuilder("Generate roadmap for language " + req.getLanguageCode()
                     + ". Target proficiency: " + req.getTargetProficiency()
                     + ". Focus areas: " + String.join(", ", req.getFocusAreas())
@@ -415,9 +411,9 @@ public class RoadmapServiceImpl implements RoadmapService {
             }
 
             var future = grpcClientService.callCreateOrUpdateRoadmapDetailedAsync(
-                    token,
+                    sanitizedToken,
                     req.getUserId(),
-                    "", // create mode
+                    "",
                     req.getLanguageCode(),
                     prompt.toString(),
                     req.isCustom()
@@ -439,13 +435,11 @@ public class RoadmapServiceImpl implements RoadmapService {
             roadmap.setTotalItems(protoResp.getItemsList() == null ? 0 : protoResp.getItemsList().size());
             roadmapRepository.save(roadmap);
 
-            // cleanup existing
             roadmapItemRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
             roadmapMilestoneRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
             roadmapGuidanceRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
             roadmapResourceRepository.deleteByRoadmapIdAndIsDeletedFalse(roadmapId);
 
-            // save items
             for (var itemProto : protoResp.getItemsList()) {
                 UUID itemId = itemProto.getItemId().isEmpty() ? UUID.randomUUID() : UUID.fromString(itemProto.getItemId());
                 RoadmapItem item = new RoadmapItem();
@@ -466,7 +460,6 @@ public class RoadmapServiceImpl implements RoadmapService {
                 roadmapItemRepository.save(item);
             }
 
-            // save resources (if any)
             if (protoResp.getResourcesList() != null) {
                 for (var resProto : protoResp.getResourcesList()) {
                     try {
@@ -485,13 +478,11 @@ public class RoadmapServiceImpl implements RoadmapService {
                         res.setDuration(resProto.getDuration());
                         roadmapResourceRepository.save(res);
                     } catch (Exception ex) {
-                        // log and continue
                         System.err.println("Failed to save resource proto: " + ex.getMessage());
                     }
                 }
             }
 
-            // save guidances
             if (protoResp.getGuidancesList() != null) {
                 for (var gProto : protoResp.getGuidancesList()) {
                     try {
@@ -513,7 +504,6 @@ public class RoadmapServiceImpl implements RoadmapService {
                 }
             }
 
-            // save milestones
             if (protoResp.getMilestonesList() != null) {
                 for (var mProto : protoResp.getMilestonesList()) {
                     try {
@@ -534,7 +524,6 @@ public class RoadmapServiceImpl implements RoadmapService {
                 }
             }
 
-            // link user-roadmap
             if (req.getUserId() != null && !req.getUserId().isEmpty()) {
                 UserRoadmap ur = new UserRoadmap();
                 ur.setUserRoadmapId(new UserRoadmapId(UUID.fromString(req.getUserId()), roadmapId));
@@ -551,6 +540,7 @@ public class RoadmapServiceImpl implements RoadmapService {
 
         } catch (InterruptedException | ExecutionException ex) {
             Thread.currentThread().interrupt();
+            log.error("Error during AI roadmap generation: {}", ex.getMessage());
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
@@ -574,9 +564,9 @@ public class RoadmapServiceImpl implements RoadmapService {
         int completedItems = ur.getCompletedItems();
         int progress = totalItems > 0 ? (completedItems * 100 / totalItems) : 0;
 
-        int estimatedCompletionTime = ur.getEstimatedCompletionTime() != null 
-                                    ? ur.getEstimatedCompletionTime() 
-                                    : 0; 
+        int estimatedCompletionTime = ur.getEstimatedCompletionTime() != null
+                ? ur.getEstimatedCompletionTime()
+                : 0;
 
         if (estimatedCompletionTime == 0 && totalItems > 0) {
             estimatedCompletionTime = (totalItems - completedItems);
@@ -619,7 +609,17 @@ public class RoadmapServiceImpl implements RoadmapService {
     }
 
     private double calculateRoadmapRating(UUID roadmapId) {
-        // Implementation to calculate average rating
-        return 4.5; // Placeholder
+        List<RoadmapRating> ratings = roadmapRatingRepository.findByRoadmapRoadmapIdAndIsDeletedFalse(roadmapId);
+        
+        if (ratings.isEmpty()) {
+            return 0.0;
+        }
+
+        double average = ratings.stream()
+                .mapToDouble(RoadmapRating::getRating)
+                .average()
+                .orElse(0.0);
+
+        return Math.round(average * 10.0) / 10.0;
     }
 }

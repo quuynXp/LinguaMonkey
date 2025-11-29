@@ -42,7 +42,7 @@ public class RoomMember extends BaseEntity {
     private OffsetDateTime endAt;
 
     @Column(name = "is_admin") 
-    private boolean isAdmin; 
+    private Boolean isAdmin = false; 
 
     @Column(name = "nick_name_in_rom") 
     private String nickNameInRom;

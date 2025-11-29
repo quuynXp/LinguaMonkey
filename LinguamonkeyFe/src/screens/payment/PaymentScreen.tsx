@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react"
-import { Alert, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, TextInput, Keyboard } from "react-native"
+import { useState, useEffect, useMemo } from "react"
+import { Alert, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, TextInput, Keyboard, Switch } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useUserStore } from "../../stores/UserStore"
 import * as WebBrowser from "expo-web-browser"
@@ -29,32 +29,54 @@ const PaymentScreen = ({ navigation, route }: any) => {
   const [selectedMethod, setSelectedMethod] = useState<"wallet" | "gateway">("gateway");
   const [gatewayProvider, setGatewayProvider] = useState<Enums.TransactionProvider>(Enums.TransactionProvider.VNPAY);
 
-  // Coupon State
   const [couponCode, setCouponCode] = useState("");
   const [appliedDiscount, setAppliedDiscount] = useState<{ code: string; percent: number } | null>(null);
 
-  // Hooks
+  const [useCoins, setUseCoins] = useState(false);
+  const [coinsToUse, setCoinsToUse] = useState(0);
+
   const { data: walletData, isLoading: loadingBalance } = useWallet().useWalletBalance(user?.userId);
   const createPaymentUrl = useTransactionsApi().useCreatePayment();
   const createTransaction = useTransactionsApi().useCreateTransaction();
   const { convert, isLoading: loadingRates } = useCurrencyConverter();
 
-  // NEW: Validate Coupon Hook
   const { mutate: validateDiscount, isPending: isValidatingCoupon } = useCourses().useValidateDiscount();
 
-  // Calculation Logic
+  const COINS_PER_USD = 1000;
   const originalPrice = course.price;
+
   const discountAmount = appliedDiscount
     ? (originalPrice * appliedDiscount.percent) / 100
     : 0;
-  const finalAmount = Math.max(0, originalPrice - discountAmount);
 
-  // Currency Logic
-  const userCurrency = user?.country ? (user.country === Enums.Country.VIETNAM ? 'VND' : 'USD') : 'VND';
+  const priceAfterCoupon = Math.max(0, originalPrice - discountAmount);
+
+  const availableCoins = user?.coins || 0;
+
+  const maxCoinsUsable = useMemo(() => {
+    const priceInCoins = priceAfterCoupon * COINS_PER_USD;
+    return Math.floor(Math.min(availableCoins, priceInCoins));
+  }, [availableCoins, priceAfterCoupon]);
+
+  useEffect(() => {
+    if (useCoins) {
+      setCoinsToUse(maxCoinsUsable);
+    } else {
+      setCoinsToUse(0);
+    }
+  }, [useCoins, priceAfterCoupon, maxCoinsUsable]);
+
+  const coinDiscountAmount = useCoins ? (coinsToUse / COINS_PER_USD) : 0;
+
+  const finalAmount = Math.max(0, priceAfterCoupon - coinDiscountAmount);
+
+  // Logic currency thống nhất
+  const userCurrency = user?.country === Enums.Country.VIETNAM ? 'VND' : 'USD';
+
   const displayFinalPrice = convert(finalAmount, userCurrency);
   const displayOriginalPrice = convert(originalPrice, userCurrency);
 
-  const isBalanceSufficient = (walletData?.balance || 0) >= finalAmount;
+  const isBalanceSufficient = (walletData?.balance || 0) >= displayFinalPrice;
 
   const handleApplyCoupon = () => {
     Keyboard.dismiss();
@@ -80,6 +102,22 @@ const PaymentScreen = ({ navigation, route }: any) => {
     setCouponCode("");
   };
 
+  const increaseCoins = () => {
+    if (coinsToUse + 100 <= maxCoinsUsable) {
+      setCoinsToUse(prev => prev + 100);
+    } else {
+      setCoinsToUse(maxCoinsUsable);
+    }
+  };
+
+  const decreaseCoins = () => {
+    if (coinsToUse - 100 >= 0) {
+      setCoinsToUse(prev => prev - 100);
+    } else {
+      setCoinsToUse(0);
+    }
+  };
+
   const handlePayment = () => {
     if (!user?.userId) return;
 
@@ -95,12 +133,17 @@ const PaymentScreen = ({ navigation, route }: any) => {
   };
 
   const processWalletPayment = () => {
+    const cleanAmount = Number(displayFinalPrice.toFixed(2));
+
     const payload: TransactionRequest = {
       userId: user!.userId,
-      amount: finalAmount, // Use final discounted amount
+      amount: cleanAmount,
       provider: Enums.TransactionProvider.INTERNAL,
+      currency: userCurrency,
+      type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
       status: Enums.TransactionStatus.SUCCESS,
       description: `Payment for course: ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
+      coins: useCoins ? coinsToUse : 0
     };
 
     createTransaction.mutate(payload, {
@@ -113,31 +156,37 @@ const PaymentScreen = ({ navigation, route }: any) => {
   };
 
   const processGatewayPayment = () => {
-    const payload: PaymentRequest = {
+    const cleanAmount = Number(displayFinalPrice.toFixed(2));
+
+    const payload: PaymentRequest & { coins?: number; type?: string } = {
       userId: user!.userId,
-      amount: finalAmount, // Use final discounted amount
+      amount: cleanAmount,
       provider: gatewayProvider,
-      currency: "VND",
+      currency: userCurrency,
+      type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
       returnUrl: "linguamonkey://payment/success",
       description: `Buy ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
+      coins: useCoins ? coinsToUse : 0
     };
 
     createPaymentUrl.mutate(payload, {
       onSuccess: async (url) => {
-        const result = await WebBrowser.openBrowserAsync(url);
-        if (result.type === 'dismiss' || result.type === 'cancel') {
-          // User closed browser
+        if (url) {
+          const result = await WebBrowser.openBrowserAsync(url);
+          if (result.type === 'dismiss' || result.type === 'cancel') {
+          }
         }
       },
       onError: () => Alert.alert(t('common.error'), t('payment.gatewayError'))
     });
   };
 
+  // ... Render code (UI) ...
   const renderPriceDisplay = () => {
     if (loadingRates) return <ActivityIndicator size="small" color="#4F46E5" />;
     return (
       <View style={{ alignItems: 'flex-end' }}>
-        {appliedDiscount && (
+        {(appliedDiscount || useCoins) && (
           <Text style={styles.originalPrice}>
             {displayOriginalPrice.toLocaleString()} {userCurrency}
           </Text>
@@ -160,13 +209,11 @@ const PaymentScreen = ({ navigation, route }: any) => {
       </View>
 
       <ScrollView style={styles.content}>
-        {/* Course Info */}
         <View style={styles.card}>
           <Text style={styles.courseTitle}>{course.title}</Text>
           <Text style={styles.instructor}>by {course.instructor}</Text>
           <View style={styles.divider} />
 
-          {/* Coupon Input Section */}
           <View style={styles.couponContainer}>
             <View style={styles.inputWrapper}>
               <Icon name="local-offer" size={20} color="#6B7280" style={styles.inputIcon} />
@@ -201,6 +248,37 @@ const PaymentScreen = ({ navigation, route }: any) => {
             </View>
           )}
 
+          <View style={styles.coinSection}>
+            <View style={styles.coinHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Icon name="monetization-on" size={20} color="#F59E0B" />
+                <Text style={styles.coinLabel}>Use Coins ({availableCoins})</Text>
+              </View>
+              <Switch
+                value={useCoins}
+                onValueChange={setUseCoins}
+                trackColor={{ false: "#D1D5DB", true: "#FBBF24" }}
+                thumbColor={useCoins ? "#F59E0B" : "#F4F3F4"}
+                disabled={availableCoins <= 0}
+              />
+            </View>
+
+            {useCoins && (
+              <View style={styles.coinControls}>
+                <TouchableOpacity onPress={decreaseCoins} style={styles.coinBtn}>
+                  <Icon name="remove" size={20} color="#6B7280" />
+                </TouchableOpacity>
+                <Text style={styles.coinValue}>{coinsToUse}</Text>
+                <TouchableOpacity onPress={increaseCoins} style={styles.coinBtn}>
+                  <Icon name="add" size={20} color="#6B7280" />
+                </TouchableOpacity>
+                <Text style={styles.discountText}>
+                  - ${(coinsToUse / COINS_PER_USD).toFixed(2)}
+                </Text>
+              </View>
+            )}
+          </View>
+
           <View style={styles.divider} />
 
           <View style={styles.priceRow}>
@@ -209,10 +287,8 @@ const PaymentScreen = ({ navigation, route }: any) => {
           </View>
         </View>
 
-        {/* Payment Methods */}
         <Text style={styles.sectionTitle}>{t('payment.selectMethod')}</Text>
 
-        {/* Option 1: Wallet */}
         <TouchableOpacity
           style={[styles.methodCard, selectedMethod === 'wallet' && styles.selectedMethod]}
           onPress={() => setSelectedMethod('wallet')}
@@ -223,14 +299,13 @@ const PaymentScreen = ({ navigation, route }: any) => {
             {selectedMethod === 'wallet' && <Icon name="check-circle" size={20} color="#4F46E5" />}
           </View>
           <Text style={styles.balanceText}>
-            {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} VND
+            {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} {userCurrency}
           </Text>
           {!isBalanceSufficient && (
             <Text style={styles.errorText}>{t('payment.insufficientWarning')}</Text>
           )}
         </TouchableOpacity>
 
-        {/* Option 2: Gateway */}
         <TouchableOpacity
           style={[styles.methodCard, selectedMethod === 'gateway' && styles.selectedMethod]}
           onPress={() => setSelectedMethod('gateway')}
@@ -292,7 +367,6 @@ const styles = createScaledSheet({
   instructor: { fontSize: 14, color: "#6B7280" },
   divider: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 12 },
 
-  // Coupon Styles
   couponContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   inputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 10, marginRight: 8 },
   inputIcon: { marginRight: 8 },
@@ -304,6 +378,14 @@ const styles = createScaledSheet({
   discountRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   discountLabel: { color: '#059669', fontSize: 14 },
   discountValue: { color: '#059669', fontWeight: 'bold', fontSize: 14 },
+
+  coinSection: { marginTop: 12, padding: 12, backgroundColor: '#F9FAFB', borderRadius: 8, borderWidth: 1, borderColor: '#F3F4F6' },
+  coinHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  coinLabel: { marginLeft: 8, fontSize: 14, fontWeight: '600', color: '#4B5563' },
+  coinControls: { flexDirection: 'row', alignItems: 'center', marginTop: 12, justifyContent: 'space-between' },
+  coinBtn: { padding: 4, backgroundColor: '#E5E7EB', borderRadius: 8 },
+  coinValue: { fontSize: 16, fontWeight: 'bold', color: '#1F2937', width: 60, textAlign: 'center' },
+  discountText: { fontSize: 14, fontWeight: '600', color: '#059669' },
 
   priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   label: { fontSize: 16, color: "#4B5563" },

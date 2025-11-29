@@ -2,10 +2,12 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import jakarta.validation.constraints.NotNull;
-import lombok.Data;
+
 import java.util.UUID;
 import lombok.*;
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class LearningActivityEventRequest {
 
     @NotNull

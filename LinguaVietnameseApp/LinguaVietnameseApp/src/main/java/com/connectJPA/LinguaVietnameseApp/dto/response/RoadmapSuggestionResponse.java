@@ -12,7 +12,7 @@ import java.util.UUID;
 public class RoadmapSuggestionResponse {
     private UUID suggestionId;
     private UUID userId;
-    private String userName;
+    private String fullname;
     private String userAvatar;
     private UUID roadmapId;
     private UUID itemId;

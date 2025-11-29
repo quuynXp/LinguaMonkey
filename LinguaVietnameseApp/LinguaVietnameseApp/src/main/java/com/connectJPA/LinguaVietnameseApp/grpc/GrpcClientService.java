@@ -504,6 +504,11 @@ public class GrpcClientService {
                 if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
                 return response;
             } catch (Exception e) {
+                log.error("gRPC call to createOrUpdateRoadmapDetailed failed: {}", e.getMessage(), e); // <-- THÊM LOG
+                if (e.getCause() instanceof StatusRuntimeException sre) {
+                    log.error("gRPC StatusRuntimeException details: {}", sre.getStatus());
+                    throw new AppException(ErrorCode.GRPC_SERVICE_ERROR);
+                }
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             } finally {
                 channel.shutdown();

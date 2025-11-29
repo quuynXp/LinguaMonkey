@@ -44,33 +44,36 @@ Our platform leverages **State-of-the-Art Generative AI** to provide real-time l
 ## 🌟 Feature Highlights
 
 ### 1. Intelligent Learning Pathways
+
 Moving beyond static lessons, MonkeyLingua adapts to your career goals. Whether preparing for IELTS, Business Communication, or Daily Conversation, our **Dynamic Roadmaps** guide you step-by-step.
 
-* **Spaced Repetition (SRS):** Flashcards powered by Anki-like algorithms.
-* **Contextual Video:** Learn from real-world scenarios with AI-generated bilingual subtitles.
-* **Proficiency Testing:** Automated input evaluation to constantly calibrate difficulty.
+- **Spaced Repetition (SRS):** Flashcards powered by Anki-like algorithms.
+- **Contextual Video:** Learn from real-world scenarios with AI-generated bilingual subtitles.
+- **Proficiency Testing:** Automated input evaluation to constantly calibrate difficulty.
 
 <p align="center">
   <img src="docs/assets/learning_flow.png" alt="Adaptive Learning Flow" width="50%"/>
 </p>
 
 ### 2. AI-Powered Cognitive Suite
+
 Your personal AI coach is available 24/7. Powered by a dedicated Python Microservice (Whisper + LLMs), we provide instant feedback that mimics a native tutor.
 
-* **Pronunciation Scoring:** Real-time IPA (International Phonetic Alphabet) analysis.
-* **Smart Chat:** The AI intercepts messages to suggest grammar corrections instantly.
-* **Scenario Generation:** Infinite role-play scenarios tailored to your weak points.
+- **Pronunciation Scoring:** Real-time IPA (International Phonetic Alphabet) analysis.
+- **Smart Chat:** The AI intercepts messages to suggest grammar corrections instantly.
+- **Scenario Generation:** Infinite role-play scenarios tailored to your weak points.
 
 <p align="center">
   <img src="docs/assets/ai_features.png" alt="AI Features Analysis" width="50%"/>
 </p>
 
 ### 3. Immersive Social Ecosystem
+
 Language is meant to be spoken. MonkeyLingua connects you with the world via high-performance WebSocket infrastructure.
 
-* **Couple Mode:** Link accounts with a partner to track shared progress and celebrate anniversaries.
-* **Video Conferencing:** Integrated Jitsi/WebRTC for crystal-clear 1:1 or Group study rooms.
-* **Gamification:** Compete on global leaderboards, earn badges, and maintain streaks.
+- **Couple Mode:** Link accounts with a partner to track shared progress and celebrate anniversaries.
+- **Video Conferencing:** Integrated Jitsi/WebRTC for crystal-clear 1:1 or Group study rooms.
+- **Gamification:** Compete on global leaderboards, earn badges, and maintain streaks.
 
 <p align="center">
   <img src="docs/assets/social.png" alt="Social Interaction" width="50%"/>
@@ -83,6 +86,7 @@ Language is meant to be spoken. MonkeyLingua connects you with the world via hig
 MonkeyLingua is built on a production-grade **Hybrid Microservices Architecture**, ensuring scalability, security, and fault tolerance.
 
 ### System Blueprint
+
 Traffic is managed by **Kong Gateway**, routing requests to our **Spring Boot Monolith** (Core Logic) and **FastAPI Service** (AI Engine). Asynchronous operations are handled via **Apache Kafka**, while **Elasticsearch** powers our instant content retrieval.
 
 <p align="center">
@@ -103,10 +107,12 @@ Traffic is managed by **Kong Gateway**, routing requests to our **Spring Boot Mo
 This section outlines how to deploy the MonkeyLingua infrastructure for on-premise or cloud environments using Docker.
 
 ### Prerequisites
-* **Docker Engine** (v20.10+) & **Docker Compose** (v2.0+)
-* **RAM:** Minimum 8GB recommended (due to Elastic/Kafka stack).
+
+- **Docker Engine** (v20.10+) & **Docker Compose** (v2.0+)
+- **RAM:** Minimum 8GB recommended (due to Elastic/Kafka stack).
 
 ### 1. System Orchestration
+
 We utilize a unified `docker-compose` workflow to spin up the entire stack (Backend, AI, Databases, Cache, Message Brokers).
 
 <p align="center">
@@ -120,17 +126,19 @@ docker-compose up --build -d
 ```
 
 After the command finishes:
-* **Backend Core:** Booting on port `8080`
-* **AI Service:** RPC/REST active on port `50051`
-* **Kong Gateway:** Accessible via `localhost:8000`
+
+- **Backend Core:** Booting on port `8080`
+- **AI Service:** RPC/REST active on port `50051`
+- **Kong Gateway:** Accessible via `localhost:8000`
 
 ### 2. Configuration
+
 Create a `.env` file at the project root. This file secures your infrastructure credentials.
 
 ```env
 # Database & Cache
 SPRING_DATASOURCE_URL=jdbc:postgresql://app-database:5432/linguaviet_db
-SPRING_DATASOURCE_USERNAME=linguauser
+SPRING_DATASOURCE_fullname=linguauser
 SPRING_DATASOURCE_PASSWORD=secure_password
 REDIS_HOST=redis
 REDIS_PORT=6379
@@ -168,13 +176,13 @@ We are committed to continuous innovation. Below is our development trajectory.
   <img src="docs/assets/roadmap.png" alt="Development Roadmap" width="50%"/>
 </p>
 
-| Status | Module | Description |
-| :--- | :--- | :--- |
-| ✅ **Live** | **Core LMS** | Roadmaps, Courses, Tracking, Payment Gateway. |
-| ✅ **Live** | **Cognitive AI** | Speech Analysis (Whisper), Grammar Correction. |
-| ✅ **Live** | **Real-time Comms** | Chat, Video Calls, Rooms. |
-| 🚧 **In-Dev** | **Advanced RecSys** | AI-driven personalized content recommendations. |
-| 📅 **Planned** | **Enterprise Dashboard** | Analytics for corporate training partners. |
+| Status         | Module                   | Description                                     |
+| :------------- | :----------------------- | :---------------------------------------------- |
+| ✅ **Live**    | **Core LMS**             | Roadmaps, Courses, Tracking, Payment Gateway.   |
+| ✅ **Live**    | **Cognitive AI**         | Speech Analysis (Whisper), Grammar Correction.  |
+| ✅ **Live**    | **Real-time Comms**      | Chat, Video Calls, Rooms.                       |
+| 🚧 **In-Dev**  | **Advanced RecSys**      | AI-driven personalized content recommendations. |
+| 📅 **Planned** | **Enterprise Dashboard** | Analytics for corporate training partners.      |
 
 ---
 

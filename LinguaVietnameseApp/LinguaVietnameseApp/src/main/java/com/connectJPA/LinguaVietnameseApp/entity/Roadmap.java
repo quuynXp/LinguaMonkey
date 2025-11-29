@@ -34,6 +34,9 @@ public class Roadmap extends BaseEntity {
     @Column(name = "description")
     private String description;
 
+     @Column(name = "is_public")
+    private boolean isPublic;
+
     @Column(name = "total_items")
     private Integer totalItems;
 

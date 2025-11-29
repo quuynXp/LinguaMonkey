@@ -14,7 +14,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class ParticipantInfo {
     private UUID userId;
-    private String username;
+    private String fullname;
     private String role;
     private String status;
     private OffsetDateTime joinedAt;

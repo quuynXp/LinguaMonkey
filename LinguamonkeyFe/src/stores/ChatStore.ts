@@ -57,6 +57,9 @@ interface UseChatState {
   // General Chat Actions
   loadMessages: (roomId: string, page?: number, size?: number) => Promise<void>;
   sendMessage: (roomId: string, content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO', mediaUrl?: string) => void;
+  editMessage: (roomId: string, messageId: string, newContent: string) => Promise<void>;
+  deleteMessage: (roomId: string, messageId: string) => Promise<void>;
+  markMessageAsRead: (roomId: string, messageId: string) => void;
 
   connectVideoSubtitles: (roomId: string, targetLang: string) => void;
   disconnectVideoSubtitles: () => void;
@@ -197,14 +200,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       loadingByRoom: { ...get().loadingByRoom, [roomId]: true }
     });
 
-    // Load initial 10 messages (Page 0)
     await get().loadMessages(roomId, 0, 10);
 
-    // Convert loaded messages to AI Format
     const messages = get().messagesByRoom[roomId] || [];
-    // messages are [Newest ... Oldest]. For AI History display (Bottom-up), we need [Oldest ... Newest]
-    // BUT, the View handles this based on display logic. 
-    // To sync with 'aiChatHistory' state used by streaming:
     const sortedForAi = [...messages].reverse();
 
     const aiFormatMessages: AiMessage[] = sortedForAi.map((m) => ({
@@ -244,9 +242,10 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: true } }));
 
     try {
+      // FIX: Changed sort from 'sentAt,desc' to 'id.sentAt,desc' to match Composite Key structure
       const res = await instance.get<AppApiResponse<PageResponse<Message>>>(
         `/api/v1/chat/room/${roomId}/messages`,
-        { params: { page, size, sort: 'createdAt,desc' } }
+        { params: { page, size, sort: 'id.sentAt,desc' } }
       );
 
       const newMessages = res.data.result?.content || [];
@@ -254,19 +253,13 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       set((currentState) => {
         const currentMsgs = currentState.messagesByRoom[roomId] || [];
-
-        // Since backend sorts DESC (Newest First), newMessages are [New1, New2, ...].
-        // If Page 0, replace. If Page > 0, append to the end of existing list (which is Newest -> Oldest).
         const updatedList = page === 0
           ? newMessages
           : [...currentMsgs, ...newMessages];
 
         const uniqueList = Array.from(new Map(updatedList.map(item => [item.id.chatMessageId, item])).values());
+        uniqueList.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
 
-        // Sort Newest -> Oldest (Critical for Inverted List)
-        uniqueList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-        // Also update aiChatHistory if this is the active room
         let updatedAiHistory = currentState.aiChatHistory;
         if (roomId === currentState.activeAiRoomId) {
           const sortedForAi = [...uniqueList].reverse();
@@ -302,6 +295,39 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       mediaUrl: mediaUrl || null,
     };
     stompService.publish(`/app/chat/room/${roomId}`, payload);
+  },
+
+  editMessage: async (roomId: string, messageId: string, newContent: string) => {
+    try {
+      await instance.put<AppApiResponse<Message>>(`/api/v1/chat/messages/${messageId}`, {
+        content: newContent
+      });
+      // Optimistic update handled by socket subscription
+    } catch (error) {
+      console.error("Edit message failed", error);
+      throw error;
+    }
+  },
+
+  deleteMessage: async (roomId: string, messageId: string) => {
+    try {
+      await instance.delete<AppApiResponse<void>>(`/api/v1/chat/messages/${messageId}`);
+      // Optimistic or waiting for socket is fine. But for delete, we can locally remove immediately for better UX
+      set(state => ({
+        messagesByRoom: {
+          ...state.messagesByRoom,
+          [roomId]: state.messagesByRoom[roomId]?.filter(m => m.id.chatMessageId !== messageId) || []
+        }
+      }));
+    } catch (error) {
+      console.error("Delete message failed", error);
+      throw error;
+    }
+  },
+
+  markMessageAsRead: (roomId: string, messageId: string) => {
+    if (!stompService.isConnected) return;
+    stompService.publish(`/app/chat/message/${messageId}/read`, {});
   },
 
   sendAiPrompt: (content: string) => {
@@ -368,10 +394,14 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 }));
 
 function upsertMessage(list: Message[], msg: Message): Message[] {
+  if (msg.isDeleted) {
+    return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
+  }
+
   const exists = list.find((m) => m.id.chatMessageId === msg.id.chatMessageId);
   if (exists) {
     return list.map((m) => (m.id.chatMessageId === msg.id.chatMessageId ? msg : m));
   }
   const newList = [msg, ...list];
-  return newList.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  return newList.sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime());
 }

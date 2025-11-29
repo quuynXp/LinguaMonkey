@@ -40,8 +40,13 @@ export interface WordFeedback {
 
 export const useSkillLessons = () => {
     const queryClient = useQueryClient();
-
     const BASE_URL = instance.defaults.baseURL || "";
+
+    // Helper to ensure FormData is sent correctly without being converted to JSON
+    const formDataConfig = {
+        headers: { "Content-Type": "multipart/form-data" },
+        transformRequest: (data: any) => data, // Prevent Axios from JSON-stringifying FormData
+    };
 
     const useProcessListening = () => {
         return useMutation({
@@ -66,12 +71,14 @@ export const useSkillLessons = () => {
                 const { data } = await instance.post<AppApiResponse<ListeningResponse>>(
                     `${SKILL_API_BASE}/listening/transcribe`,
                     formData,
-                    { headers: { "Content-Type": "multipart/form-data" } }
+                    formDataConfig
                 );
                 return data.result!;
             },
             onSuccess: (_, variables) => {
-                queryClient.invalidateQueries({ queryKey: ["lessonProgress", variables.lessonId] });
+                queryClient.invalidateQueries({
+                    queryKey: ["lessonProgress", variables.lessonId],
+                });
             },
         });
     };
@@ -108,20 +115,22 @@ export const useSkillLessons = () => {
 
                 const url = `${BASE_URL}${SKILL_API_BASE}/speaking/pronunciation-stream`;
 
-                const response = await fetch(
-                    url,
-                    {
-                        method: "POST",
-                        body: formData,
-                        headers: {
-                            Authorization: `Bearer ${accessToken}`,
-                        },
-                    }
-                );
+                // Using fetch for streaming as Axios doesn't handle streams well in RN
+                const response = await fetch(url, {
+                    method: "POST",
+                    body: formData,
+                    headers: {
+                        Authorization: `Bearer ${accessToken}`,
+                        // Do NOT set Content-Type here for fetch with FormData; 
+                        // the browser/engine sets it automatically with the boundary.
+                    },
+                });
 
                 if (!response.ok) {
                     const errorText = await response.text();
-                    throw new Error(`Stream failed with status ${response.status}. Body: ${errorText.substring(0, 50)}`);
+                    throw new Error(
+                        `Stream failed with status ${response.status}. Body: ${errorText.substring(0, 50)}`
+                    );
                 }
 
                 const reader = response.body?.getReader();
@@ -144,7 +153,7 @@ export const useSkillLessons = () => {
                                 const chunk: StreamingChunk = JSON.parse(line);
                                 onChunk(chunk);
                             } catch (e) {
-
+                                // Ignore parse errors for partial lines
                             }
                         }
                     }
@@ -157,7 +166,7 @@ export const useSkillLessons = () => {
                         const chunk: StreamingChunk = JSON.parse(buffer);
                         onChunk(chunk);
                     } catch (e) {
-
+                        // Ignore
                     }
                 }
 
@@ -194,7 +203,7 @@ export const useSkillLessons = () => {
                 const { data } = await instance.post<AppApiResponse<PronunciationResponseBody>>(
                     `${SKILL_API_BASE}/speaking/pronunciation`,
                     formData,
-                    { headers: { "Content-Type": "multipart/form-data" } }
+                    formDataConfig
                 );
                 return data.result!;
             },
@@ -269,10 +278,11 @@ export const useSkillLessons = () => {
                 formData.append("languageCode", languageCode);
                 formData.append("generateImage", String(generateImage));
 
+                // Fixed: Added formDataConfig to ensure correct Content-Type handling
                 const { data } = await instance.post<AppApiResponse<WritingResponseBody>>(
                     `${SKILL_API_BASE}/writing`,
                     formData,
-                    { headers: { "Content-Type": "multipart/form-data" } }
+                    formDataConfig
                 );
                 return data.result!;
             },

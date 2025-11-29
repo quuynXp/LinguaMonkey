@@ -4,7 +4,6 @@ export const RootNavigationRef = createNavigationContainerRef();
 
 let pendingActions: (() => void)[] = [];
 
-// Định nghĩa kiểu dữ liệu trả về từ Backend
 interface NotificationPayload {
   screen?: string;      // Ví dụ: "Chat", "Home"
   stackScreen?: string; // Ví dụ: "ChatDetail"
@@ -50,7 +49,7 @@ export const handleNotificationNavigation = (raw: any) => {
 export function resetToTab(
   destination:
     | 'Home' | 'Learn' | 'Progress' | 'Chat' | 'Profile'
-    | 'AdminStack' | 'SetupInitScreen' | 'DailyWelcomeScreen' | 'ProficiencyTestScreen',
+    | 'AdminStack' | 'SetupInitScreen' | 'DailyWelcomeScreen' | 'ProficiencyTestScreen' | 'ResetPasswordScreen',
   stackScreen?: string,
   stackParams?: object
 ) {

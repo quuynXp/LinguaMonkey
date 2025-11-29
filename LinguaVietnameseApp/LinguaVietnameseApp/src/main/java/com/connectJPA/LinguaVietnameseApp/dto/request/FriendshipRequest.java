@@ -3,11 +3,14 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 import jakarta.validation.constraints.*;
 import lombok.Builder;
 import lombok.Getter;
-import lombok.*;
+import lombok.NoArgsConstructor;
+import lombok.AllArgsConstructor;
 import java.util.UUID;
 
 @Getter
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class FriendshipRequest {
     @NotNull(message = "Requester ID is required")
     private UUID requesterId;

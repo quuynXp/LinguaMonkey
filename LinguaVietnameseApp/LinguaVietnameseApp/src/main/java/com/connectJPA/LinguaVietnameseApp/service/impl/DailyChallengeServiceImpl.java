@@ -1,9 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.DailyChallengeUpdateResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.DailyChallenge;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserDailyChallenge;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserDailyChallengeId;
+import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.DailyChallengeRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserDailyChallengeRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
@@ -37,6 +39,48 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
 
     @Override
     @Transactional
+    public DailyChallengeUpdateResponse updateChallengeProgress(UUID userId, ChallengeType challengeType, int increment) {
+        List<UserDailyChallenge> todayChallenges = getTodayChallenges(userId);
+
+        UserDailyChallenge targetChallenge = todayChallenges.stream()
+                .filter(udc -> !udc.isCompleted())
+                .filter(udc -> udc.getChallenge() != null && udc.getChallenge().getChallengeType() == challengeType)
+                .findFirst()
+                .orElse(null);
+
+        if (targetChallenge == null) {
+            return null;
+        }
+
+        targetChallenge.setProgress(targetChallenge.getProgress() + increment);
+        
+        int requiredTarget = targetChallenge.getChallenge().getTargetAmount() > 0 
+                ? targetChallenge.getChallenge().getTargetAmount() 
+                : 1;
+
+        boolean justCompleted = false;
+
+        if (targetChallenge.getProgress() >= requiredTarget) {
+            completeChallenge(userId, targetChallenge.getChallengeId());
+            justCompleted = true;
+            targetChallenge = userDailyChallengeRepository.findById(targetChallenge.getId()).orElse(targetChallenge);
+        } else {
+            targetChallenge = userDailyChallengeRepository.save(targetChallenge);
+        }
+
+        return DailyChallengeUpdateResponse.builder()
+                .challengeId(targetChallenge.getChallengeId())
+                .title(targetChallenge.getChallenge().getTitle())
+                .progress(targetChallenge.getProgress())
+                .target(requiredTarget)
+                .isCompleted(justCompleted)
+                .expReward(targetChallenge.getExpReward())
+                .rewardCoins(targetChallenge.getRewardCoins())
+                .build();
+    }
+
+    @Override
+    @Transactional
     public UserDailyChallenge assignChallenge(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
@@ -47,11 +91,7 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         }
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        
-        // Lấy danh sách thử thách đã gán hôm nay
         List<UserDailyChallenge> todayChallenges = getTodayChallenges(userId);
-        
-        // Lọc những challenge chưa được gán hôm nay
         Set<UUID> assignedChallengeIds = todayChallenges.stream()
                 .map(udc -> udc.getId().getChallengeId())
                 .collect(Collectors.toSet());
@@ -61,20 +101,13 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .collect(Collectors.toList());
         
         if (availableChallenges.isEmpty()) {
-            // Nếu tất cả challenge đã gán, trả về lỗi hoặc reset
             throw new RuntimeException("All daily challenges already assigned for today");
         }
 
-        // Random 1 challenge từ available
-        DailyChallenge challenge = availableChallenges
-                .get(new Random().nextInt(availableChallenges.size()));
+        DailyChallenge challenge = availableChallenges.get(new Random().nextInt(availableChallenges.size()));
 
         int stack = todayChallenges.size() + 1;
-        
-        // Công thức exp: base * (1 + (stack - 1) * 0.2)
-        // Stack 1: base, Stack 2: base * 1.2, Stack 3: base * 1.4...
         int expReward = (int) (challenge.getBaseExp() * (1 + (stack - 1) * 0.2));
-        int coinReward = challenge.getRewardCoins();
 
         UserDailyChallenge userChallenge = UserDailyChallenge.builder()
                 .id(UserDailyChallengeId.builder()
@@ -87,8 +120,7 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
                 .challenge(challenge)
                 .isCompleted(false)
                 .expReward(expReward)
-                .rewardCoins(coinReward)
-                // FIX: UserDailyChallenge.assignedAt is OffsetDateTime, passed now directly
+                .rewardCoins(challenge.getRewardCoins())
                 .assignedAt(now) 
                 .build();
 
@@ -105,25 +137,22 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
         List<UserDailyChallenge> challenges = userDailyChallengeRepository
                 .findChallengeForToday(userId, challengeId, startOfDay, endOfDay);
 
-        if (challenges.isEmpty()) {
-            throw new RuntimeException("Challenge not found for today");
-        }
+        if (challenges.isEmpty()) return;
 
         UserDailyChallenge challengeToComplete = challenges.stream()
                 .filter(c -> !c.isCompleted())
                 .findFirst()
-                .orElseThrow(() -> new RuntimeException("Challenge already completed or not assigned"));
+                .orElse(null);
 
-        // Mark as completed
+        if (challengeToComplete == null) return;
+
         challengeToComplete.setCompleted(true);
-        // FIX: UserDailyChallenge.completedAt is OffsetDateTime
         challengeToComplete.setCompletedAt(OffsetDateTime.now(ZoneOffset.UTC));
         userDailyChallengeRepository.save(challengeToComplete);
 
-        // Update user exp
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User user = userRepository.findById(userId).orElseThrow();
         user.setExp(user.getExp() + challengeToComplete.getExpReward());
+        user.setCoins(user.getCoins() + challengeToComplete.getRewardCoins()); // Added Coins Logic
         userRepository.save(user);
     }
 
@@ -131,24 +160,16 @@ public class DailyChallengeServiceImpl implements DailyChallengeService {
     public Map<String, Object> getDailyChallengeStats(UUID userId) {
         List<UserDailyChallenge> todayChallenges = getTodayChallenges(userId);
         
-        long completed = todayChallenges.stream()
-                .filter(UserDailyChallenge::isCompleted)
-                .count();
-        
-        int totalExpReward = todayChallenges.stream()
-                .mapToInt(UserDailyChallenge::getExpReward)
-                .sum();
-        
-        int totalCoins = todayChallenges.stream()
-                .mapToInt(UserDailyChallenge::getRewardCoins)
-                .sum();
+        long completed = todayChallenges.stream().filter(UserDailyChallenge::isCompleted).count();
+        int totalExpReward = todayChallenges.stream().mapToInt(UserDailyChallenge::getExpReward).sum();
+        int totalCoins = todayChallenges.stream().mapToInt(UserDailyChallenge::getRewardCoins).sum();
 
         return Map.of(
                 "totalChallenges", (long) todayChallenges.size(),
                 "completedChallenges", completed,
                 "totalExpReward", totalExpReward,
                 "totalCoins", totalCoins,
-                "canAssignMore", todayChallenges.size() < 5 // Max 5 challenges per day
+                "canAssignMore", todayChallenges.size() < 5
         );
     }
 }

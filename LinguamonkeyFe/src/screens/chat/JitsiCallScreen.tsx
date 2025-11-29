@@ -134,7 +134,7 @@ const JitsiCallScreen = () => {
     }
   };
 
-  const getUserName = () => user?.nickname || user?.fullname || 'Guest';
+  const getfullname = () => user?.nickname || user?.fullname || 'Guest';
 
   // === EFFECTS ===
   useEffect(() => {
@@ -193,7 +193,7 @@ const JitsiCallScreen = () => {
     };
   }, [roomId, nativeLang, accessToken]);
 
-  const jitsiUrl = `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false&config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(getUserName())}`;
+  const jitsiUrl = `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false&config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(getfullname())}`;
 
   // === RENDER HELPERS ===
   const renderSubtitleContent = () => {

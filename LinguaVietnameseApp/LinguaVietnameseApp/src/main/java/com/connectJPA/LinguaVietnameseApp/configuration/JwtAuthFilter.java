@@ -7,7 +7,7 @@
 // import jakarta.servlet.http.HttpServletResponse;
 // import lombok.RequiredArgsConstructor;
 // import lombok.extern.slf4j.Slf4j;
-// import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+// import org.springframework.security.authentication.fullnamePasswordAuthenticationToken;
 // import org.springframework.security.core.authority.SimpleGrantedAuthority;
 // import org.springframework.security.core.context.SecurityContextHolder;
 // import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
@@ -47,7 +47,7 @@
 //         UUID userId = authenticationService.extractTokenByUserId(jwt);
 //         List<String> scopes = authenticationService.extractScope(jwt);
 
-//         UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
+//         fullnamePasswordAuthenticationToken authToken = new fullnamePasswordAuthenticationToken(
 //                 userId,
 //                 null,
 //                 scopes.stream().map(SimpleGrantedAuthority::new).collect(Collectors.toList())

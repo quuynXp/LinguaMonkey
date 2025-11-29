@@ -9,7 +9,7 @@ if [ -f "$BACKUP_FILE" ]; then
   echo "Found backup file: $BACKUP_FILE"
   if pg_restore --version >/dev/null 2>&1; then
     echo "Attempting pg_restore --format=custom"
-    psql -v ON_ERROR_STOP=1 --username "$USER" <<-EOSQL
+    psql -v ON_ERROR_STOP=1 --fullname "$USER" <<-EOSQL
       CREATE DATABASE "$DBNAME";
     EOSQL || true
     if pg_restore -d "$DBNAME" "$BACKUP_FILE"; then
@@ -20,7 +20,7 @@ if [ -f "$BACKUP_FILE" ]; then
     fi
   fi
 
-  if psql -v ON_ERROR_STOP=1 --username "$USER" -d "$DBNAME" < "$BACKUP_FILE"; then
+  if psql -v ON_ERROR_STOP=1 --fullname "$USER" -d "$DBNAME" < "$BACKUP_FILE"; then
     echo "psql restore completed."
   else
     echo "Restore failed. Please check the format of the backup file."

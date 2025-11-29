@@ -3,6 +3,8 @@
     "useOtpInstead": "Use OTP",
     "overview": "Overview",
     "vip": {
+        "monthly": "1 Month",
+        "yearly": "1 Year",
         "upgradeTitle": "VIP Upgrade",
         "upgradeDesc": "Unlock full TOEIC, IELTS mock tests, unlimited Listening, Speaking, Reading, and Writing skills.",
         "feature1": "Unlimited 1-on-1 Simulation",
@@ -37,10 +39,26 @@
         "createRoom": "Failed to create room",
         "joinRoom": "Failed to join room",
         "nameRequired": "Name is required",
-        "nameMin": "Name must be at least 2 characters"
+        "nameMin": "Name must be at least 2 characters",
+        "connection_title": "Lỗi kết nối",
+        "connection_message": "Lỗi kết nối mạng hoặc timeout. Vui lòng thử lại.",
+        "info_title": "Thông báo",
+        "warning_title": "Cảnh báo",
+        "server_error_title": "Lỗi máy chủ",
+        "system_error_title": "Lỗi hệ thống",
+        "request_error_title": "Lỗi yêu cầu",
+        "generic_message": "Đã xảy ra lỗi. Vui lòng thử lại sau."
+    },
+    "payment": {
+        "method": "Payment Method",
+        "wallet": "Wallet",
+        "card": "Card"
     },
     "common": {
+        "overview" : "Overview",
+        "year": "Year",
         "skip": "Skip",
+        "hot": "Hot",
         "server_unavailable_msg": "Server is unavailable, please try again later, we are sorry for this unpleasant experience.",
         "reconnecting": "Reconnecting",
         "loading": "Loading...",

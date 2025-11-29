@@ -23,6 +23,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 @Service
@@ -123,14 +124,58 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         try {
             ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
+            
             String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
             if (!message.getSenderId().toString().equals(currentUserId)) {
                 throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
             }
+
+            long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
+            if (minutesSinceSent > 5) {
+                throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED); 
+            }
+
             chatMessageRepository.softDeleteByChatMessageId(id);
             messageReactionRepository.softDeleteByChatMessageId(id);
+        } catch (AppException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error while deleting message ID {}: {}", id, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional
+    public ChatMessageResponse editChatMessage(UUID messageId, String newContent) {
+        try {
+            ChatMessage message = chatMessageRepository.findByIdChatMessageIdAndIsDeletedFalse(messageId)
+                    .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
+
+            String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
+            if (!message.getSenderId().toString().equals(currentUserId)) {
+                throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
+            }
+
+            long minutesSinceSent = ChronoUnit.MINUTES.between(message.getId().getSentAt(), OffsetDateTime.now());
+            if (minutesSinceSent > 5) {
+                throw new AppException(ErrorCode.MESSAGE_EDIT_EXPIRED);
+            }
+
+            message.setContent(newContent);
+            message.setUpdatedAt(OffsetDateTime.now());
+            message = chatMessageRepository.save(message);
+
+            ChatMessageResponse response = chatMessageMapper.toResponse(message);
+            Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
+                    .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+            response.setPurpose(room.getPurpose());
+            
+            return response;
+        } catch (AppException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error while editing message ID {}: {}", messageId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -170,8 +215,12 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .orElseThrow(() -> new AppException(ErrorCode.CHAT_MESSAGE_NOT_FOUND));
             roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(message.getRoomId(), userId)
                     .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
-            message.setRead(true);
-            message = chatMessageRepository.save(message);
+            
+            if (!message.isRead()) {
+                message.setRead(true);
+                message = chatMessageRepository.save(message);
+            }
+            
             ChatMessageResponse response = chatMessageMapper.toResponse(message);
             Room room = roomRepository.findByRoomIdAndIsDeletedFalse(message.getRoomId())
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
@@ -231,7 +280,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         long totalTranslations = chatMessageRepository.countTranslationsForUser(userId);
         long totalRooms = roomMemberRepository.countByIdUserIdAndIsDeletedFalse(userId);
 
-        // Note: videoCalls is set to 0 as VideoCall entity is not yet implemented in Schema
         return ChatStatsResponse.builder()
                 .totalMessages(totalMessages)
                 .translationsUsed(totalTranslations)

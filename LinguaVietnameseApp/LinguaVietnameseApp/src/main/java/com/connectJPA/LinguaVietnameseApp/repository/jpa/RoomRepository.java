@@ -74,4 +74,6 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
 
     @Query("UPDATE Room r SET r.isDeleted = true, r.deletedAt = CURRENT_TIMESTAMP WHERE r.roomId = :roomId")
     void softDeleteByRoomId(@Param("roomId") UUID roomId);
+
+    List<Room> findByCreatorIdAndPurposeAndIsDeletedFalse(UUID userId, RoomPurpose aiChat);
 }

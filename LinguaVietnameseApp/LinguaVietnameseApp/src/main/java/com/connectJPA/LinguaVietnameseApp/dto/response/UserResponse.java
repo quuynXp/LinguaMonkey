@@ -11,6 +11,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -35,8 +36,8 @@ public class UserResponse {
     private String gender;
     private Country country;
 
-    // New Fields matching Entity
     private AgeRange ageRange;
+    private LocalDate dayOfBirth;
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
 

@@ -16,6 +16,25 @@ import { gotoTab } from "../../utils/navigationRef"
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window")
 
+// --- CÁC HẰNG SỐ ĐÃ ĐIỀU CHỈNH ĐỂ CĂN GIỮA VÀ THU NHỎ ITEM ---
+
+// Khoảng cách giữa các item (GAP)
+const ITEM_SPACING = 12
+
+// Chiều rộng mong muốn của mỗi item.
+// Ví dụ: Lấy 85% chiều rộng màn hình.
+const ITEM_WIDTH = SCREEN_WIDTH * 0.85
+
+// Khoảng cách LỀ (Padding) ở hai bên FlatList.
+// Khoảng cách này được tính để item đầu tiên và item cuối cùng
+// được căn giữa màn hình khi cuộn tới.
+// Công thức: (SCREEN_WIDTH - ITEM_WIDTH) / 2 - ITEM_SPACING/2 (tùy thuộc vào cách bạn xử lý gap)
+// Đơn giản hóa: Khoảng cách từ lề màn hình đến điểm bắt đầu của item đầu tiên
+const SIDE_PADDING = (SCREEN_WIDTH - ITEM_WIDTH) / 2
+
+// Khoảng cách CUỘN (SNAP) cho mỗi lần cuộn: là chiều rộng item + khoảng cách
+const SNAP_INTERVAL = ITEM_WIDTH + ITEM_SPACING
+
 const CAROUSEL_DATA = [
     {
         id: "1",
@@ -65,8 +84,14 @@ const HomeCarousel = ({ navigation }: any) => {
     }, [activeIndex])
 
     const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const index = Math.round(event.nativeEvent.contentOffset.x / (SCREEN_WIDTH - 48))
-        setActiveIndex(index)
+        const scrollOffset = event.nativeEvent.contentOffset.x
+        // Index được tính bằng cách lấy Offset cuộn, cộng với nửa khoảng cách cuộn, rồi chia cho khoảng cách cuộn
+        // Công thức Center Snapping: Math.round( (offset + SIDE_PADDING) / SNAP_INTERVAL )
+        // Tuy nhiên, do đã dùng `snapToAlignment="center"`, ta có thể sử dụng công thức đơn giản hơn
+        // Index = (scrollOffset) / SNAP_INTERVAL
+        const index = Math.round(scrollOffset / SNAP_INTERVAL)
+        const clampedIndex = Math.max(0, Math.min(index, CAROUSEL_DATA.length - 1))
+        setActiveIndex(clampedIndex)
     }
 
     const handlePress = (item: any) => {
@@ -76,6 +101,17 @@ const HomeCarousel = ({ navigation }: any) => {
             gotoTab("HomeStack", "SpecialOfferScreen", { type: item.type })
         }
     }
+
+    const getItemLayout = (data: any, index: number) => {
+        // Offset của item là: index * SNAP_INTERVAL - SIDE_PADDING (vì item đầu tiên phải bắt đầu ở -SIDE_PADDING để căn giữa)
+        const offset = index * SNAP_INTERVAL
+        return {
+            length: ITEM_WIDTH,
+            offset: offset,
+            index,
+        }
+    }
+
 
     const renderItem = ({ item }: any) => (
         <TouchableOpacity
@@ -105,12 +141,17 @@ const HomeCarousel = ({ navigation }: any) => {
                 renderItem={renderItem}
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                pagingEnabled
-                snapToInterval={SCREEN_WIDTH - 48}
+                // Tắt pagingEnabled
                 decelerationRate="fast"
                 contentContainerStyle={styles.listContent}
                 onMomentumScrollEnd={onMomentumScrollEnd}
                 keyExtractor={(item) => item.id}
+                // THAY ĐỔI QUAN TRỌNG:
+                // 1. snapToInterval: Khoảng cách cuộn là ITEM_WIDTH + ITEM_SPACING
+                snapToInterval={SNAP_INTERVAL}
+                // 2. snapToAlignment: Căn chỉnh vào giữa (center)
+                snapToAlignment="center"
+            // 3. snapToOffsets: Bỏ qua thuộc tính này, dùng padding và interval.
             />
             <View style={styles.pagination}>
                 {CAROUSEL_DATA.map((_, i) => (
@@ -132,15 +173,22 @@ const styles = createScaledSheet({
         marginVertical: 16,
     },
     listContent: {
-        paddingHorizontal: 24,
-        gap: 12,
+        // THAY ĐỔI QUAN TRỌNG:
+        // Căn chỉnh lề ngang bằng SIDE_PADDING để item đầu/cuối được căn giữa
+        paddingHorizontal: SIDE_PADDING - (ITEM_SPACING / 2),
+        // Sử dụng margin/gap cho các item giữa.
+        // Căn giữa item đầu tiên sẽ cần padding khác nhau
+        // Cách tốt nhất là dùng margin:
+        gap: ITEM_SPACING,
+        // Dùng paddingHorizontal với giá trị đã tính toán: SIDE_PADDING - (ITEM_SPACING / 2)
+        // để tạo khoảng trống bù trừ.
     },
     card: {
-        width: SCREEN_WIDTH - 48,
+        // THAY ĐỔI QUAN TRỌNG: Item nhỏ hơn
+        width: ITEM_WIDTH,
         height: 140,
         borderRadius: 16,
         padding: 20,
-        marginRight: 12,
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",

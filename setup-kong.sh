@@ -25,8 +25,8 @@ curl -s -X POST $ADMIN_URL/services/java-service/routes \
 
 # 2. Tạo consumer
 echo "👤 Tạo consumer svc-client & admin-client..."
-curl -s -X POST $ADMIN_URL/consumers --data "username=svc-client" >/dev/null
-curl -s -X POST $ADMIN_URL/consumers --data "username=admin-client" >/dev/null
+curl -s -X POST $ADMIN_URL/consumers --data "fullname=svc-client" >/dev/null
+curl -s -X POST $ADMIN_URL/consumers --data "fullname=admin-client" >/dev/null
 
 # 3. Gắn JWT key cho mỗi consumer
 echo "🔑 Gắn RSA key cho consumers..."

@@ -23,4 +23,5 @@ public interface ChatMessageService {
     ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request);
 
     Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size);
+    ChatMessageResponse editChatMessage(UUID messageId, String newContent);
 }

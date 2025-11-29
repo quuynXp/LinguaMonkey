@@ -1,18 +1,21 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
     ActivityIndicator,
+    Alert,
     FlatList,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     Text,
     TextInput,
     TouchableOpacity,
     View,
     Image,
+    Pressable,
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import instance from "../../api/axiosClient";
@@ -30,10 +33,14 @@ type UIMessage = {
     text: string;
     mediaUrl?: string;
     messageType: 'TEXT' | 'IMAGE' | 'VIDEO';
+    translatedText?: string;
     user: string;
     avatar: string | null;
     currentDisplay: { text: string; lang: string; isTranslatedView: boolean };
+    hasTargetLangTranslation: boolean;
     sentAt: string;
+    isRead: boolean;
+    senderId: string;
 };
 
 interface ChatInnerViewProps {
@@ -60,21 +67,21 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [isUploading, setIsUploading] = useState(false);
     const [localTranslations, setLocalTranslations] = useState<any>({});
     const [messagesToggleState, setMessagesToggleState] = useState<any>({});
-    const [translationTargetLang] = useState(i18n.language);
+    const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
 
-    // State Store
+    // Edit Mode State
+    const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
+
     const loadMessages = useChatStore(s => s.loadMessages);
     const sendMessage = useChatStore(s => s.sendMessage);
+    const editMessage = useChatStore(s => s.editMessage);
+    const deleteMessage = useChatStore(s => s.deleteMessage);
+    const markMessageAsRead = useChatStore(s => s.markMessageAsRead);
     const messagesByRoom = useChatStore(s => s.messagesByRoom);
-    const pageByRoom = useChatStore(s => s.pageByRoom);
-    const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
-    const loadingByRoom = useChatStore(s => s.loadingByRoom);
 
     const serverMessages = messagesByRoom[roomId] || [];
-    const currentPage = pageByRoom[roomId] || 0;
-    const hasMore = hasMoreByRoom[roomId] !== false; // Default true
-    const isLoading = loadingByRoom[roomId] || false;
+    const flatListRef = useRef<FlatList>(null);
 
     // --- Queries ---
     const { data: roomInfo } = useQuery({
@@ -89,35 +96,23 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         enabled: !!roomId,
     });
 
-    // --- Initial Load ---
-    useEffect(() => {
-        // Load page 0 (10 tin nhắn mới nhất) ngay khi vào màn hình
-        loadMessages(roomId, 0, 10);
-    }, [roomId, loadMessages]);
-
-    // --- Load More (Pagination) ---
-    const handleLoadMore = () => {
-        if (!isLoading && hasMore) {
-            console.log(`Loading more messages for room ${roomId}, page ${currentPage + 1}`);
-            loadMessages(roomId, currentPage + 1, 10);
-        }
-    };
-
     // --- Display Logic ---
+    const targetMember = useMemo(() => {
+        if (!members.length) return null;
+        return members.find(m => m.userId !== currentUserId);
+    }, [members, currentUserId]);
+
     const displayRoomName = useMemo(() => {
         if (!roomInfo) return initialRoomName || t('chat.loading');
         if (roomInfo.purpose === RoomPurpose.PRIVATE_CHAT) {
-            const other = members.find(m => m.userId !== currentUserId);
-            return other ? (other.nickname || other.fullname) : t('chat.private_room');
+            return targetMember ? (targetMember.nickname || targetMember.fullname) : t('chat.private_room');
         }
         return roomInfo.roomName;
-    }, [roomInfo, members, currentUserId, initialRoomName]);
+    }, [roomInfo, members, targetMember, initialRoomName]);
 
     const messages: UIMessage[] = useMemo(() => {
-        // serverMessages đang là [Newest, ..., Oldest] (do Logic upsert/load trong store)
-        // FlatList inverted sẽ render item 0 ở dưới cùng. Đúng chuẩn Chat UI.
         return serverMessages.map((msg) => {
-            const sentAt = msg?.createdAt || msg?.id?.sentAt || new Date().toISOString();
+            const sentAt = msg?.id?.sentAt || new Date().toISOString();
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${sentAt}`;
             const senderInfo = members.find(m => m.userId === senderId);
@@ -130,6 +125,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             return {
                 id: messageId,
                 sender: senderId === currentUserId ? 'user' : 'other',
+                senderId: senderId,
                 timestamp: new Date(sentAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
                 text: msg.content || '',
                 mediaUrl: (msg as any).mediaUrl,
@@ -138,17 +134,46 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 avatar: senderInfo?.avatarUrl,
                 sentAt,
                 currentDisplay: { text: displayedText, lang: isTranslatedView ? currentView : 'original', isTranslatedView },
+                hasTargetLangTranslation: !!localTranslations[messageId]?.[translationTargetLang],
+                isRead: msg.isRead
             } as UIMessage;
+        }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+    }, [serverMessages, members, localTranslations, messagesToggleState, translationTargetLang]);
+
+    useEffect(() => { loadMessages(roomId); }, [roomId]);
+    useEffect(() => { if (messages.length) flatListRef.current?.scrollToEnd({ animated: true }); }, [messages.length]);
+
+    // --- Read Receipt Logic ---
+    useEffect(() => {
+        // Mark unread messages from others as read when entering/updating view
+        messages.forEach(msg => {
+            if (msg.sender === 'other' && !msg.isRead) {
+                markMessageAsRead(roomId, msg.id);
+            }
         });
-        // Không cần sort ở đây nếu Store đã đảm bảo thứ tự DESC (Newest -> Oldest)
-        // Nếu Store hỗn loạn, cần sort: .sort((a, b) => new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime())
-    }, [serverMessages, members, localTranslations, messagesToggleState]);
+    }, [messages.length, roomId]);
 
     // --- Actions ---
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
-        sendMessage(roomId, inputText, 'TEXT');
-        setInputText("");
+
+        if (editingMessage) {
+            handleUpdateMessage();
+        } else {
+            sendMessage(roomId, inputText, 'TEXT');
+            setInputText("");
+        }
+    };
+
+    const handleUpdateMessage = async () => {
+        if (!editingMessage) return;
+        try {
+            await editMessage(roomId, editingMessage.id, inputText);
+            setEditingMessage(null);
+            setInputText("");
+        } catch (error) {
+            showToast({ message: t("chat.edit_error"), type: "error" });
+        }
     };
 
     const handleSendMedia = () => {
@@ -165,7 +190,59 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         );
     };
 
-    // --- Translation ---
+    // --- Edit / Delete Logic ---
+    const handleLongPress = (item: UIMessage) => {
+        if (item.sender !== 'user') return; // Only edit own messages
+
+        const sentTime = new Date(item.sentAt).getTime();
+        const now = new Date().getTime();
+        const diffMinutes = (now - sentTime) / (1000 * 60);
+
+        if (diffMinutes > 5) {
+            Alert.alert(t("chat.options"), t("chat.cannot_edit_expired"));
+            return;
+        }
+
+        Alert.alert(
+            t("chat.message_options"),
+            undefined,
+            [
+                { text: t("common.cancel"), style: "cancel" },
+                {
+                    text: t("common.edit"),
+                    onPress: () => {
+                        setEditingMessage(item);
+                        setInputText(item.text);
+                    }
+                },
+                {
+                    text: t("common.delete"),
+                    style: "destructive",
+                    onPress: () => {
+                        Alert.alert(
+                            t("chat.confirm_delete"),
+                            t("chat.delete_warning"),
+                            [
+                                { text: t("common.cancel"), style: "cancel" },
+                                {
+                                    text: t("common.delete"),
+                                    style: "destructive",
+                                    onPress: () => deleteMessage(roomId, item.id)
+                                }
+                            ]
+                        );
+                    }
+                }
+            ]
+        );
+    };
+
+    const handleCancelEdit = () => {
+        setEditingMessage(null);
+        setInputText("");
+    };
+
+    // --- Translation (Simplified) ---
     const { mutate: translateMutate } = useMutation({
         mutationFn: async ({ text, target, id }: any) => {
             setTranslatingMessageId(id);
@@ -195,14 +272,38 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         }
     };
 
+    const renderActiveDot = (userId: string, style: any) => {
+        const member = members.find(m => m.userId === userId);
+        const isOnline = (member as any)?.isOnline || false;
+
+        if (isOnline) {
+            return <View style={style} />;
+        }
+        return null;
+    };
+
     return (
         <ScreenLayout style={styles.container}>
             {/* Header */}
             <View style={[styles.header, isBubbleMode && styles.bubbleHeader]}>
-                <View style={styles.headerInfo}>
-                    <Text style={styles.roomName} numberOfLines={1}>{displayRoomName}</Text>
-                    <Text style={styles.status}>{members.length} {t('group.members')}</Text>
-                </View>
+                {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && targetMember ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View>
+                            <Text style={styles.avatar}>{targetMember.avatarUrl ? <Image source={{ uri: targetMember.avatarUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} /> : '👤'}</Text>
+                            {renderActiveDot(targetMember.userId, styles.headerActiveDot)}
+                        </View>
+                        <View style={{ marginLeft: 10 }}>
+                            <Text style={styles.roomName} numberOfLines={1}>{displayRoomName}</Text>
+                            <Text style={styles.status}>{(targetMember as any).isOnline ? "Active now" : "Offline"}</Text>
+                        </View>
+                    </View>
+                ) : (
+                    <View style={styles.headerInfo}>
+                        <Text style={styles.roomName} numberOfLines={1}>{displayRoomName}</Text>
+                        <Text style={styles.status}>{members.length} {t('group.members')}</Text>
+                    </View>
+                )}
+
                 {isBubbleMode && (
                     <View style={styles.bubbleControls}>
                         <TouchableOpacity onPress={onMinimizeBubble} style={styles.controlBtn}>
@@ -215,26 +316,36 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
             </View>
 
-            {/* Messages List (Inverted for Chat UX) */}
+            {/* Messages */}
             <FlatList
+                ref={flatListRef}
                 data={messages}
                 keyExtractor={item => item.id}
                 style={styles.list}
-                inverted={true} // Đảo ngược list: Item[0] (Newest) nằm dưới cùng
-                onEndReached={handleLoadMore} // Khi scroll lên trên cùng (thực ra là cuối list data), load page tiếp theo
-                onEndReachedThreshold={0.2}
-                ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
                 renderItem={({ item }) => (
-                    <View style={[styles.msgRow, item.sender === 'user' ? styles.rowUser : styles.rowOther]}>
+                    <Pressable
+                        onLongPress={() => handleLongPress(item)}
+                        style={[styles.msgRow, item.sender === 'user' ? styles.rowUser : styles.rowOther]}
+                    >
                         {item.sender === 'other' && (
-                            <Text style={styles.avatar}>{item.avatar ? <Image source={{ uri: item.avatar }} style={{ width: 30, height: 30, borderRadius: 15 }} /> : '👤'}</Text>
+                            <View>
+                                {item.avatar ?
+                                    <Image source={{ uri: item.avatar }} style={styles.msgAvatarImg} /> :
+                                    <Text style={styles.avatar}>👤</Text>
+                                }
+                                {renderActiveDot(item.senderId, styles.avatarActiveDot)}
+                            </View>
                         )}
                         <View style={styles.msgContent}>
                             {item.sender === 'other' && <Text style={styles.senderName}>{item.user}</Text>}
 
                             <View style={[styles.bubble, item.sender === 'user' ? styles.bubbleUser : styles.bubbleOther]}>
                                 {item.messageType === 'IMAGE' ? (
-                                    <Image source={{ uri: item.mediaUrl || item.text }} style={styles.msgImage} resizeMode="cover" />
+                                    <Image
+                                        source={{ uri: item.mediaUrl || item.text }}
+                                        style={styles.msgImage}
+                                        resizeMode="cover"
+                                    />
                                 ) : (
                                     <Text style={[styles.text, item.sender === 'user' ? styles.textUser : styles.textOther]}>
                                         {item.currentDisplay.text}
@@ -243,9 +354,19 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 {item.currentDisplay.isTranslatedView && (
                                     <Text style={styles.transTag}>{item.currentDisplay.lang}</Text>
                                 )}
-                                <Text style={[styles.time, item.sender === 'user' ? styles.timeUser : styles.timeOther]}>
-                                    {item.timestamp}
-                                </Text>
+                                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 }}>
+                                    <Text style={[styles.time, item.sender === 'user' ? styles.timeUser : styles.timeOther]}>
+                                        {item.timestamp}
+                                    </Text>
+                                    {item.sender === 'user' && (
+                                        <Icon
+                                            name={item.isRead ? "done-all" : "done"}
+                                            size={12}
+                                            color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"}
+                                            style={{ marginLeft: 4 }}
+                                        />
+                                    )}
+                                </View>
                             </View>
 
                             {/* Translate Btn */}
@@ -256,25 +377,33 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 </TouchableOpacity>
                             )}
                         </View>
-                    </View>
+                    </Pressable>
                 )}
             />
 
             {/* Input */}
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 60}>
+                {editingMessage && (
+                    <View style={styles.editBanner}>
+                        <Text style={styles.editText}>{t("chat.editing_message")}</Text>
+                        <TouchableOpacity onPress={handleCancelEdit}>
+                            <Icon name="close" size={20} color="#6B7280" />
+                        </TouchableOpacity>
+                    </View>
+                )}
                 <View style={styles.inputArea}>
-                    <TouchableOpacity onPress={handleSendMedia} disabled={isUploading} style={styles.attachBtn}>
-                        {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="image" size={24} color="#3B82F6" />}
+                    <TouchableOpacity onPress={handleSendMedia} disabled={isUploading || !!editingMessage} style={styles.attachBtn}>
+                        {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="image" size={24} color={editingMessage ? "#CCC" : "#3B82F6"} />}
                     </TouchableOpacity>
                     <TextInput
                         style={styles.input}
                         value={inputText}
                         onChangeText={setInputText}
-                        placeholder={t("group.input.placeholder")}
+                        placeholder={editingMessage ? t("chat.edit_placeholder") : t("group.input.placeholder")}
                         multiline
                     />
                     <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}>
-                        <Icon name="send" size={20} color="#FFF" />
+                        <Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" />
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
@@ -295,7 +424,10 @@ const styles = createScaledSheet({
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },
     rowOther: { justifyContent: 'flex-start' },
-    avatar: { marginRight: 8, marginTop: 4, justifyContent: 'center', alignItems: 'center' },
+    avatar: { fontSize: 24, marginRight: 8, marginTop: 4 },
+    msgAvatarImg: { width: 30, height: 30, borderRadius: 15, marginRight: 8, marginTop: 4 },
+    avatarActiveDot: { position: 'absolute', bottom: 0, right: 8, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 1, borderColor: '#FFF' },
+    headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#FFF' },
     msgContent: { maxWidth: '75%' },
     senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2 },
     bubble: { borderRadius: 16, padding: 12 },
@@ -305,7 +437,7 @@ const styles = createScaledSheet({
     text: { fontSize: 16 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
-    time: { fontSize: 10, marginTop: 4, textAlign: 'right' },
+    time: { fontSize: 10, textAlign: 'right' },
     timeUser: { color: 'rgba(255,255,255,0.7)' },
     timeOther: { color: '#9CA3AF' },
     transTag: { fontSize: 10, color: '#DDD', marginTop: 2, fontStyle: 'italic' },
@@ -314,6 +446,8 @@ const styles = createScaledSheet({
     input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100 },
     attachBtn: { padding: 10, marginRight: 8 },
     sendBtn: { backgroundColor: '#3B82F6', borderRadius: 20, padding: 10, marginLeft: 8 },
+    editBanner: { backgroundColor: '#FEF3C7', padding: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    editText: { color: '#D97706', fontSize: 12, fontWeight: 'bold' }
 });
 
 export default ChatInnerView;

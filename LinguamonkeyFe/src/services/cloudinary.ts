@@ -1,39 +1,20 @@
 import instance from '../api/axiosClient';
-import { useUserStore } from '../stores/UserStore';
 import { MediaType, UserMedia } from "../types/api"
 
-/**
- * Bước 1: Upload file lên Server qua API /files/upload-temp.
- * Server (Backend) sẽ đảm nhiệm việc đẩy file lên Cloudinary và trả về Public ID.
- */
 export async function uploadTemp(file: { uri: string; name: string; type: string }) {
   const form = new FormData();
 
-  // Lưu ý: React Native yêu cầu đúng 3 trường: uri, type, name
   form.append("file", {
     uri: file.uri,
-    type: file.type, // Ví dụ: 'image/jpeg'
-    name: file.name, // Ví dụ: 'photo.jpg'
+    type: file.type,
+    name: file.name,
   } as any);
 
   try {
-    // SỬA Ở ĐÂY:
-    // 1. Không set thủ công "Content-Type": "multipart/form-data"
-    // 2. Nếu axios instance của bạn có default header là application/json, hãy set nó thành "multipart/form-data" để axios tự động thêm boundary (tùy phiên bản axios), 
-    //    nhưng cách an toàn nhất là để header Content-Type này cho hệ thống tự quyết định.
-
     const res = await instance.post("/api/v1/files/upload-temp", form, {
-      headers: {
-        // QUAN TRỌNG: Hack để Axios không dùng default header (application/json) 
-        // và để trình duyệt tự điền boundary.
-        "Content-Type": undefined,
-        // Nếu cách trên vẫn lỗi, hãy thử dòng dưới đây thay thế:
-        // "Content-Type": undefined 
-      },
-      // Thêm transformRequest để đảm bảo FormData không bị biến đổi (cần thiết trên một số bản Axios cũ + RN)
-      transformRequest: (data, headers) => {
-        return data; // Đừng làm gì cả, trả về nguyên FormData
-      },
+      // No manual headers needed. 
+      // The Axios interceptor now detects FormData and removes 'Content-Type',
+      // allowing the browser/native networking to set the correct multipart boundary.
     });
 
     return res.data as string;
@@ -43,9 +24,6 @@ export async function uploadTemp(file: { uri: string; name: string; type: string
   }
 }
 
-/**
- * Gọi khi user Hủy (Cancel) hoặc sau khi Commit xong.
- */
 export async function deleteTempFile(publicId: string) {
   const res = await instance.delete("/api/v1/files/temp", {
     params: { path: publicId },

@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.MediaType;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserMediaRepository;
 import com.connectJPA.LinguaVietnameseApp.service.StorageService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -12,6 +13,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 import java.util.UUID;
 
+@Slf4j
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/files")
@@ -20,8 +22,9 @@ public class FileController {
     private final StorageService storageService;
     private final UserMediaRepository userMediaRepository;
 
-    @PostMapping("/upload-temp")
+    @PostMapping(value = "/upload-temp", consumes = "multipart/form-data")
     public ResponseEntity<?> uploadTemp(@RequestPart("file") MultipartFile file) {
+        log.info("Received upload request. Name: {}, Size: {}", file.getOriginalFilename(), file.getSize());
         return ResponseEntity.ok(storageService.uploadTemp(file));
     }
 
@@ -31,9 +34,6 @@ public class FileController {
         return ResponseEntity.ok("Deleted");
     }
 
-    /**
-     * Lấy tất cả media của một user (giải quyết yêu cầu #3)
-     */
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<UserMedia>> getUserMedia(@PathVariable UUID userId,
                                                         @RequestParam(required = false) MediaType type) {
@@ -44,7 +44,6 @@ public class FileController {
             mediaList = userMediaRepository.findByUserId(userId);
         }
 
-        // Gán URL đầy đủ cho mỗi file trước khi trả về
         mediaList.forEach(media ->
                 media.setFileUrl(storageService.getFileUrl(media.getFilePath()))
         );

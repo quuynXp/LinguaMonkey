@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, Modal, TouchableOpacity, ActivityIndicator, Alert, Switch } from 'react-native';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -20,29 +20,89 @@ interface VipUpgradeModalProps {
 const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) => {
     const { t } = useTranslation();
     const navigation = useNavigation<any>();
-    const { user, registerVip } = useUserStore();
+    const { user } = useUserStore();
 
     // Hooks
-    const { convert, isLoading: loadingRates } = useCurrencyConverter();
+    const { convert, rates, isLoading: loadingRates } = useCurrencyConverter();
     const { data: walletData, isLoading: loadingBalance } = useWallet().useWalletBalance(user?.userId);
     const createTransaction = useTransactionsApi().useCreateTransaction();
     const createPaymentUrl = useTransactionsApi().useCreatePayment();
 
     // State
-    const [plan, setPlan] = useState<'monthly' | 'yearly'>('yearly');
+    const [plan, setPlan] = useState<'monthly' | 'yearly' | 'trial'>('yearly');
     const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'gateway'>('gateway');
+    const [gatewayProvider, setGatewayProvider] = useState<Enums.TransactionProvider>(Enums.TransactionProvider.STRIPE);
     const [isProcessing, setIsProcessing] = useState(false);
 
+    // Coin State
+    const [useCoins, setUseCoins] = useState(false);
+    const [coinsToUse, setCoinsToUse] = useState(0);
+
     // Pricing Constants
-    const BASE_PRICE_MONTHLY = 9.99; // USD
-    const BASE_PRICE_YEARLY = 99.00; // USD
+    const BASE_PRICE_MONTHLY = 9.99;
+    const BASE_PRICE_YEARLY = 99.00;
+    const PRICE_TRIAL = 1.00;
+    const COINS_PER_USD = 1000;
 
-    const isRenewal = user?.isVip ?? false;
-    const currentPriceUSD = plan === 'monthly' ? BASE_PRICE_MONTHLY : BASE_PRICE_YEARLY;
+    const isRenewal = user?.vip ?? false;
+    const isTrialEligible = !user?.vip;
 
-    // Currency Logic
+    useEffect(() => {
+        if (isTrialEligible && !isRenewal) {
+            setPlan('trial');
+        } else {
+            setPlan('yearly');
+        }
+    }, [isTrialEligible, isRenewal, visible]);
+
+    // Calculate Price
+    let currentPriceUSD = 0;
+    if (plan === 'monthly') currentPriceUSD = BASE_PRICE_MONTHLY;
+    else if (plan === 'yearly') currentPriceUSD = BASE_PRICE_YEARLY;
+    else if (plan === 'trial') currentPriceUSD = PRICE_TRIAL;
+
     const userCurrency = user?.country === Enums.Country.VIETNAM ? 'VND' : 'USD';
-    const displayPrice = convert(currentPriceUSD * (userCurrency === 'VND' ? 25000 : 1), userCurrency); // Fallback rate if hook fails
+    const availableCoins = user?.coins || 0;
+
+    const maxCoinsUsable = useMemo(() => {
+        if (plan === 'trial') return 0;
+        const priceInCoins = currentPriceUSD * COINS_PER_USD;
+        return Math.floor(Math.min(availableCoins, priceInCoins));
+    }, [availableCoins, currentPriceUSD, plan]);
+
+    useEffect(() => {
+        if (plan === 'trial') {
+            setUseCoins(false);
+            setCoinsToUse(0);
+        } else if (useCoins) {
+            setCoinsToUse(maxCoinsUsable);
+        } else {
+            setCoinsToUse(0);
+        }
+    }, [useCoins, plan, maxCoinsUsable]);
+
+    const discountUSD = coinsToUse / COINS_PER_USD;
+    const finalPriceUSD = Math.max(0, currentPriceUSD - discountUSD);
+
+    // Display Price Logic
+    const displayPrice = convert(finalPriceUSD, userCurrency);
+
+    // Helper: Convert Balance to USD for display
+    const getBalanceInUSD = () => {
+        const balance = walletData?.balance || 0;
+        if (userCurrency === 'USD') return '';
+
+        const rate = convert(1, 'VND');
+        if (!rate || rate === 0) return '';
+
+        const balanceUSD = balance / rate;
+        return `(≈ $${balanceUSD.toFixed(2)})`;
+    };
+
+    const getDescription = () => {
+        if (plan === 'trial') return "Upgrade VIP (Trial 14 Days)";
+        return `${isRenewal ? 'Renew' : 'Upgrade'} VIP (${plan})`;
+    }
 
     const handleConfirm = async () => {
         if (!user?.userId) return;
@@ -64,8 +124,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
 
     const handleWalletPayment = async () => {
         const balance = walletData?.balance || 0;
-
-        // 1. Kiểm tra số dư local (UX nhanh)
         if (balance < displayPrice) {
             Alert.alert(
                 t('payment.insufficientBalanceTitle'),
@@ -76,7 +134,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                         text: t('payment.depositNow'),
                         onPress: () => {
                             onClose();
-                            // Navigate to Deposit Screen with pre-filled amount needed
                             navigation.navigate('DepositScreen', { minAmount: displayPrice - balance });
                         }
                     }
@@ -85,37 +142,42 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
             return;
         }
 
-        // 2. Gọi API Transaction (Backend sẽ kiểm tra lại số dư thực tế và trừ tiền)
+        const cleanAmount = Number(displayPrice.toFixed(2));
         const payload: TransactionRequest = {
             userId: user!.userId,
-            amount: displayPrice,
+            amount: cleanAmount,
+            currency: userCurrency,
             provider: Enums.TransactionProvider.INTERNAL,
+            type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
             status: Enums.TransactionStatus.SUCCESS,
-            description: `${isRenewal ? 'Renew' : 'Upgrade'} VIP (${plan})`,
+            description: getDescription(),
+            coins: useCoins ? coinsToUse : 0
         };
 
         createTransaction.mutate(payload, {
             onSuccess: async () => {
-                // 3. Nếu trừ tiền thành công, kích hoạt VIP
-                // Gọi hàm giả lập registerVip hoặc refresh profile để update trạng thái user
-                Alert.alert("Success", t('vip.successMessage'));
+                Alert.alert("Success", "VIP activated successfully!");
                 onClose();
-                // Force refresh user profile here if needed
             },
-            onError: (err) => {
+            onError: (err: any) => {
+                console.log("Transaction Error", err?.response?.data || err);
                 Alert.alert(t('common.error'), t('payment.transactionFailed'));
             }
         });
     };
 
     const handleGatewayPayment = async () => {
-        const payload: PaymentRequest = {
+        const cleanAmount = Number(displayPrice.toFixed(2));
+
+        const payload: PaymentRequest & { coins?: number; type?: string } = {
             userId: user!.userId,
-            amount: displayPrice,
+            amount: cleanAmount,
             currency: userCurrency,
-            provider: Enums.TransactionProvider.STRIPE, // Hoặc VNPAY tuỳ logic
+            provider: gatewayProvider,
+            type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
             returnUrl: "linguamonkey://vip-success",
-            description: `${isRenewal ? 'Renew' : 'Upgrade'} VIP (${plan})`,
+            description: getDescription(),
+            coins: useCoins ? coinsToUse : 0
         };
 
         createPaymentUrl.mutate(payload, {
@@ -125,107 +187,182 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                     await WebBrowser.openBrowserAsync(url);
                 }
             },
-            onError: () => Alert.alert(t('common.error'), t('payment.gatewayError'))
+            onError: (err: any) => {
+                console.log("Gateway Error", err?.response?.data);
+                Alert.alert(t('common.error'), t('payment.gatewayError'));
+            }
         });
     };
 
+    // ... existing increaseCoins/decreaseCoins and Render code (Buttons, UI) ...
+    const increaseCoins = () => {
+        if (coinsToUse + 100 <= maxCoinsUsable) setCoinsToUse(prev => prev + 100);
+        else setCoinsToUse(maxCoinsUsable);
+    };
+
+    const decreaseCoins = () => {
+        if (coinsToUse - 100 >= 0) setCoinsToUse(prev => prev - 100);
+        else setCoinsToUse(0);
+    };
+
     return (
-        <Modal
-            transparent
-            animationType="slide"
-            visible={visible}
-            onRequestClose={onClose}
-        >
+        <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
             <View style={styles.overlay}>
                 <View style={styles.container}>
                     <TouchableOpacity style={styles.closeButton} onPress={onClose}>
                         <Icon name="close" size={24} color="#6B7280" />
                     </TouchableOpacity>
 
-                    {/* Header Icon */}
-                    <View style={styles.iconContainer}>
-                        <Icon name={isRenewal ? "autorenew" : "workspace-premium"} size={60} color="#F59E0B" />
+                    {/* Header */}
+                    <View style={styles.headerRow}>
+                        <View style={styles.iconContainer}>
+                            <Icon name={isRenewal ? "autorenew" : "workspace-premium"} size={40} color="#F59E0B" />
+                        </View>
+                        <View>
+                            <Text style={styles.title}>
+                                {isRenewal ? t('vip.renewTitle', 'Gia hạn VIP') : t('vip.upgradeTitle', 'Nâng cấp VIP')}
+                            </Text>
+                            <Text style={styles.subtitle}>Unlock Unlimited Features</Text>
+                        </View>
                     </View>
 
-                    {/* Title */}
-                    <Text style={styles.title}>
-                        {isRenewal ? t('vip.renewTitle', 'Gia hạn VIP') : t('vip.upgradeTitle', 'Nâng cấp VIP')}
-                    </Text>
-                    <Text style={styles.subtitle}>
-                        {t('vip.upgradeDesc', 'Mở khóa toàn bộ bài thi thử TOEIC, IELTS, các kỹ năng Nghe, Nói, Đọc, Viết không giới hạn.')}
-                    </Text>
+                    {/* Trial Banner */}
+                    {isTrialEligible && plan === 'trial' && (
+                        <View style={styles.trialBanner}>
+                            <Text style={styles.trialBannerText}>🎉 Special Offer: 14 Days Trial for $1!</Text>
+                        </View>
+                    )}
 
-                    {/* Plan Selection */}
+                    {/* Plan Selector */}
                     <View style={styles.planSelector}>
+                        {isTrialEligible && (
+                            <TouchableOpacity
+                                style={[styles.planOption, plan === 'trial' && styles.planOptionSelected]}
+                                onPress={() => setPlan('trial')}
+                            >
+                                <Text style={[styles.planText, plan === 'trial' && styles.planTextSelected]}>Trial</Text>
+                                <Text style={{ fontSize: 9, color: plan === 'trial' ? '#4F46E5' : '#9CA3AF' }}>14 Days</Text>
+                            </TouchableOpacity>
+                        )}
                         <TouchableOpacity
                             style={[styles.planOption, plan === 'monthly' && styles.planOptionSelected]}
                             onPress={() => setPlan('monthly')}
                         >
-                            <Text style={[styles.planText, plan === 'monthly' && styles.planTextSelected]}>{t('vip.monthly', '1 Tháng')}</Text>
+                            <Text style={[styles.planText, plan === 'monthly' && styles.planTextSelected]}>Monthly</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.planOption, plan === 'yearly' && styles.planOptionSelected]}
                             onPress={() => setPlan('yearly')}
                         >
-                            <Text style={[styles.planText, plan === 'yearly' && styles.planTextSelected]}>{t('vip.yearly', '1 Năm')}</Text>
-                            <View style={styles.saveBadge}>
-                                <Text style={styles.saveText}>SAVE 17%</Text>
-                            </View>
+                            <Text style={[styles.planText, plan === 'yearly' && styles.planTextSelected]}>Yearly</Text>
+                            <View style={styles.saveBadge}><Text style={styles.saveText}>-17%</Text></View>
                         </TouchableOpacity>
                     </View>
 
-                    {/* Price Display */}
+                    {/* Coin Section */}
+                    {plan !== 'trial' && (
+                        <View style={styles.coinSection}>
+                            <View style={styles.coinHeader}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <Icon name="monetization-on" size={20} color="#F59E0B" />
+                                    <Text style={styles.coinLabel}>Coins ({availableCoins})</Text>
+                                </View>
+                                <Switch
+                                    value={useCoins}
+                                    onValueChange={setUseCoins}
+                                    trackColor={{ false: "#D1D5DB", true: "#FBBF24" }}
+                                    thumbColor={useCoins ? "#F59E0B" : "#F4F3F4"}
+                                />
+                            </View>
+                            {useCoins && (
+                                <View style={styles.coinControls}>
+                                    <TouchableOpacity onPress={decreaseCoins} style={styles.coinBtn}><Icon name="remove" size={16} color="#6B7280" /></TouchableOpacity>
+                                    <Text style={styles.coinValue}>{coinsToUse}</Text>
+                                    <TouchableOpacity onPress={increaseCoins} style={styles.coinBtn}><Icon name="add" size={16} color="#6B7280" /></TouchableOpacity>
+                                    <Text style={styles.discountText}>- ${(coinsToUse / COINS_PER_USD).toFixed(2)}</Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Total Price */}
                     <View style={styles.priceContainer}>
-                        {loadingRates ? (
-                            <ActivityIndicator color="#4F46E5" />
-                        ) : (
-                            <>
-                                <Text style={styles.priceLabel}>{t('vip.price', 'Chỉ với')}</Text>
+                        {loadingRates ? <ActivityIndicator color="#4F46E5" /> : (
+                            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
+                                <Text style={styles.priceLabel}>{t('vip.price', 'Total:')}</Text>
                                 <Text style={styles.priceValue}>
                                     {displayPrice.toLocaleString()} {userCurrency}
                                 </Text>
-                                <Text style={styles.pricePeriod}>/ {plan === 'monthly' ? t('common.month') : t('common.year')}</Text>
-                            </>
+                            </View>
                         )}
                     </View>
 
-                    {/* Payment Method Toggle */}
-                    <View style={styles.methodContainer}>
-                        <Text style={styles.methodLabel}>{t('payment.method')}:</Text>
-                        <View style={styles.methodRow}>
-                            <TouchableOpacity
-                                style={[styles.methodBtn, paymentMethod === 'wallet' && styles.methodBtnSelected]}
-                                onPress={() => setPaymentMethod('wallet')}
-                            >
-                                <Icon name="account-balance-wallet" size={20} color={paymentMethod === 'wallet' ? '#FFF' : '#6B7280'} />
-                                <Text style={[styles.methodText, paymentMethod === 'wallet' && styles.methodTextSelected]}>{t('payment.wallet')}</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.methodBtn, paymentMethod === 'gateway' && styles.methodBtnSelected]}
-                                onPress={() => setPaymentMethod('gateway')}
-                            >
-                                <Icon name="credit-card" size={20} color={paymentMethod === 'gateway' ? '#FFF' : '#6B7280'} />
-                                <Text style={[styles.methodText, paymentMethod === 'gateway' && styles.methodTextSelected]}>{t('payment.card')}</Text>
-                            </TouchableOpacity>
-                        </View>
-                        {paymentMethod === 'wallet' && (
-                            <Text style={styles.balanceHint}>
-                                {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} {userCurrency}
-                            </Text>
-                        )}
+                    {/* Payment Methods Selection */}
+                    <View style={styles.methodsContainer}>
+                        <Text style={styles.sectionTitle}>{t('payment.selectMethod')}</Text>
+
+                        {/* Wallet Method */}
+                        <TouchableOpacity
+                            style={[styles.methodCard, paymentMethod === 'wallet' && styles.selectedMethod]}
+                            onPress={() => setPaymentMethod('wallet')}
+                        >
+                            <View style={styles.methodHeader}>
+                                <Icon name="account-balance-wallet" size={24} color={paymentMethod === 'wallet' ? '#4F46E5' : '#6B7280'} />
+                                <View style={{ flex: 1, marginLeft: 12 }}>
+                                    <Text style={[styles.methodTitle, paymentMethod === 'wallet' && styles.selectedMethodText]}>{t('payment.myWallet')}</Text>
+                                    {/* Balance LEFT aligned with USD conversion */}
+                                    <Text style={styles.balanceText}>
+                                        {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} {userCurrency} {getBalanceInUSD()}
+                                    </Text>
+                                    {paymentMethod === 'wallet' && (walletData?.balance || 0) < displayPrice && (
+                                        <Text style={styles.errorText}>{t('payment.insufficientWarning', 'Không đủ số dư')}</Text>
+                                    )}
+                                </View>
+                                {paymentMethod === 'wallet' && <Icon name="check-circle" size={20} color="#4F46E5" />}
+                            </View>
+                        </TouchableOpacity>
+
+                        {/* Gateway Method */}
+                        <TouchableOpacity
+                            style={[styles.methodCard, paymentMethod === 'gateway' && styles.selectedMethod]}
+                            onPress={() => setPaymentMethod('gateway')}
+                        >
+                            <View style={styles.methodHeader}>
+                                <Icon name="credit-card" size={24} color={paymentMethod === 'gateway' ? '#4F46E5' : '#6B7280'} />
+                                <View style={{ flex: 1, marginLeft: 12 }}>
+                                    <Text style={[styles.methodTitle, paymentMethod === 'gateway' && styles.selectedMethodText]}>{t('payment.externalGateway', 'Cổng thanh toán')}</Text>
+                                </View>
+                                {paymentMethod === 'gateway' && <Icon name="check-circle" size={20} color="#4F46E5" />}
+                            </View>
+
+                            {/* Gateway Chips - Visible only when Gateway is selected */}
+                            {paymentMethod === 'gateway' && (
+                                <View style={styles.gatewayOptions}>
+                                    <TouchableOpacity
+                                        style={[styles.chip, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChip]}
+                                        onPress={() => setGatewayProvider(Enums.TransactionProvider.STRIPE)}
+                                    >
+                                        <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChipText]}>Stripe (Visa/Master)</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity
+                                        style={[styles.chip, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChip]}
+                                        onPress={() => setGatewayProvider(Enums.TransactionProvider.VNPAY)}
+                                    >
+                                        <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChipText]}>VNPAY</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </TouchableOpacity>
                     </View>
 
-                    {/* Action Button */}
                     <TouchableOpacity
                         style={[styles.confirmButton, isProcessing && styles.disabledButton]}
                         onPress={handleConfirm}
                         disabled={isProcessing}
                     >
-                        {isProcessing ? (
-                            <ActivityIndicator color="#FFF" />
-                        ) : (
+                        {isProcessing ? <ActivityIndicator color="#FFF" /> : (
                             <Text style={styles.confirmButtonText}>
-                                {isRenewal ? t('vip.renewNow', 'Gia hạn ngay') : t('vip.buyNow', 'Đăng ký ngay')}
+                                {plan === 'trial' ? 'Start Trial Now' : (paymentMethod === 'wallet' ? t('vip.buyNow') : t('payment.continueToGateway'))}
                             </Text>
                         )}
                     </TouchableOpacity>
@@ -236,175 +373,59 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
 };
 
 const styles = createScaledSheet({
-    overlay: {
-        flex: 1,
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        padding: 20,
-    },
-    container: {
-        width: '100%',
-        backgroundColor: 'white',
-        borderRadius: 24,
-        padding: 24,
-        alignItems: 'center',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.1,
-        shadowRadius: 12,
-        elevation: 8,
-    },
-    closeButton: {
-        position: 'absolute',
-        top: 16,
-        right: 16,
-        padding: 4,
-        zIndex: 10,
-    },
-    iconContainer: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
-        backgroundColor: '#FEF3C7',
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    title: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: '#1F2937',
-        marginBottom: 8,
-        textAlign: 'center',
-    },
-    subtitle: {
-        fontSize: 13,
-        color: '#6B7280',
-        textAlign: 'center',
-        marginBottom: 20,
-        lineHeight: 18,
-    },
-    planSelector: {
-        flexDirection: 'row',
-        backgroundColor: '#F3F4F6',
-        borderRadius: 12,
-        padding: 4,
-        marginBottom: 20,
-        width: '100%',
-    },
-    planOption: {
-        flex: 1,
-        paddingVertical: 10,
-        alignItems: 'center',
-        borderRadius: 10,
-        position: 'relative',
-    },
-    planOptionSelected: {
-        backgroundColor: '#FFF',
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 2,
-    },
-    planText: {
-        fontWeight: '600',
-        color: '#6B7280',
-    },
-    planTextSelected: {
-        color: '#4F46E5',
-    },
-    saveBadge: {
-        position: 'absolute',
-        top: -8,
-        right: -4,
-        backgroundColor: '#EF4444',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 8,
-    },
-    saveText: {
-        color: '#FFF',
-        fontSize: 8,
-        fontWeight: 'bold',
-    },
-    priceContainer: {
-        alignItems: 'center',
-        marginBottom: 20,
-    },
-    priceLabel: {
-        fontSize: 12,
-        color: '#6B7280',
-    },
-    priceValue: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: '#4F46E5',
-        marginVertical: 4,
-    },
-    pricePeriod: {
-        fontSize: 12,
-        color: '#6B7280',
-    },
-    methodContainer: {
-        width: '100%',
-        marginBottom: 24,
-    },
-    methodLabel: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#374151',
-        marginBottom: 8,
-    },
-    methodRow: {
-        flexDirection: 'row',
-        gap: 12,
-    },
-    methodBtn: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingVertical: 10,
-        borderWidth: 1,
-        borderColor: '#E5E7EB',
-        borderRadius: 10,
-        gap: 6,
-    },
-    methodBtnSelected: {
-        backgroundColor: '#4F46E5',
-        borderColor: '#4F46E5',
-    },
-    methodText: {
-        fontSize: 14,
-        color: '#6B7280',
-        fontWeight: '500',
-    },
-    methodTextSelected: {
-        color: '#FFF',
-    },
-    balanceHint: {
-        marginTop: 6,
-        fontSize: 12,
-        color: '#10B981',
-        textAlign: 'right',
-    },
-    confirmButton: {
-        width: '100%',
-        backgroundColor: '#4F46E5',
-        paddingVertical: 16,
-        borderRadius: 12,
-        alignItems: 'center',
-    },
-    disabledButton: {
-        backgroundColor: '#9CA3AF',
-    },
-    confirmButtonText: {
-        color: 'white',
-        fontSize: 16,
-        fontWeight: 'bold',
-    },
+    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 16 },
+    container: { width: '100%', backgroundColor: 'white', borderRadius: 24, padding: 20, elevation: 8 },
+    closeButton: { position: 'absolute', top: 16, right: 16, padding: 4, zIndex: 10 },
+
+    headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, gap: 12 },
+    iconContainer: { width: 60, height: 60, borderRadius: 30, backgroundColor: '#FEF3C7', justifyContent: 'center', alignItems: 'center' },
+    title: { fontSize: 20, fontWeight: 'bold', color: '#1F2937' },
+    subtitle: { fontSize: 13, color: '#6B7280' },
+
+    trialBanner: { backgroundColor: '#EEF2FF', padding: 8, borderRadius: 8, marginBottom: 16, width: '100%', alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#4F46E5' },
+    trialBannerText: { color: '#4F46E5', fontWeight: 'bold', fontSize: 12 },
+
+    planSelector: { flexDirection: 'row', backgroundColor: '#F3F4F6', borderRadius: 12, padding: 4, marginBottom: 16, width: '100%' },
+    planOption: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 10 },
+    planOptionSelected: { backgroundColor: '#FFF', elevation: 2 },
+    planText: { fontWeight: '600', color: '#6B7280', fontSize: 13 },
+    planTextSelected: { color: '#4F46E5' },
+    saveBadge: { position: 'absolute', top: -6, right: -4, backgroundColor: '#EF4444', paddingHorizontal: 4, paddingVertical: 1, borderRadius: 6 },
+    saveText: { color: '#FFF', fontSize: 7, fontWeight: 'bold' },
+
+    coinSection: { width: '100%', backgroundColor: '#F9FAFB', borderRadius: 12, padding: 10, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+    coinHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    coinLabel: { marginLeft: 8, fontSize: 13, fontWeight: '600', color: '#4B5563' },
+    coinControls: { flexDirection: 'row', alignItems: 'center', marginTop: 8, justifyContent: 'space-between' },
+    coinBtn: { padding: 4, backgroundColor: '#E5E7EB', borderRadius: 8 },
+    coinValue: { fontSize: 14, fontWeight: 'bold', color: '#1F2937', width: 50, textAlign: 'center' },
+    discountText: { fontSize: 13, fontWeight: '600', color: '#059669' },
+
+    priceContainer: { alignItems: 'center', marginBottom: 20, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    priceLabel: { fontSize: 14, color: '#6B7280' },
+    priceValue: { fontSize: 24, fontWeight: 'bold', color: '#4F46E5' },
+
+    methodsContainer: { width: '100%', marginBottom: 20 },
+    sectionTitle: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
+
+    methodCard: { backgroundColor: "#FFF", padding: 12, borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 8 },
+    selectedMethod: { borderColor: "#4F46E5", backgroundColor: "#F5F7FF" },
+    selectedMethodText: { color: "#4F46E5", fontWeight: '700' },
+    methodHeader: { flexDirection: "row", alignItems: "center" },
+    methodTitle: { fontSize: 15, fontWeight: "500", color: "#1F2937" },
+
+    balanceText: { marginTop: 2, fontSize: 12, color: "#6B7280" },
+    errorText: { marginTop: 2, fontSize: 11, color: "#EF4444" },
+
+    gatewayOptions: { flexDirection: "row", gap: 8, marginTop: 12, paddingLeft: 36, flexWrap: 'wrap' },
+    chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: "#F3F4F6", borderWidth: 1, borderColor: 'transparent' },
+    selectedChip: { backgroundColor: "#EEF2FF", borderColor: '#4F46E5' },
+    chipText: { fontSize: 11, color: "#4B5563" },
+    selectedChipText: { color: "#4F46E5", fontWeight: '600' },
+
+    confirmButton: { width: '100%', backgroundColor: '#4F46E5', paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
+    disabledButton: { backgroundColor: '#9CA3AF' },
+    confirmButtonText: { color: 'white', fontSize: 16, fontWeight: 'bold' }
 });
 
 export default VipUpgradeModal;
