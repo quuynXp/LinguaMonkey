@@ -7,8 +7,6 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeResponse;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
@@ -28,111 +26,65 @@ public class BadgeController {
     private final BadgeService badgeService;
     private final MessageSource messageSource;
 
-    @Operation(summary = "Get all badges", description = "Retrieve a paginated list of badges with optional filtering by badgeName")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved badges"),
-            @ApiResponse(responseCode = "400", description = "Invalid query parameters")
-    })
     @GetMapping
     public AppApiResponse<Page<BadgeResponse>> getAllBadges(
-            @Parameter(description = "Badge name filter") @RequestParam(required = false) String badgeName,
-            @Parameter(description = "Pagination and sorting") Pageable pageable,
+            @RequestParam(required = false) String badgeName,
+            @RequestParam(defaultValue = "en") String languageCode,
+            Pageable pageable,
             Locale locale) {
-        Page<BadgeResponse> badges = badgeService.getAllBadges(badgeName, pageable);
+        Page<BadgeResponse> badges = badgeService.getAllBadges(badgeName, languageCode, pageable);
         return AppApiResponse.<Page<BadgeResponse>>builder()
                 .code(200)
-                .message(messageSource.getMessage("badge.list.success", null, locale))
                 .result(badges)
                 .build();
     }
 
-    @Operation(summary = "Get user's badge progress", description = "Retrieve progress for all badges for a specific user")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved badge progress"),
-            @ApiResponse(responseCode = "404", description = "User not found")
-    })
     @GetMapping("/user/{userId}/progress")
-    @PreAuthorize("#userId.toString() == authentication.name or hasAuthority('ROLE_ADMIN')") // Bảo mật: Chỉ user đó hoặc admin mới được xem
+    @PreAuthorize("#userId.toString() == authentication.name or hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<List<BadgeProgressResponse>> getBadgeProgressForUser(
-            @Parameter(description = "User ID") @PathVariable UUID userId,
+            @PathVariable UUID userId,
             Locale locale) {
         List<BadgeProgressResponse> progress = badgeService.getBadgeProgressForUser(userId);
         return AppApiResponse.<List<BadgeProgressResponse>>builder()
                 .code(200)
-                .message(messageSource.getMessage("badge.progress.success", null, locale))
                 .result(progress)
                 .build();
     }
-
-    @Operation(summary = "Get badge by ID", description = "Retrieve a badge by its ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved badge"),
-            @ApiResponse(responseCode = "404", description = "Badge not found")
-    })
-    @GetMapping("/{id}")
-    public AppApiResponse<BadgeResponse> getBadgeById(
-            @Parameter(description = "Badge ID") @PathVariable UUID id,
+    
+    @PostMapping("/claim/{badgeId}")
+    @PreAuthorize("isAuthenticated()")
+    public AppApiResponse<Void> claimBadge(
+            @RequestParam UUID userId, 
+            @PathVariable UUID badgeId,
             Locale locale) {
-        BadgeResponse badge = badgeService.getBadgeById(id);
-        return AppApiResponse.<BadgeResponse>builder()
-                .code(200)
-                .message(messageSource.getMessage("badge.get.success", null, locale))
-                .result(badge)
-                .build();
-    }
-
-    @Operation(summary = "Create a new badge", description = "Create a new badge with the provided details")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Badge created successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid badge data")
-    })
-    @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public AppApiResponse<BadgeResponse> createBadge(
-            @Valid @RequestBody BadgeRequest request,
-            Locale locale) {
-        BadgeResponse badge = badgeService.createBadge(request);
-        return AppApiResponse.<BadgeResponse>builder()
-                .code(201)
-                .message(messageSource.getMessage("badge.created.success", null, locale))
-                .result(badge)
-                .build();
-    }
-
-    @Operation(summary = "Update a badge", description = "Update an existing badge by its ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Badge updated successfully"),
-            @ApiResponse(responseCode = "404", description = "Badge not found"),
-            @ApiResponse(responseCode = "400", description = "Invalid badge data")
-    })
-    @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public AppApiResponse<BadgeResponse> updateBadge(
-            @Parameter(description = "Badge ID") @PathVariable UUID id,
-            @Valid @RequestBody BadgeRequest request,
-            Locale locale) {
-        BadgeResponse badge = badgeService.updateBadge(id, request);
-        return AppApiResponse.<BadgeResponse>builder()
-                .code(200)
-                .message(messageSource.getMessage("badge.updated.success", null, locale))
-                .result(badge)
-                .build();
-    }
-
-    @Operation(summary = "Delete a badge", description = "Soft delete a badge by its ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Badge deleted successfully"),
-            @ApiResponse(responseCode = "404", description = "Badge not found")
-    })
-    @DeleteMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
-    public AppApiResponse<Void> deleteBadge(
-            @Parameter(description = "Badge ID") @PathVariable UUID id,
-            Locale locale) {
-        badgeService.deleteBadge(id);
+        badgeService.claimBadge(userId, badgeId);
         return AppApiResponse.<Void>builder()
                 .code(200)
-                .message(messageSource.getMessage("badge.deleted.success", null, locale))
+                .message("Badge claimed and coins added!")
                 .build();
+    }
+
+    @GetMapping("/{id}")
+    public AppApiResponse<BadgeResponse> getBadgeById(@PathVariable UUID id) {
+        return AppApiResponse.<BadgeResponse>builder().code(200).result(badgeService.getBadgeById(id)).build();
+    }
+
+    @PostMapping
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public AppApiResponse<BadgeResponse> createBadge(@Valid @RequestBody BadgeRequest request) {
+        return AppApiResponse.<BadgeResponse>builder().code(201).result(badgeService.createBadge(request)).build();
+    }
+
+    @PutMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public AppApiResponse<BadgeResponse> updateBadge(@PathVariable UUID id, @Valid @RequestBody BadgeRequest request) {
+        return AppApiResponse.<BadgeResponse>builder().code(200).result(badgeService.updateBadge(id, request)).build();
+    }
+
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    public AppApiResponse<Void> deleteBadge(@PathVariable UUID id) {
+        badgeService.deleteBadge(id);
+        return AppApiResponse.<Void>builder().code(200).build();
     }
 }

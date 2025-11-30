@@ -40,4 +40,8 @@ public class CourseResponse {
     private OffsetDateTime updatedAt;
 
     private String categoryCode;
+
+    // Rating enriched info
+    private Double averageRating;
+    private Integer reviewCount;
 }

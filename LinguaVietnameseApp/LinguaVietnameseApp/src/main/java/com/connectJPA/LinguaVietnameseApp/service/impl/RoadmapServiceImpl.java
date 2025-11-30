@@ -100,6 +100,7 @@ public class RoadmapServiceImpl implements RoadmapService {
 
     @Override
     public List<RoadmapResponse> getPublicRoadmaps(String language) {
+        // Cần truyền language vào nếu cần lọc, nếu không thì lấy tất cả public
         return userRoadmapRepository.findByIsPublicTrueAndLanguage(language).stream()
                 .map(ur -> mapToResponse(ur.getRoadmap()))
                 .collect(Collectors.toList());
@@ -186,7 +187,7 @@ public class RoadmapServiceImpl implements RoadmapService {
     @Transactional
     @Override
     public RoadmapSuggestion addSuggestion(UUID userId, UUID roadmapId, UUID itemId,
-                                           Integer suggestedOrderIndex, String reason) {
+                                             Integer suggestedOrderIndex, String reason) {
         
         // Ensure roadmap exists, but allow suggestions on public roadmaps even if user hasn't started it
         Roadmap roadmap = roadmapRepository.findById(roadmapId)
@@ -194,8 +195,8 @@ public class RoadmapServiceImpl implements RoadmapService {
 
         RoadmapItem item = null;
         if (itemId != null) {
-             item = roadmapItemRepository.findById(itemId)
-                    .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
+               item = roadmapItemRepository.findById(itemId)
+                        .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_ITEM_NOT_FOUND));
         }
 
         if (roadmapSuggestionRepository.existsByUserAndRoadmapAndItem(userId, roadmapId, itemId)) {
@@ -253,6 +254,69 @@ public class RoadmapServiceImpl implements RoadmapService {
         return roadmapRepository.findByLanguageCodeAndIsDeletedFalse(language).stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+    }
+
+
+    // --- OPTION 1: OFFICIAL TEMPLATES ---
+    @Override
+    public Page<RoadmapPublicResponse> getOfficialRoadmaps(String language, int page, int size) {
+        PageRequest pageRequest = PageRequest.of(page, size);
+        Page<Roadmap> roadmaps = roadmapRepository.findByLanguageCodeAndIsDeletedFalse(language, pageRequest);
+
+        return roadmaps.map(r -> {
+            double avgRating = calculateRoadmapRating(r.getRoadmapId());
+            long suggestionCount = roadmapSuggestionRepository.countByRoadmapRoadmapIdAndAppliedFalse(r.getRoadmapId());
+
+            return RoadmapPublicResponse.builder()
+                    .roadmapId(r.getRoadmapId())
+                    .title(r.getTitle())
+                    .description(r.getDescription())
+                    .language(r.getLanguageCode())
+                    .creator("System Official") // Official Templates do System tạo
+                    .creatorId(null)
+                    .creatorAvatar(null) // Hoặc set 1 ảnh logo hệ thống
+                    .totalItems(r.getTotalItems())
+                    .suggestionCount((int) suggestionCount)
+                    .averageRating(avgRating)
+                    .difficulty(r.getType())
+                    .type("OFFICIAL")
+                    .createdAt(r.getCreatedAt())
+                    .viewCount(0)
+                    .favoriteCount(0)
+                    .build();
+        });
+    }
+
+    // --- OPTION 2: COMMUNITY SHARED ---
+    @Override
+    public Page<RoadmapPublicResponse> getCommunityRoadmaps(String language, int page, int size) {
+        PageRequest pageRequest = PageRequest.of(page, size);
+        Page<UserRoadmap> publicRoadmaps = userRoadmapRepository
+                .findByIsPublicTrueAndLanguageOrderByCreatedAtDesc(language, pageRequest);
+
+        return publicRoadmaps.map(ur -> {
+            Roadmap roadmap = ur.getRoadmap();
+            long suggestionCount = roadmapSuggestionRepository.countByRoadmapRoadmapIdAndAppliedFalse(roadmap.getRoadmapId());
+            double avgRating = calculateRoadmapRating(roadmap.getRoadmapId());
+
+            return RoadmapPublicResponse.builder()
+                    .roadmapId(roadmap.getRoadmapId())
+                    .title(roadmap.getTitle()) // Có thể user đã đổi tên, nhưng ở đây lấy tên gốc hoặc tên custom nếu có
+                    .description(roadmap.getDescription())
+                    .language(roadmap.getLanguageCode())
+                    .creator(ur.getUser().getFullname())
+                    .creatorId(ur.getUser().getUserId())
+                    .creatorAvatar(ur.getUser().getAvatarUrl())
+                    .totalItems(roadmap.getTotalItems())
+                    .suggestionCount((int) suggestionCount)
+                    .averageRating(avgRating)
+                    .difficulty(roadmap.getType())
+                    .type("COMMUNITY")
+                    .createdAt(ur.getCreatedAt())
+                    .viewCount(0)
+                    .favoriteCount(0)
+                    .build();
+        });
     }
 
     @Override

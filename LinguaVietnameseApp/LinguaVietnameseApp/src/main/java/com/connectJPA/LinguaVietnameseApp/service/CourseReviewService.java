@@ -9,12 +9,25 @@ import java.math.BigDecimal;
 import java.util.UUID;
 
 public interface CourseReviewService {
-    Page<CourseReviewResponse> getAllCourseReviews(UUID courseId, UUID userId, BigDecimal rating, Pageable pageable);
+    // Thêm tham số currentUserId vào các hàm get
+    Page<CourseReviewResponse> getAllCourseReviews(UUID courseId, UUID currentUserId, BigDecimal rating, Pageable pageable);
     
-    Page<CourseReviewResponse> getRepliesByParentId(UUID parentId, Pageable pageable);
-
+    // Sửa signature: thêm currentUserId
+    Page<CourseReviewResponse> getRepliesByParentId(UUID parentId, UUID currentUserId, Pageable pageable);
+    
     CourseReviewResponse getCourseReviewByIds(UUID courseId, UUID userId);
+
     CourseReviewResponse createCourseReview(CourseReviewRequest request);
+
     CourseReviewResponse updateCourseReview(UUID courseId, UUID userId, CourseReviewRequest request);
+
     void deleteCourseReview(UUID courseId, UUID userId);
+
+    void likeReview(UUID reviewId, UUID userId);
+
+    void unlikeReview(UUID reviewId, UUID userId);
+
+    void dislikeReview(UUID reviewId, UUID userId);
+
+    void undislikeReview(UUID reviewId, UUID userId);
 }

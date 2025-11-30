@@ -123,6 +123,40 @@ export const useCourses = () => {
     });
   };
 
+  const useLikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        await instance.post(`/api/v1/course-reviews/${reviewId}/like?userId=${userId}`);
+      },
+    });
+  };
+
+  const useUnlikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        // Giả định backend có endpoint unlike hoặc dùng logic phù hợp
+        await instance.post(`/api/v1/course-reviews/${reviewId}/unlike?userId=${userId}`);
+      },
+    });
+  };
+
+  const useDislikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        await instance.post(`/api/v1/course-reviews/${reviewId}/dislike?userId=${userId}`);
+      },
+    });
+  };
+
+  const useUndislikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        // Giả định backend có endpoint undislike
+        await instance.post(`/api/v1/course-reviews/${reviewId}/undislike?userId=${userId}`);
+      },
+    });
+  };
+
   const useGetVersion = (versionId: string) => {
     return useQuery({
       queryKey: courseKeys.version(versionId),
@@ -594,6 +628,10 @@ export const useCourses = () => {
     useReviews,
     useReviewDetail,
     useCreateReview,
+    useLikeReview,
+    useUnlikeReview,     // New
+    useDislikeReview,
+    useUndislikeReview,
     useUpdateReview,
     useDeleteReview,
     useDiscounts,

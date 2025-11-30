@@ -31,5 +31,7 @@ public interface CoupleRepository extends JpaRepository<Couple, UUID> {
     int expireExploringCouples(@Param("now") OffsetDateTime now);
 
     Page<Couple> findAllByUser1_UserIdOrUser2_UserIdAndStatusAndIsDeletedFalse(UUID userId1, UUID userId2, String status, Pageable pageable);
+    Page<Couple> findAllByUser1_UserIdAndStatusAndIsDeletedFalse(UUID user1Id, CoupleStatus statusEnum,
+            Pageable pageable);
 }
 

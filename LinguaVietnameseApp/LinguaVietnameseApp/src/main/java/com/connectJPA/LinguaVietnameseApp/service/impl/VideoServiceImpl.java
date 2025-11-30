@@ -75,7 +75,6 @@ public class VideoServiceImpl implements VideoService {
             videoReactionRepository.save(r);
         } else {
             if (existing.getReaction().equals(reactionValue)) {
-                // already same reaction -> no-op
             } else {
                 existing.setReaction(reactionValue);
                 videoReactionRepository.save(existing);
@@ -106,7 +105,7 @@ public class VideoServiceImpl implements VideoService {
             reviewReactionRepository.save(rr);
         } else {
             if (existing.getReaction().equals(reaction)) {
-                reviewReactionRepository.delete(existing); // toggle off
+                reviewReactionRepository.delete(existing);
             } else {
                 existing.setReaction(reaction);
                 reviewReactionRepository.save(existing);
@@ -117,7 +116,6 @@ public class VideoServiceImpl implements VideoService {
     @Override
     @Transactional
     public VideoSubtitleResponse generateTranslatedSubtitle(UUID videoId, String originalLang, String targetLang, String token) {
-        // 1. Tìm video và Subtitle gốc
         videoRepository.findById(videoId).orElseThrow(() -> new RuntimeException("Video not found"));
 
         VideoSubtitle sourceSub = subtitleRepository.findByVideoId(videoId).stream()
@@ -125,25 +123,21 @@ public class VideoServiceImpl implements VideoService {
                 .findFirst()
                 .orElseThrow(() -> new RuntimeException("Source subtitle (" + originalLang + ") not found. Please upload it first."));
 
-        // 2. Download file gốc từ MinIO
         byte[] sourceBytes = storageService.getFile(sourceSub.getSubtitleUrl());
         List<SubtitleItem> sourceItems = subtitleUtils.parseSrt(new ByteArrayInputStream(sourceBytes));
 
-        // 3. Gọi gRPC Python để dịch từng dòng (Dùng Async để nhanh hơn)
         List<CompletableFuture<Void>> futures = new ArrayList<>();
         List<SubtitleItem> translatedItems = new ArrayList<>();
 
-        // Copy structure
         for (SubtitleItem item : sourceItems) {
             SubtitleItem newItem = new SubtitleItem(item.getId(), item.getStartTime(), item.getEndTime(), "");
             translatedItems.add(newItem);
 
-            // Gọi Async Translate
             CompletableFuture<Void> future = grpcClientService.callTranslateAsync(token, item.getText(), originalLang, targetLang)
                     .thenAccept(response -> {
                         if (response != null && !response.getError().isEmpty()) {
                             System.err.println("Translation Error: " + response.getError());
-                            newItem.setText(item.getText()); // Fallback về gốc nếu lỗi
+                            newItem.setText(item.getText());
                         } else {
                             newItem.setText(response.getTranslatedText());
                         }
@@ -155,24 +149,18 @@ public class VideoServiceImpl implements VideoService {
             futures.add(future);
         }
 
-        // Chờ tất cả các dòng dịch xong
         CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
 
-        // 4. Tạo file .srt mới từ list đã dịch
         byte[] newSrtContent = subtitleUtils.createSrtFile(translatedItems);
 
-        // 5. Upload file mới lên MinIO
-        // Tạo MultipartFile ảo hoặc upload trực tiếp byte[] (Cần sửa storageService xíu hoặc dùng InputStream)
         String fileName = "subtitles/" + videoId + "_" + targetLang + "_" + System.currentTimeMillis() + ".srt";
-        String newUrl = uploadBytesToMinio(newSrtContent, fileName); // Hàm helper bên dưới
+        String newUrl = uploadBytesToMinio(newSrtContent, fileName);
 
-        // 6. Lưu vào Database
         VideoSubtitle newSub = new VideoSubtitle();
         newSub.setVideoId(videoId);
         newSub.setLanguageCode(targetLang);
-        newSub.setSubtitleUrl(newUrl); // Lưu path object
+        newSub.setSubtitleUrl(newUrl);
 
-        // Xóa sub cũ nếu đã tồn tại để tránh duplicate
         subtitleRepository.findByVideoId(videoId).stream()
                 .filter(s -> s.getLanguageCode().equalsIgnoreCase(targetLang))
                 .forEach(subtitleRepository::delete);
@@ -194,34 +182,31 @@ public class VideoServiceImpl implements VideoService {
     public Page<BilingualVideoResponse> searchVideos(Pageable pageable, String q, String language, String category, String sort) {
         Specification<Video> spec = Specification.allOf();
 
-        // tìm kiếm theo title hoặc description
         if (q != null && !q.isBlank()) {
             spec = spec.and((root, query, cb) ->
-                    cb.or(
-                            cb.like(cb.lower(root.get("title")), "%" + q.toLowerCase() + "%"),
-                            cb.like(cb.lower(root.get("description")), "%" + q.toLowerCase() + "%")
-                    )
+                    cb.like(cb.lower(root.get("title")), "%" + q.toLowerCase() + "%")
             );
         }
 
-        // lọc theo ngôn ngữ (ví dụ: "vi", "en")
         if (language != null && !language.isBlank()) {
             spec = spec.and((root, query, cb) ->
                     cb.equal(root.get("language"), language.toLowerCase())
             );
         }
 
-        // lọc theo category (ví dụ: "grammar", "vocabulary", ...)
         if (category != null && !category.isBlank()) {
-            spec = spec.and((root, query, cb) ->
-                    cb.equal(root.get("category"), category.toLowerCase())
-            );
+            try {
+                VideoType videoType = VideoType.valueOf(category.toUpperCase());
+                spec = spec.and((root, query, cb) ->
+                        cb.equal(root.get("type"), videoType)
+                );
+            } catch (IllegalArgumentException e) {
+                log.warn("Invalid video category received: {}", category);
+            }
         }
 
-        // sort tuỳ loại
         Sort sortObj = switch (sort != null ? sort : "") {
-            case "popular" -> Sort.by(Sort.Direction.DESC, "viewCount");
-            case "rating" -> Sort.by(Sort.Direction.DESC, "averageRating");
+            case "popular", "rating" -> Sort.by(Sort.Direction.DESC, "createdAt");
             case "recent" -> Sort.by(Sort.Direction.DESC, "createdAt");
             default -> Sort.by(Sort.Direction.DESC, "createdAt");
         };
@@ -231,7 +216,6 @@ public class VideoServiceImpl implements VideoService {
         Page<Video> page = videoRepository.findAll(spec, sortedPageable);
         return page.map(this::toBilingualDto);
     }
-
 
 
     @Override
@@ -246,19 +230,15 @@ public class VideoServiceImpl implements VideoService {
 
     @Override
     public VideoResponse getVideoById(UUID id, String targetLang) {
-        // 1. Lấy Video
         Video v = videoRepository.findById(id)
                 .orElseThrow(() -> new NoSuchElementException("Video not found: " + id));
 
         VideoResponse resp = toVideoResponse(v);
 
-        // 2. Lấy danh sách Subtitles
         List<VideoSubtitle> allSubs = subtitleRepository.findByVideoId(id);
 
-        // Xác định ngôn ngữ gốc (Lấy từ Video entity nếu có, hoặc mặc định 'en')
         String originalLang = v.getLanguage() != null ? v.getLanguage() : "en";
 
-        // Tìm Record Subtitle Gốc và Đích
         VideoSubtitle srcSubRecord = allSubs.stream()
                 .filter(s -> s.getLanguageCode().equalsIgnoreCase(originalLang))
                 .findFirst().orElse(null);
@@ -267,14 +247,11 @@ public class VideoServiceImpl implements VideoService {
                 .filter(s -> s.getLanguageCode().equalsIgnoreCase(targetLang))
                 .findFirst().orElse(null);
 
-        // 3. Merge Logic
         List<BilingualSubtitleDTO> mergedSubtitles = new ArrayList<>();
 
         if (srcSubRecord != null) {
-            // Download & Parse Source
             List<SubtitleItem> srcItems = downloadAndParseSrt(srcSubRecord.getSubtitleUrl());
 
-            // Download & Parse Target (nếu có)
             List<SubtitleItem> tgtItems = (tgtSubRecord != null)
                     ? downloadAndParseSrt(tgtSubRecord.getSubtitleUrl())
                     : new ArrayList<>();
@@ -283,12 +260,10 @@ public class VideoServiceImpl implements VideoService {
                 BilingualSubtitleDTO dto = new BilingualSubtitleDTO();
                 dto.setSubtitleId(UUID.randomUUID());
 
-                // Convert milliseconds -> seconds cho React Native
                 dto.setStartTime(item.getStartTime() / 1000.0);
                 dto.setEndTime(item.getEndTime() / 1000.0);
                 dto.setOriginalText(item.getText());
 
-                // Tìm text dịch (Match khoảng thời gian)
                 String translatedText = tgtItems.stream()
                         .filter(t -> isTimeOverlap(t, item))
                         .map(SubtitleItem::getText)
@@ -300,7 +275,6 @@ public class VideoServiceImpl implements VideoService {
             }
         }
 
-        // Gán vào field 'subtitles' đúng như FE mong đợi
         resp.setSubtitles(mergedSubtitles);
 
         return resp;
@@ -332,7 +306,7 @@ public class VideoServiceImpl implements VideoService {
             String transText = targets.stream()
                     .filter(tar -> tar.getStartTime() < org.getEndTime() && tar.getEndTime() > org.getStartTime())
                     .map(SubtitleItem::getText)
-                    .collect(Collectors.joining(" ")); // Ghép nếu có nhiều câu dịch nhỏ
+                    .collect(Collectors.joining(" "));
 
             dto.setTranslatedText(transText);
             result.add(dto);
@@ -381,7 +355,6 @@ public class VideoServiceImpl implements VideoService {
     @Override
     @Transactional
     public VideoSubtitleResponse addSubtitle(UUID videoId, VideoSubtitleRequest request) {
-        // ensure video exists
         videoRepository.findById(videoId).orElseThrow(() -> new NoSuchElementException("Video not found: " + videoId));
         VideoSubtitle sub = new VideoSubtitle();
         sub.setVideoId(videoId);
@@ -429,14 +402,9 @@ public class VideoServiceImpl implements VideoService {
 
     @Override
     public void recordProgress(UUID videoId, VideoProgressRequest progressRequest) {
-        // minimal implementation: validate video exists, then persist or emit event.
         videoRepository.findById(videoId).orElseThrow(() -> new NoSuchElementException("Video not found: " + videoId));
-        // TODO: persist per-user progress if desired (create entity CourseVideoProgress)
-        // For now just a placeholder (could log or push to analytics)
-        // e.g., log.info("Progress saved for video {} user {} time {}/{}", videoId, progressRequest.getUserId(), progressRequest.getCurrentTime(), progressRequest.getDuration());
     }
 
-    // --- mapping helpers ---
     private BilingualVideoResponse toBilingualDto(Video v) {
         BilingualVideoResponse r = new BilingualVideoResponse();
         r.setVideoId(v.getVideoId());

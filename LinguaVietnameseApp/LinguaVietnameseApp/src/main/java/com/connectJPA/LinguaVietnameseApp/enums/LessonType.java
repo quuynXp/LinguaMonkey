@@ -11,6 +11,7 @@ public enum LessonType {
     VOCABULARY,
     VIDEO,
     DOCUMENT,
-    AUDIO
+    AUDIO,
+    GRAMMAR_PRACTICE
 }
 

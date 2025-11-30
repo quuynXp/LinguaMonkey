@@ -10,13 +10,19 @@ import java.util.List;
 import java.util.UUID;
 
 public interface BadgeService {
-    Page<BadgeResponse> getAllBadges(String badgeName, Pageable pageable);
-
+    Page<BadgeResponse> getAllBadges(String badgeName, String languageCode, Pageable pageable);
+    
     List<BadgeProgressResponse> getBadgeProgressForUser(UUID userId);
-
+    
     BadgeResponse getBadgeById(UUID id);
+    
     BadgeResponse createBadge(BadgeRequest request);
+    
     BadgeResponse updateBadge(UUID id, BadgeRequest request);
+    
     void deleteBadge(UUID id);
+    
+    void claimBadge(UUID userId, UUID badgeId);
+
     List<BadgeResponse> getBadgesForUser(UUID userId);
 }

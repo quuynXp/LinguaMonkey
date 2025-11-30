@@ -70,6 +70,20 @@ public class UserController {
                 .build();
     }
 
+    @Operation(summary = "Get suggested users", description = "Get users with similar profile features")
+    @GetMapping("/{userId}/suggestions")
+    public AppApiResponse<Page<UserResponse>> getSuggestedUsers(
+            @PathVariable UUID userId,
+            @Parameter(description = "Pagination") Pageable pageable,
+            Locale locale) {
+        Page<UserResponse> suggestions = userService.getSuggestedUsers(userId, pageable);
+        return AppApiResponse.<Page<UserResponse>>builder()
+                .code(200)
+                .message("Suggested users retrieved successfully")
+                .result(suggestions)
+                .build();
+    }
+
     @Operation(summary = "Get user by ID", description = "Retrieve a user by their ID")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved user"),

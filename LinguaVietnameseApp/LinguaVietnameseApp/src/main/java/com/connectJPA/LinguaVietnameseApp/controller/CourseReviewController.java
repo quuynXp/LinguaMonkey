@@ -16,7 +16,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -30,7 +29,7 @@ public class CourseReviewController {
     private final CourseReviewService courseReviewService;
     private final MessageSource messageSource;
 
-    @Operation(summary = "Get all course reviews", description = "Retrieve a paginated list of course reviews with optional filtering by courseId, userId, or rating")
+    @Operation(summary = "Get all course reviews", description = "Retrieve a paginated list of course reviews with optional filtering. Pass 'userId' to check if that user liked/disliked comments.")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved course reviews"),
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
@@ -38,11 +37,14 @@ public class CourseReviewController {
     @GetMapping
     public AppApiResponse<Page<CourseReviewResponse>> getAllCourseReviews(
             @Parameter(description = "Course ID filter") @RequestParam(required = false) UUID courseId,
-            @Parameter(description = "User ID filter") @RequestParam(required = false) UUID userId,
+            @Parameter(description = "Current User ID (to check like status)") @RequestParam(required = false) UUID userId,
             @Parameter(description = "Rating filter") @RequestParam(required = false) BigDecimal rating,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
+        
+        // userId ở đây đóng vai trò là "currentViewerId"
         Page<CourseReviewResponse> reviews = courseReviewService.getAllCourseReviews(courseId, userId, rating, pageable);
+        
         return AppApiResponse.<Page<CourseReviewResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("courseReview.list.success", null, locale))
@@ -50,14 +52,18 @@ public class CourseReviewController {
                 .build();
     }
 
+    @Operation(summary = "Get replies for a review", description = "Retrieve replies for a specific review. Pass 'userId' to check like status.")
     @GetMapping("/{reviewId}/replies")
     public ResponseEntity<AppApiResponse<PageResponse<CourseReviewResponse>>> getReviewReplies(
             @PathVariable UUID reviewId,
+            @Parameter(description = "Current User ID (to check like status)") @RequestParam(required = false) UUID userId,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size // Default load thêm 20
+            @RequestParam(defaultValue = "20") int size
     ) {
         Pageable pageable = PageRequest.of(page, size);
-        Page<CourseReviewResponse> result = courseReviewService.getRepliesByParentId(reviewId, pageable);
+        
+        // Truyền userId xuống service để check like status cho các reply
+        Page<CourseReviewResponse> result = courseReviewService.getRepliesByParentId(reviewId, userId, pageable);
         
         return ResponseEntity.ok(AppApiResponse.<PageResponse<CourseReviewResponse>>builder()
                 .code(200)
@@ -80,15 +86,10 @@ public class CourseReviewController {
                 .build();
     }
 
-    @Operation(summary = "Get course review by IDs", description = "Retrieve a course review by courseId and userId")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved course review"),
-            @ApiResponse(responseCode = "404", description = "Course review not found")
-    })
     @GetMapping("/{courseId}/{userId}")
     public AppApiResponse<CourseReviewResponse> getCourseReviewByIds(
-            @Parameter(description = "Course ID") @PathVariable UUID courseId,
-            @Parameter(description = "User ID") @PathVariable UUID userId,
+            @PathVariable UUID courseId,
+            @PathVariable UUID userId,
             Locale locale) {
         CourseReviewResponse review = courseReviewService.getCourseReviewByIds(courseId, userId);
         return AppApiResponse.<CourseReviewResponse>builder()
@@ -98,11 +99,6 @@ public class CourseReviewController {
                 .build();
     }
 
-    @Operation(summary = "Create a new course review", description = "Create a new course review with the provided details")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Course review created successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid course review data")
-    })
     @PostMapping
     public AppApiResponse<CourseReviewResponse> createCourseReview(
             @Valid @RequestBody CourseReviewRequest request,
@@ -115,16 +111,34 @@ public class CourseReviewController {
                 .build();
     }
 
-    @Operation(summary = "Update a course review", description = "Update an existing course review by courseId and userId")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Course review updated successfully"),
-            @ApiResponse(responseCode = "404", description = "Course review not found"),
-            @ApiResponse(responseCode = "400", description = "Invalid course review data")
-    })
+    @PostMapping("/{reviewId}/like")
+    public AppApiResponse<Void> likeReview(@PathVariable UUID reviewId, @RequestParam UUID userId) {
+        courseReviewService.likeReview(reviewId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Liked successfully").build();
+    }
+
+    @PostMapping("/{reviewId}/unlike")
+    public AppApiResponse<Void> unlikeReview(@PathVariable UUID reviewId, @RequestParam UUID userId) {
+        courseReviewService.unlikeReview(reviewId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Unliked successfully").build();
+    }
+
+    @PostMapping("/{reviewId}/dislike")
+    public AppApiResponse<Void> dislikeReview(@PathVariable UUID reviewId, @RequestParam UUID userId) {
+        courseReviewService.dislikeReview(reviewId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Disliked successfully").build();
+    }
+
+    @PostMapping("/{reviewId}/undislike")
+    public AppApiResponse<Void> undislikeReview(@PathVariable UUID reviewId, @RequestParam UUID userId) {
+        courseReviewService.undislikeReview(reviewId, userId);
+        return AppApiResponse.<Void>builder().code(200).message("Undisliked successfully").build();
+    }
+
     @PutMapping("/{courseId}/{userId}")
     public AppApiResponse<CourseReviewResponse> updateCourseReview(
-            @Parameter(description = "Course ID") @PathVariable UUID courseId,
-            @Parameter(description = "User ID") @PathVariable UUID userId,
+            @PathVariable UUID courseId,
+            @PathVariable UUID userId,
             @Valid @RequestBody CourseReviewRequest request,
             Locale locale) {
         CourseReviewResponse review = courseReviewService.updateCourseReview(courseId, userId, request);
@@ -135,15 +149,10 @@ public class CourseReviewController {
                 .build();
     }
 
-    @Operation(summary = "Delete a course review", description = "Soft delete a course review by courseId and userId")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Course review deleted successfully"),
-            @ApiResponse(responseCode = "404", description = "Course review not found")
-    })
     @DeleteMapping("/{courseId}/{userId}")
     public AppApiResponse<Void> deleteCourseReview(
-            @Parameter(description = "Course ID") @PathVariable UUID courseId,
-            @Parameter(description = "User ID") @PathVariable UUID userId,
+            @PathVariable UUID courseId,
+            @PathVariable UUID userId,
             Locale locale) {
         courseReviewService.deleteCourseReview(courseId, userId);
         return AppApiResponse.<Void>builder()

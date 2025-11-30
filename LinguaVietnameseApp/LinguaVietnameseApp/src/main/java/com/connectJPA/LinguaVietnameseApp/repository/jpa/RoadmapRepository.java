@@ -1,6 +1,9 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.Roadmap;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -11,6 +14,8 @@ import java.util.UUID;
 
 public interface RoadmapRepository extends JpaRepository<Roadmap, UUID> {
     List<Roadmap> findByLanguageCodeAndIsDeletedFalse(String languageCode);
+
+    Page<Roadmap> findByLanguageCodeAndIsDeletedFalse(String languageCode, Pageable pageable);
 
     List<Roadmap> findByIsDeletedFalse();
 

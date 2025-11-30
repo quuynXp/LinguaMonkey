@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react"
-import { Animated, Dimensions, Text, TouchableOpacity, View } from "react-native"
+import { Animated, Dimensions, Text, TouchableOpacity, View, Image } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { gotoTab } from "../../utils/navigationRef";
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-  ;
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { ScrollView } from "react-native-gesture-handler";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { getOnboardingImage } from "../../utils/onboardingUtil";
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,24 +20,18 @@ type AppLaunchScreenProps = {
 const onboardingData = [
   {
     id: 1,
-    title: 'welcome.title', // Key này sẽ được dùng với t()
-    subtitle: 'welcome.subtitle', // Key này sẽ được dùng với t()
-    icon: 'celebration',
-    color: '#4F46E5',
+    title: 'welcome.title',
+    subtitle: 'welcome.subtitle',
   },
   {
     id: 2,
-    title: 'aiLearning.title', // Key này sẽ được dùng với t()
-    subtitle: 'aiLearning.subtitle', // Key này sẽ được dùng với t()
-    icon: 'psychology',
-    color: '#10B981',
+    title: 'aiLearning.title',
+    subtitle: 'aiLearning.subtitle',
   },
   {
     id: 3,
-    title: 'progress.title', // Key này sẽ được dùng với t()
-    subtitle: 'progress.subtitle', // Key này sẽ được dùng với t()
-    icon: 'trending-up',
-    color: '#F59E0B',
+    title: 'progress.title',
+    subtitle: 'progress.subtitle',
   },
 ];
 
@@ -167,7 +161,11 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
           ]}
         >
           <View style={styles.animationContainer}>
-            <Icon name={currentData.icon} size={120} color={currentData.color} />
+            <Image
+              source={getOnboardingImage(currentData.id)}
+              style={styles.onboardingImage}
+              resizeMode="contain"
+            />
           </View>
 
           <View style={styles.textContainer}>
@@ -211,9 +209,7 @@ const AppLaunchScreen = ({ navigation, route }: AppLaunchScreenProps) => {
             },
           ]}
         >
-          {/* --- THAY ĐỔI Ở ĐÂY --- */}
           <Text style={styles.appTitle}>{t('common.appName')}</Text>
-          {/* --- KẾT THÚC THAY ĐỔI --- */}
           <Text style={styles.appSubtitle}>{t('account.choose')}</Text>
 
           <View style={styles.optionsContainer}>
@@ -309,6 +305,10 @@ const styles = createScaledSheet({
     height: height * 0.4,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  onboardingImage: {
+    width: '100%',
+    height: '100%',
   },
   textContainer: {
     alignItems: 'center',

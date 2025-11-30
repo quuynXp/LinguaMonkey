@@ -10,6 +10,7 @@ import {
   ScrollView,
   ListRenderItem,
   Dimensions,
+  ImageBackground,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
@@ -26,9 +27,13 @@ import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCourseImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
 import VipUpgradeModal from "../../components/modals/VipUpgradeModal";
-import { Course } from "../../types/entity";
+import { gotoTab } from "../../utils/navigationRef";
 
 const { width } = Dimensions.get("window");
+
+const SCREEN_PADDING = 20;
+const COLUMN_GAP = 12;
+const ITEM_WIDTH = Math.floor((width - (SCREEN_PADDING * 2) - COLUMN_GAP) / 2);
 
 type LanguageOption = {
   code: string;
@@ -67,7 +72,6 @@ const LearningLanguageSelector = ({
         <View style={styles.languageFlagWrapper}>
           {selectedLanguage.flag}
         </View>
-        <Text style={styles.selectedLanguageText}>{selectedLanguage.name}</Text>
         {canExpand && (
           <Icon
             name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
@@ -91,7 +95,6 @@ const LearningLanguageSelector = ({
               <View style={styles.languageFlagWrapper}>
                 {lang.flag}
               </View>
-              <Text style={styles.languageName}>{lang.name}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -237,7 +240,7 @@ const AllCoursesView = ({ navigation, onBack }: { navigation: any; onBack: () =>
   const renderItem: ListRenderItem<CourseResponse> = ({ item }) => (
     <TouchableOpacity
       style={styles.verticalCard}
-      onPress={() => navigation.navigate("CourseDetailsScreen", { course: item })}
+      onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: item.courseId })}
     >
       <Image
         source={getCourseImage(item.latestPublicVersion?.thumbnailUrl)}
@@ -309,10 +312,9 @@ const LearnScreen = ({ navigation }: any) => {
 
   const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
     code: langCode,
-    name: t(`languages.${langCode}`) || langCode.toUpperCase(),
-    // Sửa dụng langCode để hiển thị cờ
+    name: langCode.toUpperCase(),
     flag: getCountryFlag(langCode, 22),
-  }), [t]);
+  }), []);
 
   const learningLanguages: LanguageOption[] = useMemo(() => {
     if (userStore.languages && userStore.languages.length > 0) {
@@ -379,6 +381,7 @@ const LearnScreen = ({ navigation }: any) => {
     { name: t("learn.ipaPronunciation"), icon: "record-voice-over", screen: "IPAScreen", color: "#F59E0B", bg: "#FFFBEB" },
     { name: t("learn.bilingual"), icon: "language", screen: "BilingualVideoScreen", color: "#8B5CF6", bg: "#F5F3FF" },
     { name: t("learn.grammar"), icon: "spellcheck", screen: "GrammarLearningScreen", color: "#4F46E5", bg: "#EEF2FF" },
+    { name: t("learn.notes", "Ghi chú"), icon: "sticky-note-2", screen: "NotesScreen", color: "#10B981", bg: "#ECFDF5" },
   ], [t]);
 
   const skillCards = useMemo(() => [
@@ -429,155 +432,87 @@ const LearnScreen = ({ navigation }: any) => {
           showsVerticalScrollIndicator={false}
         >
 
-          {/* Section 1: Chứng chỉ (Reordered) */}
+          {/* Section 1: Chứng chỉ */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("learn.certPreparation", "Luyện thi Chứng Chỉ")}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-              <TouchableOpacity
-                style={styles.certCard}
-                onPress={() => handleVipFeature('certification', 'TOEIC')}
-                activeOpacity={0.8}
+            <TouchableOpacity
+              style={styles.certBigCard}
+              onPress={() => handleVipFeature('certification', 'IELTS')}
+              activeOpacity={0.9}
+            >
+              <ImageBackground
+                source={getCourseImage(undefined)}
+                style={styles.certBigCardBg}
+                imageStyle={{ borderRadius: 16 }}
               >
-                <View style={[styles.certIconContainer, { backgroundColor: '#E0F2FE' }]}>
-                  <Icon name="assignment" size={28} color="#0369A1" />
-                </View>
-                <Text style={styles.certTitle}>TOEIC</Text>
-                <Text style={styles.certDesc}>{t("learn.simulation", "Mô phỏng 1-1")}</Text>
-                <View style={styles.vipTag}>
-                  <Text style={styles.vipTagText}>VIP</Text>
-                </View>
-
                 {!isVip && (
-                  <View style={styles.lockOverlay}>
-                    <Icon name="lock" size={24} color="#EF4444" />
+                  <View style={styles.certDarkOverlay}>
+                    <Icon name="lock" size={36} color="#FFFFFF" />
                   </View>
                 )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.certCard}
-                onPress={() => handleVipFeature('certification', 'IELTS')}
-                activeOpacity={0.8}
-              >
-                <View style={[styles.certIconContainer, { backgroundColor: '#FCE7F3' }]}>
-                  <Icon name="school" size={28} color="#BE185D" />
-                </View>
-                <Text style={styles.certTitle}>IELTS</Text>
-                <Text style={styles.certDesc}>{t("learn.simulation", "Mô phỏng 1-1")}</Text>
-                <View style={styles.vipTag}>
-                  <Text style={styles.vipTagText}>VIP</Text>
-                </View>
-
-                {!isVip && (
-                  <View style={styles.lockOverlay}>
-                    <Icon name="lock" size={24} color="#EF4444" />
+                <View style={styles.certContentOverlay}>
+                  <View style={[styles.certIconContainer, { backgroundColor: '#FFFFFF' }]}>
+                    <Icon name="verified" size={24} color="#0369A1" />
                   </View>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
+                  <View>
+                    <Text style={styles.certBigTitle}>IELTS & TOEIC</Text>
+                    <Text style={styles.certBigDesc}>{t("learn.simulation", "Mô phỏng 1-1")}</Text>
+                  </View>
+                  <View style={styles.vipTagAbs}>
+                    <Text style={styles.vipTagText}>VIP</Text>
+                  </View>
+                </View>
+              </ImageBackground>
+            </TouchableOpacity>
           </View>
 
-          {/* Section 2: Learn Skills (Reordered) */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("learn.skills", "Kỹ Năng")} ({selectedLanguage.name})</Text>
-            <View style={styles.toolGridContainer}>
-              {skillCards.map((skill, index) => {
-                const IconComponent = skill.iconLib;
-                return (
-                  <TouchableOpacity
-                    key={index}
-                    style={[styles.skillAsToolCard, index % 2 === 0 ? styles.cardRightMargin : {}]}
-                    onPress={() => openSkillLessons(skill.type)}
-                  >
-                    <View style={[styles.toolIconContainer, { backgroundColor: skill.bg }]}>
-                      <IconComponent name={skill.icon} size={24} color={skill.color} />
-                    </View>
-                    <Text style={styles.toolName}>{skill.name}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </View>
+          {/* Section 2: Skills */}
+          <FlatList
+            data={skillCards}
+            keyExtractor={(item, idx) => `skill-${idx}`}
+            renderItem={({ item }) => {
+              const IconComponent = item.iconLib;
+              return (
+                <TouchableOpacity
+                  style={styles.gridCardFlat}
+                  onPress={() => openSkillLessons(item.type)}
+                >
+                  <View style={[styles.toolIconContainer, { backgroundColor: item.bg }]}>
+                    <IconComponent name={item.icon} size={24} color={item.color} />
+                  </View>
+                  <Text style={styles.toolName}>{item.name}</Text>
+                </TouchableOpacity>
+              );
+            }}
+            numColumns={2}
+            columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: COLUMN_GAP }}
+            scrollEnabled={false}
+          />
 
-          {/* Section 3: Learning Tools */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
-            <View style={styles.toolGridContainer}>
-              {learningTools.map((tool, index) => (
+
+            <FlatList
+              data={learningTools}
+              keyExtractor={(item, idx) => `tool-${idx}`}
+              renderItem={({ item }) => (
                 <TouchableOpacity
-                  key={index}
-                  style={[styles.toolCard, index % 2 === 0 ? styles.cardRightMargin : {}]}
-                  onPress={() => navigation.navigate(tool.screen)}
+                  style={styles.gridCardFlat}
+                  onPress={() => navigation.navigate(item.screen)}
                 >
-                  <View style={[styles.toolIconContainer, { backgroundColor: tool.bg }]}>
-                    <Icon name={tool.icon} size={28} color={tool.color} />
+                  <View style={[styles.toolIconContainer, { backgroundColor: item.bg }]}>
+                    <Icon name={item.icon} size={28} color={item.color} />
                   </View>
-                  <Text style={styles.toolName} numberOfLines={2}>{tool.name}</Text>
+                  <Text style={styles.toolName} numberOfLines={2}>{item.name}</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
+              )}
+              numColumns={2}
+              columnWrapperStyle={{ justifyContent: "space-between", marginBottom: COLUMN_GAP }}
+              scrollEnabled={false}
+            />
           </View>
 
-          {/* Section 4: My Courses */}
-          {purchasedCourses.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
-                <TouchableOpacity onPress={openCreatorDashboard}>
-                  <Text style={styles.seeAllText}>{t("learn.myCourseManagement", "Quản lý Course")}</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-                {purchasedCourses.map((enrollment: any, index: number) => {
-                  // Mock stats for My Course if missing
-                  const rating = enrollment.course?.averageRating || 5.0;
-                  const buyers = enrollment.course?.studentsCount || 0;
-                  const reviews = enrollment.course?.reviewCount || 0;
-                  const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
-
-                  return (
-                    <TouchableOpacity
-                      key={`my-course-${enrollment.id || index}`}
-                      style={styles.myCourseCard}
-                      onPress={() => navigation.navigate("CourseDetailsScreen", { course: enrollment.course, isPurchased: true })}
-                    >
-                      <Image
-                        source={getCourseImage(enrollment.course?.latestPublicVersion?.thumbnailUrl)}
-                        style={styles.myCourseImage}
-                      />
-                      <View style={styles.myCourseInfo}>
-                        <Text style={styles.myCourseTitle} numberOfLines={1}>{enrollment.course?.title}</Text>
-
-                        {/* Enroll Date & Stats */}
-                        <Text style={styles.myCourseDate}>Start: {dateEnrolled}</Text>
-                        <View style={styles.myCourseStatsRow}>
-                          <View style={styles.statItem}>
-                            <Icon name="star" size={12} color="#F59E0B" />
-                            <Text style={styles.statText}>{rating}</Text>
-                          </View>
-                          <View style={styles.statItem}>
-                            <Icon name="people" size={12} color="#6B7280" />
-                            <Text style={styles.statText}>{buyers}</Text>
-                          </View>
-                          <View style={styles.statItem}>
-                            <Icon name="rate-review" size={12} color="#6B7280" />
-                            <Text style={styles.statText}>{reviews}</Text>
-                          </View>
-                        </View>
-
-                        {/* Progress */}
-                        <View style={styles.progressBar}>
-                          <View style={[styles.progressFill, { width: `${enrollment.progress || 0}%` }]} />
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* Section 5: Recommended Courses */}
+          {/* Section 4: Recommended Courses */}
           {recommendedData && recommendedData.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
@@ -589,17 +524,15 @@ const LearnScreen = ({ navigation }: any) => {
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
                 {recommendedData.map((course: any) => {
-                  // Fallbacks for data that might be missing from BE as requested
                   const rating = course.averageRating || 4.5;
                   const reviewCount = course.reviewCount || 0;
-                  // Use creatorId if name missing, or static "Instructor"
                   const authorName = course.creatorName || course.creatorId || "Instructor";
 
                   return (
                     <TouchableOpacity
                       key={`rec-${course.courseId}`}
                       style={styles.recCourseCard}
-                      onPress={() => navigation.navigate("CourseDetailsScreen", { course, isPurchased: false })}
+                      onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: course.courseId, isPurchased: false })}
                     >
                       <Image
                         source={getCourseImage(course.latestPublicVersion?.thumbnailUrl)}
@@ -607,15 +540,12 @@ const LearnScreen = ({ navigation }: any) => {
                       />
                       <View style={{ padding: 8 }}>
                         <Text style={styles.recCourseTitle} numberOfLines={2}>{course.title}</Text>
-
                         <View style={styles.recCourseAuthorRow}>
-                          {/* Placeholder Avatar */}
                           <View style={styles.recAuthorAvatar}>
                             <Text style={styles.recAuthorAvatarText}>{authorName.charAt(0)}</Text>
                           </View>
                           <Text style={styles.recAuthorName} numberOfLines={1}>{authorName}</Text>
                         </View>
-
                         <View style={styles.recCourseFooter}>
                           <Text style={styles.recPrice}>{course.price === 0 ? "Free" : `$${course.price}`}</Text>
                           <View style={styles.recRatingContainer}>
@@ -631,16 +561,66 @@ const LearnScreen = ({ navigation }: any) => {
             </View>
           )}
 
+          {/* Section 5: My Courses - Moved to Bottom */}
+          {purchasedCourses.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
+                <TouchableOpacity onPress={openCreatorDashboard}>
+                  <Text style={styles.seeAllText}>{t("learn.myCourseManagement", "Quản lý Course")}</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
+                {purchasedCourses.map((enrollment: any, index: number) => {
+                  const rating = enrollment.course?.averageRating || 5.0;
+                  const buyers = enrollment.course?.studentsCount || 0;
+                  const reviews = enrollment.course?.reviewCount || 0;
+                  const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
+
+                  return (
+                    <TouchableOpacity
+                      key={`my-course-${enrollment.id || index}`}
+                      style={styles.myCourseCard}
+                      onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: enrollment.course?.courseId, isPurchased: true })}
+                    >
+                      <Image
+                        source={getCourseImage(enrollment.course?.latestPublicVersion?.thumbnailUrl)}
+                        style={styles.myCourseImage}
+                      />
+                      <View style={styles.myCourseInfo}>
+                        <Text style={styles.myCourseTitle} numberOfLines={1}>{enrollment.course?.title}</Text>
+                        <Text style={styles.myCourseDate}>Start: {dateEnrolled}</Text>
+                        <View style={styles.myCourseStatsRow}>
+                          <View style={styles.statItem}>
+                            <Icon name="star" size={12} color="#F59E0B" />
+                            <Text style={styles.statText}>{rating}</Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Icon name="people" size={12} color="#6B7280" />
+                            <Text style={styles.statText}>{buyers}</Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Icon name="rate-review" size={12} color="#6B7280" />
+                            <Text style={styles.statText}>{reviews}</Text>
+                          </View>
+                        </View>
+                        <View style={styles.progressBar}>
+                          <View style={[styles.progressFill, { width: `${enrollment.progress || 0}%` }]} />
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
           <View style={{ height: 60 }} />
         </ScrollView>
       </View>
     </ScreenLayout>
   );
 };
-
-const columnGap = 10;
-const paddingHorizontal = 20;
-const cardWidth = (width - paddingHorizontal * 2 - columnGap) / 2;
 
 const styles = createScaledSheet({
   container: {
@@ -666,31 +646,21 @@ const styles = createScaledSheet({
   languageSelectorContainer: {
     position: 'relative',
     zIndex: 10,
-    width: 130,
+    width: 60,
   },
   selectedLanguageButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#EEF2FF',
     borderRadius: 20,
-    paddingHorizontal: 10,
+    paddingHorizontal: 8,
     paddingVertical: 6,
-  },
-  languageFlag: {
-    fontSize: 18,
-    marginRight: 6,
-  },
-  selectedLanguageText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#4F46E5',
-    flex: 1,
+    justifyContent: 'center',
   },
   languageDropdown: {
     position: 'absolute',
     top: 40,
     right: 0,
-    left: 0,
     backgroundColor: '#FFF',
     borderRadius: 12,
     borderWidth: 1,
@@ -699,19 +669,18 @@ const styles = createScaledSheet({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 5,
+    minWidth: 60,
   },
   languageItem: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     padding: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F3F4F6',
   },
-  languageName: {
-    fontSize: 14,
-    color: '#1F2937',
-    fontWeight: '600',
-    flex: 1,
+  languageFlagWrapper: {
+    marginRight: 4,
   },
   noLanguageText: {
     fontSize: 12,
@@ -745,7 +714,7 @@ const styles = createScaledSheet({
     flex: 1,
   },
   scrollContent: {
-    padding: paddingHorizontal,
+    padding: SCREEN_PADDING,
   },
   section: {
     marginBottom: 32,
@@ -768,58 +737,69 @@ const styles = createScaledSheet({
     fontWeight: "600",
   },
 
-  certCard: {
-    width: 150,
-    backgroundColor: "#FFFFFF",
+  certBigCard: {
+    width: '100%',
+    height: 120,
     borderRadius: 16,
-    padding: 16,
-    marginRight: 16,
-    alignItems: "center",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 3,
-    position: 'relative',
-    overflow: 'hidden',
-    height: 160,
-    justifyContent: 'center',
   },
-  certIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 12,
+  certBigCardBg: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
   },
-  certTitle: {
-    fontSize: 16,
-    fontWeight: "800",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  certDesc: {
-    fontSize: 12,
-    color: "#6B7280",
-    textAlign: "center",
-  },
-  lockOverlay: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(255,255,255,0.6)',
+  certDarkOverlay: {
+    // ...React.StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 10,
+    zIndex: 2,
   },
-  vipTag: {
+  certContentOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 1,
+  },
+  certIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 16,
+  },
+  certBigTitle: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: "#1F2937", // Or White depending on image, usually white on dark bg but using standard dark text with light fallback image
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingHorizontal: 4,
+    borderRadius: 4,
+    marginBottom: 4,
+  },
+  certBigDesc: {
+    fontSize: 13,
+    color: "#4B5563",
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingHorizontal: 4,
+    borderRadius: 4,
+  },
+  vipTagAbs: {
     position: 'absolute',
-    top: 8,
-    right: 8,
+    top: -8,
+    right: -10,
     backgroundColor: '#FEF3C7',
-    paddingHorizontal: 6,
+    paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#FCD34D',
   },
   vipTagText: {
     fontSize: 10,
@@ -827,18 +807,13 @@ const styles = createScaledSheet({
     color: '#D97706',
   },
 
-  toolGridContainer: {
+  gridContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
-    justifyContent: "flex-start",
-
+    justifyContent: "space-between",
   },
-  cardRightMargin: {
-    marginRight: columnGap,
-  },
-
-  skillAsToolCard: {
-    width: cardWidth,
+  gridCard: {
+    width: ITEM_WIDTH,
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 12,
@@ -848,23 +823,9 @@ const styles = createScaledSheet({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
-    marginBottom: columnGap,
+    marginBottom: COLUMN_GAP,
     height: 110,
     justifyContent: 'center',
-  },
-
-  toolCard: {
-    width: cardWidth,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-    marginBottom: columnGap,
   },
   toolIconContainer: {
     width: 40,
@@ -882,11 +843,11 @@ const styles = createScaledSheet({
   },
 
   horizontalList: {
-    marginHorizontal: -paddingHorizontal,
-    paddingHorizontal: paddingHorizontal,
+    marginHorizontal: -SCREEN_PADDING,
+    paddingHorizontal: SCREEN_PADDING,
   },
   myCourseCard: {
-    width: 240, // Slightly wider for more info
+    width: 240,
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     marginRight: 16,
@@ -932,6 +893,20 @@ const styles = createScaledSheet({
     fontSize: 11,
     color: '#4B5563',
     fontWeight: '500',
+  },
+  gridCardFlat: {
+    width: '48%',
+    backgroundColor: "#FFFFFF",
+    borderRadius: 16,
+    padding: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+    height: 110,
+    justifyContent: 'center',
   },
   progressBar: {
     height: 6,
@@ -1108,9 +1083,6 @@ const styles = createScaledSheet({
     color: "#4F46E5",
     fontWeight: "600",
     fontSize: 13,
-  },
-  languageFlagWrapper: {
-    marginRight: 8,
   },
   endText: {
     color: "#9CA3AF",

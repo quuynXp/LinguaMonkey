@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,14 +18,16 @@ import { useUserStore } from "../../stores/UserStore";
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import ReviewSection from "../../components/reviews/ReviewSection";
+import CoursePurchaseModal from "../../components/modals/CoursePurchaseModal";
 import { CourseEnrollmentStatus } from "../../types/enums";
 import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { CourseDiscount } from "../../types/entity";
+import { gotoTab } from "../../utils/navigationRef";
+import { CourseReviewResponse } from "../../types/dto";
 
 const CourseDetailsScreen = ({ route, navigation }: any) => {
-  // FIX: Lấy courseId an toàn hơn, hỗ trợ trường hợp truyền params là 'id' hoặc 'courseId'
   const params = route.params || {};
   const courseId = params.courseId || params.id;
 
@@ -46,12 +47,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     useCreateReview
   } = useCourses();
 
-  // Các hooks sẽ tự động disable nếu courseId không tồn tại (nhờ logic enabled trong useCourses)
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
-  const { data: enrollments } = useEnrollments({ userId: user?.userId });
+  const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
   const { data: reviewsData, refetch: refetchReviews } = useReviews({ courseId, size: 5 });
   const { mutate: enroll, isPending: isEnrolling } = useCreateEnrollment();
-  const { mutate: createReview, isPending: isCreatingReview } = useCreateReview();
+  const { mutateAsync: createReviewAsync, isPending: isCreatingReview } = useCreateReview();
   const { data: discountsData } = useDiscounts({ courseId, size: 1 });
 
   const activeDiscount = discountsData?.data?.[0] as CourseDiscount | undefined;
@@ -70,6 +70,9 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     ? originalPrice * (1 - discountPercent / 100)
     : originalPrice;
 
+  // If price is 0, it is free
+  const isPaidCourse = priceAfterDiscount > 0;
+
   const displayPrice = convert(priceAfterDiscount, 'VND');
   const displayOriginalPrice = convert(originalPrice, 'VND');
 
@@ -80,7 +83,12 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const isAccessible = isEnrolled || lesson.isFree;
 
     if (!isAccessible) {
-      setPurchaseModalVisible(true);
+      if (isPaidCourse) {
+        setPurchaseModalVisible(true);
+      } else {
+        // Free course but not enrolled yet, auto enroll or show generic enroll alert
+        handleFreeEnroll();
+      }
       return;
     }
 
@@ -99,47 +107,54 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const handlePurchase = () => {
+  const handleFreeEnroll = () => {
     if (!user?.userId || !version?.versionId) return;
-
-    setPurchaseModalVisible(false);
     enroll({
       userId: user.userId,
       courseVersionId: version.versionId,
       status: CourseEnrollmentStatus.ACTIVE
     }, {
-      onSuccess: () => Alert.alert(t("success"), t("course.enrollmentSuccess")),
+      onSuccess: () => {
+        Alert.alert(t("success"), t("course.enrollmentSuccess"));
+        refetchEnrollments();
+      },
       onError: () => Alert.alert(t("error"), t("course.enrollmentFailed"))
     });
   };
 
-  const handleAddReview = (content: string, parentId?: string) => {
+  const handlePurchaseSuccess = () => {
+    // This callback is triggered by the Modal after transaction creation
+    // We can assume backend handles enrollment OR we poll for it. 
+    // For immediate UI update, we can try refetching enrollments.
+    refetchEnrollments();
+  };
+
+  const handleAddReview = async (content: string, rating: number, parentId?: string, onSuccess?: (newReview: CourseReviewResponse) => void) => {
     if (!user?.userId) {
       Alert.alert(t("auth.required"), t("auth.loginToReview"));
       return;
     }
-
-    // FIX: Kiểm tra courseId trước khi gọi API để tránh lỗi Backend 400
     if (!courseId) {
       Alert.alert(t("error"), "Course ID is missing. Please reload the screen.");
       return;
     }
-
-    createReview({
-      courseId: courseId, // Đảm bảo biến này có giá trị (string UUID)
-      userId: user.userId,
-      rating: 5,
-      comment: content,
-      parentId: parentId
-    }, {
-      onSuccess: () => {
+    try {
+      const newReview = await createReviewAsync({
+        courseId: courseId,
+        userId: user.userId,
+        rating: rating,
+        comment: content,
+        parentId: parentId
+      });
+      if (!parentId) {
         refetchReviews();
-      },
-      onError: (error: any) => {
-        console.error("Review Error:", error);
-        Alert.alert(t("error"), t("course.reviewFailed"));
+      } else if (onSuccess) {
+        onSuccess(newReview);
       }
-    });
+    } catch (error) {
+      console.error("Review Error:", error);
+      Alert.alert(t("error"), t("course.reviewFailed"));
+    }
   };
 
   const handleLikeReview = (reviewId: string) => {
@@ -148,14 +163,13 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const renderAuthorInfo = () => {
     if (!course) return null;
-
     const displayName = course.creatorName || course.creatorNickname || t("common.unknownUser");
     const avatarSource = getAvatarSource(course.creatorAvatar, "MALE");
 
     return (
       <TouchableOpacity
         style={styles.authorCard}
-        onPress={() => navigation.push("ProfileViewScreen", { userId: course.creatorId })}
+        onPress={() => gotoTab("ProfileStack", "UserProfileViewScreen", { userId: course.creatorId })}
         activeOpacity={0.7}
       >
         <View style={styles.authorAvatarContainer}>
@@ -244,26 +258,41 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <View style={styles.contentBody}>
         <Text style={styles.title}>{course?.title || t("common.loading")}</Text>
 
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <Icon name="star" size={16} color="#F59E0B" />
-            <Text style={styles.statValue}>4.8</Text>
-            <Text style={styles.statLabel}>({reviews.length})</Text>
+        {/* Stats Row with Right-Aligned Buy Button */}
+        <View style={styles.statsWrapper}>
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Icon name="star" size={16} color="#F59E0B" />
+              <Text style={styles.statValue}>{course?.averageRating?.toFixed(1) || "0.0"}</Text>
+              <Text style={styles.statLabel}>({course?.reviewCount || 0})</Text>
+            </View>
+            <View style={styles.verticalDivider} />
+            <View style={styles.statItem}>
+              <Icon name="signal-cellular-alt" size={16} color="#6B7280" />
+              <Text style={styles.statValue}>{course?.difficultyLevel || "-"}</Text>
+            </View>
+            <View style={styles.verticalDivider} />
+            <View style={styles.statItem}>
+              <Icon name="translate" size={16} color="#6B7280" />
+              <Text style={styles.statValue}>{course?.languageCode || "-"}</Text>
+            </View>
           </View>
-          <View style={styles.verticalDivider} />
-          <View style={styles.statItem}>
-            <Icon name="signal-cellular-alt" size={16} color="#6B7280" />
-            <Text style={styles.statValue}>{course?.difficultyLevel || "-"}</Text>
-          </View>
-          <View style={styles.verticalDivider} />
-          <View style={styles.statItem}>
-            <Icon name="translate" size={16} color="#6B7280" />
-            <Text style={styles.statValue}>{course?.languageCode || "-"}</Text>
-          </View>
+
+          {/* Buy Button (Hidden if enrolled or free) */}
+          {!isEnrolled && isPaidCourse && (
+            <TouchableOpacity
+              style={styles.headerBuyBtn}
+              onPress={() => setPurchaseModalVisible(true)}
+            >
+              <Text style={styles.headerBuyText}>{t('common.buy')}</Text>
+              <Icon name="shopping-cart" size={16} color="#FFF" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {renderAuthorInfo()}
 
+        {/* Price Display (Only if not enrolled, just to show info) */}
         {!isEnrolled && (
           <View style={styles.priceContainer}>
             {discountPercent > 0 ? (
@@ -311,17 +340,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     </View>
   );
 
-  // Nếu không có courseId, hiển thị thông báo lỗi thay vì loading mãi mãi
-  if (!courseId) {
-    return (
-      <View style={styles.loadingContainer}>
-        <Text style={{ color: 'red' }}>Error: Course ID missing in navigation params.</Text>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={{ marginTop: 20 }}>
-          <Text style={{ color: 'blue' }}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  if (!courseId) return null;
 
   if (courseLoading) {
     return (
@@ -336,7 +355,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
       <ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
+        contentContainerStyle={{ paddingBottom: 40 }}
       >
         {renderHeader()}
         <View style={styles.reviewsWrapper}>
@@ -350,62 +369,16 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         </View>
       </ScrollView>
 
-      {!isEnrolled && (
-        <View style={styles.floatingFooter}>
-          <TouchableOpacity
-            style={styles.buyButton}
-            onPress={() => setPurchaseModalVisible(true)}
-            disabled={isEnrolling}
-            activeOpacity={0.8}
-          >
-            {isEnrolling ? <ActivityIndicator color="#FFF" /> : (
-              <View style={styles.buyBtnContent}>
-                <Text style={styles.buyButtonText}>{t("course.enrollNow")}</Text>
-                <View style={styles.verticalDividerWhite} />
-                <Text style={styles.buyButtonPrice}>
-                  {priceAfterDiscount === 0 ? t("course.free") : `${displayPrice.toLocaleString()} VND`}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* Floating footer removed as requested */}
 
-      <Modal visible={purchaseModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalIconContainer}>
-              <Icon name="shopping-bag" size={32} color="#4F46E5" />
-            </View>
-            <Text style={styles.modalTitle}>{t("course.confirmPurchase")}</Text>
-            <Text style={styles.modalText}>{course?.title}</Text>
-            <Text style={styles.modalPrice}>{displayPrice.toLocaleString()} VND</Text>
-
-            {discountPercent > 0 && (
-              <View style={styles.modalSavingBadge}>
-                <Text style={styles.modalSavingText}>
-                  {t("course.youSave", { percent: discountPercent })}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancel}
-                onPress={() => setPurchaseModalVisible(false)}
-              >
-                <Text style={styles.modalCancelText}>{t("common.cancel")}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalConfirm}
-                onPress={handlePurchase}
-              >
-                <Text style={styles.modalConfirmText}>{t("common.confirm")}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      {/* Purchase Modal */}
+      <CoursePurchaseModal
+        visible={purchaseModalVisible}
+        onClose={() => setPurchaseModalVisible(false)}
+        course={course}
+        activeDiscount={activeDiscount}
+        onSuccess={handlePurchaseSuccess}
+      />
     </ScreenLayout>
   );
 };
@@ -431,7 +404,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24
   },
   title: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 12, lineHeight: 30 },
-  statsContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+
+  // Stats & Buy Button Row
+  statsWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
+  statsContainer: { flexDirection: 'row', alignItems: 'center' },
+  headerBuyBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    backgroundColor: '#4F46E5', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20
+  },
+  headerBuyText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
+
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { fontWeight: '700', color: '#374151', fontSize: 14 },
   statLabel: { color: '#6B7280', fontSize: 13 },
@@ -490,37 +472,6 @@ const styles = StyleSheet.create({
   textLocked: { color: "#9CA3AF" },
   emptyText: { fontStyle: "italic", color: "#9CA3AF", marginBottom: 10 },
   reviewsWrapper: { paddingHorizontal: 20 },
-  floatingFooter: {
-    position: "absolute", bottom: 0, left: 0, right: 0,
-    padding: 16, backgroundColor: "#FFF",
-    borderTopWidth: 1, borderTopColor: "#E5E7EB",
-    shadowColor: "#000", shadowOffset: { width: 0, height: -2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 10
-  },
-  buyButton: {
-    backgroundColor: "#4F46E5", paddingVertical: 16, borderRadius: 16,
-    alignItems: "center",
-    shadowColor: "#4F46E5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5
-  },
-  buyBtnContent: { flexDirection: 'row', alignItems: 'center' },
-  buyButtonText: { color: "#FFF", fontSize: 16, fontWeight: "bold" },
-  verticalDividerWhite: { width: 1, height: 16, backgroundColor: 'rgba(255,255,255,0.3)', marginHorizontal: 12 },
-  buyButtonPrice: { color: "#FFF", fontSize: 18, fontWeight: "800" },
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
-  modalContent: { backgroundColor: "#FFF", width: "85%", padding: 24, borderRadius: 24, alignItems: "center" },
-  modalIconContainer: {
-    width: 60, height: 60, borderRadius: 30, backgroundColor: '#EEF2FF',
-    justifyContent: 'center', alignItems: 'center', marginBottom: 16
-  },
-  modalTitle: { fontSize: 20, fontWeight: "800", color: '#111827', marginBottom: 8 },
-  modalText: { textAlign: "center", color: "#6B7280", marginBottom: 16, paddingHorizontal: 10 },
-  modalPrice: { fontSize: 24, fontWeight: "800", color: "#4F46E5", marginBottom: 8 },
-  modalSavingBadge: { backgroundColor: '#DCFCE7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginBottom: 24 },
-  modalSavingText: { color: '#166534', fontWeight: '700', fontSize: 12 },
-  modalActions: { flexDirection: "row", gap: 12, width: "100%" },
-  modalCancel: { flex: 1, padding: 14, borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 12, alignItems: "center" },
-  modalConfirm: { flex: 1, padding: 14, backgroundColor: "#4F46E5", borderRadius: 12, alignItems: "center" },
-  modalCancelText: { color: "#6B7280", fontWeight: "600" },
-  modalConfirmText: { color: "#FFF", fontWeight: "600" },
 });
 
 export default CourseDetailsScreen;

@@ -1,9 +1,21 @@
 import React from "react"
-import { View, Text, TouchableOpacity, Animated } from "react-native"
+import { View, Text, TouchableOpacity, Animated, ImageBackground, StyleSheet } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
-import LinearGradient from "react-native-linear-gradient"
 import { createScaledSheet } from "../../utils/scaledStyles"
-import { ITEM_WIDTH, ITEM_SPACING } from "./HomeCarousel"
+import { ITEM_WIDTH, ITEM_SPACING } from "../../constants/Dimensions"
+
+const getCarouselBackgroundImage = (type: string) => {
+    switch (type) {
+        case "FLASHSALE":
+            return require("../../assets/images/ImagePlacehoderCourse.png")
+        case "DEPOSIT":
+            return require("../../assets/images/ImagePlacehoderCourse.png")
+        case "NEW":
+            return require("../../assets/images/ImagePlacehoderCourse.png")
+        default:
+            return require("../../assets/images/ImagePlacehoderCourse.png")
+    }
+}
 
 interface CarouselItem {
     id: string
@@ -12,7 +24,7 @@ interface CarouselItem {
     subtitle: string
     color: string
     icon: string
-    isClone?: boolean
+    isClone?: boolean // Giữ lại interface, nhưng không dùng isClone trong logic
 }
 
 interface HomeCarouselItemProps {
@@ -22,25 +34,24 @@ interface HomeCarouselItemProps {
     onPress: (item: CarouselItem) => void
 }
 
-const getGradientColors = (baseColor: string) => {
-    switch (baseColor) {
-        case "#4F46E5":
-            return ["#6366F1", "#4F46E5"]
-        case "#059669":
-            return ["#10B981", "#059669"]
-        case "#DB2777":
-            return ["#F472B6", "#DB2777"]
-        default:
-            return ["#6B7280", "#4B5563"]
-    }
-}
-
 const HomeCarouselItem = ({ item, index, scrollX, onPress }: HomeCarouselItemProps) => {
-    const INPUT_RANGE = [(index - 1) * ITEM_WIDTH, index * ITEM_WIDTH, (index + 1) * ITEM_WIDTH]
-    const OUTPUT_RANGE_OPACITY = [0.5, 1, 0.5] // Item trước/sau mờ đi 50%
-    const OUTPUT_RANGE_SCALE = [0.95, 1, 0.95] // Item trước/sau thu nhỏ 5%
+    // Chiều rộng đầy đủ của item (bao gồm spacing/gap)
+    const ITEM_FULL_WIDTH = ITEM_WIDTH + ITEM_SPACING
 
-    // Ánh xạ độ mờ và tỉ lệ dựa trên vị trí cuộn
+    // INPUT_RANGE: Tính toán khoảng cuộn để item này được căn giữa hoàn hảo
+    // - ITEM_FULL_WIDTH: Item ở vị trí trước đó (bắt đầu mờ/nhỏ đi)
+    // 0: Item ở vị trí center-focus
+    // + ITEM_FULL_WIDTH: Item ở vị trí tiếp theo (kết thúc mờ/nhỏ đi)
+    const INPUT_RANGE = [
+        (index - 1) * ITEM_FULL_WIDTH,
+        index * ITEM_FULL_WIDTH,
+        (index + 1) * ITEM_FULL_WIDTH,
+    ]
+
+    // OUTPUT_RANGE: Giá trị khi item ở mỗi vị trí trong INPUT_RANGE
+    const OUTPUT_RANGE_OPACITY = [0.5, 1, 0.5]
+    const OUTPUT_RANGE_SCALE = [0.9, 1, 0.9] // Scale nhẹ khi không ở giữa
+
     const opacity = scrollX.interpolate({
         inputRange: INPUT_RANGE,
         outputRange: OUTPUT_RANGE_OPACITY,
@@ -53,7 +64,7 @@ const HomeCarouselItem = ({ item, index, scrollX, onPress }: HomeCarouselItemPro
         extrapolate: "clamp",
     })
 
-    const gradientColors = getGradientColors(item.color)
+    const backgroundImage = getCarouselBackgroundImage(item.type)
 
     return (
         <Animated.View
@@ -62,36 +73,34 @@ const HomeCarouselItem = ({ item, index, scrollX, onPress }: HomeCarouselItemPro
                 {
                     opacity,
                     transform: [{ scale }],
-                    // Margin Horizontal để tạo khoảng cách giữa các thẻ
+                    // Margin Horizontal để tạo khoảng cách giữa các item
                     marginHorizontal: ITEM_SPACING / 2,
                 },
             ]}
         >
             <TouchableOpacity
                 style={styles.touchable}
-                activeOpacity={1} // Đã dùng hiệu ứng scale nên dùng activeOpacity = 1
+                activeOpacity={0.9}
                 onPress={() => onPress(item)}
-                disabled={item.isClone}
+            // Bỏ disabled={item.isClone} vì không còn clone
             >
-                <LinearGradient
-                    colors={gradientColors}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
+                <ImageBackground
+                    source={backgroundImage}
+                    resizeMode="cover"
                     style={styles.card}
+                    imageStyle={styles.cardImage}
                 >
-                    <View style={styles.fireworksEffect} />
+                    <View style={styles.overlay} />
                     <View style={styles.textContainer}>
                         <View style={styles.badge}>
-                            <Text style={styles.badgeText}>{item.isClone ? "CLONE" : "HOT"}</Text>
+                            <Text style={styles.badgeText}>{"HOT"}</Text>
                         </View>
                         <Text style={styles.title}>{item.title}</Text>
                         <Text style={styles.subtitle}>{item.subtitle}</Text>
                     </View>
                     <Icon name={item.icon} size={60} color="rgba(255,255,255,0.3)" style={styles.icon} />
-                    <View style={styles.arrowBtn}>
-                        <Icon name="arrow-forward" size={20} color={gradientColors[1]} />
-                    </View>
-                </LinearGradient>
+                    {/* Đã loại bỏ View styles.arrowBtn */}
+                </ImageBackground>
             </TouchableOpacity>
         </Animated.View>
     )
@@ -101,33 +110,30 @@ const styles = createScaledSheet({
     wrapper: {
         width: ITEM_WIDTH,
         height: 140,
+        // marginHorizontal đã chuyển lên Animated.View
     },
     touchable: {
         width: "100%",
         height: "100%",
         borderRadius: 16,
         overflow: "hidden",
+        backgroundColor: "#E5E7EB",
     },
     card: {
-        width: "100%",
-        height: "100%",
-        borderRadius: 16,
+        flex: 1,
         padding: 20,
         flexDirection: "row",
         justifyContent: "space-between",
         alignItems: "center",
         overflow: "hidden",
     },
-    fireworksEffect: {
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        opacity: 0.15,
-        backgroundColor: "white",
+    cardImage: {
         borderRadius: 16,
-        transform: [{ scale: 1.1 }],
+    },
+    overlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.1)',
+        borderRadius: 16,
     },
     textContainer: {
         flex: 1,
@@ -163,15 +169,7 @@ const styles = createScaledSheet({
         transform: [{ rotate: "-15deg" }],
         zIndex: 1,
     },
-    arrowBtn: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: "#fff",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 2,
-    },
 })
+
 
 export default HomeCarouselItem

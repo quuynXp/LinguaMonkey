@@ -5,28 +5,25 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeProgressResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Badge;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.entity.UserBadge;
+import com.connectJPA.LinguaVietnameseApp.entity.id.UserBadgeId;
 import com.connectJPA.LinguaVietnameseApp.enums.CriteriaType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
-import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.BadgeMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.CachePut;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.dao.DataAccessException;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-
 
 @Service
 @RequiredArgsConstructor
@@ -40,71 +37,51 @@ public class BadgeServiceImpl implements BadgeService {
     private final UserDailyChallengeRepository userDailyChallengeRepository;
 
     @Override
-    public Page<BadgeResponse> getAllBadges(String badgeName, Pageable pageable) {
-        try {
-            Page<Badge> badges = badgeRepository.findByBadgeNameContainingAndIsDeletedFalse(badgeName, pageable);
-            return badges.map(badgeMapper::toResponse);
-        } catch (IllegalArgumentException e) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        } catch (DataAccessException e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        } catch (Exception e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+    public Page<BadgeResponse> getAllBadges(String badgeName, String languageCode, Pageable pageable) {
+        Page<Badge> badges = badgeRepository.findByBadgeNameContainingAndLanguageCodeAndIsDeletedFalse(badgeName, languageCode, pageable);
+        return badges.map(badgeMapper::toResponse);
     }
-
 
     @Override
     @Transactional(readOnly = true)
     public List<BadgeProgressResponse> getBadgeProgressForUser(UUID userId) {
-        // 1. Lấy thông tin cơ bản của user (để lấy streak, exp)
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // 2. Lấy danh sách các huy hiệu user đã sở hữu (để check 'isAchieved')
+        String userLang = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
+
         Set<UUID> achievedBadgeIds = userBadgeRepository.findBadgesByUserId(userId)
                 .stream()
                 .map(Badge::getBadgeId)
                 .collect(Collectors.toSet());
 
-        // 3. Lấy tất cả huy hiệu có trong hệ thống
-        List<Badge> allBadges = badgeRepository.findAllByIsDeletedFalse();
+        // Chỉ lấy Badge đúng ngôn ngữ của user
+        List<Badge> allBadges = badgeRepository.findAllByLanguageCodeAndIsDeletedFalse(userLang);
 
-        // 4. Tính toán "live" các chỉ số (vì không có UserStats)
         long lessonsCompleted = lessonProgressRepository.countById_UserIdAndCompletedAtIsNotNull(userId);
         long friendsMade = friendshipRepository.countAcceptedFriends(userId);
         long challengesCompleted = userDailyChallengeRepository.countByIdUserIdAndIsCompletedTrue(userId);
         int userExp = user.getExp();
         int userStreak = user.getStreak();
 
-        // 5. Xây dựng danh sách tiến độ
         return allBadges.stream().map(badge -> {
             boolean isAchieved = achievedBadgeIds.contains(badge.getBadgeId());
             int currentUserProgress = 0;
-            CriteriaType criteriaType = badge.getCriteriaType();
             int threshold = badge.getCriteriaThreshold();
 
-            // 6. Ánh xạ criteria_type với chỉ số vừa tính
-            if (criteriaType != null) {
-                switch (criteriaType) {
-                    case CriteriaType.LESSONS_COMPLETED:
-                        currentUserProgress = (int) lessonsCompleted;
-                        break;
-                    case CriteriaType.LOGIN_STREAK:
-                        currentUserProgress = userStreak;
-                        break;
-                    case CriteriaType.FRIENDS_MADE:
-                        currentUserProgress = (int) friendsMade;
-                        break;
-                    case CriteriaType.DAILY_CHALLENGES_COMPLETED:
-                        currentUserProgress = (int) challengesCompleted;
-                        break;
-                    case CriteriaType.EXP_EARNED:
-                        currentUserProgress = userExp;
-                        break;
-                }
+            switch (badge.getCriteriaType()) {
+                case LESSONS_COMPLETED -> currentUserProgress = (int) lessonsCompleted;
+                case LOGIN_STREAK -> currentUserProgress = userStreak;
+                case FRIENDS_MADE -> currentUserProgress = (int) friendsMade;
+                case DAILY_CHALLENGES_COMPLETED -> currentUserProgress = (int) challengesCompleted;
+                case EXP_EARNED -> currentUserProgress = userExp;
             }
 
+            // Cap progress at threshold for UI consistency if not achieved yet
+            if (!isAchieved && currentUserProgress > threshold) {
+                currentUserProgress = threshold; 
+            }
+            // If already claimed (achieved), progress is max
             if (isAchieved) {
                 currentUserProgress = threshold;
             }
@@ -114,7 +91,7 @@ public class BadgeServiceImpl implements BadgeService {
                     badge.getBadgeName(),
                     badge.getDescription(),
                     badge.getImageUrl(),
-                    criteriaType,
+                    badge.getCriteriaType(),
                     threshold,
                     currentUserProgress,
                     isAchieved
@@ -123,88 +100,78 @@ public class BadgeServiceImpl implements BadgeService {
     }
 
     @Override
+    @Transactional
+    public void claimBadge(UUID userId, UUID badgeId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        
+        Badge badge = badgeRepository.findById(badgeId)
+                .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
+
+        // 1. Check if already claimed
+        if (userBadgeRepository.existsById(new UserBadgeId(badgeId, userId))) {
+            throw new RuntimeException("Badge already claimed!");
+        }
+
+        // 2. Verify criteria strictly (Anti-cheat)
+        long currentMetric = 0;
+        switch (badge.getCriteriaType()) {
+            case LESSONS_COMPLETED -> currentMetric = lessonProgressRepository.countById_UserIdAndCompletedAtIsNotNull(userId);
+            case LOGIN_STREAK -> currentMetric = user.getStreak();
+            case FRIENDS_MADE -> currentMetric = friendshipRepository.countAcceptedFriends(userId);
+            case DAILY_CHALLENGES_COMPLETED -> currentMetric = userDailyChallengeRepository.countByIdUserIdAndIsCompletedTrue(userId);
+            case EXP_EARNED -> currentMetric = user.getExp();
+        }
+
+        if (currentMetric < badge.getCriteriaThreshold()) {
+            throw new RuntimeException("Criteria not met yet!");
+        }
+
+        // 3. Create UserBadge
+        UserBadge userBadge = UserBadge.builder()
+                .id(new UserBadgeId(badgeId, userId))
+                .user(user)
+                .badge(badge)
+                .build();
+        userBadgeRepository.save(userBadge);
+
+        // 4. Give Rewards
+        user.setCoins(user.getCoins() + badge.getCoins());
+        userRepository.save(user);
+    }
+
+    @Override
     public BadgeResponse getBadgeById(UUID id) {
-        try {
-            Badge badge = badgeRepository.findByBadgeIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
-            return badgeMapper.toResponse(badge);
-        } catch (IllegalArgumentException e) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        } catch (DataAccessException e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        } catch (Exception e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        Badge badge = badgeRepository.findById(id).orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
+        return badgeMapper.toResponse(badge);
     }
 
     @Override
     @Transactional
-    //@CachePut(value = "badges", key = "#result.badgeId")
     public BadgeResponse createBadge(BadgeRequest request) {
-        try {
-            if (request == null) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            Badge badge = badgeMapper.toEntity(request);
-            badge.setDeleted(false);
-            badge = badgeRepository.save(badge);
-            return badgeMapper.toResponse(badge);
-        } catch (IllegalArgumentException e) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        } catch (DataAccessException e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        } catch (Exception e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        Badge badge = badgeMapper.toEntity(request);
+        return badgeMapper.toResponse(badgeRepository.save(badge));
     }
 
     @Override
     @Transactional
-    //@CachePut(value = "badges", key = "#id")
-    //@CacheEvict(value = "badges", allEntries = true)
     public BadgeResponse updateBadge(UUID id, BadgeRequest request) {
-        try {
-            if (request == null) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            Badge badge = badgeRepository.findByBadgeIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
-            badgeMapper.updateEntityFromRequest(request, badge);
-            badge = badgeRepository.save(badge);
-            return badgeMapper.toResponse(badge);
-        } catch (IllegalArgumentException e) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        } catch (DataAccessException e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        } catch (Exception e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        Badge badge = badgeRepository.findById(id).orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
+        badgeMapper.updateEntityFromRequest(request, badge);
+        return badgeMapper.toResponse(badgeRepository.save(badge));
     }
 
     @Override
     @Transactional
-    //@CacheEvict(value = "badges", key = "#id", allEntries = true)
     public void deleteBadge(UUID id) {
-        try {
-            Badge badge = badgeRepository.findByBadgeIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
-            badge.setDeleted(true);
-            badgeRepository.save(badge);
-            badgeRepository.softDeleteBadgeByBadgeId(id);
-        } catch (IllegalArgumentException e) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        } catch (DataAccessException e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        } catch (Exception e) {
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        Badge badge = badgeRepository.findById(id).orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
+        badge.setDeleted(true);
+        badgeRepository.save(badge);
     }
 
     @Override
     public List<BadgeResponse> getBadgesForUser(UUID userId) {
-        List<Badge> badges = userBadgeRepository.findBadgesByUserId(userId);
-        return badges.stream()
-                .map(b -> new BadgeResponse(b.getBadgeId(), b.getBadgeName(), b.getDescription(), b.getImageUrl()))
-                .collect(Collectors.toList());
+        // TODO Auto-generated method stub
+        throw new UnsupportedOperationException("Unimplemented method 'getBadgesForUser'");
     }
 }

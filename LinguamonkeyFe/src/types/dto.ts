@@ -924,6 +924,8 @@ export interface CoupleResponse {
     anniversary: string; // date
     sharedAvatarUrl: string;
     note: string;
+    user1?: UserResponse;
+    user2?: UserResponse;
 }
 
 export interface CourseDiscountResponse {
@@ -987,6 +989,9 @@ export interface CourseResponse {
     creatorName?: string;
     creatorAvatar?: string;
     difficultyLevel?: Enums.DifficultyLevel;
+    // Added missing fields that exist in API
+    averageRating?: number;
+    reviewCount?: number;
 }
 
 export interface CourseReviewResponse {
@@ -996,10 +1001,13 @@ export interface CourseReviewResponse {
     rating: number;
     comment: string;
     likeCount: number;
+    dislikeCount: number;
     topReplies: CourseReviewResponse[] | null;
     replyCount: number;
     userFullname: string;
     userNickname: string;
+    isLiked: boolean;
+    isDisliked: boolean;
     userAvatar: string;
     isDeleted: boolean;
     reviewedAt: string;
@@ -1115,6 +1123,9 @@ export interface FriendshipResponse {
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
+    id: string;
+    requester?: UserResponse;
+    receiver?: UserResponse;
 }
 
 export interface GrammarExerciseResponse {
@@ -1370,6 +1381,8 @@ export interface MemberResponse {
     fullname: string;
     nickname: string;
     avatarUrl: string;
+    isAdmin: boolean;
+    nickNameInRoom: string;
     role: string;
     isOnline: boolean;
 }
@@ -1678,9 +1691,12 @@ export interface RoomResponse {
     roomCode: string;
     content: string;
     description: string;
+    avatarUrl: string;
     memberCount: number;
     maxMembers: number;
     purpose: Enums.RoomPurpose;
+    lastMessageTime: string;
+    lastMessage: string;
     roomType: Enums.RoomType;
     status: Enums.RoomStatus;
     createdAt: string;
@@ -1959,17 +1975,18 @@ export interface ActivityCompletionResponse {
 }
 
 export interface UserDailyChallengeResponse {
-    userId: string;
+    id: any;
     challengeId: string;
     title: string;
     description: string;
     progress: number;
+    targetAmount: number;
+    status: 'IN_PROGRESS' | 'CAN_CLAIM' | 'CLAIMED';
+    period: 'DAILY' | 'WEEKLY';
     expReward: number;
     rewardCoins: number;
-    assignedAt: string;
-    completedAt?: string;
+    screenRoute?: string;
     completed: boolean;
-    challengeType?: Enums.ChallengeType;
 }
 
 export interface UserProfileResponse {

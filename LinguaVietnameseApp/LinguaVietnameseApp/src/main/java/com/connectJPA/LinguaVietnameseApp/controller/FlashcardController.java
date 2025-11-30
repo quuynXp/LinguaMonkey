@@ -32,8 +32,10 @@ public class FlashcardController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String query,
+            @RequestParam(required = false) Boolean isPublic, // Nhận param isPublic
             @RequestHeader("Authorization") String authorization) {
         UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        // Mặc định logic trong Service đã xử lý việc lấy (Owner OR Public)
         Page<FlashcardResponse> result = flashcardService.getFlashcardsByLesson(userId, lessonId, query, page, size);
         return AppApiResponse.<Page<FlashcardResponse>>builder()
                 .code(200)

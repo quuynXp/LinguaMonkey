@@ -63,9 +63,9 @@ public class SearchController {
         return notifications.map(notificationMapper::toResponse);
     }
 
-    @GetMapping("/memorizations")
-    public Page<MemorizationResponse> searchMemorizations(@RequestParam String keyword, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
-        Page<UserMemorization> memorizations = userMemorizationService.searchMemorizations(keyword, page, size, null);
-        return memorizations.map(userMemorizationMapper::toResponse);
-    }
+    // @GetMapping("/memorizations")
+    // public Page<MemorizationResponse> searchMemorizations(@RequestParam String keyword, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
+    //     Page<MemorizationResponse> memorizations = userMemorizationService.searchMemorizations(keyword, page, size, null);
+    //     return memorizations.map(userMemorizationMapper::toResponse);
+    // }
 }

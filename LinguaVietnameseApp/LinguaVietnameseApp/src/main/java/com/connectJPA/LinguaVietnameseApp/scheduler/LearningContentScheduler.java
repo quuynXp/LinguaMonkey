@@ -131,52 +131,52 @@ public class LearningContentScheduler {
     /**
      * Chạy mỗi ngày lúc 1 giờ sáng để gán Thử thách hàng ngày mới.
      */
-    @Scheduled(cron = "0 0 1 * * ?") // 1:00 AM hàng ngày
-    @Transactional
-    public void assignDailyChallenges() {
-        final int CHALLENGE_COUNT = 3; // Gán 3 thử thách mỗi ngày
-        List<User> users = userRepository.findAllByIsDeletedFalse();
-        List<DailyChallenge> challenges = dailyChallengeRepository.findRandomChallenges(CHALLENGE_COUNT);
+    // @Scheduled(cron = "0 0 1 * * ?") // 1:00 AM hàng ngày
+    // @Transactional
+    // public void assignDailyChallenges() {
+    //     final int CHALLENGE_COUNT = 3; // Gán 3 thử thách mỗi ngày
+    //     List<User> users = userRepository.findAllByIsDeletedFalse();
+    //     List<DailyChallenge> challenges = dailyChallengeRepository.findRandomChallenges(CHALLENGE_COUNT);
 
-        if (challenges.isEmpty() || users.isEmpty()) {
-            log.warn("No challenges or users found for daily assignment.");
-            return;
-        }
+    //     if (challenges.isEmpty() || users.isEmpty()) {
+    //         log.warn("No challenges or users found for daily assignment.");
+    //         return;
+    //     }
 
-        log.info("Assigning {} daily challenges to {} users.", challenges.size(), users.size());
-        List<UserDailyChallenge> newAssignments = new ArrayList<>();
-        LocalDate today = LocalDate.now();
+    //     log.info("Assigning {} daily challenges to {} users.", challenges.size(), users.size());
+    //     List<UserDailyChallenge> newAssignments = new ArrayList<>();
+    //     LocalDate today = LocalDate.now();
 
-        for (User user : users) {
-            int stack = 1;
-            for (DailyChallenge challenge : challenges) {
-                UserDailyChallenge assignment = new UserDailyChallenge(
-                        user.getUserId(),
-                        challenge.getId(),
-                        today,
-                        stack++,
-                        challenge.getBaseExp(),
-                        false,
-                        challenge.getRewardCoins(),
-                        0
-                );
-                newAssignments.add(assignment);
-            }
+    //     for (User user : users) {
+    //         int stack = 1;
+    //         for (DailyChallenge challenge : challenges) {
+    //             UserDailyChallenge assignment = new UserDailyChallenge(
+    //                     user.getUserId(),
+    //                     challenge.getId(),
+    //                     today,
+    //                     stack++,
+    //                     challenge.getBaseExp(),
+    //                     false,
+    //                     challenge.getRewardCoins(),
+    //                     0
+    //             );
+    //             newAssignments.add(assignment);
+    //         }
 
-            // Gửi thông báo i18n
-            String langCode = user.getNativeLanguageCode();
-            String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE", langCode);
+    //         // Gửi thông báo i18n
+    //         String langCode = user.getNativeLanguageCode();
+    //         String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE", langCode);
 
-            NotificationRequest request = NotificationRequest.builder()
-                    .userId(user.getUserId())
-                    .title(message[0])
-                    .content(String.format(message[1], challenges.size()))
-                    .type("DAILY_CHALLENGE")
-                    .payload("{\"screen\":\"Home\", \"tab\":\"Challenges\"}")
-                    .build();
-            notificationService.createPushNotification(request);
-        }
+    //         NotificationRequest request = NotificationRequest.builder()
+    //                 .userId(user.getUserId())
+    //                 .title(message[0])
+    //                 .content(String.format(message[1], challenges.size()))
+    //                 .type("DAILY_CHALLENGE")
+    //                 .payload("{\"screen\":\"Home\", \"tab\":\"Challenges\"}")
+    //                 .build();
+    //         notificationService.createPushNotification(request);
+    //     }
 
-        userDailyChallengeRepository.saveAll(newAssignments);
-    }
+    //     userDailyChallengeRepository.saveAll(newAssignments);
+    // }
 }

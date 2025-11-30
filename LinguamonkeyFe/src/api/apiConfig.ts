@@ -8,24 +8,23 @@ const IOS_SIMULATOR_URL = process.env.EXPO_PUBLIC_IOS_SIMULATOR_URL || 'http://l
 const getHost = (): string => {
 
     if (__DEV__) {
-        if (Platform.OS === 'android' && Constants.isDevice) {
-            return ADB_REVERSE_URL; // Default: 'http://localhost:8000' (must be paired with adb reverse)
-        }
-
         const hostUri = Constants.expoConfig?.hostUri;
         if (hostUri) {
             const ip = hostUri.split(':')[0];
-            return `http://${ip}:8000`; // Connects to API on the same IP as the Metro Bundler on port 8000
+            return `http://${ip}:8000`;
+        }
+
+        if (Platform.OS === 'android' && Constants.isDevice) {
+            return ADB_REVERSE_URL;
         }
 
         if (Platform.OS === 'android') {
-            return ANDROID_EMULATOR_URL; // Default: 'http://10.0.2.2:8000'
+            return ANDROID_EMULATOR_URL;
         }
 
-        return IOS_SIMULATOR_URL; // Default: 'http://localhost:8000'
+        return IOS_SIMULATOR_URL;
     }
 
-    // Case 5: Production
     return 'https://api.linguamonkey.com';
 };
 

@@ -38,4 +38,6 @@ Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pag
     RoomResponse findOrCreateQuizRoom(UUID userId);
 
     List<RoomResponse> getAiChatHistory(UUID userId);
+
+    void leaveRoom(UUID roomId, UUID targetAdminId);
 }

@@ -21,39 +21,29 @@ public class DailyChallengeController {
     private final DailyChallengeService dailyChallengeService;
     private final UserDailyChallengeMapper userDailyChallengeMapper;
 
-    @Operation(summary = "Get today's challenges for user")
+    @Operation(summary = "Get all challenges for today (Daily + Weekly)")
     @GetMapping("/today")
     public AppApiResponse<List<UserDailyChallengeResponse>> getToday(@RequestParam UUID userId) {
         List<UserDailyChallenge> entities = dailyChallengeService.getTodayChallenges(userId);
+        
         List<UserDailyChallengeResponse> response = entities.stream()
                 .map(userDailyChallengeMapper::toResponse)
                 .collect(Collectors.toList());
 
         return AppApiResponse.<List<UserDailyChallengeResponse>>builder()
                 .code(200)
-                .message("Successfully retrieved daily challenges")
+                .message("Successfully retrieved challenges")
                 .result(response)
                 .build();
     }
 
-    @Operation(summary = "Assign new challenge manually")
-    @PostMapping("/assign")
-    public AppApiResponse<UserDailyChallengeResponse> assign(@RequestParam UUID userId) {
-        UserDailyChallenge entity = dailyChallengeService.assignChallenge(userId);
-        return AppApiResponse.<UserDailyChallengeResponse>builder()
-                .code(200)
-                .message("Challenge assigned successfully")
-                .result(userDailyChallengeMapper.toResponse(entity))
-                .build();
-    }
-
-    @Operation(summary = "Complete a challenge")
-    @PostMapping("/complete/{challengeId}")
-    public AppApiResponse<Void> complete(@RequestParam UUID userId, @PathVariable UUID challengeId) {
-        dailyChallengeService.completeChallenge(userId, challengeId);
+    @Operation(summary = "Claim reward for a completed challenge")
+    @PostMapping("/claim/{challengeId}")
+    public AppApiResponse<Void> claimReward(@RequestParam UUID userId, @PathVariable UUID challengeId) {
+        dailyChallengeService.claimReward(userId, challengeId);
         return AppApiResponse.<Void>builder()
                 .code(200)
-                .message("Challenge completed successfully")
+                .message("Reward claimed successfully")
                 .build();
     }
 }

@@ -31,20 +31,43 @@ public class RoomController {
     private final RoomService roomService;
     private final MessageSource messageSource;
 
-    @Operation(summary = "Get all rooms (Public Lobby)", description = "Retrieve rooms for the lobby list")
+    @Operation(summary = "Get Joined Rooms (Inbox)", description = "Gets rooms user is in, sorted by latest activity. 1-1 rooms show partner info.")
+    @GetMapping("/joined")
+    public AppApiResponse<Page<RoomResponse>> getJoinedRooms(
+            @RequestParam(required = false) RoomPurpose purpose,
+            @RequestParam UUID userId,
+            Pageable pageable) {
+        Page<RoomResponse> rooms = roomService.getJoinedRooms(userId, purpose, pageable);
+        return AppApiResponse.<Page<RoomResponse>>builder()
+                .code(200)
+                .result(rooms)
+                .build();
+    }
+
+    @Operation(summary = "Get Public Rooms (Lobby)", description = "Gets public rooms with creator info. Excludes AI chats.")
     @GetMapping
     public AppApiResponse<Page<RoomResponse>> getAllRooms(
             @RequestParam(required = false) String roomName,
             @RequestParam(required = false) UUID creatorId,
             @RequestParam(required = false) RoomPurpose purpose,
             @RequestParam(required = false) RoomType roomType,
-            Pageable pageable,
-            Locale locale) {
+            Pageable pageable) {
         Page<RoomResponse> rooms = roomService.getAllRooms(roomName, creatorId, purpose, roomType, pageable);
         return AppApiResponse.<Page<RoomResponse>>builder()
                 .code(200)
-                .message(messageSource.getMessage("room.list.success", null, locale))
                 .result(rooms)
+                .build();
+    }
+
+    @Operation(summary = "Leave Room / Transfer Admin", description = "User leaves room. If Admin, assigns new admin (random or target). If last member, deletes room.")
+    @PostMapping("/{id}/leave")
+    public AppApiResponse<Void> leaveRoom(
+            @PathVariable UUID id,
+            @RequestParam(required = false) UUID targetAdminId) {
+        roomService.leaveRoom(id, targetAdminId);
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message("Left room successfully")
                 .build();
     }
 
@@ -61,20 +84,20 @@ public class RoomController {
                 .build();
     }
 
-    @Operation(summary = "Get Joined Rooms (My Inbox)", description = "Get rooms the current user is a member of (Private, AI, etc.)")
-    @GetMapping("/joined")
-    public AppApiResponse<Page<RoomResponse>> getJoinedRooms(
-            @RequestParam(required = false) RoomPurpose purpose,
-            Pageable pageable,
-            Locale locale) {
-        UUID userId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
-        Page<RoomResponse> rooms = roomService.getJoinedRooms(userId, purpose, pageable);
-        return AppApiResponse.<Page<RoomResponse>>builder()
-                .code(200)
-                .message(messageSource.getMessage("room.joined_list.success", null, locale))
-                .result(rooms)
-                .build();
-    }
+//     @Operation(summary = "Get Joined Rooms (My Inbox)", description = "Get rooms the current user is a member of (Private, AI, etc.)")
+//     @GetMapping("/joined")
+//     public AppApiResponse<Page<RoomResponse>> getJoinedRooms(
+//             @RequestParam(required = false) RoomPurpose purpose,
+//             Pageable pageable,
+//             Locale locale) {
+//         UUID userId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
+//         Page<RoomResponse> rooms = roomService.getJoinedRooms(userId, purpose, pageable);
+//         return AppApiResponse.<Page<RoomResponse>>builder()
+//                 .code(200)
+//                 .message(messageSource.getMessage("room.joined_list.success", null, locale))
+//                 .result(rooms)
+//                 .build();
+//     }
 
     @Operation(summary = "Join Room", description = "Join a room using Room ID or 6-digit Code, with optional password")
     @PostMapping("/join")

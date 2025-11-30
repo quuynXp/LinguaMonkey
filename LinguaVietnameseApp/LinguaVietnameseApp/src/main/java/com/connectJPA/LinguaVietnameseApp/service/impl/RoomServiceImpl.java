@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.JoinRoomRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomMemberRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.RoomRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.MemberResponse;
@@ -9,6 +10,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.RoomMemberId;
+import com.connectJPA.LinguaVietnameseApp.enums.NotificationType;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomRole;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
@@ -16,9 +18,11 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.RoomMapper;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.ChatMessageRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,23 +47,285 @@ public class RoomServiceImpl implements RoomService {
     private final RoomMemberRepository roomMemberRepository;
     private final UserRepository userRepository;
     private final RoomMapper roomMapper;
+    private final ChatMessageRepository chatMessageRepository;
+    private final NotificationService notificationService;
 
+   @Override
+    @Transactional(readOnly = true)
+    public Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pageable) {
+        // Fetch rooms user is in (excluding AI, sorted by updatedAt)
+        Page<Room> rooms = roomRepository.findJoinedRoomsExcludingAi(userId, purpose, pageable);
+
+        return rooms.map(room -> {
+            RoomResponse response = roomMapper.toResponse(room);
+            long memberCount = roomRepository.countMembersByRoomId(room.getRoomId());
+            response.setMemberCount((int) memberCount);
+
+            // Logic to format 1-1 Private Chat vs Group Chat
+            if (room.getRoomType() == RoomType.PRIVATE) {
+                // Find the "Other" user
+                List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(room.getRoomId());
+                Optional<RoomMember> partnerOpt = members.stream()
+                        .filter(m -> !m.getId().getUserId().equals(userId))
+                        .findFirst();
+
+                if (partnerOpt.isPresent()) {
+                    User partner = partnerOpt.get().getUser();
+                    response.setRoomName(partner.getNickname() != null ? partner.getNickname() : partner.getFullname());
+                    response.setAvatarUrl(partner.getAvatarUrl());
+                } else {
+                    // Fallback if other user left or glitch
+                    response.setRoomName("Unknown User");
+                }
+            } else {
+                // Group Chat: Use Room Name and Creator Avatar/Default Icon
+                if (response.getRoomName() == null) response.setRoomName("Group Chat");
+                // For group, avatarUrl could be a specific group image field if you added one, 
+                // otherwise fallback to creator or null
+                userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
+                        .ifPresent(creator -> response.setCreatorAvatarUrl(creator.getAvatarUrl()));
+            }
+
+            // Fetch Last Message for Preview
+            chatMessageRepository.findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(room.getRoomId())
+                    .ifPresent(msg -> {
+                        response.setLastMessage(msg.getContent());
+                        response.setLastMessageTime(msg.getId().getSentAt());
+                    });
+
+            return response;
+        });
+    }
 
     @Override
     @Transactional(readOnly = true)
-    public Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pageable) {
-        try {
-            Page<Room> rooms = roomRepository.findRoomsByMemberUserId(userId, purpose, pageable);
-            return rooms.map(room -> {
-                RoomResponse response = roomMapper.toResponse(room);
-                long count = roomRepository.countMembersByRoomId(room.getRoomId());
-                response.setMemberCount((int) count);
-                return response;
-            });
-        } catch (Exception e) {
-            log.error("Error fetching joined rooms for user {}: {}", userId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+    public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
+        // Public Lobby logic
+        Page<Room> rooms = roomRepository.findPublicRooms(roomName, creatorId, purpose, roomType, pageable);
+
+        return rooms.map(room -> {
+            RoomResponse response = roomMapper.toResponse(room);
+            long count = roomRepository.countMembersByRoomId(room.getRoomId());
+            response.setMemberCount((int) count);
+
+            userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
+                    .ifPresent(user -> {
+                        response.setCreatorName(StringUtils.hasText(user.getNickname()) ? user.getNickname() : user.getFullname());
+                        response.setCreatorAvatarUrl(user.getAvatarUrl());
+                    });
+
+            return response;
+        });
+    }
+
+    @Override
+    @Transactional
+    public RoomResponse createRoom(RoomRequest request) {
+        User creator = userRepository.findByUserIdAndIsDeletedFalse(request.getCreatorId())
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        Room room = roomMapper.toEntity(request);
+        room.setRoomCode(generateUniqueRoomCode());
+        room.setUpdatedAt(OffsetDateTime.now()); // Set initial update time
+        room = roomRepository.save(room);
+
+        RoomMember member = RoomMember.builder()
+                .id(new RoomMemberId(room.getRoomId(), request.getCreatorId()))
+                .room(room)
+                .user(creator)
+                .role(RoomRole.ADMIN)
+                .isAdmin(true)
+                .joinedAt(OffsetDateTime.now())
+                .build();
+        roomMemberRepository.save(member);
+
+        return roomMapper.toResponse(room);
+    }
+
+    @Override
+    @Transactional
+    public RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2) {
+        Optional<Room> existingRoom = roomRepository.findPrivateRoomBetweenUsers(userId1, userId2);
+        if (existingRoom.isPresent()) {
+            return roomMapper.toResponse(existingRoom.get());
         }
+
+        // Create new Private Room
+        User user1 = userRepository.findByUserIdAndIsDeletedFalse(userId1).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        User user2 = userRepository.findByUserIdAndIsDeletedFalse(userId2).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        Room room = Room.builder()
+                .roomName("Private") // Name is dynamic in getJoinedRooms, placeholder here
+                .creatorId(userId1) // User A is creator
+                .maxMembers(2)
+                .purpose(RoomPurpose.PRIVATE_CHAT)
+                .roomType(RoomType.PRIVATE)
+                .roomCode(generateUniqueRoomCode())
+                .isDeleted(false)
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .build();
+
+        room = roomRepository.save(room);
+
+        // Add User 1 (Admin/Creator)
+        roomMemberRepository.save(RoomMember.builder()
+                .id(new RoomMemberId(room.getRoomId(), userId1))
+                .room(room)
+                .user(user1)
+                .role(RoomRole.ADMIN)
+                .isAdmin(true)
+                .joinedAt(OffsetDateTime.now())
+                .build());
+
+        // Add User 2 (Member)
+        roomMemberRepository.save(RoomMember.builder()
+                .id(new RoomMemberId(room.getRoomId(), userId2))
+                .room(room)
+                .user(user2)
+                .role(RoomRole.MEMBER)
+                .isAdmin(false)
+                .joinedAt(OffsetDateTime.now())
+                .build());
+
+        return roomMapper.toResponse(room);
+    }
+
+    @Override
+    @Transactional
+    public void leaveRoom(UUID roomId, UUID targetAdminId) {
+        UUID currentUserId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
+        Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+
+        RoomMember currentMember = roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, currentUserId)
+                .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
+
+        // Soft delete current member
+        roomMemberRepository.softDeleteByIdRoomIdAndIdUserId(roomId, currentUserId);
+
+        // Check remaining members
+        List<RoomMember> remainingMembers = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(roomId);
+
+        if (remainingMembers.isEmpty()) {
+            // No one left, delete room
+            roomRepository.softDeleteByRoomId(roomId);
+            return;
+        }
+
+        // Handle Admin Transfer
+        if (Boolean.TRUE.equals(currentMember.getIsAdmin())) {
+            RoomMember newAdmin = null;
+
+            if (targetAdminId != null) {
+                // Try to assign to specific user
+                newAdmin = remainingMembers.stream()
+                        .filter(m -> m.getId().getUserId().equals(targetAdminId))
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            if (newAdmin == null) {
+                // Randomly assign to first available member
+                Collections.shuffle(remainingMembers);
+                newAdmin = remainingMembers.get(0);
+            }
+
+            newAdmin.setIsAdmin(true);
+            newAdmin.setRole(RoomRole.ADMIN);
+            roomMemberRepository.save(newAdmin);
+
+            // Update room creator ID to new admin
+            room.setCreatorId(newAdmin.getId().getUserId());
+            roomRepository.save(room);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void addRoomMembers(UUID roomId, List<RoomMemberRequest> memberRequests) {
+        Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+
+        // Validation: Only Admin/Creator
+        UUID currentUserId = UUID.fromString(SecurityContextHolder.getContext().getAuthentication().getName());
+        if (!room.getCreatorId().equals(currentUserId)) {
+             // In complex groups, we might check RoomMember.isAdmin instead of just CreatorId
+             RoomMember requester = roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, currentUserId)
+                     .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
+             if(!Boolean.TRUE.equals(requester.getIsAdmin())) {
+                 throw new AppException(ErrorCode.UNAUTHORIZED);
+             }
+        }
+
+        long currentCount = roomMemberRepository.countByIdRoomIdAndIsDeletedFalse(roomId);
+        if (currentCount + memberRequests.size() > room.getMaxMembers()) {
+            throw new AppException(ErrorCode.EXCEEDS_MAX_MEMBERS);
+        }
+
+        for (RoomMemberRequest req : memberRequests) {
+            User user = userRepository.findByUserIdAndIsDeletedFalse(req.getUserId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+            // Check if already in room
+            if (roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(roomId, user.getUserId())) {
+                continue; 
+            }
+
+            RoomMember member = RoomMember.builder()
+                    .id(new RoomMemberId(roomId, user.getUserId()))
+                    .room(room)
+                    .user(user)
+                    .role(RoomRole.MEMBER)
+                    .isAdmin(false)
+                    .joinedAt(OffsetDateTime.now())
+                    .build();
+            roomMemberRepository.save(member);
+
+            // Send Notification
+            sendInviteNotification(user.getUserId(), room);
+        }
+    }
+
+    private void sendInviteNotification(UUID userId, Room room) {
+        NotificationRequest request = NotificationRequest.builder()
+                .userId(userId)
+                .title("Room Invitation")
+                .content("You have been added to room: " + room.getRoomName())
+                .type(NotificationType.SYSTEM.name())
+                .payload(String.format("{\"screen\":\"Chat\", \"roomId\":\"%s\"}", room.getRoomId()))
+                .build();
+        try {
+            notificationService.createPushNotification(request);
+        } catch (Exception e) {
+            log.warn("Failed to send invite notification to {}: {}", userId, e.getMessage());
+        }
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemberResponse> getRoomMembers(UUID roomId) {
+        List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId);
+
+        return members.stream().map(m -> {
+            User u = m.getUser();
+            // Priority: NickNameInRoom -> Nickname -> Fullname
+            String displayName = u.getFullname();
+            if (StringUtils.hasText(u.getNickname())) displayName = u.getNickname();
+            if (StringUtils.hasText(m.getNickNameInRom())) displayName = m.getNickNameInRom();
+
+            return MemberResponse.builder()
+                    .userId(u.getUserId())
+                    .fullname(u.getFullname())
+                    .nickname(displayName) // Priority logic applied here
+                    .nickNameInRoom(m.getNickNameInRom())
+                    .avatarUrl(u.getAvatarUrl())
+                    .role(m.getRole().name())
+                    .isAdmin(Boolean.TRUE.equals(m.getIsAdmin()))
+                    .isOnline(u.isOnline())
+                    .joinedAt(m.getJoinedAt())
+                    .build();
+        }).collect(Collectors.toList());
     }
 
     @Override
@@ -90,83 +356,6 @@ public class RoomServiceImpl implements RoomService {
         }
     }
 
-    @Override
-    public Page<RoomResponse> getAllRooms(String roomName, UUID creatorId, RoomPurpose purpose, RoomType roomType, Pageable pageable) {
-        try {
-            if (pageable == null) {
-                throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            }
-            Page<Room> rooms = roomRepository.findByRoomNameContainingAndCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(
-                    roomName, creatorId, purpose, roomType, pageable);
-
-            return rooms.map(room -> {
-                RoomResponse response = roomMapper.toResponse(room);
-
-                long count = roomRepository.countMembersByRoomId(room.getRoomId());
-                response.setMemberCount((int) count);
-
-                userRepository.findByUserIdAndIsDeletedFalse(room.getCreatorId())
-                        .ifPresent(user -> response.setCreatorName(
-                                StringUtils.hasText(user.getNickname()) ? user.getNickname() : user.getFullname()
-                        ));
-
-                return response;
-            });
-        } catch (Exception e) {
-            log.error("Error while fetching all rooms: {}", e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Transactional
-    @Override
-    public RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2) {
-        Optional<Room> existingRoom = roomRepository.findPrivateRoomBetweenUsers(userId1, userId2);
-
-        if (existingRoom.isPresent()) {
-            return roomMapper.toResponse(existingRoom.get());
-        }
-
-        User user1 = userRepository.findByUserIdAndIsDeletedFalse(userId1)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        User user2 = userRepository.findByUserIdAndIsDeletedFalse(userId2)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-        Room room = Room.builder()
-                .roomName(user1.getNickname() + " & " + user2.getNickname())
-                .creatorId(userId1)
-                .maxMembers(2)
-                .purpose(RoomPurpose.PRIVATE_CHAT)
-                .roomType(RoomType.PRIVATE)
-                .roomCode(generateUniqueRoomCode())
-                .isDeleted(false)
-                .createdAt(OffsetDateTime.now())
-                .build();
-
-        room = roomRepository.save(room);
-
-        RoomMember member1 = RoomMember.builder()
-                .id(new RoomMemberId(room.getRoomId(), userId1))
-                .room(room)
-                .user(user1)
-                .role(RoomRole.ADMIN)
-                .isAdmin(true)
-                .joinedAt(OffsetDateTime.now())
-                .build();
-        roomMemberRepository.save(member1);
-
-        RoomMember member2 = RoomMember.builder()
-                .id(new RoomMemberId(room.getRoomId(), userId2))
-                .room(room)
-                .user(user2)
-                .role(RoomRole.MEMBER)
-                .isAdmin(false)
-                .joinedAt(OffsetDateTime.now())
-                .build();
-        roomMemberRepository.save(member2);
-
-        return roomMapper.toResponse(room);
-    }
 
     @Transactional
     @Override
@@ -177,12 +366,6 @@ public class RoomServiceImpl implements RoomService {
 
         RoomPurpose aiPurpose = RoomPurpose.AI_CHAT;
         RoomType aiRoomType = RoomType.PRIVATE;
-
-        // For "Create New Session", we might want to ignore existing and force create.
-        // But based on current simple logic, we find existing.
-        // If the frontend specifically requested a new session, that logic should be in controller 
-        // calling a specific create method or we modify this signature.
-        // Currently preserving existing logic.
 
         Room room = roomRepository.findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(
                 userId, aiPurpose, aiRoomType
@@ -222,37 +405,6 @@ public class RoomServiceImpl implements RoomService {
             return response;
         } catch (Exception e) {
             log.error("Error while fetching room by ID {}: {}", id, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Override
-    @Transactional
-    public RoomResponse createRoom(RoomRequest request) {
-        try {
-            if (request == null || request.getCreatorId() == null) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            User creator = userRepository.findByUserIdAndIsDeletedFalse(request.getCreatorId())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
-            Room room = roomMapper.toEntity(request);
-            room.setRoomCode(generateUniqueRoomCode());
-            room = roomRepository.save(room);
-
-            RoomMember member = RoomMember.builder()
-                    .id(new RoomMemberId(room.getRoomId(), request.getCreatorId()))
-                    .room(room)
-                    .user(creator)
-                    .role(RoomRole.ADMIN)
-                    .isAdmin(true)
-                    .joinedAt(OffsetDateTime.now())
-                    .build();
-            roomMemberRepository.save(member);
-
-            return roomMapper.toResponse(room);
-        } catch (Exception e) {
-            log.error("Error while creating room: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -360,80 +512,45 @@ public class RoomServiceImpl implements RoomService {
         }
     }
 
-    @Override
-    @Transactional(readOnly = true)
-    public List<MemberResponse> getRoomMembers(UUID roomId) {
-        try {
-            if (!roomRepository.existsById(roomId)) {
-                throw new AppException(ErrorCode.ROOM_NOT_FOUND);
-            }
+    // @Override
+    // @Transactional(readOnly = true)
+    // public List<MemberResponse> getRoomMembers(UUID roomId) {
+    //     try {
+    //         if (!roomRepository.existsById(roomId)) {
+    //             throw new AppException(ErrorCode.ROOM_NOT_FOUND);
+    //         }
 
-            List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId);
+    //         List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId);
 
-            return members.stream()
-                    .map(member -> {
-                        User user = member.getUser();
-                        if (user == null || user.isDeleted()) {
-                            log.warn("RoomMember with id {} references a null or deleted user {}", member.getId(), member.getId().getUserId());
-                            return null;
-                        }
+    //         return members.stream()
+    //                 .map(member -> {
+    //                     User user = member.getUser();
+    //                     if (user == null || user.isDeleted()) {
+    //                         log.warn("RoomMember with id {} references a null or deleted user {}", member.getId(), member.getId().getUserId());
+    //                         return null;
+    //                     }
 
-                        return MemberResponse.builder()
-                                .userId(user.getUserId())
-                                .nickname(user.getNickname())
-                                .fullname(user.getFullname())
-                                .avatarUrl(user.getAvatarUrl())
-                                .role(String.valueOf(member.getRole()))
-                                .isOnline(user.isOnline())
-                                .build();
-                    })
-                    .filter(Objects::nonNull)
-                    .collect(Collectors.toList());
+    //                     return MemberResponse.builder()
+    //                             .userId(user.getUserId())
+    //                             .nickname(user.getNickname())
+    //                             .fullname(user.getFullname())
+    //                             .avatarUrl(user.getAvatarUrl())
+    //                             .role(String.valueOf(member.getRole()))
+    //                             .isOnline(user.isOnline())
+    //                             .build();
+    //                 })
+    //                 .filter(Objects::nonNull)
+    //                 .collect(Collectors.toList());
 
-        } catch (AppException e) {
-            log.warn("Error fetching room members for room {}: {}", roomId, e.getMessage());
-            throw e;
-        } catch (Exception e) {
-            log.error("Error while fetching members for room ID {}: {}", roomId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
+    //     } catch (AppException e) {
+    //         log.warn("Error fetching room members for room {}: {}", roomId, e.getMessage());
+    //         throw e;
+    //     } catch (Exception e) {
+    //         log.error("Error while fetching members for room ID {}: {}", roomId, e.getMessage());
+    //         throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+    //     }
+    // }
 
-    @Override
-    @Transactional
-    public void addRoomMembers(UUID roomId, List<RoomMemberRequest> memberRequests) {
-        try {
-            Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
-                    .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-            if (room.getPurpose() != RoomPurpose.GROUP_CHAT) {
-                throw new AppException(ErrorCode.NOT_GROUP_CHAT);
-            }
-            String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
-            if (!room.getCreatorId().toString().equals(currentUserId)) {
-                throw new AppException(ErrorCode.NOT_ROOM_CREATOR);
-            }
-            long currentMembers = roomMemberRepository.countByIdRoomIdAndIsDeletedFalse(roomId);
-            if (currentMembers + memberRequests.size() > room.getMaxMembers()) {
-                throw new AppException(ErrorCode.EXCEEDS_MAX_MEMBERS);
-            }
-            for (RoomMemberRequest req : memberRequests) {
-                User user = userRepository.findByUserIdAndIsDeletedFalse(req.getUserId())
-                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-                RoomMember member = RoomMember.builder()
-                        .id(new RoomMemberId(roomId, req.getUserId()))
-                        .room(room)
-                        .user(user)
-                        .role(req.getRole() != null ? RoomRole.valueOf(req.getRole()) : RoomRole.MEMBER)
-                        .isAdmin(req.getRole() != null && RoomRole.valueOf(req.getRole()) == RoomRole.ADMIN)
-                        .joinedAt(OffsetDateTime.now())
-                        .build();
-                roomMemberRepository.save(member);
-            }
-        } catch (Exception e) {
-            log.error("Error while adding members to room ID {}: {}", roomId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
 
     @Override
     @Transactional

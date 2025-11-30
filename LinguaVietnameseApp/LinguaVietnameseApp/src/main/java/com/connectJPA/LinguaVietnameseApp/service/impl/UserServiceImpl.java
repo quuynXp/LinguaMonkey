@@ -119,6 +119,20 @@ public class UserServiceImpl implements UserService {
 
         notificationService.sendVipSuccessNotification(userId, true, planType);
     }
+
+    @Override
+    public Page<UserResponse> getSuggestedUsers(UUID userId, Pageable pageable) {
+        User currentUser = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        return userRepository.findSuggestedUsers(
+                userId,
+                currentUser.getCountry(),
+                currentUser.getNativeLanguageCode(),
+                currentUser.getAgeRange(),
+                pageable
+        ).map(userMapper::toResponse);
+    }
     
     private UserResponse mapUserToResponseWithAllDetails(User user) {
         if (user == null) {
@@ -1230,29 +1244,48 @@ public class UserServiceImpl implements UserService {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
 
-        Optional<UserFcmToken> tokenByValue = userFcmTokenRepository.findByFcmToken(request.getFcmToken());
+        if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
+            log.warn("Missing deviceId for user {}", request.getUserId());
+            throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+        }
 
-        if (tokenByValue.isPresent()) {
-            UserFcmToken token = tokenByValue.get();
-            token.setUserId(request.getUserId());
-            token.setDeviceId(request.getDeviceId());
-            userFcmTokenRepository.saveAndFlush(token);
-        } else {
-            Optional<UserFcmToken> existingDeviceToken = userFcmTokenRepository
-                    .findByUserIdAndDeviceId(request.getUserId(), request.getDeviceId());
-
-            if (existingDeviceToken.isPresent()) {
-                UserFcmToken token = existingDeviceToken.get();
-                token.setFcmToken(request.getFcmToken());
-                userFcmTokenRepository.saveAndFlush(token);
+        UUID userId = request.getUserId();
+        String fcmToken = request.getFcmToken();
+        String deviceId = request.getDeviceId();
+        
+        Optional<UserFcmToken> tokenConflict = userFcmTokenRepository.findByFcmToken(fcmToken);
+        if (tokenConflict.isPresent()) {
+            UserFcmToken conflictToken = tokenConflict.get();
+            if (!conflictToken.getUserId().equals(userId) || !conflictToken.getDeviceId().equals(deviceId)) {
+                userFcmTokenRepository.delete(conflictToken);
+                log.warn("Removed conflict FCM token {} from user {}/device {}", 
+                    fcmToken, conflictToken.getUserId(), conflictToken.getDeviceId());
             } else {
-                UserFcmToken newToken = UserFcmToken.builder()
-                        .userId(request.getUserId())
-                        .fcmToken(request.getFcmToken())
-                        .deviceId(request.getDeviceId())
-                        .build();
-                userFcmTokenRepository.saveAndFlush(newToken);
+                log.info("FCM token {} already registered for user {}/device {}. Skipping update.", fcmToken, userId, deviceId);
+                return;
             }
+        }
+        
+        Optional<UserFcmToken> existingTokenForDevice = userFcmTokenRepository
+                .findByUserIdAndDeviceId(userId, deviceId);
+
+        if (existingTokenForDevice.isPresent()) {
+            UserFcmToken token = existingTokenForDevice.get();
+            if (!token.getFcmToken().equals(fcmToken)) {
+                token.setFcmToken(fcmToken);
+                userFcmTokenRepository.saveAndFlush(token);
+                log.info("Updated FCM token for user {} on device {}", userId, deviceId);
+            } else {
+                log.info("FCM token for user {} on device {} is already correct. Skipping update.", userId, deviceId);
+            }
+        } else {
+            UserFcmToken newToken = UserFcmToken.builder()
+                    .userId(userId)
+                    .fcmToken(fcmToken)
+                    .deviceId(deviceId)
+                    .build();
+            userFcmTokenRepository.saveAndFlush(newToken);
+            log.info("Created new FCM token for user {} on new device {}", userId, deviceId);
         }
     }
 

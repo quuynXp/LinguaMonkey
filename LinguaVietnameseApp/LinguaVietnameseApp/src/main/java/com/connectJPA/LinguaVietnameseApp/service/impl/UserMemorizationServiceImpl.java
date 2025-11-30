@@ -13,14 +13,12 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoRepository;
 import com.connectJPA.LinguaVietnameseApp.service.UserMemorizationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.core.context.SecurityContextHolder; // Cần thiết
+import org.springframework.security.core.context.SecurityContextHolder;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -34,22 +32,20 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     private final LessonRepository lessonRepository;
     private final VideoRepository videoRepository;
 
-    // HÀM SEARCH THAY THẾ ELASTICSEARCH
     @Override
-    public Page<UserMemorization> searchMemorizations(String keyword, int page, int size, Map<String, Object> filters) {
+    public Page<MemorizationResponse> searchMemorizations(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
-            return Page.empty();
+            // Fallback to get all if no keyword, but usually this returns empty or specific logic
+             return Page.empty();
         }
         try {
-            // Lấy userId từ Security Context để lọc ghi nhớ của riêng user đó
             String currentUserIdString = SecurityContextHolder.getContext().getAuthentication().getName();
             UUID currentUserId = UUID.fromString(currentUserIdString);
 
             Pageable pageable = PageRequest.of(page, size);
-            
-            // GỌI PHƯƠNG THỨC SEARCH MỚI
-            return memorizationRepository.searchMemorizationsByKeyword(currentUserId, keyword, pageable);
-            
+            Page<UserMemorization> result = memorizationRepository.searchMemorizationsByKeyword(currentUserId, keyword, pageable);
+            return result.map(this::mapToResponse);
+
         } catch (IllegalArgumentException e) {
             throw new AppException(ErrorCode.INVALID_KEY);
         } catch (Exception e) {
@@ -58,48 +54,40 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     }
 
     @Transactional
-    //@CacheEvict(value = "memorizations", key = "#request.userId")
     @Override
     public MemorizationResponse saveMemorization(MemorizationRequest request, UUID authenticatedUserId) {
-        // Validate user and ownership
         if (!request.getUserId().equals(authenticatedUserId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-        var user = userRepository.findById(request.getUserId())
+        userRepository.findById(request.getUserId())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        // Validate content ID if applicable
         if (request.getContentId() != null) {
             switch (request.getContentType()) {
                 case EVENT:
-                    if (!eventRepository.existsById(request.getContentId())) {
-                        throw new AppException(ErrorCode.EVENT_NOT_FOUND);
-                    }
+                    if (!eventRepository.existsById(request.getContentId())) throw new AppException(ErrorCode.EVENT_NOT_FOUND);
                     break;
                 case LESSON:
-                    if (!lessonRepository.existsById(request.getContentId())) {
-                        throw new AppException(ErrorCode.LESSON_NOT_FOUND);
-                    }
+                    if (!lessonRepository.existsById(request.getContentId())) throw new AppException(ErrorCode.LESSON_NOT_FOUND);
                     break;
                 case VIDEO:
-                    if (!videoRepository.existsById(request.getContentId())) {
-                        throw new AppException(ErrorCode.VIDEO_NOT_FOUND);
-                    }
+                    if (!videoRepository.existsById(request.getContentId())) throw new AppException(ErrorCode.VIDEO_NOT_FOUND);
                     break;
                 default:
-                    if (request.getContentId() != null) {
-                        throw new AppException(ErrorCode.INVALID_INPUT);
-                    }
+                    // For NOTE, VOCABULARY, FORMULA contentId might be null or handled differently
+                    break;
             }
         }
 
-        // Build and save memorization
         UserMemorization memorization = UserMemorization.builder()
                 .userId(request.getUserId())
                 .contentType(request.getContentType())
                 .contentId(request.getContentId())
                 .noteText(request.getNoteText())
                 .isFavorite(request.isFavorite())
+                .createdAt(OffsetDateTime.now())
+                .updatedAt(OffsetDateTime.now())
+                .isDeleted(false)
                 .build();
 
         memorization = memorizationRepository.save(memorization);
@@ -107,40 +95,13 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     }
 
     @Transactional
-    //@CacheEvict(value = "memorizations", key = "#request.userId")
     @Override
     public MemorizationResponse updateMemorization(UUID memorizationId, MemorizationRequest request, UUID authenticatedUserId) {
         UserMemorization memorization = memorizationRepository.findById(memorizationId)
                 .orElseThrow(() -> new AppException(ErrorCode.MEMORIZATION_NOT_FOUND));
 
-        // Validate ownership
-        if (!memorization.getUserId().equals(authenticatedUserId) || !request.getUserId().equals(authenticatedUserId)) {
+        if (!memorization.getUserId().equals(authenticatedUserId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
-        }
-
-        // Validate content ID if applicable
-        if (request.getContentId() != null) {
-            switch (request.getContentType()) {
-                case EVENT:
-                    if (!eventRepository.existsById(request.getContentId())) {
-                        throw new AppException(ErrorCode.EVENT_NOT_FOUND);
-                    }
-                    break;
-                case LESSON:
-                    if (!lessonRepository.existsById(request.getContentId())) {
-                        throw new AppException(ErrorCode.LESSON_NOT_FOUND);
-                    }
-                    break;
-                case VIDEO:
-                    if (!videoRepository.existsById(request.getContentId())) {
-                        throw new AppException(ErrorCode.VIDEO_NOT_FOUND);
-                    }
-                    break;
-                default:
-                    if (request.getContentId() != null) {
-                        throw new AppException(ErrorCode.INVALID_INPUT);
-                    }
-            }
         }
 
         memorization.setContentType(request.getContentType());
@@ -154,7 +115,6 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
     }
 
     @Transactional
-    //@CacheEvict(value = "memorizations", key = "#authenticatedUserId")
     @Override
     public void deleteMemorization(UUID memorizationId, UUID authenticatedUserId) {
         UserMemorization memorization = memorizationRepository.findById(memorizationId)
@@ -169,11 +129,10 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
         memorizationRepository.save(memorization);
     }
 
-    //@Cacheable(value = "memorizations", key = "#userId + '-' + #contentType + '-' + #pageable.pageNumber")
     @Override
     public Page<MemorizationResponse> getMemorizationsByUser(UUID userId, String contentType, Pageable pageable) {
         Page<UserMemorization> memorizations;
-        if (contentType != null && !contentType.isEmpty()) {
+        if (contentType != null && !contentType.isEmpty() && !contentType.equals("all")) {
             try {
                 ContentType type = ContentType.valueOf(contentType);
                 memorizations = memorizationRepository.findByUserIdAndContentTypeAndIsDeletedFalse(userId, type, pageable);
@@ -183,7 +142,6 @@ public class UserMemorizationServiceImpl implements UserMemorizationService {
         } else {
             memorizations = memorizationRepository.findByUserIdAndIsDeletedFalse(userId, pageable);
         }
-
         return memorizations.map(this::mapToResponse);
     }
 

@@ -25,6 +25,7 @@ import {
 } from '../../types/dto';
 import { SkillType } from '../../types/enums';
 import { createScaledSheet } from '../../utils/scaledStyles';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 interface WritingScreenProps {
   navigation: any;
@@ -138,21 +139,21 @@ const WritingScreen = ({ navigation, route }: WritingScreenProps) => {
   const renderLessonList = () => {
     if (isLoadingList) {
       return (
-        <View style={styles.centerContainer}>
+        <ScreenLayout style={styles.centerContainer}>
           <ActivityIndicator size="large" color="#4F46E5" />
-        </View>
+        </ScreenLayout>
       );
     }
 
     if (!lessonsList || lessonsList.length === 0) {
       return (
-        <View style={styles.centerContainer}>
+        <ScreenLayout style={styles.centerContainer}>
           <Icon name="edit-note" size={48} color="#9CA3AF" />
           <Text style={styles.emptyText}>{t('writing.no_lessons_found')}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={() => refetchList()}>
             <Text style={styles.retryButtonText}>{t('common.reload')}</Text>
           </TouchableOpacity>
-        </View>
+        </ScreenLayout>
       );
     }
 
@@ -276,7 +277,7 @@ const WritingScreen = ({ navigation, route }: WritingScreenProps) => {
   };
 
   return (
-    <View style={[styles.container, { paddingTop: insets.top }]}>
+    <ScreenLayout>
       <View style={styles.header}>
         <TouchableOpacity onPress={handleBack}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -292,7 +293,7 @@ const WritingScreen = ({ navigation, route }: WritingScreenProps) => {
       </Animated.View>
 
       {renderResultModal()}
-    </View>
+    </ScreenLayout>
   );
 };
 

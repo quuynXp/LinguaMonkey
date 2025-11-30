@@ -4,23 +4,26 @@ import com.google.auth.oauth2.GoogleCredentials;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.FirebaseOptions;
 import com.google.firebase.messaging.FirebaseMessaging;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.core.io.DefaultResourceLoader;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.ResourceLoader;
 
 import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 
 @Configuration
 public class FirebaseConfig {
 
-    // Không cần chỉ định default value #{null} vì chúng ta kiểm tra null bên dưới
+    private static final Logger log = LoggerFactory.getLogger(FirebaseConfig.class);
+    private static final String FIREBASE_MESSAGING_SCOPE = "https://www.googleapis.com/auth/firebase.messaging";
+
     @Value("${google.credentials-file-url:}")
     private String credentialsPath;
 
@@ -31,48 +34,51 @@ public class FirebaseConfig {
     public FirebaseMessaging firebaseMessaging() throws IOException {
         List<FirebaseApp> apps = FirebaseApp.getApps();
         if (!apps.isEmpty()) {
-            return FirebaseMessaging.getInstance();
+            return FirebaseMessaging.getInstance(apps.get(0));
         }
 
-        GoogleCredentials credentials;
+        GoogleCredentials credentials = loadCredentials();
 
-        // ƯU TIÊN 1: Đọc từ Base64 Environment Variable (Production/Render)
-        if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
-            try {
-                byte[] decodedBytes = Base64.getDecoder().decode(credentialsBase64);
-                try (InputStream inputStream = new ByteArrayInputStream(decodedBytes)) {
-                    credentials = GoogleCredentials.fromStream(inputStream);
-                }
-            } catch (IllegalArgumentException e) {
-                throw new IOException("Failed to decode FIREBASE_CREDENTIALS_BASE64. Check if the string is correctly encoded.", e);
-            }
-        // ƯU TIÊN 2: Đọc từ File Path (Local/Dev)
-        } else if (credentialsPath != null && !credentialsPath.isBlank()) {
-            String finalPath = credentialsPath;
-            // Dòng 57 gây lỗi: Đảm bảo Spring tìm kiếm file
-            if (finalPath.startsWith("/") && !finalPath.startsWith("file:")) {
-                finalPath = "file:" + finalPath;
-            }
-            
-            ResourceLoader resourceLoader = new DefaultResourceLoader();
-            Resource resource = resourceLoader.getResource(finalPath);
-            
-            if (!resource.exists()) {
-                throw new IOException("Firebase credentials file not found at: " + finalPath);
-            }
-
-            try (InputStream serviceAccount = resource.getInputStream()) {
-                credentials = GoogleCredentials.fromStream(serviceAccount);
-            }
-        } else {
-            throw new IOException("No Firebase credentials provided. Set FIREBASE_CREDENTIALS_BASE64 environment variable.");
+        // FIX: Explicitly set the scope to ensure token refresh capabilities
+        if (credentials.createScopedRequired()) {
+            credentials = credentials.createScoped(Collections.singletonList(FIREBASE_MESSAGING_SCOPE));
         }
 
         FirebaseOptions options = FirebaseOptions.builder()
                 .setCredentials(credentials)
                 .build();
 
-        FirebaseApp.initializeApp(options);
-        return FirebaseMessaging.getInstance();
+        FirebaseApp app = FirebaseApp.initializeApp(options);
+        log.info("Firebase App initialized successfully.");
+        return FirebaseMessaging.getInstance(app);
+    }
+
+    private GoogleCredentials loadCredentials() throws IOException {
+        // Priority 1: Base64
+        if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
+            try {
+                byte[] decodedBytes = Base64.getDecoder().decode(credentialsBase64);
+                log.info("Loaded Firebase credentials from BASE64 string.");
+                return GoogleCredentials.fromStream(new ByteArrayInputStream(decodedBytes));
+            } catch (Exception e) {
+                log.error("Failed to decode FIREBASE_CREDENTIALS_BASE64 and create credentials stream.", e);
+                // Ném ra IOException để FirebaseMessaging bean không được tạo, giúp lỗi rõ ràng hơn
+                throw new IOException("Failed to initialize GoogleCredentials from FIREBASE_CREDENTIALS_BASE64: " + e.getMessage(), e);
+            }
+        }
+
+        // Priority 2: File Path
+        if (credentialsPath != null && !credentialsPath.isBlank()) {
+            String cleanPath = credentialsPath.replace("file:", "");
+            try (InputStream serviceAccount = new FileInputStream(cleanPath)) {
+                log.info("Loaded Firebase credentials from file: {}", cleanPath);
+                return GoogleCredentials.fromStream(serviceAccount);
+            } catch (IOException e) {
+                log.error("Failed to load Firebase credentials file at: {}", cleanPath, e);
+                throw e;
+            }
+        }
+
+        throw new IOException("No Firebase credentials provided. Set GOOGLE_CREDENTIALS_FILE_URL or FIREBASE_CREDENTIALS_BASE64.");
     }
 }

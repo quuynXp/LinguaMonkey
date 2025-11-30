@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useRef } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Image
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
@@ -16,50 +17,55 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import RoadmapTimeline from "../../components/roadmap/RoadmapTimeline";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
+import { getAvatarSource } from "../../utils/avatarUtils";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
-const RoadmapScreen = ({ navigation, route }: any) => {
+const RoadmapScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
+
+  // Tab chính: My Roadmap vs Explore
   const [activeTab, setActiveTab] = useState<'my_roadmap' | 'explore'>('my_roadmap');
 
-  // Animation for tab indicator
+  // Tab phụ trong Explore: Official vs Community
+  const [exploreType, setExploreType] = useState<'official' | 'community'>('official');
+
   const tabAnim = useRef(new Animated.Value(0)).current;
 
   // --- Hooks ---
   const {
     useUserRoadmaps,
-    usePublicRoadmaps,
+    useCommunityRoadmaps,
+    useOfficialRoadmaps,
     useSuggestions,
     useCompleteRoadmapItem,
     useAddSuggestion
   } = useRoadmap();
 
-  // Data for "My Roadmap"
+  // Data
+  const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps("en");
+
+  // Fetch Official (Templates)
   const {
-    data: userRoadmaps,
-    isLoading: userLoading,
-    refetch: refetchUser
-  } = useUserRoadmaps("en"); // Default language
+    data: officialRoadmaps,
+    isLoading: officialLoading,
+    refetch: refetchOfficial
+  } = useOfficialRoadmaps("en");
 
-  const myRoadmap = userRoadmaps?.[0]; // Assuming single active roadmap for now
-
-  // Data for "Explore"
+  // Fetch Community (Shared)
   const {
-    data: publicRoadmaps,
-    isLoading: publicLoading,
-    refetch: refetchPublic
-  } = usePublicRoadmaps();
+    data: communityRoadmaps,
+    isLoading: communityLoading,
+    refetch: refetchCommunity
+  } = useCommunityRoadmaps("en");
 
-  // Suggestions for the active roadmap
+  const myRoadmap = userRoadmaps?.[0];
   const { data: suggestions } = useSuggestions(myRoadmap?.roadmapId || null);
 
-  // Mutations
   const completeItemMut = useCompleteRoadmapItem();
   const addSuggestionMut = useAddSuggestion();
 
-  // --- Handlers ---
   const handleTabChange = (tab: 'my_roadmap' | 'explore') => {
     setActiveTab(tab);
     Animated.spring(tabAnim, {
@@ -70,14 +76,17 @@ const RoadmapScreen = ({ navigation, route }: any) => {
 
   const handleRefresh = async () => {
     if (activeTab === 'my_roadmap') refetchUser();
-    else refetchPublic();
+    else {
+      refetchOfficial();
+      refetchCommunity();
+    }
   };
 
   const handleCompleteItem = async (itemId: string) => {
     try {
       await completeItemMut.mutateAsync({ itemId });
     } catch (error) {
-      console.error("Failed to complete item", error);
+      console.error(error);
     }
   };
 
@@ -91,7 +100,7 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         reason: text,
       });
     } catch (error) {
-      console.error("Failed to add suggestion", error);
+      console.error(error);
     }
   };
 
@@ -101,32 +110,22 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         <Icon name="arrow-back" size={24} color="#1F2937" />
       </TouchableOpacity>
       <Text style={styles.headerTitle}>{t('roadmap.title')}</Text>
-      <TouchableOpacity onPress={() => navigation.navigate("ChatStack")}>
-        <Icon name="chat" size={24} color="#3B82F6" />
-      </TouchableOpacity>
+      <View style={{ width: 24 }} />
     </View>
   );
 
-  const renderTabs = () => (
+  const renderMainTabs = () => (
     <View style={styles.tabContainer}>
-      <TouchableOpacity
-        style={styles.tabItem}
-        onPress={() => handleTabChange('my_roadmap')}
-      >
+      <TouchableOpacity style={styles.tabItem} onPress={() => handleTabChange('my_roadmap')}>
         <Text style={[styles.tabText, activeTab === 'my_roadmap' && styles.tabTextActive]}>
           {t('roadmap.myRoadmap')}
         </Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.tabItem}
-        onPress={() => handleTabChange('explore')}
-      >
+      <TouchableOpacity style={styles.tabItem} onPress={() => handleTabChange('explore')}>
         <Text style={[styles.tabText, activeTab === 'explore' && styles.tabTextActive]}>
           {t('roadmap.explore')}
         </Text>
       </TouchableOpacity>
-
-      {/* Animated Indicator */}
       <Animated.View
         style={[
           styles.tabIndicator,
@@ -151,24 +150,16 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         <View style={styles.emptyState}>
           <Icon name="map" size={64} color="#E5E7EB" />
           <Text style={styles.emptyTitle}>{t('roadmap.noActiveRoadmap')}</Text>
-          <Text style={styles.emptyDesc}>{t('roadmap.startJourneyDescription')}</Text>
           <TouchableOpacity
             style={styles.ctaButton}
             onPress={() => handleTabChange('explore')}
           >
             <Text style={styles.ctaButtonText}>{t('roadmap.browsePublic')}</Text>
           </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.ctaButton, styles.secondaryButton]}
-            onPress={() => navigation.navigate('CreateRoadmapScreen')}
-          >
-            <Text style={[styles.ctaButtonText, styles.secondaryButtonText]}>{t('roadmap.createCustom')}</Text>
-          </TouchableOpacity>
         </View>
       );
     }
 
-    // Calculate Progress
     const progress = myRoadmap.totalItems > 0
       ? Math.round((myRoadmap.completedItems / myRoadmap.totalItems) * 100)
       : 0;
@@ -178,7 +169,6 @@ const RoadmapScreen = ({ navigation, route }: any) => {
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={userLoading} onRefresh={handleRefresh} />}
       >
-        {/* Progress Header Card */}
         <View style={styles.progressCard}>
           <View style={styles.progressInfo}>
             <Text style={styles.roadmapTitle}>{myRoadmap.title}</Text>
@@ -191,7 +181,6 @@ const RoadmapScreen = ({ navigation, route }: any) => {
           </View>
         </View>
 
-        {/* The Timeline */}
         <RoadmapTimeline
           items={myRoadmap.items}
           suggestions={suggestions || []}
@@ -204,44 +193,87 @@ const RoadmapScreen = ({ navigation, route }: any) => {
   };
 
   const renderExplore = () => {
-    if (publicLoading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
+    const data = exploreType === 'official' ? officialRoadmaps : communityRoadmaps;
+    const isLoading = exploreType === 'official' ? officialLoading : communityLoading;
 
     return (
-      <ScrollView
-        contentContainerStyle={styles.exploreList}
-        refreshControl={<RefreshControl refreshing={publicLoading} onRefresh={handleRefresh} />}
-      >
-        {publicRoadmaps?.map((roadmap) => (
+      <View style={{ flex: 1 }}>
+        {/* Sub-tabs for Explore */}
+        <View style={styles.subTabContainer}>
           <TouchableOpacity
-            key={roadmap.id}
-            style={styles.exploreCard}
-            onPress={() => navigation.navigate('RoadmapSuggestionsScreen', { roadmapId: roadmap.id, isOwner: false })}
+            style={[styles.subTab, exploreType === 'official' && styles.subTabActive]}
+            onPress={() => setExploreType('official')}
           >
-            <View style={styles.exploreHeader}>
-              <Text style={styles.exploreTitle}>{roadmap.title}</Text>
-              <View style={styles.ratingBadge}>
-                <Icon name="star" size={14} color="#F59E0B" />
-                <Text style={styles.ratingText}>4.8</Text>
-              </View>
-            </View>
-            <Text style={styles.exploreDesc} numberOfLines={2}>{roadmap.description}</Text>
-            <View style={styles.exploreFooter}>
-              <View style={styles.exploreMeta}>
-                <Icon name="list" size={14} color="#6B7280" />
-                <Text style={styles.exploreMetaText}>{roadmap.items?.length || 0} Items</Text>
-              </View>
-              <Text style={styles.exploreLink}>{t('common.viewDetails')}</Text>
-            </View>
+            <Text style={[styles.subTabText, exploreType === 'official' && styles.subTabTextActive]}>
+              Templates
+            </Text>
           </TouchableOpacity>
-        ))}
-      </ScrollView>
+          <TouchableOpacity
+            style={[styles.subTab, exploreType === 'community' && styles.subTabActive]}
+            onPress={() => setExploreType('community')}
+          >
+            <Text style={[styles.subTabText, exploreType === 'community' && styles.subTabTextActive]}>
+              Community
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {isLoading ? (
+          <ActivityIndicator style={styles.loader} color="#3B82F6" />
+        ) : (
+          <ScrollView
+            contentContainerStyle={styles.exploreList}
+            refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />}
+          >
+            {data?.map((roadmap) => (
+              <TouchableOpacity
+                key={roadmap.roadmapId}
+                style={styles.exploreCard}
+                onPress={() => navigation.navigate('RoadmapSuggestionsScreen', { roadmapId: roadmap.roadmapId, isOwner: false })}
+              >
+                <View style={styles.exploreHeader}>
+                  <Text style={styles.exploreTitle}>{roadmap.title}</Text>
+                  <View style={styles.ratingBadge}>
+                    <Icon name="star" size={14} color="#F59E0B" />
+                    <Text style={styles.ratingText}>{roadmap.averageRating || 'N/A'}</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.exploreDesc} numberOfLines={2}>{roadmap.description}</Text>
+
+                <View style={styles.exploreFooter}>
+                  <View style={styles.creatorInfo}>
+                    {exploreType === 'community' && (
+                      <Image
+                        source={getAvatarSource(roadmap.creatorAvatar)}
+                        style={styles.creatorAvatar}
+                      />
+                    )}
+                    <Text style={styles.exploreMetaText}>
+                      {exploreType === 'official' ? 'Official' : roadmap.creator}
+                    </Text>
+                  </View>
+                  <View style={styles.exploreMeta}>
+                    <Icon name="list" size={14} color="#6B7280" />
+                    <Text style={styles.exploreMetaText}>{roadmap.totalItems} Items</Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+            ))}
+
+            {(!data || data.length === 0) && (
+              <Text style={styles.emptyText}>No roadmaps found.</Text>
+            )}
+          </ScrollView>
+        )}
+      </View>
     );
   };
 
   return (
     <ScreenLayout style={styles.container}>
       {renderHeader()}
-      {renderTabs()}
+      {renderMainTabs()}
       <View style={styles.content}>
         {activeTab === 'my_roadmap' ? renderMyRoadmap() : renderExplore()}
       </View>
@@ -271,19 +303,9 @@ const styles = createScaledSheet({
     borderColor: '#E5E7EB',
     position: 'relative',
   },
-  tabItem: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  tabText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6B7280',
-  },
-  tabTextActive: {
-    color: '#3B82F6',
-  },
+  tabItem: { flex: 1, paddingVertical: 14, alignItems: 'center' },
+  tabText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+  tabTextActive: { color: '#3B82F6' },
   tabIndicator: {
     position: 'absolute',
     bottom: 0,
@@ -295,10 +317,34 @@ const styles = createScaledSheet({
     borderTopRightRadius: 3,
   },
 
+  // Sub-tabs
+  subTabContainer: {
+    flexDirection: 'row',
+    padding: 12,
+    gap: 12,
+  },
+  subTab: {
+    paddingVertical: 6,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#E2E8F0',
+  },
+  subTabActive: {
+    backgroundColor: '#3B82F6',
+  },
+  subTabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  subTabTextActive: {
+    color: '#FFFFFF',
+  },
+
   content: { flex: 1 },
   loader: { marginTop: 40 },
 
-  // My Roadmap Styles
+  // Cards
   progressCard: {
     margin: 20,
     padding: 20,
@@ -307,11 +353,7 @@ const styles = createScaledSheet({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    elevation: 2,
   },
   progressInfo: { flex: 1 },
   roadmapTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 4 },
@@ -327,24 +369,7 @@ const styles = createScaledSheet({
   },
   progressPercent: { fontSize: 14, fontWeight: 'bold', color: '#3B82F6' },
 
-  // Empty State
-  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 40 },
-  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginTop: 16 },
-  emptyDesc: { fontSize: 14, color: '#6B7280', textAlign: 'center', marginVertical: 12 },
-  ctaButton: {
-    backgroundColor: '#3B82F6',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    marginTop: 12,
-    width: '100%',
-    alignItems: 'center',
-  },
-  ctaButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
-  secondaryButton: { backgroundColor: '#EFF6FF' },
-  secondaryButtonText: { color: '#3B82F6' },
-
-  // Explore Styles
+  // Explore
   exploreList: { padding: 20 },
   exploreCard: {
     backgroundColor: '#FFF',
@@ -360,9 +385,23 @@ const styles = createScaledSheet({
   ratingText: { fontSize: 12, fontWeight: 'bold', color: '#B45309', marginLeft: 2 },
   exploreDesc: { fontSize: 13, color: '#6B7280', marginVertical: 8, lineHeight: 18 },
   exploreFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
+  creatorInfo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  creatorAvatar: { width: 20, height: 20, borderRadius: 10 },
   exploreMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   exploreMetaText: { fontSize: 12, color: '#6B7280' },
-  exploreLink: { fontSize: 13, fontWeight: '600', color: '#3B82F6' },
+
+  // Empty
+  emptyState: { alignItems: 'center', justifyContent: 'center', padding: 40, marginTop: 40 },
+  emptyTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginTop: 16 },
+  ctaButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 12,
+  },
+  ctaButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 15 },
+  emptyText: { textAlign: 'center', color: '#94A3B8', marginTop: 20 },
 });
 
 export default RoadmapScreen;

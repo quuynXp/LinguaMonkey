@@ -20,6 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import * as Enums from '../../types/enums';
 import { getCountryFlag } from '../../utils/flagUtils';
+import ScreenLayout from '../../components/layout/ScreenLayout';
 
 const ENUM_OPTIONS = {
   country: Object.values(Enums.Country).map(v => ({
@@ -264,7 +265,7 @@ const EditProfileScreen: React.FC = () => {
   const isFacebookAuth = user?.authProvider === 'FACEBOOK';
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#F8FAFC' }}>
+    <ScreenLayout >
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
         <View style={styles.card}>
@@ -458,7 +459,7 @@ const EditProfileScreen: React.FC = () => {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-    </SafeAreaView>
+    </ScreenLayout>
   );
 };
 

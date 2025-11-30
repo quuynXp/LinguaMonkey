@@ -18,6 +18,7 @@ public interface UserRoadmapRepository extends JpaRepository<UserRoadmap, UserRo
     @Query("SELECT ur FROM UserRoadmap ur WHERE ur.userRoadmapId.userId = :userId AND ur.isDeleted = false")
     List<UserRoadmap> findByUserId(@Param("userId") UUID userId);
 
+    // List đơn giản không phân trang (nếu cần)
     @Query("SELECT ur FROM UserRoadmap ur " +
             "WHERE ur.userRoadmapId.userId = :userId " +
             "AND ur.language = :language " +

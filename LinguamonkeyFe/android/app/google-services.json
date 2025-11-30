@@ -1,59 +1,26 @@
 {
   "project_info": {
-    "project_number": "449142747528",
-    "project_id": "web-app-love",
-    "storage_bucket": "web-app-love.firebasestorage.app"
+    "project_number": "691949892970",
+    "project_id": "monkeylingua-1009",
+    "storage_bucket": "monkeylingua-1009.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:449142747528:android:6f12c4d1e8e8f211e90a3d",
+        "mobilesdk_app_id": "1:691949892970:android:e74730e5c43d909adee113",
         "android_client_info": {
           "package_name": "com.lingua.monkey"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "449142747528-dakq8843umt0vdiik9oujj5r8qm42p4v.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.lingua.monkey",
-            "certificate_hash": "9639998076000e11314d66ad7c26cbcaaf1c7ae4"
-          }
-        },
-        {
-          "client_id": "449142747528-f6a67t2svdm7l5u74h2fqpijk2j47407.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.lingua.monkey",
-            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
-          }
-        },
-        {
-          "client_id": "449142747528-7548sj3800qgcs7ktemnn0ponc1a29ci.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyDN7aR_X6NP2dr5NXH2ItTTU9NgxkIfJDw"
+          "current_key": "AIzaSyD5GLgmPKNUUTU3bgormGZbSOiwam-pXTc"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "449142747528-7548sj3800qgcs7ktemnn0ponc1a29ci.apps.googleusercontent.com",
-              "client_type": 3
-            },
-            {
-              "client_id": "449142747528-rk2d0d4hbvcduc6uf7135khn1j96mer5.apps.googleusercontent.com",
-              "client_type": 2,
-              "ios_info": {
-                "bundle_id": "com.lingua.monkey"
-              }
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

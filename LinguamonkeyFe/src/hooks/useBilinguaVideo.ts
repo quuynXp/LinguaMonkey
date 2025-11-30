@@ -11,7 +11,7 @@ import {
   CreateReviewRequest,
   VideoRequest,
   VideoProgressRequest,
-  VideoSubtitleRequest
+  VideoSubtitleRequest,
 } from "../types/dto";
 
 // --- Keys Factory ---
@@ -32,15 +32,15 @@ type VideoReviewWithReaction = VideoReviewResponse & {
 };
 
 /* -------------------------
-   useVideos (List)
-   Logic: Switches between /search and /bilingual based on params
+  useVideos (List)
+  Logic: Switches between /search and /bilingual based on params
 ------------------------- */
 export const useVideos = (
   page = 0,
   size = 10,
   category?: string,
   level?: string, // Only for bilingual endpoint
-  q?: string,     // Triggers search endpoint
+  q?: string,      // Triggers search endpoint
   language?: string, // Only for search
   sort?: string      // Only for search
 ) => {
@@ -57,7 +57,8 @@ export const useVideos = (
         // Endpoint: /api/v1/videos/search
         if (q) params.append("q", q);
         if (language) params.append("language", language);
-        if (category) params.append("category", category);
+        // category được truyền trong search
+        if (category && category !== "All") params.append("category", category);
         if (sort) params.append("sort", sort);
         // Note: Controller search does NOT accept 'level'
 
@@ -68,7 +69,8 @@ export const useVideos = (
 
       } else {
         // Endpoint: /api/v1/videos/bilingual
-        if (category) params.append("category", category);
+        // category được truyền trong bilingual
+        if (category && category !== "All") params.append("category", category);
         if (level) params.append("level", level);
 
         const { data } = await instance.get<AppApiResponse<PageResponse<BilingualVideoResponse>>>(
@@ -83,7 +85,7 @@ export const useVideos = (
 };
 
 /* -------------------------
-   useVideo (Detail)
+  useVideo (Detail)
 ------------------------- */
 export const useVideo = (videoId?: string | null, targetLang: string = "vi") => {
   return useQuery({
@@ -101,7 +103,7 @@ export const useVideo = (videoId?: string | null, targetLang: string = "vi") => 
 };
 
 /* -------------------------
-   useVideoCategories
+  useVideoCategories
 ------------------------- */
 export const useVideoCategories = () => {
   return useQuery({
@@ -115,7 +117,7 @@ export const useVideoCategories = () => {
 };
 
 /* -------------------------
-   useVideoSubtitles
+  useVideoSubtitles
 ------------------------- */
 export const useVideoSubtitles = (videoId?: string | null) => {
   return useQuery({
@@ -133,7 +135,7 @@ export const useVideoSubtitles = (videoId?: string | null) => {
 };
 
 /* -------------------------
-   useVideoReviews
+  useVideoReviews
 ------------------------- */
 export const useVideoReviews = (videoId?: string | null, page = 0, size = 20) => {
   return useQuery({
@@ -141,13 +143,6 @@ export const useVideoReviews = (videoId?: string | null, page = 0, size = 20) =>
     queryFn: async () => {
       if (!videoId) throw new Error("Missing video id");
       const params = new URLSearchParams({ page: String(page), size: String(size) });
-      // Note: Controller uses /api/v1/videos/{videoId}/reviews (inferred from create, usually get follows same pattern)
-      // But controller provided ONLY shows POST. 
-      // Assuming standard REST conventions or if you have a separate ReviewController for listing.
-      // Based on "useCourseReviews" pattern, keeping this logic but ensuring return type safety.
-      // IF THE CONTROLLER DOESN'T HAVE GET /reviews, THIS WILL FAIL. 
-      // (Checked Controller: NO GET /reviews defined in the snippet! Only POST).
-      // I will assume it exists or you will add it.
       const { data } = await instance.get<AppApiResponse<PageResponse<VideoReviewWithReaction>>>(
         `/api/v1/videos/${videoId}/reviews?${params.toString()}`
       );
@@ -162,7 +157,7 @@ export const useVideoReviews = (videoId?: string | null, page = 0, size = 20) =>
 // ==========================================
 
 /* -------------------------
-   useCreateReview
+  useCreateReview
 ------------------------- */
 export const useCreateReview = () => {
   const qc = useQueryClient();
@@ -175,15 +170,15 @@ export const useCreateReview = () => {
       return data.result;
     },
     onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: videoKeys.reviews(vars.videoId, {}) }); // Invalidate all pages roughly
+      qc.invalidateQueries({ queryKey: videoKeys.reviews(vars.videoId, {}) });
     },
   });
   return { createReview: mutation.mutateAsync, isCreating: mutation.isPending };
 };
 
 /* -------------------------
-   useReactReview
-   URL: /api/v1/videos/reviews/{reviewId}/react
+  useReactReview
+  URL: /api/v1/videos/reviews/{reviewId}/react
 ------------------------- */
 export const useReactReview = () => {
   const user = useUserStore((s) => s.user);
@@ -192,17 +187,14 @@ export const useReactReview = () => {
   const mutation = useMutation({
     mutationFn: async ({ reviewId, reaction }: { reviewId: string; reaction: number }) => {
       if (!user?.userId) throw new Error("User not logged in");
-      // Controller path: /api/v1/videos + /reviews/{reviewId}/react
       await instance.post<AppApiResponse<void>>(
         `/api/v1/videos/reviews/${reviewId}/react`,
         null,
         { params: { userId: user.userId, reaction } }
       );
     },
-    // Optimistic update removed for safety/simplicity unless strictly requested, 
-    // as proper optimistic update requires exact page query key matching.
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["videos"] }); // Broad invalidation or specific if possible
+      qc.invalidateQueries({ queryKey: ["videos"] });
     }
   });
 
@@ -210,8 +202,8 @@ export const useReactReview = () => {
 };
 
 /* -------------------------
-   useLikeVideo / useDislikeVideo / useFavoriteVideo
-   Controller requires: @RequestParam UUID userId
+  useLikeVideo / useDislikeVideo / useFavoriteVideo
+  Controller requires: @RequestParam UUID userId
 ------------------------- */
 export const useVideoInteractions = () => {
   const user = useUserStore((s) => s.user);
@@ -223,35 +215,12 @@ export const useVideoInteractions = () => {
     mutationFn: async ({ videoId, isLiked }: { videoId: string; isLiked: boolean }) => {
       const userId = checkUser();
       if (isLiked) {
-        // Unlike: DELETE /api/v1/videos/{videoId}/like
         await instance.delete(`/api/v1/videos/${videoId}/like`, { params: { userId } });
       } else {
-        // Like: POST /api/v1/videos/{videoId}/like
         await instance.post(`/api/v1/videos/${videoId}/like`, null, { params: { userId } });
       }
     },
     onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: videoKeys.detail(vars.videoId) })
-  });
-
-  const dislikeMutation = useMutation({
-    mutationFn: async ({ videoId, isDisliked }: { videoId: string; isDisliked: boolean }) => {
-      const userId = checkUser();
-      if (isDisliked) {
-        // Assuming Endpoint exists: DELETE /api/v1/videos/{videoId}/dislike (Controller snippet shows DELETE /like but implies dislike logic exists or uses like toggle. 
-        // Wait, Controller snippet shows: @DeleteMapping("/{videoId}/like")... wait.
-        // Controller shows: @DeleteMapping("/{videoId}/like") for UNLIKE.
-        // It DOES NOT show specific dislike endpoints in the snippet provided except implicit logic?
-        // Re-reading Controller:
-        // It has @DeleteMapping("/{videoId}/like") -> unlikeVideo
-        // It DOES NOT show Dislike specific endpoints in the snippet.
-        // BUT standard logic usually implies it. I will comment out/warn if not in controller.
-        // Let's assume standard pattern or if you added it.
-
-        // ACTUALLY: Controller snippet provided ONLY has Like/Unlike and Favorite/Unfavorite.
-        // It does NOT have Dislike endpoints shown explicitly in the standard CRUD block.
-        // I will implement only Like/Favorite based on the Controller snippet provided.
-      }
-    }
   });
 
   const favoriteMutation = useMutation({
@@ -273,8 +242,8 @@ export const useVideoInteractions = () => {
 };
 
 /* -------------------------
-   useTrackVideoProgress
-   POST /api/v1/videos/{videoId}/progress
+  useTrackVideoProgress
+  POST /api/v1/videos/{videoId}/progress
 ------------------------- */
 export const useTrackVideoProgress = () => {
   const mutation = useMutation({
@@ -286,7 +255,7 @@ export const useTrackVideoProgress = () => {
 };
 
 /* -------------------------
-   Admin/CRUD Hooks (Added based on Controller)
+  Admin/CRUD Hooks (Added based on Controller)
 ------------------------- */
 export const useVideoCrud = () => {
   const qc = useQueryClient();

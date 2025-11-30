@@ -56,4 +56,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
             @Param("keyword") String keyword,
             @Param("roomId") UUID roomId,
             Pageable pageable);
+
+            Optional<ChatMessage> findFirstByRoomIdAndIsDeletedFalseOrderByIdSentAtDesc(UUID roomId);
 }

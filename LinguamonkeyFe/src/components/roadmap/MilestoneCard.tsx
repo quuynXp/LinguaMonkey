@@ -30,6 +30,11 @@ interface MilestoneCardProps {
     milestone: MilestoneUserResponse & {
         skills?: string[];
         resources?: Resource[];
+        // Extended properties accessed in component but missing from base DTO
+        status?: string;
+        description?: string;
+        level?: number;
+        progress?: number;
     };
     suggestions: RoadmapSuggestionResponse[];
     index: number;
@@ -185,7 +190,7 @@ const MilestoneCard: React.FC<MilestoneCardProps> = ({
                         {/* Skills */}
                         {milestone.skills && milestone.skills.length > 0 && (
                             <View style={styles.section}>
-                                <Text style={styles.sectionTitle}>Skills You'll Learn</Text>
+                                <Text style={styles.sectionTitle}>Skills You&apos;ll Learn</Text>
                                 <View style={styles.skillsGrid}>
                                     {milestone.skills.map((skill, i) => (
                                         <View key={i} style={styles.skillChip}>

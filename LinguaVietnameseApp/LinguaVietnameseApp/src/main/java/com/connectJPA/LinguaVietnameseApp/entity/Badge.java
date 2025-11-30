@@ -1,13 +1,12 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.BadgeTier;
 import com.connectJPA.LinguaVietnameseApp.enums.CriteriaType;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-//import org.springframework.data.elasticsearch.core.query.Criteria;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -22,20 +21,29 @@ public class Badge extends BaseEntity {
     @Column(name = "badge_id")
     private UUID badgeId;
 
-    @Column(name = "badge_name", nullable = false, unique = true)
+    @Column(name = "badge_name", nullable = false)
     private String badgeName;
+
+    @Column(name = "language_code")
+    private String languageCode;
 
     @Column(name = "description")
     private String description;
+
+    @Column(name = "coins")
+    private int coins;
 
     @Column(name = "image_url")
     private String imageUrl;
 
     @Column(name = "criteria_type", nullable = false)
     @Enumerated(EnumType.STRING)
-    private CriteriaType criteriaType; // Ví dụ: "LESSONS_COMPLETED", "LOGIN_STREAK", "POINTS_EARNED"
+    private CriteriaType criteriaType;
 
     @Column(name = "criteria_threshold", nullable = false)
     private int criteriaThreshold;
 
+    @Column(name = "tier")
+    @Enumerated(EnumType.STRING)
+    private BadgeTier tier; // BRONZE, SILVER...
 }

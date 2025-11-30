@@ -16,6 +16,7 @@ import ResetPasswordScreen from '../../screens/auth/ResetPasswordScreen';
 import WebViewScreen from '../../screens/profile/WebViewScreen';
 import TestSessionScreen from '../../screens/appLaunch/TestSessionScreen';
 import TestResultScreen from '../../screens/appLaunch/TestResultScreen';
+import NotificationsScreen from '../../screens/notification/NotificationsScreen';
 
 export type MainStackParamList = {
   TabApp: undefined;
@@ -35,6 +36,7 @@ export type MainStackParamList = {
   WebViewScreen: undefined;
   TestSessionScreen: undefined;
   TestResultScreen: undefined;
+  NotificationsScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<MainStackParamList>();
@@ -70,6 +72,7 @@ const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
       <Stack.Screen name="WebViewScreen" component={WebViewScreen} />
       <Stack.Screen name="TestSessionScreen" component={TestSessionScreen} />
       <Stack.Screen name="TestResultScreen" component={TestResultScreen} />
+      <Stack.Screen name="NotificationsScreen" component={NotificationsScreen} />
 
       {/* 3. Onboarding / Setup Flows */}
       <Stack.Screen

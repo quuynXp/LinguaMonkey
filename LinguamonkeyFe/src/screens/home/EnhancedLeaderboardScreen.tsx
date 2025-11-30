@@ -14,15 +14,15 @@ import { useTranslation } from "react-i18next";
 import { useNavigation } from "@react-navigation/native";
 import { useLeaderboards } from "../../hooks/useLeaderboards";
 import { useUsers } from "../../hooks/useUsers";
-import { useToast } from "../../utils/useToast"; // Sử dụng Toast thay vì Alert
+import { useToast } from "../../utils/useToast";
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import type { LeaderboardEntryResponse, LeaderboardResponse } from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
+import { getCountryFlag } from "../../utils/flagUtils";
 
 const PAGE_LIMIT = 20;
 
-// Sử dụng require cho assets images
 const PLACEHOLDER_MALE = require("../../assets/images/placeholder_male.png");
 const PLACEHOLDER_FEMALE = require("../../assets/images/placeholder_female.png");
 const PLACEHOLDER_DEFAULT = require("../../assets/images/placeholder_male.png");
@@ -32,7 +32,7 @@ const tabsStatic = [
     { id: "friends", titleKey: "leaderboard.tabs.friends", icon: "people" },
     { id: "couple", titleKey: "leaderboard.tabs.couples", icon: "favorite" },
     { id: "country", titleKey: "leaderboard.tabs.country", icon: "location-on" },
-    { id: "admire", titleKey: "leaderboard.tabs.admire", icon: "star" }, // Thêm tab Admire
+    { id: "admire", titleKey: "leaderboard.tabs.admire", icon: "star" },
 ];
 
 const EnhancedLeaderboardScreen = () => {
@@ -42,11 +42,7 @@ const EnhancedLeaderboardScreen = () => {
     const { user } = useUserStore();
     const currentUserId = user?.userId;
 
-    const { showToast } = useToast();
     const { useLeaderboardList, useEntries } = useLeaderboards();
-    const { useSendFriendRequest } = useUsers();
-
-    const sendFriendRequestMutation = useSendFriendRequest();
 
     const [selectedTab, setSelectedTab] = useState<string>("global");
     const [leaderboardId, setLeaderboardId] = useState<string | null>(null);
@@ -121,26 +117,7 @@ const EnhancedLeaderboardScreen = () => {
 
     const onPressUser = (entry: LeaderboardEntryResponse) => {
         const resolvedUserId = entry.userId ?? entry.leaderboardEntryId?.userId;
-
         if (!resolvedUserId) return;
-
-        if (resolvedUserId !== currentUserId) {
-            // Logic gửi kết bạn tạm thời comment lại để focus vào hiển thị
-            // Nếu cần kích hoạt lại, sử dụng showToast thay vì Alert
-            /*
-            sendFriendRequestMutation.mutate(
-                { requesterId: currentUserId, receiverId: resolvedUserId },
-                {
-                    onSuccess: () => {
-                        showToast({ message: t("leaderboard.friendRequest.success"), type: "success" });
-                    },
-                    onError: (error: any) => {
-                        showToast({ message: error.message, type: "error" });
-                    },
-                }
-            );
-            */
-        }
         gotoTab("ProfileStack", "UserProfileViewScreen", { userId: resolvedUserId });
     };
 
@@ -237,11 +214,8 @@ const EnhancedLeaderboardScreen = () => {
             default: placeColor = "#6B7280"; medalIcon = "";
         }
 
-        // Hạ thấp chiều cao podium: 90 / 70 / 50
         const height = position === 1 ? 90 : position === 2 ? 70 : 50;
         const avatarSource = getAvatarSource(entry.avatarUrl, entry.gender);
-
-        // Dữ liệu hiển thị riêng
         const score = entry.score ?? 0;
         const exp = entry.exp ?? 0;
 
@@ -256,10 +230,16 @@ const EnhancedLeaderboardScreen = () => {
                         <Icon name={medalIcon as any} size={16} color="#FFF" />
                     </View>
 
-                    <Image
-                        source={avatarSource}
-                        style={[styles.podiumAvatar, { borderColor: placeColor }]}
-                    />
+                    <View style={styles.avatarWrapper}>
+                        <Image
+                            source={avatarSource}
+                            style={[styles.podiumAvatar, { borderColor: placeColor }]}
+                        />
+                        {/* Flag Top-Left */}
+                        <View style={styles.topLeftFlag}>
+                            {getCountryFlag((entry as any).country, 16)}
+                        </View>
+                    </View>
 
                     <View style={[styles.rankBadge, { backgroundColor: placeColor }]}>
                         <Text style={styles.rankBadgeText}>{position}</Text>
@@ -274,7 +254,6 @@ const EnhancedLeaderboardScreen = () => {
                     Lv.{entry.level ?? 0}
                 </Text>
 
-                {/* Hiển thị riêng Score và Exp */}
                 <View style={styles.statsContainer}>
                     <Text style={[styles.podiumScore, { color: placeColor }]}>
                         {score.toLocaleString()} <Text style={styles.unitText}>pts</Text>
@@ -294,9 +273,8 @@ const EnhancedLeaderboardScreen = () => {
 
         const rank = index + 4;
         const currentEntryUserId = item.userId ?? item.leaderboardEntryId?.userId;
-        const isMe = currentEntryUserId === user?.userId;
+        const isMe = currentEntryUserId === currentUserId;
         const avatarSource = getAvatarSource(item.avatarUrl, item.gender);
-
         const score = item.score ?? 0;
         const exp = item.exp ?? 0;
 
@@ -312,7 +290,13 @@ const EnhancedLeaderboardScreen = () => {
                     <Text style={styles.rankText}>{rank}</Text>
                 </View>
 
-                <Image source={avatarSource} style={styles.listAvatar} />
+                <View style={styles.listAvatarContainer}>
+                    <Image source={avatarSource} style={styles.listAvatar} />
+                    {/* Flag Top-Left */}
+                    <View style={styles.listTopLeftFlag}>
+                        {getCountryFlag((item as any).country, 14)}
+                    </View>
+                </View>
 
                 <View style={{ flex: 1 }}>
                     <Text style={styles.listName}>
@@ -324,7 +308,6 @@ const EnhancedLeaderboardScreen = () => {
                     </Text>
                 </View>
 
-                {/* Hiển thị riêng Score và Exp trong list */}
                 <View style={{ alignItems: "flex-end" }}>
                     <Text style={styles.listScore}>
                         {score.toLocaleString()} <Text style={styles.unitTextSmall}>pts</Text>
@@ -435,12 +418,28 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         padding: 2,
     },
+    avatarWrapper: {
+        position: 'relative',
+    },
     podiumAvatar: {
         width: 56,
         height: 56,
         borderRadius: 28,
         backgroundColor: "#E5E7EB",
         borderWidth: 3,
+    },
+    topLeftFlag: {
+        position: 'absolute',
+        top: -4,
+        left: -4,
+        zIndex: 15,
+        backgroundColor: 'rgba(255,255,255,0.8)',
+        borderRadius: 10,
+        padding: 1,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.2,
+        shadowRadius: 1,
     },
     rankBadge: {
         position: "absolute",
@@ -513,12 +512,24 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         fontSize: 14,
     },
+    listAvatarContainer: {
+        position: 'relative',
+        marginHorizontal: 12,
+    },
     listAvatar: {
         width: 40,
         height: 40,
         borderRadius: 20,
-        marginHorizontal: 12,
         backgroundColor: "#E5E7EB",
+    },
+    listTopLeftFlag: {
+        position: 'absolute',
+        top: -4,
+        left: -4,
+        zIndex: 15,
+        backgroundColor: 'rgba(255,255,255,0.8)',
+        borderRadius: 8,
+        padding: 1,
     },
     listName: {
         fontWeight: "600",

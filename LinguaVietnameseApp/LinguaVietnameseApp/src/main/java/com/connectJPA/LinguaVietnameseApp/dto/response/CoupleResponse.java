@@ -25,5 +25,15 @@ public class CoupleResponse {
     private LocalDate anniversary;
     private String sharedAvatarUrl;
     private String note;
-}
+    
+    // THÔNG TIN BỔ SUNG CHO UI:
+    private UserResponse user1;
+    private UserResponse user2;
 
+    public CoupleResponse(UUID user1Id, UUID user2Id, String status, LocalDate startDate) {
+        this.user1Id = user1Id;
+        this.user2Id = user2Id;
+        this.status = status;
+        this.startDate = startDate;
+    }
+}

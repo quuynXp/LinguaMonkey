@@ -1,21 +1,20 @@
-FROM eclipse-temurin:21-jdk
+FROM eclipse-temurin:21-jdk AS builder
 
 WORKDIR /app
 
-# 1. COPY CONFIG FILES
-# Vì context là ./LinguaVietnameseApp, ta copy từ thư mục con "LinguaVietnameseApp" bên trong nó ra thẳng /app
 COPY LinguaVietnameseApp/.mvn .mvn
 COPY LinguaVietnameseApp/mvnw .
 COPY LinguaVietnameseApp/pom.xml .
-
-# 2. FIX QUYỀN VÀ TẢI DEPENDENCY
-RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
-RUN ./mvnw dependency:go-offline
-
 COPY LinguaVietnameseApp/src ./src
-COPY start_java_local.sh .
-RUN chmod +x start_java_local.sh
 
-# 4. RUN APP (Chạy bằng script đã thêm lệnh compile)
-# Thay thế CMD cũ bằng script
-CMD ["./start_java_local.sh"]
+RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
+RUN ./mvnw clean package -DskipTests
+
+FROM eclipse-temurin:21-jre-alpine AS runtime
+
+WORKDIR /app
+COPY --from=builder /app/target/*.jar app.jar
+
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]

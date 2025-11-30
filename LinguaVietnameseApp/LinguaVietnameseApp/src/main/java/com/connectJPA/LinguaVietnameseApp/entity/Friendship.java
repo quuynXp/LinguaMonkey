@@ -16,6 +16,8 @@ import java.util.UUID;
 @SuperBuilder
 @AllArgsConstructor
 @NoArgsConstructor
+// Bổ sung các mối quan hệ ManyToOne để MapStruct có thể truy cập User entity
+@EqualsAndHashCode(callSuper = true)
 public class Friendship extends BaseEntity {
     @EmbeddedId
     private FriendshipId id;
@@ -23,6 +25,20 @@ public class Friendship extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private FriendshipStatus status = FriendshipStatus.ACCEPTED;
+
+    // --- NEW MAPPING FIELDS ---
+
+    @ManyToOne
+    @MapsId("requesterId") // Map trường này với requesterId trong EmbeddedId
+    @JoinColumn(name = "user1_id", referencedColumnName = "user_id", insertable = false, updatable = false)
+    private User requester;
+
+    @ManyToOne
+    @MapsId("receiverId") // Map trường này với receiverId trong EmbeddedId
+    @JoinColumn(name = "user2_id", referencedColumnName = "user_id", insertable = false, updatable = false)
+    private User receiver;
+
+    // --------------------------
 
     public UUID getRequesterId() {
         return this.id.getRequesterId();

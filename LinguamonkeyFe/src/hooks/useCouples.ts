@@ -7,27 +7,19 @@ import {
     CoupleRequest,
 } from "../types/dto";
 
+export interface AllCouplesParams {
+    user1Id?: string;
+    status?: string;
+    page?: number;
+    size?: number;
+}
+
 // --- Keys Factory ---
 export const coupleKeys = {
     all: ["couples"] as const,
-    lists: (params: any) => [...coupleKeys.all, "list", params] as const,
+    lists: (params: AllCouplesParams) => [...coupleKeys.all, "list", params] as const,
     detail: (user1Id: string, user2Id: string) => [...coupleKeys.all, "detail", user1Id, user2Id] as const,
 };
-
-// --- Helper to standardize pagination return ---
-const mapPageResponse = <T>(result: any, page: number, size: number) => ({
-    data: (result?.content as T[]) || [],
-    pagination: {
-        pageNumber: result?.number ?? page,
-        pageSize: result?.size ?? size,
-        totalElements: result?.totalElements ?? 0,
-        totalPages: result?.totalPages ?? 0,
-        isLast: result?.last ?? true,
-        isFirst: result?.first ?? true,
-        hasNext: result?.hasNext ?? false,
-        hasPrevious: result?.first ?? false,
-    },
-});
 
 /**
  * Hook: useCouples
@@ -42,16 +34,17 @@ export const useCouples = () => {
     // ==========================================
 
     // GET /api/v1/couples
-    const useAllCouples = (params?: { user1Id?: string; status?: string; page?: number; size?: number }) => {
+    const useAllCouples = (params?: AllCouplesParams) => {
         const { page = 0, size = 10 } = params || {};
-        return useQuery({
-            queryKey: coupleKeys.lists(params),
+        return useQuery<PageResponse<CoupleResponse>>({
+            queryKey: coupleKeys.lists(params || {}),
             queryFn: async () => {
                 const { data } = await instance.get<AppApiResponse<PageResponse<CoupleResponse>>>(
                     BASE,
                     { params: { ...params, page, size } }
                 );
-                return mapPageResponse(data.result, page, size);
+                // Return PageResponse directly to match DTO structure
+                return data.result;
             },
             staleTime: 60 * 1000,
         });
@@ -103,7 +96,7 @@ export const useCouples = () => {
             onSuccess: (data) => {
                 queryClient.invalidateQueries({ queryKey: coupleKeys.all });
                 queryClient.invalidateQueries({ queryKey: coupleKeys.detail(data.user1Id, data.user2Id) });
-                queryClient.invalidateQueries({ queryKey: coupleKeys.detail(data.user2Id, data.user1Id) }); // Bidirectional invalidation
+                queryClient.invalidateQueries({ queryKey: coupleKeys.detail(data.user2Id, data.user1Id) });
             },
         });
     };

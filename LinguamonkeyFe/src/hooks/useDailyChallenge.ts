@@ -2,18 +2,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import instance from "../api/axiosClient";
 import { AppApiResponse, UserDailyChallengeResponse } from "../types/dto";
 
-// --- Query Keys Factory ---
 export const dailyChallengeKeys = {
   all: ["dailyChallenges"] as const,
   byUser: (userId: string) => [...dailyChallengeKeys.all, userId] as const,
 };
 
-// ==========================================
-// === HOOKS ===
-// ==========================================
-
-// 1. GET /api/v1/daily-challenges/today
-// Response: List<UserDailyChallengeResponse>
 export function useDailyChallenges(userId?: string) {
   return useQuery({
     queryKey: dailyChallengeKeys.byUser(userId!),
@@ -28,47 +21,17 @@ export function useDailyChallenges(userId?: string) {
       return data.result || [];
     },
     enabled: !!userId,
+    placeholderData: (previousData) => previousData,
   });
 }
 
-// 2. POST /api/v1/daily-challenges/assign
-// Response: UserDailyChallengeResponse
-export function useAssignChallenge() {
-  const queryClient = useQueryClient();
-
-  const mutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const { data } = await instance.post<AppApiResponse<UserDailyChallengeResponse>>(
-        "/api/v1/daily-challenges/assign",
-        null,
-        {
-          params: { userId },
-        }
-      );
-      return data.result!;
-    },
-    onSuccess: (_, userId) => {
-      // Invalidate list to show new challenge
-      queryClient.invalidateQueries({ queryKey: dailyChallengeKeys.byUser(userId) });
-    },
-  });
-
-  return {
-    assignChallenge: mutation.mutateAsync,
-    isAssigning: mutation.isPending,
-    error: mutation.error,
-  };
-}
-
-// 3. POST /api/v1/daily-challenges/complete/{challengeId}
-// Response: Void
-export function useCompleteChallenge() {
+export function useClaimChallengeReward() {
   const queryClient = useQueryClient();
 
   const mutation = useMutation({
     mutationFn: async ({ userId, challengeId }: { userId: string; challengeId: string }) => {
       const { data } = await instance.post<AppApiResponse<void>>(
-        `/api/v1/daily-challenges/complete/${challengeId}`,
+        `/api/v1/daily-challenges/claim/${challengeId}`,
         null,
         {
           params: { userId },
@@ -77,14 +40,14 @@ export function useCompleteChallenge() {
       return data.result;
     },
     onSuccess: (_, vars) => {
-      // Invalidate list to update status/progress
       queryClient.invalidateQueries({ queryKey: dailyChallengeKeys.byUser(vars.userId) });
+      queryClient.invalidateQueries({ queryKey: ['userProfile', vars.userId] }); // Update coin/exp user
     },
   });
 
   return {
-    completeChallenge: mutation.mutateAsync,
-    isCompleting: mutation.isPending,
+    claimReward: mutation.mutateAsync,
+    isClaiming: mutation.isPending,
     error: mutation.error,
   };
 }

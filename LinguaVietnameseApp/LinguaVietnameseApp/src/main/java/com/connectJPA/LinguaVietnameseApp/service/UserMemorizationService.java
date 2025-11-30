@@ -15,6 +15,5 @@ public interface UserMemorizationService {
     void deleteMemorization(UUID memorizationId, UUID authenticatedUserId);
     Page<MemorizationResponse> getMemorizationsByUser(UUID userId, String contentType, Pageable pageable);
 
-    // THÊM: Phương thức tìm kiếm
-    Page<UserMemorization> searchMemorizations(String keyword, int page, int size, Map<String, Object> filters);
+    Page<MemorizationResponse> searchMemorizations(String keyword, int page, int size, Map<String, Object> filters);
 }

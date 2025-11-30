@@ -1,7 +1,10 @@
 package com.connectJPA.LinguaVietnameseApp.entity.id;
 
+import jakarta.annotation.Generated;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -17,6 +20,7 @@ import org.hibernate.annotations.CreationTimestamp;
 @AllArgsConstructor
 @NoArgsConstructor
 public class ChatMessagesId implements Serializable {
+    // @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "chat_message_id", nullable = false)
     private UUID chatMessageId;
 

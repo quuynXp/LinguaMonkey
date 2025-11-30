@@ -63,13 +63,18 @@ services:
       - PYTHON_SERVICE_URL=http://pythonservice:8001
       - GRPC_SERVER_HOST=pythonservice
       - GOOGLE_SERVICE_ACCOUNT_FILE_URL=/app/config/gdrive-key.json
+      - GOOGLE_CREDENTIALS_FILE_URL=/app/config/service-account-key.json
       - GOOGLE_FOLDER_ID=1BrqsnQ5vF38phPAT-8XexbsNgIzVQXOe
+      - GOOGLE_CLIENT_ID=108959630588209360575
     volumes:
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/driver/gdrive-key.json:/app/config/gdrive-key.json:ro
     ports:
       - "8080:8080"
       - "9090:9090"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - lingua-net
     restart: always

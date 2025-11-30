@@ -38,4 +38,6 @@ public class CourseReviewResponse {
     private UUID parentId;
     private long replyCount;
     private List<CourseReviewResponse> topReplies;
+    private boolean isLiked;
+    private boolean isDisliked;
 }

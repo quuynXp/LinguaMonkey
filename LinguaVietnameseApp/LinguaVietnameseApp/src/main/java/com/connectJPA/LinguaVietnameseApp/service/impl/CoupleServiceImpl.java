@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.CoupleResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Couple;
 import com.connectJPA.LinguaVietnameseApp.entity.CoupleProfileSummary;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.enums.CoupleStatus;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.CoupleMapper;
@@ -27,18 +28,32 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CoupleServiceImpl implements CoupleService {
     private final CoupleRepository coupleRepository;
-    private final UserRepository userRepository; // cần
+    private final UserRepository userRepository; 
     private final CoupleMapper coupleMapper;
     private final RedisTemplate<String, Object> redisTemplate;
 
     @Override
-    public Page<CoupleResponse> getAllCouples(UUID user1Id, String status, Pageable pageable) {
-        Page<Couple> couples = coupleRepository.findAllByUser1_UserIdAndStatusAndIsDeletedFalse(user1Id, status, pageable);
-        return couples.map(coupleMapper::toResponse);
+public Page<CoupleResponse> getAllCouples(UUID user1Id, String statusString, Pageable pageable) {
+    CoupleStatus statusEnum = null;
+    if (statusString != null && !statusString.isEmpty()) {
+        try {
+            statusEnum = CoupleStatus.valueOf(statusString.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new AppException(ErrorCode.INVALID_INPUT); 
+        }
     }
+    
+    if (statusEnum != null) {
+        Page<Couple> couples = coupleRepository.findAllByUser1_UserIdAndStatusAndIsDeletedFalse(user1Id, statusEnum, pageable);
+        return couples.map(coupleMapper::toResponse);
+    } else {
+        throw new AppException(ErrorCode.INVALID_INPUT);
+    }
+}
 
     @Override
     public CoupleResponse getCoupleByIds(UUID user1Id, UUID user2Id) {
+        // Giả sử findByUser1_UserIdAndUser2_UserIdAndIsDeletedFalse có sử dụng JOIN FETCH
         Couple couple = coupleRepository.findByUser1_UserIdAndUser2_UserIdAndIsDeletedFalse(user1Id, user2Id)
                 .orElseThrow(() -> new AppException(ErrorCode.COUPLE_NOT_FOUND));
         return coupleMapper.toResponse(couple);
@@ -67,7 +82,7 @@ public class CoupleServiceImpl implements CoupleService {
         Couple couple = coupleRepository.findByUser1_UserIdAndUser2_UserIdAndIsDeletedFalse(user1Id, user2Id)
                 .orElseThrow(() -> new AppException(ErrorCode.COUPLE_NOT_FOUND));
         coupleMapper.updateEntityFromRequest(request, couple);
-        // nếu thay đổi user1/user2 (ít khả năng) thì fetch User và set lại
+        
         if (request.getUser1Id() != null && !request.getUser1Id().equals(user1Id)) {
             User newU1 = userRepository.findByUserIdAndIsDeletedFalse(request.getUser1Id()).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             couple.setUser1(newU1);
@@ -95,7 +110,8 @@ public class CoupleServiceImpl implements CoupleService {
         return coupleRepository.findByUserId(userId)
                 .map(c -> CoupleProfileSummary.builder()
                         .coupleId(c.getId())
-                        .partnerId(c.getUser2().getUserId())
+                        // Lấy partner là người còn lại
+                        .partnerId(c.getUser1().getUserId().equals(userId) ? c.getUser2().getUserId() : c.getUser1().getUserId())
                         .status(c.getStatus())
                         .build())
                 .orElse(null);

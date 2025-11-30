@@ -17,6 +17,7 @@ import { Country } from "../types/enums";
 export const userKeys = {
   all: ["users"] as const,
   lists: (params: any) => [...userKeys.all, "list", params] as const,
+  suggestions: (userId: string) => ["users", "suggestions", userId] as const,
   detail: (id: string) => [...userKeys.all, "detail", id] as const,
   profile: (targetId: string, viewerId?: string) => [...userKeys.all, "profile", targetId, viewerId] as const,
   stats: (id: string) => [...userKeys.detail(id), "stats"] as const,
@@ -325,6 +326,21 @@ export const useUsers = () => {
       staleTime: 30 * 1000,
     });
 
+  const useSuggestedUsers = (userId: string, page = 0, size = 10) => {
+    return useQuery<PageResponse<UserResponse>>({
+      queryKey: userKeys.suggestions(userId),
+      queryFn: async () => {
+        if (!userId) return { content: [], totalElements: 0 } as any;
+        const { data } = await instance.get<AppApiResponse<PageResponse<UserResponse>>>(
+          `/api/v1/users/${userId}/suggestions`,
+          { params: { page, size } }
+        );
+        return data.result;
+      },
+      enabled: !!userId,
+    });
+  };
+
   return {
     useAllUsers,
     useUser,
@@ -348,5 +364,6 @@ export const useUsers = () => {
     useDeleteFriendship, // New export
     useFriendRequestStatus,
     useCheckIfFriends,
+    useSuggestedUsers,
   };
 };

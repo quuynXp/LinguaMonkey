@@ -59,4 +59,6 @@ public interface UserService {
 
     void activateVipTrial(UUID userId);
     void extendVipSubscription(UUID userId, BigDecimal amount);
+
+    Page<UserResponse> getSuggestedUsers(UUID userId, Pageable pageable);
 }

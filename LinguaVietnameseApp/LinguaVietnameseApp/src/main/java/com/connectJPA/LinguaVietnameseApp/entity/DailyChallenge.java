@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
+import com.connectJPA.LinguaVietnameseApp.enums.ChallengePeriod;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
@@ -26,11 +27,18 @@ public class DailyChallenge extends BaseEntity {
 
     private String title;
     private String description;
+    
+    @Column(name = "base_exp")
     private int baseExp;
 
-    private int targetAmount;
+    @Column(name = "target_amount")
+    private int targetAmount; // Số lượng cần đạt (ví dụ: 15 phút, 2 bài học)
 
+    @Column(name = "reward_coins")
     private int rewardCoins;
+
+    @Column(name = "language_code")
+    private String languageCode;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "challenge_type")
@@ -38,4 +46,11 @@ public class DailyChallenge extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     private DifficultyLevel difficulty;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "period")
+    private ChallengePeriod period; // DAILY or WEEKLY
+
+    @Column(name = "screen_route")
+    private String screenRoute; // Tên màn hình để navigate (VD: "LearnScreen")
 }

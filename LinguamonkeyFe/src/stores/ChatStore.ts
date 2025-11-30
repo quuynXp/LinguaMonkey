@@ -6,6 +6,7 @@ import instance from '../api/axiosClient';
 import type { ChatMessage as Message, Room } from '../types/entity';
 import type { AppApiResponse, PageResponse } from '../types/dto';
 import { useUserStore } from "./UserStore";
+import { RoomPurpose } from "../types/enums";
 
 type AiMessage = {
   id: string;
@@ -93,7 +94,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   isBubbleOpen: false,
 
   initStompClient: () => {
-    // Sửa lỗi 6234: Dùng thuộc tính isConnected thay vì gọi hàm isConnected()
     if (!stompService.isConnected) {
       console.log('🚀 ChatStore: Initiating STOMP Connection...');
       stompService.connect(() => {
@@ -104,7 +104,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   initAiClient: () => {
-    // Sửa lỗi 6234: Dùng thuộc tính isConnected thay vì gọi hàm isConnected()
     if (!pythonAiWsService.isConnected) {
       console.log('🚀 ChatStore: Initiating AI WS Connection...');
 
@@ -142,7 +141,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         set({ aiWsConnected: true });
       };
 
-      // Sửa lỗi 2554: Truyền onMessageCallback và onConnectedCallback
       pythonAiWsService.connect(onMessageCallback, onConnectedCallback);
     }
   },
@@ -237,7 +235,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   sendAiWelcomeMessage: () => {
     const { activeAiRoomId, aiWsConnected, isAiInitialMessageSent, aiChatHistory } = get();
-    // Sửa lỗi 6234: Dùng thuộc tính isConnected thay vì gọi hàm isConnected()
     if (!activeAiRoomId || !aiWsConnected || isAiInitialMessageSent || !pythonAiWsService.isConnected) return;
     const WELCOME_PROMPT = "INITIAL_WELCOME_MESSAGE";
     set({ isAiStreaming: true, isAiInitialMessageSent: true });
@@ -266,6 +263,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       const newMessages = res.data.result?.content || [];
       const totalPages = res.data.result?.totalPages || 0;
+
+      // Cập nhật room info nếu có (để cache purpose)
+      // Lưu ý: Endpoint messages có thể không trả về info room, nếu cần hãy gọi api room detail riêng
 
       set((currentState) => {
         const currentMsgs = currentState.messagesByRoom[roomId] || [];
@@ -302,14 +302,28 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   },
 
   sendMessage: (roomId: string, content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO', mediaUrl?: string) => {
-    if (!stompService.isConnected) return;
+    if (!stompService.isConnected) {
+      console.error("❌ STOMP is NOT connected. Message cannot be sent.");
+      // Có thể thêm logic reconnect hoặc show toast error tại đây
+      return;
+    }
+
+    const state = get();
+    const room = state.rooms[roomId];
+
+    // Fallback purpose nếu không tìm thấy trong cache, tránh hardcode PRIVATE_CHAT
+    const purpose = room?.purpose || RoomPurpose.GROUP_CHAT;
+
     const payload = {
       content: content,
       roomId: roomId,
       messageType: type,
-      purpose: 'PRIVATE_CHAT',
+      purpose: purpose,
       mediaUrl: mediaUrl || null,
     };
+
+    // Log để debug xem đã gọi chưa
+    console.log(`📤 Sending Message to /app/chat/room/${roomId}`, payload);
     stompService.publish(`/app/chat/room/${roomId}`, payload);
   },
 

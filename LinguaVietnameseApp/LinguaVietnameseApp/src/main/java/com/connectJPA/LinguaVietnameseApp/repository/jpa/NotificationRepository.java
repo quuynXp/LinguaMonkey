@@ -16,7 +16,7 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     Page<Notification> findByUserIdAndTitleContainingAndTypeAndIsDeletedFalse(
             @Param("userId") UUID userId, @Param("title") String title, @Param("type") String type, Pageable pageable);
 
-    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND n.isDeleted = false")
+    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND n.isDeleted = false ORDER BY n.createdAt DESC")
     Page<Notification> findByUserIdAndIsDeletedFalse(@Param("userId") UUID userId, Pageable pageable);
 
     @Query("SELECT n FROM Notification n WHERE n.notificationId = :id AND n.isDeleted = false")
@@ -26,10 +26,6 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
     @Query("UPDATE Notification n SET n.isDeleted = true, n.deletedAt = CURRENT_TIMESTAMP WHERE n.notificationId = :id AND n.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
 
-    /**
-     * THÊM: Phương thức tìm kiếm Notification thay thế Elasticsearch.
-     * Tìm kiếm theo keyword trong title hoặc content, có lọc theo userId.
-     */
     @Query("SELECT n FROM Notification n WHERE " +
             "n.userId = :userId AND " +
             "(LOWER(n.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
@@ -40,4 +36,14 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
             @Param("userId") UUID userId, 
             @Param("keyword") String keyword, 
             Pageable pageable);
+
+    long countByUserIdAndReadFalseAndIsDeletedFalse(UUID userId);
+
+    @Modifying
+    @Query("UPDATE Notification n SET n.read = true WHERE n.userId = :userId AND n.read = false AND n.isDeleted = false")
+    void markAllAsReadByUserId(@Param("userId") UUID userId);
+
+    @Modifying
+    @Query("UPDATE Notification n SET n.isDeleted = true, n.deletedAt = CURRENT_TIMESTAMP WHERE n.userId = :userId AND n.isDeleted = false")
+    void deleteAllByUserId(@Param("userId") UUID userId);
 }

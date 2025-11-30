@@ -8,29 +8,22 @@ import {
     FriendshipRequest,
 } from "../types/dto";
 
+export interface AllFriendshipsParams {
+    requesterId?: string;
+    receiverId?: string;
+    status?: string;
+    page?: number;
+    size?: number;
+}
+
 // --- Keys Factory ---
 export const friendshipKeys = {
     all: ["friendships"] as const,
-    lists: (params: any) => [...friendshipKeys.all, "list", params] as const,
+    lists: (params: AllFriendshipsParams) => [...friendshipKeys.all, "list", params] as const,
     detail: (user1Id: string, user2Id: string) => [...friendshipKeys.all, "detail", user1Id, user2Id] as const,
     status: (user1Id: string, user2Id: string) => [...friendshipKeys.all, "status", user1Id, user2Id] as const,
     check: (user1Id: string, user2Id: string) => [...friendshipKeys.all, "check", user1Id, user2Id] as const,
 };
-
-// --- Helper to standardize pagination return ---
-const mapPageResponse = <T>(result: any, page: number, size: number) => ({
-    data: (result?.content as T[]) || [],
-    pagination: {
-        pageNumber: result?.number ?? page,
-        pageSize: result?.size ?? size,
-        totalElements: result?.totalElements ?? 0,
-        totalPages: result?.totalPages ?? 0,
-        isLast: result?.last ?? true,
-        isFirst: result?.first ?? true,
-        hasNext: result?.hasNext ?? false,
-        hasPrevious: result?.first ?? false,
-    },
-});
 
 /**
  * Hook: useFriendships
@@ -44,16 +37,17 @@ export const useFriendships = () => {
     // ==========================================
 
     // GET /api/v1/friendships
-    const useAllFriendships = (params?: { user1Id?: string; status?: string; page?: number; size?: number }) => {
+    const useAllFriendships = (params?: AllFriendshipsParams) => {
         const { page = 0, size = 10 } = params || {};
-        return useQuery({
-            queryKey: friendshipKeys.lists(params),
+        return useQuery<PageResponse<FriendshipResponse>>({
+            queryKey: friendshipKeys.lists(params || {}),
             queryFn: async () => {
                 const { data } = await instance.get<AppApiResponse<PageResponse<FriendshipResponse>>>(
                     `/api/v1/friendships`,
                     { params: { ...params, page, size } }
                 );
-                return mapPageResponse(data.result, page, size);
+                // Return the PageResponse directly to simplify usage in components
+                return data.result;
             },
         });
     };

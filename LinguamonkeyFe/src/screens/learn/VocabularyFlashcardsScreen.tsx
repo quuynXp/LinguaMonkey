@@ -16,12 +16,16 @@ import {
   TouchableOpacity,
   View,
   Switch,
+  StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
 import { useFlashcards } from "../../hooks/useFlashcard";
+import { useLessons } from "../../hooks/useLessons"; // Bổ sung
+import { useUserStore } from "../../stores/UserStore"; // Bổ sung
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { FlashcardResponse, CreateFlashcardRequest } from '../../types/dto';
+import { getLessonImage } from '../../utils/imageUtil';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 
 const { width } = Dimensions.get("window");
@@ -46,18 +50,22 @@ const initialNewCardState: NewCardState = {
 
 const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
-  const lessonIdFromRoute: string | null = route?.params?.lessonId ?? null;
+  const user = useUserStore((state) => state.user);
+
+  // 1. Quản lý Lesson ID: Lấy từ route, nếu không có thì null
+  const routeLessonId: string | null = route?.params?.lessonId ?? null;
+  const [selectedLessonId, setSelectedLessonId] = useState<string | null>(routeLessonId);
+  const [selectedLessonName, setSelectedLessonName] = useState<string>(route?.params?.lessonName || "");
 
   // Hooks
   const { useGetFlashcards, useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
+  const { useCreatorLessons } = useLessons();
 
   // Queries
-  // 1. Get ALL flashcards for this lesson (Public + Private) for the list view
+  const userLessonsQuery = useCreatorLessons(user?.userId || null, 0, 100);
   const [page, setPage] = useState(0);
-  const flashcardsQuery = useGetFlashcards(lessonIdFromRoute, { page, size: 50 });
-
-  // 2. Get DUE flashcards specifically for study session
-  const dueQuery = useGetDue(lessonIdFromRoute, 20);
+  const flashcardsQuery = useGetFlashcards(selectedLessonId, { page, size: 50 });
+  const dueQuery = useGetDue(selectedLessonId, 20);
 
   // Mutations
   const { mutateAsync: createFlashcard, isPending: isCreating } = useCreateFlashcard();
@@ -66,6 +74,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   // State
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showLessonSelector, setShowLessonSelector] = useState(false); // New State
 
   // Study State
   const [studyMode, setStudyMode] = useState<"definition" | "image">("definition");
@@ -77,7 +86,17 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   // Form State
   const [newCard, setNewCard] = useState<NewCardState>(initialNewCardState);
 
-  // Filter logic for the List View (Client side filtering for search)
+  // Effect: Cập nhật Lesson ID khi quay về từ màn hình tạo Lesson
+  useEffect(() => {
+    if (route.params?.lessonId) {
+      setSelectedLessonId(route.params.lessonId);
+      setSelectedLessonName(route.params.lessonName);
+      flashcardsQuery.refetch();
+      dueQuery.refetch();
+    }
+  }, [route.params?.lessonId]);
+
+
   const allFlashcards = flashcardsQuery.data?.content || [];
 
   const filteredList = useMemo(() => {
@@ -89,7 +108,11 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   }, [allFlashcards, searchQuery]);
 
   const startStudySession = (mode: "definition" | "image") => {
-    // Prefer Due cards, but if empty, fall back to all cards
+    if (!selectedLessonId) {
+      Alert.alert(t("flashcards.selectLessonTitle") ?? "Select Lesson", t("flashcards.selectLessonMsg") ?? "Please select a lesson to start studying.");
+      return;
+    }
+
     const sourceList = (dueQuery.data && dueQuery.data.length > 0) ? dueQuery.data : allFlashcards;
 
     if (sourceList.length === 0) {
@@ -104,9 +127,40 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
     setIsStudying(true);
   };
 
+  const handlePressAddFlashcard = () => {
+    const lessons = userLessonsQuery.data?.data || [];
+
+    // TH1: Đã có lessonId đang chọn -> Mở Modal tạo Flashcard
+    if (selectedLessonId) {
+      setShowCreateModal(true);
+      return;
+    }
+
+    // TH2: Chưa chọn Lesson, kiểm tra xem User có bài học nào không
+    if (userLessonsQuery.isLoading) return;
+
+    if (lessons.length === 0) {
+      // TH2.1: Không có bài học nào -> Bắt buộc tạo Lesson mới
+      Alert.alert(
+        t("flashcards.noLessonTitle") ?? "No Lesson Found",
+        t("flashcards.noLessonMessage") ?? "You need a lesson to hold your flashcards. Create one now?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Create Lesson",
+            onPress: () => navigation.navigate("CreateLesson")
+          }
+        ]
+      );
+    } else {
+      // TH2.2: Có bài học nhưng chưa chọn -> Hiển thị Modal chọn Lesson
+      setShowLessonSelector(true);
+    }
+  };
+
   const handleCreateCard = async () => {
     if (!createFlashcard) return Alert.alert(t("common.error"), "Create API not available.");
-    if (!lessonIdFromRoute) return Alert.alert(t("common.error"), t("flashcards.lessonIdMissing") ?? "Lesson ID is missing.");
+    if (!selectedLessonId) return Alert.alert(t("common.error"), t("flashcards.lessonIdMissing") ?? "Lesson ID is missing.");
 
     if (!newCard.front || !newCard.back) {
       Alert.alert(t("common.error"), t("flashcards.fillWordAndDefinition") ?? "Please fill in the word and definition.");
@@ -115,17 +169,17 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 
     try {
       const payload: CreateFlashcardRequest = {
-        lessonId: lessonIdFromRoute,
+        lessonId: selectedLessonId,
         front: newCard.front,
         back: newCard.back,
         exampleSentence: newCard.exampleSentence,
         imageUrl: newCard.imageUrl,
         tags: newCard.tags,
-        audioUrl: "", // Handled by Backend/TTS usually
+        audioUrl: "",
         isPublic: newCard.isPublic,
       };
 
-      await createFlashcard({ lessonId: lessonIdFromRoute, payload });
+      await createFlashcard({ lessonId: selectedLessonId, payload });
       Alert.alert(t("common.success"), t("flashcards.createSuccess") ?? "Flashcard created successfully!");
       setNewCard(initialNewCardState);
       setShowCreateModal(false);
@@ -154,10 +208,10 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   };
 
   const onPressQuality = async (flashcard: FlashcardResponse, q: number) => {
-    if (!lessonIdFromRoute) return;
+    if (!selectedLessonId) return;
 
     try {
-      await reviewFlashcard({ lessonId: lessonIdFromRoute, flashcardId: flashcard.flashcardId, quality: q });
+      await reviewFlashcard({ lessonId: selectedLessonId, flashcardId: flashcard.flashcardId, quality: q });
 
       if (currentCardIndex < studyList.length - 1) {
         setCurrentCardIndex((prev) => prev + 1);
@@ -165,7 +219,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
       } else {
         setIsStudying(false);
         setStudyList([]);
-        dueQuery.refetch(); // Refresh due list
+        dueQuery.refetch();
         Alert.alert(t("flashcards.reviewDoneTitle") ?? "Review Done", t("flashcards.reviewDoneMessage") ?? "Session complete!");
       }
     } catch (err) {
@@ -175,6 +229,8 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   };
 
   const renderFlashcardItem = ({ item }: { item: FlashcardResponse }) => {
+    const imageSource = getLessonImage(item.imageUrl);
+
     return (
       <View style={styles.flashcardItem}>
         <View style={styles.cardHeader}>
@@ -186,7 +242,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
                   <Text style={styles.tagText}>{item.tags}</Text>
                 </View>
               ) : null}
-              {/* Public/Private Badge */}
               <View style={[styles.tagContainer, item.isPublic ? styles.publicBadge : styles.privateBadge]}>
                 <Text style={[styles.tagText, item.isPublic ? styles.publicText : styles.privateText]}>
                   {item.isPublic ? "Public" : "Private"}
@@ -196,11 +251,11 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
           </View>
         </View>
 
-        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.cardImage} /> : null}
+        <Image source={imageSource} style={styles.cardImage} />
 
         <Text style={styles.cardDefinition}>{item.back}</Text>
         {item.exampleSentence ? (
-          <Text style={styles.cardExample}>{"{item.exampleSentence}"}</Text>
+          <Text style={styles.cardExample}>{item.exampleSentence}</Text>
         ) : null}
 
         <View style={styles.cardFooter}>
@@ -212,7 +267,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
     );
   };
 
-  // --- STUDY MODE RENDER ---
   if (isStudying) {
     const currentCard = studyList[currentCardIndex];
 
@@ -220,6 +274,8 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
       setIsStudying(false);
       return null;
     }
+
+    const studyImageSource = getLessonImage(currentCard.imageUrl);
 
     return (
       <ScreenLayout style={styles.container}>
@@ -234,9 +290,9 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
         </View>
 
         <View style={styles.studyCard}>
-          {studyMode === "image" && currentCard.imageUrl ? (
+          {studyMode === "image" ? (
             <View style={styles.studyContentWrap}>
-              <Image source={{ uri: currentCard.imageUrl }} style={styles.studyImage} />
+              <Image source={studyImageSource} style={styles.studyImage} />
               <Text style={styles.studyPrompt}>{t("flashcards.imagePrompt") ?? "What is this word?"}</Text>
             </View>
           ) : (
@@ -288,7 +344,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
     );
   }
 
-  // --- LIST VIEW RENDER ---
   return (
     <ScreenLayout style={styles.container}>
       {/* Header */}
@@ -296,8 +351,21 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-        <Text style={styles.title}>{t("flashcards.title") ?? "Flashcards"}</Text>
-        <TouchableOpacity onPress={() => setShowCreateModal(true)}>
+
+        <View style={{ alignItems: 'center' }}>
+          <Text style={styles.title}>{t("flashcards.title") ?? "Flashcards"}</Text>
+          {selectedLessonId ? (
+            <TouchableOpacity onPress={() => setShowLessonSelector(true)}>
+              <Text style={styles.lessonNameText}>{selectedLessonName || "Change Lesson"}</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity onPress={handlePressAddFlashcard}>
+              <Text style={[styles.lessonNameText, { color: '#FF6B6B' }]}>Select a Lesson</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <TouchableOpacity onPress={handlePressAddFlashcard}>
           <Icon name="add" size={28} color="#4ECDC4" />
         </TouchableOpacity>
       </View>
@@ -342,27 +410,96 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
         <Text style={styles.sectionTitle}>{t("flashcards.allCards") ?? "Lesson Vocabulary"}</Text>
       </View>
 
-      {/* Main List */}
-      {flashcardsQuery.isLoading ? (
+      {/* Main List / Select Lesson Prompt */}
+      {userLessonsQuery.isLoading || !selectedLessonId ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color="#4ECDC4" />
+          {userLessonsQuery.isLoading ? (
+            <ActivityIndicator size="large" color="#4ECDC4" />
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyStateText}>
+                {userLessonsQuery.data?.data?.length === 0
+                  ? "You haven't created any lessons yet. Tap '+' to create one."
+                  : "Please select a lesson to view flashcards."}
+              </Text>
+              <TouchableOpacity
+                style={styles.selectLessonButton}
+                onPress={handlePressAddFlashcard}
+              >
+                <Text style={styles.selectLessonButtonText}>
+                  {userLessonsQuery.data?.data?.length === 0 ? "Create Lesson" : "Select Lesson"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
         </View>
       ) : (
-        <FlatList
-          data={filteredList}
-          renderItem={renderFlashcardItem}
-          keyExtractor={(item) => item.flashcardId}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.listContentContainer}
-          ListEmptyComponent={
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>{t("flashcards.empty") ?? "No flashcards found in this lesson."}</Text>
-            </View>
-          }
-        />
+        flashcardsQuery.isLoading ? (
+          <View style={styles.centerContainer}>
+            <ActivityIndicator size="large" color="#4ECDC4" />
+          </View>
+        ) : (
+          <FlatList
+            data={filteredList}
+            renderItem={renderFlashcardItem}
+            keyExtractor={(item) => item.flashcardId}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.listContentContainer}
+            ListEmptyComponent={
+              <View style={styles.emptyState}>
+                <Text style={styles.emptyStateText}>{t("flashcards.empty") ?? "No flashcards found in this lesson."}</Text>
+              </View>
+            }
+          />
+        )
       )}
 
-      {/* Create Modal */}
+      {/* Modal Chọn Lesson */}
+      <Modal visible={showLessonSelector} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.selectorContainer}>
+            <Text style={styles.modalTitle}>Select a Lesson</Text>
+
+            <FlatList
+              data={(userLessonsQuery.data?.data || [])}
+              keyExtractor={(item) => item.lessonId}
+              style={{ maxHeight: 300, width: '100%' }}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.lessonOption}
+                  onPress={() => {
+                    setSelectedLessonId(item.lessonId);
+                    setSelectedLessonName(item.lessonName);
+                    setShowLessonSelector(false);
+                    // Kích hoạt fetch lại flashcard
+                    flashcardsQuery.refetch();
+                  }}
+                >
+                  <Text style={styles.lessonOptionText}>{item.lessonName}</Text>
+                  <Icon name="chevron-right" size={20} color="#ccc" />
+                </TouchableOpacity>
+              )}
+            />
+
+            <TouchableOpacity
+              style={styles.createNewOption}
+              onPress={() => {
+                setShowLessonSelector(false);
+                navigation.navigate("CreateLessonScreen");
+              }}
+            >
+              <Icon name="add-circle-outline" size={24} color="#4ECDC4" />
+              <Text style={[styles.lessonOptionText, { color: '#4ECDC4', marginLeft: 10 }]}>Create New Lesson</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setShowLessonSelector(false)} style={{ marginTop: 15 }}>
+              <Text style={{ color: '#666' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Create Flashcard Modal (Chỉ hiện khi có selectedLessonId) */}
       <Modal visible={showCreateModal} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <SafeAreaView style={styles.modalContainer}>
@@ -370,7 +507,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
               <TouchableOpacity onPress={() => setShowCreateModal(false)}>
                 <Text style={styles.cancelButton}>{t("common.cancel") ?? "Cancel"}</Text>
               </TouchableOpacity>
-              <Text style={styles.modalTitle}>{t("flashcards.createTitle") ?? "New Flashcard"}</Text>
+              <Text style={styles.modalTitle}>{"New Flashcard for " + (selectedLessonName || "Lesson")}</Text>
               <TouchableOpacity onPress={handleCreateCard} disabled={isCreating}>
                 {isCreating ? (
                   <ActivityIndicator size="small" color="#4ECDC4" />
@@ -424,7 +561,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
                 />
               </View>
 
-              {/* Public Toggle Switch */}
               <View style={styles.switchContainer}>
                 <Text style={styles.switchLabel}>{t("flashcards.form.isPublic") ?? "Make Public?"}</Text>
                 <Switch
@@ -464,11 +600,11 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 
 const getQualityColor = (q: number) => {
   switch (q) {
-    case 1: return "#FF6B6B"; // Hard
+    case 1: return "#FF6B6B";
     case 2: return "#FF9800";
     case 3: return "#FFC107";
     case 4: return "#8BC34A";
-    case 5: return "#4CAF50"; // Easy
+    case 5: return "#4CAF50";
     default: return "#E0E0E0";
   }
 }
@@ -497,6 +633,23 @@ const styles = createScaledSheet({
     fontSize: 18,
     fontWeight: "700",
     color: "#333",
+  },
+  lessonNameText: {
+    fontSize: 12,
+    color: '#0097A7',
+    fontWeight: '600',
+    marginTop: 4
+  },
+  selectLessonButton: {
+    backgroundColor: '#4ECDC4',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  selectLessonButtonText: {
+    color: '#FFF',
+    fontWeight: 'bold',
   },
   searchSection: {
     paddingHorizontal: 20,
@@ -623,7 +776,8 @@ const styles = createScaledSheet({
     height: 160,
     borderRadius: 12,
     marginBottom: 12,
-    backgroundColor: '#F5F5F5'
+    backgroundColor: '#F5F5F5',
+    resizeMode: 'cover'
   },
   cardDefinition: {
     fontSize: 15,
@@ -651,7 +805,6 @@ const styles = createScaledSheet({
     fontSize: 12,
     color: "#999",
   },
-  // Study Screen Styles
   studyHeader: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -773,7 +926,42 @@ const styles = createScaledSheet({
     fontWeight: "700",
     color: "#FFFFFF",
   },
-  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  selectorContainer: {
+    width: '85%',
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    maxHeight: '60%'
+  },
+  lessonOption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    width: '100%'
+  },
+  lessonOptionText: {
+    fontSize: 16,
+    color: '#333'
+  },
+  createNewOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    width: '100%',
+    justifyContent: 'center',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    marginTop: 5
+  },
   modalContainer: {
     flex: 1,
     backgroundColor: "#FFFFFF",

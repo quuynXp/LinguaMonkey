@@ -13,7 +13,7 @@ import {
   AssignRoadmapRequest,
   AddSuggestionRequest,
   RoadmapPublicResponse,
-  RoadmapSuggestionResponse
+  RoadmapSuggestionResponse,
 } from "../types/dto";
 
 import { RoadmapItem, RoadmapSuggestion } from "../types/entity";
@@ -29,6 +29,9 @@ export const roadmapKeys = {
   itemDetail: (itemId: string) => [...roadmapKeys.all, "itemDetail", itemId] as const,
   goals: (userId: string) => [...roadmapKeys.all, "goals", userId] as const,
   suggestions: (roadmapId: string) => [...roadmapKeys.all, "suggestions", roadmapId] as const,
+  community: (lang?: string, page?: number) => [...roadmapKeys.all, "community", { lang, page }] as const,
+  official: (lang?: string, page?: number) => [...roadmapKeys.all, "official", { lang, page }] as const,
+
 };
 
 export const useRoadmap = () => {
@@ -64,7 +67,6 @@ export const useRoadmap = () => {
       enabled: !!(roadmapId && userId),
     });
 
-  // --- 2. PUBLIC ROADMAPS (Marketplace) ---
   const usePublicRoadmaps = () =>
     useQuery({
       queryKey: roadmapKeys.defaults(),
@@ -81,7 +83,12 @@ export const useRoadmap = () => {
         const res = await instance.get<AppApiResponse<any>>("/api/v1/roadmaps/public/stats", {
           params: { language, page, size }
         });
-        return res.data.result.content as RoadmapPublicResponse[];
+
+        if (res.data.result && res.data.result.content) {
+          return res.data.result.content as RoadmapPublicResponse[];
+        }
+
+        return [] as RoadmapPublicResponse[];
       },
     });
 
@@ -113,10 +120,11 @@ export const useRoadmap = () => {
       queryKey: roadmapKeys.suggestions(roadmapId!),
       queryFn: async () => {
         if (!roadmapId) throw new Error("Roadmap ID missing");
+        // Gọi endpoint details mới
         const res = await instance.get<AppApiResponse<RoadmapSuggestionResponse[]>>(
           `/api/v1/roadmaps/${roadmapId}/suggestions/details`
         );
-        return res.data.result;
+        return res.data.result || []; // 🐛 FIX: Trả về [] thay vì undefined
       },
       enabled: !!roadmapId,
     });
@@ -174,6 +182,35 @@ export const useRoadmap = () => {
       },
     });
 
+  // --- 2. COMMUNITY ROADMAPS (User Shared) ---
+  const useCommunityRoadmaps = (language: string = "en", page: number = 0, size: number = 10) =>
+    useQuery({
+      queryKey: roadmapKeys.community(language, page),
+      queryFn: async () => {
+        const res = await instance.get<AppApiResponse<any>>("/api/v1/roadmaps/public/community", {
+          params: { language, page, size }
+        });
+        if (res.data.result && res.data.result.content) {
+          return res.data.result.content as RoadmapPublicResponse[];
+        }
+        return [] as RoadmapPublicResponse[];
+      },
+    });
+
+  // --- 3. OFFICIAL ROADMAPS (System Templates) ---
+  const useOfficialRoadmaps = (language: string = "en", page: number = 0, size: number = 10) =>
+    useQuery({
+      queryKey: roadmapKeys.official(language, page),
+      queryFn: async () => {
+        const res = await instance.get<AppApiResponse<any>>("/api/v1/roadmaps/public/official", {
+          params: { language, page, size }
+        });
+        if (res.data.result && res.data.result.content) {
+          return res.data.result.content as RoadmapPublicResponse[];
+        }
+        return [] as RoadmapPublicResponse[];
+      },
+    });
   const useStartRoadmapItem = () =>
     useMutation({
       mutationFn: async (itemId: string) => {
@@ -201,6 +238,8 @@ export const useRoadmap = () => {
         queryClient.invalidateQueries({ queryKey: roadmapKeys.itemDetail(itemId) });
       },
     });
+
+
 
   const useGenerateRoadmap = () =>
     useMutation({
@@ -234,7 +273,8 @@ export const useRoadmap = () => {
     useRoadmapWithProgress,
     useRoadmapItemDetail,
     useSuggestions,
-
+    useCommunityRoadmaps,
+    useOfficialRoadmaps,
     useCreateRoadmap,
     useAssignRoadmap,
     useAddSuggestion,

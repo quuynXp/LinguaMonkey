@@ -4,8 +4,9 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useUserStore } from "../../stores/UserStore";
 import { useRoadmap } from "../../hooks/useRoadmap";
-import { useDailyChallenges, useAssignChallenge, useCompleteChallenge } from "../../hooks/useDailyChallenge";
+import { useClaimChallengeReward, useDailyChallenges } from "../../hooks/useDailyChallenge";
 import { useLeaderboards } from "../../hooks/useLeaderboards";
+import { useNotifications } from "../../hooks/useNotifications";
 import { queryClient } from "../../services/queryClient";
 import { gotoTab } from "../../utils/navigationRef";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -41,12 +42,26 @@ const HomeScreen = ({ navigation }: any) => {
     user,
   } = useUserStore();
 
-  const { data: dailyChallengesData, isLoading: dailyLoading, refetch: refetchDaily } = useDailyChallenges(user?.userId);
-  const dailyChallenges = dailyChallengesData || [];
-  const currentChallenge = dailyChallenges.find((c: UserDailyChallengeResponse) => !c.completed);
+  const { data: challengesData, isLoading: dailyLoading } = useDailyChallenges(user?.userId);
+  const { isClaiming: isClaimingReward, claimReward } = useClaimChallengeReward();
 
-  const assignChallengeMutation = useAssignChallenge();
-  const completeMutation = useCompleteChallenge();
+  const activeChallenges = challengesData || [];
+
+  // --- NOTIFICATION LOGIC ---
+  const { useUnreadCount } = useNotifications();
+  const { data: unreadCount = 0 } = useUnreadCount(user?.userId);
+
+  const handleClaim = async (id: string) => {
+    if (!user?.userId) return;
+    try {
+      await claimReward({ userId: user.userId, challengeId: id });
+    } catch (e) { }
+  };
+
+  const handleSeeAllChallenges = () => {
+    // Navigate to new screen
+    navigation.navigate('DailyChallengeBadgeScreen', { initialTab: 'DAILY' });
+  };
 
   // --- ROADMAP LOGIC ---
   const {
@@ -83,21 +98,11 @@ const HomeScreen = ({ navigation }: any) => {
     bounceAnimation();
   }, [fadeAnim, bounceAnim]);
 
-  const onRefresh = React.useCallback(async () => {
-    setRefreshing(true);
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["roadmaps"] }),
-      queryClient.invalidateQueries({ queryKey: ["dailyChallenges"] }),
-      queryClient.invalidateQueries({ queryKey: ["leaderboards", "top3"] }),
-      refetchDaily()
-    ]);
-    setRefreshing(false);
-  }, [refetchDaily]);
-
   // --- HANDLERS ---
   const handleLeaderboardPress = () => gotoTab("EnhancedLeaderboardScreen");
   const handleRoadmapPress = () => navigation.navigate('RoadmapStack', { screen: 'RoadmapScreen' });
   const handleFindRoadmap = () => navigation.navigate('RoadmapStack', { screen: 'PublicRoadmapsScreen' });
+  const handleNotificationPress = () => navigation.navigate('NotificationsScreen');
 
   const handleAddSuggestion = async (itemId: string, text: string) => {
     if (!roadmap?.roadmapId) return;
@@ -115,31 +120,71 @@ const HomeScreen = ({ navigation }: any) => {
 
   const greetingKey = getGreetingKey();
 
-  const handleAssignChallenge = async () => {
-    if (!user?.userId) return;
-    try {
-      await assignChallengeMutation.assignChallenge(user.userId);
-    } catch (error) {
-      console.error("Failed to assign challenge", error);
-    }
-  };
-
-  const handleCompleteChallenge = async (challengeId: string) => {
-    if (!user?.userId) return;
-    try {
-      await completeMutation.completeChallenge({ userId: user.userId, challengeId });
-    } catch (error) {
-      console.error("Failed to complete challenge", error);
-    }
-  };
-
-  const calculateChallengeProgress = (item: UserDailyChallengeResponse): number => {
-    return Math.min(1, Math.max(0, (item.progress || 0) / 100));
-  };
-
   const goToChatAISCreen = () => {
     gotoTab("ChatStack", 'ChatAIScreen');
   };
+
+  const renderChallengeSection = () => (
+    <View style={styles.section}>
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>{t("home.challenge.title")}</Text>
+        <TouchableOpacity onPress={handleSeeAllChallenges}>
+          <Text style={styles.seeAllText}>{t("common.viewAll")}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {dailyLoading ? (
+        <ActivityIndicator color="#3B82F6" />
+      ) : (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.challengeList}>
+          {activeChallenges.slice(0, 5).map((item: UserDailyChallengeResponse) => {
+            const isClaimable = item.status === 'CAN_CLAIM';
+            const isCompleted = item.status === 'CLAIMED';
+            const progress = Math.min(100, (item.progress / (item.targetAmount || 1)) * 100);
+
+            return (
+              <TouchableOpacity
+                key={item.challengeId}
+                style={[styles.challengeCardHome, isCompleted && styles.challengeCardCompleted]}
+                onPress={() => {
+                  if (isClaimable) handleClaim(item.challengeId);
+                  else if (!isCompleted) navigation.navigate(item.screenRoute || 'LearnScreen');
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.challengeCardHeader}>
+                  <Icon name={item.period === 'WEEKLY' ? "date-range" : "today"} size={20} color={isCompleted ? "#FFF" : "#4F46E5"} />
+                  <View style={[styles.xpBadge, isCompleted && { backgroundColor: 'rgba(255,255,255,0.2)' }]}>
+                    <Text style={[styles.xpText, isCompleted && { color: '#FFF' }]}>+{item.expReward} XP</Text>
+                  </View>
+                </View>
+
+                <Text style={[styles.challengeTitle, isCompleted && { color: '#FFF' }]} numberOfLines={2}>{item.title}</Text>
+
+                <View style={styles.progressBarContainer}>
+                  <View style={[styles.progressBarFill, { width: `${progress}%`, backgroundColor: isCompleted ? '#FFF' : '#F59E0B' }]} />
+                </View>
+
+                <View style={styles.challengeFooter}>
+                  <Text style={[styles.progressText, isCompleted && { color: 'rgba(255,255,255,0.8)' }]}>
+                    {item.progress}/{item.targetAmount}
+                  </Text>
+
+                  {isClaimable ? (
+                    <View style={styles.claimBtnSmall}>
+                      <Text style={styles.claimTextSmall}>{t('common.claim')}</Text>
+                    </View>
+                  ) : isCompleted ? (
+                    <Icon name="check-circle" size={18} color="#FFF" />
+                  ) : null}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      )}
+    </View>
+  );
 
   // --- RENDER ---
   return (
@@ -147,7 +192,7 @@ const HomeScreen = ({ navigation }: any) => {
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} />}
       >
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
 
@@ -157,10 +202,22 @@ const HomeScreen = ({ navigation }: any) => {
               <Text style={styles.greeting}>{t(greetingKey)} 👋</Text>
               <Text style={styles.fullname}>{name || t("home.student")}</Text>
             </View>
-            <TouchableOpacity style={styles.streakContainer} onPress={() => gotoTab('DailyWelcomeScreen')}>
-              <Icon name="local-fire-department" size={20} color="#FF6B35" />
-              <Text style={styles.streakText}>{streak}</Text>
-            </TouchableOpacity>
+
+            <View style={styles.headerActions}>
+              <TouchableOpacity style={styles.iconBtn} onPress={handleNotificationPress}>
+                <Icon name="notifications-none" size={26} color="#374151" />
+                {unreadCount > 0 && (
+                  <View style={styles.badge}>
+                    <Text style={styles.badgeText}>{unreadCount > 99 ? '99+' : unreadCount}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.streakContainer} onPress={() => gotoTab('DailyWelcomeScreen')}>
+                <Icon name="local-fire-department" size={20} color="#FF6B35" />
+                <Text style={styles.streakText}>{streak}</Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           {/* LEADERBOARD PODIUM */}
@@ -245,43 +302,7 @@ const HomeScreen = ({ navigation }: any) => {
             </View>
           </View>
 
-          {/* CURRENT CHALLENGE */}
-          {currentChallenge && !currentChallenge.completed ? (
-            <TouchableOpacity
-              style={styles.section}
-              onPress={() => handleCompleteChallenge(currentChallenge.challengeId)}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.sectionTitle}>{t("home.challenge.currentTitle")}</Text>
-              <View style={[styles.progressCard, { backgroundColor: '#E0F2FE', borderColor: '#3B82F6', borderWidth: 1 }]}>
-                <View style={styles.progressHeader}>
-                  <Icon name="run-circle" size={24} color="#3B82F6" />
-                  <Text style={[styles.progressLabel, { color: '#3B82F6' }]}>{currentChallenge.title}</Text>
-                </View>
-                <Text style={{ color: '#6B7280', marginBottom: 10 }}>
-                  {currentChallenge.description || t("home.challenge.defaultDesc")}
-                </Text>
-                <View style={styles.progressBarContainer}>
-                  <View style={[styles.progressBarFill, { width: `${currentChallenge.progress || 0}%`, backgroundColor: '#3B82F6' }]} />
-                </View>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={[styles.progressValue, { textAlign: 'left', flex: 1 }]}>
-                    +{currentChallenge.expReward} XP
-                  </Text>
-                  <Text style={styles.progressValue}>
-                    {currentChallenge.progress || 0}%
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={styles.completeButton}
-                  onPress={() => handleCompleteChallenge(currentChallenge.challengeId)}
-                >
-                  <Text style={styles.completeButtonText}>{t("common.complete")}</Text>
-                  <Icon name="arrow-forward" size={16} color="#fff" style={{ marginLeft: 4 }} />
-                </TouchableOpacity>
-              </View>
-            </TouchableOpacity>
-          ) : null}
+          {renderChallengeSection()}
 
           {/* --- ROADMAP SECTION WITH TIMELINE & SKELETON --- */}
           <View style={styles.section}>
@@ -327,77 +348,6 @@ const HomeScreen = ({ navigation }: any) => {
               </TouchableOpacity>
             )}
           </View>
-
-          {/* CHALLENGES LIST */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("home.challenge.title")}</Text>
-            {dailyLoading ? (
-              <ActivityIndicator color="#3B82F6" />
-            ) : (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.challengeList}>
-                {dailyChallenges?.map((item: UserDailyChallengeResponse) => {
-                  const progressPercentage = calculateChallengeProgress(item) * 100;
-                  const showProgressBar = item.progress > 0 && !item.completed;
-
-                  return (
-                    <TouchableOpacity
-                      key={item.challengeId}
-                      style={[styles.challengeCard, item.completed && styles.challengeCompleted]}
-                      onPress={() => !item.completed && handleCompleteChallenge(item.challengeId)}
-                      disabled={item.completed}
-                      activeOpacity={item.completed ? 1 : 0.7}
-                    >
-                      <View style={[styles.challengeIcon, { backgroundColor: item.completed ? 'rgba(255,255,255,0.2)' : '#FFF7ED' }]}>
-                        <Icon
-                          name={item.completed ? "check-circle" : "sports-esports"}
-                          size={24}
-                          color={item.completed ? "#fff" : "#F59E0B"}
-                        />
-                      </View>
-                      <Text style={[styles.challengeTitleText, item.completed && { color: '#fff' }]} numberOfLines={1}>
-                        {item.title}
-                      </Text>
-                      <Text style={[styles.challengeDescriptionText, item.completed && { color: 'rgba(255,255,255,0.8)' }]} numberOfLines={2}>
-                        {item.description || t("home.challenge.defaultDescShort")}
-                      </Text>
-                      {showProgressBar && (
-                        <View style={{ marginVertical: 8, width: '100%' }}>
-                          <View style={styles.progressBarContainer}>
-                            <View style={[styles.progressBarFill, { width: `${progressPercentage}%`, backgroundColor: '#F59E0B' }]} />
-                          </View>
-                          <Text style={[styles.progressValue, { fontSize: 10, textAlign: 'right', color: item.completed ? '#fff' : '#6B7280', fontWeight: 'bold' }]}>
-                            {item.progress}%
-                          </Text>
-                        </View>
-                      )}
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: showProgressBar ? 0 : 8 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Text style={[styles.xpBadge, item.completed && { backgroundColor: 'rgba(255,255,255,0.3)', color: '#fff' }]}>
-                            +{item.expReward} XP
-                          </Text>
-                          {item.rewardCoins > 0 && (
-                            <View style={[styles.coinBadge, item.completed && { backgroundColor: 'rgba(255,255,255,0.3)' }]}>
-                              <Icon name="monetization-on" size={12} color={item.completed ? "#fff" : "#059669"} />
-                              <Text style={[styles.coinText, item.completed && { color: '#fff' }]}>
-                                {item.rewardCoins}
-                              </Text>
-                            </View>
-                          )}
-                        </View>
-                        {!item.completed && (
-                          <Icon name="chevron-right" size={24} color={item.completed ? "#fff" : "#6B7280"} />
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  )
-                })}
-                <TouchableOpacity style={styles.addChallengeCard} onPress={handleAssignChallenge}>
-                  <Icon name="add-circle-outline" size={32} color="#3B82F6" />
-                  <Text style={styles.addChallengeText}>{t("home.challenge.add")}</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            )}
-          </View>
         </Animated.View>
       </ScrollView>
     </ScreenLayout>
@@ -418,10 +368,77 @@ const styles = createScaledSheet({
     paddingHorizontal: 24,
     paddingVertical: 16,
   },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  iconBtn: {
+    padding: 6,
+    marginRight: 12,
+    position: 'relative',
+  },
+  badge: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#F8FAFC',
+    paddingHorizontal: 3,
+  },
+  badgeText: {
+    color: '#FFF',
+    fontSize: 9,
+    fontWeight: 'bold',
+  },
+  challengeList: { paddingRight: 24 },
+  challengeCardHome: {
+    width: 150,
+    height: 130,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 12,
+    marginRight: 12,
+    justifyContent: 'space-between',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 }
+  },
+  challengeCardCompleted: {
+    backgroundColor: '#10B981',
+  },
+  challengeCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  xpBadge: {
+    backgroundColor: '#EEF2FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  xpText: { fontSize: 10, fontWeight: 'bold', color: '#4F46E5' },
+  challengeTitle: { fontSize: 13, fontWeight: '700', color: '#374151' },
+  challengeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  claimBtnSmall: { backgroundColor: '#F59E0B', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
+  claimTextSmall: { fontSize: 10, color: '#FFF', fontWeight: 'bold' },
   headerContent: {
     flex: 1,
   },
   greeting: {
+    fontSize: 14,
+    color: "#6B7280",
+    fontWeight: "500",
+  },
+  progressText: {
     fontSize: 14,
     color: "#6B7280",
     fontWeight: "500",
@@ -711,9 +728,6 @@ const styles = createScaledSheet({
     color: "#6B7280",
     marginTop: 2,
   },
-  challengeList: {
-    paddingRight: 24,
-  },
   challengeCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
@@ -750,17 +764,6 @@ const styles = createScaledSheet({
     color: "#6B7280",
     marginBottom: 4,
     overflow: 'hidden',
-  },
-  xpBadge: {
-    backgroundColor: "#FFF7ED",
-    color: "#C2410C",
-    fontSize: 12,
-    fontWeight: "bold",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-    overflow: "hidden",
   },
   coinBadge: {
     flexDirection: 'row',

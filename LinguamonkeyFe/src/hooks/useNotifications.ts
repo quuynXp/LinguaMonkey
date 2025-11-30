@@ -13,6 +13,7 @@ export const notificationKeys = {
     lists: (params: any) => [...notificationKeys.all, "list", params] as const,
     detail: (id: string) => [...notificationKeys.all, "detail", id] as const,
     byUser: (userId: string) => [...notificationKeys.all, "user", userId] as const,
+    unread: (userId: string) => [...notificationKeys.all, "unread", userId] as const,
 };
 
 // --- Helper to standardize pagination return ---
@@ -73,6 +74,22 @@ export const useNotifications = () => {
         });
     };
 
+    // GET /api/v1/notifications/{userId}/unread-count
+    const useUnreadCount = (userId?: string) => {
+        return useQuery({
+            queryKey: notificationKeys.unread(userId!),
+            queryFn: async () => {
+                if (!userId) return 0;
+                const { data } = await instance.get<AppApiResponse<number>>(
+                    `/api/v1/notifications/${userId}/unread-count`
+                );
+                return data.result || 0;
+            },
+            enabled: !!userId,
+            refetchInterval: 30000, // Refresh every 30s
+        });
+    };
+
     // GET /api/v1/notifications/detail/{id}
     const useNotificationDetail = (id?: string | null) => {
         return useQuery({
@@ -104,7 +121,6 @@ export const useNotifications = () => {
             },
             onSuccess: (data) => {
                 queryClient.invalidateQueries({ queryKey: notificationKeys.all });
-                queryClient.invalidateQueries({ queryKey: notificationKeys.byUser(data.userId) });
             },
         });
     };
@@ -122,6 +138,7 @@ export const useNotifications = () => {
             onSuccess: (data) => {
                 queryClient.invalidateQueries({ queryKey: notificationKeys.detail(data.notificationId) });
                 queryClient.invalidateQueries({ queryKey: notificationKeys.byUser(data.userId) });
+                queryClient.invalidateQueries({ queryKey: notificationKeys.unread(data.userId) });
             },
         });
     };
@@ -129,77 +146,95 @@ export const useNotifications = () => {
     // DELETE /api/v1/notifications/{id}
     const useDeleteNotification = () => {
         return useMutation({
-            mutationFn: async (id: string) => {
+            mutationFn: async ({ id, userId }: { id: string, userId: string }) => {
                 await instance.delete<AppApiResponse<void>>(`/api/v1/notifications/${id}`);
+                return userId;
             },
-            onSuccess: () => queryClient.invalidateQueries({ queryKey: notificationKeys.all }),
+            onSuccess: (userId) => {
+                queryClient.invalidateQueries({ queryKey: notificationKeys.byUser(userId) });
+                queryClient.invalidateQueries({ queryKey: notificationKeys.unread(userId) });
+            },
+        });
+    };
+
+    // PUT /api/v1/notifications/{userId}/mark-all-read
+    const useMarkAllRead = () => {
+        return useMutation({
+            mutationFn: async (userId: string) => {
+                await instance.put<AppApiResponse<void>>(`/api/v1/notifications/${userId}/mark-all-read`);
+                return userId;
+            },
+            onSuccess: (userId) => {
+                queryClient.invalidateQueries({ queryKey: notificationKeys.byUser(userId) });
+                queryClient.invalidateQueries({ queryKey: notificationKeys.unread(userId) });
+            },
+        });
+    };
+
+    // DELETE /api/v1/notifications/{userId}/delete-all
+    const useDeleteAllNotifications = () => {
+        return useMutation({
+            mutationFn: async (userId: string) => {
+                await instance.delete<AppApiResponse<void>>(`/api/v1/notifications/${userId}/delete-all`);
+                return userId;
+            },
+            onSuccess: (userId) => {
+                queryClient.invalidateQueries({ queryKey: notificationKeys.byUser(userId) });
+                queryClient.invalidateQueries({ queryKey: notificationKeys.unread(userId) });
+            },
+        });
+    };
+
+    const useMarkAsRead = () => {
+        return useMutation({
+            mutationFn: async ({ id, userId }: { id: string, userId: string }) => {
+                await instance.patch<AppApiResponse<void>>(`/api/v1/notifications/${id}/read`);
+                return userId;
+            },
+            onSuccess: (userId) => {
+                // Invalidate list and count, but we can also optimistically update in the screen
+                queryClient.invalidateQueries({ queryKey: notificationKeys.byUser(userId) });
+                queryClient.invalidateQueries({ queryKey: notificationKeys.unread(userId) });
+            },
         });
     };
 
     // ==========================================
     // === 3. EMAIL TRIGGERS (ADMIN/SYSTEM) ===
     // ==========================================
-
-    // FIX: Đổi tên helper thành custom Hook
     const useCreateEmailMutation = <T extends Record<string, any>>(path: string) => {
         return useMutation({
             mutationFn: async (params: T) => {
-                // Params are passed as query string for all email endpoints
                 await instance.post<AppApiResponse<void>>(
                     `/api/v1/notifications/email/${path}`,
                     null,
                     { params }
                 );
             },
-            // No onSuccess invalidation needed as these are side-effect triggers
         });
     };
 
-    // POST /api/v1/notifications/email/purchase-course
-    const useSendPurchaseCourseEmail = () =>
-        useCreateEmailMutation<{ userId: string; courseName: string }>("purchase-course");
-
-    // POST /api/v1/notifications/email/voucher-registration
-    const useSendVoucherRegistrationEmail = () =>
-        useCreateEmailMutation<{ userId: string; voucherCode: string }>("voucher-registration");
-
-    // POST /api/v1/notifications/email/achievement
-    const useSendAchievementEmail = () =>
-        useCreateEmailMutation<{ userId: string; title: string; message: string }>("achievement");
-
-    // POST /api/v1/notifications/email/daily-reminder
-    const useSendDailyStudyReminder = () =>
-        useCreateEmailMutation<{ userId: string }>("daily-reminder");
-
-    // POST /api/v1/notifications/email/password-reset
-    const useSendPasswordResetEmail = () =>
-        useCreateEmailMutation<{ userId: string; resetLink: string }>("password-reset");
-
-    // POST /api/v1/notifications/email/verify-account
-    const useSendVerifyAccountEmail = () =>
-        useCreateEmailMutation<{ userId: string; verifyLink: string }>("verify-account");
-
-    // POST /api/v1/notifications/email/inactivity-warning
-    const useSendInactivityWarning = () =>
-        useCreateEmailMutation<{ userId: string; days: number }>("inactivity-warning");
-
-    // POST /api/v1/notifications/email/streak-reward
-    const useSendStreakRewardEmail = () =>
-        useCreateEmailMutation<{ userId: string; streakDays: number }>("streak-reward");
+    const useSendPurchaseCourseEmail = () => useCreateEmailMutation<{ userId: string; courseName: string }>("purchase-course");
+    const useSendVoucherRegistrationEmail = () => useCreateEmailMutation<{ userId: string; voucherCode: string }>("voucher-registration");
+    const useSendAchievementEmail = () => useCreateEmailMutation<{ userId: string; title: string; message: string }>("achievement");
+    const useSendDailyStudyReminder = () => useCreateEmailMutation<{ userId: string }>("daily-reminder");
+    const useSendPasswordResetEmail = () => useCreateEmailMutation<{ userId: string; resetLink: string }>("password-reset");
+    const useSendVerifyAccountEmail = () => useCreateEmailMutation<{ userId: string; verifyLink: string }>("verify-account");
+    const useSendInactivityWarning = () => useCreateEmailMutation<{ userId: string; days: number }>("inactivity-warning");
+    const useSendStreakRewardEmail = () => useCreateEmailMutation<{ userId: string; streakDays: number }>("streak-reward");
 
 
     return {
-        // CRUD Queries
         useAllNotifications,
         useNotificationsByUserId,
+        useMarkAsRead,
         useNotificationDetail,
-
-        // CRUD Mutations
+        useUnreadCount,
         useCreateNotification,
         useUpdateNotification,
         useDeleteNotification,
-
-        // Email Triggers
+        useMarkAllRead,
+        useDeleteAllNotifications,
         useSendPurchaseCourseEmail,
         useSendVoucherRegistrationEmail,
         useSendAchievementEmail,

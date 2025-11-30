@@ -16,5 +16,6 @@ public interface DailyChallengeService {
     void completeChallenge(UUID userId, UUID challengeId);
     DailyChallengeUpdateResponse updateChallengeProgress(UUID userId, ChallengeType challengeType, int increment);
     Map<String, Object> getDailyChallengeStats(UUID userId);
+    void claimReward(UUID userId, UUID challengeId);
 }
 

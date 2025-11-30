@@ -13,10 +13,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface BadgeRepository extends JpaRepository<Badge, UUID> {
+@Query("SELECT b FROM Badge b WHERE b.languageCode = :languageCode AND b.isDeleted = false")
+    List<Badge> findAllByLanguageCodeAndIsDeletedFalse(@Param("languageCode") String languageCode);
+
+    Page<Badge> findByBadgeNameContainingAndLanguageCodeAndIsDeletedFalse(String badgeName, String languageCode, Pageable pageable);
+
     @Query(value = "SELECT * FROM badges WHERE badge_name LIKE %:badgeName% AND is_deleted = false LIMIT :limit OFFSET :offset",
             countQuery = "SELECT COUNT(*) FROM badges WHERE badge_name LIKE %:badgeName% AND is_deleted = false",
             nativeQuery = true)
-
     Page<Badge> findByBadgeNameContainingAndIsDeletedFalse(@Param("badgeName") String badgeName, Pageable pageable);
 
     long countByIsDeletedFalse();

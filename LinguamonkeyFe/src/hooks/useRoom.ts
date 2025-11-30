@@ -12,11 +12,10 @@ import { RoomPurpose, RoomType } from "../types/enums";
 
 export const roomKeys = {
     all: ["rooms"] as const,
-    lists: (params: any) => [...roomKeys.all, "list", params] as const,
-    joined: (params: any) => [...roomKeys.all, "joined", params] as const, // New Key
+    publicLists: (params: any) => [...roomKeys.all, "public", params] as const,
+    joinedLists: (params: any) => [...roomKeys.all, "joined", params] as const,
     detail: (id: string) => [...roomKeys.all, "detail", id] as const,
     members: (id: string) => [...roomKeys.all, "members", id] as const,
-    private: (targetUserId: string) => [...roomKeys.all, "private", targetUserId] as const,
     ai: () => [...roomKeys.all, "aiRoom"] as const,
 };
 
@@ -28,9 +27,6 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
         totalElements: result?.totalElements ?? 0,
         totalPages: result?.totalPages ?? 0,
         isLast: result?.last ?? true,
-        isFirst: result?.first ?? true,
-        hasNext: result?.hasNext ?? false,
-        hasPrevious: result?.first ?? false,
     },
 });
 
@@ -38,7 +34,8 @@ export const useRooms = () => {
     const queryClient = useQueryClient();
     const BASE = "/api/v1/rooms";
 
-    const useAllRooms = (params?: {
+    // Lấy danh sách phòng PUBLIC (Lobby)
+    const usePublicRooms = (params?: {
         roomName?: string;
         creatorId?: string;
         purpose?: RoomPurpose;
@@ -48,7 +45,7 @@ export const useRooms = () => {
     }) => {
         const { page = 0, size = 10 } = params || {};
         return useQuery({
-            queryKey: roomKeys.lists(params),
+            queryKey: roomKeys.publicLists(params),
             queryFn: async () => {
                 const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
                     BASE,
@@ -60,15 +57,16 @@ export const useRooms = () => {
         });
     };
 
-    // NEW: Get rooms I have joined (Private, AI, Groups)
+    // Lấy danh sách phòng ĐÃ THAM GIA (Inbox - Private & Group)
     const useJoinedRooms = (params?: {
         purpose?: RoomPurpose;
         page?: number;
         size?: number;
+        userId: string; // Bắt buộc để query key unique theo user
     }) => {
-        const { page = 0, size = 10 } = params || {};
+        const { page = 0, size = 20 } = params || {};
         return useQuery({
-            queryKey: roomKeys.joined(params),
+            queryKey: roomKeys.joinedLists(params),
             queryFn: async () => {
                 const { data } = await instance.get<AppApiResponse<PageResponse<RoomResponse>>>(
                     `${BASE}/joined`,
@@ -76,7 +74,7 @@ export const useRooms = () => {
                 );
                 return mapPageResponse(data.result, page, size);
             },
-            staleTime: 1 * 60 * 1000, // Keep fresh for inbox
+            refetchInterval: 10000, // Auto refresh inbox mỗi 10s để cập nhật tin nhắn mới nhất
         });
     };
 
@@ -106,17 +104,6 @@ export const useRooms = () => {
         });
     };
 
-    const useAiChatRoom = () => {
-        return useQuery({
-            queryKey: roomKeys.ai(),
-            queryFn: async () => {
-                const { data } = await instance.get<AppApiResponse<RoomResponse>>(`${BASE}/ai-chat-room`);
-                return data.result!;
-            },
-            staleTime: Infinity,
-        });
-    };
-
     const useCreateRoom = () => {
         return useMutation({
             mutationFn: async (req: RoomRequest) => {
@@ -139,52 +126,24 @@ export const useRooms = () => {
                 });
                 return data.result!;
             },
-            onSuccess: (data) => {
+            onSuccess: () => {
                 queryClient.invalidateQueries({ queryKey: roomKeys.all });
-                queryClient.invalidateQueries({ queryKey: roomKeys.detail(data.roomId) });
             },
         });
     };
 
-    const useFindOrCreatePrivateRoom = () => {
+    const useLeaveRoom = () => {
         return useMutation({
-            mutationFn: async (targetUserId: string) => {
-                const { data } = await instance.post<AppApiResponse<RoomResponse>>(
-                    `${BASE}/private`,
+            mutationFn: async ({ roomId, targetAdminId }: { roomId: string; targetAdminId?: string }) => {
+                await instance.post<AppApiResponse<void>>(
+                    `${BASE}/${roomId}/leave`,
                     null,
-                    { params: { targetUserId } }
+                    { params: { targetAdminId } }
                 );
-                return data.result!;
             },
-            onSuccess: (data) => {
-                queryClient.invalidateQueries({ queryKey: roomKeys.all });
-                queryClient.invalidateQueries({ queryKey: roomKeys.detail(data.roomId) });
-            },
-        });
-    };
-
-    const useUpdateRoom = () => {
-        return useMutation({
-            mutationFn: async ({ id, req }: { id: string; req: RoomRequest }) => {
-                const { data } = await instance.put<AppApiResponse<RoomResponse>>(
-                    `${BASE}/${id}`,
-                    req
-                );
-                return data.result!;
-            },
-            onSuccess: (data) => {
-                queryClient.invalidateQueries({ queryKey: roomKeys.detail(data.roomId) });
+            onSuccess: () => {
                 queryClient.invalidateQueries({ queryKey: roomKeys.all });
             },
-        });
-    };
-
-    const useDeleteRoom = () => {
-        return useMutation({
-            mutationFn: async (id: string) => {
-                await instance.delete<AppApiResponse<void>>(`${BASE}/${id}`);
-            },
-            onSuccess: () => queryClient.invalidateQueries({ queryKey: roomKeys.all }),
         });
     };
 
@@ -205,25 +164,37 @@ export const useRooms = () => {
             mutationFn: async ({ roomId, userIds }: { roomId: string; userIds: string[] }) => {
                 await instance.delete<AppApiResponse<void>>(
                     `${BASE}/${roomId}/members`,
-                    { data: userIds }
+                    { data: userIds } // Axios delete body
                 );
             },
             onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
         });
     };
 
+    const useFindOrCreatePrivateRoom = () => {
+        return useMutation({
+            mutationFn: async (targetUserId: string) => {
+                const { data } = await instance.post<AppApiResponse<RoomResponse>>(
+                    `${BASE}/private`,
+                    null,
+                    { params: { targetUserId } }
+                );
+                return data.result!;
+            },
+            onSuccess: () => queryClient.invalidateQueries({ queryKey: roomKeys.all }),
+        });
+    }
+
     return {
-        useAllRooms,
-        useJoinedRooms, // Exported here
+        usePublicRooms,
+        useJoinedRooms,
         useRoom,
         useRoomMembers,
-        useAiChatRoom,
         useCreateRoom,
         useJoinRoom,
-        useUpdateRoom,
-        useDeleteRoom,
-        useFindOrCreatePrivateRoom,
+        useLeaveRoom,
         useAddRoomMembers,
         useRemoveRoomMembers,
+        useFindOrCreatePrivateRoom
     };
 };

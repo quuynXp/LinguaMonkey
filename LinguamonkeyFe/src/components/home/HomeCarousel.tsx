@@ -1,8 +1,7 @@
-import React, { useRef, useState, useEffect, useMemo } from "react"
+import React, { useRef, useState, useMemo } from "react"
 import {
     View,
     FlatList,
-    Dimensions,
     NativeScrollEvent,
     NativeSyntheticEvent,
     Animated,
@@ -11,22 +10,13 @@ import { useTranslation } from "react-i18next"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { gotoTab } from "../../utils/navigationRef"
 import HomeCarouselItem from "./HomeCarouselItem"
+import {
+    ITEM_SPACING,
+    ITEM_WIDTH,
+    SCREEN_WIDTH
+} from "../../constants/Dimensions"
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window")
-
-// --- CÁC HẰNG SỐ ĐÃ ĐIỀU CHỈNH ĐỂ CĂN GIỮA VÀ THU NHỎ ITEM ---
-
-// Khoảng cách giữa các item (GAP)
-export const ITEM_SPACING = 20
-// Chiều rộng mong muốn của mỗi item (85% màn hình)
-export const ITEM_WIDTH = SCREEN_WIDTH * 0.85
-// LỀ cố định trái/phải (padding 10)
-const FIXED_PADDING = 10
-// Khoảng cách CUỘN (SNAP) cho mỗi lần cuộn: là chiều rộng item + khoảng cách
-const SNAP_INTERVAL = ITEM_WIDTH + ITEM_SPACING
-
-// Dữ liệu gốc
-const CAROUSEL_DATA_MOCK = [
+const CAROUSEL_DATA = [
     {
         id: "1",
         type: "FLASHSALE",
@@ -53,112 +43,47 @@ const CAROUSEL_DATA_MOCK = [
     },
 ]
 
-// Số lượng bản sao (clone) cần thiết để tạo hiệu ứng vô hạn
-const CLONE_COUNT = CAROUSEL_DATA_MOCK.length
+// Tính toán khoảng cách padding cần thiết để căn giữa (center-focus) item
+// snapToInterval = ITEM_WIDTH + ITEM_SPACING (Đã bỏ SNAP_INTERVAL)
+const ITEM_FULL_WIDTH = ITEM_WIDTH + ITEM_SPACING
+// Khoảng padding bên trái/phải = (Chiều rộng màn hình - Chiều rộng item) / 2
+// Trừ đi nửa khoảng cách giữa các item để item đầu tiên được căn giữa hoàn hảo
+const horizontalPadding = (SCREEN_WIDTH - ITEM_WIDTH) / 2 - ITEM_SPACING / 2
 
 const HomeCarousel = ({ navigation }: any) => {
     const { t } = useTranslation()
     const flatListRef = useRef<FlatList>(null)
-    const [scrolling, setScrolling] = useState(false)
 
-    // Dùng Animated.Value để theo dõi cuộn và truyền vào item con
+    // Sử dụng scrollX để truyền giá trị cuộn cho Animated.View
     const scrollX = useRef(new Animated.Value(0)).current
-    // Dùng useRef để lưu trữ giá trị offset hiện tại cho logic tự động cuộn
-    const currentScrollOffset = useRef(0)
     const [currentIndex, setCurrentIndex] = useState(0)
 
-    // Dùng useMemo để tạo dữ liệu vô hạn (Infinity Carousel)
-    const infiniteData = useMemo(() => {
-        if (CAROUSEL_DATA_MOCK.length === 0) return []
+    const mainDataLength = CAROUSEL_DATA.length
 
-        const startClones = CAROUSEL_DATA_MOCK.slice(-CLONE_COUNT).map((item, index) => ({
-            ...item,
-            id: `clone-start-${index}`,
-            isClone: true,
-        }))
+    // Bỏ logic infinite scrolling phức tạp, dùng data gốc
+    const data = CAROUSEL_DATA
 
-        const mainData = CAROUSEL_DATA_MOCK.map(item => ({ ...item, isClone: false }))
-
-        const endClones = CAROUSEL_DATA_MOCK.slice(0, CLONE_COUNT).map((item, index) => ({
-            ...item,
-            id: `clone-end-${index}`,
-            isClone: true,
-        }))
-
-        return [...startClones, ...mainData, ...endClones]
-    }, [])
-
-    const totalDataLength = infiniteData.length
-    const mainDataLength = CAROUSEL_DATA_MOCK.length
-    const startIndex = CLONE_COUNT // Vị trí bắt đầu của dữ liệu gốc
-
-    // --- LOGIC TỰ ĐỘNG CUỘN (5 giây) ---
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (!scrolling) {
-                const nextOffset = currentScrollOffset.current + SNAP_INTERVAL
-
-                flatListRef.current?.flashScrollIndicators()
-                flatListRef.current?.scrollToOffset({
-                    offset: nextOffset,
-                    animated: true,
-                })
-            }
-        }, 5000)
-
-        return () => clearInterval(interval)
-    }, [scrolling])
-
-    // --- LOGIC CUỘN VÔ HẠN (JUMP) VÀ CẬP NHẬT OFFSET ---
-    const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-        const scrollOffset = event.nativeEvent.contentOffset.x
-        const isUserScrolling = event.nativeEvent.velocity?.x !== 0
-
-        // 1. Cập nhật offset hiện tại cho Animated.Value (hiệu ứng 3D)
-        scrollX.setValue(scrollOffset)
-        // 2. Cập nhật offset hiện tại cho logic tự động cuộn
-        currentScrollOffset.current = scrollOffset
-
-        // 3. Kiểm tra nếu người dùng cuộn
-        if (isUserScrolling) {
-            setScrolling(true)
+    const handleScroll = Animated.event(
+        [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+        {
+            useNativeDriver: true, // Thường là true cho hiệu suất
         }
+    )
 
-        // 4. Logic JUMP Vô hạn
-        const endOffset = (startIndex + mainDataLength - 1) * SNAP_INTERVAL
-
-        if (scrollOffset >= endOffset + SNAP_INTERVAL) {
-            flatListRef.current?.scrollToOffset({
-                offset: startIndex * SNAP_INTERVAL,
-                animated: false,
-            })
-        }
-        else if (scrollOffset <= startIndex * SNAP_INTERVAL - SNAP_INTERVAL) {
-            flatListRef.current?.scrollToOffset({
-                offset: (startIndex + mainDataLength - 1) * SNAP_INTERVAL,
-                animated: false,
-            })
-        }
-    }
-
-    // --- XỬ LÝ CHỈ SỐ (DOTS) VÀ KẾT THÚC CUỘN ---
     const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
         const scrollOffset = event.nativeEvent.contentOffset.x
-        setScrolling(false) // Kết thúc cuộn của người dùng
 
-        // Tính index tuyệt đối trong mảng infiniteData
-        const totalIndex = Math.round(scrollOffset / SNAP_INTERVAL)
+        // Tính index hiện tại dựa trên offset
+        // Làm tròn đến index gần nhất
+        const newIndex = Math.round(scrollOffset / ITEM_FULL_WIDTH)
 
-        // Chuyển sang index của mảng gốc (0 -> mainDataLength-1)
-        let mainIndex = (totalIndex - startIndex) % mainDataLength
-        if (mainIndex < 0) mainIndex += mainDataLength
-
+        // Đảm bảo index nằm trong phạm vi dữ liệu
+        const mainIndex = Math.min(Math.max(0, newIndex), mainDataLength - 1)
         setCurrentIndex(mainIndex)
     }
 
-    // --- XỬ LÝ SỰ KIỆN PRESS ---
     const handlePress = (item: any) => {
-        if (item.isClone) return
+        // Bỏ kiểm tra item.isClone vì không còn clone
 
         if (navigation) {
             navigation.navigate("SpecialOfferScreen", { type: item.type })
@@ -167,62 +92,50 @@ const HomeCarousel = ({ navigation }: any) => {
         }
     }
 
-    // Thiết lập vị trí bắt đầu và offset ban đầu
-    useEffect(() => {
-        if (flatListRef.current && totalDataLength > 0) {
-            const initialOffset = startIndex * SNAP_INTERVAL
-            flatListRef.current.scrollToOffset({
-                offset: initialOffset,
-                animated: false,
-            })
-            // Cập nhật ref offset ban đầu
-            currentScrollOffset.current = initialOffset
-            scrollX.setValue(initialOffset) // Thiết lập giá trị Animated ban đầu
-        }
-    }, [totalDataLength])
-
-    const renderItem = ({ item, index }: { item: any, index: number }) => (
+    const renderItem = ({ item, index }: { item: (typeof CAROUSEL_DATA)[0], index: number }) => (
         <HomeCarouselItem
             item={item}
             index={index}
             scrollX={scrollX}
             onPress={handlePress}
+        // Không cần truyền thêm prop nào liên quan đến logic phức tạp nữa
         />
     )
 
     return (
         <View style={styles.container}>
-            <Animated.FlatList // Sử dụng Animated.FlatList để theo dõi cuộn
+            <Animated.FlatList
                 ref={flatListRef}
-                data={infiniteData}
+                data={data}
                 renderItem={renderItem}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 decelerationRate="fast"
                 contentContainerStyle={styles.listContent}
-                onScroll={Animated.event(
-                    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                    {
-                        useNativeDriver: false, // Phải dùng false nếu Animated không phải là style property
-                        listener: handleScroll, // Vẫn gọi listener để xử lý infinity loop và update ref
-                    }
-                )}
+                onScroll={handleScroll}
                 onMomentumScrollEnd={onMomentumScrollEnd}
                 keyExtractor={(item) => item.id}
-                snapToInterval={SNAP_INTERVAL}
-                snapToAlignment="start" // Căn chỉnh vào điểm bắt đầu của item
+                snapToInterval={ITEM_FULL_WIDTH} // Đảm bảo cuộn dừng đúng tại item
+                snapToAlignment="start" // Bắt đầu từ đầu mỗi item
                 scrollEventThrottle={16}
+                // Thêm padding cho các item ở đầu và cuối để chúng có thể cuộn vào giữa
+                ListHeaderComponent={<View style={{ width: horizontalPadding }} />}
+                ListFooterComponent={<View style={{ width: horizontalPadding }} />}
             />
-            <View style={styles.pagination}>
-                {CAROUSEL_DATA_MOCK.map((_, i) => (
-                    <View
-                        key={i}
-                        style={[
-                            styles.dot,
-                            i === currentIndex ? styles.activeDot : styles.inactiveDot,
-                        ]}
-                    />
-                ))}
+
+            {/* Pagination đơn giản, bỏ các nút điều hướng */}
+            <View style={styles.paginationContainer}>
+                <View style={styles.pagination}>
+                    {CAROUSEL_DATA.map((_, i) => (
+                        <View
+                            key={i}
+                            style={[
+                                styles.dot,
+                                i === currentIndex ? styles.activeDot : styles.inactiveDot,
+                            ]}
+                        />
+                    ))}
+                </View>
             </View>
         </View>
     )
@@ -233,15 +146,17 @@ const styles = createScaledSheet({
         marginVertical: 16,
     },
     listContent: {
-        // FIXED_PADDING = 10, ITEM_SPACING/2 = 10
-        // Padding = 10 - 10 = 0. Tác dụng của padding này là để item đầu tiên được cuộn về đúng vị trí (ITEM_WIDTH/2 - FIXED_PADDING)
-        // Khi item có marginHorizontal: ITEM_SPACING/2, ta cần bù trừ padding:
-        paddingHorizontal: FIXED_PADDING - ITEM_SPACING / 2,
+        // Đã bỏ paddingLeft/Right ở đây, thay bằng ListHeader/FooterComponent
+    },
+    paginationContainer: {
+        flexDirection: "row",
+        justifyContent: "center",
+        alignItems: "center",
+        marginTop: 10,
     },
     pagination: {
         flexDirection: "row",
         justifyContent: "center",
-        marginTop: 10,
         gap: 6,
     },
     dot: {

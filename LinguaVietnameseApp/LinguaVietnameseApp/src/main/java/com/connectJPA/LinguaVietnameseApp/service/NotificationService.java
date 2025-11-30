@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public interface NotificationService {
+    Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters);
     Page<NotificationResponse> getAllNotifications(UUID userId, String title, String type, Pageable pageable);
     Page<NotificationResponse> getAllNotificationByUserId(UUID userId, Pageable pageable);
     NotificationResponse getNotificationById(UUID id);
@@ -18,6 +19,10 @@ public interface NotificationService {
     NotificationResponse updateNotification(UUID id, NotificationRequest request);
     void deleteNotification(UUID id);
     boolean isUserAuthorizedForNotification(UUID notificationId, UUID userId);
+    
+    void markAsRead(UUID id);
+    
+    // Email Triggers
     void sendPurchaseCourseNotification(UUID userId, String courseName);
     void sendVoucherRegistrationNotification(UUID userId, String voucherCode);
     void sendAchievementNotification(UUID userId, String title, String message);
@@ -27,6 +32,9 @@ public interface NotificationService {
     void sendInactivityWarningNotification(UUID userId, int days);
     void sendStreakRewardNotification(UUID userId, int streakDays);
     void sendVipSuccessNotification(UUID userId, boolean isRenewal, String planType);
-    // THÊM: Phương thức tìm kiếm
-    Page<Notification> searchNotifications(String keyword, int page, int size, Map<String, Object> filters);
+
+    // New Features
+    long countUnreadNotifications(UUID userId);
+    void markAllAsRead(UUID userId);
+    void deleteAllNotifications(UUID userId);
 }

@@ -39,26 +39,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final MessageTranslationRepository messageTranslationRepository;
 
     @Override
-    public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
-        try {
-            if (roomId == null || pageable == null) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
-            Page<ChatMessage> messages = chatMessageRepository.findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(roomId, pageable);
-            return messages.map(message -> {
-                ChatMessageResponse response = chatMessageMapper.toResponse(message);
-                Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
-                        .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-                response.setPurpose(room.getPurpose());
-                return response;
-            });
-        } catch (Exception e) {
-            log.error("Error while fetching messages for room ID {}: {}", roomId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
-
-    @Override
     public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
         if (keyword == null || keyword.isBlank()) {
             return Page.empty();
@@ -75,26 +55,39 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Override
     @Transactional
     public ChatMessageResponse saveMessage(UUID roomId, ChatMessageRequest request) {
-        try {
-            Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
-                    .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+        Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
+                .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-            if (room.getPurpose() != request.getPurpose()) {
-                throw new AppException(ErrorCode.ROOM_PURPOSE_MISMATCH);
+        if (room.getPurpose() != RoomPurpose.AI_CHAT) {
+            UUID currentUserId = request.getSenderId(); 
+            if(!roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(roomId, currentUserId)){
+                throw new AppException(ErrorCode.NOT_ROOM_MEMBER);
             }
-
-            if (room.getPurpose() != RoomPurpose.AI_CHAT) {
-                String currentUserId = SecurityContextHolder.getContext().getAuthentication().getName();
-                roomMemberRepository.findByIdRoomIdAndIdUserIdAndIsDeletedFalse(roomId, UUID.fromString(currentUserId))
-                        .orElseThrow(() -> new AppException(ErrorCode.NOT_ROOM_MEMBER));
-            }
-
-            return saveMessageInternal(roomId, request);
-
-        } catch (Exception e) {
-            log.error("Error while saving message for room ID {}: {}", roomId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+
+        ChatMessage message = chatMessageMapper.toEntity(request);
+        
+        if (message.getId() == null) {
+            message.setId(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()));
+        }
+
+        message.setRoomId(roomId);
+        message.setSenderId(request.getSenderId());
+        
+        ChatMessage savedMessage = chatMessageRepository.save(message);
+
+        room.setUpdatedAt(OffsetDateTime.now());
+        roomRepository.save(room);
+
+        ChatMessageResponse response = chatMessageMapper.toResponse(savedMessage);
+        response.setPurpose(room.getPurpose());
+        return response;
+    }
+
+    @Override
+    public Page<ChatMessageResponse> getMessagesByRoom(UUID roomId, Pageable pageable) {
+        return chatMessageRepository.findByRoomIdAndIsDeletedFalseOrderById_SentAtDesc(roomId, pageable)
+                .map(chatMessageMapper::toResponse);
     }
 
     @Override
@@ -105,6 +98,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
             ChatMessage message = chatMessageMapper.toEntity(request);
+            
+            if (message.getId() == null) {
+                message.setId(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()));
+            }
+
             message.setRoomId(roomId);
             message.setSenderId(request.getSenderId());
 
@@ -239,7 +237,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             ChatMessage aiMessage = ChatMessage.builder()
                     .id(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()))
                     .roomId(userMessage.getRoomId())
-                    .senderId(UUID.randomUUID()) // AI user ID
+                    .senderId(UUID.randomUUID()) 
                     .content("AI response to: " + userMessage.getContent())
                     .messageType(userMessage.getMessageType())
                     .isRead(false)

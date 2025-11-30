@@ -8,7 +8,7 @@ import ChatAIScreen from '../../screens/chat/ChatAIScreen';
 import CreateRoomScreen from '../../screens/chat/CreateRoomScreen';
 import CallSetupScreen from '../../screens/chat/CallSetupScreen';
 import ChatSettingsScreen from '../../screens/chat/ChatSettingsScreen';
-import PrivateChatListScreen from '../../screens/chat/PrivateChatListScreen';
+import PublicRoomListScreen from '../../screens/chat/PublicRoomListScreen';
 import ChatScreen from '../../screens/chat/ChatScreen';
 
 const Stack = createNativeStackNavigator();
@@ -24,7 +24,7 @@ const ChatStack = () => {
       <Stack.Screen name="CreateRoomScreen" component={CreateRoomScreen} />
       <Stack.Screen name="CallSetupScreen" component={CallSetupScreen} />
       <Stack.Screen name="ChatSettingsScreen" component={ChatSettingsScreen} />
-      <Stack.Screen name="PrivateChatListScreen" component={PrivateChatListScreen} />
+      <Stack.Screen name="PublicRoomListScreen" component={PublicRoomListScreen} />
     </Stack.Navigator>
   );
 };

@@ -100,9 +100,15 @@ const RootNavigation = () => {
     let mounted = true;
 
     const boot = async () => {
+      if (!mounted) return; // Bảo vệ khỏi race condition
+
       try {
+        // 1. Bắt đầu lại quá trình loading khi accessToken thay đổi
+        setIsLoading(true);
+
         const hasValidToken = await initializeTokens();
 
+        // 2. Thiết lập ngôn ngữ
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
@@ -114,12 +120,13 @@ const RootNavigation = () => {
           await i18n.changeLanguage(savedLanguage);
         }
 
+        // 3. Kiểm tra token và fetch user
         if (hasValidToken) {
           const currentToken = useTokenStore.getState().accessToken;
           if (currentToken) {
             let userFetchSuccess = false;
             const startTime = Date.now();
-            const TIMEOUT_THRESHOLD = 60000; // 60 giây
+            const TIMEOUT_THRESHOLD = 60000;
 
             while (!userFetchSuccess && mounted) {
               try {
@@ -128,8 +135,6 @@ const RootNavigation = () => {
                   const userId = payload.userId;
 
                   const userRes = await instance.get(`/api/v1/users/${userId}`);
-
-                  // Nếu gọi thành công, clear lỗi ngay (nếu có)
                   setServerErrorMsg(null);
 
                   const rawUser = userRes.data.result || {};
@@ -162,6 +167,7 @@ const RootNavigation = () => {
                     if (lastDate === today) isFirstOpenToday = false;
                   }
 
+                  // Cờ setup là TRUE -> Bỏ qua màn hình setup
                   if (roles.includes("ROLE_ADMIN")) {
                     setInitialMainRoute("AdminStack");
                   } else if (!hasFinishedSetup) {
@@ -178,14 +184,11 @@ const RootNavigation = () => {
                 const status = e?.response?.status;
 
                 if (status === 401 || status === 403) {
-                  // Token hết hạn thì cho logout luôn, không cần đợi server
                   clearTokens();
                   userFetchSuccess = true;
                 } else {
-                  // Nếu không phải lỗi auth (nghĩa là lỗi mạng hoặc server die 500)
                   const elapsed = Date.now() - startTime;
 
-                  // Nếu đợi quá 60s mà chưa được, hiển thị thông báo
                   if (elapsed > TIMEOUT_THRESHOLD && mounted) {
                     setServerErrorMsg(
                       i18n.t("common.server_unavailable_msg", {
@@ -195,7 +198,6 @@ const RootNavigation = () => {
                   }
 
                   console.log("Backend unavailable, retrying in 3s...");
-                  // Đợi 3s rồi loop lại
                   await new Promise(resolve => setTimeout(resolve, 3000));
                 }
               }
@@ -214,10 +216,12 @@ const RootNavigation = () => {
       }
     };
 
+    // FIX: Thêm accessToken vào dependency array để đảm bảo boot() chạy lại
+    // mỗi khi token được set sau khi login thành công.
     boot();
 
     return () => { mounted = false; };
-  }, [initializeTokens, setUser, setLocalNativeLanguage, clearTokens]);
+  }, [initializeTokens, setUser, setLocalNativeLanguage, clearTokens, accessToken]); // <- ĐÃ THÊM accessToken
 
   if (!isConnected) {
     return (

@@ -1,6 +1,7 @@
 import { ImageSourcePropType } from "react-native"
 import { CourseResponse, CourseVersionResponse } from "../types/dto"
 
+// --- Course Images ---
 export const getCourseImage = (url?: string | null): ImageSourcePropType => {
     if (url && url.length > 0) {
         return { uri: url }
@@ -15,6 +16,16 @@ export const getLessonImage = (url?: string | null): ImageSourcePropType => {
     return require("../assets/images/ImagePlacehoderCourse.png")
 }
 
+// --- Badge Images (NEW) ---
+export const getBadgeImage = (url?: string | null): ImageSourcePropType => {
+    if (url && url.length > 0) {
+        return { uri: url }
+    }
+    // Sử dụng ảnh placeholder tạm thời hoặc một icon badge mặc định
+    return require("../assets/images/ImagePlacehoderCourse.png")
+}
+
+// --- Rating ---
 export const getRatingStarProps = (rating: number, index: number) => {
     if (index < Math.floor(rating)) {
         return { name: "star", color: "#F59E0B" } // Full star
@@ -25,6 +36,7 @@ export const getRatingStarProps = (rating: number, index: number) => {
     }
 }
 
+// --- Share ---
 export const getSafeCourseSharePayload = (course: CourseResponse, version?: CourseVersionResponse) => {
     return {
         type: "COURSE_SHARE_CARD",

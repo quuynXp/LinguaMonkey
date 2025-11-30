@@ -57,6 +57,17 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
 
     List<User> findByIsDeletedFalseOrderByExpDesc(Pageable pageable);
 
+    @Query("SELECT u FROM User u WHERE u.userId != :currentUserId " +
+           "AND u.isDeleted = false " +
+           "AND (u.country = :country OR u.nativeLanguageCode = :nativeLang OR u.ageRange = :ageRange) " +
+           "AND u.userId NOT IN (SELECT f.id.receiverId FROM Friendship f WHERE f.id.requesterId = :currentUserId) " +
+           "AND u.userId NOT IN (SELECT f.id.requesterId FROM Friendship f WHERE f.id.receiverId = :currentUserId)")
+    Page<User> findSuggestedUsers(@Param("currentUserId") UUID currentUserId,
+                                  @Param("country") Object country, 
+                                  @Param("nativeLang") String nativeLang,
+                                  @Param("ageRange") Object ageRange,
+                                  Pageable pageable);
+                                  
     @Query("SELECT u FROM User u WHERE u.vipExpirationDate BETWEEN :start AND :end AND u.isDeleted = false")
     List<User> findByVipExpirationDateBetween(@Param("start") OffsetDateTime start, @Param("end") OffsetDateTime end);
 }

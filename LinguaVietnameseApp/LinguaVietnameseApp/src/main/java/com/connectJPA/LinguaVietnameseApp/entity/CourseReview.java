@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.Where;
 
 
@@ -41,8 +42,9 @@ public class CourseReview extends BaseEntity {
     @Column(name = "rating", nullable = false)
     private BigDecimal rating;
 
-    private int likeCount;
-    private int dislikeCount;
+    private int likeCount = 0;
+
+    private int dislikeCount = 0;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_id")
@@ -57,6 +59,7 @@ public class CourseReview extends BaseEntity {
     private String comment;
 
     @Column(name = "reviewed_at", nullable = false)
+    @CreationTimestamp
     private OffsetDateTime reviewedAt;
 }
 

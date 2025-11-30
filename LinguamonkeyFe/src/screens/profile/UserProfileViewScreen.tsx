@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -8,6 +8,8 @@ import {
   View,
   Dimensions,
   Alert,
+  Modal,
+  Pressable,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
@@ -16,7 +18,8 @@ import { useUserStore } from "../../stores/UserStore";
 import { useUsers } from "../../hooks/useUsers";
 import { useFriendships } from "../../hooks/useFriendships";
 import { useGetStudyHistory } from "../../hooks/useUserActivity";
-import { useCourses } from "../../hooks/useCourses"; // <-- mới
+import { useCourses } from "../../hooks/useCourses";
+import { useRooms } from "../../hooks/useRoom"; // <--- IMPORT MỚI
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useToast } from "../../utils/useToast";
@@ -32,7 +35,7 @@ type RootStackParamList = {
   UserProfileViewScreen: { userId: string };
   ChatStack: {
     screen: string;
-    params: { userId: string; fullname?: string };
+    params: { roomId: string; roomName: string }; // <--- Cập nhật params điều hướng
   };
   CourseStack: {
     screen: string;
@@ -40,8 +43,13 @@ type RootStackParamList = {
   };
 };
 
-const InfoRow = ({ icon, label, value }: { icon: string; label: string; value?: string | number | null }) => {
-  if (!value && value !== 0) return null;
+const InfoRow = ({ icon, label, value, isBoolean }: { icon: string; label: string; value?: string | number | null | boolean; isBoolean?: boolean }) => {
+  if (value === undefined || value === null) return null;
+  let displayValue = value;
+  if (isBoolean) {
+    displayValue = value ? "Yes" : "No";
+  }
+
   return (
     <View style={styles.infoRow}>
       <View style={styles.infoLabelContainer}>
@@ -49,7 +57,7 @@ const InfoRow = ({ icon, label, value }: { icon: string; label: string; value?: 
         <Text style={styles.infoLabel}>{label}</Text>
       </View>
       <Text style={styles.infoValue} numberOfLines={1}>
-        {value}
+        {String(displayValue)}
       </Text>
     </View>
   );
@@ -96,35 +104,60 @@ const UserProfileViewScreen = () => {
   const navigation = useNavigation<any>();
   const { t } = useTranslation();
   const { showToast } = useToast();
-  const { user: currentUser, refreshUserProfile } = useUserStore();
+  const { user: currentUser } = useUserStore();
   const { userId } = route.params;
 
+  // Hooks
   const { useUserProfile, useAdmireUser } = useUsers();
   const { useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
-
-  // courses hook
   const { useCreatorCourses } = useCourses();
+  const { useFindOrCreatePrivateRoom } = useRooms(); // <--- Sử dụng Hook Room
 
-  // profile data
+  // Data Queries
   const { data: userProfile, isLoading, refetch } = useUserProfile(userId);
+  const { data: historyData, isLoading: isHistoryLoading } = useGetStudyHistory(userId, "year");
+  const { data: creatorCoursesPage } = useCreatorCourses(userId, 0, 20);
 
+  // Mutations
   const createFriendshipMutation = useCreateFriendship();
   const updateFriendshipMutation = useUpdateFriendship();
   const deleteFriendshipMutation = useDeleteFriendship();
   const admireMutation = useAdmireUser();
+  const { mutate: findOrCreateRoom, isPending: isCreatingRoom } = useFindOrCreatePrivateRoom(); // <--- Mutation tìm/tạo phòng
 
-  const { data: historyData, isLoading: isHistoryLoading } = useGetStudyHistory(userId, "year");
-
-  // fetch public courses created by this user (enabled only when userId exists)
-  const { data: creatorCoursesPage, isLoading: creatorCoursesLoading, refetch: refetchCreatorCourses } = useCreatorCourses(userId, 0, 20);
   const publicCourses = creatorCoursesPage?.data || [];
-
   const isSelf = currentUser?.userId === userId;
+  const [modalVisible, setModalVisible] = useState(false);
 
   const profileData = useMemo<UserProfileResponse | null>(() => {
     if (!userProfile) return null;
     return userProfile;
   }, [userProfile]);
+
+  // --- LOGIC MỚI: CHAT 1-1 ---
+  const handleMessage = () => {
+    if (!currentUser || !profileData || isCreatingRoom) return;
+
+    // Gọi API tìm hoặc tạo phòng
+    findOrCreateRoom(profileData.userId, {
+      onSuccess: (room) => {
+        // Sau khi có roomId, navigate thẳng vào màn hình Chat Chi Tiết (GroupChatScreen)
+        // Thay vì màn hình list
+        navigation.navigate("ChatStack", {
+          screen: "GroupChatScreen", // Hoặc tên màn hình bạn định nghĩa trong Stack
+          params: {
+            roomId: room.roomId,
+            // Với chat 1-1, tên phòng hiển thị chính là tên User kia
+            roomName: profileData.nickname || profileData.fullname
+          },
+        });
+      },
+      onError: () => {
+        showToast({ type: "error", message: t("errors.cannot_create_chat") });
+      }
+    });
+  };
+  // ---------------------------
 
   const handleAddFriend = () => {
     if (!currentUser || !profileData || createFriendshipMutation.isPending) return;
@@ -212,22 +245,29 @@ const UserProfileViewScreen = () => {
     ]);
   };
 
-  const handleMessage = () => {
-    if (!profileData) return;
-    navigation.navigate("ChatStack", {
-      screen: "ChatRoomListScreen",
-      params: {
-        userId: profileData.userId,
-        fullname: profileData.fullname,
-      },
-    });
-  };
-
   const handleAdmire = () => {
     if (!profileData || profileData.hasAdmired || admireMutation.isPending) return;
     admireMutation.mutate(profileData.userId, {
       onSuccess: () => refetch(),
     });
+  };
+
+  const openOptions = () => {
+    setModalVisible(true);
+  };
+
+  const handleBlock = () => {
+    setModalVisible(false);
+    if (!profileData?.canBlock) return;
+    Alert.alert("Block User", "Are you sure you want to block this user?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Block", style: "destructive", onPress: () => showToast({ type: "success", message: "User blocked" }) }
+    ]);
+  };
+
+  const handleReport = () => {
+    setModalVisible(false);
+    showToast({ type: "info", message: "Report feature coming soon" });
   };
 
   if (isLoading || !profileData) {
@@ -262,7 +302,7 @@ const UserProfileViewScreen = () => {
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{t("profile.title")}</Text>
-        <TouchableOpacity style={styles.moreButton}>
+        <TouchableOpacity style={styles.moreButton} onPress={openOptions}>
           <Icon name="more-vert" size={24} color="#333" />
         </TouchableOpacity>
       </View>
@@ -275,8 +315,7 @@ const UserProfileViewScreen = () => {
               style={styles.avatar}
             />
             {profileData.country && (
-              <View style={styles.flagBadge}>
-                {/* render component flag trực tiếp */}
+              <View style={styles.flagBadgeTopLeft}>
                 {getCountryFlag(profileData.country, 20)}
               </View>
             )}
@@ -287,7 +326,12 @@ const UserProfileViewScreen = () => {
             )}
           </View>
 
-          <Text style={styles.fullname}>{profileData.fullname}</Text>
+          <View style={styles.nameSection}>
+            <Text style={styles.fullname}>{profileData.fullname}</Text>
+            {profileData.vip && (
+              <Icon name="verified" size={20} color="#2196F3" style={{ marginLeft: 4 }} />
+            )}
+          </View>
           <Text style={styles.nickname}>@{profileData.nickname || profileData.userId}</Text>
 
           {profileData.bio ? (
@@ -315,11 +359,21 @@ const UserProfileViewScreen = () => {
 
           {!isSelf && (
             <View style={styles.actionButtons}>
-              {/* Message Button (Always available if allowed) */}
+              {/* UPDATE: Message Button with Loading State */}
               {canChat ? (
-                <TouchableOpacity style={styles.messageBtn} onPress={handleMessage}>
-                  <Icon name="chat" size={20} color="#FFF" />
-                  <Text style={styles.primaryBtnText}>{t("profile.message")}</Text>
+                <TouchableOpacity
+                  style={[styles.messageBtn, isCreatingRoom && styles.btnDisabled]}
+                  onPress={handleMessage}
+                  disabled={isCreatingRoom}
+                >
+                  {isCreatingRoom ? (
+                    <ActivityIndicator size="small" color="#FFF" />
+                  ) : (
+                    <>
+                      <Icon name="chat" size={20} color="#FFF" />
+                      <Text style={styles.primaryBtnText}>{t("profile.message")}</Text>
+                    </>
+                  )}
                 </TouchableOpacity>
               ) : (
                 <View style={styles.disabledChatBtn}>
@@ -328,7 +382,7 @@ const UserProfileViewScreen = () => {
                 </View>
               )}
 
-              {/* Friend Action Buttons */}
+              {/* Friend Actions */}
               {isFriend ? (
                 <TouchableOpacity style={styles.secondaryBtn} onPress={handleUnfriend} disabled={deleteFriendshipMutation.isPending}>
                   <Icon name="person-remove" size={20} color="#EF4444" />
@@ -339,9 +393,8 @@ const UserProfileViewScreen = () => {
                   <Text style={styles.primaryBtnText}>{t("profile.accept")}</Text>
                 </TouchableOpacity>
               ) : hasSent ? (
-                <TouchableOpacity style={styles.secondaryBtnWide} onPress={handleCancelRequest} disabled={deleteFriendshipMutation.isPending}>
+                <TouchableOpacity style={styles.secondaryBtn} onPress={handleCancelRequest} disabled={deleteFriendshipMutation.isPending}>
                   <Icon name="close" size={20} color="#6B7280" />
-                  <Text style={styles.secondaryBtnText}>{t("profile.cancelRequest")}</Text>
                 </TouchableOpacity>
               ) : canSendFriendRequest && (
                 <TouchableOpacity style={styles.primaryBtn} onPress={handleAddFriend} disabled={createFriendshipMutation.isPending}>
@@ -350,7 +403,7 @@ const UserProfileViewScreen = () => {
                 </TouchableOpacity>
               )}
 
-              {/* Admire Button */}
+              {/* Admire */}
               <TouchableOpacity
                 style={[styles.admireBtn, profileData.hasAdmired && styles.admiredBtn]}
                 onPress={handleAdmire}
@@ -366,6 +419,15 @@ const UserProfileViewScreen = () => {
           )}
         </View>
 
+        {/* Heatmap */}
+        {isHistoryLoading ? (
+          <View style={styles.sectionContainer}>
+            <ActivityIndicator size="small" color="#2196F3" />
+          </View>
+        ) : (
+          <ActivityHeatmap userId={userId} historyData={historyData} />
+        )}
+
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionTitle}>{t("profile.details")}</Text>
           <View style={styles.detailsCard}>
@@ -374,9 +436,13 @@ const UserProfileViewScreen = () => {
             <InfoRow icon="school" label={t("profile.proficiency")} value={profileData.proficiency} />
             <InfoRow icon="speed" label={t("profile.pace")} value={profileData.learningPace} />
             <InfoRow icon="flag" label={t("profile.country")} value={profileData.country} />
+            <InfoRow icon="star" label="VIP" value={profileData.vip} isBoolean />
             <InfoRow icon="security" label={t("profile.chatAccess")} value={profileData.allowStrangerChat ? t("common.public") : t("common.private")} />
             {stats && (
-              <InfoRow icon="translate" label={t("profile.translationsUsed")} value={stats.translationsUsed?.toLocaleString()} />
+              <>
+                <InfoRow icon="translate" label={t("profile.translationsUsed")} value={stats.translationsUsed?.toLocaleString()} />
+                <InfoRow icon="timer" label="Learning Time (min)" value={Math.round((stats.exp || 0) / 60)} />
+              </>
             )}
             <InfoRow icon="military-tech" label={t("profile.totalExp")} value={profileData.exp?.toLocaleString()} />
           </View>
@@ -409,18 +475,9 @@ const UserProfileViewScreen = () => {
           </View>
         )}
 
-        {isHistoryLoading ? (
-          <View style={styles.sectionContainer}>
-            <ActivityIndicator size="small" color="#2196F3" />
-          </View>
-        ) : (
-          <ActivityHeatmap userId={userId} historyData={historyData} />
-        )}
-
-        {/* Hiển thị các courses public của user (fetch riêng) */}
         {(publicCourses && publicCourses.length > 0) && (
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>{t("profile.publicCourses", "Courses của người dùng")}</Text>
+            <Text style={styles.sectionTitle}>{t("profile.publicCourses")}</Text>
             {publicCourses.map((course: any) => (
               <TouchableOpacity
                 key={course.courseId}
@@ -443,10 +500,9 @@ const UserProfileViewScreen = () => {
           </View>
         )}
 
-        {/* Nếu profileData.isTeacher vẫn giữ section cũ (th teacherCourses) */}
         {profileData.isTeacher && teacherCourses && teacherCourses.length > 0 && (
           <View style={styles.sectionContainer}>
-            <Text style={styles.sectionTitle}>{t("profile.createdCourses", "Khóa học tạo bởi giáo viên")}</Text>
+            <Text style={styles.sectionTitle}>{t("profile.createdCourses")}</Text>
             {teacherCourses.map((course) => (
               <TouchableOpacity
                 key={course.courseId}
@@ -471,6 +527,35 @@ const UserProfileViewScreen = () => {
 
         <View style={styles.footerSpacing} />
       </ScrollView>
+
+      {/* Option Block Modal */}
+      <Modal
+        transparent={true}
+        visible={modalVisible}
+        animationType="fade"
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setModalVisible(false)}>
+          <View style={styles.optionBlock}>
+            <TouchableOpacity style={styles.optionItem} onPress={handleReport}>
+              <Icon name="report-problem" size={24} color="#F59E0B" />
+              <Text style={styles.optionText}>{t("profile.report")}</Text>
+            </TouchableOpacity>
+            <View style={styles.optionDivider} />
+            {profileData.canBlock && (
+              <TouchableOpacity style={styles.optionItem} onPress={handleBlock}>
+                <Icon name="block" size={24} color="#EF4444" />
+                <Text style={[styles.optionText, { color: "#EF4444" }]}>{t("profile.block")}</Text>
+              </TouchableOpacity>
+            )}
+            <View style={styles.optionDivider} />
+            <TouchableOpacity style={styles.optionItem} onPress={() => setModalVisible(false)}>
+              <Icon name="close" size={24} color="#6B7280" />
+              <Text style={styles.optionText}>{t("common.close")}</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </ScreenLayout>
   );
 };
@@ -524,10 +609,11 @@ const styles = createScaledSheet({
     borderWidth: 3,
     borderColor: "#F3F4F6",
   },
-  flagBadge: {
+  flagBadgeTopLeft: {
     position: "absolute",
-    bottom: 0,
-    right: 0,
+    top: 0,
+    left: 0,
+    zIndex: 10,
     backgroundColor: "#FFF",
     borderRadius: 12,
     width: 28,
@@ -542,7 +628,7 @@ const styles = createScaledSheet({
   },
   threeDBadge: {
     position: "absolute",
-    top: 0,
+    bottom: 0,
     right: 0,
     backgroundColor: "#2196F3",
     borderRadius: 8,
@@ -554,11 +640,15 @@ const styles = createScaledSheet({
     fontSize: 10,
     fontWeight: "bold",
   },
+  nameSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
   fullname: {
     fontSize: 22,
     fontWeight: "800",
     color: "#111",
-    marginBottom: 4,
   },
   nickname: {
     fontSize: 14,
@@ -631,6 +721,9 @@ const styles = createScaledSheet({
     borderRadius: 24,
     gap: 8,
   },
+  btnDisabled: {
+    opacity: 0.7
+  },
   disabledChatBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -657,22 +750,6 @@ const styles = createScaledSheet({
     backgroundColor: "#F3F4F6",
     justifyContent: "center",
     alignItems: "center",
-  },
-  secondaryBtnWide: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F3F4F6",
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 24,
-    gap: 8,
-    minWidth: 150,
-    justifyContent: "center",
-  },
-  secondaryBtnText: {
-    color: "#6B7280",
-    fontWeight: "600",
-    fontSize: 14,
   },
   admireBtn: {
     width: 44,
@@ -706,6 +783,7 @@ const styles = createScaledSheet({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    paddingVertical: 4,
   },
   infoLabelContainer: {
     flexDirection: "row",
@@ -828,6 +906,34 @@ const styles = createScaledSheet({
   },
   footerSpacing: {
     height: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  optionBlock: {
+    backgroundColor: '#FFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 15,
+    gap: 15,
+  },
+  optionText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#374151',
+  },
+  optionDivider: {
+    height: 1,
+    backgroundColor: '#E5E7EB',
+    marginVertical: 5,
   },
 });
 

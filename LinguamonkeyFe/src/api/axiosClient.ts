@@ -116,7 +116,6 @@ mediaClient.interceptors.request.use(
             config.headers['Authorization'] = `Bearer ${accessToken}`;
         }
 
-        // Explicitly let the browser/engine set Content-Type for FormData with boundary
         if (config.data instanceof FormData) {
             delete config.headers['Content-Type'];
         }

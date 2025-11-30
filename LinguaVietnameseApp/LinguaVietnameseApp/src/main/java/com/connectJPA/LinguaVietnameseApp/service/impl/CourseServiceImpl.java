@@ -26,6 +26,7 @@ import com.connectJPA.LinguaVietnameseApp.mapper.CourseMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseVersionMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseReviewRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionLessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
@@ -63,6 +64,7 @@ public class CourseServiceImpl implements CourseService {
     private final CourseVersionRepository courseVersionRepository;
     private final CourseVersionLessonRepository cvlRepository;
     private final CourseEnrollmentRepository courseEnrollmentRepository;
+    private final CourseReviewRepository courseReviewRepository; // Inject Review Repository
     private final LessonRepository lessonRepository;
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
@@ -78,25 +80,40 @@ public class CourseServiceImpl implements CourseService {
     private static final List<String> CEFR_LEVELS = Arrays.asList("A1", "A2", "B1", "B2", "C1", "C2");
 
     /**
-     * Helper to populate Creator details into CourseResponse
+     * Helper to populate Creator details and Rating stats into CourseResponse
      */
     private CourseResponse enrichCourseResponse(CourseResponse response) {
-        if (response != null && response.getCreatorId() != null) {
-            try {
-                UUID creatorId = response.getCreatorId();
-                User creator = userRepository.findById(creatorId).orElse(null);
-                if (creator != null) {
-                    response.setCreatorName(creator.getFullname() != null ? creator.getFullname() : creator.getNickname());
-                    response.setCreatorAvatar(creator.getAvatarUrl());
-                    
-                    // Added fields for CourseDetailsScreen
-                    response.setCreatorNickname(creator.getNickname());
-                    response.setCreatorCountry(creator.getCountry());
-                    response.setCreatorVip(creator.isVip());
-                    response.setCreatorLevel(creator.getLevel());
+        if (response != null && response.getCourseId() != null) {
+            // 1. Enrich Creator Info
+            if (response.getCreatorId() != null) {
+                try {
+                    UUID creatorId = response.getCreatorId();
+                    User creator = userRepository.findById(creatorId).orElse(null);
+                    if (creator != null) {
+                        response.setCreatorName(creator.getFullname() != null ? creator.getFullname() : creator.getNickname());
+                        response.setCreatorAvatar(creator.getAvatarUrl());
+                        
+                        response.setCreatorNickname(creator.getNickname());
+                        response.setCreatorCountry(creator.getCountry());
+                        response.setCreatorVip(creator.isVip());
+                        response.setCreatorLevel(creator.getLevel());
+                    }
+                } catch (IllegalArgumentException e) {
+                    // Ignore if ID is invalid
                 }
-            } catch (IllegalArgumentException e) {
-                // Ignore if ID is invalid
+            }
+
+            // 2. Enrich Rating Info (Calculate Real Stats)
+            try {
+                Double avgRating = courseReviewRepository.getAverageRatingByCourseId(response.getCourseId());
+                long count = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(response.getCourseId());
+                
+                response.setAverageRating(avgRating != null ? avgRating : 0.0);
+                response.setReviewCount((int) count);
+            } catch (Exception e) {
+                // Fallback to 0 if error occurs
+                response.setAverageRating(0.0);
+                response.setReviewCount(0);
             }
         }
         return response;
@@ -362,7 +379,7 @@ public class CourseServiceImpl implements CourseService {
         } else {
             courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
         }
-        // Enrich responses with creator details
+        // Enrich responses with creator details and rating
         return courses.map(courseMapper::toResponse).map(this::enrichCourseResponse);
     }
 

@@ -4,13 +4,16 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.FriendshipRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FriendRequestStatusResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FriendshipResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Friendship;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.FriendshipId;
 import com.connectJPA.LinguaVietnameseApp.enums.FriendshipStatus;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.FriendshipMapper;
+import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.FriendshipRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.FriendshipService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -27,6 +30,22 @@ import java.util.UUID;
 public class FriendshipServiceImpl implements FriendshipService {
     private final FriendshipRepository friendshipRepository;
     private final FriendshipMapper friendshipMapper;
+    private final UserRepository userRepository;
+    private final UserMapper userMapper;
+
+    private FriendshipResponse toPopulatedResponse(Friendship friendship) {
+        FriendshipResponse response = friendshipMapper.toResponse(friendship);
+        response.setId(friendship.getId().getRequesterId().toString() + "-" + friendship.getId().getReceiverId().toString());
+
+        User requester = userRepository.findById(friendship.getId().getRequesterId())
+                .orElse(new User());
+        User receiver = userRepository.findById(friendship.getId().getReceiverId())
+                .orElse(new User());
+
+        response.setRequester(userMapper.toResponse(requester));
+        response.setReceiver(userMapper.toResponse(receiver));
+        return response;
+    }
 
     @Override
     public Page<FriendshipResponse> getAllFriendships(String requesterId, String status, Pageable pageable) {
@@ -34,9 +53,22 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
-            UUID requesterUuid = (requesterId != null) ? UUID.fromString(requesterId) : null;
-            Page<Friendship> friendships = friendshipRepository.findByIdRequesterIdAndStatusAndIsDeletedFalse(requesterUuid, status, pageable);
-            return friendships.map(friendshipMapper::toResponse);
+            UUID requesterUuid = (requesterId != null && !requesterId.isEmpty()) ? UUID.fromString(requesterId) : null;
+            
+            FriendshipStatus statusEnum = null;
+            if (status != null && !status.isEmpty()) {
+                try {
+                    statusEnum = FriendshipStatus.valueOf(status.toUpperCase());
+                } catch (IllegalArgumentException e) {
+                    // Ignore or throw specific error, treating as null (all statuses) for now
+                    log.warn("Invalid friendship status provided: {}", status);
+                }
+            }
+
+            Page<Friendship> friendships = friendshipRepository.findByIdRequesterIdAndStatusAndIsDeletedFalse(requesterUuid, statusEnum, pageable);
+            return friendships.map(this::toPopulatedResponse);
+        } catch (IllegalArgumentException e) {
+             throw new AppException(ErrorCode.INVALID_KEY);
         } catch (Exception e) {
             log.error("Error while fetching all friendships: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -71,7 +103,7 @@ public class FriendshipServiceImpl implements FriendshipService {
     @Override
     public Page<FriendshipResponse> getPendingRequestsForUser(UUID userId, Pageable pageable) {
         Page<Friendship> requests = friendshipRepository.findPendingRequests(userId, pageable);
-        return requests.map(f -> new FriendshipResponse(f.getId().getRequesterId(), f.getId().getReceiverId(), f.getStatus(), f.getCreatedAt()));
+        return requests.map(this::toPopulatedResponse);
     }
 
     @Override
@@ -105,7 +137,7 @@ public class FriendshipServiceImpl implements FriendshipService {
             }
             Friendship friendship = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(user1Id, user2Id)
                     .orElseThrow(() -> new AppException(ErrorCode.FRIENDSHIP_NOT_FOUND));
-            return friendshipMapper.toResponse(friendship);
+            return toPopulatedResponse(friendship);
         } catch (Exception e) {
             log.error("Error while fetching friendship by IDs {} and {}: {}", user1Id, user2Id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -130,7 +162,7 @@ public class FriendshipServiceImpl implements FriendshipService {
             }
 
             friendship = friendshipRepository.save(friendship);
-            return friendshipMapper.toResponse(friendship);
+            return toPopulatedResponse(friendship);
         } catch (Exception e) {
             log.error("Error while creating friendship: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -150,7 +182,7 @@ public class FriendshipServiceImpl implements FriendshipService {
             friendshipMapper.updateEntityFromRequest(request, friendship);
             
             friendship = friendshipRepository.save(friendship);
-            return friendshipMapper.toResponse(friendship);
+            return toPopulatedResponse(friendship);
         } catch (Exception e) {
             log.error("Error while updating friendship between {} and {}: {}", requesterId, receiverId, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);

@@ -21,9 +21,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -112,6 +112,12 @@ public class NotificationServiceImpl implements NotificationService {
             }
             Notification notification = notificationRepository.findByNotificationIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.NOTIFICATION_NOT_FOUND));
+            
+            if (!notification.isRead()) {
+                notification.setRead(true);
+                notificationRepository.save(notification);
+            }
+
             return notificationMapper.toResponse(notification);
         } catch (Exception e) {
             log.error("Error while fetching notification by ID {}: {}", id, e.getMessage());
@@ -128,6 +134,7 @@ public class NotificationServiceImpl implements NotificationService {
             }
             Notification notification = notificationMapper.toEntity(request);
             notification.setCreatedAt(OffsetDateTime.now());
+            notification.setRead(false);
             notification = notificationRepository.save(notification);
             return notificationMapper.toResponse(notification);
         } catch (Exception e) {
@@ -138,18 +145,12 @@ public class NotificationServiceImpl implements NotificationService {
 
    @Override
     public void createPushNotification(NotificationRequest request) {
-        // 1. Save to DB directly using Repo (Repo.save is Transactional)
         Notification notification = notificationMapper.toEntity(request);
         notification.setCreatedAt(OffsetDateTime.now());
+        notification.setRead(false);
         notificationRepository.save(notification); 
-        // -> COMMITTED to DB here because Repository.save() starts and ends its own transaction.
-
-        // 2. Send FCM (Now safe to send because DB is updated)
         sendFcmToUser(request);
     }
-
-    // Removed @Transactional helper method to avoid confusion about self-invocation. 
-    // Logic moved inside createPushNotification above.
 
     private void sendFcmToUser(NotificationRequest request) {
         List<UserFcmToken> tokens = userFcmTokenRepository.findByUserIdAndIsDeletedFalse(request.getUserId());
@@ -171,14 +172,24 @@ public class NotificationServiceImpl implements NotificationService {
                         .setAndroidConfig(androidConfig);
 
                 if (request.getPayload() != null && !request.getPayload().isEmpty()) {
-                     Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
-                     messageBuilder.putAllData(dataPayload);
+                    Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
+                    messageBuilder.putAllData(dataPayload);
                 }
 
                 firebaseMessaging.send(messageBuilder.build());
+                log.info("Successfully sent push notification to user {} with token ending in {}", request.getUserId(), token.getFcmToken().substring(token.getFcmToken().length() - 5));
 
+            } catch (FirebaseMessagingException e) {
+                // LOG LỖI ĐẦY ĐỦ BAO GỒM STACK TRACE (e)
+                log.error("FirebaseMessagingException sending to user {} token {}. Code: {}. Cause: {}", 
+                    request.getUserId(), 
+                    token.getFcmToken().substring(token.getFcmToken().length() - 5),
+                    e.getErrorCode(),
+                    e.getCause() != null ? e.getCause().getMessage() : "N/A",
+                    e); 
             } catch (Exception e) {
-                log.error("Failed to send push notification to user {}: {}", request.getUserId(), e.getMessage());
+                // LOG LỖI ĐẦY ĐỦ BAO GỒM STACK TRACE (e)
+                log.error("General Exception sending push to user {}: {}", request.getUserId(), e.getMessage(), e);
             }
         }
     }
@@ -229,6 +240,27 @@ public class NotificationServiceImpl implements NotificationService {
             return false;
         }
     }
+
+    // --- NEW METHODS FOR NOTIFICATION CENTER ---
+
+    @Override
+    public long countUnreadNotifications(UUID userId) {
+        return notificationRepository.countByUserIdAndReadFalseAndIsDeletedFalse(userId);
+    }
+
+    @Override
+    @Transactional
+    public void markAllAsRead(UUID userId) {
+        notificationRepository.markAllAsReadByUserId(userId);
+    }
+
+    @Override
+    @Transactional
+    public void deleteAllNotifications(UUID userId) {
+        notificationRepository.deleteAllByUserId(userId);
+    }
+
+    // --- EMAIL LOGIC PRESERVED BELOW ---
 
     @Override
     @Transactional
@@ -416,6 +448,24 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     @Transactional
+    public void markAsRead(UUID id) {
+        try {
+            if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
+            Notification notification = notificationRepository.findByNotificationIdAndIsDeletedFalse(id)
+                    .orElseThrow(() -> new AppException(ErrorCode.NOTIFICATION_NOT_FOUND));
+            
+            if (!notification.isRead()) {
+                notification.setRead(true);
+                notificationRepository.save(notification);
+            }
+        } catch (Exception e) {
+            log.error("Error marking notification as read {}: {}", id, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional
     public void sendVipSuccessNotification(UUID userId, boolean isRenewal, String planType) {
         try {
             if (userId == null) {
@@ -435,18 +485,8 @@ public class NotificationServiceImpl implements NotificationService {
                     .type(type)
                     .build();
             
-            createNotification(request); // This saves to DB
-            createPushNotification(request); // This checks DB then sends to FCM
-
-            String email = getUserEmailByUserId(userId);
-            Locale locale = getLocaleByUserId(userId);
-            
-            try {
-                // emailService.sendVipSuccessEmail(email, isRenewal, planType, locale);
-                log.info("TODO: Implement emailService.sendVipSuccessEmail for user {}", email);
-            } catch (Exception ex) {
-                log.warn("Could not send VIP email: {}", ex.getMessage());
-            }
+            createNotification(request);
+            createPushNotification(request); 
 
         } catch (Exception e) {
             log.error("Error sending VIP success notification for user ID {}: {}", userId, e.getMessage());

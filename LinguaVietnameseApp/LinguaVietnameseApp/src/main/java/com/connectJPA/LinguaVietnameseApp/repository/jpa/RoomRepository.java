@@ -2,6 +2,8 @@ package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
+import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -33,12 +35,6 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     Optional<Room> findByRoomIdAndIsDeletedFalse(UUID roomId);
 
     Optional<Room> findByRoomCodeAndIsDeletedFalse(String roomCode);
-
-    @Query("SELECT r FROM Room r WHERE r.creatorId = :userId AND r.purpose = :purpose AND r.roomType = :roomType AND r.isDeleted = false")
-    Optional<Room> findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(
-            @Param("userId") UUID userId,
-            @Param("purpose") RoomPurpose purpose,
-            @Param("roomType") com.connectJPA.LinguaVietnameseApp.enums.RoomType roomType);
 
     // Query đếm thành viên CHÍNH XÁC (chỉ đếm isDeleted = false) -> Fix lệch số lượng
     @Query("SELECT COUNT(rm) FROM RoomMember rm WHERE rm.room.roomId = :roomId AND rm.isDeleted = false")
@@ -76,4 +72,37 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     void softDeleteByRoomId(@Param("roomId") UUID roomId);
 
     List<Room> findByCreatorIdAndPurposeAndIsDeletedFalse(UUID userId, RoomPurpose aiChat);
+
+
+
+
+
+    @Query("SELECT r FROM Room r WHERE " +
+           "(:roomName IS NULL OR r.roomName LIKE %:roomName%) AND " +
+           "(:creatorId IS NULL OR r.creatorId = :creatorId) AND " +
+           "(:purpose IS NULL OR r.purpose = :purpose) AND " +
+           "(:roomType IS NULL OR r.roomType = :roomType) AND " +
+           "r.purpose != 'AI_CHAT' AND " + // Never show AI chat in public list
+           "r.isDeleted = false")
+    Page<Room> findPublicRooms(
+            @Param("roomName") String roomName,
+            @Param("creatorId") UUID creatorId,
+            @Param("purpose") RoomPurpose purpose,
+            @Param("roomType") RoomType roomType,
+            Pageable pageable);
+
+    @Query("SELECT r FROM Room r " +
+           "JOIN RoomMember rm ON r.roomId = rm.id.roomId " +
+           "WHERE rm.id.userId = :userId AND rm.isDeleted = false AND r.isDeleted = false " +
+           "AND r.purpose != 'AI_CHAT' " + // Exclude AI Chat from standard Inbox
+           "AND (:purpose IS NULL OR r.purpose = :purpose) " +
+           "ORDER BY r.updatedAt DESC") 
+    Page<Room> findJoinedRoomsExcludingAi(
+            @Param("userId") UUID userId,
+            @Param("purpose") RoomPurpose purpose,
+            Pageable pageable);
+
+    Optional<Room> findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(UUID userId, RoomPurpose purpose, RoomType roomType);
+
+    
 }

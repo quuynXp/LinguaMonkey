@@ -3,7 +3,9 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapItemDetailResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapPublicResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapSuggestionResponse; // Cần thiết
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapUserResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.RoadmapItem;
 import com.connectJPA.LinguaVietnameseApp.entity.RoadmapSuggestion;
@@ -12,6 +14,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
+import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -35,6 +38,29 @@ public class RoadmapController {
                 .build();
     }
 
+    @GetMapping("/public/community")
+    public AppApiResponse<Page<RoadmapPublicResponse>> getCommunityRoadmaps(
+            @RequestParam(defaultValue = "en") String language,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return AppApiResponse.<Page<RoadmapPublicResponse>>builder()
+                .result(roadmapService.getCommunityRoadmaps(language, page, size))
+                .build();
+    }
+
+    @GetMapping("/public/official")
+    public AppApiResponse<Page<RoadmapPublicResponse>> getOfficialRoadmaps(
+            @RequestParam(defaultValue = "en") String language,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        return AppApiResponse.<Page<RoadmapPublicResponse>>builder()
+                .result(roadmapService.getOfficialRoadmaps(language, page, size))
+                .build();
+    }
+
+
     @Operation(summary = "Get roadmap details (no user progress)")
     @GetMapping("/{roadmapId}")
     public AppApiResponse<RoadmapResponse> getRoadmap(
@@ -44,13 +70,24 @@ public class RoadmapController {
         return buildResponse(200, "roadmap.get", locale, roadmap);
     }
 
-    @Operation(summary = "Get all public roadmaps")
+    @Operation(summary = "Get all public roadmaps (simplified list)")
     @GetMapping("/public")
     public AppApiResponse<List<RoadmapResponse>> getPublicRoadmaps(
             @RequestParam(required = false) String language,
             Locale locale) {
         List<RoadmapResponse> roadmaps = roadmapService.getPublicRoadmaps(language);
         return buildResponse(200, "roadmap.public.list", locale, roadmaps);
+    }
+    
+    @Operation(summary = "Get all public roadmaps with stats and pagination")
+    @GetMapping("/public/stats")
+    public AppApiResponse<Page<RoadmapPublicResponse>> getPublicRoadmapsWithStats(
+            @RequestParam(defaultValue = "en") String language,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            Locale locale) {
+        Page<RoadmapPublicResponse> roadmapsPage = roadmapService.getPublicRoadmapsWithStats(language, page, size);
+        return buildResponse(200, "roadmap.public.stats.list", locale, roadmapsPage);
     }
 
     @Operation(summary = "Get roadmap details for a user")
@@ -188,13 +225,21 @@ public class RoadmapController {
         return buildResponse(200, "roadmap.suggestion.apply", locale, null);
     }
 
-    @Operation(summary = "Get suggestions for roadmap")
+    @Operation(summary = "Get suggestions for roadmap (simplified list)")
     @GetMapping("/{roadmapId}/suggestions")
     public AppApiResponse<List<RoadmapSuggestion>> getSuggestions(
             @PathVariable UUID roadmapId,
             Locale locale) {
-        List<RoadmapSuggestion> suggestions = roadmapService.getSuggestions(roadmapId); // Thêm method trong service
+        List<RoadmapSuggestion> suggestions = roadmapService.getSuggestions(roadmapId); 
         return buildResponse(200, "roadmap.suggestion.list", locale, suggestions);
     }
-
+    
+    @Operation(summary = "Get suggestions for roadmap with user/item details")
+    @GetMapping("/{roadmapId}/suggestions/details")
+    public AppApiResponse<List<RoadmapSuggestionResponse>> getSuggestionsWithDetails(
+            @PathVariable UUID roadmapId,
+            Locale locale) {
+        List<RoadmapSuggestionResponse> suggestions = roadmapService.getSuggestionsWithDetails(roadmapId); 
+        return buildResponse(200, "roadmap.suggestion.list", locale, suggestions);
+    }
 }

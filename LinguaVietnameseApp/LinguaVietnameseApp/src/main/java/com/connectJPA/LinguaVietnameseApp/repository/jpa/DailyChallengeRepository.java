@@ -9,8 +9,10 @@ import java.util.List;
 import java.util.UUID;
 
 public interface DailyChallengeRepository extends JpaRepository<DailyChallenge, UUID> {
-    @Query(value = "SELECT * FROM daily_challenges WHERE is_deleted = false ORDER BY random() LIMIT :count", nativeQuery = true)
-    List<DailyChallenge> findRandomChallenges(@Param("count") int count);
+    @Query(value = "SELECT * FROM daily_challenges WHERE language_code = :langCode AND period = :period AND is_deleted = false ORDER BY RANDOM() LIMIT :limit", nativeQuery = true)
+    List<DailyChallenge> findRandomChallengesByLangAndPeriod(@Param("langCode") String langCode, 
+                                                             @Param("period") String period, 
+                                                             @Param("limit") int limit);
 
     List<DailyChallenge> findByIsDeletedFalse();
 }
