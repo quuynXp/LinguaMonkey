@@ -13,13 +13,13 @@ import { TransactionRequest, PaymentRequest, CourseResponse } from '../../types/
 import { getCourseImage } from '../../utils/courseUtils';
 import { getAvatarSource } from '../../utils/avatarUtils';
 import { getCountryFlag } from '../../utils/flagUtils';
-import { CourseDiscount } from '../../types/entity';
+import { CourseVersionDiscount } from '../../types/entity';
 
 interface CoursePurchaseModalProps {
     visible: boolean;
     onClose: () => void;
     course: CourseResponse | null;
-    activeDiscount?: CourseDiscount;
+    activeDiscount?: CourseVersionDiscount;
     onSuccess?: () => void;
 }
 
@@ -48,7 +48,7 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
     const availableCoins = user?.coins || 0;
 
     // Price Calculation
-    const originalPrice = course?.price || 0;
+    const originalPrice = course?.latestPublicVersion.price || 0;
     const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
     const priceAfterDiscount = discountPercent > 0
         ? originalPrice * (1 - discountPercent / 100)
@@ -211,7 +211,7 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
 
                     {/* Header with Course Info */}
                     <View style={styles.headerRow}>
-                        <Image source={getCourseImage(course.thumbnailUrl)} style={styles.courseThumb} />
+                        <Image source={getCourseImage(course.latestPublicVersion.thumbnailUrl)} style={styles.courseThumb} />
                         <View style={{ flex: 1 }}>
                             <Text style={styles.title} numberOfLines={2}>{course.title}</Text>
                             <View style={styles.metaRow}>

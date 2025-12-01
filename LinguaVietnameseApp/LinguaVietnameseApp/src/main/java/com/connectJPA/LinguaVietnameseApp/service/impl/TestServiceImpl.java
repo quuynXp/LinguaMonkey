@@ -17,7 +17,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,8 +34,9 @@ public class TestServiceImpl implements TestService {
 
     private final GrpcClientService grpcClientService;
     private final ProficiencyTestConfigRepository testConfigRepository;
+    private final ProficiencyTestQuestionRepository testQuestionBankRepository; // Bảng mới
     private final TestSessionRepository testSessionRepository;
-    private final TestSessionQuestionRepository testQuestionRepository;
+    private final TestSessionQuestionRepository testQuestionRepository; // Bảng user làm bài
     private final UserRepository userRepository;
 
     @Override
@@ -63,45 +63,68 @@ public class TestServiceImpl implements TestService {
 
         log.info("Starting test {} for user {}.", testConfigId, userId);
 
-        CompletableFuture<QuizGenerationResponse> futureResponse = grpcClientService.generateLanguageQuiz(
-                token,
-                userId.toString(),
-                config.getNumQuestions(),
-                "solo",
-                config.getAiTopic()
-        );
-
-        QuizGenerationResponse aiResponse = futureResponse.join();
-        if (aiResponse == null || aiResponse.getQuestionsCount() == 0) {
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        }
-
+        // 1. Tạo Session mới
         TestSession session = new TestSession();
         session.setUserId(userId);
         session.setTestConfigId(testConfigId);
         session.setStatus("PENDING");
         session.setCreatedAt(OffsetDateTime.now());
         TestSession savedSession = testSessionRepository.save(session);
-
+        
         List<TestSessionQuestion> questionsToSave = new ArrayList<>();
-        int order = 0;
-        for (QuizQuestionProto aiQuestion : aiResponse.getQuestionsList()) {
-            TestSessionQuestion q = new TestSessionQuestion();
-            q.setTestSessionId(savedSession.getTestSessionId());
-            q.setQuestionText(aiQuestion.getQuestionText());
-            
-            List<String> quotedOptions = aiQuestion.getOptionsList().stream()
-                    .map(option -> "\"" + option.replace("\"", "\\\"") + "\"")
-                    .collect(Collectors.toList());
-            String optionsJsonString = "[" + String.join(",", quotedOptions) + "]";
 
-            q.setOptionsJson(optionsJsonString);
-            q.setCorrectAnswerIndex(aiQuestion.getCorrectAnswerIndex());
-            q.setExplanation(aiQuestion.getExplanation());
-            q.setSkillType(aiQuestion.getSkillType()); 
-            q.setOrderIndex(order++);
-            questionsToSave.add(q);
+        // 2. Tìm câu hỏi tĩnh trong bảng ProficiencyTestQuestion (Master Data)
+        List<ProficiencyTestQuestion> staticQuestions = testQuestionBankRepository.findAllByTestConfigIdOrderByOrderIndex(testConfigId);
+
+        if (!staticQuestions.isEmpty()) {
+            // Case 1: Dữ liệu có sẵn trong DB (Static) -> Copy sang Session Question
+            log.info("Using static questions from DB for test {}", testConfigId);
+            for (ProficiencyTestQuestion staticQ : staticQuestions) {
+                TestSessionQuestion q = new TestSessionQuestion();
+                q.setTestSessionId(savedSession.getTestSessionId());
+                q.setQuestionText(staticQ.getQuestionText());
+                q.setOptionsJson(staticQ.getOptionsJson()); // Copy JSON object trực tiếp
+                q.setCorrectAnswerIndex(staticQ.getCorrectAnswerIndex());
+                q.setExplanation(staticQ.getExplanation());
+                q.setSkillType(staticQ.getSkillType());
+                q.setOrderIndex(staticQ.getOrderIndex());
+                questionsToSave.add(q);
+            }
+        } else {
+            // Case 2: Không có dữ liệu tĩnh -> Gọi AI (Dynamic)
+            log.info("No static questions found. Calling AI for test {}", testConfigId);
+            CompletableFuture<QuizGenerationResponse> futureResponse = grpcClientService.generateLanguageQuiz(
+                    token,
+                    userId.toString(),
+                    config.getNumQuestions(),
+                    "solo",
+                    config.getAiTopic()
+            );
+
+            QuizGenerationResponse aiResponse = futureResponse.join();
+            if (aiResponse == null || aiResponse.getQuestionsCount() == 0) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            }
+
+            int order = 0;
+            for (QuizQuestionProto aiQuestion : aiResponse.getQuestionsList()) {
+                TestSessionQuestion q = new TestSessionQuestion();
+                q.setTestSessionId(savedSession.getTestSessionId());
+                q.setQuestionText(aiQuestion.getQuestionText());
+                
+                // Convert List String -> Json Object/Array manually if needed for simple Types, 
+                // but usually handled by Setters if Logic matches. 
+                // Assuming Options are plain strings for AI response
+                q.setOptionsJson(aiQuestion.getOptionsList()); 
+                
+                q.setCorrectAnswerIndex(aiQuestion.getCorrectAnswerIndex());
+                q.setExplanation(aiQuestion.getExplanation());
+                q.setSkillType(aiQuestion.getSkillType()); 
+                q.setOrderIndex(order++);
+                questionsToSave.add(q);
+            }
         }
+
         List<TestSessionQuestion> savedQuestions = testQuestionRepository.saveAll(questionsToSave);
 
         List<TestSessionResponse.QuestionDto> questionsForResponse = savedQuestions.stream()

@@ -13,8 +13,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class CourseLessonRequest {
-    @NotNull(message = "Course ID is required")
-    private UUID courseId;
+    private UUID courseId; 
+
+    @NotNull(message = "Version ID is required")
+    private UUID versionId;
 
     @NotNull(message = "Lesson ID is required")
     private UUID lessonId;

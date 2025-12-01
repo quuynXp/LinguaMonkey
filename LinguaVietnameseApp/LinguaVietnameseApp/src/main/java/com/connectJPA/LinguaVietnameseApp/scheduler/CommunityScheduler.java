@@ -35,10 +35,7 @@ public class CommunityScheduler {
     private final NotificationService notificationService;
     private final UserRepository userRepository;
 
-    /**
-     * Chạy hàng giờ để dọn dẹp các lời mời đã hết hạn.
-     */
-    @Scheduled(cron = "0 0 * * * ?") // Mỗi giờ
+    @Scheduled(cron = "0 0 * * * ?", zone = "UTC")
     @Transactional
     public void expirePendingInvitations() {
         OffsetDateTime now = OffsetDateTime.now();
@@ -54,10 +51,7 @@ public class CommunityScheduler {
         if (expiredFriends > 0) log.info("Expired {} pending friend requests.", expiredFriends);
     }
 
-    /**
-     * Chạy vào nửa đêm Chủ Nhật (rạng sáng T2) để chốt và thông báo Leaderboard.
-     */
-    @Scheduled(cron = "0 0 0 * * MON") // 00:00 Thứ Hai (chốt tuần cũ)
+    @Scheduled(cron = "0 0 0 * * MON", zone = "UTC") 
     @Transactional
     public void finalizeWeeklyLeaderboard() {
         log.info("Finalizing weekly leaderboards...");
@@ -76,7 +70,6 @@ public class CommunityScheduler {
             return;
         }
 
-        // Lấy thông tin ngôn ngữ của các top user
         List<User> usersWithLang = userRepository.findAllById(
                 topUsers.stream().map(entry -> entry.getUser().getUserId()).collect(Collectors.toList())
         );
@@ -107,7 +100,7 @@ public class CommunityScheduler {
                     .title(title)
                     .content(content)
                     .type("LEADERBOARD")
-                    .payload("{\"screen\":\"Leaderboard\"}")
+                    .payload("{\"screen\":\"Progress\"}")
                     .build();
             notificationService.createPushNotification(request);
             rank++;

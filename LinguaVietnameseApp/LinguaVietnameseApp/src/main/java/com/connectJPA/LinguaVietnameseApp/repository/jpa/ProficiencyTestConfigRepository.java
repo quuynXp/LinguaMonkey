@@ -14,4 +14,6 @@ public interface ProficiencyTestConfigRepository extends JpaRepository<Proficien
     List<ProficiencyTestConfig> findAllByLanguageCodeAndIsActiveTrue(String languageCode);
 
     Page<ProficiencyTestConfig> findAllByLanguageCodeAndIsActiveTrue(String languageCode, Pageable pageable);
+
+    // List<ProficiencyTestConfig> findAllByTestConfigIdOrderByOrderIndex(UUID testConfigId);
 }

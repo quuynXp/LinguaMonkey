@@ -1,10 +1,10 @@
 package com.connectJPA.LinguaVietnameseApp.mapper;
 
-import com.connectJPA.LinguaVietnameseApp.dto.request.CourseReviewRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.CourseVersionReviewRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LanguageRequest;
-import com.connectJPA.LinguaVietnameseApp.dto.response.CourseReviewResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionReviewResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LanguageResponse;
-import com.connectJPA.LinguaVietnameseApp.entity.CourseReview;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionReview;
 import com.connectJPA.LinguaVietnameseApp.entity.Language;
 import org.mapstruct.Mapper;
 import org.mapstruct.MappingTarget;

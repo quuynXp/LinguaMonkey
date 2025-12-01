@@ -1,11 +1,14 @@
 package com.connectJPA.LinguaVietnameseApp.grpc;
 
 import com.connectJPA.LinguaVietnameseApp.dto.ChatMessageBody;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CourseEvaluationResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
 import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
+import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.protobuf.ByteString;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -33,13 +36,91 @@ public class GrpcClientService {
     @Value("${grpc.client.learning-service.address}")
     private String grpcTarget;
 
-    private ObjectMapper objectMapper;
+    private final ObjectMapper objectMapper;
 
     private ManagedChannel createChannelWithToken(String token) {
-                return ManagedChannelBuilder.forTarget(grpcTarget.replace("static://", ""))
+        log.debug("Creating gRPC channel to: {}", grpcTarget);
+        String target = grpcTarget.replace("static://", "").replace("http://", "");
+        return ManagedChannelBuilder.forTarget(target)
                 .usePlaintext()
                 .intercept(new GrpcAuthInterceptor(token))
                 .build();
+    }
+
+    // --- SEED DATA GENERATION ---
+    public CompletableFuture<SeedDataResponse> callGenerateSeedDataAsync(
+            String token, 
+            String rawQuestion, 
+            List<String> rawOptions, 
+            String topic) {
+        
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        SeedDataRequest request = SeedDataRequest.newBuilder()
+                .setRawQuestion(rawQuestion == null ? "" : rawQuestion)
+                .addAllRawOptions(rawOptions)
+                .setTopic(topic == null ? "" : topic)
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                SeedDataResponse response = stub.generateSeedData(request).get();
+                if (!response.getError().isEmpty()) {
+                    log.error("Seed generation error from Python: {}", response.getError());
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                return response;
+            } catch (Exception e) {
+                log.error("gRPC call generateSeedData failed", e);
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
+    // --- EXISTING METHODS ---
+
+    public CompletableFuture<CourseEvaluationResponse> callEvaluateCourseVersionAsync(
+            String token, 
+            String courseTitle, 
+            String courseDescription, 
+            List<Lesson> lessons) {
+        
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        List<LessonMetadata> lessonMetas = lessons.stream()
+                .map(l -> LessonMetadata.newBuilder()
+                        .setLessonTitle(l.getTitle() != null ? l.getTitle() : "Untitled")
+                        .setLessonType(l.getLessonType() != null ? l.getLessonType().name() : "UNKNOWN")
+                        .setDurationSeconds(l.getDurationSeconds() != null ? l.getDurationSeconds() : 0)
+                        .build())
+                .collect(Collectors.toList());
+
+        EvaluateCourseVersionRequest request = EvaluateCourseVersionRequest.newBuilder()
+                .setCourseTitle(courseTitle)
+                .setCourseDescription(courseDescription != null ? courseDescription : "")
+                .addAllLessons(lessonMetas)
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                EvaluateCourseVersionResponse response = stub.evaluateCourseVersion(request).get();
+                if (!response.getError().isEmpty()) {
+                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                }
+                return CourseEvaluationResponse.builder()
+                        .rating(response.getRating())
+                        .reviewComment(response.getReviewComment())
+                        .build();
+            } catch (Exception e) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
     }
 
     public CompletableFuture<TranslateResponse> callTranslateAsync(String token, String text, String sourceLang, String targetLang) {
@@ -70,7 +151,7 @@ public class GrpcClientService {
             String token, 
             String userId, 
             CallPreferences userPrefs, 
-            List<MatchCandidate> candidates) { // <--- Thêm tham số này
+            List<MatchCandidate> candidates) {
         
         ManagedChannel channel = createChannelWithToken(token);
         LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
@@ -78,7 +159,7 @@ public class GrpcClientService {
         FindMatchRequest request = FindMatchRequest.newBuilder()
                 .setCurrentUserId(userId)
                 .setCurrentUserPrefs(userPrefs)
-                .addAllCandidates(candidates) // <--- Gửi list candidates
+                .addAllCandidates(candidates)
                 .build();
 
         return CompletableFuture.supplyAsync(() -> {
@@ -108,12 +189,10 @@ public class GrpcClientService {
             try {
                 ReviewQualityResponse response = stub.analyzeReviewQuality(request).get();
                 if (!response.getError().isEmpty()) {
-                    log.error("AI review analysis failed: {}", response.getError());
                     throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
                 }
                 return response;
             } catch (Exception e) {
-                log.error("gRPC call to analyzeReviewQuality failed: {}", e.getMessage());
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             } finally {
                 channel.shutdown();
@@ -132,27 +211,18 @@ public class GrpcClientService {
         if (userId != null && !userId.isBlank()) {
             requestBuilder.setUserId(userId);
         }
-
         if (topic != null && !topic.isBlank()) {
             requestBuilder.setTopic(topic);
         }
 
-        QuizGenerationRequest request = requestBuilder.build();
-
         return CompletableFuture.supplyAsync(() -> {
             try {
-                QuizGenerationResponse response = stub.generateLanguageQuiz(request).get();
+                QuizGenerationResponse response = stub.generateLanguageQuiz(requestBuilder.build()).get();
                 if (response == null || !response.getError().isEmpty()) {
-                    log.error("gRPC Quiz Generation failed with error: {}", response != null ? response.getError() : "NULL RESPONSE");
                     throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
                 }
                 return response;
             } catch (Exception e) {
-                log.error("gRPC call to generateLanguageQuiz failed: {}", e.getMessage());
-                if (e.getCause() instanceof StatusRuntimeException sre) {
-                    log.error("gRPC StatusRuntimeException details: {}", sre.getStatus());
-                    throw new AppException(ErrorCode.GRPC_SERVICE_ERROR);
-                }
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             } finally {
                 channel.shutdown();
@@ -165,7 +235,7 @@ public class GrpcClientService {
         LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
 
         SpeechRequest request = SpeechRequest.newBuilder()
-                .setAudio(MediaRef.newBuilder().setInlineData(com.google.protobuf.ByteString.copyFrom(audioData)))
+                .setAudio(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(audioData)))
                 .setLanguage(language)
                 .build();
 
@@ -201,12 +271,14 @@ public class GrpcClientService {
         });
     }
 
-    public CompletableFuture<PronunciationResponseBody> callCheckPronunciationAsync(String token, byte[] audioData, String language, String referenceText) {
+    public CompletableFuture<PronunciationResponseBody> callCheckPronunciationAsync(
+            String token, byte[] audioData, String language, String referenceText) {
+        
         ManagedChannel channel = createChannelWithToken(token);
         LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
 
         PronunciationRequest request = PronunciationRequest.newBuilder()
-                .setAudio(MediaRef.newBuilder().setInlineData(com.google.protobuf.ByteString.copyFrom(audioData)))
+                .setAudio(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(audioData)))
                 .setLanguage(language)
                 .setReferenceText(referenceText)
                 .build();
@@ -229,116 +301,103 @@ public class GrpcClientService {
     }
 
     public void streamPronunciationAsync(
-            String token,
-            byte[] audioData,
-            String language,
-            String referenceText,
-            String userId,
-            String lessonId,
-            FluxSink<String> sink) { // <--- THÊM THAM SỐ SINK
+            String token, byte[] audioData, String language, String referenceText,
+            String userId, String lessonQuestionId, FluxSink<String> sink) {
 
         ManagedChannel channel = createChannelWithToken(token);
         LearningServiceGrpc.LearningServiceStub asyncStub = LearningServiceGrpc.newStub(channel);
 
-        // Observer để nhận dữ liệu từ Python trả về
-        StreamObserver<PronunciationChunkResponse> responseObserver = new StreamObserver<PronunciationChunkResponse>() {
+        StreamObserver<PronunciationChunkResponse> responseObserver = new StreamObserver<>() {
             @Override
             public void onNext(PronunciationChunkResponse response) {
                 try {
-                    // Logic mapping data từ Protobuf sang JSON mà Frontend mong đợi
-                    Map<String, Object> chunkData = new HashMap<>();
-                    
-                    // Mapping dựa trên chunk_type từ Python (xem file learning_service.py)
-                    String type = response.getChunkType(); // metadata, chunk, suggestion, final, error
-                    
-                    // Nếu Python không gửi type (do version cũ), tự suy luận
-                    if (type == null || type.isEmpty()) {
-                        type = response.getIsFinal() ? "final" : "chunk";
+                    Map<String, Object> data = new HashMap<>();
+                    data.put("type", response.getChunkType());
+                    data.put("feedback", response.getFeedback());
+                    if (response.getIsFinal()) {
+                        data.put("score", response.getScore());
                     }
-
-                    chunkData.put("type", type);
-                    chunkData.put("feedback", response.getFeedback());
-
-                    // Xử lý các trường hợp cụ thể
-                    if ("final".equals(type) || response.getIsFinal()) {
-                        chunkData.put("score", response.getScore());
-                        // Metadata giả lập nếu Python chưa trả về đủ
-                        Map<String, Object> meta = new HashMap<>();
-                        meta.put("accuracy_score", response.getScore());
-                        meta.put("fluency_score", response.getScore());
-                        chunkData.put("metadata", meta);
-                    }
-                    
-                    // Nếu là phân tích từng từ (cần Python trả về cấu trúc chi tiết hơn trong tương lai)
-                    // Hiện tại Python trả về text feedback gộp, ta gửi thẳng text đó
-                    
-                    String jsonChunk = objectMapper.writeValueAsString(chunkData);
-                    
-                    log.debug("Forwarding chunk to Flux: {}", jsonChunk);
-                    sink.next(jsonChunk); // <--- ĐẨY DATA VỀ FRONTEND NGAY LẬP TỨC
-
+                    sink.next(objectMapper.writeValueAsString(data));
                 } catch (Exception e) {
-                    log.error("Error processing chunk: {}", e.getMessage(), e);
                     sink.error(e);
                 }
             }
 
             @Override
             public void onError(Throwable t) {
-                log.error("Stream error from Python: {}", t.getMessage());
                 sink.error(t);
                 channel.shutdown();
             }
 
             @Override
             public void onCompleted() {
-                log.info("Streaming completed from Python");
-                sink.complete(); // <--- Đóng luồng về Frontend
+                sink.complete();
                 channel.shutdown();
             }
         };
 
-        // Observer để gửi Audio lên Python
         StreamObserver<PronunciationChunk> requestObserver = asyncStub.streamPronunciation(responseObserver);
 
-        // Logic gửi Audio (giữ nguyên, nhưng bỏ cái CompletableFuture đi vì ta dùng Flux)
         new Thread(() -> {
             try {
-                // Chia nhỏ file audio để giả lập streaming (hoặc gửi 1 cục nếu file nhỏ)
-                // Python đang join lại nên gửi 1 cục cũng được, nhưng đúng chuẩn là nên chia.
-                int chunkSize = 16 * 1024; // 16KB
+                int chunkSize = 16 * 1024;
                 int length = audioData.length;
                 int offset = 0;
-                int sequence = 0;
+                int seq = 0;
 
                 while (offset < length) {
                     int end = Math.min(length, offset + chunkSize);
                     byte[] chunkBytes = java.util.Arrays.copyOfRange(audioData, offset, end);
-                    
-                    PronunciationChunk chunk = PronunciationChunk.newBuilder()
-                            .setAudioChunk(com.google.protobuf.ByteString.copyFrom(chunkBytes))
-                            .setReferenceText(referenceText) // Chỉ cần gửi ở gói đầu, nhưng gửi hết cũng ko sao
-                            .setSequence(sequence++)
-                            .setIsFinal(end == length)
-                            .build();
 
-                    requestObserver.onNext(chunk);
+                    PronunciationChunk.Builder chunkBuilder = PronunciationChunk.newBuilder()
+                            .setAudioChunk(ByteString.copyFrom(chunkBytes))
+                            .setSequence(seq++)
+                            .setIsFinal(end == length);
+                    
+                    if (seq == 1) {
+                        chunkBuilder.setReferenceText(referenceText);
+                    }
+
+                    requestObserver.onNext(chunkBuilder.build());
                     offset = end;
                     Thread.sleep(10); 
                 }
-                
                 requestObserver.onCompleted();
-
             } catch (Exception e) {
-                log.error("Error sending audio to Python: {}", e.getMessage());
                 requestObserver.onError(e);
-                sink.error(e);
             }
         }).start();
     }
 
-    private void forwardChunkToClients(String lessonId, PronunciationChunkResponse response) {
-        log.debug("Forwarding chunk to clients: lessonId={}", lessonId);
+    public CompletableFuture<WritingResponseBody> callCheckWritingWithImageAsync(
+            String token, String userText, String prompt, byte[] imageData) {
+        
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        WritingImageRequest.Builder requestBuilder = WritingImageRequest.newBuilder()
+                .setUserText(userText)
+                .setPrompt(prompt);
+
+        if (imageData != null && imageData.length > 0) {
+            requestBuilder.setImage(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(imageData)));
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                WritingImageResponse response = stub.checkWritingWithImage(requestBuilder.build()).get();
+                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+
+                WritingResponseBody result = new WritingResponseBody();
+                result.setFeedback(response.getFeedback());
+                result.setScore(response.getScore());
+                return result;
+            } catch (Exception e) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
     }
 
     public CompletableFuture<List<String>> callCheckSpellingAsync(String token, String text, String language) {
@@ -397,32 +456,6 @@ public class GrpcClientService {
         return CompletableFuture.supplyAsync(() -> {
             try {
                 CheckTranslationResponse response = stub.checkTranslation(request).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-
-                WritingResponseBody result = new WritingResponseBody();
-                result.setFeedback(response.getFeedback());
-                result.setScore(response.getScore());
-                return result;
-            } catch (Exception e) {
-                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
-            }
-        });
-    }
-
-    public CompletableFuture<WritingResponseBody> callCheckWritingWithImageAsync(String token, String text, byte[] imageData) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
-        WritingImageRequest request = WritingImageRequest.newBuilder()
-                .setText(text)
-                .setImage(MediaRef.newBuilder().setInlineData(com.google.protobuf.ByteString.copyFrom(imageData)))
-                .build();
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                WritingImageResponse response = stub.checkWritingWithImage(request).get();
                 if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
 
                 WritingResponseBody result = new WritingResponseBody();
@@ -524,9 +557,8 @@ public class GrpcClientService {
                 if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
                 return response;
             } catch (Exception e) {
-                log.error("gRPC call to createOrUpdateRoadmapDetailed failed: {}", e.getMessage(), e); // <-- THÊM LOG
+                log.error("gRPC call to createOrUpdateRoadmapDetailed failed", e);
                 if (e.getCause() instanceof StatusRuntimeException sre) {
-                    log.error("gRPC StatusRuntimeException details: {}", sre.getStatus());
                     throw new AppException(ErrorCode.GRPC_SERVICE_ERROR);
                 }
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);

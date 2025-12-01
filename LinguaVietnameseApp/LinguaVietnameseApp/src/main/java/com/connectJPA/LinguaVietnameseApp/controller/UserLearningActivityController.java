@@ -7,6 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
 import com.connectJPA.LinguaVietnameseApp.service.UserLearningActivityService;
+import com.connectJPA.LinguaVietnameseApp.service.impl.UserLearningActivityServiceImpl;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -29,6 +30,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserLearningActivityController {
     private final UserLearningActivityService userLearningActivityService;
+    // Cast to Impl to access heartbeat if not in interface yet, essentially interface should have it
+    private final UserLearningActivityServiceImpl userLearningActivityServiceImpl; 
     private final MessageSource messageSource;
     private final LessonService lessonService;
 
@@ -47,6 +50,16 @@ public class UserLearningActivityController {
                 .code(200)
                 .message(messageSource.getMessage("userLearningActivity.list.success", null, locale))
                 .result(activities)
+                .build();
+    }
+
+    @Operation(summary = "Record User Heartbeat", description = "Call this every minute to track user online time. Updates Redis counters.")
+    @PostMapping("/heartbeat")
+    public AppApiResponse<Void> recordHeartbeat(@RequestParam UUID userId) {
+        userLearningActivityServiceImpl.recordHeartbeat(userId);
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message("Heartbeat recorded")
                 .build();
     }
 

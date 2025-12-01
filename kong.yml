@@ -22,8 +22,8 @@ services:
           - /api/v1/certificates
           - /api/v1/character3ds
           - /api/v1/courses
-          - /api/v1/course-discounts
-          - /api/v1/course-reviews
+          - /api/v1/course-version-discounts
+          - /api/v1/course-version-reviews
           - /api/v1/events
           - /api/v1/grammar
           - /api/v1/interests
@@ -56,6 +56,10 @@ services:
   # ==============================================================================
   - name: java-service
     url: http://linguavietnameseapp:8080
+    # Tăng timeout cho các tác vụ tốn thời gian như upload
+    connect_timeout: 60000
+    write_timeout: 300000
+    read_timeout: 300000
     routes:
       - name: java-api-protected
         strip_path: false
@@ -63,7 +67,7 @@ services:
         paths:
           - /api/v1/chat
           - /api/v1/couples
-          - /api/v1/course-enrollments
+          - /api/v1/course-version-enrollments
           - /api/v1/course-lessons
           - /api/v1/daily-challenges
           - /api/v1/files
@@ -93,6 +97,7 @@ services:
           - /api/v1/wallets/
           - /api/v1/files/
           - /api/v1/files/user/
+          - /api/v1/files/upload-temp
       - name: java-stomp
         strip_path: false
         protocols: [http, https]
@@ -111,7 +116,7 @@ services:
           minute: 500
       - name: request-size-limiting
         config:
-          allowed_payload_size: 100
+          allowed_payload_size: 200 # Tăng giới hạn payload lên 200MB
 
   # ==============================================================================
   # 3. PYTHON SERVICE

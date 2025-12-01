@@ -108,7 +108,7 @@ const CreatorDashboardScreen = () => {
                             </Text>
                         </View>
                         <Text style={styles.priceText}>
-                            {item.price === 0 ? "Free" : `$${item.price}`}
+                            {item.latestPublicVersion.price === 0 ? "Free" : `$${item.latestPublicVersion.price}`}
                         </Text>
                     </View>
                     <View style={styles.statsRow}>

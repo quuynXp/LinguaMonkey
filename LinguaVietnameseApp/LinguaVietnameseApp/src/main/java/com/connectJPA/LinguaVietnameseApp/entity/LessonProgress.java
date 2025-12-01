@@ -31,7 +31,7 @@ public class LessonProgress extends BaseEntity {
     private Integer maxScore;
 
     @Column(name = "attempt_number")
-    private Integer attemptNumber;
+    private Integer attemptNumber = 0;
 
     @Column(name = "needs_review")
     private Boolean needsReview = false;

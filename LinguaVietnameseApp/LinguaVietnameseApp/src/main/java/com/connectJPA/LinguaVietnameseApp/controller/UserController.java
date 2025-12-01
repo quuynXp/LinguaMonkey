@@ -48,12 +48,7 @@ public class UserController {
     private final MessageSource messageSource;
     private final AuthenticationService authenticationService;
 
-    @Operation(summary = "Get all users", description = "Retrieve a paginated list of users with optional filtering by email, fullname, or nickname")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved users"),
-            @ApiResponse(responseCode = "400", description = "Invalid query parameters"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
+    @Operation(summary = "Get all users (Admin Only)", description = "Retrieve a paginated list of raw user entities")
     @GetMapping
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Page<UserResponse>> getAllUsers(
@@ -64,6 +59,26 @@ public class UserController {
             Locale locale) {
         Page<UserResponse> users = userService.getAllUsers(email, fullname, nickname, pageable);
         return AppApiResponse.<Page<UserResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("user.list.success", null, locale))
+                .result(users)
+                .build();
+    }
+
+    @Operation(summary = "Search public users", description = "Retrieve a list of user profiles for public directory/search. Safe for general users.")
+    @GetMapping("/search")
+    @PreAuthorize("isAuthenticated()")
+    public AppApiResponse<Page<UserProfileResponse>> searchPublicUsers(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Country country,
+            @Parameter(description = "Pagination") Pageable pageable,
+            Principal principal,
+            Locale locale) {
+        
+        UUID viewerId = (principal != null) ? UUID.fromString(principal.getName()) : null;
+        Page<UserProfileResponse> users = userService.searchPublicUsers(viewerId, keyword, country, pageable);
+        
+        return AppApiResponse.<Page<UserProfileResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("user.list.success", null, locale))
                 .result(users)
@@ -85,11 +100,6 @@ public class UserController {
     }
 
     @Operation(summary = "Get user by ID", description = "Retrieve a user by their ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved user"),
-            @ApiResponse(responseCode = "404", description = "User not found"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @GetMapping("/{userId}")
     @PreAuthorize("isAuthenticated()")
     public AppApiResponse<UserResponse> getUserById(
@@ -126,11 +136,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Register FCM token", description = "Register or update FCM token for push notifications")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Token registered successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid request")
-    })
     @PostMapping("/fcm-token")
     @PreAuthorize("isAuthenticated()")
     public AppApiResponse<Void> registerFcmToken(
@@ -160,13 +165,6 @@ public class UserController {
                 .build();
     }
 
-
-    @Operation(summary = "Create a new user", description = "Create a new user with the provided details")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "User created successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid user data"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @PostMapping
     @PreAuthorize("permitAll")
     public AppApiResponse<RegisterResponse> createUser(
@@ -192,13 +190,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Update a user", description = "Update an existing user by their ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "User updated successfully"),
-            @ApiResponse(responseCode = "404", description = "User not found"),
-            @ApiResponse(responseCode = "400", description = "Invalid user data"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @PutMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updateUser(
@@ -226,12 +217,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Soft delete a user (ADMIN ONLY)", description = "Soft delete a user by their ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "User deleted successfully"),
-            @ApiResponse(responseCode = "404", description = "User not found"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @DeleteMapping("/{id}")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<Void> deleteUser(
@@ -244,13 +229,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Update user avatar using temp path",
-            description = "Commits a temp file (from /files/upload-temp) as the user's new avatar")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Avatar updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid tempPath or user ID"),
-            @ApiResponse(responseCode = "404", description = "User not found")
-    })
     @PatchMapping("/{id}/avatar")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updateAvatar(
@@ -266,11 +244,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Get 3D character by UserID", description = "Retrieve a 3D character by its UserID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved 3D character"),
-            @ApiResponse(responseCode = "404", description = "3D character not found")
-    })
     @GetMapping("/{userId}/character3d")
     @PreAuthorize("isAuthenticated()")
     public AppApiResponse<Character3dResponse> getCharacter3dByUserId(
@@ -298,13 +271,6 @@ public class UserController {
         return ResponseEntity.ok(res);
     }
 
-    @Operation(summary = "Update user native language", description = "Update the native language code for a user")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Native language updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid language code or user ID"),
-            @ApiResponse(responseCode = "404", description = "User or language not found"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @PatchMapping("/{id}/native-language")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updateNativeLanguage(
@@ -319,7 +285,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Get user stats (derived from existing tables)")
     @GetMapping("/{id}/stats")
     @PreAuthorize("isAuthenticated()")
     public AppApiResponse<UserStatsResponse> getUserStats(
@@ -333,13 +298,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Update user country", description = "Update the country for a user")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Country updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid country or user ID"),
-            @ApiResponse(responseCode = "404", description = "User not found"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @PatchMapping("/{id}/country")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updateCountry(
@@ -354,13 +312,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Update user experience points", description = "Add experience points for a user from lessons or events")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Experience points updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid exp or user ID"),
-            @ApiResponse(responseCode = "404", description = "User not found"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @PatchMapping("/{id}/exp")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updateExp(
@@ -375,14 +326,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Update user streak on activity",
-            description = "Increment streak when a user completes an activity AND meets the daily min learning duration (15 min).")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Streak updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid user ID"),
-            @ApiResponse(responseCode = "404", description = "User not found"),
-            @ApiResponse(responseCode = "403", description = "Access denied")
-    })
     @PatchMapping("/{id}/streak")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updateStreakOnActivity(
@@ -396,7 +339,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Update setup completion status", description = "Mark user as having finished the initial setup")
     @PatchMapping("/{id}/setup-status")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updateSetupStatus(
@@ -411,7 +353,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Update placement test status", description = "Mark user as having finished the placement test")
     @PatchMapping("/{id}/placement-test-status")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> updatePlacementTestStatus(
@@ -426,7 +367,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Track daily welcome", description = "Update the last daily welcome timestamp to now")
     @PatchMapping("/{id}/daily-welcome")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> trackDailyWelcome(
@@ -440,12 +380,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Change user password", description = "Allows user to change their password")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Password updated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid current or new password"),
-            @ApiResponse(responseCode = "404", description = "User not found")
-    })
     @PatchMapping("/{id}/password")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<Void> changePassword(
@@ -459,12 +393,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Deactivate user account",
-            description = "Soft deletes the user account and sets a temporary deletion time (30 days by default).")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Account deactivated successfully"),
-            @ApiResponse(responseCode = "404", description = "User not found")
-    })
     @DeleteMapping("/{id}/deactivate")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<Void> deactivateAccount(
@@ -478,12 +406,6 @@ public class UserController {
                 .build();
     }
 
-    @Operation(summary = "Restore user account",
-            description = "Reactivates a soft-deleted user account within the recovery period.")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Account restored successfully"),
-            @ApiResponse(responseCode = "404", description = "User not found or deletion time expired")
-    })
     @PatchMapping("/{id}/restore")
     @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     public AppApiResponse<UserResponse> restoreAccount(

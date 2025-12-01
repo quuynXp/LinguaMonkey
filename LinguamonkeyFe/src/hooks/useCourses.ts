@@ -7,18 +7,18 @@ import {
   CourseVersionResponse,
   CourseLessonResponse,
   LessonResponse,
-  CourseEnrollmentResponse,
-  CourseDiscountResponse,
-  CourseReviewResponse,
+  CourseVersionEnrollmentResponse,
+  CourseVersionDiscountResponse,
+  CourseVersionReviewResponse,
   CreateCourseRequest,
   UpdateCourseDetailsRequest,
   UpdateCourseVersionRequest,
   PublishVersionRequest,
-  CourseEnrollmentRequest,
+  CourseVersionEnrollmentRequest,
   SwitchVersionRequest,
   CourseLessonRequest,
-  CourseDiscountRequest,
-  CourseReviewRequest,
+  CourseVersionDiscountRequest,
+  CourseVersionReviewRequest,
 } from "../types/dto";
 import { CourseType } from "../types/enums";
 
@@ -30,6 +30,7 @@ export const courseKeys = {
   detail: (id: string) => [...courseKeys.details(), id] as const,
   versions: () => [...courseKeys.all, "version"] as const,
   version: (id: string) => [...courseKeys.versions(), id] as const,
+  courseVersions: (courseId: string) => [...courseKeys.all, "versions_list", courseId] as const,
   recommended: (userId: string) => [...courseKeys.all, "recommended", userId] as const,
   levels: () => [...courseKeys.all, "levels"] as const,
   categories: () => [...courseKeys.all, "categories"] as const,
@@ -85,75 +86,17 @@ export const useCourses = () => {
     });
   };
 
-  const useReviews = (params?: { courseId?: string; userId?: string; rating?: number; page?: number; size?: number }) => {
-    const { courseId, userId, rating, page = 0, size = 10 } = params || {};
+  const useCourseVersions = (courseId: string | null) => {
     return useQuery({
-      queryKey: courseKeys.reviews({ courseId, userId, rating, page, size }),
+      queryKey: courseKeys.courseVersions(courseId!),
       queryFn: async () => {
-        const qp = new URLSearchParams({ page: String(page), size: String(size) });
-        if (courseId) qp.append("courseId", courseId);
-        if (userId) qp.append("userId", userId);
-        if (rating) qp.append("rating", String(rating));
-        const { data } = await instance.get<AppApiResponse<PageResponse<CourseReviewResponse>>>(`/api/v1/course-reviews?${qp.toString()}`);
-        return mapPageResponse(data.result, page, size);
-      },
-      enabled: !!(courseId || userId),
-    });
-  };
-
-  const useLoadReplies = () => {
-    return useMutation({
-      mutationFn: async ({ reviewId, page, size }: { reviewId: string; page: number; size: number }) => {
-        const { data } = await instance.get<AppApiResponse<PageResponse<CourseReviewResponse>>>(
-          `/api/v1/course-reviews/${reviewId}/replies`,
-          { params: { page, size } }
+        if (!courseId) throw new Error("Course ID required");
+        const { data } = await instance.get<AppApiResponse<CourseVersionResponse[]>>(
+          `/api/v1/courses/${courseId}/versions`
         );
-        return mapPageResponse(data.result, page, size);
-      }
-    });
-  };
-
-  const useCreateReview = () => {
-    return useMutation({
-      mutationFn: async (req: CourseReviewRequest) => {
-        const { data } = await instance.post<AppApiResponse<CourseReviewResponse>>("/api/v1/course-reviews", req);
-        return data.result!;
+        return data.result || [];
       },
-      onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
-    });
-  };
-
-  const useLikeReview = () => {
-    return useMutation({
-      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
-        await instance.post(`/api/v1/course-reviews/${reviewId}/like?userId=${userId}`);
-      },
-    });
-  };
-
-  const useUnlikeReview = () => {
-    return useMutation({
-      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
-        // Giả định backend có endpoint unlike hoặc dùng logic phù hợp
-        await instance.post(`/api/v1/course-reviews/${reviewId}/unlike?userId=${userId}`);
-      },
-    });
-  };
-
-  const useDislikeReview = () => {
-    return useMutation({
-      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
-        await instance.post(`/api/v1/course-reviews/${reviewId}/dislike?userId=${userId}`);
-      },
-    });
-  };
-
-  const useUndislikeReview = () => {
-    return useMutation({
-      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
-        // Giả định backend có endpoint undislike
-        await instance.post(`/api/v1/course-reviews/${reviewId}/undislike?userId=${userId}`);
-      },
+      enabled: !!courseId
     });
   };
 
@@ -168,6 +111,77 @@ export const useCourses = () => {
         return data.result!;
       },
       enabled: !!versionId
+    });
+  };
+
+  const useReviews = (params?: { courseId?: string; versionId?: string; userId?: string; rating?: number; page?: number; size?: number }) => {
+    const { courseId, versionId, userId, rating, page = 0, size = 10 } = params || {};
+    return useQuery({
+      queryKey: courseKeys.reviews({ courseId, versionId, userId, rating, page, size }),
+      queryFn: async () => {
+        const qp = new URLSearchParams({ page: String(page), size: String(size) });
+        if (courseId) qp.append("courseId", courseId);
+        if (versionId) qp.append("versionId", versionId);
+        if (rating) qp.append("rating", String(rating));
+        if (userId) qp.append("userId", userId);
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseVersionReviewResponse>>>(`/api/v1/course-version-reviews?${qp.toString()}`);
+        return mapPageResponse(data.result, page, size);
+      },
+      enabled: !!(courseId || userId),
+    });
+  };
+
+  const useLoadReplies = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, page, size }: { reviewId: string; page: number; size: number }) => {
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseVersionReviewResponse>>>(
+          `/api/v1/course-version-reviews/${reviewId}/replies`,
+          { params: { page, size } }
+        );
+        return mapPageResponse(data.result, page, size);
+      }
+    });
+  };
+
+  const useCreateReview = () => {
+    return useMutation({
+      mutationFn: async (req: CourseVersionReviewRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseVersionReviewResponse>>("/api/v1/course-version-reviews", req);
+        return data.result!;
+      },
+      onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
+    });
+  };
+
+  const useLikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        await instance.post(`/api/v1/course-version-reviews/${reviewId}/like?userId=${userId}`);
+      },
+    });
+  };
+
+  const useUnlikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        await instance.post(`/api/v1/course-version-reviews/${reviewId}/unlike?userId=${userId}`);
+      },
+    });
+  };
+
+  const useDislikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        await instance.post(`/api/v1/course-version-reviews/${reviewId}/dislike?userId=${userId}`);
+      },
+    });
+  };
+
+  const useUndislikeReview = () => {
+    return useMutation({
+      mutationFn: async ({ reviewId, userId }: { reviewId: string; userId: string }) => {
+        await instance.post(`/api/v1/course-version-reviews/${reviewId}/undislike?userId=${userId}`);
+      },
     });
   };
 
@@ -255,7 +269,10 @@ export const useCourses = () => {
         );
         return data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.all }),
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: courseKeys.courseVersions(data.courseId) });
+        queryClient.invalidateQueries({ queryKey: courseKeys.detail(data.courseId) });
+      },
     });
   };
 
@@ -268,7 +285,11 @@ export const useCourses = () => {
         );
         return data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.all }),
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: courseKeys.version(data.versionId) });
+        queryClient.invalidateQueries({ queryKey: courseKeys.courseVersions(data.courseId) });
+        queryClient.invalidateQueries({ queryKey: courseKeys.detail(data.courseId) });
+      },
     });
   };
 
@@ -281,7 +302,11 @@ export const useCourses = () => {
         );
         return data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.all }),
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: courseKeys.version(data.versionId) });
+        queryClient.invalidateQueries({ queryKey: courseKeys.detail(data.courseId) });
+        queryClient.invalidateQueries({ queryKey: courseKeys.courseVersions(data.courseId) });
+      },
     });
   };
 
@@ -328,8 +353,8 @@ export const useCourses = () => {
         const qp = new URLSearchParams({ page: String(page), size: String(size) });
         if (courseId) qp.append("courseId", courseId);
         if (userId) qp.append("userId", userId);
-        const { data } = await instance.get<AppApiResponse<PageResponse<CourseEnrollmentResponse>>>(
-          `/api/v1/course-enrollments?${qp.toString()}`
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseVersionEnrollmentResponse>>>(
+          `/api/v1/course-version-enrollments?${qp.toString()}`
         );
         return mapPageResponse(data.result, page, size);
       },
@@ -342,8 +367,8 @@ export const useCourses = () => {
       queryKey: courseKeys.enrollments({ courseId, userId, type: "detail" }),
       queryFn: async () => {
         if (!courseId || !userId) throw new Error("IDs required");
-        const { data } = await instance.get<AppApiResponse<CourseEnrollmentResponse>>(
-          `/api/v1/course-enrollments/${courseId}/${userId}`
+        const { data } = await instance.get<AppApiResponse<CourseVersionEnrollmentResponse>>(
+          `/api/v1/course-version-enrollments/${courseId}/${userId}`
         );
         return data.result!;
       },
@@ -353,9 +378,9 @@ export const useCourses = () => {
 
   const useCreateEnrollment = () => {
     return useMutation({
-      mutationFn: async (req: CourseEnrollmentRequest) => {
-        const { data } = await instance.post<AppApiResponse<CourseEnrollmentResponse>>(
-          "/api/v1/course-enrollments",
+      mutationFn: async (req: CourseVersionEnrollmentRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseVersionEnrollmentResponse>>(
+          "/api/v1/course-version-enrollments",
           req
         );
         return data.result!;
@@ -367,8 +392,8 @@ export const useCourses = () => {
   const useSwitchVersion = () => {
     return useMutation({
       mutationFn: async (req: SwitchVersionRequest) => {
-        const { data } = await instance.put<AppApiResponse<CourseEnrollmentResponse>>(
-          "/api/v1/course-enrollments/switch-version",
+        const { data } = await instance.put<AppApiResponse<CourseVersionEnrollmentResponse>>(
+          "/api/v1/course-version-enrollments/switch-version",
           req
         );
         return data.result!;
@@ -379,9 +404,9 @@ export const useCourses = () => {
 
   const useUpdateEnrollment = () => {
     return useMutation({
-      mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseEnrollmentRequest }) => {
-        const { data } = await instance.put<AppApiResponse<CourseEnrollmentResponse>>(
-          `/api/v1/course-enrollments/${courseId}/${userId}`,
+      mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseVersionEnrollmentRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseVersionEnrollmentResponse>>(
+          `/api/v1/course-version-enrollments/${courseId}/${userId}`,
           req
         );
         return data.result!;
@@ -393,7 +418,7 @@ export const useCourses = () => {
   const useDeleteEnrollment = () => {
     return useMutation({
       mutationFn: async ({ courseId, userId }: { courseId: string; userId: string }) => {
-        await instance.delete(`/api/v1/course-enrollments/${courseId}/${userId}`);
+        await instance.delete(`/api/v1/course-version-enrollments/${courseId}/${userId}`);
       },
       onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) }),
     });
@@ -492,8 +517,8 @@ export const useCourses = () => {
       queryKey: courseKeys.reviews({ courseId, userId, type: "detail" }),
       queryFn: async () => {
         if (!courseId || !userId) throw new Error("IDs required");
-        const { data } = await instance.get<AppApiResponse<CourseReviewResponse>>(
-          `/api/v1/course-reviews/${courseId}/${userId}`
+        const { data } = await instance.get<AppApiResponse<CourseVersionReviewResponse>>(
+          `/api/v1/course-version-reviews/${courseId}/${userId}`
         );
         return data.result!;
       },
@@ -503,9 +528,9 @@ export const useCourses = () => {
 
   const useUpdateReview = () => {
     return useMutation({
-      mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseReviewRequest }) => {
-        const { data } = await instance.put<AppApiResponse<CourseReviewResponse>>(
-          `/api/v1/course-reviews/${courseId}/${userId}`,
+      mutationFn: async ({ courseId, userId, req }: { courseId: string; userId: string; req: CourseVersionReviewRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseVersionReviewResponse>>(
+          `/api/v1/course-version-reviews/${courseId}/${userId}`,
           req
         );
         return data.result!;
@@ -517,26 +542,27 @@ export const useCourses = () => {
   const useDeleteReview = () => {
     return useMutation({
       mutationFn: async ({ courseId, userId }: { courseId: string; userId: string }) => {
-        await instance.delete(`/api/v1/course-reviews/${courseId}/${userId}`);
+        await instance.delete(`/api/v1/course-version-reviews/${courseId}/${userId}`);
       },
       onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: courseKeys.reviews({ courseId: vars.courseId }) }),
     });
   };
 
-  const useDiscounts = (params?: { courseId?: string; percentage?: number; page?: number; size?: number }) => {
-    const { courseId, percentage, page = 0, size = 10 } = params || {};
+  const useDiscounts = (params?: { versionId?: string; percentage?: number; page?: number; size?: number }) => {
+    const { versionId, percentage, page = 0, size = 10 } = params || {};
     return useQuery({
-      queryKey: courseKeys.discounts({ courseId, percentage, page, size }),
+      queryKey: courseKeys.discounts({ versionId, percentage, page, size }),
       queryFn: async () => {
         const qp = new URLSearchParams({ page: String(page), size: String(size) });
-        if (courseId) qp.append("courseId", courseId);
+        if (versionId) qp.append("versionId", versionId);
         if (percentage) qp.append("discountPercentage", String(percentage));
 
-        const { data } = await instance.get<AppApiResponse<PageResponse<CourseDiscountResponse>>>(
-          `/api/v1/course-discounts?${qp.toString()}`
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseVersionDiscountResponse>>>(
+          `/api/v1/course-version-discounts?${qp.toString()}`
         );
         return mapPageResponse(data.result, page, size);
       },
+      enabled: !!versionId,
     });
   };
 
@@ -545,8 +571,8 @@ export const useCourses = () => {
       queryKey: courseKeys.discounts({ discountId, type: "detail" }),
       queryFn: async () => {
         if (!discountId) throw new Error("Discount ID required");
-        const { data } = await instance.get<AppApiResponse<CourseDiscountResponse>>(
-          `/api/v1/course-discounts/${discountId}`
+        const { data } = await instance.get<AppApiResponse<CourseVersionDiscountResponse>>(
+          `/api/v1/course-version-discounts/${discountId}`
         );
         return data.result!;
       },
@@ -556,8 +582,8 @@ export const useCourses = () => {
 
   const useCreateDiscount = () => {
     return useMutation({
-      mutationFn: async (req: CourseDiscountRequest) => {
-        const { data } = await instance.post<AppApiResponse<CourseDiscountResponse>>("/api/v1/course-discounts", req);
+      mutationFn: async (req: CourseVersionDiscountRequest) => {
+        const { data } = await instance.post<AppApiResponse<CourseVersionDiscountResponse>>("/api/v1/course-version-discounts", req);
         return data.result!;
       },
       onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.discounts({}) }),
@@ -566,9 +592,9 @@ export const useCourses = () => {
 
   const useUpdateDiscount = () => {
     return useMutation({
-      mutationFn: async ({ id, req }: { id: string; req: CourseDiscountRequest }) => {
-        const { data } = await instance.put<AppApiResponse<CourseDiscountResponse>>(
-          `/api/v1/course-discounts/${id}`,
+      mutationFn: async ({ id, req }: { id: string; req: CourseVersionDiscountRequest }) => {
+        const { data } = await instance.put<AppApiResponse<CourseVersionDiscountResponse>>(
+          `/api/v1/course-version-discounts/${id}`,
           req
         );
         return data.result!;
@@ -580,7 +606,7 @@ export const useCourses = () => {
   const useDeleteDiscount = () => {
     return useMutation({
       mutationFn: async (id: string) => {
-        await instance.delete(`/api/v1/course-discounts/${id}`);
+        await instance.delete(`/api/v1/course-version-discounts/${id}`);
       },
       onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.discounts({}) }),
     });
@@ -588,9 +614,9 @@ export const useCourses = () => {
 
   const useValidateDiscount = () => {
     return useMutation({
-      mutationFn: async ({ code, courseId }: { code: string; courseId: string }) => {
-        const { data } = await instance.get<AppApiResponse<CourseDiscountResponse>>("/api/v1/course-discounts/validate", {
-          params: { code, courseId }
+      mutationFn: async ({ code, versionId }: { code: string; versionId: string }) => {
+        const { data } = await instance.get<AppApiResponse<CourseVersionDiscountResponse>>("/api/v1/course-version-discounts/validate", {
+          params: { code, versionId }
         });
         return data.result!;
       }
@@ -600,6 +626,7 @@ export const useCourses = () => {
   return {
     useAllCourses,
     useCourse,
+    useCourseVersions,
     useGetVersion,
     useCreatorCourses,
     useLoadReplies,
@@ -629,7 +656,7 @@ export const useCourses = () => {
     useReviewDetail,
     useCreateReview,
     useLikeReview,
-    useUnlikeReview,     // New
+    useUnlikeReview,
     useDislikeReview,
     useUndislikeReview,
     useUpdateReview,

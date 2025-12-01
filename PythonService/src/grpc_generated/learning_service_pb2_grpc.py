@@ -27,16 +27,6 @@ class LearningServiceStub(object):
                 request_serializer=learning__service__pb2.TtsRequest.SerializeToString,
                 response_deserializer=learning__service__pb2.TtsResponse.FromString,
                 )
-        self.CheckPronunciation = channel.unary_unary(
-                '/learning.LearningService/CheckPronunciation',
-                request_serializer=learning__service__pb2.PronunciationRequest.SerializeToString,
-                response_deserializer=learning__service__pb2.PronunciationResponse.FromString,
-                )
-        self.StreamPronunciation = channel.stream_stream(
-                '/learning.LearningService/StreamPronunciation',
-                request_serializer=learning__service__pb2.PronunciationChunk.SerializeToString,
-                response_deserializer=learning__service__pb2.PronunciationChunkResponse.FromString,
-                )
         self.CheckSpelling = channel.unary_unary(
                 '/learning.LearningService/CheckSpelling',
                 request_serializer=learning__service__pb2.SpellingRequest.SerializeToString,
@@ -46,11 +36,6 @@ class LearningServiceStub(object):
                 '/learning.LearningService/CheckTranslation',
                 request_serializer=learning__service__pb2.CheckTranslationRequest.SerializeToString,
                 response_deserializer=learning__service__pb2.CheckTranslationResponse.FromString,
-                )
-        self.CheckWritingWithImage = channel.unary_unary(
-                '/learning.LearningService/CheckWritingWithImage',
-                request_serializer=learning__service__pb2.WritingImageRequest.SerializeToString,
-                response_deserializer=learning__service__pb2.WritingImageResponse.FromString,
                 )
         self.ChatWithAI = channel.unary_unary(
                 '/learning.LearningService/ChatWithAI',
@@ -112,10 +97,35 @@ class LearningServiceStub(object):
                 request_serializer=learning__service__pb2.QuizGenerationRequest.SerializeToString,
                 response_deserializer=learning__service__pb2.QuizGenerationResponse.FromString,
                 )
+        self.EvaluateCourseVersion = channel.unary_unary(
+                '/learning.LearningService/EvaluateCourseVersion',
+                request_serializer=learning__service__pb2.EvaluateCourseVersionRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.EvaluateCourseVersionResponse.FromString,
+                )
         self.GradeCertificationTest = channel.unary_unary(
                 '/learning.LearningService/GradeCertificationTest',
                 request_serializer=learning__service__pb2.GradeTestRequest.SerializeToString,
                 response_deserializer=learning__service__pb2.GradeTestResponse.FromString,
+                )
+        self.CheckPronunciation = channel.unary_unary(
+                '/learning.LearningService/CheckPronunciation',
+                request_serializer=learning__service__pb2.PronunciationRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.PronunciationResponse.FromString,
+                )
+        self.StreamPronunciation = channel.stream_stream(
+                '/learning.LearningService/StreamPronunciation',
+                request_serializer=learning__service__pb2.PronunciationChunk.SerializeToString,
+                response_deserializer=learning__service__pb2.PronunciationChunkResponse.FromString,
+                )
+        self.CheckWritingWithImage = channel.unary_unary(
+                '/learning.LearningService/CheckWritingWithImage',
+                request_serializer=learning__service__pb2.WritingImageRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.WritingImageResponse.FromString,
+                )
+        self.GenerateSeedData = channel.unary_unary(
+                '/learning.LearningService/GenerateSeedData',
+                request_serializer=learning__service__pb2.SeedDataRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.SeedDataResponse.FromString,
                 )
 
 
@@ -138,18 +148,6 @@ class LearningServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def CheckPronunciation(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def StreamPronunciation(self, request_iterator, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def CheckSpelling(self, request, context):
         """--- Text-based ---
         """
@@ -163,12 +161,6 @@ class LearningServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def CheckWritingWithImage(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
     def ChatWithAI(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -176,8 +168,7 @@ class LearningServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def Translate(self, request, context):
-        """✅ New rpc for translation (used by Java client)
-        """
+        """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -245,8 +236,41 @@ class LearningServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def EvaluateCourseVersion(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GradeCertificationTest(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CheckPronunciation(self, request, context):
+        """--- Speaking & Writing ---
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StreamPronunciation(self, request_iterator, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CheckWritingWithImage(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GenerateSeedData(self, request, context):
+        """--- Data Seeding / Admin Tools ---
+        Transforms raw/random data into valid content with media
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -264,16 +288,6 @@ def add_LearningServiceServicer_to_server(servicer, server):
                     request_deserializer=learning__service__pb2.TtsRequest.FromString,
                     response_serializer=learning__service__pb2.TtsResponse.SerializeToString,
             ),
-            'CheckPronunciation': grpc.unary_unary_rpc_method_handler(
-                    servicer.CheckPronunciation,
-                    request_deserializer=learning__service__pb2.PronunciationRequest.FromString,
-                    response_serializer=learning__service__pb2.PronunciationResponse.SerializeToString,
-            ),
-            'StreamPronunciation': grpc.stream_stream_rpc_method_handler(
-                    servicer.StreamPronunciation,
-                    request_deserializer=learning__service__pb2.PronunciationChunk.FromString,
-                    response_serializer=learning__service__pb2.PronunciationChunkResponse.SerializeToString,
-            ),
             'CheckSpelling': grpc.unary_unary_rpc_method_handler(
                     servicer.CheckSpelling,
                     request_deserializer=learning__service__pb2.SpellingRequest.FromString,
@@ -283,11 +297,6 @@ def add_LearningServiceServicer_to_server(servicer, server):
                     servicer.CheckTranslation,
                     request_deserializer=learning__service__pb2.CheckTranslationRequest.FromString,
                     response_serializer=learning__service__pb2.CheckTranslationResponse.SerializeToString,
-            ),
-            'CheckWritingWithImage': grpc.unary_unary_rpc_method_handler(
-                    servicer.CheckWritingWithImage,
-                    request_deserializer=learning__service__pb2.WritingImageRequest.FromString,
-                    response_serializer=learning__service__pb2.WritingImageResponse.SerializeToString,
             ),
             'ChatWithAI': grpc.unary_unary_rpc_method_handler(
                     servicer.ChatWithAI,
@@ -349,10 +358,35 @@ def add_LearningServiceServicer_to_server(servicer, server):
                     request_deserializer=learning__service__pb2.QuizGenerationRequest.FromString,
                     response_serializer=learning__service__pb2.QuizGenerationResponse.SerializeToString,
             ),
+            'EvaluateCourseVersion': grpc.unary_unary_rpc_method_handler(
+                    servicer.EvaluateCourseVersion,
+                    request_deserializer=learning__service__pb2.EvaluateCourseVersionRequest.FromString,
+                    response_serializer=learning__service__pb2.EvaluateCourseVersionResponse.SerializeToString,
+            ),
             'GradeCertificationTest': grpc.unary_unary_rpc_method_handler(
                     servicer.GradeCertificationTest,
                     request_deserializer=learning__service__pb2.GradeTestRequest.FromString,
                     response_serializer=learning__service__pb2.GradeTestResponse.SerializeToString,
+            ),
+            'CheckPronunciation': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckPronunciation,
+                    request_deserializer=learning__service__pb2.PronunciationRequest.FromString,
+                    response_serializer=learning__service__pb2.PronunciationResponse.SerializeToString,
+            ),
+            'StreamPronunciation': grpc.stream_stream_rpc_method_handler(
+                    servicer.StreamPronunciation,
+                    request_deserializer=learning__service__pb2.PronunciationChunk.FromString,
+                    response_serializer=learning__service__pb2.PronunciationChunkResponse.SerializeToString,
+            ),
+            'CheckWritingWithImage': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckWritingWithImage,
+                    request_deserializer=learning__service__pb2.WritingImageRequest.FromString,
+                    response_serializer=learning__service__pb2.WritingImageResponse.SerializeToString,
+            ),
+            'GenerateSeedData': grpc.unary_unary_rpc_method_handler(
+                    servicer.GenerateSeedData,
+                    request_deserializer=learning__service__pb2.SeedDataRequest.FromString,
+                    response_serializer=learning__service__pb2.SeedDataResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -402,40 +436,6 @@ class LearningService(object):
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
-    def CheckPronunciation(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckPronunciation',
-            learning__service__pb2.PronunciationRequest.SerializeToString,
-            learning__service__pb2.PronunciationResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def StreamPronunciation(request_iterator,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.stream_stream(request_iterator, target, '/learning.LearningService/StreamPronunciation',
-            learning__service__pb2.PronunciationChunk.SerializeToString,
-            learning__service__pb2.PronunciationChunkResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
     def CheckSpelling(request,
             target,
             options=(),
@@ -466,23 +466,6 @@ class LearningService(object):
         return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckTranslation',
             learning__service__pb2.CheckTranslationRequest.SerializeToString,
             learning__service__pb2.CheckTranslationResponse.FromString,
-            options, channel_credentials,
-            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
-
-    @staticmethod
-    def CheckWritingWithImage(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckWritingWithImage',
-            learning__service__pb2.WritingImageRequest.SerializeToString,
-            learning__service__pb2.WritingImageResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
@@ -691,6 +674,23 @@ class LearningService(object):
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 
     @staticmethod
+    def EvaluateCourseVersion(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/EvaluateCourseVersion',
+            learning__service__pb2.EvaluateCourseVersionRequest.SerializeToString,
+            learning__service__pb2.EvaluateCourseVersionResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
     def GradeCertificationTest(request,
             target,
             options=(),
@@ -704,6 +704,74 @@ class LearningService(object):
         return grpc.experimental.unary_unary(request, target, '/learning.LearningService/GradeCertificationTest',
             learning__service__pb2.GradeTestRequest.SerializeToString,
             learning__service__pb2.GradeTestResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CheckPronunciation(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckPronunciation',
+            learning__service__pb2.PronunciationRequest.SerializeToString,
+            learning__service__pb2.PronunciationResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def StreamPronunciation(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_stream(request_iterator, target, '/learning.LearningService/StreamPronunciation',
+            learning__service__pb2.PronunciationChunk.SerializeToString,
+            learning__service__pb2.PronunciationChunkResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CheckWritingWithImage(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckWritingWithImage',
+            learning__service__pb2.WritingImageRequest.SerializeToString,
+            learning__service__pb2.WritingImageResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def GenerateSeedData(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/GenerateSeedData',
+            learning__service__pb2.SeedDataRequest.SerializeToString,
+            learning__service__pb2.SeedDataResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

@@ -115,7 +115,7 @@ export enum CourseApprovalStatus {
     REJECTED = "REJECTED"
 }
 
-export enum CourseEnrollmentStatus {
+export enum CourseVersionEnrollmentStatus {
     COMPLETED = "COMPLETED",
     PAUSE = "PAUSE",
     ACTIVE = "ACTIVE"
@@ -195,7 +195,8 @@ export enum LessonType {
     FLASHCARD = "FLASHCARD",
     QUIZ = "QUIZ",
     SPEAKING = "SPEAKING",
-    VIDEO = "VIDEO"
+    VIDEO = "VIDEO",
+    TEXT = "TEXT"
 }
 
 export enum MediaType {
@@ -275,7 +276,7 @@ export enum ProficiencyLevel {
 }
 
 export enum QuestionType {
-    MCQ = "MCQ",
+    ESSAY = "ESSAY",
     FILL_BLANK = "FILL_BLANK",
     ORDERING = "ORDERING",
     MATCHING = "MATCHING",

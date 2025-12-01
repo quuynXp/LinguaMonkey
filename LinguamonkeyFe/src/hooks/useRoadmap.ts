@@ -5,8 +5,6 @@ import {
   AppApiResponse,
   RoadmapResponse,
   RoadmapUserResponse,
-  UserGoalResponse,
-  UserGoalRequest,
   CreateRoadmapRequest,
   GenerateRoadmapRequest,
   StartCompleteRoadmapItemRequest,
@@ -18,20 +16,20 @@ import {
 
 import { RoadmapItem, RoadmapSuggestion } from "../types/entity";
 
+// FIX: Added 'lang' to query keys to prevent cache collisions between different language filters
 export const roadmapKeys = {
   all: ["roadmaps"] as const,
   lists: () => [...roadmapKeys.all, "list"] as const,
   defaults: (lang?: string) => [...roadmapKeys.all, "defaults", { lang }] as const,
   publicStats: (lang?: string, page?: number) => [...roadmapKeys.all, "publicStats", { lang, page }] as const,
   detail: (id: string) => [...roadmapKeys.all, "detail", id] as const,
-  userList: (userId: string) => [...roadmapKeys.all, "userList", userId] as const,
+  userList: (userId: string, lang?: string) => [...roadmapKeys.all, "userList", userId, { lang }] as const,
   progressDetail: (roadmapId: string, userId: string) => [...roadmapKeys.all, "progressDetail", roadmapId, userId] as const,
   itemDetail: (itemId: string) => [...roadmapKeys.all, "itemDetail", itemId] as const,
   goals: (userId: string) => [...roadmapKeys.all, "goals", userId] as const,
   suggestions: (roadmapId: string) => [...roadmapKeys.all, "suggestions", roadmapId] as const,
   community: (lang?: string, page?: number) => [...roadmapKeys.all, "community", { lang, page }] as const,
   official: (lang?: string, page?: number) => [...roadmapKeys.all, "official", { lang, page }] as const,
-
 };
 
 export const useRoadmap = () => {
@@ -42,7 +40,7 @@ export const useRoadmap = () => {
   // --- 1. USER ROADMAPS (My Learning) ---
   const useUserRoadmaps = (languageCode?: string) =>
     useQuery({
-      queryKey: roadmapKeys.userList(userId!),
+      queryKey: roadmapKeys.userList(userId!, languageCode), // FIX: Include languageCode in key
       queryFn: async () => {
         if (!userId) return [];
         const qp = languageCode ? `?language=${languageCode}` : "";
@@ -120,11 +118,10 @@ export const useRoadmap = () => {
       queryKey: roadmapKeys.suggestions(roadmapId!),
       queryFn: async () => {
         if (!roadmapId) throw new Error("Roadmap ID missing");
-        // Gọi endpoint details mới
         const res = await instance.get<AppApiResponse<RoadmapSuggestionResponse[]>>(
           `/api/v1/roadmaps/${roadmapId}/suggestions/details`
         );
-        return res.data.result || []; // 🐛 FIX: Trả về [] thay vì undefined
+        return res.data.result || [];
       },
       enabled: !!roadmapId,
     });
@@ -148,7 +145,7 @@ export const useRoadmap = () => {
         const res = await instance.post<AppApiResponse<void>>("/api/v1/roadmaps/assign", payload);
         return res.data.result;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.userList(userId!) }),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.all }), // Invalidate all to be safe across languages
     });
 
   const useAddSuggestion = () =>
@@ -211,6 +208,7 @@ export const useRoadmap = () => {
         return [] as RoadmapPublicResponse[];
       },
     });
+
   const useStartRoadmapItem = () =>
     useMutation({
       mutationFn: async (itemId: string) => {
@@ -220,7 +218,7 @@ export const useRoadmap = () => {
         return res.data.result;
       },
       onSuccess: (_data, itemId) => {
-        queryClient.invalidateQueries({ queryKey: roadmapKeys.userList(userId!) });
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.all }); // Broad invalidation to ensure home updates
         queryClient.invalidateQueries({ queryKey: roadmapKeys.itemDetail(itemId) });
       },
     });
@@ -234,12 +232,10 @@ export const useRoadmap = () => {
         return res.data.result;
       },
       onSuccess: (_data, { itemId }) => {
-        queryClient.invalidateQueries({ queryKey: roadmapKeys.userList(userId!) });
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.all }); // Broad invalidation
         queryClient.invalidateQueries({ queryKey: roadmapKeys.itemDetail(itemId) });
       },
     });
-
-
 
   const useGenerateRoadmap = () =>
     useMutation({
@@ -249,10 +245,9 @@ export const useRoadmap = () => {
         const res = await instance.post<AppApiResponse<RoadmapResponse>>("/api/v1/roadmaps/generate", payload);
         return res.data.result;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.userList(userId!) }),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.all }),
     });
 
-  // Edit and Delete handlers...
   const useEditRoadmap = () =>
     useMutation({
       mutationFn: async ({ id, req }: { id: string; req: CreateRoadmapRequest }) => {

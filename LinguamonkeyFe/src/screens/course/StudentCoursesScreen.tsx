@@ -14,7 +14,7 @@ import { useTranslation } from "react-i18next"
 import { useCourses } from "../../hooks/useCourses"
 import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import { CourseResponse, CourseEnrollmentResponse } from "../../types/dto"
+import { CourseResponse, CourseVersionEnrollmentResponse } from "../../types/dto"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { getCourseImage } from "../../utils/courseUtils"
 
@@ -90,7 +90,7 @@ const StudentCoursesScreen = ({ navigation }: any) => {
   })
 
   const enrolledIds = useMemo(() => {
-    const list = (enrolledData?.data as CourseEnrollmentResponse[]) || []
+    const list = (enrolledData?.data as CourseVersionEnrollmentResponse[]) || []
     return new Set(list.map(e => e.courseId))
   }, [enrolledData])
 
@@ -99,7 +99,7 @@ const StudentCoursesScreen = ({ navigation }: any) => {
     return raw.filter(c => !enrolledIds.has(c.courseId))
   }, [allCoursesData, enrolledIds])
 
-  const enrolledList = (enrolledData?.data as CourseEnrollmentResponse[]) || []
+  const enrolledList = (enrolledData?.data as CourseVersionEnrollmentResponse[]) || []
 
   const handleRefresh = () => {
     refetchEnrolled()

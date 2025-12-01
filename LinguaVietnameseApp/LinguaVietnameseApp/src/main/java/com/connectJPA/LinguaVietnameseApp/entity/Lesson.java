@@ -10,6 +10,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 // import org.springframework.data.elasticsearch.annotations.Document;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -80,6 +81,10 @@ public class Lesson extends BaseEntity {
 
     @Column(name = "certificate_code")
     private String certificateCode;
+
+    @OneToMany(mappedBy = "lesson", fetch = FetchType.LAZY) // <-- Cập nhật mappedBy và XÓA @JoinColumn
+    @Builder.Default
+    private List<LessonQuestion> lessonQuestions = new ArrayList<>();
 
     @Column(name = "pass_score_percent")
     private Integer passScorePercent;

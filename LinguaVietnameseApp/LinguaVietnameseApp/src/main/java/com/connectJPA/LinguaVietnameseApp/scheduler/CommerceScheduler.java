@@ -6,8 +6,8 @@ import com.connectJPA.LinguaVietnameseApp.entity.Transaction;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseDiscountRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseEnrollmentRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionDiscountRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.TransactionRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
@@ -32,15 +32,12 @@ public class CommerceScheduler {
 
     private final TransactionRepository transactionRepository;
     private final NotificationService notificationService;
-    private final CourseDiscountRepository courseDiscountRepository;
+    private final CourseVersionDiscountRepository CourseVersionDiscountRepository;
     private final CourseVersionRepository courseVersionRepository;
-    private final CourseEnrollmentRepository courseEnrollmentRepository;
+    private final CourseVersionEnrollmentRepository CourseVersionEnrollmentRepository;
     private final UserRepository userRepository;
 
-    /**
-     * Chạy mỗi 15 phút để kiểm tra lại các giao dịch "PENDING".
-     */
-    @Scheduled(cron = "0 0/15 * * * ?") // 15 phút một lần
+    @Scheduled(cron = "0 0/15 * * * ?", zone = "UTC")
     @Transactional
     public void checkPendingTransactions() {
         OffsetDateTime tenMinutesAgo = OffsetDateTime.now().minusMinutes(10);
@@ -51,63 +48,52 @@ public class CommerceScheduler {
 
         List<UUID> userIds = pendingTransactions.stream().map(Transaction::getUserId).collect(Collectors.toList());
         Map<UUID, String> userLangMap = userRepository.findAllById(userIds).stream()
-                .collect(Collectors.toMap(User::getUserId, User::getNativeLanguageCode));
+                .collect(Collectors.toMap(User::getUserId, user -> user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en"));
 
         for (Transaction tx : pendingTransactions) {
-            String paymentStatus = "FAILED";
-            String langCode = userLangMap.getOrDefault(tx.getUserId(), "en");
-
-            String title;
-            String content;
-            String type;
-
+            String paymentStatus = "FAILED"; 
+            
+            String notificationKey = "";
+            String type = "";
+            
             if ("SUCCESS".equals(paymentStatus)) {
                 tx.setStatus(TransactionStatus.valueOf("SUCCESS"));
-                // (Thêm logic nghiệp vụ: cộng tiền vào ví, kích hoạt khóa học...)
-
-                title = "Transaction Successful";
-                content = "Your payment of " + tx.getAmount() + " " + tx.getCurrency() + " was successful.";
+                notificationKey = "TRANSACTION_SUCCESS";
                 type = "TRANSACTION_SUCCESS";
-
             } else if ("FAILED".equals(paymentStatus)) {
                 tx.setStatus(TransactionStatus.valueOf("FAILED"));
-                
-                title = "Transaction Failed";
-                content = "Your payment of " + tx.getAmount() + " " + tx.getCurrency() + " failed.";
+                notificationKey = "TRANSACTION_FAILED";
                 type = "TRANSACTION_FAILED";
             } else {
-                continue; // Chưa xử lý nếu vẫn PENDING hoặc status khác
+                continue;
             }
-            
-            // Chú ý: Ở đây ta KHÔNG dùng NotificationI18nUtil vì nội dung có chứa amount và currency
-            // -> Cần một MessageSource hoặc logic i18n phức tạp hơn để xử lý format số và chuỗi.
-            // Tạm thời giữ nguyên để tránh việc tạo logic quá phức tạp cho ví dụ này, 
-            // nhưng nên lưu ý rằng các chuỗi này cần được dịch trong thực tế.
 
+            String langCode = userLangMap.getOrDefault(tx.getUserId(), "en");
+            String[] message = NotificationI18nUtil.getLocalizedMessage(notificationKey, langCode);
+
+            String content = String.format(message[1], tx.getAmount(), tx.getCurrency());
+            
             NotificationRequest request = NotificationRequest.builder()
                     .userId(tx.getUserId())
-                    .title(title)
+                    .title(message[0])
                     .content(content)
                     .type(type)
-                    .payload("{\"screen\":\"Wallet\"}")
+                    .payload("{\"screen\":\"PaymentStack\", \"stackScreen\":\"Wallet\"}")
                     .build();
             transactionRepository.save(tx);
             notificationService.createPushNotification(request);
         }
     }
 
-    /**
-     * Chạy mỗi giờ để cập nhật trạng thái các khóa học.
-     */
-    @Scheduled(cron = "0 0 * * * ?") // Mỗi giờ
+    @Scheduled(cron = "0 0 * * * ?", zone = "UTC")
     @Transactional
     public void updateCourseStatus() {
         OffsetDateTime now = OffsetDateTime.now();
 
-        int activated = courseDiscountRepository.activateDiscounts(now);
+        int activated = CourseVersionDiscountRepository.activateDiscounts(now);
         if (activated > 0) log.info("Activated {} course discounts.", activated);
 
-        int deactivated = courseDiscountRepository.deactivateDiscounts(now);
+        int deactivated = CourseVersionDiscountRepository.deactivateDiscounts(now);
         if (deactivated > 0) log.info("Deactivated {} course discounts.", deactivated);
 
         List<CourseVersion> versionsToPublish = courseVersionRepository.findByStatusAndPublishedAtBeforeAndIsDeletedFalse("DRAFT", now);
@@ -121,15 +107,14 @@ public class CommerceScheduler {
             version.getCourse().setLatestPublicVersion(version);
             courseVersionRepository.save(version);
 
-            List<UUID> userIds = courseEnrollmentRepository.findActiveUserIdsByCourseId(version.getCourse().getCourseId());
+            List<UUID> userIds = CourseVersionEnrollmentRepository.findActiveUserIdsByCourseId(version.getCourse().getCourseId());
 
             if (userIds.isEmpty()) continue;
             
             log.info("Sending COURSE_UPDATE notification to {} users for courseId {}", userIds.size(), version.getCourse().getCourseId());
 
-            // Lấy thông tin ngôn ngữ của người dùng
             Map<UUID, String> userLangMap = userRepository.findAllById(userIds).stream()
-                    .collect(Collectors.toMap(User::getUserId, User::getNativeLanguageCode));
+                    .collect(Collectors.toMap(User::getUserId, user -> user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en"));
 
             for (UUID userId : userIds) {
                 String langCode = userLangMap.getOrDefault(userId, "en");
@@ -140,7 +125,7 @@ public class CommerceScheduler {
                         .title(message[0])
                         .content(String.format(message[1], version.getCourse().getTitle()))
                         .type("COURSE_UPDATE")
-                        .payload(String.format("{\"screen\":\"CourseDetail\", \"courseId\":\"%s\"}", version.getCourse().getCourseId()))
+                        .payload(String.format("{\"screen\":\"CourseStack\", \"stackScreen\":\"CourseDetail\", \"courseId\":\"%s\"}", version.getCourse().getCourseId()))
                         .build();
                 notificationService.createPushNotification(request);
             }

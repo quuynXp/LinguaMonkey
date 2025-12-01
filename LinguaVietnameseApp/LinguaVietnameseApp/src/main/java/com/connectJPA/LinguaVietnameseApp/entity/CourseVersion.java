@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.converter.VersionStatusConverter;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
+import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
 import jakarta.persistence.*;
 import lombok.Data;
@@ -8,6 +10,7 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.Where;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -18,7 +21,6 @@ import java.util.UUID;
 @Where(clause = "is_deleted = false")
 @Data
 public class CourseVersion {
-
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "version_id")
@@ -31,11 +33,31 @@ public class CourseVersion {
     @Column(name = "version_number", nullable = false)
     private Integer versionNumber;
 
+    @Column(name = "title", nullable = false)
+    private String title;
+
     @Column(name = "description", columnDefinition = "text")
     private String description;
 
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
+
+    @Column(name = "difficulty_level")
+    @Enumerated(EnumType.STRING)
+    private DifficultyLevel difficultyLevel;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "type")
+    private CourseType type;
+
+    @Column(name = "category_code")
+    private String categoryCode;
+
+    @Column(name = "price")
+    private BigDecimal price;
+
+    @Column(name = "language_code")
+    private String languageCode;
 
     @Convert(converter = VersionStatusConverter.class)
     @Column(name = "status", nullable = false)
@@ -59,4 +81,19 @@ public class CourseVersion {
 
     @OneToMany(mappedBy = "courseVersion", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     private List<CourseVersionLesson> lessons;
+
+    @Column(name = "is_integrity_valid")
+    private Boolean isIntegrityValid;
+
+    @Column(name = "is_content_valid")
+    private Boolean isContentValid;
+
+    @Column(name = "is_system_reviewed")
+    private Boolean isSystemReviewed = false;
+
+    @Column(name = "validation_warnings", columnDefinition = "text")
+    private String validationWarnings;
+
+    @Column(name = "system_rating")
+    private Float systemRating;
 }

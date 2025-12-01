@@ -9,8 +9,8 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseSummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
-import com.connectJPA.LinguaVietnameseApp.entity.CourseEnrollment;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionEnrollment;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionLesson;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
 import com.connectJPA.LinguaVietnameseApp.entity.Role;
@@ -24,17 +24,17 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseVersionMapper;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseReviewRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionLessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionReviewRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoleRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRoleRepository;
-import com.connectJPA.LinguaVietnameseApp.service.CourseDiscountService;
-import com.connectJPA.LinguaVietnameseApp.service.CourseEnrollmentService;
+import com.connectJPA.LinguaVietnameseApp.service.CourseVersionDiscountService;
+import com.connectJPA.LinguaVietnameseApp.service.CourseVersionEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -63,8 +63,8 @@ public class CourseServiceImpl implements CourseService {
     private final CourseRepository courseRepository;
     private final CourseVersionRepository courseVersionRepository;
     private final CourseVersionLessonRepository cvlRepository;
-    private final CourseEnrollmentRepository courseEnrollmentRepository;
-    private final CourseReviewRepository courseReviewRepository; // Inject Review Repository
+    private final CourseVersionEnrollmentRepository courseEnrollmentRepository;
+    private final CourseVersionReviewRepository courseReviewRepository;
     private final LessonRepository lessonRepository;
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
@@ -73,18 +73,14 @@ public class CourseServiceImpl implements CourseService {
     private final CourseMapper courseMapper;
     private final CourseVersionMapper versionMapper;
 
-    private final CourseDiscountService courseDiscountService;
-    private final CourseEnrollmentService courseEnrollmentService;
+    private final CourseVersionDiscountService courseVersionDiscountService;
+    private final CourseVersionEnrollmentService courseEnrollmentService;
     private final NotificationService notificationService;
 
     private static final List<String> CEFR_LEVELS = Arrays.asList("A1", "A2", "B1", "B2", "C1", "C2");
 
-    /**
-     * Helper to populate Creator details and Rating stats into CourseResponse
-     */
     private CourseResponse enrichCourseResponse(CourseResponse response) {
         if (response != null && response.getCourseId() != null) {
-            // 1. Enrich Creator Info
             if (response.getCreatorId() != null) {
                 try {
                     UUID creatorId = response.getCreatorId();
@@ -99,11 +95,9 @@ public class CourseServiceImpl implements CourseService {
                         response.setCreatorLevel(creator.getLevel());
                     }
                 } catch (IllegalArgumentException e) {
-                    // Ignore if ID is invalid
                 }
             }
 
-            // 2. Enrich Rating Info (Calculate Real Stats)
             try {
                 Double avgRating = courseReviewRepository.getAverageRatingByCourseId(response.getCourseId());
                 long count = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(response.getCourseId());
@@ -111,7 +105,6 @@ public class CourseServiceImpl implements CourseService {
                 response.setAverageRating(avgRating != null ? avgRating : 0.0);
                 response.setReviewCount((int) count);
             } catch (Exception e) {
-                // Fallback to 0 if error occurs
                 response.setAverageRating(0.0);
                 response.setReviewCount(0);
             }
@@ -141,14 +134,18 @@ public class CourseServiceImpl implements CourseService {
         Course course = new Course();
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
-        course.setPrice(request.getPrice());
+        course.getLatestPublicVersion().setPrice(request.getPrice());
         course.setApprovalStatus(CourseApprovalStatus.PENDING);
         course = courseRepository.save(course);
 
+        // Tạo Version đầu tiên (Draft v1)
         CourseVersion version = new CourseVersion();
         version.setCourse(course);
         version.setVersionNumber(1);
         version.setStatus(VersionStatus.DRAFT);
+        version.setIsIntegrityValid(null);
+        version.setIsContentValid(null);
+        
         courseVersionRepository.save(version);
 
         return enrichCourseResponse(courseMapper.toResponse(course));
@@ -185,6 +182,10 @@ public class CourseServiceImpl implements CourseService {
             version.getLessons().add(cvl);
         }
 
+        version.setIsIntegrityValid(null);
+        version.setIsContentValid(null);
+        version.setValidationWarnings(null);
+
         version = courseVersionRepository.save(version);
         return versionMapper.toResponse(version);
     }
@@ -197,6 +198,14 @@ public class CourseServiceImpl implements CourseService {
 
         Course course = version.getCourse();
 
+        if (Boolean.FALSE.equals(version.getIsIntegrityValid()) || Boolean.FALSE.equals(version.getIsContentValid())) {
+            throw new AppException(ErrorCode.COURSE_VALIDATION_FAILED);
+        }
+        
+        if (version.getIsIntegrityValid() == null || version.getIsContentValid() == null) {
+            throw new AppException(ErrorCode.COURSE_VALIDATION_PENDING);
+        }
+
         if (version.getDescription() == null || version.getDescription().length() < 20) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
@@ -206,14 +215,14 @@ public class CourseServiceImpl implements CourseService {
         if (version.getLessons() == null || version.getLessons().isEmpty()) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-        if (course.getPrice() != null && course.getPrice().compareTo(BigDecimal.ZERO) < 0) {
+        if (course.getLatestPublicVersion().getPrice() != null && course.getLatestPublicVersion().getPrice().compareTo(BigDecimal.ZERO) < 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
         version.setReasonForChange(request.getReasonForChange());
         boolean requiresAdminApproval = false;
 
-        if (course.getPrice() != null && course.getPrice().compareTo(BigDecimal.ZERO) > 0) {
+        if (course.getLatestPublicVersion().getPrice() != null && course.getLatestPublicVersion().getPrice().compareTo(BigDecimal.ZERO) > 0) {
             requiresAdminApproval = true;
         }
 
@@ -229,7 +238,7 @@ public class CourseServiceImpl implements CourseService {
             version.setStatus(VersionStatus.PENDING_APPROVAL);
             sendAdminNotification(
                     "Course Approval Request",
-                    "The course '" + course.getTitle() + "' (v" + version.getVersionNumber() + ") requires approval. Price: " + course.getPrice(),
+                    "The course '" + course.getTitle() + "' (v" + version.getVersionNumber() + ") requires approval. Price: " + course.getLatestPublicVersion().getPrice(),
                     "COURSE_APPROVAL_PENDING"
             );
         } else {
@@ -269,6 +278,8 @@ public class CourseServiceImpl implements CourseService {
         newDraft.setCourse(course);
         newDraft.setVersionNumber(nextVerNum);
         newDraft.setStatus(VersionStatus.DRAFT);
+        newDraft.setIsIntegrityValid(null);
+        newDraft.setIsContentValid(null);
         
         if (publicVersion != null) {
             newDraft.setDescription(publicVersion.getDescription());
@@ -296,19 +307,6 @@ public class CourseServiceImpl implements CourseService {
         if (request.getTitle() != null) {
             course.setTitle(request.getTitle());
         }
-        if (request.getPrice() != null) {
-            course.setPrice(request.getPrice());
-        }
-        if (request.getLanguageCode() != null) {
-            course.setLanguageCode(request.getLanguageCode());
-        }
-        if (request.getDifficultyLevel() != null) {
-            course.setDifficultyLevel(request.getDifficultyLevel());
-        }
-        if (request.getCategoryCode() != null) {
-            course.setCategoryCode(request.getCategoryCode());
-        }
-
         course = courseRepository.save(course);
         return enrichCourseResponse(courseMapper.toResponse(course));
     }
@@ -356,8 +354,8 @@ public class CourseServiceImpl implements CourseService {
     }
 
     private void sendLearnerUpdateNotification(Course course, CourseVersion version, String content) {
-        List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndIsDeletedFalse(course.getCourseId());
-        for (CourseEnrollment enrollment : enrollments) {
+        List<CourseVersionEnrollment> enrollments = courseEnrollmentRepository.findByCourseVersion_Course_CourseIdAndIsDeletedFalse(course.getCourseId());
+        for (CourseVersionEnrollment enrollment : enrollments) {
             if (enrollment.getCourseVersion().getVersionId() != null && !enrollment.getCourseVersion().getVersionId().equals(version.getVersionId())) {
                 NotificationRequest learnerNotif = NotificationRequest.builder()
                         .userId(enrollment.getUserId())
@@ -379,7 +377,6 @@ public class CourseServiceImpl implements CourseService {
         } else {
             courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
         }
-        // Enrich responses with creator details and rating
         return courses.map(courseMapper::toResponse).map(this::enrichCourseResponse);
     }
 
@@ -388,7 +385,7 @@ public class CourseServiceImpl implements CourseService {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        List<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId);
+        List<CourseVersionEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId);
         List<UUID> enrolledCourseIds = enrollments.stream()
                 .map(enrollment -> {
                     if (enrollment.getCourseVersion() != null && enrollment.getCourseVersion().getCourse() != null) {
@@ -431,7 +428,7 @@ public class CourseServiceImpl implements CourseService {
 
         return recommendedCourses.stream()
                 .map(courseMapper::toResponse)
-                .map(this::enrichCourseResponse) // ENRICH here
+                .map(this::enrichCourseResponse)
                 .collect(Collectors.toList());
     }
 
@@ -455,11 +452,11 @@ public class CourseServiceImpl implements CourseService {
                 .collect(Collectors.toList());
     }
 
-    @Override
-    public Page<CourseResponse> getDiscountedCourses(Pageable pageable) {
-        Page<Course> discounted = courseRepository.findDiscountedCourses(pageable);
-        return discounted.map(courseMapper::toResponse).map(this::enrichCourseResponse);
-    }
+    // @Override
+    // public Page<CourseResponse> getDiscountedCourses(Pageable pageable) {
+    //     Page<Course> discounted = courseRepository.findDiscountedCourses(pageable);
+    //     return discounted.map(courseMapper::toResponse).map(this::enrichCourseResponse);
+    // }
 
     @Override
     public CourseResponse getCourseById(UUID id) {
@@ -478,13 +475,15 @@ public class CourseServiceImpl implements CourseService {
         course.setDeleted(true);
         courseRepository.save(course);
 
-        courseDiscountService.deleteCourseDiscountsByCourseId(id);
-        courseEnrollmentService.deleteCourseEnrollmentsByCourseId(id);
+        // Xóa khuyến mãi của tất cả version thuộc course này
+        courseVersionDiscountService.deleteDiscountsByCourseId(id);
+        
+        courseEnrollmentService.deleteCourseVersionEnrollmentsByCourseId(id);
     }
 
     @Override
     public Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable) {
-        Page<CourseEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId, pageable);
+        Page<CourseVersionEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId, pageable);
         return enrollments.map(enrollment -> {
             Course course = enrollment.getCourseVersion().getCourse();
             if (course == null) {

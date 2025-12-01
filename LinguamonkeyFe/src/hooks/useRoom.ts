@@ -34,7 +34,6 @@ export const useRooms = () => {
     const queryClient = useQueryClient();
     const BASE = "/api/v1/rooms";
 
-    // Lấy danh sách phòng PUBLIC (Lobby)
     const usePublicRooms = (params?: {
         roomName?: string;
         creatorId?: string;
@@ -57,12 +56,11 @@ export const useRooms = () => {
         });
     };
 
-    // Lấy danh sách phòng ĐÃ THAM GIA (Inbox - Private & Group)
     const useJoinedRooms = (params?: {
         purpose?: RoomPurpose;
         page?: number;
         size?: number;
-        userId: string; // Bắt buộc để query key unique theo user
+        userId: string;
     }) => {
         const { page = 0, size = 20 } = params || {};
         return useQuery({
@@ -74,7 +72,7 @@ export const useRooms = () => {
                 );
                 return mapPageResponse(data.result, page, size);
             },
-            refetchInterval: 10000, // Auto refresh inbox mỗi 10s để cập nhật tin nhắn mới nhất
+            refetchInterval: 10000,
         });
     };
 
@@ -164,7 +162,19 @@ export const useRooms = () => {
             mutationFn: async ({ roomId, userIds }: { roomId: string; userIds: string[] }) => {
                 await instance.delete<AppApiResponse<void>>(
                     `${BASE}/${roomId}/members`,
-                    { data: userIds } // Axios delete body
+                    { data: userIds }
+                );
+            },
+            onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
+        });
+    };
+
+    const useUpdateMemberNickname = () => {
+        return useMutation({
+            mutationFn: async ({ roomId, nickname }: { roomId: string; nickname: string }) => {
+                await instance.put<AppApiResponse<void>>(
+                    `${BASE}/${roomId}/members/nickname`,
+                    { nickname }
                 );
             },
             onSuccess: (_, vars) => queryClient.invalidateQueries({ queryKey: roomKeys.members(vars.roomId) }),
@@ -181,7 +191,7 @@ export const useRooms = () => {
                 );
                 return data.result!;
             },
-            onSuccess: () => queryClient.invalidateQueries({ queryKey: roomKeys.all }),
+            onSuccess: () => queryClient.invalidateQueries({ queryKey: roomKeys.all })
         });
     }
 
@@ -195,6 +205,7 @@ export const useRooms = () => {
         useLeaveRoom,
         useAddRoomMembers,
         useRemoveRoomMembers,
+        useUpdateMemberNickname,
         useFindOrCreatePrivateRoom
     };
 };

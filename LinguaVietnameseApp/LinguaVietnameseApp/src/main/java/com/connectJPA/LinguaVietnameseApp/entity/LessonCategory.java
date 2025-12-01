@@ -31,5 +31,8 @@ public class LessonCategory extends BaseEntity {
 
     @Column(name = "description")
     private String description;
+
+    @Column(name = "coin_reward")
+    private Integer coinReward = 0;
 }
 

@@ -46,4 +46,7 @@ public interface LessonRepository extends JpaRepository<Lesson, UUID> {
             ") AND l.isDeleted = false " +
             "ORDER BY l.createdAt DESC")
     Page<Lesson> searchLessonsByKeyword(@Param("keyword") String keyword, Pageable pageable);
+
+    List<Lesson> findByLessonSubCategoryIdAndSkillTypesAndIsDeletedFalseOrderByOrderIndex(UUID lessonSubCategoryId,
+            SkillType skillType);
 }

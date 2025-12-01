@@ -32,7 +32,7 @@ public class LessonQuestionServiceImpl implements LessonQuestionService {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
             UUID lessonUuid = (lessonId != null) ? UUID.fromString(lessonId) : null;
-            Page<LessonQuestion> questions = lessonQuestionRepository.findByLessonIdAndLanguageCodeAndIsDeletedFalse(lessonUuid, languageCode, pageable);
+            Page<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdAndLanguageCodeAndIsDeletedFalse(lessonUuid, languageCode, pageable);
             return questions.map(lessonQuestionMapper::toResponse);
         } catch (Exception e) {
             log.error("Error while fetching all lesson questions: {}", e.getMessage());

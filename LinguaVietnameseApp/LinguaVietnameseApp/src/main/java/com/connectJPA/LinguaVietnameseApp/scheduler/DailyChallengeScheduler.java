@@ -20,7 +20,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
@@ -36,12 +35,10 @@ public class DailyChallengeScheduler {
     private final UserRepository userRepository;
     private final UserDailyChallengeRepository userDailyChallengeRepository;
     private final NotificationService notificationService;
-    // Inject thêm Repo này để lọc user
     private final UserFcmTokenRepository userFcmTokenRepository;
 
-    private static final String TIME_ZONE = "Asia/Ho_Chi_Minh";
+    private static final String TIME_ZONE = "UTC";
 
-    // --- WEEKLY: Run at 00:00 every Monday ---
     @Scheduled(cron = "0 0 0 * * MON", zone = TIME_ZONE)
     @Transactional
     public void assignWeeklyChallengesJob() {
@@ -51,7 +48,7 @@ public class DailyChallengeScheduler {
     }
 
     private void assignChallenges(ChallengePeriod period, int limit) {
-        List<User> activeUsers = userRepository.findAll(); // Optimization: use pagination or active filter
+        List<User> activeUsers = userRepository.findAll();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         for (User user : activeUsers) {
@@ -84,20 +81,18 @@ public class DailyChallengeScheduler {
         }
     }
 
-    // Chạy lúc 00:00 mỗi ngày
-    @Scheduled(cron = "0 0 0 * * ?")
+    @Scheduled(cron = "0 0 0 * * ?", zone = TIME_ZONE)
     @Transactional
     public void assignDailyChallengesJob() {
         log.info("Starting daily challenge assignment job...");
         
-        List<User> activeUsers = userRepository.findAll(); // Nên tối ưu: chỉ lấy user active gần đây
+        List<User> activeUsers = userRepository.findAll(); 
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         for (User user : activeUsers) {
             String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
             
-            // Lấy ngẫu nhiên 3 nhiệm vụ DAILY cho ngôn ngữ của user
             List<DailyChallenge> challenges = dailyChallengeRepository
                     .findRandomChallengesByLangAndPeriod(langCode, ChallengePeriod.DAILY.name(), 3);
 
@@ -114,7 +109,7 @@ public class DailyChallengeScheduler {
                         .user(user)
                         .challenge(challenge)
                         .progress(0)
-                        .status(ChallengeStatus.IN_PROGRESS) // Auto Start
+                        .status(ChallengeStatus.IN_PROGRESS)
                         .expReward(challenge.getBaseExp())
                         .rewardCoins(challenge.getRewardCoins())
                         .assignedAt(now)
@@ -125,60 +120,12 @@ public class DailyChallengeScheduler {
         }
         log.info("Daily challenges assigned successfully.");
     }
-    /**
-     * --- TEST METHOD: FORCE PUSH ---
-     * TỐI ƯU: Chỉ gửi cho users có FCM Token.
-     */
-    @Scheduled(cron = "0/60 * * * * ?", zone = TIME_ZONE)
-    @Transactional
-    public void forceTestNotification() {
-        log.info(">>> [DEBUG-SCHEDULER] Running Force Test Notification (Every 60s)...");
-
-        // 1. Lấy danh sách ID có token trước
-        List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
-
-        if (userIdsWithToken.isEmpty()) {
-            log.warn(">>> [DEBUG-SCHEDULER] No users with FCM tokens found! Skipping.");
-            return;
-        }
-
-        // 2. Chỉ query thông tin của những user này
-        List<User> users = userRepository.findAllById(userIdsWithToken);
-
-        log.info(">>> [DEBUG-SCHEDULER] Found {} users with valid tokens. Sending pings...", users.size());
-
-        int sentCount = 0;
-        for (User user : users) {
-            // Check lại active cho chắc
-            if (user.isDeleted()) continue;
-
-            try {
-                log.info(">>> [DEBUG-SCHEDULER] Sending test ping to User: {} (Email: {})", user.getUserId(), user.getEmail());
-
-                NotificationRequest request = NotificationRequest.builder()
-                        .userId(user.getUserId())
-                        .title("DEBUG: Test Ping " + LocalDateTime.now().toLocalTime())
-                        .content("System heartbeat. Push working for verified devices only!")
-                        .type("SYSTEM_TEST")
-                        .payload("{\"screen\":\"Home\"}")
-                        .build();
-
-                notificationService.createPushNotification(request);
-                sentCount++;
-            } catch (Exception e) {
-                log.error(">>> [DEBUG-SCHEDULER] FAILED to send ping to user {}: {}", user.getUserId(), e.getMessage());
-            }
-        }
-        log.info(">>> [DEBUG-SCHEDULER] Test run finished. Sent: {}", sentCount);
-    }
 
     @Scheduled(cron = "0 0/5 * * * ?", zone = TIME_ZONE)
     @Transactional
     public void suggestDailyChallenges() {
         log.info("[DailyChallengeScheduler] Checking candidates for challenges...");
 
-        // Tương tự: Chỉ gợi ý cho người có Token (để họ nhận đc Noti vào App học)
-        // Nếu muốn gợi ý cho cả web user thì dùng lại findAllByIsDeletedFalse()
         List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
         if (userIdsWithToken.isEmpty()) return;
         
@@ -192,7 +139,7 @@ public class DailyChallengeScheduler {
 
                 if (Boolean.TRUE.equals(canAssignMore)) {
                     log.info(">>> User {} is eligible. Sending suggestion...", user.getUserId());
-                    String langCode = user.getNativeLanguageCode();
+                    String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
                     String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE_SUGGESTION", langCode);
 
                     NotificationRequest suggestion = NotificationRequest.builder()
@@ -238,7 +185,7 @@ public class DailyChallengeScheduler {
                 if (totalChallenges > completedChallenges) {
                     long remaining = totalChallenges - completedChallenges;
 
-                    String langCode = user.getNativeLanguageCode();
+                    String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
                     String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE_REMINDER", langCode);
 
                     NotificationRequest reminder = NotificationRequest.builder()
@@ -250,7 +197,6 @@ public class DailyChallengeScheduler {
                             .build();
 
                     notificationService.createPushNotification(reminder);
-                    log.debug("Reminder sent to user: {}", user.getUserId());
                 }
             } catch (Exception e) {
                 log.error("Error sending reminder to user {}: {}",

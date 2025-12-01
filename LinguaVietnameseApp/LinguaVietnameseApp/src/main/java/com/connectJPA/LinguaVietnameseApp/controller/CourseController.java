@@ -3,7 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.CourseEnrollmentResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionEnrollmentResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
@@ -14,7 +14,6 @@ import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;

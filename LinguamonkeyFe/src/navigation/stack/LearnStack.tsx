@@ -5,7 +5,7 @@ import CertificationLearningScreen from '../../screens/learn/CertificationLearni
 import LearnScreen from '../../screens/learn/LearnScreen';
 import LessonScreen from '../../screens/learn/LessonScreen';
 import ListeningScreen from '../../screens/learn/ListeningScreen';
-import ReadingScreen from '../../screens/learn/ReadingScreen';
+// import ReadingScreen from '../../screens/learn/ReadingScreen';
 import SpeakingScreen from '../../screens/learn/SpeakingScreen';
 import VocabularyFlashcardsScreen from '../../screens/learn/VocabularyFlashcardsScreen';
 import WritingScreen from '../../screens/learn/WritingScreen';
@@ -52,7 +52,7 @@ const SkillsLearnStack = () => (
     <Stack.Screen name="NotesScreen" component={NotesScreen} />
     <Stack.Screen name="BilingualVideoScreen" component={BilingualVideoScreen} />
     <Stack.Screen name="SpeakingScreen" component={SpeakingScreen} />
-    <Stack.Screen name="ReadingScreen" component={ReadingScreen} />
+    {/* <Stack.Screen name="ReadingScreen" component={ReadingScreen} /> */}
     <Stack.Screen name="WritingScreen" component={WritingScreen} />
     <Stack.Screen name="GrammarLearningScreen" component={GrammarLearningScreen} />
     <Stack.Screen name="GrammarMindMapScreen" component={GrammarMindMapScreen} />

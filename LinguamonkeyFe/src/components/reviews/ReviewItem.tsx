@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { View, Text, Image, TouchableOpacity, StyleSheet, ActivityIndicator } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import { CourseReviewResponse } from "../../types/dto";
+import { CourseVersionReviewResponse } from "../../types/dto";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { formatDistanceToNow } from "date-fns";
 import { vi } from "date-fns/locale";
@@ -10,8 +10,8 @@ import { useUserStore } from "../../stores/UserStore";
 import StaticStarRating from "../common/StaticStarRating";
 
 interface ReviewItemProps {
-    review: CourseReviewResponse;
-    onReply: (reviewId: string, authorName: string, onSuccess: (newReply: CourseReviewResponse) => void) => void;
+    review: CourseVersionReviewResponse;
+    onReply: (reviewId: string, authorName: string, onSuccess: (newReply: CourseVersionReviewResponse) => void) => void;
     depth?: number;
 }
 
@@ -35,7 +35,7 @@ const ReviewItem: React.FC<ReviewItemProps> = ({ review, onReply, depth = 0 }) =
     const [localDislikeCount, setLocalDislikeCount] = useState(review.dislikeCount || 0);
 
     // Dữ liệu replies
-    const [replies, setReplies] = useState<CourseReviewResponse[]>(review.topReplies || []);
+    const [replies, setReplies] = useState<CourseVersionReviewResponse[]>(review.topReplies || []);
     const [repliesPage, setRepliesPage] = useState(0);
     const [totalReplyCount, setTotalReplyCount] = useState(review.replyCount || 0);
     const [hasFetchedInitial, setHasFetchedInitial] = useState(false);
@@ -122,7 +122,7 @@ const ReviewItem: React.FC<ReviewItemProps> = ({ review, onReply, depth = 0 }) =
 
                 if (hasFetchedInitial) {
                     const existingIds = new Set(replies.map(r => r.reviewId));
-                    const uniqueNewReplies = newReplies.filter((r: CourseReviewResponse) => !existingIds.has(r.reviewId));
+                    const uniqueNewReplies = newReplies.filter((r: CourseVersionReviewResponse) => !existingIds.has(r.reviewId));
                     setReplies(prev => [...prev, ...uniqueNewReplies]);
                     setRepliesPage(prev => prev + 1);
                 } else {

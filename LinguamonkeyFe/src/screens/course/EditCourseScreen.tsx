@@ -8,7 +8,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  FlatList,
 } from "react-native"
 import { useTranslation } from "react-i18next"
 import Icon from "react-native-vector-icons/MaterialIcons"
@@ -16,8 +15,8 @@ import { useCourses } from "../../hooks/useCourses"
 import { useUserStore } from "../../stores/UserStore"
 
 import ScreenLayout from "../../components/layout/ScreenLayout"
-import type { CourseResponse, CourseDiscountResponse } from "../../types/dto"
-import { DifficultyLevel } from "../../types/enums"
+import type { CourseResponse, CourseVersionDiscountResponse, CourseVersionResponse } from "../../types/dto"
+import { DifficultyLevel, VersionStatus } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
 const EditCourseScreen = ({ navigation, route }: any) => {
@@ -27,22 +26,20 @@ const EditCourseScreen = ({ navigation, route }: any) => {
 
   const [isCreateMode, setIsCreateMode] = useState(!initialCourseId)
   const [course, setCourse] = useState<CourseResponse | null>(null)
+  const [workingVersion, setWorkingVersion] = useState<CourseVersionResponse | null>(null)
 
-  // Course Details
   const [title, setTitle] = useState("")
   const [price, setPrice] = useState("0")
-
-  // Version Details
   const [description, setDescription] = useState("")
   const [thumbnailUrl, setThumbnailUrl] = useState("")
   const [lessonIds, setLessonIds] = useState<string[]>([])
+  const [languageCode, setLanguageCode] = useState("en")
+  const [difficultyLevel, setDifficultyLevel] = useState<DifficultyLevel>(DifficultyLevel.A1)
 
-  // Modals
   const [showPublishModal, setShowPublishModal] = useState(false)
   const [reason, setReason] = useState("")
   const [showDiscountModal, setShowDiscountModal] = useState(false)
 
-  // Discount Form
   const [discountForm, setDiscountForm] = useState({
     code: "",
     percentage: "0",
@@ -52,30 +49,48 @@ const EditCourseScreen = ({ navigation, route }: any) => {
 
   const {
     useCourse,
+    useCourseVersions,
     useCreateCourse,
     useUpdateCourseDetails,
     useUpdateCourseVersion,
     useCreateDraftVersion,
-    useDeleteCourse,
+    usePublishVersion,
     useDiscounts,
     useCreateDiscount,
     useDeleteDiscount
   } = useCourses()
 
   const { data: fetchedCourse, isLoading: courseLoading, refetch } = useCourse(initialCourseId)
-  const { data: discountsData } = useDiscounts({ courseId: initialCourseId, page: 0, size: 50 })
+  const { data: versions, isLoading: versionsLoading, refetch: refetchVersions } = useCourseVersions(initialCourseId)
+
+  useEffect(() => {
+    if (versions && versions.length > 0) {
+      const draft = versions.find(v => v.status === VersionStatus.DRAFT);
+      const pending = versions.find(v => v.status === VersionStatus.PENDING_APPROVAL);
+      const publicVer = versions.find(v => v.status === VersionStatus.PUBLIC);
+
+      const target = draft || pending || publicVer || versions[0];
+      setWorkingVersion(target);
+    }
+  }, [versions]);
+
+  const { data: discountsData } = useDiscounts({
+    versionId: workingVersion?.versionId,
+    page: 0,
+    size: 50
+  })
 
   const { mutate: createCourse, isPending: isCreating } = useCreateCourse()
   const { mutate: updateCourseDetails, isPending: isUpdatingDetails } = useUpdateCourseDetails()
   const { mutate: updateCourseVersion, isPending: isUpdatingVersion } = useUpdateCourseVersion()
   const { mutate: createDraftVersion, isPending: isCreatingDraft } = useCreateDraftVersion()
-  const { mutate: deleteCourse, isPending: isDeleting } = useDeleteCourse()
+  const { mutate: publishVersion, isPending: isPublishing } = usePublishVersion()
   const { mutate: createDiscount, isPending: isCreatingDiscount } = useCreateDiscount()
   const { mutate: deleteDiscount } = useDeleteDiscount()
 
   const isLoading = useMemo(
-    () => courseLoading || isCreating || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isDeleting,
-    [courseLoading, isCreating, isUpdatingDetails, isUpdatingVersion, isCreatingDraft, isDeleting]
+    () => courseLoading || versionsLoading || isCreating || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing,
+    [courseLoading, versionsLoading, isCreating, isUpdatingDetails, isUpdatingVersion, isCreatingDraft, isPublishing]
   )
 
   useEffect(() => {
@@ -83,16 +98,18 @@ const EditCourseScreen = ({ navigation, route }: any) => {
       setCourse(fetchedCourse)
       setIsCreateMode(false)
       setTitle(fetchedCourse.title)
-      setPrice(fetchedCourse.price?.toString() || "0")
-
-      const version = fetchedCourse.latestPublicVersion
-      if (version) {
-        setDescription(version.description || "")
-        setThumbnailUrl(version.thumbnailUrl || "")
-        setLessonIds(version.lessons?.map((l: any) => l.lessonId) || [])
-      }
     }
   }, [fetchedCourse])
+
+  useEffect(() => {
+    if (workingVersion) {
+      setDescription(workingVersion.description || "")
+      setThumbnailUrl(workingVersion.thumbnailUrl || "")
+      setPrice(workingVersion.price?.toString() || "0")
+      setLanguageCode(workingVersion.languageCode || "en")
+      setDifficultyLevel(workingVersion.difficultyLevel || DifficultyLevel.A1)
+    }
+  }, [workingVersion])
 
   const handleCreateCourse = useCallback(() => {
     if (!title || !user?.userId) {
@@ -102,6 +119,7 @@ const EditCourseScreen = ({ navigation, route }: any) => {
     createCourse(
       {
         title,
+        // Price and other version details will be handled on initial draft creation/update by backend logic
         price: parseFloat(price) || 0,
         creatorId: user.userId,
       },
@@ -110,53 +128,88 @@ const EditCourseScreen = ({ navigation, route }: any) => {
           Alert.alert(t("common.success"), t("courses.createSuccess"))
           navigation.replace("EditCourseScreen", { courseId: newCourse.courseId })
         },
-        onError: (error: any) => {
-          Alert.alert(t("common.error"), error?.message || "Failed to create")
-        },
+        onError: (error: any) => Alert.alert(t("common.error"), error?.message)
       }
     )
   }, [title, price, user?.userId, createCourse, navigation, t])
 
   const handleSaveDraft = useCallback(() => {
-    const versionId = course?.latestPublicVersion?.versionId
-    if (!course || !versionId || course.latestPublicVersion?.status !== "DRAFT") {
-      return Alert.alert(t("common.error"), t("errors.noDraftToSave"))
+    if (!workingVersion || workingVersion.status !== VersionStatus.DRAFT) {
+      return Alert.alert(t("common.error"), "No draft version to save.")
     }
 
-    updateCourseVersion(
+    // 1. Update Course Title (Course Entity)
+    const updateCourseTitle = updateCourseDetails(
       {
-        versionId,
-        req: { description, thumbnailUrl, lessonIds },
-      },
-      {
-        onSuccess: () => {
-          updateCourseDetails(
-            {
-              id: course.courseId,
-              req: { title, price: parseFloat(price) || 0, languageCode: "en", difficultyLevel: DifficultyLevel.A1 },
-            },
-            {
-              onSuccess: () => {
-                Alert.alert(t("common.success"), t("courses.draftSaved"))
-                refetch()
-              },
-            }
-          )
-        },
-        onError: (error: any) => {
-          Alert.alert(t("common.error"), error?.message)
-        }
+        id: course!.courseId,
+        req: { title }
       }
-    )
-  }, [course, description, thumbnailUrl, lessonIds, title, price, updateCourseVersion, updateCourseDetails, refetch, t])
+    );
+
+    // 2. Update Version Details (Version Entity)
+    const updateVersionContent = updateCourseVersion(
+      {
+        versionId: workingVersion.versionId,
+        req: {
+          description,
+          thumbnailUrl,
+          lessonIds,
+          price: parseFloat(price) || 0,
+          languageCode,
+          difficultyLevel,
+          categoryCode: "GENERAL"
+        },
+      }
+    );
+
+    Promise.all([updateCourseTitle, updateVersionContent])
+      .then(() => {
+        Alert.alert(t("common.success"), t("courses.draftSaved"))
+        refetch()
+        refetchVersions()
+      })
+      .catch((error: any) => Alert.alert(t("common.error"), error?.message));
+
+  }, [workingVersion, description, thumbnailUrl, lessonIds, title, price, languageCode, difficultyLevel, course, updateCourseVersion, updateCourseDetails, refetch, refetchVersions, t])
+
+  const handleCreateNewDraft = () => {
+    if (!course) return;
+    createDraftVersion(course.courseId, {
+      onSuccess: (data) => {
+        Alert.alert(t("success"), "New Draft Created");
+        refetchVersions();
+        // Optionally set the new draft as working version immediately
+        setWorkingVersion(data);
+      },
+      onError: () => Alert.alert(t("error"), "Failed to create draft")
+    })
+  }
+
+  const handlePublish = () => {
+    if (!workingVersion) return;
+    publishVersion({
+      versionId: workingVersion.versionId,
+      req: { reasonForChange: reason || "Standard Update" }
+    }, {
+      onSuccess: (data) => {
+        setShowPublishModal(false);
+        Alert.alert(t("success"), "Version Published/Submitted for Approval");
+        refetchVersions();
+      },
+      onError: (err: any) => {
+        Alert.alert(t("error"), err?.message || "Validation failed");
+      }
+    })
+  }
 
   const handleAddDiscount = () => {
-    if (!course) return;
+    if (!workingVersion) return;
+    // Discount is linked to Version ID
     createDiscount({
-      courseId: course.courseId,
+      versionId: workingVersion.versionId,
       code: discountForm.code,
       discountPercentage: parseFloat(discountForm.percentage),
-      startDate: new Date().toISOString(), // Simplified date
+      startDate: new Date().toISOString(),
       endDate: new Date(new Date().setDate(new Date().getDate() + 30)).toISOString(),
       isActive: true
     }, {
@@ -173,9 +226,16 @@ const EditCourseScreen = ({ navigation, route }: any) => {
     deleteDiscount(id)
   }
 
-  const currentVersion = course?.latestPublicVersion
-  const isDraft = currentVersion?.status === "DRAFT"
-  const canEditDetails = isDraft || isCreateMode
+  const isDraft = workingVersion?.status === VersionStatus.DRAFT
+  const isPublic = workingVersion?.status === VersionStatus.PUBLIC
+  const canEdit = isDraft || isCreateMode;
+
+  const integrityValid = workingVersion?.isIntegrityValid;
+  const contentValid = workingVersion?.isContentValid;
+
+  const isValidationPending = isDraft && (integrityValid === null || contentValid === null || integrityValid === undefined || contentValid === undefined);
+  const isValidationFailed = isDraft && (integrityValid === false || contentValid === false);
+  const isReadyToPublish = isDraft && integrityValid === true && contentValid === true;
 
   if (isLoading && !course && !isCreateMode) {
     return (
@@ -197,31 +257,86 @@ const EditCourseScreen = ({ navigation, route }: any) => {
           {isCreateMode ? t("courses.createCourse") : t("courses.editCourse")}
         </Text>
         {!isCreateMode && (
-          <TouchableOpacity onPress={() => { /* Handle Delete */ }}>
+          <TouchableOpacity onPress={() => { }}>
             <Icon name="delete" size={24} color="#EF4444" />
           </TouchableOpacity>
         )}
       </View>
 
       <ScrollView style={styles.content}>
-        {/* Basic Info */}
+        {workingVersion && (
+          <View style={[styles.statusBanner, { backgroundColor: isDraft ? '#FEF3C7' : '#D1FAE5' }]}>
+            <Text style={styles.statusText}>
+              Version {workingVersion.versionNumber} - {workingVersion.status}
+            </Text>
+            {isPublic && (
+              <TouchableOpacity onPress={handleCreateNewDraft} style={styles.newDraftBtn}>
+                <Text style={styles.newDraftText}>+ New Draft</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {isDraft && (
+          <View style={styles.validationCard}>
+            <Text style={styles.sectionTitle}>Validation Status</Text>
+
+            <View style={styles.validationRow}>
+              <Icon
+                name={integrityValid === true ? "check-circle" : integrityValid === false ? "error" : "hourglass-empty"}
+                size={20}
+                color={integrityValid === true ? "green" : integrityValid === false ? "red" : "orange"}
+              />
+              <Text style={styles.validationLabel}>Structure Integrity: </Text>
+              <Text style={styles.validationValue}>
+                {integrityValid === true ? "Passed" : integrityValid === false ? "Failed" : "Pending Scheduler"}
+              </Text>
+            </View>
+
+            <View style={styles.validationRow}>
+              <Icon
+                name={contentValid === true ? "check-circle" : contentValid === false ? "error" : "hourglass-empty"}
+                size={20}
+                color={contentValid === true ? "green" : contentValid === false ? "red" : "orange"}
+              />
+              <Text style={styles.validationLabel}>Content Quality: </Text>
+              <Text style={styles.validationValue}>
+                {contentValid === true ? "Passed" : contentValid === false ? "Failed" : "Pending Scheduler"}
+              </Text>
+            </View>
+
+            {workingVersion?.validationWarnings && (
+              <View style={styles.warningBox}>
+                <Text style={styles.warningTitle}>Issues Found:</Text>
+                <Text style={styles.warningText}>{workingVersion.validationWarnings}</Text>
+              </View>
+            )}
+
+            {workingVersion?.systemRating != null && (
+              <Text style={styles.aiRating}>AI Previous Rating: {workingVersion.systemRating} ★</Text>
+            )}
+          </View>
+        )}
+
+        {/* Course Title (Editable on Course Entity/Draft Version) */}
         <Text style={styles.label}>{t("courses.title")}</Text>
         <TextInput
-          style={[styles.input, !canEditDetails && styles.inputDisabled]}
+          style={[styles.input, !canEdit && styles.inputDisabled]}
           value={title}
           onChangeText={setTitle}
           placeholder={t("courses.titlePlaceholder")}
-          editable={canEditDetails}
+          editable={canEdit}
         />
 
+        {/* Price (Now controlled by Version) */}
         <Text style={styles.label}>{t("courses.price")} ($)</Text>
         <TextInput
-          style={[styles.input, !canEditDetails && styles.inputDisabled]}
+          style={[styles.input, !canEdit && styles.inputDisabled]}
           value={price}
           onChangeText={setPrice}
           placeholder="0.00"
           keyboardType="numeric"
-          editable={canEditDetails}
+          editable={canEdit}
         />
 
         {isCreateMode && (
@@ -234,7 +349,6 @@ const EditCourseScreen = ({ navigation, route }: any) => {
           </TouchableOpacity>
         )}
 
-        {/* Draft Editing */}
         {isDraft && (
           <View>
             <Text style={styles.label}>{t("courses.description")}</Text>
@@ -256,18 +370,27 @@ const EditCourseScreen = ({ navigation, route }: any) => {
 
             <View style={styles.buttonRow}>
               <TouchableOpacity
-                style={[styles.buttonPrimary, isUpdatingVersion && styles.buttonDisabled]}
+                style={[styles.buttonSecondary, isUpdatingVersion && styles.buttonDisabled]}
                 onPress={handleSaveDraft}
                 disabled={isUpdatingVersion}
               >
-                <Text style={styles.buttonText}>{t("common.saveDraft")}</Text>
+                <Text style={styles.buttonSecondaryText}>{t("common.saveDraft")}</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.buttonPrimary, (!isReadyToPublish) && styles.buttonDisabled]}
+                onPress={() => setShowPublishModal(true)}
+                disabled={!isReadyToPublish}
+              >
+                <Text style={styles.buttonText}>
+                  {isValidationPending ? "Validating..." : isValidationFailed ? "Fix Issues" : "Publish Version"}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
         )}
 
-        {/* Discount Management */}
-        {!isCreateMode && (
+        {!isCreateMode && isDraft && (
           <View style={styles.discountSection}>
             <View style={styles.sectionHeaderRow}>
               <Text style={styles.sectionTitle}>{t("courses.discounts")}</Text>
@@ -276,24 +399,36 @@ const EditCourseScreen = ({ navigation, route }: any) => {
               </TouchableOpacity>
             </View>
 
-            {discountsData?.data.map((d: CourseDiscountResponse) => (
-              <View key={d.discountId} style={styles.discountCard}>
-                <View>
-                  <Text style={styles.discountCode}>{d.code}</Text>
-                  <Text style={styles.discountPercent}>{d.discountPercentage}% OFF</Text>
-                </View>
-                <TouchableOpacity onPress={() => handleDeleteDiscount(d.discountId)}>
-                  <Icon name="delete" size={20} color="#EF4444" />
-                </TouchableOpacity>
-              </View>
-            ))}
+            {/* Discounts should be fetched/displayed based on workingVersion.versionId */}
           </View>
         )}
 
         <View style={{ height: 50 }} />
       </ScrollView>
 
-      {/* Create Discount Modal */}
+      <Modal visible={showPublishModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Publish Version {workingVersion?.versionNumber}</Text>
+            <Text style={styles.label}>Reason for change (Required)</Text>
+            <TextInput
+              style={styles.input}
+              value={reason}
+              onChangeText={setReason}
+              placeholder="e.g. Added new lessons"
+            />
+            <View style={styles.buttonRow}>
+              <TouchableOpacity style={styles.buttonSecondary} onPress={() => setShowPublishModal(false)}>
+                <Text style={styles.buttonSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.buttonPrimary} onPress={handlePublish} disabled={!reason}>
+                <Text style={styles.buttonText}>Confirm Publish</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={showDiscountModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -323,7 +458,7 @@ const EditCourseScreen = ({ navigation, route }: any) => {
               <TouchableOpacity
                 style={styles.buttonPrimary}
                 onPress={handleAddDiscount}
-                disabled={isCreatingDiscount}
+              // Placeholder for isCreatingDiscount
               >
                 <Text style={styles.buttonText}>{t("common.create")}</Text>
               </TouchableOpacity>
@@ -341,6 +476,21 @@ const styles = createScaledSheet({
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingHorizontal: 24, paddingVertical: 16, backgroundColor: "#FFFFFF", borderBottomWidth: 1, borderBottomColor: "#E5E7EB" },
   headerTitle: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
   content: { flex: 1, padding: 24, backgroundColor: "#F8FAFC" },
+
+  statusBanner: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 12, borderRadius: 8, marginBottom: 16 },
+  statusText: { fontWeight: 'bold', color: '#374151' },
+  newDraftBtn: { backgroundColor: '#FFF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16 },
+  newDraftText: { color: '#4F46E5', fontWeight: '600', fontSize: 12 },
+
+  validationCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 8, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB' },
+  validationRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 },
+  validationLabel: { fontWeight: '600', color: '#374151' },
+  validationValue: { color: '#4B5563' },
+  warningBox: { backgroundColor: '#FEF2F2', padding: 10, borderRadius: 6, marginTop: 8 },
+  warningTitle: { color: '#B91C1C', fontWeight: 'bold', marginBottom: 4 },
+  warningText: { color: '#B91C1C', fontSize: 12 },
+  aiRating: { marginTop: 8, fontStyle: 'italic', color: '#4F46E5' },
+
   label: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 8, marginTop: 16 },
   input: { backgroundColor: "#FFFFFF", borderWidth: 1, borderColor: "#E5E7EB", borderRadius: 8, padding: 12, fontSize: 16, color: "#1F2937" },
   inputDisabled: { backgroundColor: "#F3F4F6", color: "#9CA3AF" },
@@ -351,7 +501,6 @@ const styles = createScaledSheet({
   buttonSecondary: { flex: 1, backgroundColor: "#FFFFFF", paddingVertical: 14, borderRadius: 8, alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB" },
   buttonSecondaryText: { fontSize: 16, fontWeight: "600", color: "#4F46E5" },
 
-  // Discount
   discountSection: { marginTop: 30, borderTopWidth: 1, borderTopColor: "#E5E7EB", paddingTop: 20 },
   sectionHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: '700' },
@@ -359,7 +508,6 @@ const styles = createScaledSheet({
   discountCode: { fontWeight: 'bold', fontSize: 16, color: '#4F46E5' },
   discountPercent: { color: '#6B7280' },
 
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
   modalContent: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 24, width: "90%" },
   modalTitle: { fontSize: 18, fontWeight: "700", marginBottom: 16 },

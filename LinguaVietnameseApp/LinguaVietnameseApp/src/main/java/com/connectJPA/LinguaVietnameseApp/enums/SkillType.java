@@ -6,5 +6,6 @@ public enum SkillType {
     READING,
     WRITING,
     VOCABULARY,
-    GRAMMAR
+    GRAMMAR,
+    TRANSLATION
 }

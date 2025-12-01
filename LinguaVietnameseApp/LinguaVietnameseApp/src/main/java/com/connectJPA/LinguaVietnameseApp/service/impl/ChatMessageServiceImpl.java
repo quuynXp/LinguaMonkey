@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.ChatMessageRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
@@ -13,17 +14,22 @@ import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
+import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -37,6 +43,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final ChatMessageMapper chatMessageMapper;
     private final UserRepository userRepository;
     private final MessageTranslationRepository messageTranslationRepository;
+    private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationService notificationService;
+    private final Gson gson = new Gson();
 
     @Override
     public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
@@ -59,7 +68,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
         if (room.getPurpose() != RoomPurpose.AI_CHAT) {
-            UUID currentUserId = request.getSenderId(); 
+            UUID currentUserId = request.getSenderId();
             if(!roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(roomId, currentUserId)){
                 throw new AppException(ErrorCode.NOT_ROOM_MEMBER);
             }
@@ -81,6 +90,47 @@ public class ChatMessageServiceImpl implements ChatMessageService {
 
         ChatMessageResponse response = chatMessageMapper.toResponse(savedMessage);
         response.setPurpose(room.getPurpose());
+
+        try {
+            // 1. Send WebSocket Message (For Active Users)
+            messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
+
+            // 2. Send Push Notification (For Background/Killed Users)
+            try {
+                Map<String, String> dataPayload = Map.of(
+                    "screen", "TabApp",
+                    "stackScreen", "GroupChatScreen",
+                    "roomId", roomId.toString(),
+                    "initialFocusMessageId", response.getChatMessageId().toString()
+                );
+                String payloadJson = gson.toJson(dataPayload);
+
+                List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
+                    .stream()
+                    .map(rm -> rm.getId().getUserId())
+                    .filter(u -> !u.equals(request.getSenderId()))
+                    .toList();
+
+                for (UUID uId : memberIds) {
+                    NotificationRequest nreq = NotificationRequest.builder()
+                            .userId(uId)
+                            .title("New message")
+                            .content(response.getContent() != null ? response.getContent() : "You sent an attachment")
+                            .type("CHAT_MESSAGE")
+                            .payload(payloadJson)
+                            .build();
+
+                    notificationService.createPushNotification(nreq);
+                }
+            } catch (Exception ex) {
+                log.error("Failed to send push notifications for room {}: {}", roomId, ex.getMessage(), ex);
+            }
+
+            log.info("Sent WS message to /topic/room/{}", roomId);
+        } catch (Exception e) {
+            log.error("Failed to send websocket message", e);
+        }
+
         return response;
     }
 

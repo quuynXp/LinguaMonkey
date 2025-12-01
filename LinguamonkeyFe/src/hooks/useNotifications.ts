@@ -75,7 +75,7 @@ export const useNotifications = () => {
     };
 
     // GET /api/v1/notifications/{userId}/unread-count
-    const useUnreadCount = (userId?: string) => {
+    const useUnreadCount = (userId?: string, enabledOverride?: boolean) => {
         return useQuery({
             queryKey: notificationKeys.unread(userId!),
             queryFn: async () => {
@@ -85,10 +85,11 @@ export const useNotifications = () => {
                 );
                 return data.result || 0;
             },
-            enabled: !!userId,
-            refetchInterval: 30000, // Refresh every 30s
+            enabled: !!userId && enabledOverride !== false,
+            refetchInterval: enabledOverride === false ? false : 30000,
         });
     };
+
 
     // GET /api/v1/notifications/detail/{id}
     const useNotificationDetail = (id?: string | null) => {

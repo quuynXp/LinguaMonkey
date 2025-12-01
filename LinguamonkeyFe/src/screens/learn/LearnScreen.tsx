@@ -11,6 +11,7 @@ import {
   ListRenderItem,
   Dimensions,
   ImageBackground,
+  Alert
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
@@ -20,8 +21,14 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useUserStore } from "../../stores/UserStore";
 import { useCourses } from "../../hooks/useCourses";
 import { useLessons } from "../../hooks/useLessons";
+import { useLessonStructure } from "../../hooks/useLessonStructure"; // Import hook for categories
 import ScreenLayout from "../../components/layout/ScreenLayout";
-import type { CourseResponse, LessonResponse } from "../../types/dto";
+import type {
+  CourseResponse,
+  LessonResponse,
+  CourseVersionEnrollmentResponse,
+  LessonCategoryResponse,
+} from "../../types/dto";
 import { CourseType, SkillType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCourseImage } from "../../utils/courseUtils";
@@ -33,12 +40,118 @@ const { width } = Dimensions.get("window");
 
 const SCREEN_PADDING = 20;
 const COLUMN_GAP = 12;
-const ITEM_WIDTH = Math.floor((width - (SCREEN_PADDING * 2) - COLUMN_GAP) / 2);
 
 type LanguageOption = {
   code: string;
   name: string;
   flag: React.JSX.Element | null;
+};
+
+// --- Sub-View: List of Lessons for a specific Category ---
+const CategoryLessonsView = ({
+  categoryId,
+  categoryName,
+  onBack,
+  navigation
+}: {
+  categoryId: string;
+  categoryName: string;
+  onBack: () => void;
+  navigation: any;
+}) => {
+  const { t } = useTranslation();
+  const { useAllLessons } = useLessons();
+  const [page, setPage] = useState(0);
+
+  // Fetch lessons for this category
+  const { data, isLoading, isFetching, refetch } = useAllLessons({
+    categoryId,
+    page,
+    size: 20,
+  });
+
+  const lessons = useMemo(() => (data?.data as LessonResponse[]) || [], [data]);
+
+  const loadMore = () => {
+    if (data?.pagination && !data.pagination.isLast && !isFetching) {
+      setPage(prev => prev + 1);
+    }
+  };
+
+  const handleStartLesson = (lesson: LessonResponse) => {
+    navigation.navigate("LessonScreen", { lesson });
+  };
+
+  const renderLessonItem: ListRenderItem<LessonResponse> = ({ item }) => (
+    <TouchableOpacity
+      style={styles.lessonRow}
+      onPress={() => handleStartLesson(item)}
+    >
+      <Image
+        source={getCourseImage(item.thumbnailUrl)}
+        style={styles.lessonThumbnailSmall}
+      />
+      <View style={styles.lessonRowContent}>
+        <Text style={styles.lessonRowTitle} numberOfLines={1}>{item.title || item.lessonName}</Text>
+        <View style={styles.lessonRowMeta}>
+          <Text style={styles.lessonRowSubtitle}>{item.difficultyLevel || 'A1'}</Text>
+          <View style={styles.dotSmall} />
+          <Text style={[styles.lessonRowSubtitle, { color: '#F59E0B' }]}>
+            {item.expReward || 10} XP
+          </Text>
+          {item.durationSeconds && item.durationSeconds > 0 && (
+            <>
+              <View style={styles.dotSmall} />
+              <Text style={styles.lessonRowSubtitle}>{Math.ceil(item.durationSeconds / 60)} mins</Text>
+            </>
+          )}
+        </View>
+      </View>
+      <View style={styles.playButtonSmall}>
+        <Icon name="play-arrow" size={20} color="#FFF" />
+      </View>
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.subScreenContainer}>
+      <View style={styles.subHeader}>
+        <TouchableOpacity onPress={onBack} style={styles.backButton}>
+          <Icon name="arrow-back" size={24} color="#1F2937" />
+        </TouchableOpacity>
+        <Text style={styles.subHeaderTitle} numberOfLines={1}>{categoryName}</Text>
+        <View style={{ width: 40 }} />
+      </View>
+
+      {isLoading && page === 0 ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4F46E5" />
+        </View>
+      ) : (
+        <FlatList
+          data={lessons}
+          renderItem={renderLessonItem}
+          keyExtractor={(item) => item.lessonId}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+          ListFooterComponent={
+            <View style={styles.footerLoader}>
+              {!data?.pagination?.isLast ? (
+                <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMore} disabled={isFetching}>
+                  {isFetching ? <ActivityIndicator color="#4F46E5" /> : <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>}
+                </TouchableOpacity>
+              ) : lessons.length > 0 ? <Text style={styles.endText}>{t("common.endOfList")}</Text> : null}
+            </View>
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Text style={styles.emptyText}>{t("common.noData", "Không có bài học nào")}</Text>
+            </View>
+          }
+        />
+      )}
+    </View>
+  );
 };
 
 const LearningLanguageSelector = ({
@@ -103,121 +216,7 @@ const LearningLanguageSelector = ({
   );
 };
 
-const SkillLessonListView = ({
-  navigation,
-  skillType,
-  languageCode,
-  onBack
-}: {
-  navigation: any;
-  skillType: SkillType;
-  languageCode: string;
-  onBack: () => void
-}) => {
-  const { t } = useTranslation();
-  const { useAllLessons } = useLessons();
-  const [page, setPage] = useState(0);
-
-  const { data, isLoading, refetch, isFetching } = useAllLessons({
-    skillType,
-    page,
-    size: 15,
-    languageCode,
-  });
-
-  const lessons = useMemo(() => (data?.data as LessonResponse[]) || [], [data]);
-
-  const loadMore = () => {
-    if (data?.pagination && !data.pagination.isLast && !isFetching) {
-      setPage(prev => prev + 1);
-    }
-  };
-
-  const getSkillTitle = () => {
-    switch (skillType) {
-      case SkillType.LISTENING: return t("learn.listening") || "Listening";
-      case SkillType.SPEAKING: return t("learn.speaking") || "Speaking";
-      case SkillType.READING: return t("learn.reading") || "Reading";
-      case SkillType.WRITING: return t("learn.writing") || "Writing";
-      default: return "";
-    }
-  };
-
-  const handlePress = (lesson: LessonResponse) => {
-    if (skillType === SkillType.SPEAKING) {
-      navigation.navigate("SpeakingScreen", { lessonId: lesson.lessonId, lesson });
-    } else if (skillType === SkillType.READING) {
-      navigation.navigate("ReadingScreen", { lesson });
-    } else if (skillType === SkillType.WRITING) {
-      navigation.navigate("WritingScreen", { lesson });
-    } else if (skillType === SkillType.LISTENING) {
-      navigation.navigate("ListeningScreen");
-    } else {
-      navigation.navigate("LessonScreen", { lesson });
-    }
-  };
-
-  const renderItem: ListRenderItem<LessonResponse> = ({ item }) => (
-    <TouchableOpacity style={styles.lessonRow} onPress={() => handlePress(item)}>
-      <View style={[styles.lessonIconBox, { backgroundColor: '#EEF2FF' }]}>
-        <Icon
-          name={
-            skillType === SkillType.LISTENING ? "headset" :
-              skillType === SkillType.SPEAKING ? "mic" :
-                skillType === SkillType.READING ? "menu-book" : "edit"
-          }
-          size={24}
-          color="#4F46E5"
-        />
-      </View>
-      <View style={styles.lessonRowContent}>
-        <Text style={styles.lessonRowTitle} numberOfLines={1}>{item.title || item.lessonName}</Text>
-        <Text style={styles.lessonRowSubtitle}>{item.expReward || 10} XP • {item.difficultyLevel || 'A1'}</Text>
-      </View>
-      <Icon name="chevron-right" size={20} color="#9CA3AF" />
-    </TouchableOpacity>
-  );
-
-  return (
-    <View style={styles.subScreenContainer}>
-      <View style={styles.subHeader}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Icon name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <Text style={styles.subHeaderTitle}>{getSkillTitle()} ({languageCode.toUpperCase()})</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      {isLoading && page === 0 ? (
-        <ActivityIndicator style={{ marginTop: 20 }} color="#4F46E5" />
-      ) : (
-        <FlatList<LessonResponse>
-          data={lessons}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.lessonId}
-          contentContainerStyle={styles.listContainer}
-          onEndReached={() => { }}
-          ListFooterComponent={
-            <View style={styles.footerLoader}>
-              {!data?.pagination?.isLast ? (
-                <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMore} disabled={isFetching}>
-                  {isFetching ? <ActivityIndicator color="#4F46E5" /> : <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>}
-                </TouchableOpacity>
-              ) : lessons.length > 0 ? <Text style={styles.endText}>{t("common.endOfList")}</Text> : null}
-            </View>
-          }
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>{t("common.noData")}</Text>
-            </View>
-          }
-        />
-      )}
-    </View>
-  );
-};
-
+// --- Sub-View: All Courses ---
 const AllCoursesView = ({ navigation, onBack }: { navigation: any; onBack: () => void }) => {
   const { t } = useTranslation();
   const { useAllCourses } = useCourses();
@@ -253,7 +252,7 @@ const AllCoursesView = ({ navigation, onBack }: { navigation: any; onBack: () =>
           <Text style={styles.metaText}>4.5</Text>
           <View style={styles.dot} />
           <Text style={[styles.metaText, { color: '#4F46E5', fontWeight: 'bold' }]}>
-            {item.price === 0 ? t("courses.free") : `$${item.price}`}
+            {item.latestPublicVersion.price === 0 ? t("courses.free") : `$${item.latestPublicVersion.price}`}
           </Text>
         </View>
         <Text style={styles.verticalCardAuthor} numberOfLines={1}>
@@ -308,7 +307,10 @@ const LearnScreen = ({ navigation }: any) => {
   const userStore = useUserStore();
   const isVip = userStore.vip;
   const { user, refreshUserProfile } = userStore;
-  const { useEnrollments, useRecommendedCourses } = useCourses();
+
+  // Hooks
+  const { useEnrollments, useRecommendedCourses, useCreatorCourses } = useCourses();
+  const { useCategories } = useLessonStructure();
 
   const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
     code: langCode,
@@ -324,11 +326,11 @@ const LearnScreen = ({ navigation }: any) => {
   }, [userStore.languages, getLanguageOption]);
 
   const [showVipModal, setShowVipModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'HOME' | 'ALL_COURSES' | 'SKILL_LESSONS'>('HOME');
-  const [selectedSkill, setSelectedSkill] = useState<SkillType>(SkillType.LISTENING);
+  const [viewMode, setViewMode] = useState<'HOME' | 'ALL_COURSES' | 'CATEGORY_LESSONS'>('HOME');
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageOption>(
     learningLanguages[0] || getLanguageOption('en')
   );
+  const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
     if (!learningLanguages.find(lang => lang.code === selectedLanguage.code)) {
@@ -336,16 +338,29 @@ const LearnScreen = ({ navigation }: any) => {
     }
   }, [learningLanguages, selectedLanguage.code, getLanguageOption]);
 
+  // Data Fetching
   const { data: enrolledData, isLoading: enrolledLoading, refetch: refetchEnrolled } = useEnrollments({
     userId: user?.userId,
     page: 0,
-    size: 5,
+    size: 10,
   });
+
+  const {
+    data: creatorData,
+    isLoading: creatorLoading,
+    refetch: refetchCreator
+  } = useCreatorCourses(user?.userId, 0, 5);
 
   const { data: recommendedData, isLoading: recLoading, refetch: refetchRec } = useRecommendedCourses(
     user?.userId,
     5
   );
+
+  const { data: categoryData, isLoading: catLoading, refetch: refetchCats } = useCategories({
+    lang: selectedLanguage.code,
+    page: 0,
+    size: 50
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -356,6 +371,8 @@ const LearnScreen = ({ navigation }: any) => {
   const handleRefresh = async () => {
     refetchEnrolled();
     refetchRec();
+    refetchCreator();
+    refetchCats();
     await refreshUserProfile();
   };
 
@@ -371,42 +388,42 @@ const LearnScreen = ({ navigation }: any) => {
     navigation.navigate("CourseStack", "CreatorDashboardScreen");
   };
 
-  const openSkillLessons = (skill: SkillType) => {
-    setSelectedSkill(skill);
-    setViewMode('SKILL_LESSONS');
+  // Handle Category Click
+  const onCategoryPress = (category: LessonCategoryResponse) => {
+    setSelectedCategory({ id: category.lessonCategoryId, name: category.lessonCategoryName });
+    setViewMode('CATEGORY_LESSONS');
   };
 
+  // Learning Tools (Removed Notes, kept others)
   const learningTools = useMemo(() => [
     { name: t("learn.vocabularyFlashcards"), icon: "style", screen: "VocabularyFlashcardsScreen", color: "#EF4444", bg: "#FEF2F2" },
     { name: t("learn.ipaPronunciation"), icon: "record-voice-over", screen: "IPAScreen", color: "#F59E0B", bg: "#FFFBEB" },
     { name: t("learn.bilingual"), icon: "language", screen: "BilingualVideoScreen", color: "#8B5CF6", bg: "#F5F3FF" },
     { name: t("learn.grammar"), icon: "spellcheck", screen: "GrammarLearningScreen", color: "#4F46E5", bg: "#EEF2FF" },
-    { name: t("learn.notes", "Ghi chú"), icon: "sticky-note-2", screen: "NotesScreen", color: "#10B981", bg: "#ECFDF5" },
   ], [t]);
 
-  const skillCards = useMemo(() => [
-    { name: t("learn.listening") || "Nghe", icon: "headphones", iconLib: Icon, type: SkillType.LISTENING, color: "#3B82F6", bg: "#EFF6FF" },
-    { name: t("learn.speaking") || "Nói", icon: "microphone-alt", iconLib: FontAwesome5, type: SkillType.SPEAKING, color: "#10B981", bg: "#ECFDF5" },
-    { name: t("learn.reading") || "Đọc", icon: "book-open", iconLib: FontAwesome5, type: SkillType.READING, color: "#F59E0B", bg: "#FFFBEB" },
-    { name: t("learn.writing") || "Viết", icon: "pen-nib", iconLib: FontAwesome5, type: SkillType.WRITING, color: "#EC4899", bg: "#FDF2F8" },
-  ], [t]);
+  const purchasedCourses = useMemo(() => (enrolledData?.data as CourseVersionEnrollmentResponse[]) || [], [enrolledData]);
+  const creatorCourses = useMemo(() => (creatorData?.data as CourseResponse[]) || [], [creatorData]);
+  const categories = useMemo(() => (categoryData?.data as LessonCategoryResponse[]) || [], [categoryData]);
 
-  const purchasedCourses = enrolledData?.data || [];
+  // --- Views Switching ---
 
   if (viewMode === 'ALL_COURSES') {
     return <AllCoursesView navigation={navigation} onBack={() => setViewMode('HOME')} />;
   }
 
-  if (viewMode === 'SKILL_LESSONS') {
+  if (viewMode === 'CATEGORY_LESSONS' && selectedCategory) {
     return (
-      <SkillLessonListView
+      <CategoryLessonsView
+        categoryId={selectedCategory.id}
+        categoryName={selectedCategory.name}
         navigation={navigation}
-        skillType={selectedSkill}
-        languageCode={selectedLanguage.code}
         onBack={() => setViewMode('HOME')}
       />
     );
   }
+
+  const isRefreshing = enrolledLoading || recLoading || creatorLoading || catLoading;
 
   return (
     <ScreenLayout>
@@ -418,21 +435,32 @@ const LearnScreen = ({ navigation }: any) => {
       <View style={styles.container}>
         <View style={styles.mainHeader}>
           <Icon name="school" size={32} color="#4F46E5" />
-          <LearningLanguageSelector
-            selectedLanguage={selectedLanguage}
-            onSelectLanguage={setSelectedLanguage}
-            learningLanguages={learningLanguages}
-          />
+
+          <View style={styles.headerRightGroup}>
+            {/* Note Button moved to Header */}
+            <TouchableOpacity
+              style={styles.headerIconButton}
+              onPress={() => navigation.navigate("NotesScreen")}
+            >
+              <Icon name="sticky-note-2" size={22} color="#4F46E5" />
+            </TouchableOpacity>
+
+            <LearningLanguageSelector
+              selectedLanguage={selectedLanguage}
+              onSelectLanguage={setSelectedLanguage}
+              learningLanguages={learningLanguages}
+            />
+          </View>
         </View>
 
         <ScrollView
           style={styles.scrollContainer}
           contentContainerStyle={styles.scrollContent}
-          refreshControl={<RefreshControl refreshing={enrolledLoading || recLoading} onRefresh={handleRefresh} />}
+          refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />}
           showsVerticalScrollIndicator={false}
         >
 
-          {/* Section 1: Chứng chỉ */}
+          {/* Banner Section */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("learn.certPreparation", "Luyện thi Chứng Chỉ")}</Text>
             <TouchableOpacity
@@ -466,32 +494,93 @@ const LearnScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* Section 2: Skills */}
-          <FlatList
-            data={skillCards}
-            keyExtractor={(item, idx) => `skill-${idx}`}
-            renderItem={({ item }) => {
-              const IconComponent = item.iconLib;
-              return (
-                <TouchableOpacity
-                  style={styles.gridCardFlat}
-                  onPress={() => openSkillLessons(item.type)}
-                >
-                  <View style={[styles.toolIconContainer, { backgroundColor: item.bg }]}>
-                    <IconComponent name={item.icon} size={24} color={item.color} />
-                  </View>
-                  <Text style={styles.toolName}>{item.name}</Text>
-                </TouchableOpacity>
-              );
-            }}
-            numColumns={2}
-            columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: COLUMN_GAP }}
-            scrollEnabled={false}
-          />
+          {/* Categories Grid (Replaces 4-Skill) */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{t("learn.categories", "Danh mục bài học")}</Text>
+            {catLoading ? (
+              <ActivityIndicator color="#4F46E5" />
+            ) : (
+              <FlatList
+                data={categories}
+                keyExtractor={(item) => item.lessonCategoryId}
+                renderItem={({ item, index }) => {
+                  // Generate colors based on index for variety
+                  const colors = ["#EFF6FF", "#ECFDF5", "#FFFBEB", "#FDF2F8"];
+                  const iconColors = ["#3B82F6", "#10B981", "#F59E0B", "#EC4899"];
+                  const bgColor = colors[index % colors.length];
+                  const iconColor = iconColors[index % iconColors.length];
 
+                  return (
+                    <TouchableOpacity
+                      style={styles.gridCardFlat}
+                      onPress={() => onCategoryPress(item)}
+                    >
+                      <View style={[styles.toolIconContainer, { backgroundColor: bgColor }]}>
+                        <Icon name="category" size={24} color={iconColor} />
+                      </View>
+                      <Text style={styles.toolName} numberOfLines={2}>{item.lessonCategoryName}</Text>
+                    </TouchableOpacity>
+                  );
+                }}
+                numColumns={2}
+                columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: COLUMN_GAP }}
+                scrollEnabled={false}
+                ListEmptyComponent={
+                  <Text style={styles.emptyText}>{t("common.noData", "Không có dữ liệu")}</Text>
+                }
+              />
+            )}
+          </View>
+
+          {/* Enrolled Courses Section */}
+          {purchasedCourses.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>{t("learn.enrolledCourses", "Khóa học đã đăng ký")}</Text>
+                {/* Click 'See All' -> Navigate to studentCourseScreen */}
+                <TouchableOpacity onPress={() => navigation.navigate("studentCourseScreen")}>
+                  <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
+                {purchasedCourses.map((enrollment: CourseVersionEnrollmentResponse, index: number) => {
+                  const courseId = enrollment.courseVersion?.courseId;
+
+                  if (!courseId) return null;
+
+                  // Format logic similar to other courses
+                  const rating = 5.0; // Placeholder as enrollment DTO might not have live rating
+                  const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
+
+                  return (
+                    <TouchableOpacity
+                      key={`my-course-${enrollment.courseVersion.versionId || index}`}
+                      style={styles.myCourseCard}
+                      onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: courseId, isPurchased: true })}
+                    >
+                      <Image
+                        source={getCourseImage(enrollment.courseVersion?.thumbnailUrl)}
+                        style={styles.myCourseImage}
+                      />
+                      <View style={styles.myCourseInfo}>
+                        <Text style={styles.myCourseTitle} numberOfLines={1}>{enrollment.courseVersion.title || "Course Title"}</Text>
+                        <Text style={styles.myCourseDate}>Enrolled: {dateEnrolled}</Text>
+
+                        <View style={styles.progressBar}>
+                          <View style={[styles.progressFill, { width: `${enrollment.progress || 0}%` }]} />
+                        </View>
+                        <Text style={styles.statText}>{enrollment.progress || 0}% Complete</Text>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Learning Tools (Filtered) */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
-
             <FlatList
               data={learningTools}
               keyExtractor={(item, idx) => `tool-${idx}`}
@@ -512,7 +601,49 @@ const LearnScreen = ({ navigation }: any) => {
             />
           </View>
 
-          {/* Section 4: Recommended Courses */}
+          {/* Creator Courses */}
+          {creatorCourses.length > 0 && (
+            <View style={styles.section}>
+              <View style={styles.sectionHeaderRow}>
+                <Text style={styles.sectionTitle}>{t("learn.myCreatorCourses", "Khóa học của tôi (Giảng viên)")}</Text>
+                <TouchableOpacity onPress={openCreatorDashboard}>
+                  <Text style={styles.seeAllText}>{t("learn.myCourseManagement", "Quản lý")}</Text>
+                </TouchableOpacity>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
+                {creatorCourses.map((course: CourseResponse) => {
+                  if (!course.courseId) return null;
+                  const rating = course.averageRating || 4.5;
+                  const reviewCount = course.reviewCount || 0;
+                  const authorName = course.creatorName || course.creatorId || "Instructor";
+
+                  return (
+                    <TouchableOpacity
+                      key={`creator-${course.courseId}`}
+                      style={styles.recCourseCard}
+                      onPress={() => navigation.navigate("CourseStack", "EditCourseScreen", { courseId: course.courseId })}
+                    >
+                      <Image
+                        source={getCourseImage(course.latestPublicVersion?.thumbnailUrl)}
+                        style={styles.recCourseImage}
+                      />
+                      <View style={{ padding: 8 }}>
+                        <Text style={styles.recCourseTitle} numberOfLines={2}>{course.title}</Text>
+                        <View style={styles.recCourseFooter}>
+                          <View style={styles.recRatingContainer}>
+                            <Icon name="star" size={12} color="#F59E0B" />
+                            <Text style={styles.recRatingText}>{rating} ({reviewCount})</Text>
+                          </View>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Recommended Courses */}
           {recommendedData && recommendedData.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
@@ -523,10 +654,12 @@ const LearnScreen = ({ navigation }: any) => {
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-                {recommendedData.map((course: any) => {
+                {recommendedData.map((course: CourseResponse) => {
                   const rating = course.averageRating || 4.5;
                   const reviewCount = course.reviewCount || 0;
                   const authorName = course.creatorName || course.creatorId || "Instructor";
+
+                  if (!course.courseId) return null;
 
                   return (
                     <TouchableOpacity
@@ -547,65 +680,11 @@ const LearnScreen = ({ navigation }: any) => {
                           <Text style={styles.recAuthorName} numberOfLines={1}>{authorName}</Text>
                         </View>
                         <View style={styles.recCourseFooter}>
-                          <Text style={styles.recPrice}>{course.price === 0 ? "Free" : `$${course.price}`}</Text>
+                          <Text style={styles.recPrice}>{course.latestPublicVersion.price === 0 ? "Free" : `$${course.latestPublicVersion.price}`}</Text>
                           <View style={styles.recRatingContainer}>
                             <Icon name="star" size={12} color="#F59E0B" />
                             <Text style={styles.recRatingText}>{rating} ({reviewCount})</Text>
                           </View>
-                        </View>
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          )}
-
-          {/* Section 5: My Courses - Moved to Bottom */}
-          {purchasedCourses.length > 0 && (
-            <View style={styles.section}>
-              <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
-                <TouchableOpacity onPress={openCreatorDashboard}>
-                  <Text style={styles.seeAllText}>{t("learn.myCourseManagement", "Quản lý Course")}</Text>
-                </TouchableOpacity>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
-                {purchasedCourses.map((enrollment: any, index: number) => {
-                  const rating = enrollment.course?.averageRating || 5.0;
-                  const buyers = enrollment.course?.studentsCount || 0;
-                  const reviews = enrollment.course?.reviewCount || 0;
-                  const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
-
-                  return (
-                    <TouchableOpacity
-                      key={`my-course-${enrollment.id || index}`}
-                      style={styles.myCourseCard}
-                      onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: enrollment.course?.courseId, isPurchased: true })}
-                    >
-                      <Image
-                        source={getCourseImage(enrollment.course?.latestPublicVersion?.thumbnailUrl)}
-                        style={styles.myCourseImage}
-                      />
-                      <View style={styles.myCourseInfo}>
-                        <Text style={styles.myCourseTitle} numberOfLines={1}>{enrollment.course?.title}</Text>
-                        <Text style={styles.myCourseDate}>Start: {dateEnrolled}</Text>
-                        <View style={styles.myCourseStatsRow}>
-                          <View style={styles.statItem}>
-                            <Icon name="star" size={12} color="#F59E0B" />
-                            <Text style={styles.statText}>{rating}</Text>
-                          </View>
-                          <View style={styles.statItem}>
-                            <Icon name="people" size={12} color="#6B7280" />
-                            <Text style={styles.statText}>{buyers}</Text>
-                          </View>
-                          <View style={styles.statItem}>
-                            <Icon name="rate-review" size={12} color="#6B7280" />
-                            <Text style={styles.statText}>{reviews}</Text>
-                          </View>
-                        </View>
-                        <View style={styles.progressBar}>
-                          <View style={[styles.progressFill, { width: `${enrollment.progress || 0}%` }]} />
                         </View>
                       </View>
                     </TouchableOpacity>
@@ -643,10 +722,23 @@ const styles = createScaledSheet({
     alignItems: 'center',
     zIndex: 10,
   },
+  headerRightGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#EEF2FF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   languageSelectorContainer: {
     position: 'relative',
     zIndex: 10,
-    width: 60,
+    minWidth: 40,
   },
   selectedLanguageButton: {
     flexDirection: 'row',
@@ -705,9 +797,15 @@ const styles = createScaledSheet({
     fontSize: 18,
     fontWeight: '700',
     color: '#111827',
+    maxWidth: 250,
   },
   backButton: {
     padding: 8,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   scrollContainer: {
@@ -754,7 +852,11 @@ const styles = createScaledSheet({
     padding: 16,
   },
   certDarkOverlay: {
-    // ...React.StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 16,
     justifyContent: 'center',
@@ -777,7 +879,7 @@ const styles = createScaledSheet({
   certBigTitle: {
     fontSize: 18,
     fontWeight: "800",
-    color: "#1F2937", // Or White depending on image, usually white on dark bg but using standard dark text with light fallback image
+    color: "#1F2937",
     backgroundColor: 'rgba(255,255,255,0.7)',
     paddingHorizontal: 4,
     borderRadius: 4,
@@ -807,13 +909,8 @@ const styles = createScaledSheet({
     color: '#D97706',
   },
 
-  gridContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  gridCard: {
-    width: ITEM_WIDTH,
+  gridCardFlat: {
+    width: '48%',
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
     padding: 12,
@@ -823,7 +920,6 @@ const styles = createScaledSheet({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
-    marginBottom: COLUMN_GAP,
     height: 110,
     justifyContent: 'center',
   },
@@ -878,36 +974,6 @@ const styles = createScaledSheet({
     color: '#9CA3AF',
     marginBottom: 6,
   },
-  myCourseStatsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-    gap: 10,
-  },
-  statItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  statText: {
-    fontSize: 11,
-    color: '#4B5563',
-    fontWeight: '500',
-  },
-  gridCardFlat: {
-    width: '48%',
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-    height: 110,
-    justifyContent: 'center',
-  },
   progressBar: {
     height: 6,
     backgroundColor: "#F3F4F6",
@@ -918,6 +984,11 @@ const styles = createScaledSheet({
     height: "100%",
     backgroundColor: "#4F46E5",
     borderRadius: 3,
+  },
+  statText: {
+    fontSize: 11,
+    color: '#4B5563',
+    fontWeight: '500',
   },
 
   recCourseCard: {
@@ -986,6 +1057,7 @@ const styles = createScaledSheet({
   },
 
   listContainer: {
+    flex: 1,
     padding: 16,
   },
   verticalCard: {
@@ -1042,33 +1114,53 @@ const styles = createScaledSheet({
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: 12,
     marginBottom: 12,
     borderWidth: 1,
     borderColor: "#F1F5F9",
   },
-  lessonIconBox: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 16,
+  lessonThumbnailSmall: {
+    width: 50,
+    height: 50,
+    borderRadius: 8,
+    backgroundColor: '#F3F4F6',
+    marginRight: 12,
   },
   lessonRowContent: {
     flex: 1,
   },
   lessonRowTitle: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: "600",
     color: "#1F2937",
-    marginBottom: 2,
+    marginBottom: 4,
+  },
+  lessonRowMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  dotSmall: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: "#9CA3AF",
+    marginHorizontal: 6,
   },
   lessonRowSubtitle: {
-    fontSize: 13,
+    fontSize: 12,
     color: "#6B7280",
+    fontWeight: '500',
   },
+  playButtonSmall: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+
   footerLoader: {
     paddingVertical: 20,
     alignItems: "center",

@@ -17,11 +17,10 @@ import { languageToCountry } from "../../types/api";
 import CountryFlag from "react-native-country-flag";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { useRoute, useNavigation } from "@react-navigation/native";
+import { useRoute, useNavigation, CommonActions } from "@react-navigation/native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import VipUpgradeModal from "../../components/modals/VipUpgradeModal";
 import { TestConfigResponse } from "../../types/dto";
-import { TestStatus } from "../../types/enums";
 import { getTestThumbnail } from "../../utils/imageUtil";
 
 type Tab = "available" | "history";
@@ -107,21 +106,28 @@ const ProficiencyTestScreen = () => {
     });
   };
 
+  const handleGoHome = () => {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Main' }],
+      })
+    );
+  };
+
   const handleSelectTest = async (testConfig: TestConfigResponse) => {
     if (mode !== 'placement' && !vip) {
       setShowVipModal(true);
       return;
     }
     try {
-      // Call API to start test
       const response = await startTestMutate(testConfig.testConfigId);
 
       if (response && response.questions) {
-        // Navigate to the NEW Test Session Screen
         (navigation as any).navigate('TestSessionScreen', {
           sessionId: response.sessionId,
           questions: response.questions,
-          durationSeconds: testConfig.durationSeconds || 2700, // Default 45m if null
+          durationSeconds: testConfig.durationSeconds || 2700,
           title: testConfig.title,
           testConfigId: testConfig.testConfigId
         });
@@ -133,7 +139,12 @@ const ProficiencyTestScreen = () => {
 
   const renderHeader = () => (
     <View style={styles.headerContainer}>
-      <Text style={styles.title}>{t("proficiencyTest.title", "Skill Assessment")}</Text>
+      <View style={styles.headerTopRow}>
+        <Text style={styles.title}>{t("proficiencyTest.title", "Skill Assessment")}</Text>
+        <TouchableOpacity onPress={handleGoHome} style={styles.homeButton}>
+          <Icon name="home" size={26} color="#4F46E5" />
+        </TouchableOpacity>
+      </View>
       <View style={styles.tabContainer}>
         <TouchableOpacity style={[styles.tab, activeTab === 'available' && styles.activeTab]} onPress={() => setActiveTab('available')}>
           <Text style={[styles.tabText, activeTab === 'available' && styles.activeTabText]}>{t("test.available", "Tests")}</Text>
@@ -243,7 +254,9 @@ const ProficiencyTestScreen = () => {
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
   headerContainer: { padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E5E7EB' },
-  title: { fontSize: 22, fontWeight: 'bold', color: '#111827', marginBottom: 12 },
+  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  homeButton: { padding: 4 },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#111827' },
   tabContainer: { flexDirection: 'row', backgroundColor: '#F3F4F6', borderRadius: 8, padding: 4 },
   tab: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6 },
   activeTab: { backgroundColor: '#FFF', elevation: 2 },

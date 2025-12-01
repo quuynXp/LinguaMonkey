@@ -29,6 +29,7 @@ public class LessonResponse {
     private SkillType skillTypes;
     private Integer flashcardCount;
     private Integer dueFlashcardsCount;
+    private List<LessonQuestionResponse> questions;
     private List<String> videoUrls;
     private String description;
     private Integer orderIndex;

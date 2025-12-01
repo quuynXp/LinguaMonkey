@@ -13,7 +13,8 @@ import {
   LessonProgressResponse,
   LessonProgressRequest,
   LessonProgressWrongItemResponse,
-  LessonProgressWrongItemRequest
+  LessonProgressWrongItemRequest,
+  LessonHierarchicalResponse
 } from "../types/dto";
 
 import { SkillType } from "../types/enums";
@@ -126,6 +127,60 @@ export const useLessons = () => {
       onSuccess: () => queryClient.invalidateQueries({ queryKey: lessonKeys.lists() }),
     });
   };
+
+  const useSkillLessonTree = (skillType: SkillType, languageCode: string) => {
+    return useQuery({
+      queryKey: ['lessons', 'tree', skillType, languageCode],
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<LessonHierarchicalResponse[]>>(
+          `/api/v1/lessons/tree?skillType=${skillType}&languageCode=${languageCode}`
+        );
+        return data.result;
+      }
+    });
+  };
+
+  const useLessonWrongItems = (lessonId: string, userId: string) => {
+    return useQuery<LessonProgressWrongItemResponse[], unknown>({
+      queryKey: lessonKeys.wrongItems.list({ lessonId, userId }),
+      queryFn: async () => {
+        if (!lessonId || !userId) return [];
+        const { data } = await instance.get<AppApiResponse<PageResponse<LessonProgressWrongItemResponse>>>(
+          `/api/v1/lessons/${lessonId}/wrong-items`,
+          { params: { userId, size: 50 } }
+        );
+        return data.result?.content || [];
+      },
+      enabled: !!lessonId && !!userId
+    });
+  };
+
+  const useSubmitTest = () => {
+        interface SubmitTestPayload {
+            lessonId: string; 
+            userId: string;
+            body: { 
+                answers: Record<string, any>;
+                attemptNumber: number;
+            };
+        }
+
+        return useMutation<any, unknown, SubmitTestPayload>({
+            mutationFn: async ({ lessonId, userId, body }) => {
+                const qp = userId ? `?userId=${userId}` : "";
+                const { data } = await instance.post<AppApiResponse<any>>(
+                    `/api/v1/lessons/${lessonId}/submit-test${qp}`,
+                    body
+                );
+                return data.result;
+            },
+            onSuccess: (_, variables) => {
+                queryClient.invalidateQueries({ queryKey: lessonKeys.progress.all });
+                queryClient.invalidateQueries({ queryKey: lessonKeys.wrongItems.all });
+                queryClient.invalidateQueries({ queryKey: ['courses', 'enrollments'] });
+            }
+        });
+    };
 
   const useUpdateLesson = () => {
     return useMutation({
@@ -392,29 +447,28 @@ export const useLessons = () => {
   };
 
   const useStartTest = () => {
-    return useMutation({
-      mutationFn: async ({ lessonId, userId }: { lessonId: string; userId?: string }) => {
-        const qp = userId ? `?userId=${userId}` : "";
-        const { data } = await instance.post<AppApiResponse<any>>(
-          `/api/v1/lessons/${lessonId}/start-test${qp}`
-        );
-        return data.result;
-      },
-    });
-  };
+        return useMutation<any, unknown, { lessonId: string; userId: string }>({
+            mutationFn: async ({ lessonId, userId }) => {
+                const { data } = await instance.post<AppApiResponse<any>>(
+                    `/api/v1/lessons/${lessonId}/start-test?userId=${userId}`
+                );
+                return data.result;
+            },
+        });
+    };
 
-  const useSubmitTest = () => {
-    return useMutation({
-      mutationFn: async ({ lessonId, userId, body }: { lessonId: string; userId?: string; body: { answers: Record<string, any> } }) => {
-        const qp = userId ? `?userId=${userId}` : "";
-        const { data } = await instance.post<AppApiResponse<any>>(
-          `/api/v1/lessons/${lessonId}/submit-test${qp}`,
-          body
-        );
-        return data.result;
-      },
-    });
-  };
+  // const useSubmitTest = () => {
+  //   return useMutation({
+  //     mutationFn: async ({ lessonId, userId, body }: { lessonId: string; userId?: string; body: { answers: Record<string, any> } }) => {
+  //       const qp = userId ? `?userId=${userId}` : "";
+  //       const { data } = await instance.post<AppApiResponse<any>>(
+  //         `/api/v1/lessons/${lessonId}/submit-test${qp}`,
+  //         body
+  //       );
+  //       return data.result;
+  //     },
+  //   });
+  // };
 
   const useCompleteLesson = () => {
     return useMutation({
@@ -456,6 +510,10 @@ export const useLessons = () => {
     useUpdateProgress,
     useDeleteProgress,
 
+    useSkillLessonTree,
+    useSubmitTest,
+
+    useLessonWrongItems,
     // Wrong Items
     useWrongItems,
     useWrongItemDetail,
@@ -468,7 +526,7 @@ export const useLessons = () => {
     useGenerateTeamQuiz,
     useFindOrCreateQuizRoom,
     useStartTest,
-    useSubmitTest,
+    // useSubmitTest,
     useCompleteLesson,
   };
 };

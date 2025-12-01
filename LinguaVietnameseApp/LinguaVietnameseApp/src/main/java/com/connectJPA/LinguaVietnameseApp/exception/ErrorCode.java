@@ -21,6 +21,12 @@ public enum ErrorCode {
     INVALID_KEY(1007, "error.invalid_key", HttpStatus.BAD_REQUEST, true),
     INVALID_REQUEST(1008, "error.invalid_request", HttpStatus.BAD_REQUEST, true),
     INVALID_INPUT_DATA(1009, "error.invalid_input_data", HttpStatus.BAD_REQUEST, true),
+    REVIEW_NOT_ALLOWED(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
+    COURSE_VALIDATION_FAILED(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
+    COURSE_VALIDATION_PENDING(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
+    QUESTION_NOT_FOUND(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
+    INVALID_DATA_FORMAT(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
+
 
     // Nhóm: User & Auth Logic (400) (11xx)
     INVALID_USER_INFO(1100, "error.invalid_user_info", HttpStatus.BAD_REQUEST, true),

@@ -39,7 +39,7 @@ const SUPPORTED_LEARNING_LANGUAGES = ['vi', 'en', 'zh']
 const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(1)
-  const [selectedCharacter, setSelectedCharacter] = useState<Character3D | null>(null)
+  // const [selectedCharacter, setSelectedCharacter] = useState<Character3D | null>(null)
   const [accountName, setAccountName] = useState("")
   const [email, setEmail] = useState("")
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -52,7 +52,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const [learningGoalsSelected, setLearningGoalsSelected] = useState<string[]>([])
   const [learningPace, setLearningPace] = useState("")
 
-  const [characters, setCharacters] = useState<Character3D[]>([])
+  // const [characters, setCharacters] = useState<Character3D[]>([])
   const [languages, setLanguages] = useState<Language[]>([])
   const [interests, setInterests] = useState<Interest[]>([])
 
@@ -172,11 +172,11 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     prefillData();
   }, []);
 
-  useEffect(() => {
-    fetchLanguages()
-    fetchCharacters()
-    fetchInterests()
-  }, [])
+  // useEffect(() => {
+  //   fetchLanguages()
+  //   fetchCharacters()
+  //   fetchInterests()
+  // }, [])
 
   useEffect(() => {
     Animated.timing(fadeAnim, {
@@ -192,8 +192,8 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     }).start()
   }, [])
 
-  useEffect(() => {
-  }, [characters])
+  // useEffect(() => {
+  // }, [characters])
 
   useEffect(() => {
     if (interests.length && selectedInterests.length === 0) {
@@ -221,26 +221,26 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
     }
 
-    if (interests.length > 0) setSelectedInterests([interests[0].interestId])
+    // if (interests.length > 0) setSelectedInterests([interests[0].interestId])
     if (learningGoals.length > 0) setLearningGoalsSelected(["conversation"])
     setLearningPace("slow")
     setAgeRange("18-24")
   }, [])
 
-  const fetchCharacters = async () => {
-    try {
-      const response = await instance.get('/api/v1/character3ds');
-      const charactersArray = response.data.result?.content;
+  // const fetchCharacters = async () => {
+  //   try {
+  //     const response = await instance.get('/api/v1/character3ds');
+  //     const charactersArray = response.data.result?.content;
 
-      if (Array.isArray(charactersArray)) {
-        setCharacters(charactersArray);
-      } else {
-        setCharacters([]);
-      }
-    } catch (error) {
-      Alert.alert(t("error.title"), t("error.loadCharacters"));
-    }
-  };
+  //     if (Array.isArray(charactersArray)) {
+  //       setCharacters(charactersArray);
+  //     } else {
+  //       setCharacters([]);
+  //     }
+  //   } catch (error) {
+  //     Alert.alert(t("error.title"), t("error.loadCharacters"));
+  //   }
+  // };
 
   const fetchLanguages = async () => {
     try {
@@ -283,7 +283,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
     }
 
-    if (currentStep < 5) {
+    if (currentStep < 4) {
       setCurrentStep(currentStep + 1)
     } else {
       await createTempAccountAndSetup()
@@ -316,9 +316,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         phone: phoneNumber || undefined,
       }
 
-      if (selectedCharacter?.character3dId) {
-        payload.character3dId = selectedCharacter.character3dId
-      }
+      // if (selectedCharacter?.character3dId) {
+      //   payload.character3dId = selectedCharacter.character3dId
+      // }
 
       const mappedCountry = mapCountryToEnum(country ?? undefined)
       if (mappedCountry) payload.country = mappedCountry as Country
@@ -478,7 +478,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
-      {[1, 2, 3, 4, 5].map((step) => (
+      {[1, 2, 3, 4].map((step) => (
         <View key={`step-${step}`} style={styles.stepContainer}>
           <View style={[styles.stepCircle, currentStep >= step && styles.stepCircleActive]}>
             <Text style={[styles.stepText, currentStep >= step && styles.stepTextActive]}>{step}</Text>
@@ -489,51 +489,51 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     </View>
   )
 
-  const renderCharacterSelection = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>{t("setup.chooseCompanion")}</Text>
-      <Text style={styles.stepSubtitle}>{t("setup.chooseCompanion.desc")}</Text>
+  // const renderCharacterSelection = () => (
+  //   <View style={styles.stepContent}>
+  //     <Text style={styles.stepTitle}>{t("setup.chooseCompanion")}</Text>
+  //     <Text style={styles.stepSubtitle}>{t("setup.chooseCompanion.desc")}</Text>
 
-      <FlatList
-        data={characters}
-        numColumns={2}
-        keyExtractor={(item) => item.character3dId}
-        columnWrapperStyle={styles.charactersRow}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            key={item.character3dId}
-            style={[
-              styles.characterCard,
-              selectedCharacter?.character3dId === item.character3dId && styles.characterCardSelected
-            ]}
-            onPress={() => setSelectedCharacter(item)}
-          >
-            {item.modelUrl && typeof item.modelUrl === 'string' ? (
-              <Image
-                source={{ uri: item.modelUrl }}
-                style={styles.characterImage}
-                resizeMode="contain"
-              />
-            ) : (
-              <View style={styles.modelPlaceholder}>
-                <Icon name="image" size={40} color="#9CA3AF" />
-                <Text style={styles.modelErrorText}>No Image</Text>
-              </View>
-            )}
-            <Text style={styles.characterName}>{item.character3dName}</Text>
-            <Text style={styles.characterPersonality}>{item.description}</Text>
+  //     <FlatList
+  //       data={characters}
+  //       numColumns={2}
+  //       keyExtractor={(item) => item.character3dId}
+  //       columnWrapperStyle={styles.charactersRow}
+  //       renderItem={({ item }) => (
+  //         <TouchableOpacity
+  //           key={item.character3dId}
+  //           style={[
+  //             styles.characterCard,
+  //             selectedCharacter?.character3dId === item.character3dId && styles.characterCardSelected
+  //           ]}
+  //           onPress={() => setSelectedCharacter(item)}
+  //         >
+  //           {item.modelUrl && typeof item.modelUrl === 'string' ? (
+  //             <Image
+  //               source={{ uri: item.modelUrl }}
+  //               style={styles.characterImage}
+  //               resizeMode="contain"
+  //             />
+  //           ) : (
+  //             <View style={styles.modelPlaceholder}>
+  //               <Icon name="image" size={40} color="#9CA3AF" />
+  //               <Text style={styles.modelErrorText}>No Image</Text>
+  //             </View>
+  //           )}
+  //           <Text style={styles.characterName}>{item.character3dName}</Text>
+  //           <Text style={styles.characterPersonality}>{item.description}</Text>
 
-            {selectedCharacter?.character3dId === item.character3dId && (
-              <View style={styles.selectedIndicator}>
-                <Icon name="check-circle" size={20} color="#10B981" />
-              </View>
-            )}
-          </TouchableOpacity>
-        )}
-        contentContainerStyle={styles.charactersGrid}
-      />
-    </View>
-  )
+  //           {selectedCharacter?.character3dId === item.character3dId && (
+  //             <View style={styles.selectedIndicator}>
+  //               <Icon name="check-circle" size={20} color="#10B981" />
+  //             </View>
+  //           )}
+  //         </TouchableOpacity>
+  //       )}
+  //       contentContainerStyle={styles.charactersGrid}
+  //     />
+  //   </View>
+  // )
 
   const renderBasicInfo = () => (
     <View style={styles.stepContent}>
@@ -776,7 +776,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       <View style={styles.summaryCard}>
         <View style={styles.summaryRow}>
           <Text style={styles.summaryLabel}>{t("setup.character")}:</Text>
-          <Text style={styles.summaryText}>{selectedCharacter?.character3dName || "None"}</Text>
+          {/* <Text style={styles.summaryText}>{selectedCharacter?.character3dName || "None"}</Text> */}
         </View>
 
         <View style={styles.summaryRow}>
@@ -919,11 +919,11 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         {renderStepIndicator()}
 
         <ScrollView>
-          {currentStep === 1 && renderCharacterSelection()}
-          {currentStep === 2 && renderBasicInfo()}
-          {currentStep === 3 && renderInterestsAndGoals()}
-          {currentStep === 4 && renderCertificationsAndPace()}
-          {currentStep === 5 && renderSummary()}
+          {/* {currentStep === 1 && renderCharacterSelection()} */}
+          {currentStep === 1 && renderBasicInfo()}
+          {currentStep === 2 && renderInterestsAndGoals()}
+          {currentStep === 3 && renderCertificationsAndPace()}
+          {currentStep === 4 && renderSummary()}
         </ScrollView>
 
         <View style={styles.navigationButtons}>

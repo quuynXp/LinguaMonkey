@@ -1,6 +1,6 @@
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -16,13 +16,14 @@ import {
   TouchableOpacity,
   View,
   Switch,
+  Animated,
   StyleSheet
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
 import { useFlashcards } from "../../hooks/useFlashcard";
-import { useLessons } from "../../hooks/useLessons"; // Bổ sung
-import { useUserStore } from "../../stores/UserStore"; // Bổ sung
+import { useLessons } from "../../hooks/useLessons";
+import { useUserStore } from "../../stores/UserStore";
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { FlashcardResponse, CreateFlashcardRequest } from '../../types/dto';
 import { getLessonImage } from '../../utils/imageUtil';
@@ -52,41 +53,36 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
   const user = useUserStore((state) => state.user);
 
-  // 1. Quản lý Lesson ID: Lấy từ route, nếu không có thì null
   const routeLessonId: string | null = route?.params?.lessonId ?? null;
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(routeLessonId);
   const [selectedLessonName, setSelectedLessonName] = useState<string>(route?.params?.lessonName || "");
 
-  // Hooks
   const { useGetFlashcards, useGetDue, useCreateFlashcard, useReviewFlashcard } = useFlashcards();
   const { useCreatorLessons } = useLessons();
 
-  // Queries
   const userLessonsQuery = useCreatorLessons(user?.userId || null, 0, 100);
   const [page, setPage] = useState(0);
-  const flashcardsQuery = useGetFlashcards(selectedLessonId, { page, size: 50 });
+  const flashcardsQuery = useGetFlashcards(selectedLessonId, { page, size: 100 });
   const dueQuery = useGetDue(selectedLessonId, 20);
 
-  // Mutations
   const { mutateAsync: createFlashcard, isPending: isCreating } = useCreateFlashcard();
   const { mutateAsync: reviewFlashcard, isPending: isReviewing } = useReviewFlashcard();
 
-  // State
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showLessonSelector, setShowLessonSelector] = useState(false); // New State
+  const [showLessonSelector, setShowLessonSelector] = useState(false);
 
   // Study State
-  const [studyMode, setStudyMode] = useState<"definition" | "image">("definition");
-  const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [showAnswer, setShowAnswer] = useState(false);
   const [isStudying, setIsStudying] = useState(false);
   const [studyList, setStudyList] = useState<FlashcardResponse[]>([]);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [showAnswer, setShowAnswer] = useState(false);
 
-  // Form State
+  // Animation Refs
+  const flipAnimation = useRef(new Animated.Value(0)).current;
+
   const [newCard, setNewCard] = useState<NewCardState>(initialNewCardState);
 
-  // Effect: Cập nhật Lesson ID khi quay về từ màn hình tạo Lesson
   useEffect(() => {
     if (route.params?.lessonId) {
       setSelectedLessonId(route.params.lessonId);
@@ -96,74 +92,87 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
     }
   }, [route.params?.lessonId]);
 
-
   const allFlashcards = flashcardsQuery.data?.content || [];
 
-  const filteredList = useMemo(() => {
-    if (!searchQuery) return allFlashcards;
-    return allFlashcards.filter(card =>
+  // Split Flashcards: My Cards vs Community Cards
+  const { myCards, communityCards } = useMemo(() => {
+    const mine: FlashcardResponse[] = [];
+    const community: FlashcardResponse[] = [];
+
+    if (!user?.userId) return { myCards: allFlashcards, communityCards: [] };
+
+    allFlashcards.forEach(card => {
+      // Assuming FlashcardResponse has userId. If not, use isPublic logic as fallback
+      // Check logic: If I created it, it's mine. If not, it's community.
+      // Note: Backend needs to return userId in FlashcardResponse for this to work perfectly.
+      if (card.userId === user.userId) {
+        mine.push(card);
+      } else {
+        community.push(card);
+      }
+    });
+    return { myCards: mine, communityCards: community };
+  }, [allFlashcards, user?.userId]);
+
+  const filteredMyList = useMemo(() => {
+    if (!searchQuery) return myCards;
+    return myCards.filter(card =>
       card.front.toLowerCase().includes(searchQuery.toLowerCase()) ||
       card.back.toLowerCase().includes(searchQuery.toLowerCase())
     );
-  }, [allFlashcards, searchQuery]);
+  }, [myCards, searchQuery]);
 
-  const startStudySession = (mode: "definition" | "image") => {
-    if (!selectedLessonId) {
-      Alert.alert(t("flashcards.selectLessonTitle") ?? "Select Lesson", t("flashcards.selectLessonMsg") ?? "Please select a lesson to start studying.");
-      return;
-    }
-
-    const sourceList = (dueQuery.data && dueQuery.data.length > 0) ? dueQuery.data : allFlashcards;
-
-    if (sourceList.length === 0) {
+  const startStudySession = (list: FlashcardResponse[]) => {
+    if (list.length === 0) {
       Alert.alert(t("flashcards.noCardsTitle") ?? "No Cards", t("flashcards.noCardsMessage") ?? "No cards available for study.");
       return;
     }
-
-    setStudyList(sourceList);
-    setStudyMode(mode);
+    setStudyList(list);
     setCurrentCardIndex(0);
     setShowAnswer(false);
     setIsStudying(true);
+    flipAnimation.setValue(0);
   };
+
+  const handlePressStudy = () => {
+    if (!selectedLessonId) {
+      Alert.alert("Select Lesson", "Please select a lesson first.");
+      return;
+    }
+    // Prioritize Due cards, then All cards
+    const listToStudy = (dueQuery.data && dueQuery.data.length > 0) ? dueQuery.data : allFlashcards;
+    startStudySession(listToStudy);
+  }
 
   const handlePressAddFlashcard = () => {
     const lessons = userLessonsQuery.data?.data || [];
-
-    // TH1: Đã có lessonId đang chọn -> Mở Modal tạo Flashcard
     if (selectedLessonId) {
       setShowCreateModal(true);
       return;
     }
-
-    // TH2: Chưa chọn Lesson, kiểm tra xem User có bài học nào không
     if (userLessonsQuery.isLoading) return;
 
     if (lessons.length === 0) {
-      // TH2.1: Không có bài học nào -> Bắt buộc tạo Lesson mới
       Alert.alert(
         t("flashcards.noLessonTitle") ?? "No Lesson Found",
-        t("flashcards.noLessonMessage") ?? "You need a lesson to hold your flashcards. Create one now?",
+        t("flashcards.noLessonMessage") ?? "You need a lesson first.",
         [
           { text: "Cancel", style: "cancel" },
           {
             text: "Create Lesson",
-            onPress: () => navigation.navigate("CreateLesson")
+            onPress: () => navigation.navigate("CreateLessonScreen")
           }
         ]
       );
     } else {
-      // TH2.2: Có bài học nhưng chưa chọn -> Hiển thị Modal chọn Lesson
       setShowLessonSelector(true);
     }
   };
 
   const handleCreateCard = async () => {
-    if (!createFlashcard) return Alert.alert(t("common.error"), "Create API not available.");
-    if (!selectedLessonId) return Alert.alert(t("common.error"), t("flashcards.lessonIdMissing") ?? "Lesson ID is missing.");
-
+    if (!selectedLessonId) return;
     if (!newCard.front || !newCard.back) {
-      Alert.alert(t("common.error"), t("flashcards.fillWordAndDefinition") ?? "Please fill in the word and definition.");
+      Alert.alert("Required", "Word and Definition are required.");
       return;
     }
 
@@ -180,88 +189,95 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
       };
 
       await createFlashcard({ lessonId: selectedLessonId, payload });
-      Alert.alert(t("common.success"), t("flashcards.createSuccess") ?? "Flashcard created successfully!");
+      Alert.alert("Success", "Card created!");
       setNewCard(initialNewCardState);
       setShowCreateModal(false);
       flashcardsQuery.refetch();
     } catch (err) {
-      Alert.alert(t("common.error"), t("flashcards.createFailed") ?? "Failed to create flashcard.");
+      Alert.alert("Error", "Failed to create card.");
     }
   };
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert(t("flashcards.permissionDenied") ?? "Permission denied.");
-      return;
-    }
-
+    if (status !== 'granted') return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       quality: 0.8,
     });
-
     if (!result.canceled) {
       setNewCard((prev) => ({ ...prev, imageUrl: result.assets[0].uri }));
     }
   };
 
-  const onPressQuality = async (flashcard: FlashcardResponse, q: number) => {
+  const flipCard = () => {
+    if (showAnswer) return;
+    Animated.spring(flipAnimation, {
+      toValue: 180,
+      friction: 8,
+      tension: 10,
+      useNativeDriver: true,
+    }).start(() => setShowAnswer(true));
+  };
+
+  const resetFlip = (callback: () => void) => {
+    setShowAnswer(false);
+    flipAnimation.setValue(0);
+    callback();
+  };
+
+  const onPressQuality = async (q: number) => {
     if (!selectedLessonId) return;
+    const currentCard = studyList[currentCardIndex];
 
     try {
-      await reviewFlashcard({ lessonId: selectedLessonId, flashcardId: flashcard.flashcardId, quality: q });
+      await reviewFlashcard({ lessonId: selectedLessonId, flashcardId: currentCard.flashcardId, quality: q });
 
       if (currentCardIndex < studyList.length - 1) {
-        setCurrentCardIndex((prev) => prev + 1);
-        setShowAnswer(false);
+        resetFlip(() => setCurrentCardIndex(prev => prev + 1));
       } else {
         setIsStudying(false);
         setStudyList([]);
         dueQuery.refetch();
-        Alert.alert(t("flashcards.reviewDoneTitle") ?? "Review Done", t("flashcards.reviewDoneMessage") ?? "Session complete!");
+        Alert.alert("Session Complete", "Great job!");
       }
     } catch (err) {
       console.error(err);
-      Alert.alert(t("common.error"), t("flashcards.reviewFailed") ?? "Review failed.");
     }
   };
 
+  // Animation Interpolation
+  const frontInterpolate = flipAnimation.interpolate({
+    inputRange: [0, 180],
+    outputRange: ['0deg', '180deg'],
+  });
+  const backInterpolate = flipAnimation.interpolate({
+    inputRange: [0, 180],
+    outputRange: ['180deg', '360deg'],
+  });
+  const frontOpacity = flipAnimation.interpolate({
+    inputRange: [89, 90],
+    outputRange: [1, 0]
+  });
+  const backOpacity = flipAnimation.interpolate({
+    inputRange: [89, 90],
+    outputRange: [0, 1]
+  });
+
   const renderFlashcardItem = ({ item }: { item: FlashcardResponse }) => {
     const imageSource = getLessonImage(item.imageUrl);
-
     return (
       <View style={styles.flashcardItem}>
-        <View style={styles.cardHeader}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.cardWord}>{item.front}</Text>
-            <View style={styles.badgesRow}>
-              {item.tags ? (
-                <View style={styles.tagContainer}>
-                  <Text style={styles.tagText}>{item.tags}</Text>
-                </View>
-              ) : null}
-              <View style={[styles.tagContainer, item.isPublic ? styles.publicBadge : styles.privateBadge]}>
-                <Text style={[styles.tagText, item.isPublic ? styles.publicText : styles.privateText]}>
-                  {item.isPublic ? "Public" : "Private"}
-                </Text>
-              </View>
-            </View>
-          </View>
+        <Image source={imageSource} style={styles.cardListImage} />
+        <View style={styles.cardListContent}>
+          <Text style={styles.cardWord}>{item.front}</Text>
+          <Text style={styles.cardDefinition} numberOfLines={2}>{item.back}</Text>
         </View>
-
-        <Image source={imageSource} style={styles.cardImage} />
-
-        <Text style={styles.cardDefinition}>{item.back}</Text>
-        {item.exampleSentence ? (
-          <Text style={styles.cardExample}>{item.exampleSentence}</Text>
-        ) : null}
-
-        <View style={styles.cardFooter}>
-          <Text style={styles.lastReviewText}>
-            {t("flashcards.nextReview")}: {new Date(item.nextReviewAt).toLocaleDateString()}
-          </Text>
+        <View style={styles.cardStatusStrip}>
+          {item.nextReviewAt && new Date(item.nextReviewAt) < new Date() && (
+            <View style={styles.dueDot} />
+          )}
         </View>
       </View>
     );
@@ -269,74 +285,68 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 
   if (isStudying) {
     const currentCard = studyList[currentCardIndex];
+    if (!currentCard) { setIsStudying(false); return null; }
 
-    if (!currentCard) {
-      setIsStudying(false);
-      return null;
-    }
-
-    const studyImageSource = getLessonImage(currentCard.imageUrl);
+    const cardImage = getLessonImage(currentCard.imageUrl);
 
     return (
-      <ScreenLayout style={styles.container}>
+      <ScreenLayout style={styles.studyContainer}>
         <View style={styles.studyHeader}>
+          <Text style={styles.progressText}>{currentCardIndex + 1} / {studyList.length}</Text>
           <TouchableOpacity onPress={() => setIsStudying(false)}>
-            <Icon name="close" size={24} color="#333" />
+            <Icon name="close" size={26} color="#FFF" />
           </TouchableOpacity>
-          <Text style={styles.studyProgress}>
-            {currentCardIndex + 1} / {studyList.length}
-          </Text>
-          <View style={{ width: 24 }} />
         </View>
 
-        <View style={styles.studyCard}>
-          {studyMode === "image" ? (
-            <View style={styles.studyContentWrap}>
-              <Image source={studyImageSource} style={styles.studyImage} />
-              <Text style={styles.studyPrompt}>{t("flashcards.imagePrompt") ?? "What is this word?"}</Text>
-            </View>
-          ) : (
-            <View style={styles.studyContentWrap}>
-              <Text style={styles.studyWord}>{currentCard.front}</Text>
-              <Text style={styles.studyPrompt}>{t("flashcards.definitionPrompt") ?? "What is the definition?"}</Text>
-            </View>
-          )}
+        <View>
+          <TouchableOpacity activeOpacity={1} style={styles.cardWrapper} onPress={flipCard}>
+            {/* Front Side */}
+            <Animated.View style={[styles.cardFace, styles.cardFront, { transform: [{ rotateY: frontInterpolate }], opacity: frontOpacity }]}>
+              <Text style={styles.studyLabel}>QUESTION</Text>
+              {currentCard.imageUrl && <Image source={cardImage} style={styles.studyImage} />}
+              <Text style={styles.studyFrontText}>{currentCard.front}</Text>
+              <Text style={styles.tapHint}>Tap to flip</Text>
+            </Animated.View>
 
-          {showAnswer && (
-            <View style={styles.answerSection}>
-              <Text style={styles.answerLabel}>{t("flashcards.answerLabel") ?? "Answer:"}</Text>
-              {studyMode === "image" ? (
-                <Text style={styles.answerText}>{currentCard.front}</Text>
-              ) : (
-                <Text style={styles.answerText}>{currentCard.back}</Text>
-              )}
-              {currentCard.exampleSentence && (
-                <Text style={styles.exampleText}>{currentCard.exampleSentence}</Text>
-              )}
-            </View>
-          )}
+            {/* Back Side */}
+            <Animated.View style={[styles.cardFace, styles.cardBack, { transform: [{ rotateY: backInterpolate }], opacity: backOpacity }]}>
+              <Text style={styles.studyLabel}>ANSWER</Text>
+              <ScrollView contentContainerStyle={{ alignItems: 'center' }}>
+                <Text style={styles.studyBackText}>{currentCard.back}</Text>
+                {currentCard.exampleSentence && (
+                  <View style={styles.exampleBox}>
+                    <Text style={styles.studyExample}>{currentCard.exampleSentence}</Text>
+                  </View>
+                )}
+              </ScrollView>
+            </Animated.View>
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.studyActions}>
+        {/* Controls */}
+        <View style={styles.controlsContainer}>
           {!showAnswer ? (
-            <TouchableOpacity style={styles.showAnswerButton} onPress={() => setShowAnswer(true)}>
-              <Text style={styles.showAnswerText}>{t("flashcards.showAnswer") ?? "Show Answer"}</Text>
+            <TouchableOpacity style={styles.showAnswerBtn} onPress={flipCard}>
+              <Text style={styles.showAnswerText}>SHOW ANSWER</Text>
             </TouchableOpacity>
           ) : (
-            <View style={styles.qualityContainer}>
-              <Text style={styles.rateText}>{t("flashcards.howWell") ?? "How well did you know this?"}</Text>
-              <View style={styles.qualityButtonsRow}>
-                {[1, 2, 3, 4, 5].map(q => (
-                  <TouchableOpacity
-                    key={q}
-                    style={[styles.qualityButton, isReviewing && styles.qualityButtonDisabled, { backgroundColor: getQualityColor(q) }]}
-                    disabled={isReviewing}
-                    onPress={() => onPressQuality(currentCard, q)}
-                  >
-                    <Text style={styles.qualityText}>{q}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <View style={styles.ankiButtons}>
+              <TouchableOpacity style={[styles.ankiBtn, { backgroundColor: '#FF6B6B' }]} onPress={() => onPressQuality(1)}>
+                <Text style={styles.ankiBtnLabel}>Again</Text>
+                <Text style={styles.ankiBtnSub}>&lt; 1m</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.ankiBtn, { backgroundColor: '#FF9800' }]} onPress={() => onPressQuality(3)}>
+                <Text style={styles.ankiBtnLabel}>Hard</Text>
+                <Text style={styles.ankiBtnSub}>2d</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.ankiBtn, { backgroundColor: '#4ECDC4' }]} onPress={() => onPressQuality(4)}>
+                <Text style={styles.ankiBtnLabel}>Good</Text>
+                <Text style={styles.ankiBtnSub}>4d</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.ankiBtn, { backgroundColor: '#4CAF50' }]} onPress={() => onPressQuality(5)}>
+                <Text style={styles.ankiBtnLabel}>Easy</Text>
+                <Text style={styles.ankiBtnSub}>7d</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
@@ -346,250 +356,128 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 
   return (
     <ScreenLayout style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#333" />
         </TouchableOpacity>
-
         <View style={{ alignItems: 'center' }}>
-          <Text style={styles.title}>{t("flashcards.title") ?? "Flashcards"}</Text>
-          {selectedLessonId ? (
-            <TouchableOpacity onPress={() => setShowLessonSelector(true)}>
-              <Text style={styles.lessonNameText}>{selectedLessonName || "Change Lesson"}</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity onPress={handlePressAddFlashcard}>
-              <Text style={[styles.lessonNameText, { color: '#FF6B6B' }]}>Select a Lesson</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={styles.title}>Flashcards</Text>
+          <TouchableOpacity onPress={() => setShowLessonSelector(true)}>
+            <Text style={styles.lessonNameText}>{selectedLessonName || "Select Lesson ▾"}</Text>
+          </TouchableOpacity>
         </View>
-
         <TouchableOpacity onPress={handlePressAddFlashcard}>
           <Icon name="add" size={28} color="#4ECDC4" />
         </TouchableOpacity>
       </View>
 
-      {/* Search */}
-      <View style={styles.searchSection}>
-        <View style={styles.searchBar}>
-          <Icon name="search" size={20} color="#666" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder={t("flashcards.searchPlaceholder") ?? "Search..."}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
-      </View>
-
-      {/* Study Modes Section */}
-      <View style={styles.studyModeSection}>
-        <Text style={styles.sectionTitle}>
-          {t("flashcards.study") ?? "Start Study Session"}
-          <Text style={styles.dueCount}> ({dueQuery.data?.length ?? 0} due)</Text>
-        </Text>
-        <View style={styles.studyModeButtons}>
-          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("definition")}>
-            <View style={[styles.iconCircle, { backgroundColor: '#E3FDFD' }]}>
-              <Icon name="school" size={24} color="#4ECDC4" />
-            </View>
-            <Text style={styles.studyModeText}>{t("flashcards.review") ?? "Review"}</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.studyModeButton} onPress={() => startStudySession("image")}>
-            <View style={[styles.iconCircle, { backgroundColor: '#FFEAEA' }]}>
-              <Icon name="image" size={24} color="#FF6B6B" />
-            </View>
-            <Text style={styles.studyModeText}>{t("flashcards.visual") ?? "Visual"}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.listHeaderContainer}>
-        <Text style={styles.sectionTitle}>{t("flashcards.allCards") ?? "Lesson Vocabulary"}</Text>
-      </View>
-
-      {/* Main List / Select Lesson Prompt */}
-      {userLessonsQuery.isLoading || !selectedLessonId ? (
-        <View style={styles.centerContainer}>
-          {userLessonsQuery.isLoading ? (
-            <ActivityIndicator size="large" color="#4ECDC4" />
-          ) : (
-            <View style={styles.emptyState}>
-              <Text style={styles.emptyStateText}>
-                {userLessonsQuery.data?.data?.length === 0
-                  ? "You haven't created any lessons yet. Tap '+' to create one."
-                  : "Please select a lesson to view flashcards."}
-              </Text>
-              <TouchableOpacity
-                style={styles.selectLessonButton}
-                onPress={handlePressAddFlashcard}
-              >
-                <Text style={styles.selectLessonButtonText}>
-                  {userLessonsQuery.data?.data?.length === 0 ? "Create Lesson" : "Select Lesson"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </View>
-      ) : (
-        flashcardsQuery.isLoading ? (
-          <View style={styles.centerContainer}>
-            <ActivityIndicator size="large" color="#4ECDC4" />
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Stats & Study Action */}
+        <View style={styles.statsCard}>
+          <View>
+            <Text style={styles.statsLabel}>Due for Review</Text>
+            <Text style={styles.statsValue}>{dueQuery.data?.length || 0}</Text>
           </View>
-        ) : (
-          <FlatList
-            data={filteredList}
-            renderItem={renderFlashcardItem}
-            keyExtractor={(item) => item.flashcardId}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.listContentContainer}
-            ListEmptyComponent={
-              <View style={styles.emptyState}>
-                <Text style={styles.emptyStateText}>{t("flashcards.empty") ?? "No flashcards found in this lesson."}</Text>
-              </View>
-            }
-          />
-        )
-      )}
+          <TouchableOpacity style={styles.studyBtn} onPress={handlePressStudy}>
+            <Text style={styles.studyBtnText}>Study Now</Text>
+            <Icon name="play-arrow" size={20} color="#FFF" />
+          </TouchableOpacity>
+        </View>
 
-      {/* Modal Chọn Lesson */}
+        {/* My Flashcards Section */}
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>My Flashcards ({myCards.length})</Text>
+        </View>
+
+        {flashcardsQuery.isLoading ? (
+          <ActivityIndicator color="#4ECDC4" style={{ marginTop: 20 }} />
+        ) : filteredMyList.length > 0 ? (
+          filteredMyList.map(item => (
+            <View key={item.flashcardId} style={{ marginBottom: 10 }}>
+              {renderFlashcardItem({ item })}
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyText}>You have no cards. Create one!</Text>
+          </View>
+        )}
+
+        {/* Community Flashcards Section */}
+        {communityCards.length > 0 && (
+          <View style={{ marginTop: 24 }}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Community Flashcards</Text>
+              <View style={styles.badge}><Text style={styles.badgeText}>Public</Text></View>
+            </View>
+            <Text style={styles.subHint}>Learn from others in this lesson</Text>
+
+            {communityCards.map(item => (
+              <View key={item.flashcardId} style={{ marginBottom: 10 }}>
+                {/* Reusing render but maybe with a 'Copy' button in future */}
+                {renderFlashcardItem({ item })}
+              </View>
+            ))}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Modals remain mostly same but ensured cleanliness */}
       <Modal visible={showLessonSelector} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.selectorContainer}>
-            <Text style={styles.modalTitle}>Select a Lesson</Text>
-
+            <Text style={styles.modalTitle}>Select Lesson</Text>
             <FlatList
-              data={(userLessonsQuery.data?.data || [])}
-              keyExtractor={(item) => item.lessonId}
+              data={userLessonsQuery.data?.data || []}
+              keyExtractor={item => item.lessonId}
               style={{ maxHeight: 300, width: '100%' }}
               renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.lessonOption}
-                  onPress={() => {
-                    setSelectedLessonId(item.lessonId);
-                    setSelectedLessonName(item.lessonName);
-                    setShowLessonSelector(false);
-                    // Kích hoạt fetch lại flashcard
-                    flashcardsQuery.refetch();
-                  }}
-                >
+                <TouchableOpacity style={styles.lessonOption} onPress={() => {
+                  setSelectedLessonId(item.lessonId);
+                  setSelectedLessonName(item.lessonName);
+                  setShowLessonSelector(false);
+                  setTimeout(() => flashcardsQuery.refetch(), 100);
+                }}>
                   <Text style={styles.lessonOptionText}>{item.lessonName}</Text>
-                  <Icon name="chevron-right" size={20} color="#ccc" />
+                  {selectedLessonId === item.lessonId && <Icon name="check" size={20} color="#4ECDC4" />}
                 </TouchableOpacity>
               )}
             />
-
-            <TouchableOpacity
-              style={styles.createNewOption}
-              onPress={() => {
-                setShowLessonSelector(false);
-                navigation.navigate("CreateLessonScreen");
-              }}
-            >
-              <Icon name="add-circle-outline" size={24} color="#4ECDC4" />
-              <Text style={[styles.lessonOptionText, { color: '#4ECDC4', marginLeft: 10 }]}>Create New Lesson</Text>
+            <TouchableOpacity style={styles.createNewOption} onPress={() => {
+              setShowLessonSelector(false);
+              navigation.navigate("CreateLessonScreen");
+            }}>
+              <Icon name="add" size={20} color="#4ECDC4" />
+              <Text style={[styles.lessonOptionText, { color: '#4ECDC4', marginLeft: 8 }]}>Create New Lesson</Text>
             </TouchableOpacity>
-
             <TouchableOpacity onPress={() => setShowLessonSelector(false)} style={{ marginTop: 15 }}>
-              <Text style={{ color: '#666' }}>Cancel</Text>
+              <Text style={{ color: '#999' }}>Close</Text>
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* Create Flashcard Modal (Chỉ hiện khi có selectedLessonId) */}
       <Modal visible={showCreateModal} animationType="slide" presentationStyle="pageSheet">
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
           <SafeAreaView style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <TouchableOpacity onPress={() => setShowCreateModal(false)}>
-                <Text style={styles.cancelButton}>{t("common.cancel") ?? "Cancel"}</Text>
-              </TouchableOpacity>
-              <Text style={styles.modalTitle}>{"New Flashcard for " + (selectedLessonName || "Lesson")}</Text>
-              <TouchableOpacity onPress={handleCreateCard} disabled={isCreating}>
-                {isCreating ? (
-                  <ActivityIndicator size="small" color="#4ECDC4" />
-                ) : (
-                  <Text style={styles.saveButton}>{t("common.save") ?? "Save"}</Text>
-                )}
-              </TouchableOpacity>
+              <Text style={styles.modalTitle}>New Card</Text>
+              <TouchableOpacity onPress={() => setShowCreateModal(false)}><Icon name="close" size={24} color="#333" /></TouchableOpacity>
             </View>
-
-            <ScrollView style={styles.modalContent} contentContainerStyle={{ paddingBottom: 40 }}>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t("flashcards.form.word") ?? "Word / Term"} *</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={newCard.front}
-                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, front: text }))}
-                  placeholder="e.g. Hello"
-                />
+            <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <TextInput style={styles.input} placeholder="Word (Front)" value={newCard.front} onChangeText={t => setNewCard({ ...newCard, front: t })} />
+              <TextInput style={[styles.input, { height: 80 }]} placeholder="Definition (Back)" multiline value={newCard.back} onChangeText={t => setNewCard({ ...newCard, back: t })} />
+              <TextInput style={styles.input} placeholder="Example Sentence" value={newCard.exampleSentence} onChangeText={t => setNewCard({ ...newCard, exampleSentence: t })} />
+              <View style={styles.switchRow}>
+                <Text>Public Card?</Text>
+                <Switch value={newCard.isPublic} onValueChange={v => setNewCard({ ...newCard, isPublic: v })} trackColor={{ true: '#4ECDC4', false: '#eee' }} />
               </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t("flashcards.form.definition") ?? "Definition / Meaning"} *</Text>
-                <TextInput
-                  style={[styles.textInput, styles.multilineInput]}
-                  value={newCard.back}
-                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, back: text }))}
-                  placeholder="e.g. Used as a greeting"
-                  multiline
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t("flashcards.form.example") ?? "Example Sentence"}</Text>
-                <TextInput
-                  style={[styles.textInput, styles.multilineInput]}
-                  value={newCard.exampleSentence}
-                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, exampleSentence: text }))}
-                  placeholder="e.g. Hello, how are you?"
-                  multiline
-                />
-              </View>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t("flashcards.form.tags") ?? "Tags"}</Text>
-                <TextInput
-                  style={styles.textInput}
-                  value={newCard.tags}
-                  onChangeText={(text) => setNewCard((prev) => ({ ...prev, tags: text }))}
-                  placeholder="e.g. greeting, basic, noun (comma separated)"
-                />
-              </View>
-
-              <View style={styles.switchContainer}>
-                <Text style={styles.switchLabel}>{t("flashcards.form.isPublic") ?? "Make Public?"}</Text>
-                <Switch
-                  value={newCard.isPublic}
-                  onValueChange={(val) => setNewCard((prev) => ({ ...prev, isPublic: val }))}
-                  trackColor={{ false: "#767577", true: "#4ECDC4" }}
-                  thumbColor={newCard.isPublic ? "#FFFFFF" : "#f4f3f4"}
-                />
-              </View>
-              <Text style={styles.switchHint}>
-                {newCard.isPublic
-                  ? t("flashcards.publicHint") ?? "Everyone in this lesson can see this card."
-                  : t("flashcards.privateHint") ?? "Only you can see this card."}
-              </Text>
-
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>{t("flashcards.form.image") ?? "Image"}</Text>
-                <TouchableOpacity style={styles.imageButton} onPress={pickImage}>
-                  {newCard.imageUrl ? (
-                    <Image source={{ uri: newCard.imageUrl }} style={styles.previewImage} />
-                  ) : (
-                    <View style={styles.imagePlaceholder}>
-                      <Icon name="add-a-photo" size={24} color="#666" />
-                      <Text style={styles.imageButtonText}>{t("flashcards.form.addImage") ?? "Select Image"}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
-
+              <TouchableOpacity style={styles.imageBtn} onPress={pickImage}>
+                {newCard.imageUrl ? <Image source={{ uri: newCard.imageUrl }} style={{ width: '100%', height: 150, borderRadius: 8 }} /> : <Text>+ Add Image</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtnFull} onPress={handleCreateCard}>
+                {isCreating ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Create Card</Text>}
+              </TouchableOpacity>
             </ScrollView>
           </SafeAreaView>
         </KeyboardAvoidingView>
@@ -598,482 +486,75 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   );
 };
 
-const getQualityColor = (q: number) => {
-  switch (q) {
-    case 1: return "#FF6B6B";
-    case 2: return "#FF9800";
-    case 3: return "#FFC107";
-    case 4: return "#8BC34A";
-    case 5: return "#4CAF50";
-    default: return "#E0E0E0";
-  }
-}
-
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8F9FA",
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: "#FFFFFF",
-    borderBottomWidth: 1,
-    borderBottomColor: "#E0E0E0",
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#333",
-  },
-  lessonNameText: {
-    fontSize: 12,
-    color: '#0097A7',
-    fontWeight: '600',
-    marginTop: 4
-  },
-  selectLessonButton: {
-    backgroundColor: '#4ECDC4',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginTop: 20,
-  },
-  selectLessonButtonText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-  },
-  searchSection: {
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: "#FFFFFF",
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#F0F2F5",
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 12,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    fontSize: 16,
-    color: "#333",
-  },
-  studyModeSection: {
-    padding: 20,
-    backgroundColor: "#FFFFFF",
-    marginBottom: 10,
-  },
-  listHeaderContainer: {
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#333",
-    marginBottom: 10,
-  },
-  dueCount: {
-    fontWeight: '400',
-    color: '#FF6B6B',
-    fontSize: 14
-  },
-  studyModeButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-  },
-  studyModeButton: {
-    flexDirection: 'row',
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    padding: 15,
-    borderRadius: 12,
-    flex: 0.48,
-    borderWidth: 1,
-    borderColor: '#EEEEEE',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10
-  },
-  studyModeText: {
-    fontSize: 15,
-    fontWeight: "600",
-    color: "#333",
-  },
-  listContentContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  flashcardItem: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  cardHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 10,
-  },
-  cardWord: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#333",
-  },
-  badgesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4
-  },
-  tagContainer: {
-    backgroundColor: '#E8F5E9',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-  },
-  tagText: {
-    fontSize: 11,
-    color: '#2E7D32',
-    fontWeight: '500'
-  },
-  publicBadge: { backgroundColor: '#E3FDFD' },
-  publicText: { color: '#0097A7' },
-  privateBadge: { backgroundColor: '#FFEBEE' },
-  privateText: { color: '#C62828' },
+  container: { flex: 1, backgroundColor: "#F8F9FA" },
+  studyContainer: { flex: 1, backgroundColor: "#2C3E50" },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF' },
+  title: { fontSize: 18, fontWeight: '700' },
+  lessonNameText: { color: '#4ECDC4', fontWeight: '600', fontSize: 13 },
+  scrollContent: { padding: 16 },
 
-  cardImage: {
-    width: "100%",
-    height: 160,
-    borderRadius: 12,
-    marginBottom: 12,
-    backgroundColor: '#F5F5F5',
-    resizeMode: 'cover'
-  },
-  cardDefinition: {
-    fontSize: 15,
-    color: "#444",
-    lineHeight: 22,
-    marginBottom: 8,
-  },
-  cardExample: {
-    fontSize: 14,
-    color: "#666",
-    fontStyle: "italic",
-    marginBottom: 12,
-    borderLeftWidth: 2,
-    borderLeftColor: '#4ECDC4',
-    paddingLeft: 8
-  },
-  cardFooter: {
-    borderTopWidth: 1,
-    borderTopColor: '#F5F5F5',
-    paddingTop: 8,
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-  lastReviewText: {
-    fontSize: 12,
-    color: "#999",
-  },
-  studyHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    backgroundColor: "#FFFFFF",
-  },
-  studyProgress: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  studyCard: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  studyContentWrap: {
-    alignItems: 'center',
-    width: '100%',
-  },
-  studyImage: {
-    width: width - 60,
-    height: 220,
-    borderRadius: 16,
-    marginBottom: 20,
-    resizeMode: 'contain'
-  },
-  studyWord: {
-    fontSize: 34,
-    fontWeight: "800",
-    color: "#333",
-    textAlign: "center",
-    marginBottom: 15,
-  },
-  studyPrompt: {
-    fontSize: 16,
-    color: "#888",
-    textAlign: "center",
-  },
-  answerSection: {
-    marginTop: 40,
-    padding: 24,
-    backgroundColor: "#F8FAFC",
-    borderRadius: 16,
-    width: "100%",
-    borderWidth: 1,
-    borderColor: '#E2E8F0'
-  },
-  answerLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    color: "#4ECDC4",
-    marginBottom: 8,
-    textTransform: 'uppercase'
-  },
-  answerText: {
-    fontSize: 20,
-    color: "#333",
-    marginBottom: 12,
-    fontWeight: '500'
-  },
-  exampleText: {
-    fontSize: 15,
-    color: "#666",
-    fontStyle: "italic",
-    lineHeight: 22
-  },
-  studyActions: {
-    padding: 20,
-    backgroundColor: "#FFFFFF",
-    borderTopWidth: 1,
-    borderTopColor: '#F0F0F0'
-  },
-  showAnswerButton: {
-    backgroundColor: "#4ECDC4",
-    paddingVertical: 16,
-    borderRadius: 16,
-    alignItems: "center",
-    shadowColor: "#4ECDC4",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  showAnswerText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  qualityContainer: {
-    alignItems: 'center',
-    width: '100%'
-  },
-  rateText: {
-    marginBottom: 12,
-    color: '#666',
-    fontSize: 14
-  },
-  qualityButtonsRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: '100%'
-  },
-  qualityButton: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    justifyContent: 'center',
-    alignItems: "center",
-  },
-  qualityButtonDisabled: {
-    opacity: 0.5,
-  },
-  qualityText: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#FFFFFF",
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  selectorContainer: {
-    width: '85%',
-    backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
-    maxHeight: '60%'
-  },
-  lessonOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-    width: '100%'
-  },
-  lessonOptionText: {
-    fontSize: 16,
-    color: '#333'
-  },
-  createNewOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 15,
-    width: '100%',
-    justifyContent: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    marginTop: 5
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-  },
-  modalHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#F0F0F0",
-  },
-  modalTitle: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: "#333",
-  },
-  cancelButton: {
-    fontSize: 16,
-    color: "#666"
-  },
-  saveButton: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#4ECDC4",
-  },
-  modalContent: {
-    flex: 1,
-    padding: 20,
-  },
-  inputGroup: {
-    marginBottom: 24,
-  },
-  inputLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: "#333",
-  },
-  multilineInput: {
-    height: 100,
-    textAlignVertical: "top",
-  },
-  switchContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 8,
-    backgroundColor: '#F9FAFB',
-    padding: 12,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#E5E7EB'
-  },
-  switchLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#333",
-  },
-  switchHint: {
-    fontSize: 12,
-    color: '#888',
-    marginBottom: 24,
-    paddingHorizontal: 4
-  },
-  imageButton: {
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  imagePlaceholder: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#F9FAFB",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderStyle: "dashed",
-    paddingVertical: 30,
-    borderRadius: 10
-  },
-  imageButtonText: {
-    marginLeft: 10,
-    fontSize: 15,
-    color: "#666",
-    fontWeight: '500'
-  },
-  previewImage: {
-    width: "100%",
-    height: 200,
-    borderRadius: 10,
-    resizeMode: 'cover'
-  },
-  emptyState: {
-    padding: 40,
-    alignItems: 'center'
-  },
-  emptyStateText: {
-    color: '#999',
-    textAlign: 'center',
-    fontSize: 15
-  }
+  statsCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#FFF', padding: 20, borderRadius: 16, marginBottom: 24, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 2 },
+  statsLabel: { color: '#95A5A6', fontSize: 12, textTransform: 'uppercase', fontWeight: '700' },
+  statsValue: { fontSize: 32, fontWeight: '700', color: '#333' },
+  studyBtn: { backgroundColor: '#4ECDC4', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, flexDirection: 'row', alignItems: 'center' },
+  studyBtnText: { color: '#FFF', fontWeight: '700', marginRight: 5 },
+
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#2C3E50', marginRight: 10 },
+  subHint: { fontSize: 13, color: '#7F8C8D', marginBottom: 10 },
+  badge: { backgroundColor: '#D1F2EB', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  badgeText: { color: '#16A085', fontSize: 10, fontWeight: '700' },
+
+  flashcardItem: { flexDirection: 'row', backgroundColor: '#FFF', borderRadius: 12, padding: 12, alignItems: 'center', marginBottom: 8, shadowColor: '#000', shadowOpacity: 0.03, shadowRadius: 5 },
+  cardListImage: { width: 50, height: 50, borderRadius: 8, backgroundColor: '#F0F3F4', marginRight: 12 },
+  cardListContent: { flex: 1 },
+  cardWord: { fontSize: 16, fontWeight: '600', color: '#333' },
+  cardDefinition: { fontSize: 13, color: '#7F8C8D', marginTop: 2 },
+  cardStatusStrip: { width: 10, alignItems: 'center' },
+  dueDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#E74C3C' },
+  emptyBox: { padding: 20, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#BDC3C7', borderRadius: 12 },
+  emptyText: { color: '#95A5A6' },
+
+  // Study Mode Styles
+  studyHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, paddingTop: 40 },
+  progressText: { color: 'rgba(255,255,255,0.7)', fontSize: 16, fontWeight: '600' },
+  cardContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', perspective: 1000 },
+  cardWrapper: { width: width - 40, height: 400 },
+  cardFace: { position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden', borderRadius: 20, padding: 24, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 10, elevation: 10 },
+  cardFront: { backgroundColor: '#FFF' },
+  cardBack: { backgroundColor: '#ECF0F1' },
+  studyLabel: { position: 'absolute', top: 20, fontSize: 12, fontWeight: '700', color: '#BDC3C7', letterSpacing: 1 },
+  studyImage: { width: 120, height: 120, borderRadius: 60, marginBottom: 20, backgroundColor: '#F5F5F5' },
+  studyFrontText: { fontSize: 32, fontWeight: '700', color: '#2C3E50', textAlign: 'center' },
+  studyBackText: { fontSize: 24, color: '#34495E', textAlign: 'center', lineHeight: 32 },
+  studyExample: { fontSize: 16, color: '#7F8C8D', fontStyle: 'italic', textAlign: 'center', marginTop: 10 },
+  exampleBox: { marginTop: 20, borderTopWidth: 1, borderTopColor: '#BDC3C7', paddingTop: 20, width: '100%' },
+  tapHint: { position: 'absolute', bottom: 20, color: '#BDC3C7', fontSize: 12 },
+
+  controlsContainer: { padding: 20, paddingBottom: 40 },
+  showAnswerBtn: { backgroundColor: '#34495E', paddingVertical: 18, borderRadius: 12, alignItems: 'center' },
+  showAnswerText: { color: '#FFF', fontWeight: '700', letterSpacing: 1 },
+  ankiButtons: { flexDirection: 'row', justifyContent: 'space-between' },
+  ankiBtn: { flex: 1, marginHorizontal: 4, paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
+  ankiBtnLabel: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+  ankiBtnSub: { color: 'rgba(255,255,255,0.8)', fontSize: 10, marginTop: 2 },
+
+  // Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  selectorContainer: { width: '85%', backgroundColor: '#FFF', borderRadius: 16, padding: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 15 },
+  lessonOption: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F5F5F5', flexDirection: 'row', justifyContent: 'space-between' },
+  lessonOptionText: { fontSize: 16, color: '#333' },
+  createNewOption: { flexDirection: 'row', alignItems: 'center', marginTop: 15, paddingVertical: 10 },
+
+  modalContainer: { flex: 1, backgroundColor: '#FFF' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+  input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 16 },
+  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  imageBtn: { height: 150, backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderStyle: 'dashed', borderRadius: 8, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  saveBtnFull: { backgroundColor: '#4ECDC4', padding: 16, borderRadius: 12, alignItems: 'center' },
+  saveBtnText: { color: '#FFF', fontWeight: '700', fontSize: 16 }
 });
 
 export default VocabularyFlashcardsScreen;

@@ -13,23 +13,22 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface LessonQuestionRepository extends JpaRepository<LessonQuestion, UUID> {
-    Page<LessonQuestion> findByLessonIdAndLanguageCodeAndIsDeletedFalse(UUID lessonId, String languageCode, Pageable pageable);
+    Page<LessonQuestion> findByLesson_LessonIdAndLanguageCodeAndIsDeletedFalse(UUID lessonId, String languageCode, Pageable pageable);
 
     Optional<LessonQuestion> findByLessonQuestionIdAndIsDeletedFalse(UUID id);
 
-    List<LessonQuestion> findByLessonIdAndIsDeletedFalse(UUID lessonId);
+    List<LessonQuestion> findByLesson_LessonIdAndIsDeletedFalse(UUID lessonId);
 
     @Modifying
     @Query("UPDATE LessonQuestion lq SET lq.isDeleted = true, lq.deletedAt = CURRENT_TIMESTAMP WHERE lq.lessonQuestionId = :id AND lq.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
 
-    long countByLessonIdAndIsDeletedFalse(UUID lessonId);
+    // long countByLessonIdAndIsDeletedFalse(UUID lessonId);
 
-    long countByLessonId(UUID lessonId);
+    long countByLesson_LessonId(UUID lessonId);
 
     long countByIsDeletedFalse();
 
-
-    List<LessonQuestion> findByLessonIdOrderByOrderIndex(UUID lessonId);
+    List<LessonQuestion> findByLesson_LessonIdOrderByOrderIndex(UUID lessonId);
 
 }

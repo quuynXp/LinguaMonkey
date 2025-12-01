@@ -16,23 +16,38 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface CourseRepository extends JpaRepository<Course, UUID> {
-    Page<Course> findByTitleContainingIgnoreCaseAndLanguageCodeAndIsDeletedFalse(String title, String languageCode, Pageable pageable);
+    
+    // 1. Cập nhật để tìm kiếm theo languageCode của latestPublicVersion
+    @Query("SELECT c FROM Course c WHERE LOWER(c.title) LIKE LOWER(CONCAT('%', :title, '%')) " +
+           "AND c.latestPublicVersion.languageCode = :languageCode " +
+           "AND c.isDeleted = false")
+    Page<Course> findByTitleContainingIgnoreCaseAndLanguageCodeAndIsDeletedFalse(@Param("title") String title, @Param("languageCode") String languageCode, Pageable pageable);
+    
     Optional<Course> findByCourseIdAndIsDeletedFalse(UUID courseId);
     Page<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId, Pageable pageable);
-    Page<Course> findByTypeAndIsDeletedFalse(CourseType type, Pageable pageable);
     List<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId);
-    List<Course> findTop50ByThumbnailUrlIsNullAndCreatedAtBefore(OffsetDateTime threshold);
+    
+    // 5. Cập nhật để tìm kiếm theo type của latestPublicVersion (Sử dụng HQL)
+    // NOTE: Removed the derived query method 'findByTypeAndIsDeletedFalse' which caused the error.
+    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.type = :type AND c.isDeleted = false")
+    Page<Course> findCoursesByTypeAndIsDeletedFalse(@Param("type") CourseType type, Pageable pageable);
+    
+    // Cập nhật để truy vấn latestPublicVersion.thumbnailUrl
+    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.thumbnailUrl IS NULL AND c.createdAt < :threshold")
+    List<Course> findTop50ByThumbnailUrlIsNullAndCreatedAtBefore(@Param("threshold") OffsetDateTime threshold);
 
-    // FIX: Sử dụng CAST(... AS VARCHAR) để tránh lỗi "could not determine data type" của Postgres
+    // 2. Sửa Native Query: Truy vấn qua latestPublicVersion_id (đã join ngầm)
     @Query(value = """
-        SELECT * FROM courses c WHERE c.is_deleted = false 
+        SELECT c.* FROM courses c 
+        JOIN course_versions cv ON c.latest_public_version_id = cv.version_id
+        WHERE c.is_deleted = false 
         AND (
             CAST(:languageCode AS VARCHAR) IS NULL 
-            OR c.language_code = :languageCode
+            OR cv.language_code = :languageCode
         ) 
         AND (
             CAST(:proficiency AS VARCHAR) IS NULL 
-            OR c.difficulty_level = :proficiency
+            OR cv.difficulty_level = :proficiency
         ) 
         AND (
             c.course_id NOT IN (:excluded)
@@ -46,16 +61,25 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
             @Param("excluded") List<UUID> excluded,
             @Param("limit") int limit);
 
+    // 3. Cập nhật để tìm kiếm theo languageCode của latestPublicVersion
+    @Query("SELECT c FROM Course c WHERE LOWER(c.title) LIKE LOWER(CONCAT('%', :title, '%')) " +
+           "AND c.latestPublicVersion.languageCode = :languageCode " +
+           "AND c.approvalStatus = :approvalStatus " +
+           "AND c.isDeleted = false")
     Page<Course> findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
-            String title, String languageCode, CourseApprovalStatus approvalStatus, Pageable pageable);
+            @Param("title") String title, @Param("languageCode") String languageCode, @Param("approvalStatus") CourseApprovalStatus approvalStatus, Pageable pageable);
 
-
+    // 4. Cập nhật để tìm kiếm theo difficultyLevel của latestPublicVersion
+    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.difficultyLevel IN :difficultyLevel " +
+           "AND c.courseId NOT IN :courseId " +
+           "AND c.approvalStatus = :approvalStatus " +
+           "AND c.isDeleted = false")
     Page<Course> findByDifficultyLevelInAndCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
-            List<String> difficultyLevel, 
-                List<UUID> courseId, 
-                CourseApprovalStatus approvalStatus, 
-                Pageable pageable
-            );
+            @Param("difficultyLevel") List<String> difficultyLevel, 
+            @Param("courseId") List<UUID> courseId, 
+            @Param("approvalStatus") CourseApprovalStatus approvalStatus, 
+            Pageable pageable
+    );
 
     Page<Course> findByCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
             List<UUID> courseId, 
@@ -64,18 +88,17 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
             Pageable pageable
     );
 
-    Page<Course> findByTypeAndApprovalStatusAndIsDeletedFalse(CourseType type, CourseApprovalStatus approvalStatus, Pageable pageable);
+    // 5. Cập nhật để tìm kiếm theo type của latestPublicVersion (Sử dụng HQL)
+    @Query("SELECT c FROM Course c WHERE c.latestPublicVersion.type = :type " +
+           "AND c.approvalStatus = :approvalStatus " +
+           "AND c.isDeleted = false")
+    Page<Course> findByTypeAndApprovalStatusAndIsDeletedFalse(@Param("type") CourseType type, @Param("approvalStatus") CourseApprovalStatus approvalStatus, Pageable pageable);
 
-    @Query("""
-      SELECT c FROM Course c JOIN CourseDiscount d ON c.courseId = d.courseId 
-      WHERE c.isDeleted = false AND d.isActive = true AND d.startDate <= CURRENT_TIMESTAMP AND d.endDate >= CURRENT_TIMESTAMP 
-      """)
-    Page<Course> findDiscountedCourses(Pageable pageable);
-
+    // 6. Giữ nguyên (description vẫn nằm trong latestPublicVersion)
     @Query("SELECT c FROM Course c WHERE (" +
-            "LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
-            "LOWER(c.latestPublicVersion.description) LIKE LOWER(CONCAT('%', :keyword, '%'))" +
-            ") AND c.isDeleted = false AND c.approvalStatus = com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED " +
-            "ORDER BY c.createdAt DESC")
+           "LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+           "LOWER(c.latestPublicVersion.description) LIKE LOWER(CONCAT('%', :keyword, '%'))" +
+           ") AND c.isDeleted = false AND c.approvalStatus = com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED " +
+           "ORDER BY c.createdAt DESC")
     Page<Course> searchCoursesByKeyword(@Param("keyword") String keyword, Pageable pageable);
 }

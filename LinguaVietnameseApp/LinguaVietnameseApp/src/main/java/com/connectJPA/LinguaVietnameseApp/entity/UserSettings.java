@@ -49,4 +49,8 @@ public class UserSettings extends BaseEntity {
     @Column(name = "progress_sharing", nullable = false)
     @Builder.Default
     private boolean progressSharing = false;
+
+    @Column(name = "search_privacy", nullable = false)
+    @Builder.Default
+    private boolean searchPrivacy = true;
 }

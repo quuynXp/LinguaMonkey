@@ -15,4 +15,7 @@ public interface DailyChallengeRepository extends JpaRepository<DailyChallenge, 
                                                              @Param("limit") int limit);
 
     List<DailyChallenge> findByIsDeletedFalse();
+
+    // Thêm query lọc theo ngôn ngữ và chưa bị xóa
+    List<DailyChallenge> findByLanguageCodeAndIsDeletedFalse(String languageCode);
 }

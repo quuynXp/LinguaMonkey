@@ -38,13 +38,13 @@ public class UserSettingsController {
         UserSettings settings = userSettingsRepository.findById(userId)
                 .orElseGet(() -> createDefaultSettings(userId));
 
-        // Manual mapping for safety (or use Mapper)
         settings.setStudyReminders(request.isStudyReminders());
         settings.setStreakReminders(request.isStreakReminders());
         settings.setSoundEnabled(request.isSoundEnabled());
         settings.setVibrationEnabled(request.isVibrationEnabled());
         settings.setProfileVisibility(request.isProfileVisibility());
         settings.setProgressSharing(request.isProgressSharing());
+        settings.setSearchPrivacy(request.isSearchPrivacy());
 
         return AppApiResponse.<UserSettings>builder()
                 .code(200)
@@ -64,6 +64,7 @@ public class UserSettingsController {
                 .vibrationEnabled(true)
                 .profileVisibility(true)
                 .progressSharing(false)
+                .searchPrivacy(true)
                 .build();
         
         return userSettingsRepository.save(defaultSettings);

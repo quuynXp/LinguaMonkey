@@ -29,6 +29,8 @@ public interface CourseVersionLessonRepository extends JpaRepository<CourseVersi
     @Modifying
     void deleteAllByCourseVersion_VersionId(UUID versionId);
 
+    long countByCourseVersion_VersionId(UUID versionId);
+
     // Hoặc dùng HQL nếu cần:
     // @Transactional
     // @Modifying

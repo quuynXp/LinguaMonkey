@@ -2,6 +2,8 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.LessonHierarchicalResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.LessonProgressWrongItemResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
@@ -14,6 +16,7 @@ import com.connectJPA.LinguaVietnameseApp.mapper.LessonMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomMemberRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoRepository;
+import com.connectJPA.LinguaVietnameseApp.service.LessonProgressWrongItemService;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -27,7 +30,6 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.RequestHeader;
 
 import java.util.List;
 import java.util.Locale;
@@ -47,6 +49,7 @@ public class LessonController {
     private final LessonMapper lessonMapper;
     private final LessonRepository lessonRepository;
     private final VideoRepository videoRepository;
+    private final LessonProgressWrongItemService wrongItemService;
 
     @Operation(summary = "Get all lessons", description = "Retrieve a paginated list of lessons with optional filtering by name, language, EXP reward, category, subcategory, course, or series")
     @ApiResponses({
@@ -78,6 +81,43 @@ public class LessonController {
                     .code(e.getErrorCode().getStatusCode().value())
                     .message(messageSource.getMessage(e.getErrorCode().getMessage(), null, locale))
                     .build();
+        }
+    }
+
+    // --- NEW ENDPOINT: GET TREE STRUCTURE ---
+    @Operation(summary = "Get lesson tree structure by skill", description = "Returns hierarchical data: Category -> SubCategory -> Lessons")
+    @GetMapping("/tree")
+    public AppApiResponse<List<LessonHierarchicalResponse>> getLessonsTreeBySkill(
+            @RequestParam SkillType skillType,
+            @RequestParam(defaultValue = "en") String languageCode,
+            Locale locale) {
+        try {
+            List<LessonHierarchicalResponse> tree = lessonService.getLessonsTreeBySkill(skillType, languageCode);
+            return AppApiResponse.<List<LessonHierarchicalResponse>>builder()
+                    .code(200)
+                    .message("Success")
+                    .result(tree)
+                    .build();
+        } catch (Exception e) {
+            return AppApiResponse.<List<LessonHierarchicalResponse>>builder()
+                    .code(500)
+                    .message(e.getMessage())
+                    .build();
+        }
+    }
+
+    @GetMapping("/{lessonId}/wrong-items")
+    public AppApiResponse<Page<LessonProgressWrongItemResponse>> getWrongItems(
+            @PathVariable UUID lessonId,
+            @RequestParam UUID userId,
+            Pageable pageable) {
+        try {
+             Page<LessonProgressWrongItemResponse> items = wrongItemService.getAllLessonProgressWrongItems(lessonId, userId, null, pageable);
+             return AppApiResponse.<Page<LessonProgressWrongItemResponse>>builder()
+                    .code(200).message("OK").result(items).build();
+        } catch (Exception e) {
+             return AppApiResponse.<Page<LessonProgressWrongItemResponse>>builder()
+                    .code(500).message(e.getMessage()).build();
         }
     }
 

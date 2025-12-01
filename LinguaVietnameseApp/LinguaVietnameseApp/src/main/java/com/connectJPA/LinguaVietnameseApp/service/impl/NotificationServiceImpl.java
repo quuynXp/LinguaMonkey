@@ -159,7 +159,23 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
 
-        AndroidConfig androidConfig = AndroidConfig.builder().setNotification(AndroidNotification.builder().setSound("notification").build()).build();
+        // --- CRITICAL FIX: Add Priority and Channel ID for Background/Killed State ---
+        AndroidConfig androidConfig = AndroidConfig.builder()
+                .setPriority(AndroidConfig.Priority.HIGH) // Bắt buộc để đánh thức app khi bị kill
+                .setTtl(3600 * 1000) // Time to live 1 giờ
+                .setNotification(AndroidNotification.builder()
+                        .setSound("default")
+                        .setChannelId("default_channel_id") // Phải khớp với FE setup
+                        .setClickAction("FLUTTER_NOTIFICATION_CLICK") // Chuẩn chung cho hybrid app
+                        .build())
+                .build();
+        
+        ApnsConfig apnsConfig = ApnsConfig.builder()
+                .setAps(Aps.builder()
+                        .setSound("default")
+                        .setContentAvailable(true)
+                        .build())
+                .build();
 
         for (UserFcmToken token : tokens) {
             try {
@@ -169,7 +185,8 @@ public class NotificationServiceImpl implements NotificationService {
                                 .setTitle(request.getTitle())
                                 .setBody(request.getContent())
                                 .build())
-                        .setAndroidConfig(androidConfig);
+                        .setAndroidConfig(androidConfig)
+                        .setApnsConfig(apnsConfig);
 
                 if (request.getPayload() != null && !request.getPayload().isEmpty()) {
                     Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
@@ -180,7 +197,6 @@ public class NotificationServiceImpl implements NotificationService {
                 log.info("Successfully sent push notification to user {} with token ending in {}", request.getUserId(), token.getFcmToken().substring(token.getFcmToken().length() - 5));
 
             } catch (FirebaseMessagingException e) {
-                // LOG LỖI ĐẦY ĐỦ BAO GỒM STACK TRACE (e)
                 log.error("FirebaseMessagingException sending to user {} token {}. Code: {}. Cause: {}", 
                     request.getUserId(), 
                     token.getFcmToken().substring(token.getFcmToken().length() - 5),
@@ -188,7 +204,6 @@ public class NotificationServiceImpl implements NotificationService {
                     e.getCause() != null ? e.getCause().getMessage() : "N/A",
                     e); 
             } catch (Exception e) {
-                // LOG LỖI ĐẦY ĐỦ BAO GỒM STACK TRACE (e)
                 log.error("General Exception sending push to user {}: {}", request.getUserId(), e.getMessage(), e);
             }
         }

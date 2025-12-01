@@ -4,7 +4,6 @@ import {
     Alert,
     FlatList,
     KeyboardAvoidingView,
-    Modal,
     Platform,
     Text,
     TextInput,
@@ -15,7 +14,7 @@ import {
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import instance from "../../api/axiosClient";
@@ -25,6 +24,7 @@ import { RoomPurpose } from "../../types/enums";
 import { RoomResponse, MemberResponse, AppApiResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useRoute, RouteProp } from '@react-navigation/native';
 
 type UIMessage = {
     id: string;
@@ -51,6 +51,11 @@ interface ChatInnerViewProps {
     onMinimizeBubble?: () => void;
 }
 
+type ChatInnerViewRouteParams = {
+    roomId: string;
+    initialFocusMessageId?: string | null;
+};
+
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
     initialRoomName,
@@ -65,13 +70,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const [inputText, setInputText] = useState("");
     const [isUploading, setIsUploading] = useState(false);
+
+    // Translation State
     const [localTranslations, setLocalTranslations] = useState<any>({});
     const [messagesToggleState, setMessagesToggleState] = useState<any>({});
     const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
 
-    // Edit Mode State
+    const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
+
+    const route = useRoute<RouteProp<Record<string, ChatInnerViewRouteParams>, string>>();
+    const initialFocusMessageId = (route?.params as any)?.initialFocusMessageId ?? null;
 
     const loadMessages = useChatStore(s => s.loadMessages);
     const sendMessage = useChatStore(s => s.sendMessage);
@@ -83,7 +93,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const serverMessages = messagesByRoom[roomId] || [];
     const flatListRef = useRef<FlatList>(null);
 
-    // --- Queries ---
     const { data: roomInfo } = useQuery({
         queryKey: ['roomInfo', roomId],
         queryFn: async () => (await instance.get<AppApiResponse<RoomResponse>>(`/api/v1/rooms/${roomId}`)).data.result,
@@ -96,7 +105,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         enabled: !!roomId,
     });
 
-    // --- Display Logic ---
     const targetMember = useMemo(() => {
         if (!members.length) return null;
         return members.find(m => m.userId !== currentUserId);
@@ -116,7 +124,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${sentAt}`;
             const senderInfo = members.find(m => m.userId === senderId);
-
             const currentView = messagesToggleState[messageId] || 'original';
             const localTrans = localTranslations[messageId]?.[currentView];
             const displayedText = (currentView !== 'original' && localTrans) ? localTrans : (msg.content || '');
@@ -141,11 +148,27 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     }, [serverMessages, members, localTranslations, messagesToggleState, translationTargetLang]);
 
     useEffect(() => { loadMessages(roomId); }, [roomId]);
-    useEffect(() => { if (messages.length) flatListRef.current?.scrollToEnd({ animated: true }); }, [messages.length]);
 
-    // --- Read Receipt Logic ---
     useEffect(() => {
-        // Mark unread messages from others as read when entering/updating view
+        if (!messages.length) return;
+
+        if (initialFocusMessageId) {
+            const idx = messages.findIndex(m => m.id === initialFocusMessageId);
+            if (idx >= 0) {
+                setTimeout(() => {
+                    flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
+                    setHighlightedMessageId(initialFocusMessageId);
+                    setTimeout(() => setHighlightedMessageId(null), 3000);
+                }, 500);
+            } else {
+                loadMessages(roomId, 0, 50);
+            }
+        } else {
+            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
+        }
+    }, [messages.length, initialFocusMessageId]);
+
+    useEffect(() => {
         messages.forEach(msg => {
             if (msg.sender === 'other' && !msg.isRead) {
                 markMessageAsRead(roomId, msg.id);
@@ -153,10 +176,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         });
     }, [messages.length, roomId]);
 
-    // --- Actions ---
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
-
         if (editingMessage) {
             handleUpdateMessage();
         } else {
@@ -190,59 +211,36 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         );
     };
 
-    // --- Edit / Delete Logic ---
     const handleLongPress = (item: UIMessage) => {
-        if (item.sender !== 'user') return; // Only edit own messages
-
+        if (item.sender !== 'user') return;
         const sentTime = new Date(item.sentAt).getTime();
         const now = new Date().getTime();
-        const diffMinutes = (now - sentTime) / (1000 * 60);
-
-        if (diffMinutes > 5) {
+        if ((now - sentTime) / (1000 * 60) > 5) {
             Alert.alert(t("chat.options"), t("chat.cannot_edit_expired"));
             return;
         }
-
-        Alert.alert(
-            t("chat.message_options"),
-            undefined,
-            [
-                { text: t("common.cancel"), style: "cancel" },
-                {
-                    text: t("common.edit"),
-                    onPress: () => {
-                        setEditingMessage(item);
-                        setInputText(item.text);
-                    }
-                },
-                {
-                    text: t("common.delete"),
-                    style: "destructive",
-                    onPress: () => {
-                        Alert.alert(
-                            t("chat.confirm_delete"),
-                            t("chat.delete_warning"),
-                            [
-                                { text: t("common.cancel"), style: "cancel" },
-                                {
-                                    text: t("common.delete"),
-                                    style: "destructive",
-                                    onPress: () => deleteMessage(roomId, item.id)
-                                }
-                            ]
-                        );
-                    }
+        Alert.alert(t("chat.message_options"), undefined, [
+            { text: t("common.cancel"), style: "cancel" },
+            { text: t("common.edit"), onPress: () => { setEditingMessage(item); setInputText(item.text); } },
+            {
+                text: t("common.delete"), style: "destructive", onPress: () => {
+                    Alert.alert(t("chat.confirm_delete"), t("chat.delete_warning"), [
+                        { text: t("common.cancel"), style: "cancel" },
+                        { text: t("common.delete"), style: "destructive", onPress: () => deleteMessage(roomId, item.id) }
+                    ]);
                 }
-            ]
-        );
+            }
+        ]);
     };
 
-    const handleCancelEdit = () => {
-        setEditingMessage(null);
-        setInputText("");
+    const handleCancelEdit = () => { setEditingMessage(null); setInputText(""); };
+
+    // Translation Logic
+    const changeLanguage = (lang: string) => {
+        setTranslationTargetLang(lang);
+        showToast({ message: t("translation.targetUpdated", { lang: lang.toUpperCase() }) });
     };
 
-    // --- Translation (Simplified) ---
     const { mutate: translateMutate } = useMutation({
         mutationFn: async ({ text, target, id }: any) => {
             setTranslatingMessageId(id);
@@ -250,19 +248,21 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             return { text: res.data.result.translated_text, id, target };
         },
         onSuccess: (data) => {
-            setLocalTranslations((prev: any) => ({
-                ...prev,
-                [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text }
-            }));
+            setLocalTranslations((prev: any) => ({ ...prev, [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text } }));
             setMessagesToggleState((prev: any) => ({ ...prev, [data.id]: data.target }));
             setTranslatingMessageId(null);
         },
-        onError: () => setTranslatingMessageId(null)
+        onError: () => {
+            setTranslatingMessageId(null);
+            showToast({ message: t("error.translation"), type: "error" });
+        }
     });
 
     const handleTranslate = (id: string, text: string) => {
         if (translatingMessageId === id) return;
         const currentView = messagesToggleState[id] || 'original';
+
+        // Toggle Logic: If translated -> revert to original. If original -> translate.
         if (currentView !== 'original') {
             setMessagesToggleState((p: any) => ({ ...p, [id]: 'original' }));
         } else if (localTranslations[id]?.[translationTargetLang]) {
@@ -274,35 +274,27 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const renderActiveDot = (userId: string, style: any) => {
         const member = members.find(m => m.userId === userId);
-        const isOnline = (member as any)?.isOnline || false;
-
-        if (isOnline) {
-            return <View style={style} />;
-        }
-        return null;
+        return (member as any)?.isOnline ? <View style={style} /> : null;
     };
 
     return (
         <ScreenLayout style={styles.container}>
-            {/* Header */}
             <View style={[styles.header, isBubbleMode && styles.bubbleHeader]}>
-                {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && targetMember ? (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                        <View>
-                            <Text style={styles.avatar}>{targetMember.avatarUrl ? <Image source={{ uri: targetMember.avatarUrl }} style={{ width: 40, height: 40, borderRadius: 20 }} /> : '👤'}</Text>
-                            {renderActiveDot(targetMember.userId, styles.headerActiveDot)}
-                        </View>
-                        <View style={{ marginLeft: 10 }}>
-                            <Text style={styles.roomName} numberOfLines={1}>{displayRoomName}</Text>
-                            <Text style={styles.status}>{(targetMember as any).isOnline ? "Active now" : "Offline"}</Text>
-                        </View>
-                    </View>
-                ) : (
-                    <View style={styles.headerInfo}>
-                        <Text style={styles.roomName} numberOfLines={1}>{displayRoomName}</Text>
-                        <Text style={styles.status}>{members.length} {t('group.members')}</Text>
-                    </View>
-                )}
+                <View style={styles.headerInfo}>
+                    <Text style={styles.roomName} numberOfLines={1}>{displayRoomName}</Text>
+                    <Text style={styles.status}>{members.length} {t('group.members')}</Text>
+                </View>
+
+                {/* Language Selector in Header */}
+                <View style={styles.langContainer}>
+                    {['vi', 'en'].map((lang) => (
+                        <TouchableOpacity key={lang} onPress={() => changeLanguage(lang)}>
+                            <Text style={[styles.langText, translationTargetLang === lang && styles.activeLangText]}>
+                                {lang.toUpperCase()}
+                            </Text>
+                        </TouchableOpacity>
+                    ))}
+                </View>
 
                 {isBubbleMode && (
                     <View style={styles.bubbleControls}>
@@ -316,64 +308,51 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
             </View>
 
-            {/* Messages */}
             <FlatList
                 ref={flatListRef}
                 data={messages}
                 keyExtractor={item => item.id}
                 style={styles.list}
+                onScrollToIndexFailed={(info) => {
+                    flatListRef.current?.scrollToOffset({ offset: info.averageItemLength * info.index, animated: true });
+                }}
                 renderItem={({ item }) => (
-                    <Pressable
-                        onLongPress={() => handleLongPress(item)}
-                        style={[styles.msgRow, item.sender === 'user' ? styles.rowUser : styles.rowOther]}
-                    >
+                    <Pressable onLongPress={() => handleLongPress(item)} style={[styles.msgRow, item.sender === 'user' ? styles.rowUser : styles.rowOther, highlightedMessageId === item.id && styles.highlighted]}>
                         {item.sender === 'other' && (
                             <View>
-                                {item.avatar ?
-                                    <Image source={{ uri: item.avatar }} style={styles.msgAvatarImg} /> :
-                                    <Text style={styles.avatar}>👤</Text>
-                                }
+                                {item.avatar ? <Image source={{ uri: item.avatar }} style={styles.msgAvatarImg} /> : <Text style={styles.avatar}>👤</Text>}
                                 {renderActiveDot(item.senderId, styles.avatarActiveDot)}
                             </View>
                         )}
                         <View style={styles.msgContent}>
                             {item.sender === 'other' && <Text style={styles.senderName}>{item.user}</Text>}
-
                             <View style={[styles.bubble, item.sender === 'user' ? styles.bubbleUser : styles.bubbleOther]}>
                                 {item.messageType === 'IMAGE' ? (
-                                    <Image
-                                        source={{ uri: item.mediaUrl || item.text }}
-                                        style={styles.msgImage}
-                                        resizeMode="cover"
-                                    />
+                                    <Image source={{ uri: item.mediaUrl || item.text }} style={styles.msgImage} resizeMode="cover" />
                                 ) : (
-                                    <Text style={[styles.text, item.sender === 'user' ? styles.textUser : styles.textOther]}>
-                                        {item.currentDisplay.text}
-                                    </Text>
+                                    <Text style={[styles.text, item.sender === 'user' ? styles.textUser : styles.textOther]}>{item.currentDisplay.text}</Text>
                                 )}
-                                {item.currentDisplay.isTranslatedView && (
-                                    <Text style={styles.transTag}>{item.currentDisplay.lang}</Text>
-                                )}
-                                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 }}>
-                                    <Text style={[styles.time, item.sender === 'user' ? styles.timeUser : styles.timeOther]}>
-                                        {item.timestamp}
-                                    </Text>
-                                    {item.sender === 'user' && (
-                                        <Icon
-                                            name={item.isRead ? "done-all" : "done"}
-                                            size={12}
-                                            color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"}
-                                            style={{ marginLeft: 4 }}
-                                        />
-                                    )}
+                                {item.currentDisplay.isTranslatedView && <Text style={styles.transTag}>{item.currentDisplay.lang}</Text>}
+                                <View style={styles.metaRow}>
+                                    <Text style={[styles.time, item.sender === 'user' ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
+                                    {item.sender === 'user' && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
                                 </View>
                             </View>
-
-                            {/* Translate Btn */}
                             {item.sender === 'other' && item.messageType === 'TEXT' && (
-                                <TouchableOpacity onPress={() => handleTranslate(item.id, item.text)} style={styles.transBtn}>
-                                    {translatingMessageId === item.id ? <ActivityIndicator size="small" /> :
-                                        <Icon name="translate" size={16} color="#6B7280" />}
+                                <TouchableOpacity
+                                    onPress={() => handleTranslate(item.id, item.text)}
+                                    style={styles.transBtn}
+                                    disabled={translatingMessageId === item.id}
+                                >
+                                    {translatingMessageId === item.id ? (
+                                        <ActivityIndicator size="small" color="#6B7280" />
+                                    ) : (
+                                        <Icon
+                                            name={item.currentDisplay.isTranslatedView ? "undo" : "translate"}
+                                            size={16}
+                                            color="#6B7280"
+                                        />
+                                    )}
                                 </TouchableOpacity>
                             )}
                         </View>
@@ -381,27 +360,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
             />
 
-            {/* Input */}
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 60}>
                 {editingMessage && (
                     <View style={styles.editBanner}>
                         <Text style={styles.editText}>{t("chat.editing_message")}</Text>
-                        <TouchableOpacity onPress={handleCancelEdit}>
-                            <Icon name="close" size={20} color="#6B7280" />
-                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleCancelEdit}><Icon name="close" size={20} color="#6B7280" /></TouchableOpacity>
                     </View>
                 )}
                 <View style={styles.inputArea}>
                     <TouchableOpacity onPress={handleSendMedia} disabled={isUploading || !!editingMessage} style={styles.attachBtn}>
                         {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="image" size={24} color={editingMessage ? "#CCC" : "#3B82F6"} />}
                     </TouchableOpacity>
-                    <TextInput
-                        style={styles.input}
-                        value={inputText}
-                        onChangeText={setInputText}
-                        placeholder={editingMessage ? t("chat.edit_placeholder") : t("group.input.placeholder")}
-                        multiline
-                    />
+                    <TextInput style={styles.input} value={inputText} onChangeText={setInputText} placeholder={editingMessage ? t("chat.edit_placeholder") : t("group.input.placeholder")} multiline />
                     <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}>
                         <Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" />
                     </TouchableOpacity>
@@ -418,16 +388,22 @@ const styles = createScaledSheet({
     headerInfo: { flex: 1 },
     roomName: { fontWeight: 'bold', fontSize: 16, color: '#1F2937' },
     status: { fontSize: 12, color: '#9CA3AF' },
+
+    // Language Selector Styles
+    langContainer: { flexDirection: "row", marginLeft: 8, marginRight: 8, backgroundColor: "#F3F4F6", borderRadius: 8, padding: 4, alignItems: 'center' },
+    langText: { fontSize: 10, color: "#6B7280", paddingHorizontal: 6, fontWeight: "600" },
+    activeLangText: { color: "#3B82F6", fontWeight: "bold" },
+
     bubbleControls: { flexDirection: 'row' },
     controlBtn: { padding: 8 },
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },
     rowOther: { justifyContent: 'flex-start' },
+    highlighted: { backgroundColor: 'rgba(255, 235, 59, 0.3)', borderRadius: 8, padding: 4 },
     avatar: { fontSize: 24, marginRight: 8, marginTop: 4 },
     msgAvatarImg: { width: 30, height: 30, borderRadius: 15, marginRight: 8, marginTop: 4 },
     avatarActiveDot: { position: 'absolute', bottom: 0, right: 8, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 1, borderColor: '#FFF' },
-    headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 12, height: 12, borderRadius: 6, backgroundColor: '#10B981', borderWidth: 2, borderColor: '#FFF' },
     msgContent: { maxWidth: '75%' },
     senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2 },
     bubble: { borderRadius: 16, padding: 12 },
@@ -437,11 +413,12 @@ const styles = createScaledSheet({
     text: { fontSize: 16 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
+    metaRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
     time: { fontSize: 10, textAlign: 'right' },
     timeUser: { color: 'rgba(255,255,255,0.7)' },
     timeOther: { color: '#9CA3AF' },
     transTag: { fontSize: 10, color: '#DDD', marginTop: 2, fontStyle: 'italic' },
-    transBtn: { marginTop: 4, padding: 4 },
+    transBtn: { marginTop: 4, padding: 4, alignSelf: 'flex-start' },
     inputArea: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderColor: '#EEE', alignItems: 'flex-end' },
     input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100 },
     attachBtn: { padding: 10, marginRight: 8 },

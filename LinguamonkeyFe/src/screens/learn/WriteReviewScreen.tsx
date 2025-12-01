@@ -6,7 +6,7 @@ import { useCourses } from "../../hooks/useCourses"
 import { useLessonStructure } from "../../hooks/useLessonStructure" // Đã đổi từ useLessons sang useLessonStructure
 import { useUserStore } from "../../stores/UserStore"
 
-import { CourseReviewRequest, LessonReviewRequest } from "../../types/dto"
+import { CourseVersionReviewRequest, LessonReviewRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
@@ -16,8 +16,8 @@ const WriteReviewScreen = ({ navigation, route }) => {
   const { user } = useUserStore()
 
   // COURSE HOOKS
-  const { useCreateReview: useCreateCourseReviewHook } = useCourses()
-  const { mutateAsync: createCourseReview, isPending: isCreatingCourseReview } = useCreateCourseReviewHook();
+  const { useCreateReview: useCreateCourseVersionReviewHook } = useCourses()
+  const { mutateAsync: createCourseVersionReview, isPending: isCreatingCourseVersionReview } = useCreateCourseVersionReviewHook();
 
   // LESSON HOOKS (Sử dụng hook Lesson Review từ useLessonStructure)
   const { useCreateReview: useCreateLessonReviewHook } = useLessonStructure();
@@ -26,8 +26,8 @@ const WriteReviewScreen = ({ navigation, route }) => {
   const [rating, setRating] = useState(0)
   const [comment, setComment] = useState("")
 
-  const isCourseReview = !!courseId
-  const isLoading = isCreatingCourseReview || isCreatingLessonReview
+  const isCourseVersionReview = !!courseId
+  const isLoading = isCreatingCourseVersionReview || isCreatingLessonReview
 
   const handleSubmit = async () => {
     if (rating === 0) {
@@ -38,18 +38,18 @@ const WriteReviewScreen = ({ navigation, route }) => {
     }
 
     try {
-      if (isCourseReview && courseId) {
+      if (isCourseVersionReview && courseId) {
         // Course Review
-        const payload: CourseReviewRequest = {
+        const payload: CourseVersionReviewRequest = {
           userId: user.userId,
           courseId: courseId,
           rating: rating,
           comment: comment,
         };
-        await createCourseReview(payload);
+        await createCourseVersionReview(payload);
       }
 
-      else if (!isCourseReview && lessonId) {
+      else if (!isCourseVersionReview && lessonId) {
         // Lesson Review: Sử dụng LessonReviewRequest DTO
         const payload: LessonReviewRequest = {
           userId: user.userId,
@@ -87,7 +87,7 @@ const WriteReviewScreen = ({ navigation, route }) => {
 
       <ScrollView style={styles.content}>
         <Text style={styles.reviewingFor}>{
-          isCourseReview
+          isCourseVersionReview
             ? t("reviews.reviewingForCourse") ?? "Reviewing Course"
             : t("reviews.reviewingForLesson") ?? "Reviewing Lesson"
         }</Text>

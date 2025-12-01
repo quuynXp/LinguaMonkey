@@ -5,7 +5,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useCourses } from "../../hooks/useCourses"
 import { useUserStore } from "../../stores/UserStore"
 
-import { CourseReviewRequest } from "../../types/dto"
+import { CourseVersionReviewRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
@@ -14,8 +14,8 @@ const WriteReviewCourseScreen = ({ navigation, route }: any) => {
     const { t } = useTranslation()
     const { user } = useUserStore()
 
-    const { useCreateReview: useCreateCourseReviewHook } = useCourses()
-    const { mutateAsync: createCourseReview, isPending: isCreatingCourseReview } = useCreateCourseReviewHook()
+    const { useCreateReview: useCreateCourseVersionReviewHook } = useCourses()
+    const { mutateAsync: createCourseVersionReview, isPending: isCreatingCourseVersionReview } = useCreateCourseVersionReviewHook()
 
     const [rating, setRating] = useState(0)
     const [comment, setComment] = useState("")
@@ -32,13 +32,13 @@ const WriteReviewCourseScreen = ({ navigation, route }: any) => {
         }
 
         try {
-            const payload: CourseReviewRequest = {
+            const payload: CourseVersionReviewRequest = {
                 userId: user.userId,
                 courseId: courseId,
                 rating: rating,
                 comment: comment,
             }
-            await createCourseReview(payload)
+            await createCourseVersionReview(payload)
 
             Alert.alert(t('common.success'), t('reviews.reviewSuccess') ?? 'Review submitted successfully!')
             navigation.goBack()
@@ -88,11 +88,11 @@ const WriteReviewCourseScreen = ({ navigation, route }: any) => {
                 />
 
                 <TouchableOpacity
-                    style={[styles.buttonPrimary, isCreatingCourseReview && styles.buttonDisabled]}
+                    style={[styles.buttonPrimary, isCreatingCourseVersionReview && styles.buttonDisabled]}
                     onPress={handleSubmit}
-                    disabled={isCreatingCourseReview}
+                    disabled={isCreatingCourseVersionReview}
                 >
-                    {isCreatingCourseReview ? (
+                    {isCreatingCourseVersionReview ? (
                         <ActivityIndicator color="#FFFFFF" />
                     ) : (
                         <Text style={styles.buttonText}>{t("common.submit") ?? "Submit"}</Text>

@@ -1,13 +1,14 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Animated, Image, ScrollView, Text, TouchableOpacity, View, ActivityIndicator, RefreshControl } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
+import { useFocusEffect } from "@react-navigation/native"; // Import Focus Effect
+
 import { useUserStore } from "../../stores/UserStore";
 import { useRoadmap } from "../../hooks/useRoadmap";
 import { useClaimChallengeReward, useDailyChallenges } from "../../hooks/useDailyChallenge";
 import { useLeaderboards } from "../../hooks/useLeaderboards";
 import { useNotifications } from "../../hooks/useNotifications";
-import { queryClient } from "../../services/queryClient";
 import { gotoTab } from "../../utils/navigationRef";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { getGreetingKey } from "../../utils/motivationHelper";
@@ -22,6 +23,14 @@ const HomeScreen = ({ navigation }: any) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const bounceAnim = useRef(new Animated.Value(1)).current;
 
+  // --- USER DATA ---
+  const {
+    name = "",
+    streak = 0,
+    languages = [],
+    user,
+  } = useUserStore();
+
   // --- LEADERBOARD LOGIC ---
   const { useTopThree } = useLeaderboards();
   const { data: rawTopThreeData, isLoading: topThreeLoading } = useTopThree(null);
@@ -34,34 +43,23 @@ const HomeScreen = ({ navigation }: any) => {
     topThreeUsers = rawTopThreeUsers.slice(0, 3);
   }
 
-  // --- USER & CHALLENGE LOGIC ---
-  const {
-    name = "",
-    streak = 0,
-    languages = [],
-    user,
-  } = useUserStore();
-
+  // --- CHALLENGE LOGIC ---
   const { data: challengesData, isLoading: dailyLoading } = useDailyChallenges(user?.userId);
   const { isClaiming: isClaimingReward, claimReward } = useClaimChallengeReward();
-
   const activeChallenges = challengesData || [];
 
-  // --- NOTIFICATION LOGIC ---
+  const [enableUnread, setEnableUnread] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      setEnableUnread(true);
+      return () => setEnableUnread(false); // stop khi unmount
+    }, [])
+  );
+
   const { useUnreadCount } = useNotifications();
-  const { data: unreadCount = 0 } = useUnreadCount(user?.userId);
+  const { data: unreadCount = 0 } = useUnreadCount(user?.userId, enableUnread);
 
-  const handleClaim = async (id: string) => {
-    if (!user?.userId) return;
-    try {
-      await claimReward({ userId: user.userId, challengeId: id });
-    } catch (e) { }
-  };
-
-  const handleSeeAllChallenges = () => {
-    // Navigate to new screen
-    navigation.navigate('DailyChallengeBadgeScreen', { initialTab: 'DAILY' });
-  };
 
   // --- ROADMAP LOGIC ---
   const {
@@ -71,14 +69,15 @@ const HomeScreen = ({ navigation }: any) => {
     useCompleteRoadmapItem
   } = useRoadmap();
 
-  const mainLanguage = languages[0] || "en";
-  const { data: roadmapData, isLoading: roadmapLoading } = useUserRoadmaps(mainLanguage);
+  // FIX: Ensure valid language selection, matching RoadmapScreen logic
+  const mainLanguage = languages && languages.length > 0 ? languages[0] : "en";
+  const { data: roadmapData, isLoading: roadmapLoading, refetch: refetchRoadmaps } = useUserRoadmaps(mainLanguage);
 
   // Take the first active roadmap
   const roadmap = (roadmapData && roadmapData.length > 0) ? roadmapData[0] : null;
 
-  // Suggestions Logic
-  const { data: suggestionsData } = useSuggestions(roadmap?.roadmapId || null);
+  // Suggestions
+  const { data: suggestionsData, refetch: refetchSuggestions } = useSuggestions(roadmap?.roadmapId || null);
   const suggestions = suggestionsData || [];
 
   const addSuggestionMutation = useAddSuggestion();
@@ -86,7 +85,26 @@ const HomeScreen = ({ navigation }: any) => {
 
   const [refreshing, setRefreshing] = useState(false);
 
-  // --- ANIMATIONS & EFFECTS ---
+  // FIX: Refetch data when screen comes into focus to ensure progress is sync
+  useFocusEffect(
+    useCallback(() => {
+      refetchRoadmaps();
+      if (roadmap?.roadmapId) {
+        refetchSuggestions();
+      }
+    }, [refetchRoadmaps, refetchSuggestions, roadmap?.roadmapId])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      refetchRoadmaps(),
+      roadmap?.roadmapId ? refetchSuggestions() : Promise.resolve(),
+    ]);
+    setRefreshing(false);
+  };
+
+  // --- ANIMATIONS ---
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
     const bounceAnimation = () => {
@@ -103,6 +121,15 @@ const HomeScreen = ({ navigation }: any) => {
   const handleRoadmapPress = () => navigation.navigate('RoadmapStack', { screen: 'RoadmapScreen' });
   const handleFindRoadmap = () => navigation.navigate('RoadmapStack', { screen: 'PublicRoadmapsScreen' });
   const handleNotificationPress = () => navigation.navigate('NotificationsScreen');
+  const handleSeeAllChallenges = () => navigation.navigate('DailyChallengeBadgeScreen', { initialTab: 'DAILY' });
+  const goToChatAISCreen = () => gotoTab("ChatStack", 'ChatAIScreen');
+
+  const handleClaim = async (id: string) => {
+    if (!user?.userId) return;
+    try {
+      await claimReward({ userId: user.userId, challengeId: id });
+    } catch (e) { }
+  };
 
   const handleAddSuggestion = async (itemId: string, text: string) => {
     if (!roadmap?.roadmapId) return;
@@ -110,7 +137,7 @@ const HomeScreen = ({ navigation }: any) => {
       roadmapId: roadmap.roadmapId,
       itemId,
       reason: text,
-      suggestedOrderIndex: 0 // Default or calculated
+      suggestedOrderIndex: 0
     });
   };
 
@@ -120,10 +147,7 @@ const HomeScreen = ({ navigation }: any) => {
 
   const greetingKey = getGreetingKey();
 
-  const goToChatAISCreen = () => {
-    gotoTab("ChatStack", 'ChatAIScreen');
-  };
-
+  // --- RENDER HELPERS ---
   const renderChallengeSection = () => (
     <View style={styles.section}>
       <View style={styles.sectionHeader}>
@@ -169,7 +193,6 @@ const HomeScreen = ({ navigation }: any) => {
                   <Text style={[styles.progressText, isCompleted && { color: 'rgba(255,255,255,0.8)' }]}>
                     {item.progress}/{item.targetAmount}
                   </Text>
-
                   {isClaimable ? (
                     <View style={styles.claimBtnSmall}>
                       <Text style={styles.claimTextSmall}>{t('common.claim')}</Text>
@@ -186,13 +209,12 @@ const HomeScreen = ({ navigation }: any) => {
     </View>
   );
 
-  // --- RENDER ---
   return (
     <ScreenLayout backgroundColor="#F8FAFC" swipeToTab="Chat">
       <ScrollView
         style={styles.container}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
 
@@ -236,17 +258,11 @@ const HomeScreen = ({ navigation }: any) => {
                   let bụcStyle = {};
 
                   if (idx === 1) {
-                    rank = 1;
-                    podiumStyle = styles.firstPlacePodium;
-                    bụcStyle = styles.podiumBarFirst;
+                    rank = 1; podiumStyle = styles.firstPlacePodium; bụcStyle = styles.podiumBarFirst;
                   } else if (idx === 0) {
-                    rank = 2;
-                    podiumStyle = styles.secondPlacePodium;
-                    bụcStyle = styles.podiumBarSecond;
+                    rank = 2; podiumStyle = styles.secondPlacePodium; bụcStyle = styles.podiumBarSecond;
                   } else if (idx === 2) {
-                    rank = 3;
-                    podiumStyle = styles.thirdPlacePodium;
-                    bụcStyle = styles.podiumBarThird;
+                    rank = 3; podiumStyle = styles.thirdPlacePodium; bụcStyle = styles.podiumBarThird;
                   }
 
                   const isFirst = rank === 1;
@@ -304,7 +320,7 @@ const HomeScreen = ({ navigation }: any) => {
 
           {renderChallengeSection()}
 
-          {/* --- ROADMAP SECTION WITH TIMELINE & SKELETON --- */}
+          {/* --- ROADMAP SECTION --- */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>{t("home.roadmap.title")}</Text>
@@ -355,12 +371,8 @@ const HomeScreen = ({ navigation }: any) => {
 };
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-  },
-  content: {
-    paddingBottom: 40,
-  },
+  container: { flex: 1 },
+  content: { paddingBottom: 40 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -368,15 +380,8 @@ const styles = createScaledSheet({
     paddingHorizontal: 24,
     paddingVertical: 16,
   },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  iconBtn: {
-    padding: 6,
-    marginRight: 12,
-    position: 'relative',
-  },
+  headerActions: { flexDirection: 'row', alignItems: 'center' },
+  iconBtn: { padding: 6, marginRight: 12, position: 'relative' },
   badge: {
     position: 'absolute',
     top: 0,
@@ -391,11 +396,7 @@ const styles = createScaledSheet({
     borderColor: '#F8FAFC',
     paddingHorizontal: 3,
   },
-  badgeText: {
-    color: '#FFF',
-    fontSize: 9,
-    fontWeight: 'bold',
-  },
+  badgeText: { color: '#FFF', fontSize: 9, fontWeight: 'bold' },
   challengeList: { paddingRight: 24 },
   challengeCardHome: {
     width: 150,
@@ -411,43 +412,18 @@ const styles = createScaledSheet({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 }
   },
-  challengeCardCompleted: {
-    backgroundColor: '#10B981',
-  },
-  challengeCardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  xpBadge: {
-    backgroundColor: '#EEF2FF',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 8,
-  },
+  challengeCardCompleted: { backgroundColor: '#10B981' },
+  challengeCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  xpBadge: { backgroundColor: '#EEF2FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
   xpText: { fontSize: 10, fontWeight: 'bold', color: '#4F46E5' },
   challengeTitle: { fontSize: 13, fontWeight: '700', color: '#374151' },
   challengeFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   claimBtnSmall: { backgroundColor: '#F59E0B', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4 },
   claimTextSmall: { fontSize: 10, color: '#FFF', fontWeight: 'bold' },
-  headerContent: {
-    flex: 1,
-  },
-  greeting: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  progressText: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  fullname: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
+  headerContent: { flex: 1 },
+  greeting: { fontSize: 14, color: "#6B7280", fontWeight: "500" },
+  progressText: { fontSize: 14, color: "#6B7280", fontWeight: "500" },
+  fullname: { fontSize: 22, fontWeight: "bold", color: "#1F2937" },
   streakContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -458,12 +434,7 @@ const styles = createScaledSheet({
     borderWidth: 1,
     borderColor: "#FFEDD5",
   },
-  streakText: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#C2410C",
-    marginLeft: 4,
-  },
+  streakText: { fontSize: 14, fontWeight: "700", color: "#C2410C", marginLeft: 4 },
   leaderboardSection: {
     marginHorizontal: 24,
     marginBottom: 0,
@@ -476,343 +447,48 @@ const styles = createScaledSheet({
     shadowRadius: 8,
     elevation: 2,
   },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1F2937",
-  },
-  seeAllText: {
-    fontSize: 14,
-    color: "#4F46E5",
-    fontWeight: "600",
-  },
-  podiumContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "flex-end",
-    height: 200,
-    paddingBottom: 0,
-  },
-  podiumItem: {
-    alignItems: "center",
-    width: 90,
-    position: 'relative',
-  },
-  podiumBar: {
-    position: 'absolute',
-    bottom: 0,
-    width: 80,
-    backgroundColor: '#E5E7EB',
-    borderRadius: 8,
-  },
-  podiumBarThird: {
-    height: 40,
-    backgroundColor: '#CD7C2F',
-    zIndex: 0,
-    opacity: 0.8,
-  },
-  podiumBarSecond: {
-    height: 65,
-    backgroundColor: '#9CA3AF',
-    zIndex: 0,
-    opacity: 0.8,
-  },
-  podiumBarFirst: {
-    height: 90,
-    backgroundColor: '#F59E0B',
-    zIndex: 1,
-    opacity: 0.9,
-  },
-  thirdPlacePodium: {
-    marginLeft: 8,
-    paddingBottom: 40,
-  },
-  secondPlacePodium: {
-    marginRight: 8,
-    paddingBottom: 65,
-  },
-  firstPlacePodium: {
-    zIndex: 2,
-    marginHorizontal: 4,
-    paddingBottom: 90,
-  },
-  medal: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: -10,
-    zIndex: 3,
-    borderWidth: 2,
-    borderColor: "#fff",
-  },
+  sectionHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },
+  sectionTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937" },
+  seeAllText: { fontSize: 14, color: "#4F46E5", fontWeight: "600" },
+  podiumContainer: { flexDirection: "row", justifyContent: "center", alignItems: "flex-end", height: 200, paddingBottom: 0 },
+  podiumItem: { alignItems: "center", width: 90, position: 'relative' },
+  podiumBar: { position: 'absolute', bottom: 0, width: 80, backgroundColor: '#E5E7EB', borderRadius: 8 },
+  podiumBarThird: { height: 40, backgroundColor: '#CD7C2F', zIndex: 0, opacity: 0.8 },
+  podiumBarSecond: { height: 65, backgroundColor: '#9CA3AF', zIndex: 0, opacity: 0.8 },
+  podiumBarFirst: { height: 90, backgroundColor: '#F59E0B', zIndex: 1, opacity: 0.9 },
+  thirdPlacePodium: { marginLeft: 8, paddingBottom: 40 },
+  secondPlacePodium: { marginRight: 8, paddingBottom: 65 },
+  firstPlacePodium: { zIndex: 2, marginHorizontal: 4, paddingBottom: 90 },
+  medal: { width: 24, height: 24, borderRadius: 12, alignItems: "center", justifyContent: "center", marginBottom: -10, zIndex: 3, borderWidth: 2, borderColor: "#fff" },
   goldMedal: { backgroundColor: "#F59E0B" },
   silverMedal: { backgroundColor: "#9CA3AF" },
   bronzeMedal: { backgroundColor: "#CD7C2F" },
   medalText: { fontSize: 10, fontWeight: "bold", color: "#fff" },
-  podiumAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 3,
-    borderColor: "#fff",
-    marginBottom: 8,
-  },
-  podiumName: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 2,
-    zIndex: 4,
-  },
-  podiumScore: {
-    fontSize: 10,
-    color: "#6B7280",
-    zIndex: 4,
-  },
-  levelBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#4F46E5",
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    marginBottom: 4,
-    zIndex: 4,
-  },
-  levelText: {
-    color: "#fff",
-    fontSize: 10,
-    fontWeight: "bold",
-    marginLeft: 2,
-  },
-  characterSection: {
-    paddingHorizontal: 24,
-    marginBottom: 24,
-  },
-  characterContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  characterCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: "#4ECDC4",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 16,
-    borderWidth: 4,
-    borderColor: "#E0F2FE",
-  },
-  speechBubble: {
-    flex: 1,
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    borderRadius: 16,
-    borderBottomLeftRadius: 4,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  speechText: {
-    fontSize: 14,
-    color: "#374151",
-    lineHeight: 20,
-  },
-  speechArrow: {
-    position: "absolute",
-    bottom: 0,
-    left: -8,
-    width: 0,
-    height: 0,
-    borderTopWidth: 8,
-    borderTopColor: "transparent",
-    borderBottomWidth: 8,
-    borderBottomColor: "#FFFFFF",
-    borderRightWidth: 8,
-    borderRightColor: "transparent",
-    transform: [{ rotate: "-90deg" }],
-  },
-  section: {
-    paddingHorizontal: 24,
-    marginBottom: 24,
-  },
-  progressCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    padding: 20,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  progressHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 12,
-  },
-  progressLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginLeft: 8,
-  },
-  progressBarContainer: {
-    height: 8,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 4,
-    marginBottom: 8,
-    overflow: "hidden",
-  },
-  progressBarFill: {
-    height: "100%",
-    backgroundColor: "#F59E0B",
-    borderRadius: 4,
-  },
-  progressValue: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "right",
-  },
-  roadmapHeaderCard: {
-    marginBottom: 8,
-    paddingHorizontal: 12,
-  },
-  roadmapTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  roadmapSubtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  emptyStateContainer: {
-    backgroundColor: "#fff",
-    borderRadius: 20,
-    padding: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "#E5E7EB",
-    borderStyle: "dashed",
-  },
-  emptyIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 16,
-  },
-  emptyStateTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-  },
-  emptyStateSub: {
-    fontSize: 13,
-    color: "#6B7280",
-    marginTop: 2,
-  },
-  challengeCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 16,
-    marginRight: 12,
-    width: 160,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-    minHeight: 180,
-    justifyContent: 'space-between',
-  },
-  challengeCompleted: {
-    backgroundColor: "#10B981",
-  },
-  challengeIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  challengeTitleText: {
-    fontSize: 15,
-    fontWeight: "700",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  challengeDescriptionText: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginBottom: 4,
-    overflow: 'hidden',
-  },
-  coinBadge: {
-    flexDirection: 'row',
-    alignItems: "center",
-    backgroundColor: "#ECFDF5",
-    paddingHorizontal: 6,
-    paddingVertical: 4,
-    borderRadius: 8,
-    marginLeft: 6,
-    alignSelf: "flex-start",
-    overflow: "hidden",
-  },
-  coinText: {
-    color: "#059669",
-    fontSize: 12,
-    fontWeight: "bold",
-    marginLeft: 3,
-  },
-  addChallengeCard: {
-    width: 160,
-    backgroundColor: "#EFF6FF",
-    borderRadius: 16,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: "#BFDBFE",
-    borderStyle: "dashed",
-    minHeight: 180,
-  },
-  addChallengeText: {
-    marginTop: 8,
-    color: "#3B82F6",
-    fontWeight: "600",
-  },
-  completeButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#3B82F6',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-    marginTop: 10,
-  },
-  completeButtonText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 14,
-  },
+  podiumAvatar: { width: 56, height: 56, borderRadius: 28, borderWidth: 3, borderColor: "#fff", marginBottom: 8 },
+  podiumName: { fontSize: 12, fontWeight: "600", color: "#374151", marginBottom: 2, zIndex: 4 },
+  podiumScore: { fontSize: 10, color: "#6B7280", zIndex: 4 },
+  levelBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "#4F46E5", paddingHorizontal: 6, paddingVertical: 2, borderRadius: 10, marginBottom: 4, zIndex: 4 },
+  levelText: { color: "#fff", fontSize: 10, fontWeight: "bold", marginLeft: 2 },
+  characterSection: { paddingHorizontal: 24, marginBottom: 24 },
+  characterContainer: { flexDirection: "row", alignItems: "center" },
+  characterCircle: { width: 64, height: 64, borderRadius: 32, backgroundColor: "#4ECDC4", alignItems: "center", justifyContent: "center", marginRight: 16, borderWidth: 4, borderColor: "#E0F2FE" },
+  speechBubble: { flex: 1, backgroundColor: "#FFFFFF", padding: 16, borderRadius: 16, borderBottomLeftRadius: 4, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
+  speechText: { fontSize: 14, color: "#374151", lineHeight: 20 },
+  speechArrow: { position: "absolute", bottom: 0, left: -8, width: 0, height: 0, borderTopWidth: 8, borderTopColor: "transparent", borderBottomWidth: 8, borderBottomColor: "#FFFFFF", borderRightWidth: 8, borderRightColor: "transparent", transform: [{ rotate: "-90deg" }] },
+  section: { paddingHorizontal: 24, marginBottom: 24 },
+  progressCard: { backgroundColor: "#FFFFFF", borderRadius: 20, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  progressHeader: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  progressLabel: { fontSize: 16, fontWeight: "600", color: "#1F2937", marginLeft: 8 },
+  progressBarContainer: { height: 8, backgroundColor: "#F3F4F6", borderRadius: 4, marginBottom: 8, overflow: "hidden" },
+  progressBarFill: { height: "100%", backgroundColor: "#F59E0B", borderRadius: 4 },
+  progressValue: { fontSize: 14, color: "#6B7280", textAlign: "right" },
+  roadmapHeaderCard: { marginBottom: 8, paddingHorizontal: 12 },
+  roadmapTitle: { fontSize: 18, fontWeight: "bold", color: "#1F2937", marginBottom: 4 },
+  roadmapSubtitle: { fontSize: 14, color: "#6B7280" },
+  emptyStateContainer: { backgroundColor: "#fff", borderRadius: 20, padding: 20, flexDirection: "row", alignItems: "center", borderWidth: 1, borderColor: "#E5E7EB", borderStyle: "dashed" },
+  emptyIconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 16 },
+  emptyStateTitle: { fontSize: 16, fontWeight: "600", color: "#374151" },
+  emptyStateSub: { fontSize: 13, color: "#6B7280", marginTop: 2 },
 });
 
 export default HomeScreen;

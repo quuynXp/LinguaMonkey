@@ -1,21 +1,17 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
-import com.connectJPA.LinguaVietnameseApp.dto.ComprehensionQuestion;
-import com.connectJPA.LinguaVietnameseApp.dto.request.SpellingRequestBody;
-import com.connectJPA.LinguaVietnameseApp.dto.request.TranslationRequestBody;
-import com.connectJPA.LinguaVietnameseApp.dto.response.*;
-import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
+import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
+import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.entity.LessonProgress;
 import com.connectJPA.LinguaVietnameseApp.entity.LessonQuestion;
-import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LessonProgressId;
-import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
+import com.connectJPA.LinguaVietnameseApp.enums.QuestionType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonProgressRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonQuestionRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.LessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -25,12 +21,9 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import reactor.core.publisher.Flux;
-import reactor.core.scheduler.Schedulers;
 
 import java.time.OffsetDateTime;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -39,265 +32,161 @@ import java.util.UUID;
 @Slf4j
 public class SkillLessonController {
     private final GrpcClientService grpcClientService;
-    private final LessonRepository lessonRepository;
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonQuestionRepository lessonQuestionRepository;
     private final UserRepository userRepository;
     private final AuthenticationService authenticationService;
     private final ObjectMapper objectMapper;
 
-    @PostMapping(
-        value = "/speaking/pronunciation-stream",
-        consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
-        produces = MediaType.APPLICATION_NDJSON_VALUE
-    )
-    public Flux<String> streamPronunciation(
+    // --- 1. XỬ LÝ SPEAKING (Cần AI để check âm thanh vs Transcript) ---
+
+    @PostMapping(value = "/speaking/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public AppApiResponse<PronunciationResponseBody> submitSpeaking(
             @RequestHeader("Authorization") String authorization,
             @RequestPart("audio") MultipartFile audio,
-            @RequestParam("lessonId") UUID lessonId,
-            @RequestParam("languageCode") String languageCode,
-            @RequestParam("referenceText") String referenceText) {
+            @RequestParam("lessonQuestionId") UUID lessonQuestionId,
+            @RequestParam("languageCode") String languageCode) {
 
         String token = extractToken(authorization);
         UUID userId = extractUserId(token);
 
+        // Lấy câu hỏi từ DB để lấy Transcript chuẩn
+        LessonQuestion question = lessonQuestionRepository.findByLessonQuestionIdAndIsDeletedFalse(lessonQuestionId)
+                .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
+
+        if (question.getTranscript() == null || question.getTranscript().isEmpty()) {
+            throw new AppException(ErrorCode.INVALID_DATA_FORMAT); // Câu hỏi Speaking bắt buộc phải có transcript
+        }
+
+        try {
+            // Gọi gRPC: Gửi Audio user + Transcript chuẩn sang Python
+            PronunciationResponseBody response = grpcClientService
+                    .callCheckPronunciationAsync(token, audio.getBytes(), languageCode, question.getTranscript())
+                    .get();
+
+            // Lưu điểm (Logic lưu progress có thể tách ra service riêng để gọn hơn)
+            saveQuestionProgress(question.getLesson().getLessonId(), userId, (float) response.getScore());
+
+            return AppApiResponse.<PronunciationResponseBody>builder()
+                    .code(200)
+                    .message("Speaking evaluated successfully")
+                    .result(response)
+                    .build();
+        } catch (Exception e) {
+            log.error("Speaking processing error: {}", e.getMessage(), e);
+            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+        }
+    }
+
+    @PostMapping(
+        value = "/speaking/stream",
+        consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+        produces = MediaType.APPLICATION_NDJSON_VALUE
+    )
+    public Flux<String> streamSpeaking(
+            @RequestHeader("Authorization") String authorization,
+            @RequestPart("audio") MultipartFile audio,
+            @RequestParam("lessonQuestionId") UUID lessonQuestionId,
+            @RequestParam("languageCode") String languageCode) {
+
+        String token = extractToken(authorization);
+        UUID userId = extractUserId(token);
+
+        // Lấy Transcript chuẩn ngay tại Java
+        LessonQuestion question = lessonQuestionRepository.findByLessonQuestionIdAndIsDeletedFalse(lessonQuestionId)
+                .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
+
         return Flux.create(sink -> {
             try {
-                // Validate DB
-                lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
-                        .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-
-                byte[] audioBytes = audio.getBytes();
-                log.info("Start streaming: lesson={}, user={}", lessonId, userId);
-
-                // GỌI SERVICE MỚI, TRUYỀN SINK VÀO
+                // Streaming audio + transcript sang Python
                 grpcClientService.streamPronunciationAsync(
                     token,
-                    audioBytes,
+                    audio.getBytes(),
                     languageCode,
-                    referenceText,
+                    question.getTranscript(), // Transcript chuẩn từ DB
                     userId.toString(),
-                    lessonId.toString(),
-                    sink // <--- QUAN TRỌNG NHẤT
+                    lessonQuestionId.toString(),
+                    sink
                 );
-
             } catch (Exception e) {
-                log.error("Error init streaming: {}", e.getMessage(), e);
                 sink.error(e);
             }
         });
     }
 
-    @PostMapping(value = "/listening/transcribe", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public AppApiResponse<ListeningResponse> processListening(
-            @RequestHeader("Authorization") String authorization,
-            @RequestPart("audio") MultipartFile audio,
-            @RequestParam("lessonId") UUID lessonId,
-            @RequestParam("languageCode") String languageCode) {
-        String token = extractToken(authorization);
-        UUID userId = extractUserId(token);
-        
-        Lesson lesson = lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
-                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+    // --- 2. XỬ LÝ WRITING (Cần AI để chấm điểm dựa trên Đề bài + Ảnh) ---
 
-        try {
-            String transcription = grpcClientService.callSpeechToTextAsync(token, audio.getBytes(), languageCode).get();
-            List<ComprehensionQuestion> questions = generateComprehensionQuestions(transcription, languageCode);
-            saveLessonProgress(lessonId, userId, questions);
-
-            return AppApiResponse.<ListeningResponse>builder()
-                    .code(200)
-                    .message("Listening exercise processed successfully")
-                    .result(new ListeningResponse(transcription, questions))
-                    .build();
-        } catch (Exception e) {
-            log.error("Listening error: {}", e.getMessage(), e);
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        }
-    }
-
-    @PostMapping(value = "/speaking/pronunciation", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public AppApiResponse<PronunciationResponseBody> processPronunciation(
-            @RequestHeader("Authorization") String authorization,
-            @RequestPart("audio") MultipartFile audio,
-            @RequestParam("lessonId") UUID lessonId,
-            @RequestParam("languageCode") String languageCode) {
-        String token = extractToken(authorization);
-        UUID userId = extractUserId(token);
-        
-        Lesson lesson = lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
-                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-
-        String referenceText = lesson.getDescription();
-
-        try {
-            PronunciationResponseBody response = grpcClientService
-                    .callCheckPronunciationAsync(token, audio.getBytes(), languageCode, referenceText)
-                    .get();
-            saveLessonProgress(lessonId, userId, (float) response.getScore());
-            return AppApiResponse.<PronunciationResponseBody>builder()
-                    .code(200)
-                    .message("Pronunciation exercise processed successfully")
-                    .result(response)
-                    .build();
-        } catch (Exception e) {
-            log.error("Pronunciation error: {}", e.getMessage(), e);
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        }
-    }
-
-    @PostMapping(value = "/speaking/spelling", consumes = MediaType.APPLICATION_JSON_VALUE)
-    public AppApiResponse<List<String>> processSpelling(
-            @RequestHeader("Authorization") String authorization,
-            @RequestBody SpellingRequestBody request,
-            @RequestParam("lessonId") UUID lessonId) {
-        String token = extractToken(authorization);
-        UUID userId = extractUserId(token);
-        
-        lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
-                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-
-        try {
-            List<String> corrections = grpcClientService
-                    .callCheckSpellingAsync(token, request.getText(), request.getLanguage())
-                    .get();
-            saveLessonProgress(lessonId, userId, corrections.isEmpty() ? 100 : 50);
-            return AppApiResponse.<List<String>>builder()
-                    .code(200)
-                    .message("Spelling exercise processed successfully")
-                    .result(corrections)
-                    .build();
-        } catch (Exception e) {
-            log.error("Spelling error: {}", e.getMessage(), e);
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        }
-    }
-
-    @PostMapping("/reading")
-    public AppApiResponse<ReadingResponse> processReading(
-            @RequestHeader("Authorization") String authorization,
-            @RequestParam("lessonId") UUID lessonId,
-            @RequestParam("languageCode") String languageCode) {
-        String token = extractToken(authorization);
-        UUID userId = extractUserId(token);
-        
-        Lesson lesson = lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
-                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-
-        try {
-            // Gọi gRPC
-            String passage = grpcClientService
-                    .callGeneratePassageAsync(token, userId.toString(), 
-                        lesson.getTitle() == null ? "General Topic" : lesson.getTitle(), languageCode)
-                    .get();
-
-            // CLEAN UP: Đôi khi Python trả về vẫn còn dư ký tự, clean lần nữa ở Java cho chắc
-            passage = passage.replaceAll("^\"|\"$", "").trim(); // Xóa dấu ngoặc kép đầu cuối nếu có
-            if (passage.startsWith("```")) {
-                 passage = passage.replaceAll("```(json|xml|markdown)?", "").trim();
-            }
-
-            // LƯU DATA QUAN TRỌNG: Lưu passage vào description của Lesson
-            lesson.setDescription(passage);
-            lessonRepository.save(lesson); // Hibernate sẽ lo việc commit
-
-            // Tạo câu hỏi và lưu progress
-            List<ComprehensionQuestion> questions = generateComprehensionQuestions(passage, languageCode);
-            saveLessonProgress(lessonId, userId, questions);
-
-            return AppApiResponse.<ReadingResponse>builder()
-                    .code(200)
-                    .message("Reading exercise generated successfully")
-                    .result(new ReadingResponse(passage, questions))
-                    .build();
-        } catch (Exception e) {
-            log.error("Reading error: {}", e.getMessage(), e);
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        }
-    }
-
-    @PostMapping(value = "/writing", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public AppApiResponse<WritingResponseBody> processWriting(
+    @PostMapping(value = "/writing/submit", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public AppApiResponse<WritingResponseBody> submitWriting(
             @RequestHeader("Authorization") String authorization,
             @RequestPart("text") String text,
             @RequestPart(value = "image", required = false) MultipartFile image,
-            @RequestParam("lessonId") UUID lessonId,
-            @RequestParam("languageCode") String languageCode,
-            @RequestParam(value = "generateImage", defaultValue = "false") boolean generateImage) {
+            @RequestParam("lessonQuestionId") UUID lessonQuestionId,
+            @RequestParam("languageCode") String languageCode) {
+
         String token = extractToken(authorization);
         UUID userId = extractUserId(token);
-        
-        Lesson lesson = lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
-                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+
+        LessonQuestion question = lessonQuestionRepository.findByLessonQuestionIdAndIsDeletedFalse(lessonQuestionId)
+                .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
 
         try {
             byte[] imageData = image != null ? image.getBytes() : null;
-            WritingResponseBody response;
-
-            if (generateImage) {
-                var imageUrls = grpcClientService
-                        .callGeneratePassageAsync(token, userId.toString(), 
-                            lesson.getTitle() == null ? "" : lesson.getTitle(), languageCode)
-                        .get();
-
-                if (imageUrls != null && !imageUrls.isEmpty()) {
-                    try (java.io.InputStream in = new java.net.URL(imageUrls).openStream()) {
-                        imageData = in.readAllBytes();
-                    } catch (Exception ex) {
-                        imageData = null;
-                    }
-                }
-            }
-
-            response = grpcClientService.callCheckWritingWithImageAsync(token, text, imageData).get();
-            saveLessonProgress(lessonId, userId, response.getScore());
             
+            WritingResponseBody response = grpcClientService
+                    .callCheckWritingWithImageAsync(token, text, question.getQuestion(), imageData)
+                    .get();
+
+            saveQuestionProgress(question.getLesson().getLessonId(), userId, response.getScore());
+
             return AppApiResponse.<WritingResponseBody>builder()
                     .code(200)
-                    .message("Writing exercise processed successfully")
+                    .message("Writing evaluated successfully")
                     .result(response)
                     .build();
         } catch (Exception e) {
-            log.error("Writing error: {}", e.getMessage(), e);
+            log.error("Writing processing error: {}", e.getMessage(), e);
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
 
-    @PostMapping("/writing/translation")
-    public AppApiResponse<WritingResponseBody> processTranslation(
+    // --- 3. XỬ LÝ READING / LISTENING (QUIZ - KHÔNG CẦN AI) ---
+    // User nghe audio (URL từ FE) hoặc đọc bài đọc (từ FE), sau đó chọn đáp án A,B,C,D
+    // Java tự check correctOption trong DB.
+
+    @PostMapping("/quiz/submit")
+    public AppApiResponse<String> submitQuizAnswer(
             @RequestHeader("Authorization") String authorization,
-            @RequestBody TranslationRequestBody request,
-            @RequestParam("lessonId") UUID lessonId) {
+            @RequestParam("lessonQuestionId") UUID lessonQuestionId,
+            @RequestParam("selectedOption") String selectedOption) { // Ví dụ: "optionA"
+
         String token = extractToken(authorization);
         UUID userId = extractUserId(token);
-        
-        lessonRepository.findByLessonIdAndIsDeletedFalse(lessonId)
-                .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
-        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        LessonQuestion question = lessonQuestionRepository.findByLessonQuestionIdAndIsDeletedFalse(lessonQuestionId)
+                .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
 
-        try {
-            String prompt = "Generate a short sentence for a translation exercise in " + user.getNativeLanguageCode();
-            String referenceText = grpcClientService
-                    .callGenerateTextAsync(token, userId.toString(), prompt, user.getNativeLanguageCode())
-                    .get();
+        boolean isCorrect = false;
+        String feedback = "Incorrect";
+        float score = 0;
 
-            WritingResponseBody response = grpcClientService
-                    .callCheckTranslationAsync(token, referenceText, request.getTranslatedText(), request.getTargetLanguage())
-                    .get();
-
-            saveLessonProgress(lessonId, userId, response.getScore());
-            return AppApiResponse.<WritingResponseBody>builder()
-                    .code(200)
-                    .message("Translation exercise processed successfully")
-                    .result(response)
-                    .build();
-        } catch (Exception e) {
-            log.error("Translation error: {}", e.getMessage(), e);
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+        // Logic check đáp án cứng
+        if (question.getCorrectOption() != null && question.getCorrectOption().equalsIgnoreCase(selectedOption)) {
+            isCorrect = true;
+            feedback = "Correct";
+            score = 100;
         }
+
+        saveQuestionProgress(question.getLesson().getLessonId(), userId, score);
+
+        return AppApiResponse.<String>builder()
+                .code(200)
+                .message("Quiz submitted")
+                .result(feedback + ". Explanation: " + question.getExplainAnswer())
+                .build();
     }
+
+    // --- HELPER METHODS ---
 
     private String extractToken(String authorization) {
         if (authorization == null || !authorization.startsWith("Bearer ")) {
@@ -310,70 +199,16 @@ public class SkillLessonController {
         return authenticationService.extractTokenByUserId(token);
     }
 
-    private void saveLessonProgress(UUID lessonId, UUID userId, float score) {
-        LessonProgress progress = LessonProgress.builder()
-                .id(new LessonProgressId(lessonId, userId))
-                .score(score)
-                .completedAt(OffsetDateTime.now())
-                .createdAt(OffsetDateTime.now())
-                .updatedAt(OffsetDateTime.now())
-                .isDeleted(false)
-                .needsReview(false)
-                .build();
+    private void saveQuestionProgress(UUID lessonId, UUID userId, float score) {
+        LessonProgress progress = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId))
+                .orElse(LessonProgress.builder()
+                        .id(new LessonProgressId(lessonId, userId))
+                        .createdAt(OffsetDateTime.now())
+                        .build());
+        
+        progress.setScore(score);
+        progress.setUpdatedAt(OffsetDateTime.now());
+        progress.setCompletedAt(OffsetDateTime.now());
         lessonProgressRepository.save(progress);
-        log.info("Saved lesson progress: lesson={}, user={}, score={}", lessonId, userId, score);
-    }
-
-    private void saveLessonProgress(UUID lessonId, UUID userId, List<ComprehensionQuestion> questions) {
-        questions.forEach(q -> {
-            LessonQuestion question = LessonQuestion.builder()
-                    .lessonId(lessonId)
-                    .languageCode(q.getLanguageCode())
-                    .question(q.getQuestion())
-                    .optionA(q.getOptions().get(0))
-                    .optionB(q.getOptions().get(1))
-                    .optionC(q.getOptions().get(2))
-                    .optionD(q.getOptions().get(3))
-                    .correctOption(q.getCorrectOption())
-                    .skillType(SkillType.READING)
-                    .weight(1)
-                    .createdAt(OffsetDateTime.now())
-                    .updatedAt(OffsetDateTime.now())
-                    .isDeleted(false)
-                    .build();
-            lessonQuestionRepository.save(question);
-        });
-
-        LessonProgress progress = LessonProgress.builder()
-                .id(new LessonProgressId(lessonId, userId))
-                .score(0)
-                .createdAt(OffsetDateTime.now())
-                .updatedAt(OffsetDateTime.now())
-                .isDeleted(false)
-                .needsReview(false)
-                .build();
-        lessonProgressRepository.save(progress);
-    }
-
-    private void saveLessonProgressAsync(UUID lessonId, UUID userId, float score) {
-        new Thread(() -> {
-            try {
-                saveLessonProgress(lessonId, userId, score);
-            } catch (Exception e) {
-                log.error("Error saving lesson progress async: {}", e.getMessage(), e);
-            }
-        }).start();
-    }
-
-    private List<ComprehensionQuestion> generateComprehensionQuestions(String passage, String languageCode) {
-        return List.of(
-                new ComprehensionQuestion(
-                        UUID.randomUUID(),
-                        languageCode,
-                        "What is the main idea of the passage?",
-                        List.of("Option A", "Option B", "Option C", "Option D"),
-                        "Option A"
-                )
-        );
     }
 }

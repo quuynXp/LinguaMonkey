@@ -1,6 +1,9 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
+import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.LessonHierarchicalResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
@@ -58,6 +61,9 @@ public class LessonServiceImpl implements LessonService {
     private final GrpcClientService grpcClientService;
     private final QuizQuestionMapper quizQuestionMapper;
     private final CourseVersionLessonRepository courseVersionLessonRepository;
+    private final CourseVersionEnrollmentRepository CourseVersionEnrollmentRepository;
+
+    // --- CÁC HÀM KHÁC GIỮ NGUYÊN ---
 
     @Override
     public Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters) {
@@ -117,8 +123,6 @@ public class LessonServiceImpl implements LessonService {
                     predicates.add(cb.equal(root.get("lessonSeriesId"), seriesId));
                 }
                 
-                // SỬA Ở ĐÂY: Dùng EQUAL cho Enum thay vì LIKE
-                // root.get("skillTypes") trỏ về field 'skillTypes' trong Entity Lesson
                 if (skillType != null) {
                     predicates.add(cb.equal(root.get("skillTypes"), skillType));
                 }
@@ -153,15 +157,6 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public LessonResponse createLesson(LessonRequest request) {
         try {
-            if (request.getLessonName() == null || request.getLessonName().isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            if (request.getLessonCategoryId() != null && !lessonCategoryRepository.existsById(request.getLessonCategoryId())) {
-                throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
-            }
-            if (request.getLessonSubCategoryId() != null && !lessonSubCategoryRepository.existsById(request.getLessonSubCategoryId())) {
-                throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
-            }
             User user = userRepository.findById(request.getCreatorId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
@@ -198,7 +193,7 @@ public class LessonServiceImpl implements LessonService {
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
-        List<LessonQuestion> questions = lessonQuestionRepository.findByLessonIdOrderByOrderIndex(lessonId);
+        List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
         if (Boolean.TRUE.equals(lesson.getShuffleQuestions())) {
             Collections.shuffle(questions);
         }
@@ -212,6 +207,7 @@ public class LessonServiceImpl implements LessonService {
             m.put("mediaUrl", q.getMediaUrl());
             m.put("weight", q.getWeight());
             m.put("orderIndex", q.getOrderIndex());
+            m.put("transcript", q.getTranscript()); // Cần gửi transcript xuống FE cho bài Speaking
             return m;
         }).collect(Collectors.toList());
 
@@ -235,12 +231,14 @@ public class LessonServiceImpl implements LessonService {
     public Map<String, Object> submitTest(UUID lessonId, UUID userId, Map<String, Object> payload) {
         Map<String, Object> answers = (Map<String, Object>) payload.get("answers");
         Integer attemptNumber = payload.get("attemptNumber") != null ? (Integer) payload.get("attemptNumber") : 1;
+        String token = (String) payload.get("token"); // Token được gửi từ Controller/Interceptor
+        if (token == null) throw new AppException(ErrorCode.UNAUTHENTICATED);
 
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
         if (userId == null) throw new AppException(ErrorCode.USER_NOT_FOUND);
 
-        List<LessonQuestion> questions = lessonQuestionRepository.findByLessonIdOrderByOrderIndex(lessonId);
+        List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
 
         int totalMax = questions.stream().mapToInt(q -> q.getWeight() == null ? 1 : q.getWeight()).sum();
         int totalScore = 0;
@@ -249,37 +247,46 @@ public class LessonServiceImpl implements LessonService {
         for (LessonQuestion q : questions) {
             String qid = q.getLessonQuestionId().toString();
             Object rawAns = answers.get(qid);
-            boolean correct = false;
-            int scoreGiven = 0;
-            if (q.getQuestionType() == QuestionType.MCQ || q.getQuestionType() == null) {
-                if (rawAns != null && q.getCorrectOption() != null) {
-                    if (rawAns.toString().trim().equalsIgnoreCase(q.getCorrectOption().trim())) {
-                        correct = true;
-                    }
-                }
-            } else if (q.getQuestionType() == QuestionType.FILL_BLANK) {
-                if (rawAns != null && q.getCorrectOption() != null) {
-                    String got = rawAns.toString().trim().toLowerCase();
-                    String correctAnswer = q.getCorrectOption().trim().toLowerCase();
-                    List<String> opts = Arrays.stream(correctAnswer.split("\\|\\|")).map(String::trim).collect(Collectors.toList());
-                    for (String o : opts) {
-                        if (o.equals(got)) {
-                            correct = true;
-                            break;
-                        }
-                    }
-                }
-            } else if (q.getQuestionType() == QuestionType.ORDERING) {
-                if (rawAns != null && q.getCorrectOption() != null) {
-                    String got = rawAns.toString();
-                    if (got.equals(q.getCorrectOption())) correct = true;
-                }
-            } else if (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) {
-                correct = false;
+            String userAnswerText = null;
+            byte[] audioBytes = null;
+            byte[] imageBytes = null;
+            
+            // Xử lý câu trả lời từ Map
+            if (rawAns instanceof Map) {
+                Map<String, Object> ansMap = (Map<String, Object>) rawAns;
+                userAnswerText = (String) ansMap.get("text_answer");
+                String audioBase64 = (String) ansMap.get("audio_data");
+                String imageBase64 = (String) ansMap.get("image_data");
+                
+                if (audioBase64 != null) audioBytes = Base64.getDecoder().decode(audioBase64);
+                if (imageBase64 != null) imageBytes = Base64.getDecoder().decode(imageBase64);
+            } else if (rawAns != null) {
+                // Đây là trường hợp câu hỏi quiz đơn giản (dạng String)
+                userAnswerText = rawAns.toString();
             }
 
+            int scoreGiven = 0;
+            boolean correct = false;
+            
+            // 1. CHẮM ĐIỂM BẰNG LOGIC CỨNG (Quiz, Fill-in-the-blank, Ordering)
+            if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || q.getQuestionType() == QuestionType.ORDERING) {
+                correct = checkDeterministicAnswer(q, userAnswerText);
+            }
+            // 2. CHẮM ĐIỂM BẰNG AI (Speaking, Writing)
+            else if (q.getQuestionType() == QuestionType.SPEAKING) {
+                scoreGiven = checkSpeakingAnswer(q, token, audioBytes);
+                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70); // 70% là pass
+            }
+            else if (q.getQuestionType() == QuestionType.WRITING || q.getQuestionType() == QuestionType.ESSAY) {
+                scoreGiven = checkWritingAnswer(q, token, userAnswerText, imageBytes);
+                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70); // 70% là pass
+            }
+
+            // TÍNH ĐIỂM CUỐI CÙNG VÀ LƯU WRONG ITEMS
             if (correct) {
-                scoreGiven = q.getWeight() == null ? 1 : q.getWeight();
+                if (scoreGiven == 0) { // Nếu là Quiz, scoreGiven sẽ = 0, gán lại theo weight
+                    scoreGiven = q.getWeight() == null ? 1 : q.getWeight();
+                }
                 totalScore += scoreGiven;
             } else {
                 LessonProgressWrongItemsId wid = new LessonProgressWrongItemsId();
@@ -289,7 +296,7 @@ public class LessonServiceImpl implements LessonService {
                 wid.setAttemptNumber(attemptNumber);
                 LessonProgressWrongItem wi = LessonProgressWrongItem.builder()
                         .id(wid)
-                        .wrongAnswer(rawAns == null ? null : rawAns.toString())
+                        .wrongAnswer(userAnswerText)
                         .build();
                 wrongItems.add(wi);
             }
@@ -304,21 +311,36 @@ public class LessonServiceImpl implements LessonService {
         LessonProgressId pid = new LessonProgressId(lessonId, userId);
         LessonProgress lp = lessonProgressRepository.findById(pid)
                 .orElse(LessonProgress.builder().id(pid).build());
-        lp.setScore(percent);
-        lp.setMaxScore(totalMax);
-        lp.setAttemptNumber(attemptNumber);
-        lp.setCompletedAt(OffsetDateTime.now());
-        boolean hasOpenAnswer = questions.stream().anyMatch(q -> q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING);
-        lp.setNeedsReview(hasOpenAnswer);
-        try {
-            lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers));
-        } catch (Exception ex) {
-            lp.setAnswersJson("{}");
+        
+        if (lp.getScore() < 0 || percent > lp.getScore()) {
+            lp.setScore(percent);
+            lp.setMaxScore(totalMax);
+            try {
+                // Lưu câu trả lời dưới dạng JSON, cần đảm bảo cấu trúc Map<String, Object> là hợp lệ
+                lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers));
+            } catch (Exception ex) {
+                lp.setAnswersJson("{}");
+            }
         }
+        
+        lp.setAttemptNumber(attemptNumber);
+        
+        if (lp.getCompletedAt() == null) {
+            lp.setCompletedAt(OffsetDateTime.now());
+        }
+        
+        // Cần review nếu có câu hỏi mở VÀ điểm chưa hoàn hảo (Logic AI có thể đã chấm, nên cần cẩn thận)
+        boolean needsReview = questions.stream().anyMatch(q -> 
+            (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) 
+            && (percent < 100) // Giữ lại cờ review nếu điểm chưa tuyệt đối
+        );
+        lp.setNeedsReview(needsReview);
+        
         lessonProgressRepository.save(lp);
 
-        int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
+        updateCourseProgressIfApplicable(userId, lessonId);
 
+        int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
         Map<String, Object> result = new HashMap<>();
         result.put("lessonId", lessonId);
         result.put("totalScore", totalScore);
@@ -326,121 +348,71 @@ public class LessonServiceImpl implements LessonService {
         result.put("percent", percent);
         result.put("needsReview", lp.getNeedsReview());
         result.put("progressPercent", progressPercent);
-
         return result;
     }
 
-    @Override
-    public QuizResponse generateSoloQuiz(String token, UUID userId) {
-        if (userId == null) {
-            throw new AppException(ErrorCode.INVALID_KEY);
+    // --- HELPER METHODS FOR GRADING ---
+
+    private boolean checkDeterministicAnswer(LessonQuestion q, String userAnswerText) {
+        if (userAnswerText == null || q.getCorrectOption() == null) return false;
+        
+        String correctAnswer = q.getCorrectOption().trim().toLowerCase();
+        String got = userAnswerText.trim().toLowerCase();
+
+        if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || q.getQuestionType() == QuestionType.ORDERING) {
+            return got.equalsIgnoreCase(correctAnswer);
+        } 
+        
+        if (q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK) {
+            // Hỗ trợ nhiều đáp án cách nhau bởi ||
+            List<String> validOptions = Arrays.stream(correctAnswer.split("\\|\\|")).map(String::trim).collect(Collectors.toList());
+            return validOptions.contains(got);
         }
-        log.info("Generating solo quiz for user: {}", userId);
+        return false;
+    }
+
+    private int checkSpeakingAnswer(LessonQuestion q, String token, byte[] audioBytes) {
+        if (audioBytes == null || q.getTranscript() == null) return 0;
+        
         try {
-            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
-                    token,
-                    userId.toString(),
-                    15,
-                    "solo",
-                    null
+            // Gọi gRPC CheckPronunciation
+            PronunciationResponseBody response = grpcClientService.callCheckPronunciationAsync(
+                token, 
+                audioBytes, 
+                q.getLanguageCode(), 
+                q.getTranscript() // Transcript là Reference Text
             ).get();
-            return quizQuestionMapper.toResponse(grpcResponse);
-        } catch (InterruptedException | ExecutionException e) {
-            log.error("Failed to generate solo quiz for user {}: {}", userId, e.getMessage());
-            if (e.getCause() instanceof AppException appEx) {
-                throw appEx;
-            }
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        }
-    }
-
-    @Override
-    @Transactional
-    public Lesson saveLessonForVersion(Lesson lesson, UUID versionId, Integer lessonIndex) {
-        try {
-            if (lesson.getLessonName() == null) {
-                lesson.setLessonName("Untitled Lesson");
-            }
-            lesson.setDeleted(false);
-            Lesson savedLesson = lessonRepository.save(lesson);
-
-            CourseVersionLessonId linkId = new CourseVersionLessonId(versionId, savedLesson.getLessonId());
-            CourseVersionLesson courseVersionLesson = CourseVersionLesson.builder()
-                    .id(linkId)
-                    .orderIndex(lessonIndex)
-                    .build();
-            courseVersionLessonRepository.save(courseVersionLesson);
-            return savedLesson;
+            
+            // Trả về điểm (0-100)
+            return (int) response.getScore();
         } catch (Exception e) {
-            log.error("Error saving lesson for version: {}", e.getMessage());
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+            log.error("AI Speaking Check failed for question {}: {}", q.getLessonQuestionId(), e.getMessage());
+            return 0; // Trả về 0 nếu lỗi
         }
     }
 
-    @Override
-    public QuizResponse generateTeamQuiz(String token, String topic) {
-        log.info("Generating team quiz with topic: {}", topic);
+    private int checkWritingAnswer(LessonQuestion q, String token, String userText, byte[] imageBytes) {
+        if (userText == null || q.getQuestion() == null) return 0;
+        
         try {
-            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
-                    token,
-                    null,
-                    30,
-                    "team",
-                    topic
+            // Gọi gRPC CheckWritingWithImage
+            WritingResponseBody response = grpcClientService.callCheckWritingWithImageAsync(
+                token, 
+                userText, 
+                q.getQuestion(), // Question là Prompt/Đề bài
+                imageBytes
             ).get();
-            return quizQuestionMapper.toResponse(grpcResponse);
-        } catch (InterruptedException | ExecutionException e) {
-            log.error("Failed to generate team quiz: {}", e.getMessage());
-            if (e.getCause() instanceof AppException appEx) {
-                throw appEx;
-            }
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            
+            // Trả về điểm (0-100)
+            return (int) response.getScore();
+        } catch (Exception e) {
+            log.error("AI Writing Check failed for question {}: {}", q.getLessonQuestionId(), e.getMessage());
+            return 0; // Trả về 0 nếu lỗi
         }
     }
 
-    @Override
-    @Transactional
-    public LessonResponse updateLesson(UUID id, LessonRequest request) {
-        try {
-            Lesson lesson = lessonRepository.findById(id)
-                    .filter(l -> !l.isDeleted())
-                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            if (request.getLessonName() == null || request.getLessonName().isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            if (request.getLessonCategoryId() != null && !lessonCategoryRepository.existsById(request.getLessonCategoryId())) {
-                throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
-            }
-            if (request.getLessonSubCategoryId() != null && !lessonSubCategoryRepository.existsById(request.getLessonSubCategoryId())) {
-                throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
-            }
-            lessonMapper.updateEntityFromRequest(request, lesson);
-            lesson.setUpdatedAt(OffsetDateTime.now());
-            lesson = lessonRepository.save(lesson);
-            return toLessonResponse(lesson);
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
 
-    @Override
-    @Transactional
-    public void deleteLesson(UUID id) {
-        try {
-            Lesson lesson = lessonRepository.findById(id)
-                    .filter(l -> !l.isDeleted())
-                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            lesson.setDeleted(true);
-            lesson.setDeletedAt(OffsetDateTime.now());
-            lessonRepository.save(lesson);
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
-    }
+    // --- CÁC HÀM KHÁC GIỮ NGUYÊN ---
 
     @Override
     @Transactional
@@ -534,8 +506,6 @@ public class LessonServiceImpl implements LessonService {
 
     private LessonResponse toLessonResponse(Lesson lesson) {
         try {
-            // TỐI ƯU: Lấy trực tiếp từ field Entity vì nó đã được load,
-            // không cần query lại DB (lessonRepository.findSkillTypeByLessonId...) gây N+1
             SkillType skillType = lesson.getSkillTypes();
             
             List<String> videoUrls = videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
@@ -578,5 +548,173 @@ public class LessonServiceImpl implements LessonService {
         if (p < 70) return 3;
         if (p < 85) return 4;
         return 5;
+    }
+
+    @Override
+    @Transactional
+    public Lesson saveLessonForVersion(Lesson lesson, UUID versionId, Integer lessonIndex) {
+        try {
+            if (lesson.getLessonName() == null) {
+                lesson.setLessonName("Untitled Lesson");
+            }
+            lesson.setDeleted(false);
+            Lesson savedLesson = lessonRepository.save(lesson);
+
+            CourseVersionLessonId linkId = new CourseVersionLessonId(versionId, savedLesson.getLessonId());
+            CourseVersionLesson courseVersionLesson = CourseVersionLesson.builder()
+                    .id(linkId)
+                    .orderIndex(lessonIndex)
+                    .build();
+            courseVersionLessonRepository.save(courseVersionLesson);
+            return savedLesson;
+        } catch (Exception e) {
+            log.error("Error saving lesson for version: {}", e.getMessage());
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    public QuizResponse generateTeamQuiz(String token, String topic) {
+        log.info("Generating team quiz with topic: {}", topic);
+        try {
+            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
+                    token,
+                    null,
+                    30,
+                    "team",
+                    topic
+            ).get();
+            return quizQuestionMapper.toResponse(grpcResponse);
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Failed to generate team quiz: {}", e.getMessage());
+            if (e.getCause() instanceof AppException appEx) {
+                throw appEx;
+            }
+            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+        }
+    }
+
+    @Override
+    public QuizResponse generateSoloQuiz(String token, UUID userId) {
+        if (userId == null) {
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+        log.info("Generating solo quiz for user: {}", userId);
+        try {
+            QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
+                    token,
+                    userId.toString(),
+                    15,
+                    "solo",
+                    null
+            ).get();
+            return quizQuestionMapper.toResponse(grpcResponse);
+        } catch (InterruptedException | ExecutionException e) {
+            log.error("Failed to generate solo quiz for user {}: {}", userId, e.getMessage());
+            if (e.getCause() instanceof AppException appEx) {
+                throw appEx;
+            }
+            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+        }
+    }
+
+    @Override
+    @Transactional
+    public LessonResponse updateLesson(UUID id, LessonRequest request) {
+        try {
+            Lesson lesson = lessonRepository.findById(id)
+                    .filter(l -> !l.isDeleted())
+                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+            if (request.getLessonName() == null || request.getLessonName().isBlank()) {
+                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+            }
+            if (request.getLessonCategoryId() != null && !lessonCategoryRepository.existsById(request.getLessonCategoryId())) {
+                throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
+            }
+            if (request.getLessonSubCategoryId() != null && !lessonSubCategoryRepository.existsById(request.getLessonSubCategoryId())) {
+                throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
+            }
+            lessonMapper.updateEntityFromRequest(request, lesson);
+            lesson.setUpdatedAt(OffsetDateTime.now());
+            lesson = lessonRepository.save(lesson);
+            return toLessonResponse(lesson);
+        } catch (AppException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deleteLesson(UUID id) {
+        try {
+            Lesson lesson = lessonRepository.findById(id)
+                    .filter(l -> !l.isDeleted())
+                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+            lesson.setDeleted(true);
+            lesson.setDeletedAt(OffsetDateTime.now());
+            lessonRepository.save(lesson);
+        } catch (AppException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    public List<LessonHierarchicalResponse> getLessonsTreeBySkill(SkillType skillType, String languageCode) {
+        List<LessonCategory> categories = lessonCategoryRepository.findDistinctCategoriesByLessonSkillAndLanguage(skillType, languageCode);
+        
+        return categories.stream().map(cat -> {
+            List<LessonSubCategory> subCats = lessonSubCategoryRepository.findByLessonCategoryIdAndLanguageCodeAndIsDeletedFalse(cat.getLessonCategoryId(), languageCode, Pageable.unpaged()).getContent();
+            
+            List<LessonHierarchicalResponse.SubCategoryDto> subCatDtos = subCats.stream().map(sub -> {
+                List<Lesson> lessons = lessonRepository.findByLessonSubCategoryIdAndSkillTypesAndIsDeletedFalseOrderByOrderIndex(sub.getLessonSubCategoryId(), skillType);
+                
+                return LessonHierarchicalResponse.SubCategoryDto.builder()
+                        .subCategoryId(sub.getLessonSubCategoryId())
+                        .subCategoryName(sub.getLessonSubCategoryName())
+                        .lessons(lessons.stream().map(this::toLessonResponse).collect(Collectors.toList()))
+                        .build();
+            }).collect(Collectors.toList());
+
+            return LessonHierarchicalResponse.builder()
+                    .categoryId(cat.getLessonCategoryId())
+                    .categoryName(cat.getLessonCategoryName())
+                    .coinReward(cat.getCoinReward())
+                    .subCategories(subCatDtos)
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    // --- HELPER FUNCTION: UPDATE COURSE PROGRESS ---
+    private void updateCourseProgressIfApplicable(UUID userId, UUID lessonId) {
+        List<CourseVersionEnrollment> enrollments = CourseVersionEnrollmentRepository.findActiveEnrollmentsByUserIdAndLessonId(userId, lessonId);
+        
+        for (CourseVersionEnrollment enrollment : enrollments) {
+            UUID versionId = enrollment.getCourseVersion().getVersionId();
+            
+            long totalLessons = CourseVersionEnrollmentRepository.countLessonsInVersion(versionId);
+            
+            if (totalLessons > 0) {
+                long completedLessons = CourseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, versionId);
+                
+                double progressPercent = ((double) completedLessons / totalLessons) * 100.0;
+                
+                progressPercent = Math.round(progressPercent * 100.0) / 100.0;
+                
+                enrollment.setProgress(progressPercent);
+                
+                if (progressPercent >= 100.0 && enrollment.getCompletedAt() == null) {
+                    enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
+                    enrollment.setCompletedAt(OffsetDateTime.now());
+                    
+                }
+                
+                CourseVersionEnrollmentRepository.save(enrollment);
+                log.info("Updated progress for user {} in course version {}: {}%", userId, versionId, progressPercent);
+            }
+        }
     }
 }

@@ -29,7 +29,7 @@ public interface CourseService {
     Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Pageable pageable);
     List<CourseResponse> getRecommendedCourses(UUID userId, int limit);
     List<CourseSummaryResponse> getCourseSummariesByTeacher(UUID teacherId, int limit);
-    Page<CourseResponse> getDiscountedCourses(Pageable pageable);
+    // Page<CourseResponse> getDiscountedCourses(Pageable pageable);
     CourseResponse getCourseById(UUID id);
     void deleteCourse(UUID id);
     Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable);

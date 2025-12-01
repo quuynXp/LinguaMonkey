@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.LessonCategory;
+import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -8,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,5 +32,14 @@ public interface LessonCategoryRepository extends JpaRepository<LessonCategory, 
     @Modifying
     @Query("UPDATE LessonCategory lc SET lc.isDeleted = true, lc.deletedAt = CURRENT_TIMESTAMP WHERE lc.lessonCategoryId = :id AND lc.isDeleted = false")
     void softDeleteById(@Param("id") UUID id);
+
+    @Query("""
+        SELECT DISTINCT lc FROM LessonCategory lc 
+        JOIN Lesson l ON lc.lessonCategoryId = l.lessonCategoryId
+        WHERE l.skillTypes = :skillType 
+        AND lc.languageCode = :languageCode
+        AND lc.isDeleted = false
+        """)
+    List<LessonCategory> findDistinctCategoriesByLessonSkillAndLanguage(@Param("skillType") SkillType skillType, @Param("languageCode") String languageCode);
 
 }

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import instance from "../api/axiosClient";
 import {
     PageResponse,
@@ -21,19 +21,15 @@ export const searchKeys = {
 // the axios response data will contain the Page structure at the root.
 // --- Helper to standardize pagination return (Adapting to non-AppApiResponse Page<T>) ---
 const mapSearchPageResponse = <T>(result: any, page: number, size: number) => ({
-    data: (result?.content as T[]) || [],
-    pagination: {
-        pageNumber: result?.number ?? page,
-        pageSize: result?.size ?? size,
-        totalElements: result?.totalElements ?? 0,
-        totalPages: result?.totalPages ?? 0,
-
-        isLast: result?.last ?? true,
-        isFirst: result?.first ?? true,
-
-        hasNext: result ? !result.last : false,
-        hasPrevious: result ? !result.first : false,
-    },
+    content: (result?.content as T[]) || [],
+    pageNumber: result?.number ?? page,
+    pageSize: result?.size ?? size,
+    totalElements: result?.totalElements ?? 0,
+    totalPages: result?.totalPages ?? 0,
+    isLast: result?.last ?? true,
+    isFirst: result?.first ?? true,
+    hasNext: result ? !result.last : false,
+    hasPrevious: result ? !result.first : false,
 });
 
 /**
@@ -44,27 +40,39 @@ export const useSearch = () => {
     const BASE = "/api/v1/search";
 
     // 1. GET /api/v1/search/users
-    const useSearchUsers = (keyword: string, page = 0, size = 10, enabled: boolean = true) => {
-        const params = { keyword, page, size };
-        return useQuery({
+    const useSearchUsers = (
+        keyword: string,
+        filters?: { country?: string; gender?: string; ageRange?: string },
+        page = 0,
+        size = 10,
+        enabled: boolean = true
+    ) => {
+        const params = { keyword, page, size, ...filters };
+        return useInfiniteQuery({
             queryKey: searchKeys.results("users", keyword, params),
-            queryFn: async () => {
-                const { data } = await instance.get<PageResponse<UserResponse>>(`${BASE}/users`, { params });
-                return mapSearchPageResponse<UserResponse>(data, page, size);
+            queryFn: async ({ pageParam = 0 }) => {
+                const { data } = await instance.get<PageResponse<UserResponse>>(`${BASE}/users`, {
+                    params: { ...params, page: pageParam }
+                });
+                return mapSearchPageResponse<UserResponse>(data, pageParam, size);
             },
-            enabled: enabled && keyword.length > 2,
+            initialPageParam: 0,
+            getNextPageParam: (lastPage) => lastPage.hasNext ? lastPage.pageNumber + 1 : undefined,
+            enabled: enabled,
         });
     };
 
     // 2. GET /api/v1/search/messages
     const useSearchMessages = (keyword: string, roomId?: string, page = 0, size = 10, enabled: boolean = true) => {
         const params = { keyword, roomId, page, size };
-        return useQuery({
+        return useInfiniteQuery({
             queryKey: searchKeys.results("messages", keyword, params),
-            queryFn: async () => {
-                const { data } = await instance.get<PageResponse<ChatMessageResponse>>(`${BASE}/messages`, { params });
-                return mapSearchPageResponse<ChatMessageResponse>(data, page, size);
+            queryFn: async ({ pageParam = 0 }) => {
+                const { data } = await instance.get<PageResponse<ChatMessageResponse>>(`${BASE}/messages`, { params: { ...params, page: pageParam } });
+                return mapSearchPageResponse<ChatMessageResponse>(data, pageParam, size);
             },
+            initialPageParam: 0,
+            getNextPageParam: (lastPage) => lastPage.hasNext ? lastPage.pageNumber + 1 : undefined,
             enabled: enabled && keyword.length > 2,
         });
     };

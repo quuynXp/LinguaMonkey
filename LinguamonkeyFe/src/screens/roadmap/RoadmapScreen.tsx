@@ -23,7 +23,9 @@ const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const RoadmapScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
-  const { user } = useUserStore();
+  // FIX: Access languages from store to match Home logic
+  const { user, languages } = useUserStore();
+  const currentLanguage = languages && languages.length > 0 ? languages[0] : "en";
 
   // Tab chính: My Roadmap vs Explore
   const [activeTab, setActiveTab] = useState<'my_roadmap' | 'explore'>('my_roadmap');
@@ -44,21 +46,23 @@ const RoadmapScreen = ({ navigation }: any) => {
   } = useRoadmap();
 
   // Data
-  const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps("en");
+  // FIX: Removed hardcoded "en", now uses currentLanguage.
+  // This ensures cache key matches what HomeScreen uses.
+  const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps(currentLanguage);
 
   // Fetch Official (Templates)
   const {
     data: officialRoadmaps,
     isLoading: officialLoading,
     refetch: refetchOfficial
-  } = useOfficialRoadmaps("en");
+  } = useOfficialRoadmaps(currentLanguage);
 
   // Fetch Community (Shared)
   const {
     data: communityRoadmaps,
     isLoading: communityLoading,
     refetch: refetchCommunity
-  } = useCommunityRoadmaps("en");
+  } = useCommunityRoadmaps(currentLanguage);
 
   const myRoadmap = userRoadmaps?.[0];
   const { data: suggestions } = useSuggestions(myRoadmap?.roadmapId || null);

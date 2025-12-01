@@ -18,6 +18,7 @@ public class LessonQuestionResponse {
     private String optionC;
     private String optionD;
     private String correctOption;
+    private String mediaUrl;
     private boolean isDeleted;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;

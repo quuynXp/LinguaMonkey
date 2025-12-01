@@ -42,6 +42,9 @@ public class User extends BaseEntity {
     @Column(name = "nickname")
     private String nickname;
 
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+    private UserSettings userSettings;
+
     @Column(name = "bio", columnDefinition = "text")
     private String bio;
 

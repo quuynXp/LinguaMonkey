@@ -1,673 +1,316 @@
-import Icon from "react-native-vector-icons/MaterialIcons"
-import { useMemo } from "react"
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { View, Text, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Platform } from "react-native";
+import Icon from "react-native-vector-icons/MaterialIcons";
+import { useTranslation } from "react-i18next";
+import { useAudioRecorder, RecordingPresets, setAudioModeAsync } from 'expo-audio';
+import { useLessons } from "../../hooks/useLessons";
+import { useSkillLessons } from "../../hooks/useSkillLessons";
+import { useUserStore } from "../../stores/UserStore";
 import {
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-  RefreshControl,
-  Image,
-} from "react-native"
-import { useTranslation } from "react-i18next"
-import { useUserStore } from "../../stores/UserStore"
-import { useCourses } from "../../hooks/useCourses"
-import { useLessons } from "../../hooks/useLessons"
+  LessonResponse,
+  LessonQuestionResponse,
+  LessonProgressRequest,
+  LessonProgressWrongItemRequest,
+  StreamingChunk,
+  LessonProgressResponse
+} from "../../types/dto";
+import { SkillType, QuestionType } from "../../types/enums";
+import { createScaledSheet } from "../../utils/scaledStyles";
+import ScreenLayout from "../../components/layout/ScreenLayout";
 
-import ScreenLayout from "../../components/layout/ScreenLayout"
-import type { CourseResponse, LessonResponse } from "../../types/dto"
-import { CourseType, SkillType } from "../../types/enums"
-import { createScaledSheet } from "../../utils/scaledStyles"
+import {
+  ListeningQuestionView,
+  SpeakingQuestionView,
+  ReadingQuestionView,
+  WritingQuestionView
+} from "../../components/learn/SkillComponents";
+import { LessonInputArea } from "../../components/learn/LessonInputArea";
 
-const LessonScreen = ({ navigation }: any) => {
-  const { t } = useTranslation()
-  const { user, isAuthenticated } = useUserStore()
+const QUESTION_TIME_LIMIT = 20;
 
-  const {
-    useAllCourses,
-    useEnrollments,
-    useRecommendedCourses,
-  } = useCourses()
+const LessonScreen = ({ navigation, route }: any) => {
+  const { t } = useTranslation();
+  const { lesson } = route.params as { lesson: LessonResponse };
+  const userStore = useUserStore();
+  const userId = userStore.user?.userId;
 
-  const {
-    useAllLessons,
-  } = useLessons()
+  const { useAllQuestions, useUpdateProgress, useCreateWrongItem } = useLessons();
+  const { useStreamPronunciation, useCheckWriting } = useSkillLessons();
 
-  const {
-    data: enrolledData,
-    isLoading: enrolledLoading,
-    refetch: refetchEnrolled,
-  } = useEnrollments({
-    userId: user?.userId,
-    page: 0,
-    size: 5,
-  })
+  const streamPronunciationMutation = useStreamPronunciation();
+  const checkWritingMutation = useCheckWriting();
 
-  const {
-    data: allCoursesData,
-    isLoading: allCoursesLoading,
-    refetch: refetchAllCourses,
-  } = useAllCourses({
-    page: 0,
-    size: 5,
-    type: CourseType.FREE,
-  })
+  const updateProgressMutation = useUpdateProgress();
+  const createWrongItemMutation = useCreateWrongItem();
 
-  const {
-    data: recommendedData,
-    isLoading: recommendedLoading,
-    refetch: refetchRecommended,
-  } = useRecommendedCourses(user?.userId, 5)
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [correctCount, setCorrectCount] = useState(0);
+  const [isAnswered, setIsAnswered] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
+  const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_LIMIT);
 
-  const {
-    data: listeningData,
-    isLoading: listeningLoading,
-    refetch: refetchListening,
-  } = useAllLessons({
-    skillType: SkillType.LISTENING,
-    page: 0,
-    size: 3,
-  })
+  const [isRecording, setIsRecording] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+  const [speakingFeedback, setSpeakingFeedback] = useState<StreamingChunk | null>(null);
 
-  const {
-    data: speakingData,
-    isLoading: speakingLoading,
-    refetch: refetchSpeaking,
-  } = useAllLessons({
-    skillType: SkillType.SPEAKING,
-    page: 0,
-    size: 3,
-  })
+  const timerRef = useRef<number | null>(null);
 
-  const {
-    data: readingData,
-    isLoading: readingLoading,
-    refetch: refetchReading,
-  } = useAllLessons({
-    skillType: SkillType.READING,
-    page: 0,
-    size: 3,
-  })
+  const { data: questionsData, isLoading } = useAllQuestions({
+    lessonId: lesson.lessonId,
+    size: 50,
+  });
 
-  const {
-    data: writingData,
-    isLoading: writingLoading,
-    refetch: refetchWriting,
-  } = useAllLessons({
-    skillType: SkillType.WRITING,
-    page: 0,
-    size: 3,
-  })
+  const questions: LessonQuestionResponse[] = useMemo(() => (questionsData?.data || []) as LessonQuestionResponse[], [questionsData]);
+  const currentQuestion = questions[currentQuestionIndex];
 
-  const purchasedCourses = useMemo(() => {
-    const enrollments = enrolledData?.data || []
-    return enrollments.map((enrollment: any) => ({
-      ...enrollment.course,
-      progress: enrollment.progress ?? 0,
-      completedLessons: enrollment.completedLessons ?? 0,
-    })).filter(Boolean)
-  }, [enrolledData])
+  useEffect(() => {
+    if (!currentQuestion || isAnswered || isLoading) return;
 
-  const freeCourses = useMemo(() => {
-    return allCoursesData?.data || []
-  }, [allCoursesData])
+    setTimeLeft(QUESTION_TIME_LIMIT);
 
-  const recommendedCourses = useMemo(() => {
-    return recommendedData || []
-  }, [recommendedData])
+    if (currentQuestion.questionType === QuestionType.SPEAKING || currentQuestion.questionType === QuestionType.WRITING) {
+      return;
+    }
 
-  const listeningLessons = useMemo(() => {
-    return listeningData?.data || []
-  }, [listeningData])
+    timerRef.current = setInterval(() => {
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          if (timerRef.current) clearInterval(timerRef.current);
+          handleTimeout();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
-  const speakingLessons = useMemo(() => {
-    return speakingData?.data || []
-  }, [speakingData])
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [currentQuestionIndex, isAnswered, isLoading, currentQuestion]);
 
-  const readingLessons = useMemo(() => {
-    return readingData?.data || []
-  }, [readingData])
+  const handleTimeout = () => {
+    handleSubmitAnswer(false, "TIMEOUT", false);
+  };
 
-  const writingLessons = useMemo(() => {
-    return writingData?.data || []
-  }, [writingData])
+  const handleNext = useCallback(() => {
+    setSpeakingFeedback(null);
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(prev => prev + 1);
+      setIsAnswered(false);
+      setSelectedAnswer(null);
+    } else {
+      Alert.alert(t("common.congratulations"), `${t("learn.yourScore")}: ${correctCount}/${questions.length}`, [
+        { text: "OK", onPress: () => navigation.goBack() }
+      ]);
+    }
+  }, [currentQuestionIndex, questions.length, correctCount, navigation, t]);
 
-  const isLoading =
-    enrolledLoading ||
-    allCoursesLoading ||
-    recommendedLoading ||
-    listeningLoading ||
-    speakingLoading ||
-    readingLoading ||
-    writingLoading
+  const handleSubmitAnswer = async (isCorrect: boolean, answerValue: any, callAi: boolean = false) => {
+    if (isAnswered) return;
+    if (timerRef.current) clearInterval(timerRef.current);
 
-  const learningTools = [
-    { name: t("learn.vocabularyFlashcards"), icon: "style", screen: "VocabularyFlashcards" },
-    { name: t("learn.listening"), icon: "volume-up", screen: "ListeningScreen" },
-    { name: t("learn.speaking"), icon: "mic", screen: "SpeakingScreen" },
-    { name: t("learn.reading"), icon: "menu-book", screen: "ReadingScreen" },
-    { name: t("learn.writing"), icon: "edit", screen: "WritingScreen" },
-    { name: t("learn.ipaPronunciation"), icon: "record-voice-over", screen: "IPAScreen" },
-    { name: t("learn.notes"), icon: "notes", screen: "NotesScreen" },
-    { name: t("learn.soloQuiz"), icon: "quiz", screen: "SoloQuizScreen" },
-    { name: t("learn.teamQuiz"), icon: "people", screen: "TeamQuizRoom" },
-    { name: t("learn.bilingual"), icon: "language", screen: "BilingualVideoScreen" },
-    { name: t("learn.certifications"), icon: "card-membership", screen: "CertificationLearning" },
-  ]
+    setIsAnswered(true);
+    setSelectedAnswer(answerValue);
 
-  const handleRefresh = () => {
-    refetchEnrolled()
-    refetchAllCourses()
-    refetchRecommended()
-    refetchListening()
-    refetchSpeaking()
-    refetchReading()
-    refetchWriting()
-  }
+    let finalCorrect = isCorrect;
 
-  const handleCoursePress = (course: CourseResponse, isPurchased = false) => {
-    navigation.navigate("CourseDetailsScreen", {
-      course,
-      isPurchased,
-    })
-  }
+    if (finalCorrect) setCorrectCount(prev => prev + 1);
 
-  const handleViewAllCourses = () => navigation.navigate("StudentCoursesScreen")
+    if (userId) {
+      const progressReq: LessonProgressRequest = {
+        lessonId: lesson.lessonId,
+        userId: userId,
+        score: finalCorrect ? correctCount + 1 : correctCount,
+        maxScore: questions.length,
+        attemptNumber: 1,
+        completedAt: new Date().toISOString(),
+        needsReview: !finalCorrect,
+        answersJson: JSON.stringify({ [currentQuestion.lessonQuestionId]: answerValue })
+      };
+      updateProgressMutation.mutate({ lessonId: lesson.lessonId, userId, req: progressReq });
 
-  const handleNavigation = (screenName: string) => {
-    navigation.navigate(screenName)
-  }
+      if (!finalCorrect) {
+        const wrongItemReq: LessonProgressWrongItemRequest = {
+          lessonId: lesson.lessonId,
+          userId: userId,
+          lessonQuestionId: currentQuestion.lessonQuestionId,
+          wrongAnswer: typeof answerValue === 'string' ? answerValue : "AUDIO_FILE"
+        };
+        createWrongItemMutation.mutate(wrongItemReq);
+      }
+    }
 
-  const renderCourseCardItem = (course: CourseResponse, isPurchased = false) => {
-    if (!course) return null
+    if (currentQuestion.questionType === QuestionType.MULTIPLE_CHOICE || currentQuestion.questionType === QuestionType.FILL_IN_THE_BLANK) {
+      setTimeout(handleNext, 1500);
+    }
+  };
 
-    const version = course.latestPublicVersion
-    const title = course.title || "Untitled"
-    const progress = (course as any).progress ?? 0
-    const completedLessons = (course as any).completedLessons ?? 0
-    const totalLessons = version?.lessons?.length ?? 0
-    const thumbnailUrl = version?.thumbnailUrl
+  const handleQuizAnswer = (optionKey: string) => {
+    const isCorrect = optionKey === currentQuestion.correctOption;
+    handleSubmitAnswer(isCorrect, optionKey);
+  };
 
+  const startRecording = async () => {
+    try {
+      await setAudioModeAsync({ allowsRecording: true });
+      await recorder.prepareToRecordAsync(RecordingPresets.HIGH_QUALITY);
+      await recorder.record();
+      setIsRecording(true);
+    } catch (e) { Alert.alert("Error", "Mic error"); }
+  };
+
+  const stopRecording = async () => {
+    if (!isRecording) return;
+    setIsRecording(false);
+    setIsStreaming(true);
+    await recorder.stop();
+    const uri = recorder.uri;
+
+    if (uri) {
+      const fileUri = Platform.OS === 'ios' ? uri : uri;
+      streamPronunciationMutation.mutate({
+        audioUri: fileUri,
+        lessonQuestionId: currentQuestion.lessonQuestionId,
+        languageCode: lesson.languageCode,
+        onChunk: (chunk) => {
+          if (chunk.type === 'final') {
+            setSpeakingFeedback(chunk);
+            const score = chunk.score || 0;
+            const passed = score >= 70;
+            handleSubmitAnswer(passed, "AUDIO_SUBMITTED");
+            setIsStreaming(false);
+          }
+        }
+      }, {
+        onError: () => {
+          setIsStreaming(false);
+          Alert.alert("Lỗi", "Không thể chấm điểm nói.");
+          handleSubmitAnswer(false, "AUDIO_ERROR");
+        }
+      });
+    }
+  };
+
+  const handleWritingSubmit = (text: string) => {
+    setIsStreaming(true);
+    checkWritingMutation.mutate({
+      text: text,
+      lessonQuestionId: currentQuestion.lessonQuestionId,
+      languageCode: lesson.languageCode,
+    }, {
+      onSuccess: (data) => {
+        setIsStreaming(false);
+        const passed = data.score >= 70;
+        Alert.alert("Kết quả", `Điểm: ${data.score}/100\nFeedback: ${data.feedback}`, [
+          { text: "Tiếp tục", onPress: () => handleSubmitAnswer(passed, text) }
+        ]);
+      },
+      onError: () => {
+        setIsStreaming(false);
+        Alert.alert("Lỗi", "Không thể chấm bài viết.");
+      }
+    });
+  };
+
+  const renderQuestionView = () => {
+    const type = currentQuestion.questionType;
+
+    if (type === QuestionType.SPEAKING || currentQuestion.skillType === SkillType.SPEAKING) {
+      return <SpeakingQuestionView question={currentQuestion} />;
+    }
+    if (type === QuestionType.WRITING || type === QuestionType.ESSAY || currentQuestion.skillType === SkillType.WRITING) {
+      return <WritingQuestionView question={currentQuestion} />;
+    }
+    if (currentQuestion.skillType === SkillType.LISTENING) {
+      return <ListeningQuestionView question={currentQuestion} />;
+    }
+
+    return <ReadingQuestionView question={currentQuestion} />;
+  };
+
+  if (isLoading || !currentQuestion) {
     return (
-      <TouchableOpacity
-        key={course.courseId}
-        style={[styles.courseCard, isPurchased && styles.purchasedCourseCard]}
-        onPress={() => handleCoursePress(course, isPurchased)}
-      >
-        {thumbnailUrl ? (
-          <Image source={{ uri: thumbnailUrl }} style={styles.courseImage} resizeMode="cover" />
-        ) : (
-          <View style={[styles.courseImage, { justifyContent: "center", alignItems: "center" }]}>
-            <Icon name="menu-book" size={40} color="#9CA3AF" />
-          </View>
-        )}
-
-        {isPurchased && (
-          <View style={styles.purchasedBadge}>
-            <Icon name="check-circle" size={16} color="#FFFFFF" />
-            <Text style={styles.purchasedText}>{t("courses.purchased")}</Text>
-          </View>
-        )}
-
-        <View style={styles.courseContent}>
-          <Text style={styles.courseTitle} numberOfLines={2}>{title}</Text>
-
-          {isPurchased ? (
-            <View style={styles.progressSection}>
-              <View style={styles.progressInfo}>
-                <Text style={styles.progressText}>
-                  {t("courses.progress")}: {Math.round(progress)}%
-                </Text>
-                <Text style={styles.lessonsText}>
-                  {completedLessons}/{totalLessons} {t("courses.lessons")}
-                </Text>
-              </View>
-              <View style={styles.progressBar}>
-                <View style={[styles.progressFill, { width: `${progress}%` }]} />
-              </View>
-            </View>
-          ) : (
-            <View style={styles.priceSection}>
-              <Text style={styles.price}>
-                {course.price === 0 ? t("courses.free") : `$${course.price}`}
-              </Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
-    )
-  }
-
-  const renderLessonCard = (lesson: LessonResponse) => {
-    if (!lesson) return null
-
-    return (
-      <TouchableOpacity
-        key={lesson.lessonId}
-        style={styles.lessonCard}
-        onPress={() => navigation.navigate("LessonScreen", { lesson })}
-      >
-        <View style={styles.lessonImagePlaceholder}>
-          <Icon name="auto-stories" size={40} color="#9CA3AF" />
-        </View>
-        <View style={styles.lessonContent}>
-          <Text style={styles.lessonTitle} numberOfLines={2}>
-            {lesson.lessonName || "Lesson"}
-          </Text>
-          <View style={styles.lessonStats}>
-            <View style={styles.expContainer}>
-              <Icon name="star" size={14} color="#F59E0B" />
-              <Text style={styles.expText}>{lesson.expReward || 10} XP</Text>
-            </View>
-          </View>
-        </View>
-      </TouchableOpacity>
-    )
-  }
-
-  const renderLearningToolCard = (tool: any) => (
-    <TouchableOpacity
-      key={tool.screen}
-      style={styles.toolCard}
-      onPress={() => handleNavigation(tool.screen)}
-    >
-      <View style={styles.toolIconContainer}>
-        <Icon name={tool.icon} size={24} color="#4F46E5" />
-      </View>
-      <Text style={styles.toolName}>{tool.name}</Text>
-    </TouchableOpacity>
-  )
-
-  if (isLoading && !purchasedCourses.length && !freeCourses.length) {
-    return (
-      <ScreenLayout>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#4F46E5" />
-          <Text style={styles.loadingText}>{t("common.loading")}</Text>
-        </View>
+      <ScreenLayout style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#4F46E5" />
       </ScreenLayout>
-    )
+    );
   }
+
+  const progressPercent = ((currentQuestionIndex + 1) / questions.length) * 100;
 
   return (
-    <ScreenLayout>
-      <ScrollView
-        style={styles.container}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={false}
-            onRefresh={handleRefresh}
-            colors={["#4F46E5"]}
-            tintColor="#4F46E5"
+    <ScreenLayout style={styles.container}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
+          <Icon name="close" size={24} color="#374151" />
+        </TouchableOpacity>
+        <View style={styles.progressBarBg}>
+          <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+        </View>
+        {(currentQuestion.questionType === QuestionType.MULTIPLE_CHOICE || currentQuestion.questionType === QuestionType.FILL_IN_THE_BLANK) && (
+          <View style={styles.timerBadge}>
+            <Icon name="timer" size={16} color={timeLeft < 5 ? "#EF4444" : "#4F46E5"} />
+            <Text style={[styles.timerText, { color: timeLeft < 5 ? "#EF4444" : "#4F46E5" }]}>{timeLeft}</Text>
+          </View>
+        )}
+      </View>
+
+      <ScrollView contentContainerStyle={styles.content}>
+
+        {renderQuestionView()}
+
+        {speakingFeedback && (
+          <View style={styles.feedbackContainer}>
+            <Text style={styles.feedbackScore}>Điểm: {speakingFeedback.score}/100</Text>
+            <Text style={styles.feedbackText}>{speakingFeedback.feedback}</Text>
+            <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
+              <Text style={styles.nextBtnText}>Tiếp tục</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!speakingFeedback && (
+          <LessonInputArea
+            question={currentQuestion}
+            isAnswered={isAnswered}
+            selectedAnswer={selectedAnswer}
+            isLoading={isStreaming}
+            onAnswer={(ans) => {
+              if (currentQuestion.questionType === QuestionType.WRITING || currentQuestion.questionType === QuestionType.ESSAY) {
+                handleWritingSubmit(ans);
+              } else {
+                handleQuizAnswer(ans);
+              }
+            }}
+            isRecording={isRecording}
+            isStreaming={isStreaming}
+            onStartRecording={startRecording}
+            onStopRecording={stopRecording}
           />
-        }
-      >
-        <View style={styles.header}>
-          <Text style={styles.title}>{t("learn.title")}</Text>
-        </View>
-
-        {isAuthenticated && user && (
-          <View style={styles.welcomeSection}>
-            <Text style={styles.welcomeText}>
-              {t("learn.welcome", {
-                name: user.fullname || user.nickname || t("learn.defaultName"),
-              })}
-            </Text>
-            <View style={styles.userStats}>
-              <View style={styles.statItem}>
-                <Icon name="trending-up" size={16} color="#10B981" />
-                <Text style={styles.statText}>
-                  {t("learn.level")} {user.level || 1}
-                </Text>
-              </View>
-              <View style={styles.statItem}>
-                <Icon name="local-fire-department" size={16} color="#F59E0B" />
-                <Text style={styles.statText}>
-                  {user.streak || 0} {t("learn.dayStreak")}
-                </Text>
-              </View>
-            </View>
-          </View>
         )}
 
-        {purchasedCourses.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.myCourses")}</Text>
-              <TouchableOpacity onPress={handleViewAllCourses}>
-                <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {purchasedCourses.map((c: any) => renderCourseCardItem(c, true))}
-            </ScrollView>
-          </View>
-        )}
-
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
-          </View>
-          <View style={styles.toolGrid}>
-            {learningTools.map(renderLearningToolCard)}
-          </View>
-        </View>
-
-        {listeningLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.listeningLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {listeningLessons.map(renderLessonCard)}
-            </ScrollView>
-          </View>
-        )}
-
-        {speakingLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.speakingLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {speakingLessons.map(renderLessonCard)}
-            </ScrollView>
-          </View>
-        )}
-
-        {readingLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.readingLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {readingLessons.map(renderLessonCard)}
-            </ScrollView>
-          </View>
-        )}
-
-        {writingLessons.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.writingLessons")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {writingLessons.map(renderLessonCard)}
-            </ScrollView>
-          </View>
-        )}
-
-        {recommendedCourses.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {recommendedCourses.map((c: any) => renderCourseCardItem(c, false))}
-            </ScrollView>
-          </View>
-        )}
-
-        {freeCourses.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("learn.freeCourses")}</Text>
-              <TouchableOpacity onPress={handleViewAllCourses}>
-                <Text style={styles.viewAllText}>{t("common.viewAll")}</Text>
-              </TouchableOpacity>
-            </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalScroll}>
-              {freeCourses.slice(0, 5).map((c: any) => renderCourseCardItem(c, false))}
-            </ScrollView>
-          </View>
-        )}
-
-        <View style={{ height: 50 }} />
       </ScrollView>
     </ScreenLayout>
-  )
-}
+  );
+};
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: "#6B7280",
-  },
-  header: {
-    justifyContent: "center",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 20,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  welcomeSection: {
-    paddingHorizontal: 20,
-    marginBottom: 20,
-  },
-  welcomeText: {
-    fontSize: 18,
-    color: "#1F2937",
-    marginBottom: 12,
-  },
-  userStats: {
-    flexDirection: "row",
-    gap: 16,
-  },
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  statText: {
-    fontSize: 14,
-    color: "#6B7280",
-    fontWeight: "500",
-  },
-  section: {
-    paddingHorizontal: 20,
-    marginBottom: 30,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  viewAllText: {
-    fontSize: 14,
-    color: "#4F46E5",
-    fontWeight: "600",
-  },
-  horizontalScroll: {
-    marginHorizontal: -20,
-    paddingHorizontal: 20,
-  },
-  courseCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    marginRight: 16,
-    width: 260,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  purchasedCourseCard: {
-    borderWidth: 2,
-    borderColor: "#10B981",
-  },
-  courseImage: {
-    width: "100%",
-    height: 140,
-    backgroundColor: "#E5E7EB",
-  },
-  purchasedBadge: {
-    position: "absolute",
-    top: 12,
-    right: 12,
-    backgroundColor: "#10B981",
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    zIndex: 1,
-  },
-  purchasedText: {
-    fontSize: 12,
-    color: "#FFFFFF",
-    fontWeight: "600",
-    marginLeft: 4,
-  },
-  courseContent: {
-    padding: 16,
-  },
-  courseTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 4,
-    height: 44,
-  },
-  progressSection: {
-    marginTop: 8,
-  },
-  progressInfo: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: 8,
-  },
-  progressText: {
-    fontSize: 12,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  lessonsText: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  progressBar: {
-    height: 6,
-    backgroundColor: "#F3F4F6",
-    borderRadius: 3,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: "#10B981",
-    borderRadius: 3,
-  },
-  priceSection: {
-    flexDirection: "row",
-    justifyContent: "flex-end",
-  },
-  price: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-  },
-  lessonCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    marginRight: 16,
-    width: 200,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    overflow: "hidden",
-    marginBottom: 8,
-  },
-  lessonImagePlaceholder: {
-    width: "100%",
-    height: 100,
-    backgroundColor: "#F3F4F6",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  lessonContent: {
-    padding: 12,
-  },
-  lessonTitle: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 8,
-    height: 40,
-  },
-  lessonStats: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  expContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-  },
-  expText: {
-    fontSize: 12,
-    color: "#6B7280",
-    fontWeight: "600",
-  },
-  toolGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  toolCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    width: "48%",
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  toolIconContainer: {
-    width: 48,
-    height: 48,
-    backgroundColor: "#EEF2FF",
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 8,
-  },
-  toolName: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#1F2937",
-    textAlign: "center",
-  },
-})
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E5E7EB', gap: 12 },
+  closeBtn: { padding: 4 },
+  progressBarBg: { flex: 1, height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden' },
+  progressBarFill: { height: '100%', backgroundColor: '#4F46E5', borderRadius: 4 },
+  timerBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, gap: 4 },
+  timerText: { fontWeight: 'bold', fontSize: 14 },
+  content: { padding: 20, paddingBottom: 40 },
 
-export default LessonScreen
+  feedbackContainer: { marginTop: 20, padding: 16, backgroundColor: '#ECFDF5', borderRadius: 12, borderWidth: 1, borderColor: '#10B981', alignItems: 'center' },
+  feedbackScore: { fontSize: 24, fontWeight: 'bold', color: '#065F46', marginBottom: 8 },
+  feedbackText: { fontSize: 16, color: '#064E3B', textAlign: 'center', marginBottom: 16 },
+  nextBtn: { backgroundColor: '#10B981', paddingHorizontal: 32, paddingVertical: 12, borderRadius: 24 },
+  nextBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+});
+
+export default LessonScreen;

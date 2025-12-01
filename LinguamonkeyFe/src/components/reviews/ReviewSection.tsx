@@ -3,22 +3,24 @@ import { View, FlatList, Text, StyleSheet, TouchableOpacity } from "react-native
 import Icon from "react-native-vector-icons/MaterialIcons";
 import ReviewItem from "./ReviewItem";
 import ReviewInput from "./ReviewInput";
-import { CourseReviewResponse } from "../../types/dto";
+import { CourseVersionReviewResponse } from "../../types/dto";
 import { useUserStore } from "../../stores/UserStore";
 import { useTranslation } from "react-i18next";
 
 interface ReviewSectionProps {
     entityId: string;
-    reviews: CourseReviewResponse[];
-    onAddReview: (content: string, rating: number | null, parentId?: string, onSuccess?: (newReview: CourseReviewResponse) => void) => void;
+    reviews: CourseVersionReviewResponse[];
+    onAddReview: (content: string, rating: number | null, parentId?: string, onSuccess?: (newReview: CourseVersionReviewResponse) => void) => void;
     isAddingReview: boolean;
     onLikeReview?: (reviewId: string) => void;
+    canReview?: boolean; // New prop for permission
 }
 
 const ReviewSection: React.FC<ReviewSectionProps> = ({
     reviews,
     onAddReview,
     isAddingReview,
+    canReview = true
 }) => {
     const { user } = useUserStore();
     const { t } = useTranslation();
@@ -29,14 +31,14 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
     const [replyContext, setReplyContext] = useState<{
         id: string | null;
         name: string | null;
-        onSuccessCallback?: (newReview: CourseReviewResponse) => void;
+        onSuccessCallback?: (newReview: CourseVersionReviewResponse) => void;
     }>({
         id: null,
         name: null,
         onSuccessCallback: undefined
     });
 
-    const handleInitiateReply = (reviewId: string, authorName: string, onSuccess?: (newReview: CourseReviewResponse) => void) => {
+    const handleInitiateReply = (reviewId: string, authorName: string, onSuccess?: (newReview: CourseVersionReviewResponse) => void) => {
         setReplyContext({ id: reviewId, name: authorName, onSuccessCallback: onSuccess });
     };
 
@@ -86,7 +88,8 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
                         }
                     />
 
-                    {user && (
+                    {/* Conditional Rendering based on Permission */}
+                    {user && canReview ? (
                         <ReviewInput
                             currentUserAvatar={user.avatarUrl}
                             isSubmitting={isAddingReview}
@@ -94,6 +97,15 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
                             onCancelReply={handleCancelReply}
                             onSubmit={handleSubmit}
                         />
+                    ) : (
+                        user && !canReview && (
+                            <View style={styles.restrictionContainer}>
+                                <Icon name="lock" size={20} color="#9CA3AF" />
+                                <Text style={styles.restrictionText}>
+                                    {t("course.purchaseToReview", "Bạn cần hoàn thành ít nhất 50% khóa học để viết đánh giá.")}
+                                </Text>
+                            </View>
+                        )
                     )}
                 </View>
             )}
@@ -139,6 +151,22 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         color: '#9CA3AF',
         fontStyle: 'italic'
+    },
+    restrictionContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 16,
+        backgroundColor: '#F3F4F6',
+        marginTop: 10,
+        marginHorizontal: 16,
+        borderRadius: 8,
+        gap: 8
+    },
+    restrictionText: {
+        color: '#6B7280',
+        fontSize: 13,
+        textAlign: 'center'
     }
 });
 

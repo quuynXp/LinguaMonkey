@@ -236,7 +236,7 @@ export interface LessonResponse {
   flashcardCount?: number;
 }
 
-export interface CourseEnrollmentResponse {
+export interface CourseVersionEnrollmentResponse {
   enrollmentId: string;
   courseVersion: {
     courseId: string;
@@ -1281,7 +1281,7 @@ export interface Course {
 }
 
 // Maps to: course_enrollments
-export interface CourseEnrollment {
+export interface CourseVersionEnrollment {
   enrollmentId: string; // SQL: enrollment_id
   // courseId: string; // Removed, not in schema table
   courseVersionId: string | null; // Added from schema. SQL: course_version_id
@@ -1668,7 +1668,7 @@ export interface Couple {
 }
 
 // Maps to: course_discounts
-export interface CourseDiscount {
+export interface CourseVersionDiscount {
   discountId: string; // SQL: discount_id
   courseId: string; // SQL: course_id
   discountPercentage: number; // SQL: discount_percentage
@@ -1682,7 +1682,7 @@ export interface CourseDiscount {
 }
 
 // Maps to: course_reviews
-export interface CourseReview {
+export interface CourseVersionReview {
   reviewId: string; // SQL: review_id
   courseId: string; // SQL: course_id
   userId: string; // SQL: user_id

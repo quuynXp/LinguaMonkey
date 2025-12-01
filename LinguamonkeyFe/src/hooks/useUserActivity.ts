@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 import instance from "../api/axiosClient";
 import {
   AppApiResponse,
@@ -12,6 +13,7 @@ import {
 } from "../types/dto";
 import { useUserStore } from "../stores/UserStore";
 import { useToast } from "../utils/useToast";
+import { AppState, AppStateStatus } from "react-native";
 
 // --- Keys Factory ---
 export const activityKeys = {
@@ -44,7 +46,7 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 
 const BASE = "/api/v1/user-learning-activities";
 
-// Default Zero Object to ensure UI never crashes or shows empty
+// Default Zero Object
 const DEFAULT_STUDY_HISTORY: StudyHistoryResponse = {
   sessions: [],
   stats: {
@@ -59,7 +61,6 @@ const DEFAULT_STUDY_HISTORY: StudyHistoryResponse = {
 // === 1. QUERIES ===
 // ==========================================
 
-// GET /api/v1/user-learning-activities
 export const useAllActivities = (params?: {
   userId?: string;
   page?: number;
@@ -83,7 +84,6 @@ export const useAllActivities = (params?: {
   });
 };
 
-// GET /api/v1/user-learning-activities/{id}
 export const useGetActivity = (id: string | null) => {
   return useQuery({
     queryKey: activityKeys.detail(id!),
@@ -99,7 +99,6 @@ export const useGetActivity = (id: string | null) => {
   });
 };
 
-// GET /api/v1/user-learning-activities/history
 export const useGetStudyHistory = (
   userId: string | undefined,
   period: string = "month"
@@ -113,16 +112,58 @@ export const useGetStudyHistory = (
         `${BASE}/history`,
         { params: { userId, period } }
       );
-      // Fallback to default zero object if result is null
       return data.result || DEFAULT_STUDY_HISTORY;
     },
     enabled: !!userId,
-    staleTime: 300_000,
+    staleTime: 300_000, // 5 minutes cache
   });
 };
 
 // ==========================================
-// === 2. CRUD OPERATIONS (Standard) ===
+// === 2. HEARTBEAT (New) ===
+// ==========================================
+
+export const useHeartbeat = (enabled: boolean = true) => {
+  const userId = useUserStore((state) => state.user?.userId);
+  const appState = useRef(AppState.currentState);
+
+  useEffect(() => {
+    if (!userId || !enabled) return;
+
+    const sendHeartbeat = async () => {
+      try {
+        await instance.post(`${BASE}/heartbeat`, null, {
+          params: { userId },
+        });
+      } catch (error) {
+        // Silently fail for heartbeat to not disrupt UX
+        console.warn("Heartbeat failed", error);
+      }
+    };
+
+    // Send immediately on mount
+    sendHeartbeat();
+
+    // Set interval for every 60 seconds
+    const intervalId = setInterval(sendHeartbeat, 60000);
+
+    // Handle App State (don't ping background)
+    const subscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
+      if (appState.current.match(/inactive|background/) && nextAppState === "active") {
+        sendHeartbeat(); // Trigger immediately when coming back
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      clearInterval(intervalId);
+      subscription.remove();
+    };
+  }, [userId, enabled]);
+};
+
+// ==========================================
+// === 3. CRUD & LOGGING OPERATIONS ===
 // ==========================================
 
 export const useCreateActivity = () => {
@@ -169,10 +210,6 @@ export const useDeleteActivity = () => {
       queryClient.invalidateQueries({ queryKey: activityKeys.all }),
   });
 };
-
-// ==========================================
-// === 3. LOGGING OPERATIONS (Start/End) ===
-// ==========================================
 
 export const useLogActivityStart = () => {
   const queryClient = useQueryClient();

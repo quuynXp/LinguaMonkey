@@ -19,13 +19,13 @@ import { useCurrencyConverter } from "../../hooks/useCurrencyConverter";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import ReviewSection from "../../components/reviews/ReviewSection";
 import CoursePurchaseModal from "../../components/modals/CoursePurchaseModal";
-import { CourseEnrollmentStatus } from "../../types/enums";
+import { CourseVersionEnrollmentStatus } from "../../types/enums";
 import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
-import { CourseDiscount } from "../../types/entity";
+import { CourseVersionDiscountResponse, CourseVersionEnrollmentResponse } from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
-import { CourseReviewResponse } from "../../types/dto";
+import { CourseVersionReviewResponse } from "../../types/dto";
 
 const CourseDetailsScreen = ({ route, navigation }: any) => {
   const params = route.params || {};
@@ -49,32 +49,53 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
-  const { data: reviewsData, refetch: refetchReviews } = useReviews({ courseId, size: 5 });
+
+  const { data: reviewsData, refetch: refetchReviews } = useReviews({
+    courseId,
+    userId: user?.userId,
+    size: 5
+  });
+
   const { mutate: enroll, isPending: isEnrolling } = useCreateEnrollment();
   const { mutateAsync: createReviewAsync, isPending: isCreatingReview } = useCreateReview();
-  const { data: discountsData } = useDiscounts({ courseId, size: 1 });
-
-  const activeDiscount = discountsData?.data?.[0] as CourseDiscount | undefined;
-
-  const isEnrolled = useMemo(() => {
-    return enrollments?.data?.some((e: any) => e.courseId === courseId);
-  }, [enrollments, courseId]);
 
   const version = course?.latestPublicVersion;
-  const allLessons = version?.lessons || [];
+  const versionId = version?.versionId;
+
+  const { data: discountsData } = useDiscounts({ versionId: versionId, size: 1 });
+  const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
+
+  const activeEnrollment = useMemo(() => {
+    return enrollments?.data?.find((e: any) => e.course.courseId === courseId) as CourseVersionEnrollmentResponse | undefined;
+  }, [enrollments, courseId]);
+
+  const isEnrolled = !!activeEnrollment;
   const reviews = (reviewsData?.data as any[]) || [];
 
-  const originalPrice = course?.price || 0;
+  const displayThumbnail = version?.thumbnailUrl;
+  const displayPriceRaw = version?.price || 0;
+  const displayLanguage = version?.languageCode;
+  const displayDifficulty = version?.difficultyLevel;
+  const displayDescription = version?.description;
+  const allLessons = version?.lessons || [];
+
+  const originalPrice = displayPriceRaw;
   const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
   const priceAfterDiscount = discountPercent > 0
     ? originalPrice * (1 - discountPercent / 100)
     : originalPrice;
 
-  // If price is 0, it is free
   const isPaidCourse = priceAfterDiscount > 0;
 
-  const displayPrice = convert(priceAfterDiscount, 'VND');
-  const displayOriginalPrice = convert(originalPrice, 'VND');
+  const canReview = useMemo(() => {
+    if (!isPaidCourse) return true;
+    if (!isEnrolled) return false;
+    const progress = activeEnrollment?.progress || 0;
+    return progress >= 50;
+  }, [isPaidCourse, isEnrolled, activeEnrollment]);
+
+  const displayPriceStr = convert(priceAfterDiscount, 'VND');
+  const displayOriginalPriceStr = convert(originalPrice, 'VND');
 
   const freeLessons = allLessons.filter(l => l.isFree);
   const paidLessons = allLessons.filter(l => !l.isFree);
@@ -86,7 +107,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       if (isPaidCourse) {
         setPurchaseModalVisible(true);
       } else {
-        // Free course but not enrolled yet, auto enroll or show generic enroll alert
         handleFreeEnroll();
       }
       return;
@@ -112,7 +132,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     enroll({
       userId: user.userId,
       courseVersionId: version.versionId,
-      status: CourseEnrollmentStatus.ACTIVE
+      status: CourseVersionEnrollmentStatus.ACTIVE
     }, {
       onSuccess: () => {
         Alert.alert(t("success"), t("course.enrollmentSuccess"));
@@ -123,19 +143,16 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   };
 
   const handlePurchaseSuccess = () => {
-    // This callback is triggered by the Modal after transaction creation
-    // We can assume backend handles enrollment OR we poll for it. 
-    // For immediate UI update, we can try refetching enrollments.
     refetchEnrollments();
   };
 
-  const handleAddReview = async (content: string, rating: number, parentId?: string, onSuccess?: (newReview: CourseReviewResponse) => void) => {
+  const handleAddReview = async (content: string, rating: number, parentId?: string, onSuccess?: (newReview: CourseVersionReviewResponse) => void) => {
     if (!user?.userId) {
       Alert.alert(t("auth.required"), t("auth.loginToReview"));
       return;
     }
     if (!courseId) {
-      Alert.alert(t("error"), "Course ID is missing. Please reload the screen.");
+      Alert.alert(t("error"), "Course ID is missing.");
       return;
     }
     try {
@@ -151,9 +168,9 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       } else if (onSuccess) {
         onSuccess(newReview);
       }
-    } catch (error) {
-      console.error("Review Error:", error);
-      Alert.alert(t("error"), t("course.reviewFailed"));
+    } catch (error: any) {
+      const msg = error?.response?.data?.message || t("course.reviewFailed");
+      Alert.alert(t("error"), msg);
     }
   };
 
@@ -239,7 +256,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const renderHeader = () => (
     <View style={styles.headerContainer}>
       <View style={styles.coverContainer}>
-        <Image source={getCourseImage(version?.thumbnailUrl)} style={styles.coverImage} resizeMode="cover" />
+        <Image source={getCourseImage(displayThumbnail)} style={styles.coverImage} resizeMode="cover" />
         <View style={styles.coverOverlay} />
         <TouchableOpacity
           style={[styles.backBtn, { top: insets.top + 10 }]}
@@ -258,7 +275,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <View style={styles.contentBody}>
         <Text style={styles.title}>{course?.title || t("common.loading")}</Text>
 
-        {/* Stats Row with Right-Aligned Buy Button */}
         <View style={styles.statsWrapper}>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
@@ -269,16 +285,15 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             <View style={styles.verticalDivider} />
             <View style={styles.statItem}>
               <Icon name="signal-cellular-alt" size={16} color="#6B7280" />
-              <Text style={styles.statValue}>{course?.difficultyLevel || "-"}</Text>
+              <Text style={styles.statValue}>{displayDifficulty || "-"}</Text>
             </View>
             <View style={styles.verticalDivider} />
             <View style={styles.statItem}>
               <Icon name="translate" size={16} color="#6B7280" />
-              <Text style={styles.statValue}>{course?.languageCode || "-"}</Text>
+              <Text style={styles.statValue}>{displayLanguage || "-"}</Text>
             </View>
           </View>
 
-          {/* Buy Button (Hidden if enrolled or free) */}
           {!isEnrolled && isPaidCourse && (
             <TouchableOpacity
               style={styles.headerBuyBtn}
@@ -292,19 +307,18 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
         {renderAuthorInfo()}
 
-        {/* Price Display (Only if not enrolled, just to show info) */}
         {!isEnrolled && (
           <View style={styles.priceContainer}>
             {discountPercent > 0 ? (
               <View style={styles.priceRow}>
                 <Text style={styles.salePriceText}>
-                  {priceAfterDiscount === 0 ? t("course.free") : `${displayPrice.toLocaleString()} VND`}
+                  {priceAfterDiscount === 0 ? t("course.free") : `${displayPriceStr.toLocaleString()} VND`}
                 </Text>
-                <Text style={styles.oldPriceText}>{displayOriginalPrice.toLocaleString()} VND</Text>
+                <Text style={styles.oldPriceText}>{displayOriginalPriceStr.toLocaleString()} VND</Text>
               </View>
             ) : (
               <Text style={styles.priceText}>
-                {originalPrice === 0 ? t("course.free") : `${displayOriginalPrice.toLocaleString()} VND`}
+                {originalPrice === 0 ? t("course.free") : `${displayOriginalPriceStr.toLocaleString()} VND`}
               </Text>
             )}
           </View>
@@ -313,9 +327,22 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeader}>{t("course.description")}</Text>
           <Text style={styles.description}>
-            {version?.description || t("course.noDescription", "Chưa có mô tả cho khóa học này.")}
+            {displayDescription || t("course.noDescription", "Chưa có mô tả.")}
           </Text>
         </View>
+
+        {version?.isSystemReviewed && (
+          <View style={styles.systemReviewContainer}>
+            <View style={styles.systemReviewHeader}>
+              <Icon name="verified-user" size={20} color="#3B82F6" />
+              <Text style={styles.systemReviewTitle}>System AI Analysis</Text>
+            </View>
+            <Text style={styles.systemReviewRating}>Rated: {version.systemRating} / 5.0 ★</Text>
+            <Text style={styles.systemReviewText}>
+              This course content has been verified by our quality system.
+            </Text>
+          </View>
+        )}
 
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeader}>{t("course.curriculum")}</Text>
@@ -365,13 +392,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             onAddReview={handleAddReview}
             isAddingReview={isCreatingReview}
             onLikeReview={handleLikeReview}
+            canReview={canReview}
           />
         </View>
       </ScrollView>
 
-      {/* Floating footer removed as requested */}
-
-      {/* Purchase Modal */}
       <CoursePurchaseModal
         visible={purchaseModalVisible}
         onClose={() => setPurchaseModalVisible(false)}
@@ -405,7 +430,6 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 12, lineHeight: 30 },
 
-  // Stats & Buy Button Row
   statsWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   statsContainer: { flexDirection: 'row', alignItems: 'center' },
   headerBuyBtn: {
@@ -449,6 +473,13 @@ const styles = StyleSheet.create({
   sectionContainer: { marginBottom: 24 },
   sectionHeader: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 },
   description: { fontSize: 15, color: "#4B5563", lineHeight: 24 },
+
+  systemReviewContainer: { backgroundColor: '#EFF6FF', padding: 16, borderRadius: 12, marginBottom: 24, borderLeftWidth: 4, borderLeftColor: '#3B82F6' },
+  systemReviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
+  systemReviewTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E3A8A' },
+  systemReviewRating: { fontSize: 14, fontWeight: '700', color: '#2563EB', marginBottom: 4 },
+  systemReviewText: { fontSize: 14, color: '#1E40AF', lineHeight: 20 },
+
   lessonGroup: { marginBottom: 8 },
   subSectionHeader: { fontSize: 14, fontWeight: '600', color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
   lessonItem: {

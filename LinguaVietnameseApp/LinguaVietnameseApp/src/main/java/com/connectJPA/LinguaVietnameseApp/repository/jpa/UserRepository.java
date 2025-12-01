@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
+import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -25,6 +27,26 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
             "LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%'))" +
             ") AND u.isDeleted = false")
     Page<User> searchUsersByKeyword(@Param("keyword") String keyword, Pageable pageable);
+    
+    @Query("SELECT u FROM User u JOIN u.userSettings s WHERE " +
+            "u.isDeleted = false " +
+            "AND s.searchPrivacy = true " +
+            "AND (:keyword IS NULL OR :keyword = '' OR (" +
+            "   LOWER(u.fullname) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "   LOWER(u.nickname) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "   LOWER(u.email) LIKE LOWER(CONCAT('%', :keyword, '%')) OR " +
+            "   u.phone LIKE CONCAT('%', :keyword, '%')" +
+            ")) " +
+            "AND (:country IS NULL OR u.country = :country) " +
+            "AND (:gender IS NULL OR :gender = '' OR u.gender = :gender) " +
+            "AND (:ageRange IS NULL OR u.ageRange = :ageRange)")
+    Page<User> searchAdvanced(
+            @Param("keyword") String keyword,
+            @Param("country") Country country,
+            @Param("gender") String gender,
+            @Param("ageRange") AgeRange ageRange,
+            Pageable pageable
+    );
 
     List<User> findAllByIsDeletedFalse();
     Optional<User> findByEmailOrPhoneAndIsDeletedFalse(String email, String phone);
@@ -39,7 +61,6 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
 
     boolean existsByEmailIgnoreCaseAndIsDeletedFalse(String email);
     Optional<User> findByEmailIgnoreCaseAndIsDeletedFalse(String email);
-
 
     boolean existsByEmailAndIsDeletedFalse(String email);
     boolean existsByPhoneAndIsDeletedFalse(String phone);

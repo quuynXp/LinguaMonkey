@@ -7,7 +7,6 @@ import com.connectJPA.LinguaVietnameseApp.entity.Badge;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserBadge;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserBadgeId;
-import com.connectJPA.LinguaVietnameseApp.enums.CriteriaType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.BadgeMapper;
@@ -19,7 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -55,7 +54,7 @@ public class BadgeServiceImpl implements BadgeService {
                 .map(Badge::getBadgeId)
                 .collect(Collectors.toSet());
 
-        // Chỉ lấy Badge đúng ngôn ngữ của user
+        // Lấy Badge theo ngôn ngữ Native của User
         List<Badge> allBadges = badgeRepository.findAllByLanguageCodeAndIsDeletedFalse(userLang);
 
         long lessonsCompleted = lessonProgressRepository.countById_UserIdAndCompletedAtIsNotNull(userId);
@@ -64,7 +63,7 @@ public class BadgeServiceImpl implements BadgeService {
         int userExp = user.getExp();
         int userStreak = user.getStreak();
 
-        return allBadges.stream().map(badge -> {
+        List<BadgeProgressResponse> responseList = allBadges.stream().map(badge -> {
             boolean isAchieved = achievedBadgeIds.contains(badge.getBadgeId());
             int currentUserProgress = 0;
             int threshold = badge.getCriteriaThreshold();
@@ -77,11 +76,10 @@ public class BadgeServiceImpl implements BadgeService {
                 case EXP_EARNED -> currentUserProgress = userExp;
             }
 
-            // Cap progress at threshold for UI consistency if not achieved yet
+            // Cap progress UI
             if (!isAchieved && currentUserProgress > threshold) {
                 currentUserProgress = threshold; 
             }
-            // If already claimed (achieved), progress is max
             if (isAchieved) {
                 currentUserProgress = threshold;
             }
@@ -97,6 +95,17 @@ public class BadgeServiceImpl implements BadgeService {
                     isAchieved
             );
         }).collect(Collectors.toList());
+
+        // SORTING LOGIC: Can Claim (Top) -> In Progress -> Owned (Bottom)
+        return responseList.stream()
+                .sorted(Comparator.comparingInt((BadgeProgressResponse b) -> {
+                    boolean canClaim = !b.isAchieved() && b.getCurrentUserProgress() >= b.getCriteriaThreshold();
+                    
+                    if (canClaim) return 1;          // Ưu tiên 1: Có thể nhận
+                    if (!b.isAchieved()) return 2;   // Ưu tiên 2: Chưa sở hữu, đang cày
+                    return 3;                        // Ưu tiên 3: Đã sở hữu
+                }))
+                .collect(Collectors.toList());
     }
 
     @Override
@@ -108,12 +117,10 @@ public class BadgeServiceImpl implements BadgeService {
         Badge badge = badgeRepository.findById(badgeId)
                 .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
 
-        // 1. Check if already claimed
         if (userBadgeRepository.existsById(new UserBadgeId(badgeId, userId))) {
             throw new RuntimeException("Badge already claimed!");
         }
 
-        // 2. Verify criteria strictly (Anti-cheat)
         long currentMetric = 0;
         switch (badge.getCriteriaType()) {
             case LESSONS_COMPLETED -> currentMetric = lessonProgressRepository.countById_UserIdAndCompletedAtIsNotNull(userId);
@@ -127,7 +134,6 @@ public class BadgeServiceImpl implements BadgeService {
             throw new RuntimeException("Criteria not met yet!");
         }
 
-        // 3. Create UserBadge
         UserBadge userBadge = UserBadge.builder()
                 .id(new UserBadgeId(badgeId, userId))
                 .user(user)
@@ -135,7 +141,6 @@ public class BadgeServiceImpl implements BadgeService {
                 .build();
         userBadgeRepository.save(userBadge);
 
-        // 4. Give Rewards
         user.setCoins(user.getCoins() + badge.getCoins());
         userRepository.save(user);
     }
@@ -171,7 +176,6 @@ public class BadgeServiceImpl implements BadgeService {
 
     @Override
     public List<BadgeResponse> getBadgesForUser(UUID userId) {
-        // TODO Auto-generated method stub
         throw new UnsupportedOperationException("Unimplemented method 'getBadgesForUser'");
     }
 }

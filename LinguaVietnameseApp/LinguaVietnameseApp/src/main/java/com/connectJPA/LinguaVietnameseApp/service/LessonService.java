@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.response.LessonHierarchicalResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
@@ -38,4 +39,6 @@ public interface LessonService {
 
     // THÊM: Phương thức tìm kiếm
     Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters);
+
+    List<LessonHierarchicalResponse> getLessonsTreeBySkill(SkillType skillType, String languageCode);
 }

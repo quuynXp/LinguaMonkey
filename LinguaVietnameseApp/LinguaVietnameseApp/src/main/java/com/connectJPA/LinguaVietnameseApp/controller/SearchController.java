@@ -2,10 +2,14 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
+import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
+import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import com.connectJPA.LinguaVietnameseApp.mapper.*;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
@@ -19,19 +23,25 @@ public class SearchController {
     private final CourseService courseService;
     private final LessonService lessonService;
     private final NotificationService notificationService;
-    private final UserMemorizationService userMemorizationService;
     private final ChatMessageService chatMessageService;
+    private final UserRepository userRepository;
 
     private final UserMapper userMapper;
     private final ChatMessageMapper chatMessageMapper;
     private final CourseMapper courseMapper;
     private final LessonMapper lessonMapper;
     private final NotificationMapper notificationMapper;
-    private final UserMemorizationMapper userMemorizationMapper;
 
     @GetMapping("/users")
-    public Page<UserResponse> searchUsers(@RequestParam String keyword, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
-        Page<User> users = userService.searchUsers(keyword, page, size);
+    public Page<UserResponse> searchUsers(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) Country country,
+            @RequestParam(required = false) String gender,
+            @RequestParam(required = false) AgeRange ageRange,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size
+    ) {
+        Page<User> users = userRepository.searchAdvanced(keyword, country, gender, ageRange, PageRequest.of(page, size));
         return users.map(userMapper::toResponse);
     }
 
@@ -62,10 +72,4 @@ public class SearchController {
         Page<Notification> notifications = notificationService.searchNotifications(keyword, page, size, null);
         return notifications.map(notificationMapper::toResponse);
     }
-
-    // @GetMapping("/memorizations")
-    // public Page<MemorizationResponse> searchMemorizations(@RequestParam String keyword, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
-    //     Page<MemorizationResponse> memorizations = userMemorizationService.searchMemorizations(keyword, page, size, null);
-    //     return memorizations.map(userMemorizationMapper::toResponse);
-    // }
 }

@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.connectJPA.LinguaVietnameseApp.utils.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -25,16 +26,13 @@ public class VipScheduler {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
 
-    // Run at 9:00 AM, 3:00 PM, and 8:00 PM
-    @Scheduled(cron = "0 0 9 * * *")
-    @Scheduled(cron = "0 0 15 * * *")
-    @Scheduled(cron = "0 0 20 * * *")
+    @Scheduled(cron = "0 0 9 * * *", zone = "UTC")
+    @Scheduled(cron = "0 0 15 * * *", zone = "UTC")
+    @Scheduled(cron = "0 0 20 * * *", zone = "UTC")
     @Transactional
     public void checkAndNotifyExpiringVip() {
         log.info("Starting VIP expiration check...");
 
-        // Calculate "Tomorrow" range to find users who have 1 day left (Day 13)
-        // If today is Day 13, expiration is Day 14. 
         LocalDate tomorrow = LocalDate.now().plusDays(1);
         OffsetDateTime startOfTomorrow = OffsetDateTime.of(LocalDateTime.of(tomorrow, LocalTime.MIN), ZoneOffset.UTC);
         OffsetDateTime endOfTomorrow = OffsetDateTime.of(LocalDateTime.of(tomorrow, LocalTime.MAX), ZoneOffset.UTC);
@@ -43,7 +41,6 @@ public class VipScheduler {
 
         for (User user : expiringUsers) {
             try {
-                // Double check if they haven't extended (expiry is still tomorrow)
                 if (user.getVipExpirationDate().isBefore(endOfTomorrow.plusDays(1))) {
                     sendVipExpirationReminder(user);
                 }
@@ -54,17 +51,18 @@ public class VipScheduler {
     }
 
     private void sendVipExpirationReminder(User user) {
+        String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
+        String[] messages = NotificationI18nUtil.getLocalizedMessage("VIP_EXPIRATION_WARNING", langCode);
+
         NotificationRequest notification = NotificationRequest.builder()
                 .userId(user.getUserId())
-                .title("⚠️ VIP Trial Ending Soon!")
-                .content("Your VIP privileges will expire in 24 hours. Subscribe now to keep learning without interruption!")
+                .title(messages[0])
+                .content(messages[1])
                 .type("VIP_EXPIRATION_WARNING")
-                .payload("{\"screen\":\"VipSubscription\"}")
+                .payload("{\"screen\":\"PaymentStack\", \"stackScreen\":\"VipSubscription\"}")
                 .build();
 
         notificationService.createPushNotification(notification);
-        // Assuming createNotification also handles in-app persistence
-        notificationService.createNotification(notification); 
         
         log.info("Sent VIP expiration reminder to user {}", user.getUserId());
     }

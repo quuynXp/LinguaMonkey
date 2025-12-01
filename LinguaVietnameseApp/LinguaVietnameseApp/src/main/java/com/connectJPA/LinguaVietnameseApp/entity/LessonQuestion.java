@@ -7,7 +7,6 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -22,8 +21,9 @@ public class LessonQuestion extends BaseEntity {
     @Column(name = "lesson_question_id")
     private UUID lessonQuestionId;
 
-    @Column(name = "lesson_id")
-    private UUID lessonId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "lesson_id", referencedColumnName = "lesson_id")
+    private Lesson lesson; 
 
     @Column(name = "question")
     private String question;
@@ -55,10 +55,15 @@ public class LessonQuestion extends BaseEntity {
 
     @Column(name = "media_url")
     private String mediaUrl;
+    
+    @Column(name = "transcript", columnDefinition = "text")
+    private String transcript;
 
     @Column(name = "weight")
+    @Builder.Default
     private Integer weight = 1;
 
+    // Dùng cho câu hỏi trắc nghiệm (A, B, C, D)
     @Column(name = "correct_option")
     private String correctOption;
 
@@ -67,6 +72,4 @@ public class LessonQuestion extends BaseEntity {
 
     @Column(name = "explain_answer", columnDefinition = "text")
     private String explainAnswer;
-
 }
-

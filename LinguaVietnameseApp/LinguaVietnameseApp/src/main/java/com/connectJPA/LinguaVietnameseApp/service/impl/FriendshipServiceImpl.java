@@ -35,8 +35,13 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     private FriendshipResponse toPopulatedResponse(Friendship friendship) {
         FriendshipResponse response = friendshipMapper.toResponse(friendship);
-        response.setId(friendship.getId().getRequesterId().toString() + "-" + friendship.getId().getReceiverId().toString());
+        // Ensure ID string is generated safely
+        if (friendship.getId() != null) {
+            response.setId(friendship.getId().getRequesterId().toString() + "-" + friendship.getId().getReceiverId().toString());
+        }
 
+        // Fetch users if they are proxies or not fully loaded (though they usually are via JPA)
+        // Using orElse(new User()) to prevent null pointer, but logic should guarantee existence
         User requester = userRepository.findById(friendship.getId().getRequesterId())
                 .orElse(new User());
         User receiver = userRepository.findById(friendship.getId().getReceiverId())
@@ -60,7 +65,6 @@ public class FriendshipServiceImpl implements FriendshipService {
                 try {
                     statusEnum = FriendshipStatus.valueOf(status.toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    // Ignore or throw specific error, treating as null (all statuses) for now
                     log.warn("Invalid friendship status provided: {}", status);
                 }
             }
@@ -151,11 +155,34 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (request == null || request.getRequesterId() == null || request.getReceiverId() == null) {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
+
+            // CHECK: Prevent duplicate requests
+            boolean exists = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(request.getRequesterId(), request.getReceiverId())
+                    .isPresent();
+            if (exists) {
+                // If exists, strictly speaking we might want to return existing or throw error.
+                // For this context, we return the existing one or update logic could go here.
+                // Assuming "create" implies a new fresh request.
+                // Let's just retrieve and return to avoid PK violation if logic allows retry.
+                Friendship existing = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(request.getRequesterId(), request.getReceiverId()).get();
+                return toPopulatedResponse(existing);
+            }
+
+            // CRITICAL FIX: Load User entities. 
+            // JPA requires the relationship objects to be set, not just the ID in the embedded key.
+            User requester = userRepository.findById(request.getRequesterId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            User receiver = userRepository.findById(request.getReceiverId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             
             Friendship friendship = friendshipMapper.toEntity(request);
             
             FriendshipId id = new FriendshipId(request.getRequesterId(), request.getReceiverId());
             friendship.setId(id);
+            
+            // Explicitly set the relationship fields to avoid "null one-to-one property" error
+            friendship.setRequester(requester);
+            friendship.setReceiver(receiver);
             
             if (friendship.getStatus() == null) {
                 friendship.setStatus(FriendshipStatus.PENDING);
@@ -163,6 +190,8 @@ public class FriendshipServiceImpl implements FriendshipService {
 
             friendship = friendshipRepository.save(friendship);
             return toPopulatedResponse(friendship);
+        } catch (AppException e) {
+            throw e;
         } catch (Exception e) {
             log.error("Error while creating friendship: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
@@ -181,6 +210,14 @@ public class FriendshipServiceImpl implements FriendshipService {
             
             friendshipMapper.updateEntityFromRequest(request, friendship);
             
+            // Ensure relationships persist if mapper touched them (unlikely for update, but good safety)
+            if (friendship.getRequester() == null) {
+                friendship.setRequester(userRepository.findById(requesterId).orElse(null));
+            }
+            if (friendship.getReceiver() == null) {
+                friendship.setReceiver(userRepository.findById(receiverId).orElse(null));
+            }
+
             friendship = friendshipRepository.save(friendship);
             return toPopulatedResponse(friendship);
         } catch (Exception e) {

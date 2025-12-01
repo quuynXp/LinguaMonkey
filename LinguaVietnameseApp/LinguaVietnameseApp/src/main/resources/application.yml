@@ -25,7 +25,7 @@ spring:
       port: ${REDIS_PORT}
       password: ${REDIS_PASSWORD}
       ssl:
-        enabled: true
+        enabled: false
 
   cache:
     type: redis
@@ -106,7 +106,7 @@ grpc:
     address: 0.0.0.0
   client:
     learning-service:
-      address: "static://${GRPC_SERVER_HOST}:${GRPC_SERVER_PORT}"
+      address: "static://${PYTHON_GRPC_HOST}:${PYTHON_GRPC_PORT}"
       negotiation-type: plaintext
 
 # Reminder
@@ -142,3 +142,6 @@ vip:
 coin:
   exchange:
     rate: 1000
+app:
+  system:
+    token: monkeylingua

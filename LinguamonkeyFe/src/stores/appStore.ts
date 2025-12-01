@@ -54,6 +54,7 @@ export interface PrivacySettings {
   crashReports: boolean;
   locationTracking: boolean;
   contactSync: boolean;
+  searchPrivacy: boolean;
 }
 
 interface AppState {
@@ -149,6 +150,7 @@ export const useAppStore = create<AppState>()(
         crashReports: true,
         locationTracking: false,
         contactSync: false,
+        searchPrivacy: false,
       },
 
       setSelectedGrammarTopic: (topic) => set({ selectedGrammarTopic: topic }),
@@ -222,6 +224,7 @@ export const useAppStore = create<AppState>()(
             crashReports: true,
             locationTracking: false,
             contactSync: false,
+            searchPrivacy: false,
           },
         }),
 

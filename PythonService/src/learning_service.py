@@ -22,7 +22,7 @@ from .core.user_profile_service import get_user_profile
 from .api.speech_to_text import speech_to_text
 from .api.chat_ai import chat_with_ai
 from .api.spelling_checker import check_spelling
-from .api.pronunciation_checker import check_pronunciation
+# from .api.pronunciation_checker import check_pronunciation
 from .api.image_text_analyzer import analyze_image_with_text
 from .api.passage_generator import generate_passage
 from .api.image_generator import generate_image
@@ -34,6 +34,9 @@ from .api.tts_generator import generate_tts
 from .api.quiz_generator import generate_quiz
 from .api.analytics_service import analyze_course_quality, decide_refund
 from .api.review_analyzer import analyze_review
+from .api.course_evaluator import evaluate_course_structure
+from .api.pronunciation_checker import check_pronunciation_logic, stream_pronunciation_logic
+from .api.writing_grader import grade_writing_logic
 
 load_dotenv()
 
@@ -80,6 +83,23 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         if not user_id:
             return None
         return await get_user_profile(user_id, db_session, self.redis_client)
+
+
+    @authenticated_grpc_method
+    async def EvaluateCourseVersion(self, request, context, claims) -> learning_pb2.EvaluateCourseVersionResponse:
+        logging.info(f"Evaluating course: {request.course_title}")
+        
+        rating, comment, error = await evaluate_course_structure(
+            request.course_title,
+            request.course_description,
+            request.lessons
+        )
+
+        return learning_pb2.EvaluateCourseVersionResponse(
+            rating=rating,
+            review_comment=comment,
+            error=error
+        )
 
 
     @authenticated_grpc_method
@@ -173,94 +193,62 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         audio_data, error = generate_tts(request.text, request.language)
         return learning_pb2.TtsResponse(audio_data=audio_data, error=error)
 
-    @authenticated_grpc_method
-    async def CheckPronunciation(self, request, context, claims) -> learning_pb2.PronunciationResponse:
-        audio_data = request.audio.inline_data if request.audio.inline_data else b""
-        feedback, score, error = await check_pronunciation(audio_data, request.reference_text)
-        ipa = "/mɒk/"
-        suggestion = "Try to stress the first syllable."
-        return learning_pb2.PronunciationResponse(
-            feedback=feedback, score=score, error=error, ipa=ipa, suggestion=suggestion
-        )
-    
-    @authenticated_grpc_method
-    async def StreamPronunciation(self, request_iterator, context, claims):
-        full_audio_chunks = []
-        reference_text = None
-        
+    # --- SPEAKING ---
+    async def CheckPronunciation(self, request, context):
+        """
+        Non-streaming Check: Nhận Audio + Transcript chuẩn từ Java
+        """
         try:
-            async for chunk in request_iterator:
-                full_audio_chunks.append(chunk.audio_chunk)
-                
-                if reference_text is None and chunk.reference_text:
-                    reference_text = chunk.reference_text
-                
-                if chunk.is_final:
-                    break
-
-            if not full_audio_chunks:
-                yield learning_pb2.PronunciationChunkResponse(
-                    is_final=True,
-                    feedback="Lỗi: Không nhận được dữ liệu âm thanh"
-                )
-                return
-
+            # Lấy transcript chuẩn từ request gRPC (đã update proto)
+            reference_text = request.reference_text 
             if not reference_text:
-                yield learning_pb2.PronunciationChunkResponse(
-                    is_final=True,
-                    feedback="Lỗi: Chưa cung cấp văn bản tham chiếu"
-                )
-                return
+                return learning_pb2.PronunciationResponse(error="Missing reference text form Server")
 
-            final_audio = b"".join(full_audio_chunks)
+            audio_bytes = request.audio.inline_data
             
-            logging.info(f"Received {len(full_audio_chunks)} audio chunks, total {len(final_audio)} bytes")
-            logging.info(f"Reference text: {reference_text}")
-
-            from .api.pronunciation_checker import stream_pronunciation_analysis
+            # Gọi logic (bên file pronunciation_checker.py)
+            feedback, score, error = await check_pronunciation_logic(
+                audio_bytes, 
+                reference_text, 
+                request.language
+            )
             
-            async for analysis_chunk in stream_pronunciation_analysis(final_audio, reference_text):
-                
-                if analysis_chunk["type"] == "metadata":
-                    yield learning_pb2.PronunciationChunkResponse(
-                        is_final=False,
-                        feedback=f"🎯 Bạn nói: {analysis_chunk['spoken_text']}\n📝 Chuẩn: {analysis_chunk['reference_text']}"
-                    )
-                
-                elif analysis_chunk["type"] == "chunk":
-                    ws = analysis_chunk["word_score"]
-                    feedback = f"{ws['word']}: {ws['score']}/100 {'✅' if ws['isCorrect'] else '❌'}"
-                    yield learning_pb2.PronunciationChunkResponse(
-                        is_final=False,
-                        feedback=feedback,
-                        score=ws['score']
-                    )
-                
-                elif analysis_chunk["type"] == "suggestion":
-                    feedback = f"💡 {analysis_chunk['word']}: {analysis_chunk['suggestion']}"
-                    yield learning_pb2.PronunciationChunkResponse(
-                        is_final=False,
-                        feedback=feedback
-                    )
-                
-                elif analysis_chunk["type"] == "final":
-                    yield learning_pb2.PronunciationChunkResponse(
-                        is_final=True,
-                        score=analysis_chunk["overall_score"],
-                        feedback=analysis_chunk["feedback"]
-                    )
-                
-                elif analysis_chunk["type"] == "error":
-                    yield learning_pb2.PronunciationChunkResponse(
-                        is_final=True,
-                        feedback=f"❌ {analysis_chunk['feedback']}"
-                    )
-
+            return learning_pb2.PronunciationResponse(
+                feedback=feedback,
+                score=score,
+                error=error or ""
+            )
         except Exception as e:
-            logging.error(f"StreamPronunciation error: {e}", exc_info=True)
+            logging.error(f"CheckPronunciation Error: {e}")
+            return learning_pb2.PronunciationResponse(error=str(e))
+
+    async def StreamPronunciation(self, request_iterator, context):
+        """
+        Streaming Check: Nhận Audio stream + Transcript (gửi ở chunk đầu)
+        """
+        full_audio = b""
+        reference_text = ""
+        
+        # Gom chunks (Demo simple buffering, prod nên stream pipe)
+        async for chunk in request_iterator:
+            full_audio += chunk.audio_chunk
+            # Java gửi reference_text ở chunk đầu tiên
+            if chunk.reference_text:
+                reference_text = chunk.reference_text
+        
+        if not reference_text:
+             yield learning_pb2.PronunciationChunkResponse(
+                is_final=True, feedback="Error: No transcript received"
+            )
+             return
+
+        # Gọi logic xử lý
+        async for result in stream_pronunciation_logic(full_audio, reference_text):
             yield learning_pb2.PronunciationChunkResponse(
-                is_final=True,
-                feedback=f"Lỗi máy chủ: {str(e)}"
+                score=float(result.get("score", 0)),
+                feedback=result.get("feedback", ""),
+                is_final=result.get("is_final", False),
+                chunk_type=result.get("type", "chunk")
             )
 
 
@@ -304,13 +292,31 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             feedback=feedback, score=score, error=error
         )
 
-    @authenticated_grpc_method
-    async def CheckWritingWithImage(self, request, context, claims) -> learning_pb2.WritingImageResponse:
-        image_data = request.image.inline_data if request.image.inline_data else b""
-        feedback, score, error = analyze_image_with_text(request.text, image_data)
-        return learning_pb2.WritingImageResponse(
-            feedback=feedback, score=score, error=error
-        )
+    # --- WRITING ---
+    async def CheckWritingWithImage(self, request, context):
+        """
+        Writing Check: Nhận Prompt (Đề bài) + User Text (Bài làm) + Image (Optional)
+        """
+        try:
+            image_bytes = request.image.inline_data if request.image.inline_data else None
+            
+            # Gọi logic chấm điểm mới (dùng Gemini thay vì CLIP)
+            feedback, score, error = await grade_writing_logic(
+                user_text=request.user_text,   # Bài làm
+                prompt_text=request.prompt,    # Đề bài từ DB
+                image_bytes=image_bytes,       # Ảnh đính kèm (nếu có)
+                language=request.language
+            )
+            
+            return learning_pb2.WritingImageResponse(
+                feedback=feedback,
+                score=score,
+                error=error or ""
+            )
+        except Exception as e:
+            logging.error(f"CheckWriting Error: {e}")
+            return learning_pb2.WritingImageResponse(error=str(e))
+
 
     @authenticated_grpc_method
     async def ChatWithAI(self, request, context, claims) -> learning_pb2.ChatResponse:
@@ -331,6 +337,66 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             logging.error(f"Error during ChatWithAI with session: {e}", exc_info=True)
             return learning_pb2.ChatResponse(error=f"Internal service error: {str(e)}")
 
+
+    @authenticated_grpc_method
+    async def GenerateSeedData(self, request, context, claims) -> learning_pb2.SeedDataResponse:
+        logging.info(f"Generating Seed Data for topic: {request.topic}")
+        
+        # 1. Fix/Generate Text Data using Gemini
+        fixed_data, text_error = await improve_quiz_data(
+            request.raw_question, 
+            list(request.raw_options), 
+            request.topic
+        )
+        
+        if text_error or not fixed_data:
+            return learning_pb2.SeedDataResponse(error=text_error or "Unknown error fixing data")
+
+        fixed_question = fixed_data.get("fixed_question", "")
+        fixed_options = fixed_data.get("fixed_options", [])
+        image_prompt = fixed_data.get("image_prompt", f"Illustration for: {fixed_question}")
+
+        # 2. Generate Audio (TTS) for the Question
+        audio_bytes = b""
+        try:
+            # Reusing existing tts logic
+            audio_bytes, tts_error = await generate_tts(fixed_question, "vi") 
+            if tts_error:
+                logging.warning(f"TTS generation failed for seed data: {tts_error}")
+        except Exception as e:
+            logging.error(f"TTS Exception: {e}")
+
+        # 3. Generate Image
+        image_bytes = b""
+        try:
+            # Generate Image returns a URL usually. We need to download it to return bytes to Java.
+            image_url, img_error = await generate_image("admin_seed", image_prompt, "en", None)
+            
+            if image_url and not img_error:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(image_url) as resp:
+                        if resp.status == 200:
+                            image_bytes = await resp.read()
+                        else:
+                            logging.warning(f"Failed to download generated image from {image_url}")
+            else:
+                 logging.warning(f"Image generation failed: {img_error}")
+
+        except Exception as e:
+             logging.error(f"Image Seed Exception: {e}")
+
+        return learning_pb2.SeedDataResponse(
+            fixed_question=fixed_question,
+            fixed_options=fixed_options,
+            correct_index=fixed_data.get("correct_index", 0),
+            explanation=fixed_data.get("explanation", ""),
+            audio_bytes=audio_bytes,
+            image_bytes=image_bytes,
+            image_prompt_used=image_prompt,
+            error=""
+        )
+
+        
     @authenticated_grpc_method
     async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
         translated_text, error = translate_text(

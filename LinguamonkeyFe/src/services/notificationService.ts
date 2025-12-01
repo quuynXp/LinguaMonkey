@@ -77,12 +77,13 @@ class NotificationService {
     if (this.isInitialized) return;
 
     if (Platform.OS === 'android') {
+      // Ensure this ID matches what Backend sends in AndroidNotification.builder().setChannelId(...)
       await Notifications.setNotificationChannelAsync('default_channel_id', {
         name: 'Default Channel',
         importance: Notifications.AndroidImportance.MAX,
         vibrationPattern: [0, 250, 250, 250],
         lightColor: '#FF231F7C',
-        sound: 'notification.mp3',
+        sound: 'default', // Using default system sound
       });
     }
 
@@ -96,7 +97,7 @@ class NotificationService {
   setupNotificationListeners() {
     const msg = this.getMessaging();
 
-    // A. Expo Listener
+    // A. Expo Listener (For Local scheduled notifications)
     const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
       const data = response.notification.request.content.data;
       console.log('🔔 Expo Local Interaction:', data);
@@ -129,9 +130,14 @@ class NotificationService {
     const unsubscribeOnMessage = msg.onMessage(async remoteMessage => {
       console.log("🔔 Firebase Foreground:", remoteMessage);
 
+      // Note: If WebSocket is active, ChatStore usually handles the "Sound" and "Bubble".
+      // We check here if we should show a redundant local notification.
+      // For now, allow it as a backup or for non-chat notifications.
+
       const title = remoteMessage.notification?.title || i18n.t("notification.default_title");
       const body = remoteMessage.notification?.body || "";
 
+      // Optional: Check payload type. If CHAT_MESSAGE, maybe skip if screen is focused (handled in ChatStore)
       await this.sendLocalNotification(title, body, remoteMessage.data);
     });
 
@@ -160,7 +166,6 @@ class NotificationService {
       const msg = this.getMessaging();
       const authStatus = await msg.requestPermission();
 
-      // FIXED: Use messaging.AuthorizationStatus instead of firebase.messaging.AuthorizationStatus
       const enabled =
         authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
         authStatus === messaging.AuthorizationStatus.PROVISIONAL;
@@ -259,7 +264,7 @@ class NotificationService {
         title,
         body,
         data: data as Record<string, unknown> | undefined,
-        sound: prefs.soundEnabled,
+        sound: prefs.soundEnabled, // Boolean here works if sound is enabled globally
         vibrate: prefs.vibrationEnabled ? [0, 250, 250, 250] : undefined,
       },
       trigger: null,

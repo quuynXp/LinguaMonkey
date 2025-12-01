@@ -15,7 +15,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useUserStore } from '../../stores/UserStore';
 import { gotoTab } from '../../utils/navigationRef';
 import { createScaledSheet } from '../../utils/scaledStyles';
@@ -28,7 +28,7 @@ import {
 import { useWallet } from '../../hooks/useWallet';
 import { getAvatarSource } from '../../utils/avatarUtils';
 import ScreenLayout from '../../components/layout/ScreenLayout';
-import { useGetStudyHistory } from '../../hooks/useUserActivity';
+import { useGetStudyHistory, useHeartbeat } from '../../hooks/useUserActivity';
 import { getCountryFlag } from '../../utils/flagUtils';
 import { useBadgeProgress } from '../../hooks/useBadge';
 import { useFriendships, AllFriendshipsParams } from '../../hooks/useFriendships';
@@ -38,28 +38,33 @@ import { FriendshipStatus } from '../../types/enums';
 
 const { width } = Dimensions.get('window');
 
-// --- Helper Components ---
-
 const ActivityHeatmap = ({ userId }: { userId: string }) => {
   const { data: historyData, isLoading } = useGetStudyHistory(userId, 'year');
   const { t } = useTranslation();
 
-  if (isLoading || !historyData) return <ActivityIndicator size="small" />;
+  if (isLoading) return <ActivityIndicator size="small" />;
 
   const today = new Date();
   const days = Array.from({ length: 84 }).map((_, i) => {
     const d = new Date();
     d.setDate(today.getDate() - (83 - i));
     const dateStr = d.toISOString().split('T')[0];
-    const count = (historyData as any)[dateStr] || 0;
+
+    const session = historyData?.sessions?.find(s => {
+      if (!s.date) return false;
+      const sDate = new Date(s.date).toISOString().split('T')[0];
+      return sDate === dateStr;
+    });
+
+    const count = session ? Math.floor((session.duration || 0) / 60) : 0;
     return { date: dateStr, count };
   });
 
   const getColor = (count: number) => {
     if (count === 0) return '#ebedf0';
-    if (count < 5) return '#9be9a8';
-    if (count < 10) return '#40c463';
-    if (count < 20) return '#30a14e';
+    if (count < 15) return '#9be9a8';
+    if (count < 30) return '#40c463';
+    if (count < 60) return '#30a14e';
     return '#216e39';
   };
 
@@ -73,6 +78,12 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
             style={[styles.heatmapCell, { backgroundColor: getColor(day.count) }]}
           />
         ))}
+      </View>
+      <View style={styles.heatmapLegend}>
+        <Text style={styles.legendText}>Less</Text>
+        <View style={[styles.heatmapCell, { backgroundColor: '#ebedf0' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#30a14e' }]} />
+        <Text style={styles.legendText}>More</Text>
       </View>
     </View>
   );
@@ -160,81 +171,109 @@ const SimpleUserAvatar = ({ imageUrl, gender, size }: { imageUrl?: string | null
   return <Image source={avatarSource} style={{ width: size, height: size, borderRadius: size / 2 }} />;
 };
 
-// --- Suggested Friends Section ---
-const SuggestedFriendsSection = () => {
+const CombinedFriendsSection = () => {
   const { t } = useTranslation();
   const user = useUserStore((state) => state.user);
+  const currentUserId = user?.userId;
   const { useSuggestedUsers } = useUsers();
-  const { useCreateFriendship } = useFriendships();
+  const { useAllFriendships, useCreateFriendship, useUpdateFriendship } = useFriendships();
 
   const createFriendshipMutation = useCreateFriendship();
-  const [sentRequests, setSentRequests] = useState<Set<string>>(new Set());
+  const updateFriendshipMutation = useUpdateFriendship();
 
-  const { data: suggestionsData, isLoading } = useSuggestedUsers(user?.userId || '', 0, 5);
+  const requestParams: AllFriendshipsParams = { receiverId: currentUserId, status: 'PENDING', page: 0, size: 50 };
+  const { data: friendRequestsData, isLoading: isLoadingRequests, refetch: refetchRequests } = useAllFriendships(requestParams);
+  const friendRequests = friendRequestsData?.content || [];
+
+  const { data: suggestionsData, isLoading: isLoadingSuggestions } = useSuggestedUsers(currentUserId || '', 0, 5) as any;
   const suggestions = suggestionsData?.content || [];
 
-  const handleSeeAll = () => {
-    gotoTab('Profile', 'SuggestedUsersScreen', { initialTab: 1 });
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  const handleSeeAll = () => gotoTab('Profile', 'SuggestedUsersScreen', { initialTab: 0 });
+
+  const handleAccept = async (request: FriendshipResponse) => {
+    if (!currentUserId || !request.requesterId || !request.id) return;
+    setActionLoadingId(request.id.toString());
+    try {
+      await updateFriendshipMutation.mutateAsync({
+        user1Id: request.requesterId,
+        user2Id: currentUserId,
+        req: { status: FriendshipStatus.ACCEPTED, requesterId: request.requesterId, receiverId: currentUserId }
+      });
+      refetchRequests();
+    } catch (error) { console.error(error); } finally { setActionLoadingId(null); }
   };
 
   const handleAddFriend = async (targetUserId: string) => {
-    if (!user?.userId || !targetUserId) {
-      // Cần có cả ID người gửi và người nhận
-      console.error("Missing user ID or target user ID for friend request.");
-      return;
-    }
-
+    if (!currentUserId || !targetUserId) return;
+    setActionLoadingId(targetUserId);
     try {
-      setSentRequests(prev => new Set(prev).add(targetUserId));
       await createFriendshipMutation.mutateAsync({
-        requesterId: user.userId, // Người gửi (User đang đăng nhập)
-        receiverId: targetUserId, // Người nhận (User được đề xuất)
+        requesterId: currentUserId,
+        receiverId: targetUserId,
         status: FriendshipStatus.PENDING,
       });
-      // Gửi thành công, không cần làm gì thêm ngoài cập nhật UI
     } catch (error) {
-      console.error("Failed to add friend:", error);
-      // Hoàn tác trạng thái nếu gửi thất bại
-      setSentRequests(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(targetUserId);
-        return newSet;
-      });
+      console.error(error);
+    } finally {
+      setTimeout(() => setActionLoadingId(null), 1000);
     }
   };
 
-  if (isLoading) return <View style={[styles.card, { height: 150, justifyContent: 'center' }]}><ActivityIndicator /></View>;
-  if (!suggestions || suggestions.length === 0) return null;
+  const isLoading = isLoadingRequests || isLoadingSuggestions;
 
-  const renderItem = ({ item }: { item: UserResponse }) => {
-    const isSent = sentRequests.has(item.userId);
+  const displayedItems: any[] = [
+    ...friendRequests.slice(0, 2).map(req => ({ ...req, type: 'REQUEST' })),
+    ...suggestions.slice(0, 3).map(sug => ({ ...sug, type: 'SUGGESTION' }))
+  ];
+
+
+  if (isLoading && displayedItems.length === 0) return <View style={[styles.card, { height: 150, justifyContent: 'center' }]}><ActivityIndicator /></View>;
+  if (displayedItems.length === 0) return null;
+
+  const renderItem = ({ item }: { item: any }) => {
+    const isRequest = item.type === 'REQUEST';
+    const userToDisplay = isRequest ? item.requester : item;
+    const itemId = isRequest ? item.id : item.userId;
+    const isLoadingItem = actionLoadingId === itemId;
+
+    if (!userToDisplay) return null;
 
     return (
-      <TouchableOpacity style={styles.suggestionCard} onPress={() => gotoTab('Profile', 'UserProfileScreen', { userId: item.userId })}>
-        <View>
-          <SimpleUserAvatar imageUrl={item.avatarUrl} gender={item.gender} size={50} />
-          <View style={styles.smallFlagContainer}>
-            {item.country && <Text style={{ fontSize: 8 }}>{getCountryFlag(item.country, 10)}</Text>}
-          </View>
-        </View>
-        <Text style={styles.suggestionName} numberOfLines={1}>{item.fullname || item.nickname}</Text>
-        <Text style={styles.suggestionCommon} numberOfLines={1}>
-          {item.nativeLanguageCode?.toUpperCase()}
-        </Text>
-        <TouchableOpacity
-          style={[styles.addButton, isSent && styles.sentButton]}
-          onPress={() => handleAddFriend(item.userId)}
-          disabled={isSent}
-        >
-          {isSent ? (
-            <Icon name="check" size={16} color="#FFF" />
-          ) : (
-            <>
-              <Icon name="person-add" size={16} color="#FFF" />
-              <Text style={styles.addButtonText}>{t('common.add')}</Text>
-            </>
+      <TouchableOpacity
+        key={itemId}
+        style={styles.suggestionCard}
+        onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: userToDisplay.userId })}
+      >
+        <View style={{ position: 'relative', width: 50, height: 50 }}>
+          <SimpleUserAvatar imageUrl={userToDisplay.avatarUrl} gender={userToDisplay.gender} size={50} />
+          {userToDisplay.country && (
+            <View style={styles.flagBadgeSmall}>
+              <Text style={styles.flagTextSmall}>{getCountryFlag(userToDisplay.country)}</Text>
+            </View>
           )}
-        </TouchableOpacity>
+        </View>
+
+        <Text style={styles.suggestionName} numberOfLines={1}>{userToDisplay.fullname || userToDisplay.nickname}</Text>
+
+        {isRequest ? (
+          <TouchableOpacity
+            style={styles.acceptButtonHorizontal}
+            onPress={() => handleAccept(item)}
+            disabled={isLoadingItem}
+          >
+            {isLoadingItem ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.acceptButtonTextHorizontal}>{t('common.accept')}</Text>}
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={styles.addButton}
+            onPress={() => handleAddFriend(userToDisplay.userId)}
+            disabled={isLoadingItem}
+          >
+            {isLoadingItem ? <ActivityIndicator color="#FFF" size="small" /> : <Icon name="person-add" size={16} color="#FFF" />}
+          </TouchableOpacity>
+        )}
       </TouchableOpacity>
     );
   };
@@ -242,131 +281,25 @@ const SuggestedFriendsSection = () => {
   return (
     <View style={styles.card}>
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{t('profile.peopleYouMayKnow')}</Text>
+        <Text style={styles.sectionTitle}>
+          {t('profile.connect')} {friendRequests.length > 0 && `(${friendRequests.length} ${t('profile.requests')})`}
+        </Text>
         <TouchableOpacity onPress={handleSeeAll}>
           <Text style={styles.seeAllText}>{t('common.seeAll')}</Text>
         </TouchableOpacity>
       </View>
       <FlatList
-        data={suggestions}
+        data={displayedItems}
         horizontal
         showsHorizontalScrollIndicator={false}
         renderItem={renderItem}
-        keyExtractor={(item) => item.userId}
+        keyExtractor={(item, index) => item.id?.toString() || item.userId || `temp-${index}`}
         contentContainerStyle={styles.suggestionList}
       />
     </View>
   );
 };
 
-const RequestListSection = () => {
-  const { t } = useTranslation();
-  const user = useUserStore((state) => state.user);
-  const currentUserId = user?.userId;
-  const { useAllFriendships, useUpdateFriendship } = useFriendships();
-  const { useAllCouples } = useCouples();
-  const updateFriendshipMutation = useUpdateFriendship();
-
-  const friendParams: AllFriendshipsParams = { receiverId: currentUserId, status: 'PENDING', page: 0, size: 3 };
-  const coupleParams = { status: 'PENDING', page: 0, size: 3 };
-
-  const { data: friendRequestsData, isLoading: isLoadingFriends } = useAllFriendships(friendParams);
-  const { data: coupleRequestsData, isLoading: isLoadingCouples } = useAllCouples(coupleParams);
-
-  const friendRequests = friendRequestsData?.content || [];
-  const totalFriendRequests = friendRequestsData?.totalElements || 0;
-  const coupleRequests = coupleRequestsData?.content || [];
-  const totalCoupleRequests = coupleRequestsData?.totalElements || 0;
-  const hasRequests = totalFriendRequests > 0 || totalCoupleRequests > 0;
-
-  const [processingId, setProcessingId] = useState<string | null>(null);
-
-  const handleAccept = async (request: FriendshipResponse | CoupleResponse, type: 'FRIEND' | 'COUPLE') => {
-    if (!currentUserId || !request.id) return;
-    setProcessingId(request.id.toString());
-    try {
-      if (type === 'FRIEND') {
-        const fReq = request as FriendshipResponse;
-        // Logic: Update status to ACCEPTED
-        if (fReq.requesterId) {
-          await updateFriendshipMutation.mutateAsync({
-            user1Id: fReq.requesterId, // Người gửi yêu cầu ban đầu
-            user2Id: currentUserId, // Người nhận yêu cầu (và chấp nhận)
-            req: { status: FriendshipStatus.ACCEPTED, requesterId: fReq.requesterId, receiverId: currentUserId }
-          });
-        }
-      } else {
-        // Handle couple acceptance logic here if needed, keeping placeholder for now
-      }
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
-  const getOtherUser = (request: FriendshipResponse | CoupleResponse): UserResponse | undefined => {
-    if ('requesterId' in request) {
-      if (request.requester && currentUserId !== request.requester.userId) return request.requester;
-      if (request.receiver && currentUserId !== request.receiver.userId) return request.receiver;
-    }
-    if ('user1Id' in request) {
-      if (request.user1 && currentUserId !== request.user1.userId) return request.user1;
-      if (request.user2 && currentUserId !== request.user2.userId) return request.user2;
-    }
-    return undefined;
-  };
-
-  const renderRequestItem = (request: FriendshipResponse | CoupleResponse, type: 'FRIEND' | 'COUPLE') => {
-    const userToShow = getOtherUser(request);
-    const requestId = request.id;
-    if (!userToShow || !requestId) return null;
-    const isProcessing = processingId === requestId.toString();
-
-    return (
-      <TouchableOpacity
-        key={requestId.toString()}
-        style={styles.requestItem}
-        onPress={() => gotoTab('Profile', 'UserProfileScreen', { userId: userToShow.userId })}
-      >
-        <SimpleUserAvatar size={40} imageUrl={userToShow.avatarUrl} gender={userToShow.gender} />
-        <View style={styles.requestInfo}>
-          <Text style={styles.requestName} numberOfLines={1}>{userToShow.fullname || userToShow.nickname || t('profile.noName')}</Text>
-          <Text style={styles.requestType}>{type === 'FRIEND' ? t('profile.friendRequest') : t('profile.coupleRequest')}</Text>
-        </View>
-        <TouchableOpacity
-          style={styles.acceptButton}
-          onPress={() => handleAccept(request, type)}
-          disabled={isProcessing}
-        >
-          {isProcessing ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="check" size={18} color="#FFF" />}
-        </TouchableOpacity>
-      </TouchableOpacity>
-    );
-  };
-
-  if (isLoadingFriends || isLoadingCouples) return <View style={styles.card}><ActivityIndicator size="small" /></View>;
-
-  return (
-    <View style={styles.card}>
-      <Text style={styles.sectionTitle}>{t('profile.requests')}</Text>
-      {!hasRequests && <Text style={styles.noRequestsText}>{t('profile.noPendingRequests')}</Text>}
-      {hasRequests && (
-        <>
-          {[...friendRequests, ...coupleRequests].slice(0, 3).map((request) =>
-            renderRequestItem(request, (request as FriendshipResponse).requesterId ? 'FRIEND' : 'COUPLE')
-          )}
-          {(totalFriendRequests > 3 || totalCoupleRequests > 3) && (
-            <TouchableOpacity style={styles.seeAllButton} onPress={() => gotoTab('Profile', 'SuggestedUsersScreen', { initialTab: 1 })}>
-              <Text style={styles.seeAllButtonText}>{t('profile.seeAllRequests')} ({totalFriendRequests + totalCoupleRequests})</Text>
-              <Icon name="arrow-forward-ios" size={14} color="#4F46E5" />
-            </TouchableOpacity>
-          )}
-        </>
-      )}
-    </View>
-  );
-};
 
 const ProfileScreen: React.FC = () => {
   const { t } = useTranslation();
@@ -377,6 +310,8 @@ const ProfileScreen: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [character3d, setCharacter3d] = useState<Character3dResponse | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  useHeartbeat(true);
 
   useFocusEffect(useCallback(() => { refreshUserProfile(); }, []));
 
@@ -425,7 +360,11 @@ const ProfileScreen: React.FC = () => {
       <View style={styles.singleHeader}>
         <View style={styles.characterContainer}>
           {show3D ? <Image source={{ uri: character3d!.modelUrl }} style={styles.characterImage} resizeMode="contain" /> : <Image source={singleAvatarSource} style={styles.avatarImage} />}
-          <View style={styles.flagBadge}>{getCountryFlag(user?.country, 20)}</View>
+          {user?.country && (
+            <View style={styles.flagBadge}>
+              <Text style={styles.flagTextSmall}>{getCountryFlag(user?.country)}</Text>
+            </View>
+          )}
           <TouchableOpacity style={styles.editAvatarButton} onPress={pickImage} disabled={uploading}>
             {uploading ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="camera-alt" size={18} color="#FFF" />}
           </TouchableOpacity>
@@ -479,8 +418,9 @@ const ProfileScreen: React.FC = () => {
           </View>
           {renderSingleHeader()}
           {renderWalletCard()}
-          {user?.userId && <RequestListSection />}
-          {user?.userId && <SuggestedFriendsSection />}
+
+          {user?.userId && <CombinedFriendsSection />}
+
           {user?.userId && <ActivityHeatmap userId={user.userId} />}
           {user?.userId && <BadgeProgressSection userId={user.userId} />}
           <View style={styles.card}>
@@ -529,7 +469,8 @@ const styles = createScaledSheet({
   characterContainer: { position: 'relative', width: 110, height: 110, marginBottom: 16 },
   characterImage: { width: '100%', height: '100%', borderRadius: 55, backgroundColor: '#EEF2FF' },
   avatarImage: { width: 110, height: 110, borderRadius: 55, backgroundColor: '#E5E7EB' },
-  flagBadge: { position: 'absolute', top: 0, left: 0, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 12, padding: 2 },
+  flagBadge: { position: 'absolute', top: 0, left: 0, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 10, padding: 1 },
+  flagTextSmall: { fontSize: 10 },
   editAvatarButton: { position: 'absolute', bottom: 0, right: 0, width: 36, height: 36, borderRadius: 18, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: '#fff' },
   nameContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   fullname: { fontSize: 24, fontWeight: '800', color: '#111827', textAlign: 'center', marginRight: 6 },
@@ -553,7 +494,8 @@ const styles = createScaledSheet({
   heatmapLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 4, justifyContent: 'flex-end' },
   legendText: { fontSize: 10, color: '#666' },
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, elevation: 2 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937', marginBottom: 16, paddingLeft: 4 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingRight: 4 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937', paddingLeft: 4 },
   infoGrid: { gap: 12 },
   infoRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
   infoLabelContainer: { flexDirection: 'row', alignItems: 'center', width: 120 },
@@ -571,29 +513,14 @@ const styles = createScaledSheet({
   grayscale: { opacity: 0.5, backgroundColor: '#E5E7EB' },
   lockOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)' },
   badgeName: { fontSize: 11, fontWeight: '600', color: '#4B5563', textAlign: 'center', marginBottom: 4 },
-  progressContainer: { width: '80%', alignItems: 'center' },
-  progressBarBg: { width: '100%', height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, marginBottom: 2 },
-  progressBarFill: { height: 4, backgroundColor: '#F59E0B', borderRadius: 2 },
-  progressText: { fontSize: 9, color: '#9CA3AF' },
-  noRequestsText: { fontSize: 14, color: '#6B7280', textAlign: 'center', paddingVertical: 10 },
-  requestItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: '#F9FAFB', gap: 12 },
-  requestInfo: { flex: 1, justifyContent: 'center' },
-  requestName: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
-  requestType: { fontSize: 12, color: '#4F46E5' },
-  acceptButton: { backgroundColor: '#10B981', width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  seeAllButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, paddingVertical: 8, paddingHorizontal: 10, backgroundColor: '#EEF2FF', borderRadius: 12 },
-  seeAllButtonText: { fontSize: 14, fontWeight: '700', color: '#4F46E5' },
-  // New Styles for Suggestions
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingRight: 4 },
   seeAllText: { fontSize: 14, fontWeight: '600', color: '#4F46E5' },
   suggestionList: { paddingBottom: 8 },
   suggestionCard: { width: 120, alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 16, marginRight: 12, borderWidth: 1, borderColor: '#E5E7EB' },
   suggestionName: { fontSize: 14, fontWeight: '600', color: '#111827', marginTop: 8, marginBottom: 2, textAlign: 'center' },
-  suggestionCommon: { fontSize: 11, color: '#6B7280', marginBottom: 12, textAlign: 'center' },
-  addButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4F46E5', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, minWidth: 60, justifyContent: 'center' },
-  addButtonText: { color: '#FFF', fontSize: 12, fontWeight: '600', marginLeft: 4 },
-  sentButton: { backgroundColor: '#9CA3AF' },
-  smallFlagContainer: { position: 'absolute', bottom: 0, right: 0, backgroundColor: 'white', borderRadius: 4, padding: 1 },
+  addButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
+  flagBadgeSmall: { position: 'absolute', top: -2, left: -2, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 8, padding: 1, elevation: 2 },
+  acceptButtonHorizontal: { backgroundColor: '#10B981', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
+  acceptButtonTextHorizontal: { color: '#FFF', fontSize: 12, fontWeight: '600' },
 });
 
 export default ProfileScreen;

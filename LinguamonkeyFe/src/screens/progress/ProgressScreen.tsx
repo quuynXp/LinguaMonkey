@@ -39,14 +39,12 @@ const ProgressScreen = () => {
     const {
         data: studyHistory,
         isLoading,
-        error,
         refetch,
     } = useGetStudyHistory(
         userId,
         timeFilter
     )
 
-    // Fallback constants used when data is null (handled by Hook, but extra safe here)
     const studySessions: StudySessionResponse[] = studyHistory?.sessions || []
     const stats: StatsResponse = studyHistory?.stats || {
         totalSessions: 0,
@@ -55,8 +53,6 @@ const ProgressScreen = () => {
         averageScore: 0
     }
 
-    // --- CHART LOGIC (Aggregation for Visualization) ---
-    // Aggregates sessions into last 7 days for the Bar Chart
     const chartData = useMemo(() => {
         const days = 7
         const data = new Array(days).fill(0).map((_, i) => {
@@ -69,25 +65,24 @@ const ProgressScreen = () => {
             }
         })
 
-        // Map sessions to days
-        studySessions.forEach(session => {
-            const sessionDate = new Date(session.date)
-            // Normalize to start of day
-            sessionDate.setHours(0, 0, 0, 0)
+        if (studySessions.length > 0) {
+            studySessions.forEach(session => {
+                const sessionDate = new Date(session.date)
+                sessionDate.setHours(0, 0, 0, 0)
 
-            const foundDay = data.find(d => {
-                const chartDate = new Date(d.date)
-                chartDate.setHours(0, 0, 0, 0)
-                return chartDate.getTime() === sessionDate.getTime()
+                const foundDay = data.find(d => {
+                    const chartDate = new Date(d.date)
+                    chartDate.setHours(0, 0, 0, 0)
+                    return chartDate.getTime() === sessionDate.getTime()
+                })
+
+                if (foundDay && session.duration) {
+                    foundDay.value += Math.round(session.duration / 60)
+                }
             })
+        }
 
-            if (foundDay && session.duration) {
-                // Convert seconds to minutes for the chart
-                foundDay.value += Math.round(session.duration / 60)
-            }
-        })
-
-        const maxValue = Math.max(...data.map(d => d.value), 10) // Min height 10 mins scale
+        const maxValue = Math.max(...data.map(d => d.value), 10)
         return { data, maxValue }
     }, [studySessions])
 
@@ -204,7 +199,6 @@ const ProgressScreen = () => {
 
                 <View style={styles.chartBody}>
                     {chartData.data.map((item, index) => {
-                        // Calculate height relative to max, max bar height is 120px
                         const height = (item.value / chartData.maxValue) * 120
                         return (
                             <View key={index} style={styles.chartColumn}>
@@ -224,7 +218,6 @@ const ProgressScreen = () => {
     }
 
     const renderStatsTab = () => {
-        // We ALWAYS render this, using default zero-values if actual data is missing
         return (
             <View style={styles.statsContainer}>
                 <Text style={styles.sectionHeader}>{t("history.stats.summary")}</Text>
@@ -284,8 +277,6 @@ const ProgressScreen = () => {
                 </View>
             )
         }
-
-        // Removed the "No Stats" block. Now passes through to render empty/zero data.
 
         return (
             <Animated.View style={[styles.scrollContent, { opacity: fadeAnim }]}>
@@ -621,7 +612,6 @@ const styles = createScaledSheet({
         color: "#9CA3AF",
         fontSize: 14
     },
-    // Custom Chart Styles
     chartContainer: {
         backgroundColor: "#FFFFFF",
         borderRadius: 12,
@@ -694,4 +684,4 @@ const styles = createScaledSheet({
     }
 })
 
-export default ProgressScreen
+export default ProgressScreen;

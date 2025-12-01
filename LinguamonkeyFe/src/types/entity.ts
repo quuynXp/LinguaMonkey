@@ -208,19 +208,19 @@ export interface Course extends BaseEntity {
     categoryCode?: string;
 }
 
-export interface CourseDiscount extends BaseEntity {
+export interface CourseVersionDiscount extends BaseEntity {
     discountId: string;
-    courseId: string;
+    versionId: string;
     discountPercentage: number;
     startDate?: string;
     endDate?: string;
     isActive: boolean;
 }
 
-export interface CourseEnrollment extends BaseEntity {
+export interface CourseVersionEnrollment extends BaseEntity {
     enrollmentId: string;
     courseVersion?: CourseVersion;
-    status?: Enums.CourseEnrollmentStatus;
+    status?: Enums.CourseVersionEnrollmentStatus;
     userId: string;
     enrolledAt: string;
     completedAt?: string;
@@ -231,7 +231,7 @@ export interface CourseLesson extends BaseEntity {
     orderIndex: number;
 }
 
-export interface CourseReview extends BaseEntity {
+export interface CourseVersionReview extends BaseEntity {
     reviewId: string;
     courseId: string;
     languageCode?: string;
@@ -426,6 +426,7 @@ export interface LessonCategory extends BaseEntity {
     lessonCategoryName: string;
     languageCode?: string;
     description?: string;
+    coins?: number;
 }
 
 export interface LessonOrderInSeries extends BaseEntity {

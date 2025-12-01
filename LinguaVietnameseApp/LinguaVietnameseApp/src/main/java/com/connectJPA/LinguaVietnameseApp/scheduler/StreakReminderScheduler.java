@@ -24,15 +24,9 @@ public class StreakReminderScheduler {
     private final UserRepository userRepository;
     private final UserLearningActivityRepository userLearningActivityRepository;
     private final NotificationService notificationService;
-    private final UserFcmTokenRepository userFcmTokenRepository; // Inject thêm
+    private final UserFcmTokenRepository userFcmTokenRepository;
 
-    private static final String TIME_ZONE = "Asia/Ho_Chi_Minh";
-
-    // Test method
-    public void testSchedulerImmediate() {
-        log.info(">>> [TEST SCHEDULER] Triggering immediate test for notification...");
-        sendStreakReminders("MIDDAY");
-    }
+    private static final String TIME_ZONE = "UTC";
 
     @Scheduled(cron = "0 0 12 * * ?", zone = TIME_ZONE)
     @Transactional
@@ -58,7 +52,6 @@ public class StreakReminderScheduler {
     public void sendStreakReminders(String timeSlot) {
         log.info("Start checking users (with tokens) for {} reminders...", timeSlot);
         
-        // TỐI ƯU: Chỉ lấy users có Token
         List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
         
         if (userIdsWithToken.isEmpty()) {
@@ -69,8 +62,7 @@ public class StreakReminderScheduler {
         List<User> users = userRepository.findAllById(userIdsWithToken);
         LocalDate today = LocalDate.now();
 
-        // ... (Logic switch case notificationKey giữ nguyên)
-        String notificationKey = "STREAK_REMINDER_MIDDAY"; // Simplification for snippet logic
+        String notificationKey = "STREAK_REMINDER_MIDDAY"; 
         switch (timeSlot) {
             case "AFTERNOON": notificationKey = "STREAK_REMINDER_AFTERNOON"; break;
             case "EVENING": notificationKey = "STREAK_REMINDER_EVENING"; break;
@@ -97,7 +89,6 @@ public class StreakReminderScheduler {
                     if (langCode == null) langCode = "en"; 
 
                     String[] message = NotificationI18nUtil.getLocalizedMessage(notificationKey, langCode);
-                    if (message == null || message.length < 2) message = new String[]{"Study Reminder", "Keep going!"};
 
                     String content = String.format(message[1], minutesRemaining, user.getStreak());
 
@@ -106,13 +97,11 @@ public class StreakReminderScheduler {
                             .title(message[0])
                             .content(content)
                             .type("STREAK_REMINDER")
-                            .payload("{\"screen\":\"Learn\"}")
+                            .payload("{\"screen\":\"Home\"}")
                             .build();
                     
                     notificationService.createPushNotification(notificationRequest);
                     sentCount++;
-                    
-                    log.info("Sent {} reminder to user {}", timeSlot, userId);
                 }
             } catch (Exception e) {
                 log.error("Failed to process reminder for user {}: {}", user.getUserId(), e.getMessage());
@@ -124,7 +113,7 @@ public class StreakReminderScheduler {
     @Scheduled(cron = "0 0 0 * * ?", zone = TIME_ZONE)
     @Transactional
     public void resetStreaks() {
-        log.info("Running Streak Reset (Vietnam Time)");
+        log.info("Running Streak Reset (UTC Time)");
         List<User> users = userRepository.findAllByIsDeletedFalse();
         LocalDate yesterday = LocalDate.now().minusDays(1);
 
@@ -144,9 +133,6 @@ public class StreakReminderScheduler {
                     if (langCode == null) langCode = "en";
 
                     String[] message = NotificationI18nUtil.getLocalizedMessage("STREAK_RESET", langCode);
-                    if (message == null || message.length < 2) {
-                        message = new String[]{"Streak Lost", "Your streak has been reset."};
-                    }
 
                     NotificationRequest notificationRequest = NotificationRequest.builder()
                             .userId(userId)

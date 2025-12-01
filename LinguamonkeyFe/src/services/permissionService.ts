@@ -1,6 +1,8 @@
 import { Platform, Alert, Linking, StyleSheet } from 'react-native';
 import { check, request, PERMISSIONS, RESULTS, Permission, openSettings } from 'react-native-permissions';
 import * as Notifications from 'expo-notifications';
+import * as IntentLauncher from 'expo-intent-launcher';
+import * as Application from 'expo-application';
 import i18n from '../i18n';
 
 class PermissionService {
@@ -48,7 +50,7 @@ class PermissionService {
         if (Platform.OS === 'ios') {
             permission = PERMISSIONS.IOS.PHOTO_LIBRARY;
         } else {
-            if (Platform.Version >= 33) {
+            if (Platform.Version >= '33') {
                 permission = PERMISSIONS.ANDROID.READ_MEDIA_IMAGES;
             } else {
                 permission = PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE;
@@ -73,6 +75,29 @@ class PermissionService {
             i18n.t('permissions.location.message')
         );
     }
+
+    async openOverlayPermissionSettings(): Promise<boolean> {
+        if (Platform.OS !== 'android') {
+            Alert.alert('Not supported', 'Overlay permission is only for Android.');
+            return false;
+        }
+        try {
+            const pkg = Application.applicationId;
+            await IntentLauncher.startActivityAsync(
+                'android.settings.action.MANAGE_OVERLAY_PERMISSION',
+                { data: 'package:' + pkg }
+            );
+            return true;
+        } catch (e) {
+            Alert.alert(
+                'Error',
+                'Cannot open overlay settings. Please enable "Display over other apps" manually in Settings.'
+            );
+            return false;
+        }
+    }
+
+
 
     private async handlePermission(permission: Permission, title: string, message: string): Promise<boolean> {
         try {

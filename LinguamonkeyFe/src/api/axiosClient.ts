@@ -100,7 +100,7 @@ privateClient.interceptors.request.use(
 
 export const mediaClient = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 60000,
+    timeout: 300000, // Đã tăng timeout lên 5 phút (300000ms)
     headers: {
         'Accept': 'application/json',
     },
@@ -116,6 +116,7 @@ mediaClient.interceptors.request.use(
             config.headers['Authorization'] = `Bearer ${accessToken}`;
         }
 
+        // Quan trọng cho FormData upload: Xóa Content-Type để engine tự đặt boundary
         if (config.data instanceof FormData) {
             delete config.headers['Content-Type'];
         }

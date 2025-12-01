@@ -32,6 +32,7 @@ public class GrammarServiceImpl implements GrammarService {
     @Override
     public List<GrammarTopicResponse> getAllTopics() {
         return topicRepo.findAll().stream()
+                .filter(Objects::nonNull)
                 .filter(t -> !t.isDeleted())
                 .sorted(Comparator.comparing(GrammarTopic::getCreatedAt))
                 .map(this::mapToTopicResponse)
@@ -68,7 +69,6 @@ public class GrammarServiceImpl implements GrammarService {
                 .filter(t -> !t.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.GRAMMAR_TOPIC_NOT_FOUND));
 
-        // Fetch lessons -> rules to flatten them if that's the expected response structure for this specific endpoint
         List<GrammarLesson> lessons = lessonRepo.findByTopicIdAndIsDeletedFalseOrderByCreatedAtAsc(topicId);
 
         List<GrammarRuleResponse> allRuleResponses = new ArrayList<>();
@@ -79,7 +79,6 @@ public class GrammarServiceImpl implements GrammarService {
                         .filter(r -> !r.isDeleted())
                         .map(rule -> {
                             GrammarRuleResponse resp = mapToRuleResponse(rule);
-                            // Fetch progress
                             if (userId != null) {
                                 GrammarProgressId pid = new GrammarProgressId(topicId, userId, rule.getRuleId());
                                 Optional<GrammarProgress> gp = progressRepo.findById(pid);
@@ -102,12 +101,10 @@ public class GrammarServiceImpl implements GrammarService {
         resp.setLanguageCode(topic.getLanguageCode());
         resp.setCreatedAt(topic.getCreatedAt());
         resp.setUpdatedAt(topic.getUpdatedAt());
-        resp.setRules(allRuleResponses); // Flattened list for compatibility
+        resp.setRules(allRuleResponses);
 
         return resp;
     }
-
-    // --- Mappers ---
 
     private GrammarTopicResponse mapToTopicResponse(GrammarTopic topic) {
         return GrammarTopicResponse.builder()
@@ -150,7 +147,7 @@ public class GrammarServiceImpl implements GrammarService {
                 .lessonId(lessonId)
                 .topicId(topicId)
                 .title(rule.getTitle())
-                .ruleContent(rule.getRuleContent()) // Fixed: getExplanation -> getRuleContent
+                .ruleContent(rule.getRuleContent())
                 .usageNotes(rule.getUsageNotes())
                 .examples(rule.getExamples())
                 .createdAt(rule.getCreatedAt())
@@ -164,7 +161,6 @@ public class GrammarServiceImpl implements GrammarService {
         List<GrammarTopic> topics = topicRepo.findByIsDeletedFalseOrderByCreatedAtAsc();
         List<MindMapNode> nodes = new ArrayList<>();
 
-        // Root node
         MindMapNode root = new MindMapNode();
         root.setId("root");
         root.setTitle("Vietnamese Grammar");
@@ -175,20 +171,13 @@ public class GrammarServiceImpl implements GrammarService {
         root.setType("root");
         nodes.add(root);
 
-        // Topic nodes
         for (GrammarTopic topic : topics) {
-            // Fetch lessons first
             List<GrammarLesson> lessons = lessonRepo.findByTopicIdAndIsDeletedFalseOrderByCreatedAtAsc(topic.getTopicId());
 
             MindMapNode topicNode = new MindMapNode();
             topicNode.setId(topic.getTopicId().toString());
             topicNode.setTitle(topic.getTopicName());
             topicNode.setDescription(topic.getDescription());
-
-            // In the mindmap, we can show Lessons as children of Topics
-            // OR flatten Rules under Topics. Based on previous code, it flattened rules.
-            // Let's show Rules directly under Topics to maintain visual structure,
-            // iterating through lessons to get them.
 
             List<String> ruleChildrenIds = new ArrayList<>();
 
@@ -203,7 +192,7 @@ public class GrammarServiceImpl implements GrammarService {
                     MindMapNode ruleNode = new MindMapNode();
                     ruleNode.setId(rule.getRuleId().toString());
                     ruleNode.setTitle(rule.getTitle());
-                    ruleNode.setDescription(rule.getRuleContent()); // Fixed
+                    ruleNode.setDescription(rule.getRuleContent());
                     ruleNode.setChildren(new ArrayList<>());
                     ruleNode.setExamples(rule.getExamples());
                     ruleNode.setRules(new ArrayList<>());
@@ -282,7 +271,6 @@ public class GrammarServiceImpl implements GrammarService {
         GrammarRule rule = ruleRepo.findById(ruleId).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.GRAMMAR_RULE_NOT_FOUND));
 
-        // Retrieve topicId via Lesson
         UUID topicId = rule.getGrammarLesson().getTopicId();
 
         List<GrammarExercise> exercises = exerciseRepo.findByRuleIdAndIsDeletedFalseOrderByCreatedAtAsc(ruleId);
@@ -299,7 +287,6 @@ public class GrammarServiceImpl implements GrammarService {
         }
         int score = Math.round((correct * 100f) / total);
 
-        // Persist Progress using topicId from the lesson
         GrammarProgressId pid = new GrammarProgressId(topicId, userId, ruleId);
         GrammarProgress progress = progressRepo.findById(pid).orElseGet(() -> {
             GrammarProgress p = new GrammarProgress();
@@ -311,7 +298,6 @@ public class GrammarServiceImpl implements GrammarService {
         progress.setCompletedAt(OffsetDateTime.now());
         progressRepo.save(progress);
 
-        // Record Activity
         userLearningActivityRepository.save(
                 com.connectJPA.LinguaVietnameseApp.entity.UserLearningActivity.builder()
                         .userId(userId)
@@ -333,9 +319,6 @@ public class GrammarServiceImpl implements GrammarService {
     public void updateProgress(UpdateGrammarProgressRequest request) {
         UUID userId = request.getUserId();
         userService.getUserIfExists(userId);
-
-        // If request has topicId, use it. If not, we might need to fetch rule to get lesson -> topic.
-        // Assuming request has valid topicId matching the rule's hierarchy.
 
         GrammarProgressId pid = new GrammarProgressId(request.getTopicId(), userId, request.getRuleId());
         GrammarProgress progress = progressRepo.findById(pid).orElseGet(() -> {

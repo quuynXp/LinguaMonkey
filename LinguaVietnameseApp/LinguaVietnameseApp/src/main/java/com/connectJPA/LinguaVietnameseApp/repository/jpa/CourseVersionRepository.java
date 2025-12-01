@@ -15,34 +15,16 @@ import java.util.UUID;
 @Repository
 public interface CourseVersionRepository extends JpaRepository<CourseVersion, UUID> {
 
-    /**
-     * Tìm một phiên bản DRAFT (bản nháp) bằng ID.
-     * Dùng để đảm bảo Creator chỉ có thể sửa bản nháp.
-     */
     Optional<CourseVersion> findByVersionIdAndStatus(UUID versionId, VersionStatus status);
 
-    /**
-     * Tìm phiên bản MỚI NHẤT (theo versionNumber) của một Course có trạng thái PUBLIC.
-     * Sử dụng Derived Query Method findTopBy... để đảm bảo chỉ trả về 1 kết quả (LIMIT 1).
-     */
     Optional<CourseVersion> findTopByCourse_CourseIdAndStatusOrderByVersionNumberDesc(UUID courseId, VersionStatus status);
 
-    /**
-     * Tìm phiên bản MỚI NHẤT (theo versionNumber) của một Course, không bị xóa.
-     * Sử dụng Derived Query Method findTopBy... để đảm bảo chỉ trả về 1 kết quả (LIMIT 1).
-     */
     Optional<CourseVersion> findTopByCourse_CourseIdAndIsDeletedFalseOrderByVersionNumberDesc(UUID courseId);
 
     List<CourseVersion> findByCourse_CourseIdAndStatusAndIsDeletedFalse(UUID courseId, VersionStatus status);
 
     List<CourseVersion> findByCourse_CourseIdAndIsDeletedFalse(UUID courseId);
 
-
-    /**
-     * Tìm phiên bản MỚI NHẤT (theo versionNumber) của một Course có trạng thái PUBLIC.
-     * (Hàm này có thể không cần nếu Course.latestPublicVersionId được cập nhật đúng)
-     * Thay vào đó, chúng ta có thể dùng hàm này để tìm phiên bản public *trước đó* để so sánh.
-     */
     @Query("SELECT cv FROM CourseVersion cv WHERE cv.course.courseId = :courseId " +
             "AND cv.status = 'PUBLIC' " +
             "ORDER BY cv.versionNumber DESC")
@@ -51,4 +33,10 @@ public interface CourseVersionRepository extends JpaRepository<CourseVersion, UU
     List<CourseVersion> findByStatusAndPublishedAtBeforeAndIsDeletedFalse(String status, OffsetDateTime now);
 
     boolean existsByCourse_CourseIdAndStatus(UUID courseId, VersionStatus status);
+
+    @Query("SELECT cv FROM CourseVersion cv WHERE cv.status = 'DRAFT' AND (cv.isIntegrityValid IS NULL OR cv.isContentValid IS NULL)")
+    List<CourseVersion> findDraftsPendingValidation();
+
+    @Query("SELECT cv FROM CourseVersion cv WHERE cv.status = 'PUBLIC' AND cv.isSystemReviewed = false")
+    List<CourseVersion> findPublicVersionsPendingSystemReview();
 }

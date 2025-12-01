@@ -9,7 +9,6 @@ import {
   Character3dResponse,
   RegisterResponse,
   UserRequest,
-  // NotificationRequest,
 } from "../types/dto";
 
 import { Country } from "../types/enums";
@@ -17,6 +16,7 @@ import { Country } from "../types/enums";
 export const userKeys = {
   all: ["users"] as const,
   lists: (params: any) => [...userKeys.all, "list", params] as const,
+  publicSearch: (params: any) => [...userKeys.all, "publicSearch", params] as const, // New Key for public search
   suggestions: (userId: string) => ["users", "suggestions", userId] as const,
   detail: (id: string) => [...userKeys.all, "detail", id] as const,
   profile: (targetId: string, viewerId?: string) => [...userKeys.all, "profile", targetId, viewerId] as const,
@@ -46,17 +46,34 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 export const useUsers = () => {
   const queryClient = useQueryClient();
 
-  const useAllUsers = (params?: { email?: string; fullname?: string; nickname?: string; page?: number; size?: number }) => {
-    const { page = 0, size = 10 } = params || {};
+  // Renamed to useSearchPublicUsers to clearly indicate it returns UserProfileResponse via safe endpoint
+  const useSearchPublicUsers = (params?: { keyword?: string; country?: Country; page?: number; size?: number }) => {
+    const { page = 0, size = 20, ...rest } = params || {};
     return useQuery({
-      queryKey: userKeys.lists(params),
+      queryKey: userKeys.publicSearch({ ...rest, page, size }),
       queryFn: async () => {
-        const { data } = await instance.get<AppApiResponse<PageResponse<UserResponse>>>(
-          `/api/v1/users`,
-          { params: { ...params, page, size } }
+        const { data } = await instance.get<AppApiResponse<PageResponse<UserProfileResponse>>>(
+          `/api/v1/users/search`,
+          { params: { ...rest, page, size } }
         );
         return mapPageResponse(data.result, page, size);
       },
+    });
+  };
+
+  const useAllUsers = (params?: { email?: string; fullname?: string; nickname?: string; page?: number; size?: number }) => {
+    // KEEPING OLD ONE FOR ADMIN IF NEEDED, BUT FRONTEND SHOULD PREFER PUBLIC SEARCH
+    const { page = 0, size = 20, ...rest } = params || {};
+    return useQuery({
+      queryKey: userKeys.lists({ ...rest, page, size }),
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<PageResponse<UserResponse>>>(
+          `/api/v1/users`,
+          { params: { ...rest, page, size } }
+        );
+        return mapPageResponse(data.result, page, size);
+      },
+      enabled: false, // Disabled by default to prevent accidental calls by non-admins
     });
   };
 
@@ -246,14 +263,6 @@ export const useUsers = () => {
     });
   };
 
-  // const useRegisterFcmToken = () => {
-  //   return useMutation({
-  //     mutationFn: async (req: NotificationRequest) => {
-  //       await instance.post<AppApiResponse<void>>(`/api/v1/users/fcm-token`, req);
-  //     },
-  //   });
-  // };
-
   const useUpdateLastActive = () => {
     return useMutation({
       mutationFn: async (userId: string) => {
@@ -335,13 +344,14 @@ export const useUsers = () => {
           `/api/v1/users/${userId}/suggestions`,
           { params: { page, size } }
         );
-        return data.result;
+        return data.result!;
       },
       enabled: !!userId,
     });
   };
 
   return {
+    useSearchPublicUsers, // Expose the new hook
     useAllUsers,
     useUser,
     useUserProfile,
@@ -357,11 +367,10 @@ export const useUsers = () => {
     useUpdateNativeLanguage,
     useUpdateCountry,
     useAdmireUser,
-    // useRegisterFcmToken,
     useUpdateLastActive,
     useSendFriendRequest,
     useAcceptFriendRequest,
-    useDeleteFriendship, // New export
+    useDeleteFriendship,
     useFriendRequestStatus,
     useCheckIfFriends,
     useSuggestedUsers,

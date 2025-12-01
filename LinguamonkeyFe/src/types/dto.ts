@@ -9,6 +9,19 @@ export interface AppApiResponse<T> {
     message: string;
     result: T;
 }
+export interface LessonHierarchicalResponse {
+    categoryId: string;
+    categoryName: string;
+    coinReward: number;
+    subCategories: SubCategoryDto[];
+}
+
+export interface SubCategoryDto {
+    subCategoryId: string;
+    subCategoryName: string;
+    lessons: LessonResponse[];
+}
+
 
 export interface PageResponse<T> {
     content: T[];
@@ -57,15 +70,19 @@ export interface BadgeRequest {
 }
 
 export interface StreamingChunk {
-    type: 'metadata' | 'chunk' | 'suggestion' | 'final' | 'error';
-    feedback: string;
-    score?: number;
+    type: "metadata" | "chunk" | "suggestion" | "final" | "error";
+    feedback: string; // Message hiển thị
+    score?: number; // Điểm số (chỉ có ở type 'final' hoặc 'chunk')
+
+    // Dữ liệu phân tích từng từ (cho type 'chunk')
     word_analysis?: {
         word: string;
         spoken: string;
         word_score: number;
         is_correct: boolean;
     };
+
+    // Metadata tổng hợp (cho type 'final')
     metadata?: {
         accuracy_score: number;
         fluency_score: number;
@@ -158,23 +175,26 @@ export interface CoupleRequest {
     startDate: string;
 }
 
-export interface CourseDiscountRequest {
-    courseId: string;
+export interface CourseVersionDiscountRequest {
+    versionId: string; // Changed from courseId
     discountPercentage: number;
-    startDate: string;
+    startDate?: string;
+    endDate?: string;
     code: string;
-    endDate: string;
-    isActive: boolean;
+    isActive?: boolean;
 }
 
-export interface CourseEnrollmentRequest {
-    courseVersionId: string;
+export interface CourseVersionEnrollmentRequest {
+    courseId?: string;
+    courseVersionId: string; // Required
     userId: string;
-    status: Enums.CourseEnrollmentStatus;
+    status?: string; // Enum CourseEnrollmentStatus
+    paymentStatus?: string; // Enum PaymentStatus
 }
 
 export interface CourseLessonRequest {
-    courseId: string;
+    courseId?: string;
+    versionId: string; // Required
     lessonId: string;
     orderIndex: number;
 }
@@ -200,12 +220,13 @@ export interface CourseRequest {
     categoryCode?: string;
 }
 
-export interface CourseReviewRequest {
+export interface CourseVersionReviewRequest {
     courseId: string;
+    versionId?: string; // Added
     userId: string;
     rating: number;
     comment: string;
-    parentId: string;
+    parentId?: string;
 }
 
 export interface CreateCourseRequest {
@@ -655,16 +676,21 @@ export interface TypingStatusRequest {
 
 export interface UpdateCourseDetailsRequest {
     title: string;
-    price: number;
-    languageCode: string;
-    difficultyLevel: Enums.DifficultyLevel;
-    categoryCode?: string;
+    // price: number;
+    // languageCode: string;
+    // difficultyLevel: Enums.DifficultyLevel;
+    // categoryCode?: string;
 }
 
 export interface UpdateCourseVersionRequest {
     description: string;
     thumbnailUrl: string;
     lessonIds: string[];
+
+    price?: number;
+    languageCode?: string;
+    difficultyLevel?: Enums.DifficultyLevel;
+    categoryCode?: string;
 }
 
 export interface UpdateGrammarProgressRequest {
@@ -754,10 +780,17 @@ export interface UserSeriesProgressRequest {
 
 export interface UserSettingRequest {
     userId: string;
-    notificationPreferences: string;
-    theme: string;
-    language: string;
-    isDeleted: boolean;
+    notificationPreferences?: string; // Legacy or map manually
+    studyReminders?: boolean;
+    streakReminders?: boolean;
+    soundEnabled?: boolean;
+    vibrationEnabled?: boolean;
+    profileVisibility?: boolean;
+    progressSharing?: boolean;
+    searchPrivacy?: boolean; // Added
+    theme?: string;
+    language?: string;
+    isDeleted?: boolean;
 }
 
 export interface VerifyOtpRequest {
@@ -928,9 +961,9 @@ export interface CoupleResponse {
     user2?: UserResponse;
 }
 
-export interface CourseDiscountResponse {
+export interface CourseVersionDiscountResponse {
     discountId: string;
-    courseId: string;
+    versionId: string; // Changed from courseId
     discountPercentage: number;
     startDate: string;
     endDate: string;
@@ -941,16 +974,14 @@ export interface CourseDiscountResponse {
     updatedAt: string;
 }
 
-export interface CourseEnrollmentResponse {
+export interface CourseVersionEnrollmentResponse {
     enrollmentId: string;
     userId: string;
     enrolledAt: string;
-    courseId: string;
-    courseTitle: string;
-    courseVersionId: string;
-    versionNumber: number;
+    course: CourseResponse;        // The abstract course info
+    courseVersion: CourseVersionResponse; // The specific version enrolled
+    progress: number;
 }
-
 export interface CourseLessonResponse {
     courseId: string;
     lessonId: string;
@@ -974,35 +1005,41 @@ export interface CourseResponse {
     courseId: string;
     title: string;
     creatorId: string;
-    price: number;
     approvalStatus: Enums.CourseApprovalStatus;
     createdAt: string;
     updatedAt: string;
     latestPublicVersion: CourseVersionResponse;
-    categoryCode?: string;
-    thumbnailUrl?: string;
-    languageCode?: string;
+
+    // Các trường đã bị loại bỏ khỏi Course Entity, chỉ nên truy cập qua latestPublicVersion
+    // price: number;
+    // languageCode: string;
+    // categoryCode?: string;
+    // thumbnailUrl?: string;
+    // difficultyLevel?: Enums.DifficultyLevel;
+
+    // Creator Info Enrichment
     creatorNickname?: string;
     creatorCountry?: Enums.Country;
     creatorVip?: boolean;
     creatorLevel?: number;
     creatorName?: string;
     creatorAvatar?: string;
-    difficultyLevel?: Enums.DifficultyLevel;
-    // Added missing fields that exist in API
+
+    // Rating enriched info
     averageRating?: number;
     reviewCount?: number;
 }
 
-export interface CourseReviewResponse {
+export interface CourseVersionReviewResponse {
     reviewId: string;
     courseId: string;
     userId: string;
     rating: number;
+    ersionId?: string;
     comment: string;
     likeCount: number;
     dislikeCount: number;
-    topReplies: CourseReviewResponse[] | null;
+    topReplies: CourseVersionReviewResponse[] | null;
     replyCount: number;
     userFullname: string;
     userNickname: string;
@@ -1029,6 +1066,15 @@ export interface CourseVersionResponse {
     versionId: string;
     courseId: string;
     versionNumber: number;
+
+    // Thêm các trường từ Course entity gốc
+    title: string;
+    difficultyLevel: Enums.DifficultyLevel;
+    type: Enums.CourseType;
+    categoryCode?: string;
+    price: number;
+    languageCode: string;
+
     description: string;
     thumbnailUrl: string;
     status: Enums.VersionStatus;
@@ -1038,6 +1084,12 @@ export interface CourseVersionResponse {
     isDeleted: boolean;
     deletedAt: string;
     lessons: LessonSummaryResponse[];
+
+    isIntegrityValid?: boolean;
+    isContentValid?: boolean;
+    isSystemReviewed?: boolean;
+    validationWarnings?: string;
+    systemRating?: number;
 }
 
 export interface DashboardStatisticsResponse {
@@ -1263,6 +1315,7 @@ export interface LessonProgressResponse {
     lessonId: string;
     userId: string;
     score: number;
+    attemptNumber: number;
     completedAt: string;
     isDeleted: boolean;
     createdAt: string;
@@ -1288,9 +1341,18 @@ export interface LessonQuestionResponse {
     optionC: string;
     optionD: string;
     correctOption: string;
+    mediaUrl: string;
+    weight: number;
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
+    questionType: Enums.QuestionType;
+    languageCode: string;
+    optionsJson: string;
+    skillType: Enums.SkillType;
+    orderIndex: number;
+    explainAnswer: string;
+    transcript: string;
 }
 
 export interface LessonResponse {
@@ -1308,6 +1370,7 @@ export interface LessonResponse {
     flashcardCount: number;
     dueFlashcardsCount: number;
     videoUrls: string[];
+    questions?: LessonQuestionResponse[];
     description: string;
     orderIndex: number;
     isFree: boolean;
@@ -2055,7 +2118,7 @@ export interface UserResponse {
     country?: Enums.Country;
 
     certificationIds?: string[] | null;
-    interestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
+    interestIds?: string[] | null;     // Note: "interestest" appears to be a typo in backend → consider renaming to interestIds
     goalIds?: string[] | null;
     vip?: boolean;
 
@@ -2102,7 +2165,13 @@ export interface UserSeriesProgressResponse {
 
 export interface UserSettingResponse {
     userId: string;
-    notificationPreferences: string;
+    studyReminders: boolean;
+    streakReminders: boolean;
+    soundEnabled: boolean;
+    vibrationEnabled: boolean;
+    profileVisibility: boolean;
+    progressSharing: boolean;
+    searchPrivacy: boolean;
     theme: string;
     language: string;
     isDeleted: boolean;

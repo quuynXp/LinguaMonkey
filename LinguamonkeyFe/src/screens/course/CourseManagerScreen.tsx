@@ -19,7 +19,7 @@ import { useUserStore } from "../../stores/UserStore"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { DifficultyLevel } from "../../types/enums"
-import type { CourseReviewResponse } from "../../types/dto"
+import type { CourseVersionReviewResponse } from "../../types/dto"
 
 type TabType = "INFO" | "CURRICULUM" | "REVIEWS"
 
@@ -64,10 +64,10 @@ const CourseManagerScreen = () => {
             const version = course.latestPublicVersion
             setFormState({
                 title: course.title,
-                price: course.price.toString(),
+                price: course.latestPublicVersion.price.toString(),
                 description: version?.description || "",
                 thumbnailUrl: version?.thumbnailUrl || "",
-                difficulty: course.difficultyLevel || DifficultyLevel.A1,
+                difficulty: course.latestPublicVersion.difficultyLevel || DifficultyLevel.A1,
             })
         }
     }, [course])
@@ -120,9 +120,9 @@ const CourseManagerScreen = () => {
                 id: courseId,
                 req: {
                     title: formState.title,
-                    price: parseFloat(formState.price) || 0,
-                    languageCode: course.languageCode || "en",
-                    difficultyLevel: formState.difficulty,
+                    // price: parseFloat(formState.price) || 0,
+                    // languageCode: course.latestPublicVersion.languageCode || "en",
+                    // difficultyLevel: formState.difficulty,
                 },
             },
             {
@@ -314,7 +314,7 @@ const CourseManagerScreen = () => {
     }
 
     const renderReviewsTab = () => {
-        const reviews = (reviewsData?.data as CourseReviewResponse[]) || []
+        const reviews = (reviewsData?.data as CourseVersionReviewResponse[]) || []
         return (
             <View style={styles.tabContent}>
                 {reviewsLoading ? (

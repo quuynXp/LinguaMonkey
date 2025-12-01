@@ -45,7 +45,6 @@ public interface UserMapper {
     // ==========================================================
 
     @Mapping(target = "isVip", expression = "java(entity.isVip())") // Map method isVip() sang field boolean
-    // Các trường tính toán hoặc lấy từ bảng khác (User Entity không có) -> IGNORE
     @Mapping(target = "badgeId", ignore = true)         // Cần query bảng UserBadge
     @Mapping(target = "authProvider", ignore = true)    // Entity chưa có field này
     @Mapping(target = "certificationIds", ignore = true) // Cần query bảng Certification
