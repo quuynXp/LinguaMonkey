@@ -11,7 +11,7 @@ import {
 export const flashcardKeys = {
   all: ["flashcards"] as const,
   lists: () => [...flashcardKeys.all, "list"] as const,
-  // Params bao gồm page, size, query và isPublic
+  // Params includes page, size, query, isPublic, and userId
   list: (lessonId: string, params: any) => [...flashcardKeys.lists(), lessonId, params] as const,
   due: (lessonId: string) => [...flashcardKeys.lists(), "due", lessonId] as const,
   details: () => [...flashcardKeys.all, "detail"] as const,
@@ -25,23 +25,29 @@ export const flashcardKeys = {
 export const useFlashcards = () => {
   const queryClient = useQueryClient();
 
-  // 1. GET /api/v1/lessons/{lessonId}/flashcards (Search & Pagination & Filter Public)
+  // 1. GET /api/v1/lessons/{lessonId}/flashcards
   const useGetFlashcards = (
     lessonId: string | null,
-    params: { page?: number; size?: number; query?: string; isPublic?: boolean }
+    params: {
+      page?: number;
+      size?: number;
+      query?: string;
+      isPublic?: boolean;
+      userId?: string; // Added userId to params
+    }
   ) => {
-    const { page = 0, size = 20, query = "", isPublic } = params;
+    const { page = 0, size = 20, query = "", isPublic, userId } = params;
 
     return useQuery({
-      // Thêm isPublic vào queryKey để cache riêng biệt nếu cần filter
-      queryKey: flashcardKeys.list(lessonId!, { page, size, query, isPublic }),
+      // Include userId in queryKey to differentiate cache if user changes
+      queryKey: flashcardKeys.list(lessonId!, { page, size, query, isPublic, userId }),
       queryFn: async () => {
         if (!lessonId) throw new Error("Lesson ID is required");
 
-        // Truyền isPublic vào params gửi lên server
+        // Send userId explicitly in params as requested
         const { data } = await instance.get<AppApiResponse<PageResponse<FlashcardResponse>>>(
           `/api/v1/lessons/${lessonId}/flashcards`,
-          { params: { page, size, query, isPublic } }
+          { params: { page, size, query, isPublic, userId } }
         );
         return data.result;
       },
@@ -82,7 +88,7 @@ export const useFlashcards = () => {
     });
   };
 
-  // 4. POST /api/v1/lessons/{lessonId}/flashcards (Create - Payload chứa isPublic)
+  // 4. POST /api/v1/lessons/{lessonId}/flashcards (Create)
   const useCreateFlashcard = () => {
     return useMutation({
       mutationFn: async ({ lessonId, payload }: { lessonId: string; payload: CreateFlashcardRequest }) => {
@@ -99,7 +105,7 @@ export const useFlashcards = () => {
     });
   };
 
-  // 5. PUT /api/v1/lessons/{lessonId}/flashcards/{id} (Update - Payload chứa isPublic)
+  // 5. PUT /api/v1/lessons/{lessonId}/flashcards/{id} (Update)
   const useUpdateFlashcard = () => {
     return useMutation({
       mutationFn: async ({
@@ -140,7 +146,7 @@ export const useFlashcards = () => {
     });
   };
 
-  // 7. POST /api/v1/lessons/{lessonId}/flashcards/{id}/review (Anki Algorithm)
+  // 7. POST /api/v1/lessons/{lessonId}/flashcards/{id}/review
   const useReviewFlashcard = () => {
     return useMutation({
       mutationFn: async ({

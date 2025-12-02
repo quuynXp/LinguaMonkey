@@ -389,6 +389,25 @@ export const useCourses = () => {
     });
   };
 
+  const usePurchaseCourse = () => {
+    return useMutation({
+      mutationFn: async ({ userId, courseVersionId }: { userId: string, courseVersionId: string }) => {
+        // Assuming endpoint for paying/purchasing. 
+        // If your backend uses the same 'enrollment' endpoint but with a Payment DTO, adjust accordingly.
+        const { data } = await instance.post<AppApiResponse<CourseVersionEnrollmentResponse>>(
+          "/api/v1/course-version-enrollments/purchase",
+          { userId, courseVersionId, paymentMethod: 'WALLET' }
+        );
+        return data.result!;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) });
+        // Also invalidate user profile to update wallet balance if needed
+        queryClient.invalidateQueries({ queryKey: ["userProfile"] });
+      }
+    });
+  };
+
   const useSwitchVersion = () => {
     return useMutation({
       mutationFn: async (req: SwitchVersionRequest) => {
@@ -644,6 +663,7 @@ export const useCourses = () => {
     useEnrollments,
     useEnrollmentDetail,
     useCreateEnrollment,
+    usePurchaseCourse, // Added new hook
     useSwitchVersion,
     useUpdateEnrollment,
     useDeleteEnrollment,

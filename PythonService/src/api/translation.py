@@ -5,7 +5,7 @@ import typing
 from dotenv import load_dotenv
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
-from google.api_core.exceptions import ResourceExhausted, NotFound, PermissionDenied, GoogleAPICallError
+from google.api_core.exceptions import ResourceExhausted, NotFound, PermissionDenied
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 load_dotenv()
@@ -20,7 +20,6 @@ MODEL_TIERS = [
     {"name": "gemini-2.5-flash-live", "purpose": "LIVE - Fallback"},
 ]
 
-# Constants
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 MAX_RETRIES = 3
 
@@ -31,7 +30,6 @@ if not GOOGLE_API_KEY:
 genai.configure(api_key=GOOGLE_API_KEY)
 
 class TranslationError(Exception):
-    """Custom exception for translation failures."""
     pass
 
 @retry(
@@ -41,11 +39,7 @@ class TranslationError(Exception):
     reraise=True
 )
 def _execute_gemini_translation(prompt: str, model_name: str) -> str:
-    """
-    Executes the API call with retry logic for network stability.
-    """
     try:
-        # Cấu hình safety để tránh bị block với các từ ngữ đơn giản
         safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
@@ -88,15 +82,15 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> typing.Tupl
         "2. OUTPUT: Return strictly valid JSON.\n\n"
         "JSON SCHEMA:\n"
         "{\n"
-        '  "translated_text": "string",\n'
-        '  "detected_source_lang": "string",\n'
-        '  "notes": "string"\n'
+        '   "translated_text": "string",\n'
+        '   "detected_source_lang": "string",\n'
+        '   "notes": "string"\n'
         "}\n\n"
         f"Input Text: {text}"
     )
 
     last_error = ""
-    for tier in TRANSLATION_MODEL_TIERS:
+    for tier in MODEL_TIERS:
         model_name = tier["name"]
         try:
             logger.info(f"Attempting translation with model: {model_name}")
@@ -116,7 +110,7 @@ def translate_text(text: str, source_lang: str, target_lang: str) -> typing.Tupl
                 logger.error(f"JSON Parsing failed for model {model_name}. Raw: {raw_response}")
                 last_error = "Failed to parse translation response."
                 continue
-        
+            
         except (ResourceExhausted, NotFound, PermissionDenied) as e:
             logger.warning(f"Model {model_name} failed ({type(e).__name__}). Falling back... Error: {str(e)}")
             last_error = f"Service failed: {str(e)}"

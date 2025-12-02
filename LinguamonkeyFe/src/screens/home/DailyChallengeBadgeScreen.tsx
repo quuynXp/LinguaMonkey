@@ -18,7 +18,6 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
     const initialTab = route?.params?.initialTab || 'DAILY';
     const [activeTab, setActiveTab] = useState<TabType>(initialTab);
 
-    // Local state optimistic UI
     const [claimedItems, setClaimedItems] = useState<Set<string>>(new Set());
 
     const { user } = useUserStore();
@@ -30,7 +29,6 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
     const { claimReward, isClaiming: isClaimingChallenge } = useClaimChallengeReward();
     const { claimBadge, isClaiming: isClaimingBadge } = useClaimBadge();
 
-    // --- SORTING LOGIC ---
     const getSortWeight = (item: UserDailyChallengeResponse) => {
         const isLocallyClaimed = claimedItems.has(item.challengeId);
         if (item.status === 'CLAIMED' || isLocallyClaimed) return 3;
@@ -39,7 +37,6 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
     };
 
     const dailyTasks = useMemo(() => {
-        // Filter chặt chẽ hơn: Chỉ lấy Daily hoặc những cái không phải Weekly (fallback)
         const list = challenges?.filter((c: UserDailyChallengeResponse) =>
             c.period === 'DAILY' || (c.period !== 'WEEKLY' && !c.period)
         ) || [];
@@ -51,24 +48,21 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
         return [...list].sort((a, b) => getSortWeight(a) - getSortWeight(b));
     }, [challenges, claimedItems]);
 
-    const onClaimSuccess = (id: string) => {
+    const onClaimSuccess = (id: string, type: 'CHALLENGE' | 'BADGE') => {
         setClaimedItems(prev => new Set(prev).add(id));
+        if (type === 'CHALLENGE') refetchChallenges();
+        if (type === 'BADGE') refetchBadges();
     }
 
     const handleClaimChallenge = async (challengeId: string) => {
         if (!userId || claimedItems.has(challengeId)) return;
         try {
             await claimReward({ userId, challengeId });
-            onClaimSuccess(challengeId);
-            refetchChallenges();
+            onClaimSuccess(challengeId, 'CHALLENGE');
         } catch (error: any) {
-            // FIX: Handle trường hợp Backend báo đã claim rồi (do lag mạng hoặc double click)
             const msg = error?.response?.data?.message || error?.message || "";
             if (msg.toLowerCase().includes("already claimed") || msg.toLowerCase().includes("đã nhận")) {
-                onClaimSuccess(challengeId); // Update UI luôn
-                refetchChallenges();
-            } else {
-                console.error("Claim challenge failed", error);
+                onClaimSuccess(challengeId, 'CHALLENGE');
             }
         }
     };
@@ -77,16 +71,11 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
         if (!userId || claimedItems.has(badgeId)) return;
         try {
             await claimBadge({ userId, badgeId });
-            onClaimSuccess(badgeId);
-            refetchBadges();
+            onClaimSuccess(badgeId, 'BADGE');
         } catch (error: any) {
-            // FIX: Handle trường hợp Badge đã claim rồi nhưng API list chưa update kịp
             const msg = error?.response?.data?.message || error?.message || "";
             if (msg.toLowerCase().includes("already claimed") || msg.toLowerCase().includes("đã nhận")) {
-                onClaimSuccess(badgeId); // Update UI thành Owned luôn
-                refetchBadges();
-            } else {
-                console.error("Claim badge failed", error);
+                onClaimSuccess(badgeId, 'BADGE');
             }
         }
     };
@@ -97,7 +86,6 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
         }
     };
 
-    // --- RENDER CHALLENGE ---
     const renderChallengeItem = (item: UserDailyChallengeResponse) => {
         const isLocallyClaimed = claimedItems.has(item.challengeId);
         const isFinished = item.status === 'CLAIMED' || isLocallyClaimed;
@@ -163,7 +151,6 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
         );
     };
 
-    // --- RENDER BADGE ---
     const renderBadgeItem = (item: BadgeProgressResponse) => {
         const isLocallyClaimed = claimedItems.has(item.badgeId);
         const isOwned = item.isAchieved || isLocallyClaimed;
@@ -217,7 +204,11 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
         if (activeTab === 'BADGE') {
             if (loadingBadges && !badges) return <ActivityIndicator style={{ marginTop: 20 }} color="#4F46E5" />;
             return (
-                <ScrollView contentContainerStyle={styles.badgeGrid} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={loadingBadges} onRefresh={refetchBadges} />}>
+                <ScrollView
+                    contentContainerStyle={styles.badgeGrid}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={<RefreshControl refreshing={loadingBadges} onRefresh={refetchBadges} />}
+                >
                     {(badges || []).map((b: BadgeProgressResponse) => renderBadgeItem(b))}
                 </ScrollView>
             );
@@ -228,7 +219,11 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
         if (loadingChallenges && !data.length && !challenges) return <ActivityIndicator style={{ marginTop: 20 }} color="#4F46E5" />;
 
         return (
-            <ScrollView contentContainerStyle={styles.taskList} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={loadingChallenges} onRefresh={refetchChallenges} />}>
+            <ScrollView
+                contentContainerStyle={styles.taskList}
+                showsVerticalScrollIndicator={false}
+                refreshControl={<RefreshControl refreshing={loadingChallenges} onRefresh={refetchChallenges} />}
+            >
                 {data.length === 0 ? (
                     <View style={styles.emptyContainer}><Text style={styles.emptyText}>{t('home.challenge.noTasks')}</Text></View>
                 ) : (

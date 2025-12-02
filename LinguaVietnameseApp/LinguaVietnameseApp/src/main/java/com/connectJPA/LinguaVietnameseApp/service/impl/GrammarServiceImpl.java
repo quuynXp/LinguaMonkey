@@ -344,4 +344,9 @@ public class GrammarServiceImpl implements GrammarService {
                 return submitted.trim().equalsIgnoreCase(correct);
         }
     }
+
+    @Override
+    public GrammarRuleResponse getRuleDetailsWithExercises(UUID ruleId) {
+        throw new UnsupportedOperationException("Unimplemented method 'getRuleDetailsWithExercises'");
+    }
 }

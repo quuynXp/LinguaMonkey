@@ -62,7 +62,14 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 
   const userLessonsQuery = useCreatorLessons(user?.userId || null, 0, 100);
   const [page, setPage] = useState(0);
-  const flashcardsQuery = useGetFlashcards(selectedLessonId, { page, size: 100 });
+
+  // Pass userId to params to ensure backend (and frontend) contexts are aligned
+  const flashcardsQuery = useGetFlashcards(selectedLessonId, {
+    page,
+    size: 100,
+    userId: user?.userId
+  });
+
   const dueQuery = useGetDue(selectedLessonId, 20);
 
   const { mutateAsync: createFlashcard, isPending: isCreating } = useCreateFlashcard();
@@ -95,6 +102,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
   const allFlashcards = flashcardsQuery.data?.content || [];
 
   // Split Flashcards: My Cards vs Community Cards
+  // This relies on FlashcardResponse having a userId field
   const { myCards, communityCards } = useMemo(() => {
     const mine: FlashcardResponse[] = [];
     const community: FlashcardResponse[] = [];
@@ -102,9 +110,8 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
     if (!user?.userId) return { myCards: allFlashcards, communityCards: [] };
 
     allFlashcards.forEach(card => {
-      // Assuming FlashcardResponse has userId. If not, use isPublic logic as fallback
-      // Check logic: If I created it, it's mine. If not, it's community.
-      // Note: Backend needs to return userId in FlashcardResponse for this to work perfectly.
+      // Logic: If I created it, it's mine. If not, it's community.
+      // DTO now includes userId
       if (card.userId === user.userId) {
         mine.push(card);
       } else {
@@ -414,7 +421,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: any) => {
 
             {communityCards.map(item => (
               <View key={item.flashcardId} style={{ marginBottom: 10 }}>
-                {/* Reusing render but maybe with a 'Copy' button in future */}
                 {renderFlashcardItem({ item })}
               </View>
             ))}

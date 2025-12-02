@@ -15,9 +15,11 @@ import {
 export const grammarKeys = {
   all: ["grammar"] as const,
   topics: () => [...grammarKeys.all, "topics"] as const,
-  topic: (id: string, userId?: string) => [...grammarKeys.topics(), id, { userId }] as const,
+  // key cho chi tiết cá nhân (bao gồm progress)
+  topicDetails: (id: string, userId: string | undefined) => [...grammarKeys.topics(), id, "details", { userId }] as const,
   rules: () => [...grammarKeys.all, "rules"] as const,
-  rule: (id: string) => [...grammarKeys.rules(), id] as const,
+  // key cho chi tiết rule (bao gồm exercises)
+  ruleDetails: (id: string) => [...grammarKeys.rules(), id, "details"] as const,
   mindmap: () => [...grammarKeys.all, "mindmap"] as const,
 };
 
@@ -36,14 +38,18 @@ export const useGrammar = () => {
     staleTime: 60_000,
   });
 
-  // 2. GET /api/v1/grammar/topics/{id} (Optional: ?userId=...)
+  // 2. GET /api/v1/grammar/topics/{topicId}/details?userId=...
+  // Hook này bây giờ chỉ gọi endpoint chi tiết (có progress)
   const useGrammarTopic = (topicId: string | null, userId?: string) => useQuery({
-    queryKey: grammarKeys.topic(topicId!, userId),
+    queryKey: grammarKeys.topicDetails(topicId!, userId),
     queryFn: async () => {
       if (!topicId) throw new Error("Topic ID required");
+      // Dùng endpoint mới /topics/{topicId}/details để lấy progress cá nhân
+      const url = `/api/v1/grammar/topics/${topicId}/details`;
       const params = userId ? { userId } : {};
+
       const { data } = await instance.get<AppApiResponse<GrammarTopicResponse>>(
-        `/api/v1/grammar/topics/${topicId}`,
+        url,
         { params }
       );
       return data.result!;
@@ -52,13 +58,15 @@ export const useGrammar = () => {
     staleTime: 60_000,
   });
 
-  // 3. GET /api/v1/grammar/rules/{id}
+  // 3. GET /api/v1/grammar/rules/{ruleId}/details
+  // Hook này gọi endpoint chi tiết (có exercises)
   const useGrammarRule = (ruleId: string | null) => useQuery({
-    queryKey: grammarKeys.rule(ruleId!),
+    queryKey: grammarKeys.ruleDetails(ruleId!),
     queryFn: async () => {
       if (!ruleId) throw new Error("Rule ID required");
+      // Dùng endpoint mới /rules/{ruleId}/details
       const { data } = await instance.get<AppApiResponse<GrammarRuleResponse>>(
-        `/api/v1/grammar/rules/${ruleId}`
+        `/api/v1/grammar/rules/${ruleId}/details`
       );
       return data.result!;
     },
@@ -89,11 +97,13 @@ export const useGrammar = () => {
         return data.result!;
       },
       onSuccess: (_, variables) => {
-        // Refresh Rule details (to show updated progress/score if API supports)
+        // Refresh Rule details (để hiển thị điểm số/progress mới)
         if (variables.ruleId) {
-          queryClient.invalidateQueries({ queryKey: grammarKeys.rule(variables.ruleId) });
+          queryClient.invalidateQueries({ queryKey: grammarKeys.ruleDetails(variables.ruleId) });
         }
-        // Refresh Topic (as topic contains list of rules with status)
+        // Refresh Topic (để hiển thị danh sách rules với status mới)
+        // Cần biết Topic ID của Rule này để invalidate chính xác,
+        // nhưng hiện tại chỉ invalidate tất cả topics.
         queryClient.invalidateQueries({ queryKey: grammarKeys.topics() });
       },
     });
@@ -116,7 +126,8 @@ export const useGrammar = () => {
         return data.result;
       },
       onSuccess: (_, variables) => {
-        queryClient.invalidateQueries({ queryKey: grammarKeys.topic(variables.topicId) });
+        // Invalidate key Topic Details sau khi update progress
+        queryClient.invalidateQueries({ queryKey: grammarKeys.topicDetails(variables.topicId, variables.userId) });
         queryClient.invalidateQueries({ queryKey: grammarKeys.topics() });
       },
     });

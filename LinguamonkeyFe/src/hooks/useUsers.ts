@@ -13,16 +13,33 @@ import {
 
 import { Country } from "../types/enums";
 
+// Define basic interfaces for reference data if not already in dto
+export interface Interest {
+  interestId: string;
+  interestName: string;
+  icon?: string;
+  color?: string;
+}
+
+export interface Language {
+  languageCode: string;
+  languageName: string;
+}
+
 export const userKeys = {
   all: ["users"] as const,
   lists: (params: any) => [...userKeys.all, "list", params] as const,
-  publicSearch: (params: any) => [...userKeys.all, "publicSearch", params] as const, // New Key for public search
+  publicSearch: (params: any) => [...userKeys.all, "publicSearch", params] as const,
   suggestions: (userId: string) => ["users", "suggestions", userId] as const,
   detail: (id: string) => [...userKeys.all, "detail", id] as const,
   profile: (targetId: string, viewerId?: string) => [...userKeys.all, "profile", targetId, viewerId] as const,
   stats: (id: string) => [...userKeys.detail(id), "stats"] as const,
   character: (id: string) => [...userKeys.detail(id), "character3d"] as const,
   achievements: (id: string) => [...userKeys.detail(id), "achievements"] as const,
+  references: {
+    interests: ["interests"] as const,
+    languages: ["languages"] as const,
+  },
   friendship: {
     status: (user1Id: string, user2Id: string) => ["friendship", "request-status", user1Id, user2Id] as const,
     check: (user1Id: string, user2Id: string) => ["friendship", "check", user1Id, user2Id] as const,
@@ -46,7 +63,6 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 export const useUsers = () => {
   const queryClient = useQueryClient();
 
-  // Renamed to useSearchPublicUsers to clearly indicate it returns UserProfileResponse via safe endpoint
   const useSearchPublicUsers = (params?: { keyword?: string; country?: Country; page?: number; size?: number }) => {
     const { page = 0, size = 20, ...rest } = params || {};
     return useQuery({
@@ -62,7 +78,6 @@ export const useUsers = () => {
   };
 
   const useAllUsers = (params?: { email?: string; fullname?: string; nickname?: string; page?: number; size?: number }) => {
-    // KEEPING OLD ONE FOR ADMIN IF NEEDED, BUT FRONTEND SHOULD PREFER PUBLIC SEARCH
     const { page = 0, size = 20, ...rest } = params || {};
     return useQuery({
       queryKey: userKeys.lists({ ...rest, page, size }),
@@ -73,7 +88,7 @@ export const useUsers = () => {
         );
         return mapPageResponse(data.result, page, size);
       },
-      enabled: false, // Disabled by default to prevent accidental calls by non-admins
+      enabled: false,
     });
   };
 
@@ -126,6 +141,28 @@ export const useUsers = () => {
       enabled: !!id,
       staleTime: Infinity,
     });
+
+  // --- New Reference Data Hooks ---
+  const useInterests = () =>
+    useQuery({
+      queryKey: userKeys.references.interests,
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<Interest[]>>("/api/v1/interests");
+        return data.result || [];
+      },
+      staleTime: Infinity,
+    });
+
+  const useLanguages = () =>
+    useQuery({
+      queryKey: userKeys.references.languages,
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<Language[]>>("/api/v1/languages");
+        return data.result || [];
+      },
+      staleTime: Infinity,
+    });
+  // --------------------------------
 
   const useCheckEmailAvailability = (email: string, enabled: boolean = true) =>
     useQuery({
@@ -351,12 +388,14 @@ export const useUsers = () => {
   };
 
   return {
-    useSearchPublicUsers, // Expose the new hook
+    useSearchPublicUsers,
     useAllUsers,
     useUser,
     useUserProfile,
     useUserStats,
     useUserCharacter,
+    useInterests, // Exported here
+    useLanguages, // Exported here
     useCheckEmailAvailability,
     useCreateUser,
     useUpdateUser,

@@ -21,4 +21,6 @@ public interface GrammarService {
     GrammarRuleResponse getRuleById(UUID ruleId);
     SubmitExerciseResponse submitExercise(SubmitExerciseRequest request);
     void updateProgress(UpdateGrammarProgressRequest request);
+
+    GrammarRuleResponse getRuleDetailsWithExercises(UUID ruleId);
 }

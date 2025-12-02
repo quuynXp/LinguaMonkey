@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserDailyChallengeId;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.ChallengePeriod; // Import ChallengePeriod
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -12,9 +13,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 import java.util.UUID;
 
 import org.hibernate.annotations.CreationTimestamp;
@@ -71,43 +70,32 @@ public class UserDailyChallenge extends BaseEntity {
     private int rewardCoins;
 
     @Transient
-    public boolean isCompleted() {
+    @JsonProperty("completed") // Match FE property name
+    public boolean getCompleted() {
         return this.status == ChallengeStatus.CAN_CLAIM || this.status == ChallengeStatus.CLAIMED;
     }
 
-    // public UserDailyChallenge(UUID userId, UUID id, LocalDate today, int i, int baseExp, boolean b, int rewardCoins, int i1) {
-    //     OffsetDateTime assignedDateTime = (today != null) ? today.atStartOfDay(ZoneOffset.UTC).toOffsetDateTime() : null;
+    // FIX: Expose fields from nested DailyChallenge to the top level response
+    @JsonProperty("title")
+    public String getTitle() {
+        return challenge != null ? challenge.getTitle() : null;
+    }
 
-    //     int stack = i;
+    @JsonProperty("description")
+    public String getDescription() {
+        return challenge != null ? challenge.getDescription() : null;
+    }
+    
+    @JsonProperty("period")
+    public ChallengePeriod getPeriod() {
+        return challenge != null ? challenge.getPeriod() : null;
+    }
 
-    //     UUID challengeId = id;
+    @JsonProperty("screenRoute")
+    public String getScreenRoute() {
+        return challenge != null ? challenge.getScreenRoute() : null;
+    }
 
-    //     this.id = new UserDailyChallengeId(userId, challengeId, assignedDateTime, stack);
-
-    //     User u = new User();
-    //     u.setUserId(userId);
-    //     this.user = u;
-
-    //     DailyChallenge c = new DailyChallenge();
-    //     c.setId(challengeId);
-    //     this.challenge = c;
-
-    //     this.expReward = baseExp;       // 'baseExp' -> expReward
-    //     this.rewardCoins = rewardCoins;   // 'rewardCoins' -> rewardCoins
-    //     this.progress = i1;             // 'i1' -> progress (int to int)
-    //     this.isCompleted = b;             // 'b' -> isCompleted
-
-    //     // FIX: Assign OffsetDateTime directly, do not convert toInstant()
-    //     this.assignedAt = assignedDateTime;
-
-    //     if (this.isCompleted) {
-    //         this.completedAt = OffsetDateTime.now();
-    //     } else {
-    //         this.completedAt = null;
-    //     }
-    // }
-
-    // convenience JSON props so FE receives simple ids
     @JsonProperty("userId")
     public UUID getUserId() {
         return id != null ? id.getUserId() : null;
@@ -118,8 +106,8 @@ public class UserDailyChallenge extends BaseEntity {
         return id != null ? id.getChallengeId() : null;
     }
 
-    // optionally expose nested challenge summary to FE
     @JsonProperty("dailyChallenge")
+    @JsonIgnore // Hide the full nested object if fields are exposed above
     public DailyChallenge getDailyChallenge() {
         return challenge;
     }

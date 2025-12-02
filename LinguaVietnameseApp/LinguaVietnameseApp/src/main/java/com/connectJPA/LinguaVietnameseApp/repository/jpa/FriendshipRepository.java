@@ -12,6 +12,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -38,5 +39,9 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Friendsh
 
     @Query("SELECT f FROM Friendship f WHERE f.id.receiverId = :userId AND f.status = 'PENDING' AND f.isDeleted = false")
     Page<Friendship> findPendingRequests(@Param("userId") UUID userId, Pageable pageable);
+
+    List<Friendship> findByIdRequesterIdAndCreatedAtBetween(UUID userId, OffsetDateTime startOdt, OffsetDateTime endOdt);
+
+    List<Friendship> findByIdReceiverIdAndCreatedAtBetween(UUID userId, OffsetDateTime startOdt, OffsetDateTime endOdt);
 
 }

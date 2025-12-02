@@ -31,7 +31,6 @@ type RouteParams = {
     };
 };
 
-// --- Filter Modal Component ---
 const FilterModal = ({ visible, onClose, onApply, currentFilters }: any) => {
     const { t } = useTranslation();
     const [country, setCountry] = useState(currentFilters.country);
@@ -86,73 +85,55 @@ const FilterModal = ({ visible, onClose, onApply, currentFilters }: any) => {
     );
 };
 
-// --- Main Screen ---
 const SuggestedUsersScreen = () => {
     const { t } = useTranslation();
     const route = useRoute<RouteProp<RouteParams, 'SuggestedUsersScreen'>>();
     const user = useUserStore((state) => state.user);
 
-    // 0 = Discover (Suggested + All), 1 = Connected (Requests + Friends)
     const [activeTab, setActiveTab] = useState(route.params?.initialTab ?? 0);
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
-    // Search & Filter State
     const [keyword, setKeyword] = useState('');
     const [filters, setFilters] = useState<any>({});
     const [showFilter, setShowFilter] = useState(false);
 
-    // Hooks
     const { useSearchPublicUsers, useSuggestedUsers } = useUsers();
     const { useAllFriendships, useCreateFriendship, useUpdateFriendship } = useFriendships();
 
     const createFriendshipMutation = useCreateFriendship();
     const updateFriendshipMutation = useUpdateFriendship();
 
-    // === DATA FETCHING: TAB 0 (Discover) ===
-    // 1. Suggestions (Returns UserResponse)
     const { data: suggestionsData, refetch: refetchSuggestions } = useSuggestedUsers(user?.userId || '', 0, 10);
-    // Normalize suggestions to match list type if possible, otherwise render handles it
     const suggestions = suggestionsData?.content || [];
 
-    // 2. All Users (Searchable) - NOW USES SAFE PUBLIC SEARCH (Returns UserProfileResponse)
     const { data: allUsersData, refetch: refetchAllUsers, isLoading: loadingAllUsers } = useSearchPublicUsers({
         page: 0,
         size: 20,
-        keyword: keyword, // Using keyword for fullname/email search
+        keyword: keyword,
         ...filters
     });
     const allUsers = allUsersData?.data || [];
 
-    // === DATA FETCHING: TAB 1 (Connected) ===
-    // 1. Friend Requests (Received & Pending)
     const { data: requestsData, refetch: refetchRequests } = useAllFriendships({
-        receiverId: user?.userId, // Corrected to use receiverId as per interface
+        receiverId: user?.userId,
         status: 'PENDING',
         page: 0,
         size: 50
     });
     const requests = requestsData?.content || [];
 
-    // 2. My Friends (Accepted)
-    // useAllFriendships doesn't strictly enforce userId vs requesterId/receiverId in params
-    // but standard practice is often to check relationships involving the user. 
-    // Backend likely checks user1Id via a param if not strictly requesterId. 
-    // Assuming the hook handles 'requesterId' parameter for listing:
     const { data: friendsData, refetch: refetchFriends, isLoading: loadingFriends } = useAllFriendships({
-        requesterId: user?.userId, // Pass as requesterId or check if backend supports a generic 'userId' filter for friends
+        requesterId: user?.userId,
         status: 'ACCEPTED',
         page: 0,
         size: 50
     });
 
-    // Map friendship response to User object correctly (could be requester or receiver)
     const friendsList = useMemo(() => {
         return friendsData?.content.map(f => f.requesterId === user?.userId ? f.receiver : f.requester).filter(u => u) as UserResponse[] || [];
     }, [friendsData, user?.userId]);
 
-
-    // === HANDLERS ===
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         if (activeTab === 0) {
@@ -179,9 +160,8 @@ const SuggestedUsersScreen = () => {
 
     const handleAcceptRequest = async (friendship: FriendshipResponse) => {
         if (!user?.userId || !friendship.id) return;
-        setActionLoadingId(friendship.id.toString()); // using friendship ID or requester ID
+        setActionLoadingId(friendship.id.toString());
         try {
-            // Need user1Id (requester) and user2Id (receiver/current) for path variable
             await updateFriendshipMutation.mutateAsync({
                 user1Id: friendship.requesterId,
                 user2Id: user.userId,
@@ -192,17 +172,52 @@ const SuggestedUsersScreen = () => {
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
-    // === RENDERERS ===
+    const renderActionButton = (item: UserResponse | UserProfileResponse, isActionLoading: boolean) => {
+        const isProfile = 'friendRequestStatus' in item;
+        const status = isProfile ? (item as UserProfileResponse).friendRequestStatus?.status : 'NONE';
+        const isFriend = isProfile ? (item as UserProfileResponse).isFriend : false;
+        const isSender = isProfile ? (item as UserProfileResponse).friendRequestStatus?.hasSentRequest : false;
 
-    // Single User Card (Vertical)
-    // Updated item type to allow partial UserResponse or UserProfileResponse
+        if (isFriend || status === 'ACCEPTED') {
+            return (
+                <TouchableOpacity style={styles.messageButton}>
+                    <Icon name="chat-bubble-outline" size={20} color="#4F46E5" />
+                </TouchableOpacity>
+            );
+        }
+
+        if (status === 'PENDING') {
+            if (isSender) {
+                return (
+                    <TouchableOpacity style={[styles.addButton, styles.sentButton]} disabled>
+                        <Icon name="check" size={20} color="#FFF" />
+                    </TouchableOpacity>
+                );
+            } else {
+                // Received request context handled in Requests tab, but if found here:
+                return (
+                    <TouchableOpacity style={styles.messageButton} onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: item.userId })}>
+                        <Text style={{ fontSize: 10, color: '#4F46E5' }}>View</Text>
+                    </TouchableOpacity>
+                )
+            }
+        }
+
+        return (
+            <TouchableOpacity
+                style={styles.addButton}
+                onPress={() => handleAddFriend(item.userId)}
+                disabled={isActionLoading}
+            >
+                {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="person-add" size={20} color="#FFF" />}
+            </TouchableOpacity>
+        );
+    }
+
     const renderUserItem = ({ item, isRequest = false, friendshipId }: { item: UserResponse | UserProfileResponse, isRequest?: boolean, friendshipId?: string }) => {
         const isActionLoading = actionLoadingId === (isRequest ? friendshipId : item.userId);
-        const avatarSource = getAvatarSource(item.avatarUrl, null); // gender might not be on UserProfileResponse in some DTO versions, handled safely
-
-        // Helper to get gender if it exists on item
         const gender = 'gender' in item ? item.gender : null;
-        const vip = 'vip' in item ? item.vip : false; // Check if vip property exists
+        const vip = 'vip' in item ? item.vip : false;
 
         return (
             <TouchableOpacity
@@ -210,7 +225,7 @@ const SuggestedUsersScreen = () => {
                 onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: item.userId })}
             >
                 <View style={styles.avatarContainer}>
-                    <Image source={getAvatarSource(item.avatarUrl, gender)} style={styles.avatar} />
+                    <Image source={getAvatarSource(item.avatarUrl, gender?.toString())} style={styles.avatar} />
                     {item.country && (
                         <View style={styles.flagBadge}>
                             <Text style={{ fontSize: 10 }}>{getCountryFlag(item.country)}</Text>
@@ -229,7 +244,6 @@ const SuggestedUsersScreen = () => {
                     )}
                 </View>
 
-                {/* Action Button */}
                 {isRequest ? (
                     <TouchableOpacity
                         style={styles.acceptButton}
@@ -238,26 +252,15 @@ const SuggestedUsersScreen = () => {
                     >
                         {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>{t('common.accept')}</Text>}
                     </TouchableOpacity>
-                ) : activeTab === 0 ? (
-                    <TouchableOpacity
-                        style={[styles.addButton, isActionLoading && styles.sentButton]}
-                        onPress={() => handleAddFriend(item.userId)}
-                        disabled={isActionLoading}
-                    >
-                        {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="person-add" size={20} color="#FFF" />}
-                    </TouchableOpacity>
                 ) : (
-                    <TouchableOpacity style={styles.messageButton}>
-                        <Icon name="chat-bubble-outline" size={20} color="#4F46E5" />
-                    </TouchableOpacity>
+                    renderActionButton(item, isActionLoading)
                 )}
             </TouchableOpacity>
         );
     };
 
-    // Horizontal List for Suggestions (Tab 0 Header)
     const SuggestionsHeader = () => {
-        if (keyword.length > 0) return null; // Hide suggestions when searching
+        if (keyword.length > 0) return null;
         if (suggestions.length === 0) return null;
 
         return (
@@ -269,21 +272,25 @@ const SuggestedUsersScreen = () => {
                     showsHorizontalScrollIndicator={false}
                     keyExtractor={(item) => item.userId}
                     contentContainerStyle={{ paddingHorizontal: 4 }}
-                    renderItem={({ item }) => (
-                        <TouchableOpacity
-                            style={styles.suggestionCardHorizontal}
-                            onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: item.userId })}
-                        >
-                            <View style={{ position: 'relative' }}>
-                                <Image source={getAvatarSource(item.avatarUrl, item.gender)} style={styles.suggestionAvatar} />
-                                {item.country && <View style={styles.flagBadgeSmall}><Text style={{ fontSize: 9 }}>{getCountryFlag(item.country)}</Text></View>}
-                            </View>
-                            <Text style={styles.suggestionName} numberOfLines={1}>{item.fullname || item.nickname}</Text>
-                            <TouchableOpacity style={styles.addSmallButton} onPress={() => handleAddFriend(item.userId)}>
-                                <Icon name="person-add" size={14} color="#FFF" />
+                    renderItem={({ item }) => {
+                        // FIX: Explicitly cast `item` to `UserResponse` since `suggestions` array is of that type.
+                        const userItem = item as UserResponse;
+                        return (
+                            <TouchableOpacity
+                                style={styles.suggestionCardHorizontal}
+                                onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: userItem.userId })}
+                            >
+                                <View style={{ position: 'relative' }}>
+                                    <Image source={getAvatarSource(userItem.avatarUrl, userItem.gender)} style={styles.suggestionAvatar} />
+                                    {userItem.country && <View style={styles.flagBadgeSmall}><Text style={{ fontSize: 9 }}>{getCountryFlag(userItem.country)}</Text></View>}
+                                </View>
+                                <Text style={styles.suggestionName} numberOfLines={1}>{userItem.fullname || userItem.nickname}</Text>
+                                <TouchableOpacity style={styles.addSmallButton} onPress={() => handleAddFriend(userItem.userId)}>
+                                    <Icon name="person-add" size={14} color="#FFF" />
+                                </TouchableOpacity>
                             </TouchableOpacity>
-                        </TouchableOpacity>
-                    )}
+                        );
+                    }}
                 />
                 <View style={styles.divider} />
                 <Text style={styles.headerTitle}>{t('profile.allUsers')}</Text>
@@ -291,7 +298,6 @@ const SuggestedUsersScreen = () => {
         );
     };
 
-    // List for Friend Requests (Tab 1 Header)
     const RequestsHeader = () => {
         if (requests.length === 0) return null;
         return (
@@ -299,7 +305,8 @@ const SuggestedUsersScreen = () => {
                 <Text style={styles.headerTitle}>{t('profile.requests')} ({requests.length})</Text>
                 {requests.map((req, index) => (
                     <View key={req.id || index}>
-                        {renderUserItem({ item: req.requester!, isRequest: true, friendshipId: req.id })}
+                        {/* FIX: Cast req.requester to UserResponse and ensure it exists */}
+                        {req.requester && renderUserItem({ item: req.requester as UserResponse, isRequest: true, friendshipId: req.id })}
                     </View>
                 ))}
                 <View style={styles.divider} />
@@ -308,11 +315,8 @@ const SuggestedUsersScreen = () => {
         );
     };
 
-    // --- TAB CONTENT RENDERERS ---
-
     const renderTab0 = () => (
         <View style={{ flex: 1 }}>
-            {/* Search Bar */}
             <View style={styles.searchBarContainer}>
                 <View style={styles.searchInputWrapper}>
                     <Icon name="search" size={20} color="#9CA3AF" />
@@ -330,14 +334,14 @@ const SuggestedUsersScreen = () => {
             </View>
 
             <FlatList
-                data={allUsers}
-                renderItem={({ item }) => renderUserItem({ item })}
-                keyExtractor={(item) => item.userId}
-                contentContainerStyle={styles.listContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                ListHeaderComponent={SuggestionsHeader}
-                ListEmptyComponent={!loadingAllUsers ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
-            />
+            data={allUsers}
+            renderItem={({ item }: { item: UserResponse | UserProfileResponse }) => renderUserItem({ item })}
+            keyExtractor={(item) => item.userId}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListHeaderComponent={SuggestionsHeader}
+            ListEmptyComponent={!loadingAllUsers ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
+        />
         </View>
     );
 
@@ -356,7 +360,6 @@ const SuggestedUsersScreen = () => {
     return (
         <ScreenLayout>
             <View style={styles.container}>
-                {/* Tabs */}
                 <View style={styles.tabContainer}>
                     <TouchableOpacity style={[styles.tab, activeTab === 0 && styles.activeTab]} onPress={() => setActiveTab(0)}>
                         <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>{t('profile.allUsers')}</Text>
@@ -387,8 +390,6 @@ const styles = createScaledSheet({
     tabText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
     activeTabText: { color: '#4F46E5', fontWeight: '700' },
     listContent: { padding: 16, paddingBottom: 40 },
-
-    // User Card Styles
     userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 16, marginBottom: 12, elevation: 1 },
     avatarContainer: { position: 'relative', width: 50, height: 50 },
     avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E5E7EB' },
@@ -402,27 +403,19 @@ const styles = createScaledSheet({
     messageButton: { padding: 8, backgroundColor: '#EEF2FF', borderRadius: 20 },
     acceptButton: { backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
     acceptButtonText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
-
-    // Header Section Styles
     headerSection: { marginBottom: 16 },
     headerTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 12 },
     divider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 16 },
-
-    // Horizontal Suggestion Card
     suggestionCardHorizontal: { width: 100, alignItems: 'center', backgroundColor: '#FFF', padding: 10, borderRadius: 12, marginRight: 10, elevation: 1 },
     suggestionAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 6 },
     suggestionName: { fontSize: 12, fontWeight: '600', textAlign: 'center', color: '#374151', marginBottom: 6 },
     addSmallButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
     flagBadgeSmall: { position: 'absolute', top: 0, right: 0, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 6, padding: 1 },
-
-    // Search & Filter
     searchBarContainer: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 10 },
     searchInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 12, height: 44, elevation: 1 },
     searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: '#000' },
     filterButton: { marginLeft: 12, justifyContent: 'center', alignItems: 'center', width: 44, height: 44, backgroundColor: '#FFF', borderRadius: 12, elevation: 1 },
     emptyText: { textAlign: 'center', marginTop: 40, color: '#6B7280' },
-
-    // Modal
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
     modalContent: { backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },

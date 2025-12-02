@@ -13,6 +13,7 @@ import java.util.UUID;
 public class FlashcardResponse {
     private UUID flashcardId;
     private UUID lessonId;
+    private UUID userId; // Added field to identify owner
     private String front;
     private String back;
     private String exampleSentence;
@@ -25,4 +26,3 @@ public class FlashcardResponse {
     private String tags;
     private Boolean isPublic;
 }
-

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react"
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,15 +8,15 @@ import {
   Image,
   RefreshControl,
   FlatList,
-} from "react-native"
-import Icon from "react-native-vector-icons/MaterialIcons"
-import { useTranslation } from "react-i18next"
-import { useCourses } from "../../hooks/useCourses"
-import { useUserStore } from "../../stores/UserStore"
-import ScreenLayout from "../../components/layout/ScreenLayout"
-import { CourseResponse, CourseVersionEnrollmentResponse } from "../../types/dto"
-import { createScaledSheet } from "../../utils/scaledStyles"
-import { getCourseImage } from "../../utils/courseUtils"
+} from "react-native";
+import Icon from "react-native-vector-icons/MaterialIcons";
+import { useTranslation } from "react-i18next";
+import { useCourses } from "../../hooks/useCourses";
+import { useUserStore } from "../../stores/UserStore";
+import ScreenLayout from "../../components/layout/ScreenLayout";
+import { CourseResponse, CourseVersionEnrollmentResponse } from "../../types/dto";
+import { createScaledSheet } from "../../utils/scaledStyles";
+import { getCourseImage } from "../../utils/courseUtils";
 
 const FilterChip = ({ label, isSelected, onPress }: any) => (
   <TouchableOpacity
@@ -27,11 +27,11 @@ const FilterChip = ({ label, isSelected, onPress }: any) => (
       {label}
     </Text>
   </TouchableOpacity>
-)
+);
 
 const CourseCard = ({ item, onPress, isEnrolled }: any) => {
-  const version = item.latestPublicVersion || item.courseVersion
-  const imageSource = getCourseImage(version?.thumbnailUrl)
+  const version = item.latestPublicVersion || item.courseVersion;
+  const imageSource = getCourseImage(version?.thumbnailUrl);
 
   return (
     <TouchableOpacity style={styles.card} onPress={onPress}>
@@ -44,7 +44,7 @@ const CourseCard = ({ item, onPress, isEnrolled }: any) => {
           <Text style={styles.cardLevel}>{item.difficultyLevel || "General"}</Text>
           {!isEnrolled && (
             <Text style={styles.cardPrice}>
-              {item.price === 0 ? "Free" : `$${item.price}`}
+              {item.price === 0 || version?.price === 0 ? "Free" : `$${version?.price || 0}`}
             </Text>
           )}
           {isEnrolled && (
@@ -56,29 +56,31 @@ const CourseCard = ({ item, onPress, isEnrolled }: any) => {
         </View>
       </View>
     </TouchableOpacity>
-  )
-}
+  );
+};
 
 const StudentCoursesScreen = ({ navigation }: any) => {
-  const { t } = useTranslation()
-  const { user } = useUserStore()
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState<string | undefined>()
+  const { t } = useTranslation();
+  const { user } = useUserStore();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
 
   const {
     useEnrollments,
     useAllCourses,
     useCourseCategories,
-  } = useCourses()
+  } = useCourses();
 
-  const { data: categories } = useCourseCategories()
+  const { data: categories } = useCourseCategories();
 
+  // 1. Fetch Enrolled Courses
   const {
     data: enrolledData,
     isLoading: enrolledLoading,
     refetch: refetchEnrolled
-  } = useEnrollments({ userId: user?.userId, size: 100 })
+  } = useEnrollments({ userId: user?.userId, size: 100 });
 
+  // 2. Fetch All Courses (Marketplace)
   const {
     data: allCoursesData,
     isLoading: marketLoading,
@@ -87,35 +89,37 @@ const StudentCoursesScreen = ({ navigation }: any) => {
     title: searchQuery || undefined,
     categoryCode: selectedCategory,
     size: 20
-  })
+  });
 
   const enrolledIds = useMemo(() => {
-    const list = (enrolledData?.data as CourseVersionEnrollmentResponse[]) || []
-    return new Set(list.map(e => e.courseId))
-  }, [enrolledData])
+    const list = (enrolledData?.data as CourseVersionEnrollmentResponse[]) || [];
+    // Correctly accessing nested structure: enrollment -> courseVersion -> courseId
+    return new Set(list.map(e => e.courseVersion?.courseId || e.courseVersion?.courseId));
+  }, [enrolledData]);
 
   const marketCourses = useMemo(() => {
-    const raw = (allCoursesData?.data as CourseResponse[]) || []
-    return raw.filter(c => !enrolledIds.has(c.courseId))
-  }, [allCoursesData, enrolledIds])
+    const raw = (allCoursesData?.data as CourseResponse[]) || [];
+    // Only show courses that are NOT in the enrolled set
+    return raw.filter(c => !enrolledIds.has(c.courseId));
+  }, [allCoursesData, enrolledIds]);
 
-  const enrolledList = (enrolledData?.data as CourseVersionEnrollmentResponse[]) || []
+  const enrolledList = (enrolledData?.data as CourseVersionEnrollmentResponse[]) || [];
 
   const handleRefresh = () => {
-    refetchEnrolled()
-    refetchMarket()
-  }
+    refetchEnrolled();
+    refetchMarket();
+  };
 
   const renderItem = useCallback(({ item }: { item: any }) => {
-    const isEnrolled = enrolledIds.has(item.courseId)
+    const isEnrolled = enrolledIds.has(item.courseId);
     return (
       <CourseCard
         item={item}
         isEnrolled={isEnrolled}
         onPress={() => navigation.navigate("CourseDetailsScreen", { courseId: item.courseId })}
       />
-    )
-  }, [enrolledIds, navigation])
+    );
+  }, [enrolledIds, navigation]);
 
   const ListHeader = () => (
     <View style={styles.headerContainer}>
@@ -123,7 +127,7 @@ const StudentCoursesScreen = ({ navigation }: any) => {
         <Icon name="search" size={20} color="#9CA3AF" />
         <TextInput
           style={styles.searchInput}
-          placeholder={t("student.searchCoursesPlaceholder")}
+          placeholder={t("student.searchCoursesPlaceholder", "Search courses...")}
           value={searchQuery}
           onChangeText={setSearchQuery}
         />
@@ -146,10 +150,11 @@ const StudentCoursesScreen = ({ navigation }: any) => {
         />
       </View>
 
+      {/* Horizontal Enrolled List */}
       {enrolledList.length > 0 && !searchQuery && !selectedCategory && (
         <>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{t("student.myLearning")}</Text>
+            <Text style={styles.sectionTitle}>{t("student.myLearning", "My Learning")}</Text>
           </View>
           <View style={styles.horizontalListContainer}>
             <FlatList
@@ -157,28 +162,35 @@ const StudentCoursesScreen = ({ navigation }: any) => {
               horizontal
               showsHorizontalScrollIndicator={false}
               keyExtractor={(item) => item.enrollmentId}
-              renderItem={({ item }: any) => (
-                <TouchableOpacity
-                  style={styles.horizontalCard}
-                  onPress={() => navigation.navigate("CourseDetailsScreen", { courseId: item.courseId })}
-                >
-                  <Image
-                    source={getCourseImage(null)}
-                    style={styles.horizontalThumbnail}
-                  />
-                  <View style={styles.horizontalContent}>
-                    <Text style={styles.horizontalTitle} numberOfLines={1}>
-                      {item.courseTitle}
-                    </Text>
-                    <View style={styles.progressRow}>
-                      <View style={styles.progressBar}>
-                        <View style={[styles.progressFill, { width: '30%' }]} />
+              renderItem={({ item }: { item: CourseVersionEnrollmentResponse }) => {
+                const version = item.courseVersion;
+                if (!version) return null;
+                // Fix for courseId retrieval: Try direct courseId, fallback to nested course object
+                const courseId = version.courseId || version.courseId;
+
+                return (
+                  <TouchableOpacity
+                    style={styles.horizontalCard}
+                    onPress={() => navigation.navigate("CourseDetailsScreen", { courseId: courseId, isPurchased: true })}
+                  >
+                    <Image
+                      source={getCourseImage(version.thumbnailUrl)}
+                      style={styles.horizontalThumbnail}
+                    />
+                    <View style={styles.horizontalContent}>
+                      <Text style={styles.horizontalTitle} numberOfLines={1}>
+                        {version.title}
+                      </Text>
+                      <View style={styles.progressRow}>
+                        <View style={styles.progressBar}>
+                          <View style={[styles.progressFill, { width: `${item.progress || 0}%` }]} />
+                        </View>
+                        <Text style={styles.progressText}>{item.progress || 0}%</Text>
                       </View>
-                      <Text style={styles.progressText}>30%</Text>
                     </View>
-                  </View>
-                </TouchableOpacity>
-              )}
+                  </TouchableOpacity>
+                );
+              }}
             />
           </View>
         </>
@@ -186,14 +198,14 @@ const StudentCoursesScreen = ({ navigation }: any) => {
 
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionTitle}>
-          {searchQuery ? t("student.searchResults") : t("student.exploreCourses")}
+          {searchQuery ? t("student.searchResults", "Search Results") : t("student.exploreCourses", "Explore Courses")}
         </Text>
         <TouchableOpacity onPress={() => navigation.navigate("SuggestedCoursesScreen")}>
-          <Text style={styles.seeAllText}>{t("common.seeAll")}</Text>
+          <Text style={styles.seeAllText}>{t("common.seeAll", "See All")}</Text>
         </TouchableOpacity>
       </View>
     </View>
-  )
+  );
 
   return (
     <ScreenLayout>
@@ -214,15 +226,15 @@ const StudentCoursesScreen = ({ navigation }: any) => {
             }
             ListEmptyComponent={() => (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>{t("student.noCoursesFound")}</Text>
+                <Text style={styles.emptyText}>{t("student.noCoursesFound", "No courses found")}</Text>
               </View>
             )}
           />
         )}
       </View>
     </ScreenLayout>
-  )
-}
+  );
+};
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F9FAFB" },
@@ -290,17 +302,17 @@ const styles = createScaledSheet({
   enrolledText: { color: "#FFFFFF", fontSize: 10, fontWeight: "700", marginLeft: 4 },
 
   // Horizontal Card (My Learning)
-  horizontalListContainer: { height: 140, marginBottom: 20 },
+  horizontalListContainer: { height: 160, marginBottom: 20, paddingLeft: 16 },
   horizontalCard: {
     width: 260,
     backgroundColor: "#FFFFFF",
-    marginLeft: 16,
+    marginRight: 16,
     borderRadius: 12,
     overflow: "hidden",
     borderWidth: 1,
     borderColor: "#E5E7EB",
   },
-  horizontalThumbnail: { width: "100%", height: 80, backgroundColor: "#E5E7EB" },
+  horizontalThumbnail: { width: "100%", height: 100, backgroundColor: "#E5E7EB" },
   horizontalContent: { padding: 12 },
   horizontalTitle: { fontSize: 14, fontWeight: "600", color: "#1F2937", marginBottom: 8 },
   progressRow: { flexDirection: "row", alignItems: "center" },
@@ -310,6 +322,6 @@ const styles = createScaledSheet({
 
   emptyContainer: { padding: 32, alignItems: "center" },
   emptyText: { color: "#9CA3AF", fontSize: 16 },
-})
+});
 
-export default StudentCoursesScreen
+export default StudentCoursesScreen;

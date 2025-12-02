@@ -23,9 +23,13 @@ import { CourseVersionEnrollmentStatus } from "../../types/enums";
 import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
-import { CourseVersionDiscountResponse, CourseVersionEnrollmentResponse } from "../../types/dto";
+import { 
+  CourseVersionDiscountResponse, 
+  CourseVersionEnrollmentResponse,
+  CourseVersionReviewResponse,
+  CourseResponse
+} from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
-import { CourseVersionReviewResponse } from "../../types/dto";
 
 const CourseDetailsScreen = ({ route, navigation }: any) => {
   const params = route.params || {};
@@ -49,14 +53,14 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
-
+  
   const { data: reviewsData, refetch: refetchReviews } = useReviews({
     courseId,
     userId: user?.userId,
     size: 5
   });
 
-  const { mutate: enroll, isPending: isEnrolling } = useCreateEnrollment();
+  const { mutate: enroll } = useCreateEnrollment();
   const { mutateAsync: createReviewAsync, isPending: isCreatingReview } = useCreateReview();
 
   const version = course?.latestPublicVersion;
@@ -66,7 +70,10 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
 
   const activeEnrollment = useMemo(() => {
-    return enrollments?.data?.find((e: any) => e.course.courseId === courseId) as CourseVersionEnrollmentResponse | undefined;
+    return enrollments?.data?.find((e: any) =>
+      e.courseVersion?.courseId === courseId ||
+      e.courseVersion?.course?.courseId === courseId
+    ) as CourseVersionEnrollmentResponse | undefined;
   }, [enrollments, courseId]);
 
   const isEnrolled = !!activeEnrollment;
@@ -151,10 +158,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       Alert.alert(t("auth.required"), t("auth.loginToReview"));
       return;
     }
-    if (!courseId) {
-      Alert.alert(t("error"), "Course ID is missing.");
-      return;
-    }
+    if (!courseId) return;
+
     try {
       const newReview = await createReviewAsync({
         courseId: courseId,
@@ -397,11 +402,12 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         </View>
       </ScrollView>
 
+      {/* Uses the provided CoursePurchaseModal which handles its own logic */}
       <CoursePurchaseModal
         visible={purchaseModalVisible}
         onClose={() => setPurchaseModalVisible(false)}
-        course={course}
-        activeDiscount={activeDiscount}
+        course={course as CourseResponse}
+        activeDiscount={activeDiscount as any} 
         onSuccess={handlePurchaseSuccess}
       />
     </ScreenLayout>

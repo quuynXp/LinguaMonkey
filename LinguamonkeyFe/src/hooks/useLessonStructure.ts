@@ -15,19 +15,43 @@ import {
     LessonReviewRequest
 } from "../types/dto";
 
-const mapPageResponse = <T>(result: any, page: number, size: number) => ({
-    data: (result?.content as T[]) || [],
-    pagination: {
-        pageNumber: result?.pageNumber ?? page,
-        pageSize: result?.pageSize ?? size,
-        totalElements: result?.totalElements ?? 0,
-        totalPages: result?.totalPages ?? 0,
-        isLast: result?.isLast ?? true,
-        isFirst: result?.isFirst ?? true,
-        hasNext: result?.hasNext ?? false,
-        hasPrevious: result?.hasPrevious ?? false,
-    },
-});
+// --- HYBRID MAPPER: Bắt cả 2 trường hợp tên biến (Spring Default & Custom DTO) ---
+const mapPageResponse = <T>(result: any, page: number, size: number) => {
+    if (!result) {
+        return {
+            data: [] as T[],
+            pagination: {
+                pageNumber: page,
+                pageSize: size,
+                totalElements: 0,
+                totalPages: 0,
+                isLast: true,
+                isFirst: true,
+                hasNext: false,
+                hasPrevious: false,
+            },
+        };
+    }
+
+    return {
+        data: (result?.content as T[]) || [],
+        pagination: {
+            // Check cả 2 trường hợp: pageNumber (custom) HOẶC number (Spring default)
+            pageNumber: result?.pageNumber ?? result?.number ?? page,
+            pageSize: result?.pageSize ?? result?.size ?? size,
+            totalElements: result?.totalElements ?? 0,
+            totalPages: result?.totalPages ?? 0,
+
+            // Check cả 2 trường hợp: isLast (custom) HOẶC last (Spring default)
+            isLast: result?.isLast ?? result?.last ?? true,
+            isFirst: result?.isFirst ?? result?.first ?? true,
+
+            // Logic tính toán fallback
+            hasNext: result?.hasNext ?? !(result?.last ?? result?.isLast ?? true),
+            hasPrevious: result?.hasPrevious ?? !(result?.first ?? result?.isFirst ?? true),
+        },
+    };
+};
 
 export const useLessonStructure = () => {
     const queryClient = useQueryClient();

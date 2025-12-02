@@ -261,6 +261,7 @@ export interface UserReminderRequest {
 
 export interface CreateFlashcardRequest {
     lessonId: string;
+    // userId: string;
     front: string;
     back: string;
     exampleSentence: string;
@@ -2038,7 +2039,7 @@ export interface ActivityCompletionResponse {
 }
 
 export interface UserDailyChallengeResponse {
-    id: any;
+    // id: any;
     challengeId: string;
     title: string;
     description: string;

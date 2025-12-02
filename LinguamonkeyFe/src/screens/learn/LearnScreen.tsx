@@ -538,7 +538,7 @@ const LearnScreen = ({ navigation }: any) => {
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>{t("learn.enrolledCourses", "Khóa học đã đăng ký")}</Text>
                 {/* Click 'See All' -> Navigate to studentCourseScreen */}
-                <TouchableOpacity onPress={() => navigation.navigate("studentCourseScreen")}>
+                <TouchableOpacity onPress={() => gotoTab("CourseStack", "StudentCoursesScreen")}>
                   <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
                 </TouchableOpacity>
               </View>

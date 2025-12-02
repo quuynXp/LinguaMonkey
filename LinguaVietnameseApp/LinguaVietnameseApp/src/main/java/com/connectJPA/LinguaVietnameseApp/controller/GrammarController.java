@@ -30,14 +30,16 @@ public class GrammarController {
                 .build();
     }
 
+    @Operation(summary = "Get basic grammar topic details (no progress)")
     @GetMapping("/topics/{topicId}")
-    public AppApiResponse<GrammarTopicResponse> getTopic(@PathVariable UUID topicId) {
+    public AppApiResponse<GrammarTopicResponse> getTopicGeneral(@PathVariable UUID topicId) {
         return AppApiResponse.<GrammarTopicResponse>builder()
                 .code(200)
                 .result(grammarService.getTopicById(topicId))
                 .build();
     }
 
+    @Operation(summary = "Get grammar lesson by id")
     @GetMapping("/lessons/{lessonId}")
     public AppApiResponse<GrammarLessonResponse> getLesson(@PathVariable UUID lessonId) {
         return AppApiResponse.<GrammarLessonResponse>builder()
@@ -46,8 +48,9 @@ public class GrammarController {
                 .build();
     }
 
+    @Operation(summary = "Get basic grammar rule by id (no exercises)")
     @GetMapping("/rules/{ruleId}")
-    public AppApiResponse<GrammarRuleResponse> getRule(@PathVariable UUID ruleId) {
+    public AppApiResponse<GrammarRuleResponse> getRuleGeneral(@PathVariable UUID ruleId) {
         return AppApiResponse.<GrammarRuleResponse>builder()
                 .code(200)
                 .result(grammarService.getRuleById(ruleId))
@@ -58,7 +61,7 @@ public class GrammarController {
     @GetMapping("/mindmap")
     public AppApiResponse<List<MindMapNode>> getMindMap(Locale locale) {
         try {
-            List<MindMapNode> mindmap = grammarService.getMindMap(); // New service method
+            List<MindMapNode> mindmap = grammarService.getMindMap();
             return AppApiResponse.<List<MindMapNode>>builder()
                     .code(200)
                     .message(messageSource.getMessage("grammar.mindmap.get.success", null, locale))
@@ -72,11 +75,11 @@ public class GrammarController {
         }
     }
 
-    @Operation(summary = "Get grammar topic by id (with rules & progress)")
-    @GetMapping("/topics/{id}")
-    public AppApiResponse<GrammarTopicResponse> getTopicById(@PathVariable UUID id, @RequestParam(required = false) UUID userId, Locale locale) {
+    @Operation(summary = "Get grammar topic details by id (includes user rules & progress)")
+    @GetMapping("/topics/{topicId}/details")
+    public AppApiResponse<GrammarTopicResponse> getTopicDetailsForUser(@PathVariable UUID topicId, @RequestParam(required = false) UUID userId, Locale locale) {
         try {
-            GrammarTopicResponse topic = grammarService.getTopicById(id, userId);
+            GrammarTopicResponse topic = grammarService.getTopicById(topicId, userId);
             return AppApiResponse.<GrammarTopicResponse>builder()
                     .code(200)
                     .message(messageSource.getMessage("grammar.topic.get.success", null, locale))
@@ -90,11 +93,11 @@ public class GrammarController {
         }
     }
 
-    @Operation(summary = "Get grammar rule by id (with exercises)")
-    @GetMapping("/rules/{id}")
-    public AppApiResponse<GrammarRuleResponse> getRuleById(@PathVariable UUID id, Locale locale) {
+    @Operation(summary = "Get detailed grammar rule by id (includes exercises)")
+    @GetMapping("/rules/{ruleId}/details")
+    public AppApiResponse<GrammarRuleResponse> getRuleDetailsWithExercises(@PathVariable UUID ruleId, Locale locale) {
         try {
-            GrammarRuleResponse rule = grammarService.getRuleById(id);
+            GrammarRuleResponse rule = grammarService.getRuleDetailsWithExercises(ruleId);
             return AppApiResponse.<GrammarRuleResponse>builder()
                     .code(200)
                     .message(messageSource.getMessage("grammar.rule.get.success", null, locale))

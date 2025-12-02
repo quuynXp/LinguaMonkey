@@ -32,11 +32,16 @@ public class FlashcardController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String query,
-            @RequestParam(required = false) Boolean isPublic, // Nhận param isPublic
+            @RequestParam(required = false) Boolean isPublic,
+            @RequestParam(required = false) UUID userId, // Accept explicit userId param if sent
             @RequestHeader("Authorization") String authorization) {
-        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
-        // Mặc định logic trong Service đã xử lý việc lấy (Owner OR Public)
-        Page<FlashcardResponse> result = flashcardService.getFlashcardsByLesson(userId, lessonId, query, page, size);
+        
+        // Priority: Use Token to identify the "current user" for private cards.
+        // The service logic "findPublicOrPrivateFlashcards" uses this ID to find 
+        // cards owned by THIS user OR cards that are public.
+        UUID tokenUserId = auth.extractTokenByUserId(extractToken(authorization));
+        
+        Page<FlashcardResponse> result = flashcardService.getFlashcardsByLesson(tokenUserId, lessonId, query, page, size);
         return AppApiResponse.<Page<FlashcardResponse>>builder()
                 .code(200)
                 .message("OK")

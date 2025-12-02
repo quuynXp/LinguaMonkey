@@ -16,7 +16,7 @@ export const getLessonImage = (url?: string | null): ImageSourcePropType => {
     return require("../assets/images/ImagePlacehoderCourse.png")
 }
 
-// --- Badge Images (NEW) ---
+// --- Badge Images ---
 export const getBadgeImage = (url?: string | null): ImageSourcePropType => {
     if (url && url.length > 0) {
         return { uri: url }
@@ -27,11 +27,11 @@ export const getBadgeImage = (url?: string | null): ImageSourcePropType => {
 // --- Rating ---
 export const getRatingStarProps = (rating: number, index: number) => {
     if (index < Math.floor(rating)) {
-        return { name: "star", color: "#F59E0B" } // Full star
+        return { name: "star", color: "#F59E0B" }
     } else if (index < rating) {
-        return { name: "star-half", color: "#F59E0B" } // Half star
+        return { name: "star-half", color: "#F59E0B" }
     } else {
-        return { name: "star-border", color: "#E5E7EB" } // Empty star
+        return { name: "star-border", color: "#E5E7EB" }
     }
 }
 

@@ -5,134 +5,57 @@ services:
     runtime: docker
     region: singapore
     plan: free
-    autoDeploy: true
-    dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
-    # dockerCommand: "sh -c 'export SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME} && java -jar /app/app.jar'"
+    dockerContext: .
+    healthCheckPath: /actuator/health
+    numInstances: 1
+    disk:
+      name: app_data
+      mountPath: /var/lib/app_data
+      sizeGB: 1
+
+    # Mount secret files (Upload these in Render Dashboard)
+    secretFiles:
+      - name: service-account-key.json
+        mountPath: /etc/secrets/service-account-key.json
+      - name: gdrive-key.json
+        mountPath: /etc/secrets/gdrive-key.json
+
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
       - key: SPRING_PROFILES_ACTIVE
         value: prod
+      - key: SERVER_PORT
+        value: 8080
       - key: PORT
         value: 8080
-      - key: GRPC_PORT
-        value: 50051
-      - key: FIREBASE_CREDENTIALS_BASE64
-        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAid2ViLWFwcC1s
-                b3ZlIiwKICAicHJpdmF0ZV9rZXlfaWQiOiAiYzFlMGU4MDAwOGNkNTdiOTc3NjAwMjEwYjZiNDk0
-                NzdiZjliZDljMiIsCiAgInByaXZhdGVfa2V5IjogIi0tLS0tQkVHSU4gUFJJVkFURSBLRVktLS0t
-                LVxuTUlJRXZRSUJBREFOQmdrcWhraUc5dzBCQVFFRkFBU0NCS2N3Z2dTakFnRUFBb0lCQVFDamFu
-                NkNvUVkrYm5DZ1xuZThvdFE0Z2dWOHNsUzNOMnBFVTI3RDlpTnRTRjAxeW5zZjg2Wm9ERnpxbllp
-                TjlvbGJJaTJOWHBORmJ0QVAzU1xuT3YxVFpiNlIrT3lHeVA4aTR0ZjhiSk5jWU44bFVVT3BaNzJh
-                NG5ZNmdMd0FaaDFlbWpuUWkyZklnZEhTcEdkRlxuVHB4VTlTL0xDbzV6OU5pRE5CRDBqbXBpOEZw
-                OGtBYitOanFuODEwSmpsTVhiOVFDcDRtRnpHR3RXemt2Tk9pR1xuQWRZNW1uaWYrQnc1Vk9lVUUy
-                V2dJa2xSam5iUXRueXNyUWhPWWR4Q2tLa3BsWG10OFQxeVJKanVpcGxtdnlxZ1xub3dSVFczMHhN
-                Z3NEakV0ZFAxVHI1ZG55aFp1anVJK05uSVBNVW9ISEFKSFczNE91TmpZS3MzWUlkQnljUFRWY1xu
-                cHVRZ0lMbjlBZ01CQUFFQ2dnRUFFMUhyQjJqMU10cXpheGg4NUh3Uzh5Rkl1RmlOY1VNN2x2ZU5z
-                NEFMQVRxN1xuYU1JYVlZa0QyWFJmcFRvNEVOdlROZHZQOG5uSWV5TVR0SHF2NmpVTVlrMVNpQjdw
-                b2Nkb1JLK0EwK1QwdDRDVFxua01yZDRrVmxqVVljcy82eitJbDFvMSs2a3p5SFFOeEVyMW9tRVJu
-                MGRCQ3VteXYya0dYT25yTXdXeEVuM3Q1UlxuNU1Mdmt4ajBvaDBSYkw3b2tJV0d4NlhhOWFEK2dQ
-                TzNvdHUwT1d4UFlPSFRqY0FGdi9PRXJaTWxyWElUQzU5ZFxuYWlyR2NabjVQQ0FmWXFSNm52SzRu
-                RDdHa2JEMm9CRzE4bHd3c1ZqMW8yaHJXYVFOdEJGL05UMW9qTllEOVc2WFxueGRTS2U1b0czZ2I5
-                OEVtMVJYenBXWjc0VDk5T0I4MU1vbHZtc0dEMmV3S0JnUURWa0tGM28wN3YrRHJsTUc5SFxua0lz
-                NktuNjJvbHFWKytudFJDS3M1dnU2WWswT3FWVFJOamFWSlF2OVlEQTgxZEZXK0ZBOEZpTXU1NXlv
-                ZUE3Y1xuc1RNcGlUVTREZm9IOWtvcm9tSmwxUklSK3laNlJQQmhoM0FpS2F6WmVjd21pSUQ1dXJ1
-                WXlJL1lLYWZXZGdXYlxuYWxyNVBXU0gxeG1XbmxaYzBmSkcxcU1vYndLQmdRREQ0dkh3c2VkSDBB
-                M1lmQm5hUWVid3QvY2ZJcU9CRVBUN1xuRXJaWlErTjZnZ1YxVDdKQzhFYTdKK2RKNzNMdEo4Y0tn
-                WWo2eXpSTmI4b2ovTzdxNUlZWnR5M0lDOElPcE1EOFxuMnErT0QyVE4wVzVGQlM0bzBRb2E2QzBs
-                dTVMSG9aS29zVEhqanpkN2RoeFVqek9haHJ3R2h1N3poSGV5REJaSlxudTF5Qzd4SkNVd0tCZ0Nv
-                U3J5eXhtSWgvLzZKTk0yOEcwOWJtcmtYdW9DZnlFL2l4TnArWGRib1hTWlQ4MlAvS1xuVFdCK2h1
-                a292UGdQSzRtVnE4RGFuNTNLOVRyZlJCWklOb3NWUTgzQ095SzhhNHBER0YxMVozVHhaSGdzQXF0
-                RVxuRWx3NGw1dlVlZHFSZzg4dThXdzgvdEdZQ3orZHlxYitnZU9lSzZMelJsQTg2MGluOTdIcThR
-                T3pBb0dBQmF1SFxuQjBtUEFVUWpjblc5SmRVc2d5RkFGUFdpdC9TdXNxbksvM0I0b0M0dFRFVC9T
-                dks3aVdWUlM1R1R5UXVTdGxvalxuaGVibDM2dnh0UEw0VTNKRDgzQ2E4YVJ0ZkpFR1NRdG5jM3c4
-                bGJ5UExZNUYxTWFnUFVFbE5XZGxpMFBCQkFNRlxuQjZvNGwrbEdUcWhLZlJtVFRia1FKNXBaQUox
-                YTg4MXBreHlxY2FNQ2dZRUF1ckE2R3hMcDRZZHhMRVdteWR2TlxuZDhSbGphZ2hDQ1FDK0FJRGph
-                aEJBc3A5cUpCdG5aempFZkI3WjRwMGJnL2hkNy9aZ2ZFN3RWb09FRUYxaXdLQVxuR0JKUEhzaEwy
-                TVFJZDNwOXlhWUNEa0ZmZzNhbWNoMDlEQllrRFpjUjFLbWZTNXhmMERQZExrb3BvS2dSSFl5Mlxu
-                bmI5SmhGbDdRRkRKNy9NVEs0NEM4MjQ9XG4tLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tXG4iLAog
-                ICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAd2ViLWFwcC1sb3ZlLmlh
-                bS5nc2VydmljZWFjY291bnQuY29tIiwKICAiY2xpZW50X2lkIjogIjExMzAxMjg5Njk5ODA2NDA3
-                NTk5NyIsCiAgImF1dGhfdXJpIjogImh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbS9vL29hdXRo
-                Mi9hdXRoIiwKICAidG9rZW5fdXJpIjogImh0dHBzOi8vb2F1dGgyLmdvb2dsZWFwaXMuY29tL3Rv
-                a2VuIiwKICAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2ds
-                ZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsCiAgImNsaWVudF94NTA5X2NlcnRfdXJsIjogImh0
-                dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL3JvYm90L3YxL21ldGFkYXRhL3g1MDkvZmlyZWJhc2Ut
-                YWRtaW5zZGstZmJzdmMlNDB3ZWItYXBwLWxvdmUuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLAog
-                ICJ1bml2ZXJzZV9kb21haW4iOiAiZ29vZ2xlYXBpcy5jb20iCn0K"
-      # -- Database Linking --
-      - key: DB_HOST
-        fromDatabase:
-          name: shared-postgres
-          property: host
-      - key: DB_PORT
-        fromDatabase:
-          name: shared-postgres
-          property: port
-      - key: DB_NAME
-        fromDatabase:
-          name: shared-postgres
-          property: database
-      - key: SPRING_DATASOURCE_fullname
-        fromDatabase:
-          name: shared-postgres
-          property: user
-      - key: SPRING_DATASOURCE_PASSWORD
-        fromDatabase:
-          name: shared-postgres
-          property: password
-      # -- Redis Linking --
-      - key: SPRING_REDIS_HOST
-        fromService:
-          type: redis
-          name: redis
-          property: host
-      - key: SPRING_REDIS_PORT
-        fromService:
-          type: redis
-          name: redis
-          property: port
-      # -- Internal Service URL --
-      - key: PYTHON_SERVICE_URL
-        value: http://pythonservice:50051
-    healthCheckPath: /actuator/health
-    numInstances: 1
 
-  # === 2. BACKEND (PYTHON) ===
-  - type: web
-    name: pythonservice
-    runtime: docker
-    region: singapore
-    plan: free
-    autoDeploy: true
-    dockerContext: .
-    dockerfilePath: ./PythonService/Dockerfile
-    envVars:
-      - key: TZ
-        value: Asia/Ho_Chi_Minh
-      - key: PORT
-        value: 50051
+      # Database Linking
       - key: DB_HOST
         fromDatabase:
-          name: shared-postgres
+          name: linguaviet-db
           property: host
       - key: DB_PORT
         fromDatabase:
-          name: shared-postgres
+          name: linguaviet-db
           property: port
       - key: DB_NAME
         fromDatabase:
-          name: shared-postgres
+          name: linguaviet-db
           property: database
-      - key: DB_USER
+      - key: DB_USERNAME
         fromDatabase:
-          name: shared-postgres
+          name: linguaviet-db
           property: user
       - key: DB_PASSWORD
         fromDatabase:
-          name: shared-postgres
+          name: linguaviet-db
           property: password
+      - key: DB_URL
+        value: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+
+      # Redis Linking
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -143,22 +66,163 @@ services:
           type: redis
           name: redis
           property: port
-      - key: JAVA_SERVICE_URL
-        value: http://linguavietnameseapp:8080
+      - key: REDIS_PASSWORD
+        value: redisPass123
+      - key: REDIS_SSL
+        value: false
+
+      # Internal Service Communication
+      - key: PYTHON_SERVICE_URL
+        value: http://pythonservice:8001
+      - key: PYTHON_GRPC_HOST
+        value: pythonservice
+      - key: PYTHON_GRPC_PORT
+        value: 50051
+      - key: GRPC_SERVER_PORT
+        value: 9090
+      - key: GRPC_SERVER_ADDRESS
+        value: 0.0.0.0
+
+      # JWT & Security
+      - key: JWT_SIGNER_KEY
+        value: OtKDnKZOdVMFihrc7TPBadUSUyR4MlycBb/Jbr58wBnfLMmUPbWyQNJN08S0kJhE
+      - key: JWT_KEY_ID
+        value: lingua-key-v1
+
+      # Google & Firebase (Pointing to secretFiles mount path)
+      - key: GOOGLE_CREDENTIALS_FILE_URL
+        value: /etc/secrets/service-account-key.json
+      - key: GOOGLE_SERVICE_ACCOUNT_FILE_URL
+        value: /etc/secrets/gdrive-key.json
+      - key: GOOGLE_CLIENT_ID
+        value: 15162814173-kdhjp4pthjlgpcnpsliq0dgh9284maco.apps.googleusercontent.com
+      - key: GOOGLE_FOLDER_ID
+        value: 1BrqsnQ5vF38phPAT-8XexbsNgIzVQXOe
+
+      # Cloudinary (Production)
+      - key: PROD_CLOUDINARY_CLOUD_NAME
+        value: du7euoczl
+      - key: PROD_CLOUDINARY_API_KEY
+        value: 737948733936564
+      - key: PROD_CLOUDINARY_API_SECRET
+        value: vll0SvFG3NF_0YXo-NrlOusPkG8
+
+      # Email
+      - key: MAIL_HOST
+        value: smtp.gmail.com
+      - key: MAIL_PORT
+        value: 587
+      - key: MAIL_USERNAME
+        value: quyen10924@gmail.com
+      - key: MAIL_PASSWORD
+        value: viyh woci sbrc ddle
+      - key: MAIL_SMTP_AUTH
+        value: true
+      - key: MAIL_STARTTLS_ENABLE
+        value: true
+
+      # Payment Gateways & External
+      - key: VNPAY_TMNCODE
+        value: YOUR_VNPAY_PROD_TMNCODE_HERE
+      - key: VNPAY_HASHSECRET
+        value: YOUR_VNPAY_PROD_HASHSECRET_HERE
+      - key: VNPAY_URL
+        value: https://vnpayment.vn/paymentv2/vpcpay.html
+      - key: STRIPE_API_KEY
+        value: sk_live_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+      - key: STRIPE_WEBHOOK_SECRET
+        value: whsec_XXXXXXXXXXXXXXXXXXXXXXXXXX
+      - key: TWILIO_ACCOUNT_SID
+        value: VAc7bd935ea6f7e99c9396b5937e797ea2
+      - key: TWILIO_AUTH_TOKEN
+        value: ACbff92c92cf22146853ca99a75ff70082
+      - key: TWILIO_FROM_PHONE_NUMBER
+        value: +84373730397
+
+      # App Settings
+      - key: EXAM_REMINDER_HOURS_BEFORE
+        value: 24
+      - key: EXAM_REMINDER_REPEAT_DAYS
+        value: 1
+      - key: SPRING_JPA_HIBERNATE_DDL_AUTO
+        value: none
+      - key: SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE
+        value: 200MB
+      - key: SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE
+        value: 200MB
+
+  # === 2. BACKEND (PYTHON) ===
+  - type: web
+    name: pythonservice
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./PythonService/Dockerfile
+    dockerContext: .
     numInstances: 1
 
-  # === 3. KONG GATEWAY (DB-LESS) ===
+    # Mount public key for auth verification
+    secretFiles:
+      - name: public_key.pem
+        mountPath: /app/public_key.pem
+
+    envVars:
+      - key: TZ
+        value: Asia/Ho_Chi_Minh
+      - key: PORT
+        value: 8001
+      - key: GRPC_PORT
+        value: 50051
+
+      # Java Link
+      - key: JAVA_SERVICE_URL
+        value: http://linguavietnameseapp:8080
+      - key: JAVA_GRPC_ADDRESS
+        value: linguavietnameseapp:9090
+
+      # Database Link
+      - key: DB_HOST
+        fromDatabase:
+          name: linguaviet-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: linguaviet-db
+          property: port
+      - key: DB_NAME
+        fromDatabase:
+          name: linguaviet-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: linguaviet-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: linguaviet-db
+          property: password
+
+      # Redis Link
+      - key: REDIS_HOST
+        fromService:
+          type: redis
+          name: redis
+          property: host
+      - key: REDIS_PORT
+        fromService:
+          type: redis
+          name: redis
+          property: port
+
+  # === 3. KONG GATEWAY ===
   - type: web
     name: kong
     runtime: docker
     region: singapore
     plan: free
-    autoDeploy: true
-    dockerContext: .
     dockerfilePath: ./Dockerfile.kong
+    dockerContext: .
     envVars:
-      - key: PORT
-        value: 8000
       - key: KONG_DATABASE
         value: "off"
       - key: KONG_DECLARATIVE_CONFIG
@@ -177,7 +241,8 @@ services:
         value: /dev/stderr
       - key: KONG_PLUGINS
         value: bundled,rate-limiting,cors,request-transformer,proxy-cache
-    numInstances: 1
+      - key: PORT
+        value: 8000
 
   # === 4. REDIS ===
   - type: redis
@@ -187,7 +252,7 @@ services:
     ipAllowList: []
 
 databases:
-  - name: shared-postgres
+  - name: linguaviet-db
     region: singapore
     plan: free
     databaseName: linguaviet_db

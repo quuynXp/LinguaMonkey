@@ -46,9 +46,8 @@ const RoadmapScreen = ({ navigation }: any) => {
   } = useRoadmap();
 
   // Data
-  // FIX: Removed hardcoded "en", now uses currentLanguage.
-  // This ensures cache key matches what HomeScreen uses.
-  const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps(currentLanguage);
+  // FIX: Removed language parameter. Fetches all enrolled roadmaps.
+  const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps();
 
   // Fetch Official (Templates)
   const {

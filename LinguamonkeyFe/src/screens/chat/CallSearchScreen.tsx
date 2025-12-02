@@ -6,7 +6,7 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useVideoCalls } from '../../hooks/useVideos';
 import { CallPreferences } from '../../stores/appStore';
-import { RoomResponse, WaitingResponse } from '../../types/dto';
+import { RoomResponse } from '../../types/dto';
 
 const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }) => {
   const { preferences } = route.params as { preferences: CallPreferences };
@@ -33,7 +33,6 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const rotateAnim = useRef(new Animated.Value(0)).current;
 
-  // --- Animation Logic ---
   const startAnimations = useCallback(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: true }).start();
     Animated.loop(
@@ -52,11 +51,10 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
     rotateAnim.stopAnimation();
   }, [pulseAnim, rotateAnim]);
 
-  // --- Match Success Handler ---
   const handleMatchSuccess = useCallback((room: RoomResponse) => {
     setIsMatchFound(true);
     stopAnimations();
-    setSearchStatusMessage(t("call.matchFound")); // "Match Found!"
+    setSearchStatusMessage(t("call.matchFound"));
 
     setTimeout(() => {
       navigation.replace("VideoCallScreen", {
@@ -68,69 +66,52 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
     }, 1000);
   }, [stopAnimations, t, navigation, preferences]);
 
-  // --- Message & Estimate Logic ---
-  // Updates the message based on elapsed time vs estimated time
   const updateSearchStatus = useCallback((elapsed: number, estimate: number, count: number) => {
     if (isMatchFound) return;
 
-    // Logic: 
-    // 1. If 0 or 1 user (me), estimate is 5 mins.
-    // 2. If > 1 user, estimate is faster (e.g. 1 min / users). 
-    // BUT prompt says: "if 0 user other than me -> default 5 mins".
-
-    // Update Estimate based on count
-    let newEstimate = 300; // Default 5 mins
+    let newEstimate = 300;
     if (count > 1) {
-      // Heuristic: If there are others, it should be faster.
       newEstimate = 60;
     }
     setEstimatedSeconds(newEstimate);
 
-    // Strict Message Logic requested by user:
     if (elapsed <= newEstimate) {
-      // Normal phase
       setSearchStatusMessage(t("call.searchingTitle"));
     }
     else if (elapsed > newEstimate && elapsed <= newEstimate + 60) {
-      // Exceeded estimate but within 1 min buffer
       setSearchStatusMessage(t("call.pleaseWaitMessage"));
     }
     else if (elapsed > newEstimate + 60) {
-      // Exceeded estimate + 1 min
       setSearchStatusMessage(t("call.longWaitMessage"));
     }
 
   }, [isMatchFound, t]);
 
 
-  // --- Core Logic: Polling Loop ---
   const performSearch = useCallback(() => {
     if (!isMounted.current || isMatchFound) return;
 
     findMatch(
       {
-        interests: preferences.interests,
-        gender: preferences.gender,
-        nativeLanguage: preferences.nativeLanguage,
-        learningLanguage: preferences.learningLanguage,
-        ageRange: preferences.ageRange,
-        callDuration: preferences.callDuration,
+        interests: preferences.interests || [],
+        gender: preferences.gender || '',
+        nativeLanguage: preferences.nativeLanguage || '',
+        learningLanguage: preferences.learningLanguage || '',
+        // ageRange: preferences.ageRange || [],
+        // callDuration: preferences.callDuration || 0,
       },
       {
         onSuccess: (response) => {
           if (!isMounted.current) return;
 
-          // Case 1: Match Found (200)
           if (response.code === 200 && response.data && 'roomId' in response.data) {
             handleMatchSuccess(response.data as RoomResponse);
           }
-          // Case 2: Waiting in Queue (202)
           else if (response.code === 202) {
-            const data = response.data as any; // WaitingResponse map
+            const data = response.data as any;
             const qSize = data?.queueSize || 1;
             setOnlineUsersCount(qSize);
 
-            // Wait 5 seconds before next poll (Realtime requirement)
             pollingTimeout.current = setTimeout(() => {
               performSearch();
             }, 5000);
@@ -139,8 +120,6 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
         onError: (error) => {
           console.error("Match error:", error);
           if (!isMounted.current) return;
-          // Even on error, we might want to retry or stop. 
-          // For now, retry slower to avoid hammering if server is down
           pollingTimeout.current = setTimeout(() => {
             performSearch();
           }, 10000);
@@ -149,22 +128,17 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
     );
   }, [findMatch, preferences, handleMatchSuccess, isMatchFound]);
 
-  // --- Effects ---
   useEffect(() => {
     isMounted.current = true;
     startAnimations();
     performSearch();
 
-    // Timer for elapsed time and UI updates
     const timerInterval = setInterval(() => {
       if (isMounted.current && !isMatchFound) {
         const now = Date.now();
         const elapsed = Math.floor((now - startTime) / 1000);
         setElapsedSeconds(elapsed);
 
-        // Update message dynamically inside the timer to ensure accuracy
-        // We use state values inside updater to avoid dependency stale closures if needed, 
-        // but here we rely on the component re-render for `estimatedSeconds` and `onlineUsersCount`
         updateSearchStatus(elapsed, estimatedSeconds, onlineUsersCount);
       }
     }, 1000);
@@ -203,7 +177,6 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
       <Animated.View style={[styles.content, { opacity: fadeAnim }]}>
         <View style={styles.searchSection}>
 
-          {/* Dynamic Message: Only Title, Bold */}
           <Text style={[styles.messageTitle, isMatchFound && { color: '#10B981' }]}>
             {searchStatusMessage}
           </Text>
@@ -234,7 +207,6 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
             </View>
           </View>
 
-          {/* Currently elapsed time for user reference */}
           <Text style={styles.elapsedText}>
             {t("call.elapsedTime")}: {formatTime(elapsedSeconds)}
           </Text>
@@ -249,7 +221,7 @@ const CallSearchScreen = ({ navigation, route }: { navigation: any, route: any }
               </View>
               <View style={styles.criteriaItem}>
                 <Icon name="interests" size={16} color="#6B7280" />
-                <Text style={styles.criteriaText}>{preferences.interests.length} {t("call.commonInterests")}</Text>
+                <Text style={styles.criteriaText}>{(preferences.interests || []).length} {t("call.commonInterests")}</Text>
               </View>
             </View>
           </View>
@@ -287,7 +259,6 @@ const styles = createScaledSheet({
   content: { flex: 1, justifyContent: "center", padding: 20 },
   searchSection: { alignItems: "center", width: "100%" },
 
-  // New Message Style
   messageTitle: {
     fontSize: 22,
     fontWeight: "800",

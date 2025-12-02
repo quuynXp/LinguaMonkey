@@ -10,7 +10,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-
+import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -69,4 +69,6 @@ public interface UserDailyChallengeRepository extends JpaRepository<UserDailyCha
             @Param("startOfDay") OffsetDateTime startOfDay,
             @Param("endOfDay") OffsetDateTime endOfDay
     );
+
+    List<UserDailyChallenge> findByUser_UserIdAndCompletedAtBetween(UUID userId, OffsetDateTime start, OffsetDateTime end);
 }

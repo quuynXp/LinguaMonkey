@@ -19,7 +19,7 @@ interface ScreenLayoutProps {
     enableSwipeBack?: boolean;
 }
 
-const SWIPE_AREA_WIDTH = 50;
+const SWIPE_AREA_WIDTH = 70;
 
 const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     children,

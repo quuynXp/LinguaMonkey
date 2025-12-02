@@ -49,12 +49,8 @@ public class BadgeServiceImpl implements BadgeService {
 
         String userLang = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
 
-        Set<UUID> achievedBadgeIds = userBadgeRepository.findBadgesByUserId(userId)
-                .stream()
-                .map(Badge::getBadgeId)
-                .collect(Collectors.toSet());
+        Set<UUID> achievedBadgeIds = userBadgeRepository.findBadgeIdsByUserId(userId);
 
-        // Lấy Badge theo ngôn ngữ Native của User
         List<Badge> allBadges = badgeRepository.findAllByLanguageCodeAndIsDeletedFalse(userLang);
 
         long lessonsCompleted = lessonProgressRepository.countById_UserIdAndCompletedAtIsNotNull(userId);
@@ -76,9 +72,8 @@ public class BadgeServiceImpl implements BadgeService {
                 case EXP_EARNED -> currentUserProgress = userExp;
             }
 
-            // Cap progress UI
             if (!isAchieved && currentUserProgress > threshold) {
-                currentUserProgress = threshold; 
+                currentUserProgress = threshold;
             }
             if (isAchieved) {
                 currentUserProgress = threshold;
@@ -96,14 +91,13 @@ public class BadgeServiceImpl implements BadgeService {
             );
         }).collect(Collectors.toList());
 
-        // SORTING LOGIC: Can Claim (Top) -> In Progress -> Owned (Bottom)
         return responseList.stream()
                 .sorted(Comparator.comparingInt((BadgeProgressResponse b) -> {
                     boolean canClaim = !b.isAchieved() && b.getCurrentUserProgress() >= b.getCriteriaThreshold();
-                    
-                    if (canClaim) return 1;          // Ưu tiên 1: Có thể nhận
-                    if (!b.isAchieved()) return 2;   // Ưu tiên 2: Chưa sở hữu, đang cày
-                    return 3;                        // Ưu tiên 3: Đã sở hữu
+
+                    if (canClaim) return 1;
+                    if (!b.isAchieved()) return 2;
+                    return 3;
                 }))
                 .collect(Collectors.toList());
     }
@@ -113,7 +107,7 @@ public class BadgeServiceImpl implements BadgeService {
     public void claimBadge(UUID userId, UUID badgeId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-        
+
         Badge badge = badgeRepository.findById(badgeId)
                 .orElseThrow(() -> new AppException(ErrorCode.BADGE_NOT_FOUND));
 
@@ -136,10 +130,12 @@ public class BadgeServiceImpl implements BadgeService {
 
         UserBadge userBadge = UserBadge.builder()
                 .id(new UserBadgeId(badgeId, userId))
-                .user(user)
+                .user(userRepository.getReferenceById(userId))
                 .badge(badge)
+                .isDeleted(false)
                 .build();
-        userBadgeRepository.save(userBadge);
+        
+        userBadgeRepository.saveAndFlush(userBadge);
 
         user.setCoins(user.getCoins() + badge.getCoins());
         userRepository.save(user);

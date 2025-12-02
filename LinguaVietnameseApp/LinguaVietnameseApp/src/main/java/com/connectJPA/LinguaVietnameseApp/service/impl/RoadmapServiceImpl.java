@@ -43,7 +43,9 @@ public class RoadmapServiceImpl implements RoadmapService {
 
     @Override
     public List<RoadmapUserResponse> getUserRoadmaps(UUID userId, String language) {
-        List<UserRoadmap> urs = userRoadmapRepository.findByUserRoadmapIdUserIdAndLanguage(userId, language);
+        // FIX: Use findByUserId to get ALL roadmaps regardless of language
+        // User should see a roadmap they enrolled in even if it doesn't match their current app language
+        List<UserRoadmap> urs = userRoadmapRepository.findByUserId(userId);
         return urs.stream().map(this::mapToUserResponse).collect(Collectors.toList());
     }
 
@@ -100,7 +102,6 @@ public class RoadmapServiceImpl implements RoadmapService {
 
     @Override
     public List<RoadmapResponse> getPublicRoadmaps(String language) {
-        // Cần truyền language vào nếu cần lọc, nếu không thì lấy tất cả public
         return userRoadmapRepository.findByIsPublicTrueAndLanguage(language).stream()
                 .map(ur -> mapToResponse(ur.getRoadmap()))
                 .collect(Collectors.toList());
@@ -187,9 +188,8 @@ public class RoadmapServiceImpl implements RoadmapService {
     @Transactional
     @Override
     public RoadmapSuggestion addSuggestion(UUID userId, UUID roadmapId, UUID itemId,
-                                             Integer suggestedOrderIndex, String reason) {
+                                           Integer suggestedOrderIndex, String reason) {
         
-        // Ensure roadmap exists, but allow suggestions on public roadmaps even if user hasn't started it
         Roadmap roadmap = roadmapRepository.findById(roadmapId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROADMAP_NOT_FOUND));
 
@@ -256,8 +256,6 @@ public class RoadmapServiceImpl implements RoadmapService {
                 .collect(Collectors.toList());
     }
 
-
-    // --- OPTION 1: OFFICIAL TEMPLATES ---
     @Override
     public Page<RoadmapPublicResponse> getOfficialRoadmaps(String language, int page, int size) {
         PageRequest pageRequest = PageRequest.of(page, size);
@@ -272,9 +270,9 @@ public class RoadmapServiceImpl implements RoadmapService {
                     .title(r.getTitle())
                     .description(r.getDescription())
                     .language(r.getLanguageCode())
-                    .creator("System Official") // Official Templates do System tạo
+                    .creator("System Official")
                     .creatorId(null)
-                    .creatorAvatar(null) // Hoặc set 1 ảnh logo hệ thống
+                    .creatorAvatar(null)
                     .totalItems(r.getTotalItems())
                     .suggestionCount((int) suggestionCount)
                     .averageRating(avgRating)
@@ -287,7 +285,6 @@ public class RoadmapServiceImpl implements RoadmapService {
         });
     }
 
-    // --- OPTION 2: COMMUNITY SHARED ---
     @Override
     public Page<RoadmapPublicResponse> getCommunityRoadmaps(String language, int page, int size) {
         PageRequest pageRequest = PageRequest.of(page, size);
@@ -301,7 +298,7 @@ public class RoadmapServiceImpl implements RoadmapService {
 
             return RoadmapPublicResponse.builder()
                     .roadmapId(roadmap.getRoadmapId())
-                    .title(roadmap.getTitle()) // Có thể user đã đổi tên, nhưng ở đây lấy tên gốc hoặc tên custom nếu có
+                    .title(roadmap.getTitle())
                     .description(roadmap.getDescription())
                     .language(roadmap.getLanguageCode())
                     .creator(ur.getUser().getFullname())

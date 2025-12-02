@@ -16,14 +16,14 @@ import {
 
 import { RoadmapItem, RoadmapSuggestion } from "../types/entity";
 
-// FIX: Added 'lang' to query keys to prevent cache collisions between different language filters
 export const roadmapKeys = {
   all: ["roadmaps"] as const,
   lists: () => [...roadmapKeys.all, "list"] as const,
   defaults: (lang?: string) => [...roadmapKeys.all, "defaults", { lang }] as const,
   publicStats: (lang?: string, page?: number) => [...roadmapKeys.all, "publicStats", { lang, page }] as const,
   detail: (id: string) => [...roadmapKeys.all, "detail", id] as const,
-  userList: (userId: string, lang?: string) => [...roadmapKeys.all, "userList", userId, { lang }] as const,
+  // FIX: Removed language from userList key as we fetch ALL roadmaps
+  userList: (userId: string) => [...roadmapKeys.all, "userList", userId] as const,
   progressDetail: (roadmapId: string, userId: string) => [...roadmapKeys.all, "progressDetail", roadmapId, userId] as const,
   itemDetail: (itemId: string) => [...roadmapKeys.all, "itemDetail", itemId] as const,
   goals: (userId: string) => [...roadmapKeys.all, "goals", userId] as const,
@@ -38,14 +38,15 @@ export const useRoadmap = () => {
   const userId = user?.userId;
 
   // --- 1. USER ROADMAPS (My Learning) ---
-  const useUserRoadmaps = (languageCode?: string) =>
+  // FIX: Removed languageCode parameter. User should see ALL assigned roadmaps.
+  const useUserRoadmaps = () =>
     useQuery({
-      queryKey: roadmapKeys.userList(userId!, languageCode), // FIX: Include languageCode in key
+      queryKey: roadmapKeys.userList(userId!),
       queryFn: async () => {
         if (!userId) return [];
-        const qp = languageCode ? `?language=${languageCode}` : "";
+        // The backend now ignores language filter for "my roadmaps"
         const res = await instance.get<AppApiResponse<RoadmapUserResponse[]>>(
-          `/api/v1/roadmaps/user/${userId}${qp}`
+          `/api/v1/roadmaps/user/${userId}`
         );
         return res.data.result || [];
       },
@@ -145,7 +146,7 @@ export const useRoadmap = () => {
         const res = await instance.post<AppApiResponse<void>>("/api/v1/roadmaps/assign", payload);
         return res.data.result;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.all }), // Invalidate all to be safe across languages
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.all }),
     });
 
   const useAddSuggestion = () =>

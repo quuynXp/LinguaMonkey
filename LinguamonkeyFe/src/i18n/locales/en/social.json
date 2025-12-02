@@ -326,5 +326,67 @@
     },
     "assistant": {
         "name": "AI Assistant"
+    },
+    "profile": {
+        "connect": "Connect",
+        "allUsers": "All users",
+        "myFriends": "My friends",
+        "suggestions": "Suggestions",
+        "gender": "Gender",
+        "noFriends": "No friends",
+        "deposit": "Deposit",
+        "history": "History",
+        "aboutMe": "About me"
+    },
+    "common": {
+        "seeAll": "See all",
+        "searchByNameNickEmailPhone": "Search by name, nickname, email, or phone",
+        "filter": "Filter",
+        "apply": "Apply",
+        "noResults": "No results",
+        "claim": "Claim",
+        "noData": "No data",
+        "teacher": "Teacher",
+        "view": "View",
+        "buy": "Buy",
+        "coins": "Coins"
+    },
+    "gender": {
+        "MALE": "Male",
+        "FEMALE": "Female",
+        "OTHER": "Other"
+    },
+    "challenge": {
+        "tab": {
+            "daily": "Daily",
+            "weekly": "Weekly",
+            "badge": "Badge"
+        }
+    },
+    "learn": {
+        "grammar": "Grammar",
+        "myCreatorCourses": "My Creator Courses",
+        "myCourseManagement": "Course Management"
+    },
+    "vip": {
+        "renewTitle": "Renew VIP"
+    },
+    "payment": {
+        "selectMethod": "Select method",
+        "myWallet": "My Wallet",
+        "available": "Available",
+        "externalGateway": "Payment Gateway",
+        "continueToGateway": "Continue to Gateway",
+        "total": "Total:",
+        "insufficientWarning": "Insufficient Balance",
+        "payNow": "Pay Now"
+    },
+    "course": {
+        "description": "Description",
+        "curriculum": "Curriculum",
+        "courseContent": "Course Content"
+    },
+    "reviews": {
+        "title": "Reviews & Comments"
     }
 }

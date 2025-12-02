@@ -10,7 +10,7 @@ export interface CallPreferences {
   nativeLanguage: string;
   learningLanguage: string;
   ageRange: string;
-  callDuration: string;
+  // callDuration: string;
 }
 
 export interface ChatSettings {
