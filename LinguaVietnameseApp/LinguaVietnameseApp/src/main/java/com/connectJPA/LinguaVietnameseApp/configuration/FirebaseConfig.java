@@ -54,20 +54,17 @@ public class FirebaseConfig {
     }
 
     private GoogleCredentials loadCredentials() throws IOException {
-        // Priority 1: Base64
         if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
             try {
-                byte[] decodedBytes = Base64.getDecoder().decode(credentialsBase64);
+                byte[] decodedBytes = Base64.getDecoder().decode(credentialsBase64.trim().replaceAll("\\s", ""));
                 log.info("Loaded Firebase credentials from BASE64 string.");
                 return GoogleCredentials.fromStream(new ByteArrayInputStream(decodedBytes));
             } catch (Exception e) {
                 log.error("Failed to decode FIREBASE_CREDENTIALS_BASE64 and create credentials stream.", e);
-                // Ném ra IOException để FirebaseMessaging bean không được tạo, giúp lỗi rõ ràng hơn
                 throw new IOException("Failed to initialize GoogleCredentials from FIREBASE_CREDENTIALS_BASE64: " + e.getMessage(), e);
             }
         }
 
-        // Priority 2: File Path
         if (credentialsPath != null && !credentialsPath.isBlank()) {
             String cleanPath = credentialsPath.replace("file:", "");
             try (InputStream serviceAccount = new FileInputStream(cleanPath)) {

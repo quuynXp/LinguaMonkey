@@ -1,6 +1,4 @@
 # FULL FILES ONLY
-# render.yaml
-
 services:
   # === 1. BACKEND (JAVA) ===
   - type: web
@@ -20,40 +18,48 @@ services:
         value: 8080
       - key: GRPC_PORT
         value: 50051
-      - key: FIREBASE_CREDENTIALS_BASE64
-        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTEwMDkiLAogICJwcml2YXRlX2tleV9pZCI6ICI1YjlhNDZiZjFmNGMyNmY5Y2FkNzg4Zjc0YzM0NjQ5ODFiMmYxMTAzIiwKICAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tXG5NSUlFdndJQkFEQU5CZ2txaGtpRzl3MEJBUUVGQUFTQ0JLa3dnZ1NsQWdFQUFvSUJBUUNYajV1RlZzV29TYnkzXG5xWFBqdlpXU1JwVnVsVmhGL0w0N3Bra1FLQUg0T1ZXQUtCemExVEZTZnBPd3ZiTjMrT1hpTkRzOVRnbFJyWHhBXG4rVGJmT282bDY1U3NIYVdYZm94cHV3d0p3NzN2dlhYSytCZHR5a1RBamttWUZJMzExTFNBRnVMeUhBLzR0LzRhXG41UXAxZnc3NVU2Y21ZTHN2Zm5aZktSZTExVXlpbTVKZWJBQmRISVc5eWpjRVVjTlQ0d251Qm9zdmdzUHg2aEFOXG5RQnRrMTk5ck53U3dyVCtubUV6NWZuNTdwNEZVTi9IUXJBY053SXZPSGVEaXJSMkRubVNQaGF3ZlpUUVdITU10XG5SNGdvcStIR0xOeXljcWdDRURiYnVkWk5EeWdCTVNxOHNCb0haeC9rcTNpTjRhclVwYU9jTWowWE5hWmRtTk5EXG4xbksvUm1PdkFnTUJBQUVDZ2dFQUhCZzZUNGJNd0F2ZktEcUlxWVJJdUNOT2F2L1RLN0lVdjNEdEpVb05SMnExXG5YenJRVW41bmxLK3pCL1c2VVhoNWdLdUcrYS9BQ1h4N3huMkwvdWhYYmdsVDkyM05kdDQyQUJsMHUxQ21JazFBXG5DeDVmRlhLRHVTQUhJMkpZQ0dSa0MwUnkwRWVFYkdvSytBaFNIb0t0ajJsQzJGbmhDUVpMd2dzWGdwVG1EbFE0XG5TOUMrWXExVDgwaFQrNVdiNVR6dkEycFhqTkw4NWI4cGZOSEFCN0ZvbzdEQ2x1QUZjVFlaYlNHcVZVUTdRaG5FXG5GYk9FREw4bFU3djcxODlENGVPbTFxLzQrL0dERE5GMzVxYjl0WSswdDBTYm9PTzNyaXdpZW9vcHB6Wko4Rjl1XG5ZeGswdTNFc1hyRkorbGpjYnF3ODdxVkVqL0NGS0pESnVaOXhJSzhXelFLQmdRREpTRENoWGlvK2lyU1lEeTl4XG4vODl0azA1SXJzeGJmY1ZlVStEaElUeDZ3ZEtDZVlsWENCYTFmU3U0N1RyalR4QlVIRnB4ZWNiTndTNm9HNVovXG43U1hRdHpHeFI0bjhXYmR4ODRqbHRCUVhDS2dlZzQ2dmFFdzVRcG1BVXBEaGp6cjROS0dLbDR4ZnYzWTYvb254XG5BeU5FSWxEZVFKTU5hVEtkZzY1UnQ0ajJld0tCZ1FEQXd5OGlYSHVsdi9MYkxKc0s5YmVmclM0RGs1MGpLWU43XG45VGFLSnIvYUxtZWNaOTVFaVdQQ3VMODQ3aGVrUXRyTmVmK04xc0FZeXArRFlRQUMzcW8xaWNZRlhEUGV3QVVWXG50dEFGdWllK1NYY1JxWVBXSzUrSzNXdGthblAzcnQwNGpyN1YrV1duZ1BuQ2MzK3B1cEYxYlBWcXA5K1hCbFZJXG5WcWRKUHB1N1hRS0JnUUM0d2pBSlg0Tk5aMHJBTFdneXIwcTYzVFZGbUZYelFXNXkySEdhbFVTTHRmQkNYY2RJXG5nUjgvTm9kMHR5V1AwMW84cXM0R1RXN0VIU2h6bk9jM3cvb3JMSTFMbWt3NXZDeWNSNXlJcFJTdjAvMW1EUUpqXG5Wa3hwWHczQjhZZ1YwOENnWnNkRmpUaUlCeHBDcXJUNTZ4UnJEVWpIeWVSeHNmZUpDSDl4ZVJRYWt3S0JnUUN2XG5qWk5Sc2ZTU1FieEZ5OXZ3SVZSNFFkcFVPNDJ5eGs0UENJWUJUOFVPU1pEbkt0bU1oYXVyWFdJWjBRMEs5akFiXG5UbTVsbVIwZDl2dExSWDRqSHZMWkMzNml4eFFlVzdiRnpkYXFRSjJOZVk3Tk1ScjJaSWhLaWRrU2ZMamM3QTVoXG5RZStmSkNGbWFkb05NKzhpZnQyV21nTHdmYTd0OWtDWlB3SGZmUHVMcVFLQmdRQzByeVRJdE9rQjM5Z2o5U05sXG5XdVFaU0N2SE9WTUExb0ZTb0FBUElMQzZqYnBjcmJ0TU5nQ2crc2xYK2RsL2k5WmJSWUxOQkRETnZwTEVLL1VJXG5TbUNsV2x5TVlKMTZtQURnQmwrY1paY005L0NqTDJ1clBjSTB1R0JkbU5Dc0F5SzNtWER5WjhYazZiMXdLYTlpXG5FZkozZkxyMkRRMGVkeCtJT3pJVlNMejludz09XG4tLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tXG4iLAogICJjbGllbnRfZW1haWwiOiAiZmlyZWJhc2UtYWRtaW5zZGstZmJzdmNAbW9ua2V5bGluZ3VhLTEwMDkuaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLAogICJjbGllbnRfaWQiOiAiMTA4OTU5NjMwNTg4MjA5MzYwNTc1IiwKICAiYXV0aF91cmkiOiAiaHR0cHM6Ly9hY2NvdW50cy5nb29nbGUuY29tL28vb2F1dGgyL2F1dGgiLAogICJ0b2tlbl91cmkiOiAiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLAogICJhdXRoX3Byb3ZpZGVyX3g1MDlfY2VydF91cmwiOiAiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vb2F1dGgyL3YxL2NlcnRzIiwKICAiY2xpZW50X3g1MDlfY2VydF91cmwiOiAiaHR0cHM6Ly93d3cuZ29vZ2xlYXBpcy5jb20vcm9ib3QvdjEvbWV0YWRhdGEveDUwOS9maXJlYmFzZS1hZG1pbnNkay1mYnN2YyU0MG1vbmtleWxpbmd1YS0xMDA5LmlhbS5nc2VydmljZWFjY291bnQuY29tIiwKICAidW5pdmVyc2VfZG9tYWluIjogImdvb2dsZWFwaXMuY29tIgp9Cg=="
-      - key: GDRIVE_KEY_BASE64
-        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTQ3NjYwNyIsCiAgInByaXZhdGVfa2V5X2lkIjogIjBhNDAyZmE2OGQyNThlMTA1YjNhYjBhZGNjNDg0NDcxZmRkNTdlNmQiLAogICJwcml2YXRlX2tleSI6ICItLS0tLUJFR0lOIFBSSVZBVEUgS0VZLS0tLS1cbk1JSUV2UUlCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktjd2dnU2pBZ0VBQW9JQkFRQ3FYUTJxcUtNMy9kdG5cbkd3YUZLdFdQVndSUnA0TkIybkhIalV2QTVhSERSSkR0RVN0TlJRZHdBOTZTRGlQVWtIUllrbXRnYW9WWnNuOEdcblZjb3Z2SWxoTVE1TzhqbFNEcklRNjYxS2g1dDJJTzVGSm9nbmdSZHV3QlBzNzNWdU41eStZTjMvYkt6dlU2RmhcbjhtKzdaNzFQMDRKdnM0cUdBK1dwT21PVEFjNWMxZ3Izc2VRcnJUTmJhWk92dU9Lb1dzbXgxK1pwZmhOdE51aG1cbm9WYWpNeTVjTkNZQU9pdmlyMUtwL1E5OWpscEpySXZUZDFFTnJ4VGdDTzMxY2MrSGY0Z0VEbkVDdmVlMFV0ajNcblloUWtPTytWSkplQ0l0RXhTeWkvV0ZuZkZVODhSNkU0U2t6SVhibDV5QkxWTlMySFpuZ2xoV1dhY0MzT3JNcE9cblhGWnVRRXNwQWdNQkFBRUNnZ0VBTkx2RkJUUmFBWFRrdXcrVWZ4ZjVMdnRpYk53TE54RWs4djM3bXVQNXBIWE9cbjNuTFlFbnp4aG16TU1pMktUYnZCSjhGNjEwZGhxNWdpMVpVc2xvWW5pQndsTDY2dXE0VzgvSnZXOGlEenNDY1ZcbldmWkpZdUVFbmRWNjFYWnh4UUlWMUtBclYyc09SSzZBWDg4cFlyc0QwSGZLQWtWeTlYU3pYQ1NrdWRadlNEQy9cbkRwR2JlWnAyU05RYW8wNG9vVlB6bWZaQmFleUNBRHlYbVZsUjUwL2Rzc0s0ZktBMnp5S3FSbiszK0ZKdG15eUZcblAvRnZzVDJ5T2FsZTdmM1VIMzNIbmFnYzhRek10bmIxR2dLWTZVQndvRUtWcHJIUHBOVFBiL0pISG1FaUY1VzlcbncraFc1L2s3NXFWS1NJT1JrV1kxSFluMGxVdFd2SnVmOFo5VEs2TjBXUUtCZ1FEbmlPVllSbWVhcmQzdWovVk1cbnVPQ3I4Q21qZVFjeWdxUmdQY1FtcmF1QS9LenRQNGpzR1dZb0hiVXF5UUJhZklNdVVld1BjMnRuTE1zWGVvcHRcbjd5QnlzWnRYY3dLM3NNRFhaMnlqM3NDMzlRbmpMVlR2OGZpVkp3Q2lsQkVzVi8zai9sNlh1RHhxY0JHL2MyT1BcbmdCY3ptMWZDLy9pdGVFNkpSTmRuZ1R3bC93S0JnUUM4WFhPTmk4elVMT1doQ3ZUNnVMbmlOL3BqOHlRRkJpYTJcbmJIRlRMMVNVb1lYck00VjNhK0h5SDdwRlh0WjJKd2xPYUQ3cG9zY1VkT0dCZTZCT2VQbW9uOXg5bnFhWWIvTjhcbkl1ZUxvZWMrM0RWaUhJY2haYUUzMTJzdjV2MlJkSUdaK01DSnhpY1FtUlNVK3g5MEhwVTVWamtFTmw2ZGZUdFhcbmFKUXhaTGVlMXdLQmdRRGVnK29tRkVPdG5Ec1Y4clJFcjhqOGRTc1BPRmw2YWFPZityeHdqNmVycHlwcU9BMVhcbkduSGJTL0c0MU1QS01xKy83R3Q1emVzQ2xVSDVwb016ZEFVek5RMmQxYUplOXpmZHpEL1VuVmVKYzYyMDd2UWFcblJlb3BMZnFtUkxiY2J4Uko4VVRuZXVCVlNxOUQxNWx2YUNMa0xmOENJUTdWYURIU0twNzVrbkpEOFFLQmdFeGpcbkZXWTBhRmN1OGR4U0JqRGEwcjd6ZG40cjd0Sit3Um8vZGVHSEV5VEhML2pHeHZ3NzZyLzJyK0pMNkdxM3YrVmxcbkR3Wk9OYStOQ3BvbzJVU1plSjB5WHdjdVhGNzdIMkdiQWcwMUZnTCs2RU1tVUlKeHBXUnczbzNwZmJFTDd6YlNcbmtyb01lbkVYc3lvTGdLRGxlaHhyWStuYVpwbzFXK2hCaDc5VUdjYTNBb0dBYkFGSDBOZkYzNVE3MzhsSmt6RTJcbmpML3JaSnpoRncrbUY4b2t0T1FUUkY5cEFDc2N3bHFib3lmY1FSN1dKRTk1SzFNSXFTWkRwcGYzeVFZUHNWSzZcbkxvMFJ1aXZNcnRtNHM5VkhWVXpQWHV0bzhuWnZBblBSVzh2Nm8rbnFpQnI1Y3BxSEJWNWd6U0NqL2FUK01NelBcblhCNFNXZHRuY1lGWS9Fcm8rQStnVUFJPVxuLS0tLS1FTkQgUFJJVkFURSBLRVktLS0tLVxuIiwKICAiY2xpZW50X2VtYWlsIjogImFkbWluLTEwMUBtb25rZXlsaW5ndWEtNDc2NjA3LmlhbS5nc2VydmljZWFjY291bnQuY29tIiwKICAiY2xpZW50X2lkIjogIjExMTA5NjY4OTkwNDU3Mzg0NzEwOSIsCiAgImF1dGhfdXJpIjogImh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbS9vL29hdXRoMi9hdXRoIiwKICAidG9rZW5fdXJpIjogImh0dHBzOi8vb2F1dGgyLmdvb2dsZWFwaXMuY29tL3Rva2VuIiwKICAiYXV0aF9wcm92aWRlcl94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL29hdXRoMi92MS9jZXJ0cyIsCiAgImNsaWVudF94NTA5X2NlcnRfdXJsIjogImh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL3JvYm90L3YxL21ldGFkYXRhL3g1MDkvYWRtaW4tMTAxJTQwbW9ua2V5bGluZ3VhLTQ3NjYwNy5pYW0uZ3NlcnZpY2VhY2NvdW50LmNvbSIsCiAgInVuaXZlcnNlX2RvbWFpbiI6ICJnb29nbGVhcGlzLmNvbSIKfQ=="
 
-      # Database Linking (Tên biến cũ DB_HOST, DB_PORT, v.v. đã bị thay thế)
-      - key: DB_HOST # Biến này không dùng trực tiếp trong Java application.yml, nhưng cần cho môi trường Render
+      # --- CẤU HÌNH G-SERVICES (BASE64 SECRETS) ---
+      # Firebase/Google Credentials Key
+      - key: FIREBASE_CREDENTIALS_BASE64
+        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTEwMDkiLAogICJwcml2YXRlX2tleV9pZCI6ICI1YjlhNDZiZjFmNGMyNmY5Y2FkNzg4Zjc0YzM0NjQ5ODFiMmYxMTAzIiwKICAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklW..."
+      - key: GOOGLE_CREDENTIALS_FILE_URL
+        value: /app/config/service-account-key.json # Đường dẫn ảo/backup
+
+      # Google Drive Service Account Key
+      - key: GDRIVE_KEY_BASE64
+        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTQ3NjYwNyIsCiAgInByaXZhdGVfa2V5X2lkIjogIjBhNDAyZmE2OGQyNThlMTA1YjNhYjBhZGNjNDg0NDcxZmRkNTdlNmQiLAogICJwcml2YXRlX2tleSI6ICItLS0tLUJFR0lOIFBSSVZBVEUgS0V..."
+      - key: GOOGLE_SERVICE_ACCOUNT_FILE_URL
+        value: /app/config/gdrive-key.json # Đường dẫn ảo/backup
+      # --- END G-SERVICES ---
+
+      # Database Linking (Dùng cho DB_URL)
+      - key: DB_HOST
         fromDatabase:
           name: shared-postgres
           property: host
-      - key: DB_PORT # Biến này không dùng trực tiếp trong Java application.yml, nhưng cần cho môi trường Render
+      - key: DB_PORT
         fromDatabase:
           name: shared-postgres
           property: port
-      - key: DB_NAME # Biến này không dùng trực tiếp trong Java application.yml, nhưng cần cho môi trường Render
+      - key: DB_NAME
         fromDatabase:
           name: shared-postgres
           property: database
 
-      # Các biến cần thiết cho Spring Boot DataSource trong application.yml
-      # Note: application.yml dùng DB_URL/DB_USERNAME/DB_PASSWORD
-      - key: DB_URL # Cấu hình Spring Datasource
+      # Cấu hình Spring Boot DataSource
+      - key: DB_URL
         value: "jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
-      - key: DB_USERNAME # Cấu hình Spring Datasource
+      - key: DB_USERNAME
         fromDatabase:
           name: shared-postgres
           property: user
-      - key: DB_PASSWORD # Cấu hình Spring Datasource
+      - key: DB_PASSWORD
         fromDatabase:
           name: shared-postgres
           property: password
 
-      # Redis Linking (Tên biến mới phù hợp với application.yml)
-      # Note: application.yml dùng REDIS_HOST/REDIS_PORT/REDIS_PASSWORD
+      # Redis Linking
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -64,39 +70,45 @@ services:
           type: redis
           name: redis
           property: port
-      - key: REDIS_PASSWORD # Lấy từ local redis command
+      - key: REDIS_PASSWORD
         value: "redisPass123"
       - key: REDIS_SSL
         value: "false"
 
-      # Cấu hình gRPC Java Server (Nhận cuộc gọi)
+      # Cấu hình gRPC & Inter-Service
       - key: GRPC_SERVER_PORT
         value: 9090
       - key: GRPC_SERVER_ADDRESS
         value: 0.0.0.0
-
-      # Cấu hình gRPC/HTTP Client Java (Gọi sang Python)
-      # Dựa trên application.yml: grpc.client.learning-service.address: "static://${PYTHON_GRPC_HOST}:${PYTHON_GRPC_PORT}"
       - key: PYTHON_GRPC_HOST
         value: pythonservice
       - key: PYTHON_GRPC_PORT
         value: 50051
 
-      # Các biến môi trường khác chuyển từ local/.env sang Prod/render.yaml
+      # --- CÁC BIẾN MÔI TRƯỜNG TỪ LOCAL DEV (Payment keys) ---
+      - key: VNPAY_TMNCODE
+        value: 9HFGRBLQ
+      - key: VNPAY_HASHSECRET
+        value: 7FPX1FWZ68R9ET24K830CDU2691C7RVZ
+      - key: VNPAY_URL
+        value: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+      - key: STRIPE_API_KEY
+        value: sk_test_51Rt1GiK4J6AVC7wy9H8RKaRG3qY6N9TnhcIHkVd7eDxcVM3xyeh9ZdynEfEdcQBe4ozHS0cfEaqvOM6JZXkHUPV2003YUKEFYK
+      - key: STRIPE_WEBHOOK_SECRET
+        value: whsec_u0PCrs1tLmoYcjPCraF1e0gfD7BaYQDH
+      # --- END PAYMENT KEYS ---
+
+      # Các biến cấu hình khác giữ nguyên
       - key: JWT_SIGNER_KEY
         value: OtKDnKZOdVMFihrc7TPBadUSUyR4MlycBb/Jbr58wBnfLMmUPbWyQNJN08S0kJhE
       - key: JWT_KEY_ID
         value: lingua-key-v1
       - key: SPRING_JPA_HIBERNATE_DDL_AUTO
-        value: none # Đặt là 'none' cho Prod
+        value: none
       - key: GOOGLE_CLIENT_ID
-        value: 15162814173-kdhjp4pthjlgpcnpsliq0dgh9284maco.apps.googleusercontent.com # Thay bằng Prod client ID
-      - key: GOOGLE_CREDENTIALS_FILE_URL
-        value: /app/config/service-account-key.json
-      - key: GOOGLE_SERVICE_ACCOUNT_FILE_URL
-        value: /app/config/gdrive-key.json
+        value: 15162814173-kdhjp4pthjlgpcnpsliq0dgh9284maco.apps.googleusercontent.com
       - key: GOOGLE_FOLDER_ID
-        value: 1BrqsnQ5vF38phPAT-8XexbsNgIzVQXOe # Giữ nguyên như Local
+        value: 1BrqsnQ5vF38phPAT-8XexbsNgIzVQXOe
       - key: PROD_CLOUDINARY_CLOUD_NAME
         value: du7euoczl
       - key: PROD_CLOUDINARY_API_KEY
@@ -115,16 +127,6 @@ services:
         value: "24"
       - key: EXAM_REMINDER_REPEAT_DAYS
         value: "1"
-      - key: VNPAY_TMNCODE
-        value: YOUR_VNPAY_PROD_TMNCODE_HERE
-      - key: VNPAY_HASHSECRET
-        value: YOUR_VNPAY_PROD_HASHSECRET_HERE
-      - key: VNPAY_URL
-        value: https://vnpayment.vn/paymentv2/vpcpay.html
-      - key: STRIPE_API_KEY
-        value: sk_live_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
-      - key: STRIPE_WEBHOOK_SECRET
-        value: whsec_XXXXXXXXXXXXXXXXXXXXXXXXXX
       - key: TWILIO_ACCOUNT_SID
         value: VAc7bd935ea6f7e99c9396b5937e797ea2
       - key: TWILIO_AUTH_TOKEN
@@ -137,8 +139,6 @@ services:
         value: your-prod-elasticsearch-host
       - key: ELASTICSEARCH_PORT
         value: "9200"
-
-      # Thêm các biến liên quan đến kích thước file/timeout từ Local
       - key: SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE
         value: 200MB
       - key: SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE
@@ -197,7 +197,7 @@ services:
           type: redis
           name: redis
           property: port
-      - key: REDIS_PASSWORD # Lấy từ local redis command
+      - key: REDIS_PASSWORD
         value: "redisPass123"
 
       # Cấu hình gRPC Python Server (Nhận cuộc gọi)
@@ -205,10 +205,10 @@ services:
         value: 50051
 
       # Cấu hình gRPC Client Python (Gọi sang Java)
-      - key: JAVA_GRPC_ADDRESS # Dựa trên local setup
+      - key: JAVA_GRPC_ADDRESS
         value: linguavietnameseapp:9090
 
-      # Các biến môi trường khác chuyển từ local/.env sang Prod/render.yaml
+      # Các biến môi trường khác
       - key: KAFKA_BOOTSTRAP_SERVERS
         value: your-prod-kafka-broker-1:9092,your-prod-kafka-broker-2:9092
       - key: ELASTICSEARCH_HOST
@@ -237,7 +237,7 @@ services:
       - key: KONG_PROXY_LISTEN
         value: 0.0.0.0:8000
       - key: KONG_ADMIN_LISTEN
-        value: 0.0.0.0:8003 # Chuyển về 8003 như cấu hình Prod cũ
+        value: 0.0.0.0:8003
       - key: KONG_PROXY_ACCESS_LOG
         value: /dev/stdout
       - key: KONG_ADMIN_ACCESS_LOG

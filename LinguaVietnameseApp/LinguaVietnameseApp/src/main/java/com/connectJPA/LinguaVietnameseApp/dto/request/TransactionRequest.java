@@ -29,6 +29,8 @@ public class TransactionRequest {
 
     private Integer coins;
 
+    private UUID receiverId;
+
     private TransactionType type;
     
     private String description;

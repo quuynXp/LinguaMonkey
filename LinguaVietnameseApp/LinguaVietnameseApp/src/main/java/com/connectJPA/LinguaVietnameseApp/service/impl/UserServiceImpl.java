@@ -1,5 +1,4 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
-
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
@@ -29,7 +28,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDate;
@@ -39,12 +37,10 @@ import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
-
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class UserServiceImpl implements UserService {
-
     private final LeaderboardEntryRepository leaderboardEntryRepository;
     private final LeaderboardRepository leaderboardRepository;
     private final InterestRepository interestRepository;
@@ -75,6 +71,7 @@ public class UserServiceImpl implements UserService {
     private final EventService eventService;
     private final DatingInviteRepository datingInviteRepository;
     private final StorageService storageService;
+    private final WalletRepository walletRepository;
     private final UserFcmTokenRepository userFcmTokenRepository;
     @PersistenceContext
     private EntityManager entityManager;
@@ -84,13 +81,10 @@ public class UserServiceImpl implements UserService {
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonRepository lessonRepository;
 
-    // ... (Existing methods like activateVipTrial, extendVipSubscription, getSuggestedUsers...)
-
     @Override
     public Page<UserResponse> getSuggestedUsers(UUID userId, Pageable pageable) {
         User currentUser = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         return userRepository.findSuggestedUsers(
                 userId,
                 currentUser.getCountry(),
@@ -99,36 +93,28 @@ public class UserServiceImpl implements UserService {
                 pageable
         ).map(userMapper::toResponse);
     }
-
     // NEW METHOD FOR PUBLIC SEARCH
     @Override
     public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, Pageable pageable) {
         try {
-            // Reusing existing search logic but mapping to UserProfileResponse safely
             Page<User> users;
             if (keyword != null && !keyword.isBlank()) {
                 users = userRepository.searchUsersByKeyword(keyword, pageable);
             } else if (country != null) {
-                // If you have a findByCountry method, use it. Otherwise fallback to all.
-                // Assuming simple filter for now or generic listing
-                users = userRepository.findAll(pageable); // Add proper filtering logic in repository if needed
+                users = userRepository.findAll(pageable);
             } else {
                 users = userRepository.findAll(pageable);
             }
-
-            // Map each user to a Profile Response (Safe View)
             List<UserProfileResponse> profileResponses = users.stream()
                     .filter(u -> !u.isDeleted())
                     .map(user -> getUserProfile(viewerId, user.getUserId()))
                     .collect(Collectors.toList());
-
             return new PageImpl<>(profileResponses, pageable, users.getTotalElements());
         } catch (Exception e) {
             log.error("Error searching public users", e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     // ... (Rest of the class implementation remains exactly as provided in the context, omitted for brevity but strictly kept)
     // Make sure to include all other methods from your provided UserServiceImpl.java
     // I am only showing the changed parts to satisfy the fix request while keeping the file technically complete if pasted into an IDE.
@@ -143,21 +129,17 @@ public class UserServiceImpl implements UserService {
         
         user.setVipExpirationDate(OffsetDateTime.now().plusDays(14));
         userRepository.saveAndFlush(user);
-
         notificationService.sendVipSuccessNotification(userId, false, "14-Day Trial");
     }
-
     @Transactional
     @Override
     public void extendVipSubscription(UUID userId, BigDecimal amount) {
         User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         OffsetDateTime currentExpiry = user.getVipExpirationDate();
         if (currentExpiry == null || currentExpiry.isBefore(OffsetDateTime.now())) {
             currentExpiry = OffsetDateTime.now();
         }
-
         String planType;
         if (amount.compareTo(new BigDecimal("90")) > 0) {
             user.setVipExpirationDate(currentExpiry.plusYears(1));
@@ -168,17 +150,13 @@ public class UserServiceImpl implements UserService {
         }
         
         userRepository.saveAndFlush(user);
-
         notificationService.sendVipSuccessNotification(userId, true, planType);
     }
-
     private UserResponse mapUserToResponseWithAllDetails(User user) {
         if (user == null) {
             return null;
         }
-
         UserResponse response = userMapper.toResponse(user);
-
         response.setHasFinishedSetup(user.isHasFinishedSetup());
         response.setHasDonePlacementTest(user.isHasDonePlacementTest());
         response.setLastDailyWelcomeAt(user.getLastDailyWelcomeAt());
@@ -193,10 +171,8 @@ public class UserServiceImpl implements UserService {
         } else {
              response.setVipDaysRemaining(0L);
         }
-
         int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
         response.setExpToNextLevel(nextLevelExp);
-
         try {
             List<String> languages = userLanguageRepository.findLanguageCodesByUserId(user.getUserId());
             response.setLanguages(languages);
@@ -204,14 +180,12 @@ public class UserServiceImpl implements UserService {
             log.warn("Failed to fetch languages for user {}: {}", user.getUserId(), e.getMessage());
             response.setLanguages(Collections.emptyList());
         }
-
         try {
             Optional<UserBadge> latestBadge = userBadgeRepository.findFirstByIdUserIdAndIsDeletedFalseOrderByCreatedAtDesc(user.getUserId());
             latestBadge.ifPresent(userBadge -> response.setBadgeId(userBadge.getId().getBadgeId()));
         } catch (Exception e) {
             log.warn("Failed to fetch badgeId for user {}: {}", user.getUserId(), e.getMessage());
         }
-
         try {
             Optional<UserAuthAccount> primaryAuth = userAuthAccountRepository.findByUser_UserIdAndIsPrimaryTrue(user.getUserId());
             if (primaryAuth.isPresent()) {
@@ -223,11 +197,9 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.warn("Failed to fetch authProvider for user {}: {}", user.getUserId(), e.getMessage());
         }
-
         try {
             long completedLessons = lessonProgressRepository.countByIdUserIdAndCompletedAtIsNotNullAndIsDeletedFalse(user.getUserId());
             long totalLessons = lessonRepository.countByIsDeletedFalse();
-
             if (totalLessons > 0) {
                 double progressCalc = ((double) completedLessons / totalLessons) * 100.0;
                 response.setProgress(Math.round(progressCalc * 100.0) / 100.0);
@@ -238,7 +210,6 @@ public class UserServiceImpl implements UserService {
             log.warn("Failed to calculate progress for user {}: {}", user.getUserId(), e.getMessage());
             response.setProgress(0.0);
         }
-
         try {
             List<String> certIds = userCertificateRepository.findAllByIdUserId(user.getUserId())
                     .stream()
@@ -249,7 +220,6 @@ public class UserServiceImpl implements UserService {
             log.warn("Failed to fetch certifications for user {}: {}", user.getUserId(), e.getMessage());
             response.setCertificationIds(Collections.emptyList());
         }
-
         try {
             List<UUID> interestIds = userInterestRepository.findById_UserIdAndIsDeletedFalse(user.getUserId())
                     .stream()
@@ -260,7 +230,6 @@ public class UserServiceImpl implements UserService {
             log.warn("Failed to fetch interests for user {}: {}", user.getUserId(), e.getMessage());
             response.setInterestIds(Collections.emptyList());
         }
-
         try {
             List<String> goalIds = userGoalRepository.findByUserIdAndIsDeletedFalse(user.getUserId())
                     .stream()
@@ -271,7 +240,6 @@ public class UserServiceImpl implements UserService {
             log.warn("Failed to fetch goals for user {}: {}", user.getUserId(), e.getMessage());
             response.setGoalIds(Collections.emptyList());
         }
-
         try {
             if (coupleService != null) {
                 CoupleProfileSummary cps = coupleService.getCoupleProfileSummaryByUser(user.getUserId(), user.getUserId());
@@ -280,10 +248,8 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.warn("Failed to fetch couple profile for user {}: {}", user.getUserId(), e.getMessage());
         }
-
         return response;
     }
-
     @Override
     public Page<UserResponse> getAllUsers(String email, String fullname, String nickname, Pageable pageable) {
         try {
@@ -291,15 +257,12 @@ public class UserServiceImpl implements UserService {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
             Page<User> users = userRepository.findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(email, fullname, nickname, pageable);
-
             return users.map(this::mapUserToResponseWithAllDetails);
         } catch (Exception e) {
             log.error("Error while fetching all users: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
-
     @Override
     public UserResponse getUserById(UUID id) {
         try {
@@ -308,21 +271,17 @@ public class UserServiceImpl implements UserService {
             }
             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while fetching user by ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     public boolean emailExists(String email) {
         if (email == null) return false;
         return userRepository.existsByEmailIgnoreCaseAndIsDeletedFalse(email.trim());
     }
-
-
     @Override
     @Transactional
     public UserResponse createUser(UserRequest request) {
@@ -330,24 +289,19 @@ public class UserServiceImpl implements UserService {
             if (request == null) {
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
             }
-
             if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
             }
-
             if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
                 throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
             }
-
             User user = new User();
             user.setEmail(request.getEmail().trim());
-
             if (request.getPassword() != null && !request.getPassword().isBlank()) {
                 user.setPassword(passwordEncoder.encode(request.getPassword()));
             } else {
                 user.setPassword(passwordEncoder.encode(RandomStringUtils.randomAlphanumeric(16)));
             }
-
             if (request.getFullname() != null) user.setFullname(request.getFullname());
             if (request.getNickname() != null) user.setNickname(request.getNickname());
             if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
@@ -361,7 +315,6 @@ public class UserServiceImpl implements UserService {
                 user.setDayOfBirth(request.getDayOfBirth());
                 calculateAndSetAgeRange(user);
             }
-
             if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
                 authenticationService.findOrCreateUserAccount(
                         request.getEmail(),
@@ -371,11 +324,18 @@ public class UserServiceImpl implements UserService {
                         request.getEmail()
                 );
             }
-
             user = userRepository.saveAndFlush(user);
 
-            roleService.assignRoleToUser(user.getUserId(), RoleName.STUDENT);
 
+            // --- AUTO CREATE WALLET ---
+            Wallet newWallet = Wallet.builder()
+                    .user(user)
+                    .balance(BigDecimal.ZERO)
+                    .build();
+            walletRepository.save(newWallet);
+            // --------------------------
+
+            roleService.assignRoleToUser(user.getUserId(), RoleName.STUDENT);
             Leaderboard lb = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global", PageRequest.of(0,1))
                     .stream().findFirst()
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
@@ -384,12 +344,10 @@ public class UserServiceImpl implements UserService {
                     .user(user)
                     .leaderboard(lb)
                     .build());
-
             userLearningActivityRepository.saveAndFlush(UserLearningActivity.builder()
                     .userId(user.getUserId())
                     .activityType(ActivityType.START_LEARNING)
                     .build());
-
             final User savedUser = user;
             if (request.getGoalIds() != null && !request.getGoalIds().isEmpty()) {
                 List<UserGoal> userGoals = request.getGoalIds().stream()
@@ -408,17 +366,13 @@ public class UserServiceImpl implements UserService {
                         .collect(Collectors.toList());
                 if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
             }
-
             return mapUserToResponseWithAllDetails(savedUser);
-
         } catch (AppException ae) {
             throw ae;
         } catch (Exception e) {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
-
     @Override
     @Transactional
     public UserResponse updateUser(UUID id, UserRequest request) {
@@ -426,10 +380,8 @@ public class UserServiceImpl implements UserService {
             if (id == null || request == null) {
                 throw new AppException(ErrorCode.INVALID_KEY);
             }
-
             User user = updateBasicUserInfo(id, request);
             final UUID userId = user.getUserId();
-
             if (request.getGoalIds() != null) {
                 updateUserGoals(userId, request.getGoalIds());
             }
@@ -456,7 +408,6 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     private User updateBasicUserInfo(UUID id, UserRequest request) {
         User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -476,7 +427,6 @@ public class UserServiceImpl implements UserService {
         } else if (request.getAgeRange() != null) {
             user.setAgeRange(request.getAgeRange());
         }
-
         if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
         if (request.getCountry() != null) user.setCountry(request.getCountry());
         if (request.getNativeLanguageCode() != null) user.setNativeLanguageCode(request.getNativeLanguageCode());
@@ -487,7 +437,6 @@ public class UserServiceImpl implements UserService {
         
         return userRepository.saveAndFlush(user);
     }
-
     private void calculateAndSetAgeRange(User user) {
         if (user.getDayOfBirth() == null) return;
         
@@ -500,7 +449,6 @@ public class UserServiceImpl implements UserService {
             }
         }
     }
-
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserLanguages(UUID userId, List<String> languageCodes) {
         userLanguageRepository.deleteAllInBatch(
@@ -530,7 +478,6 @@ public class UserServiceImpl implements UserService {
         }
         entityManager.clear();
     }
-
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserInterests(UUID userId, List<UUID> interestIds) {
         userInterestRepository.deleteAllInBatch(
@@ -538,7 +485,6 @@ public class UserServiceImpl implements UserService {
         );
         userInterestRepository.flush();
         entityManager.clear();
-
         List<UserInterest> interests = interestIds.stream()
                 .filter(Objects::nonNull)
                 .filter(interestRepository::existsById)
@@ -546,19 +492,16 @@ public class UserServiceImpl implements UserService {
                     UserInterestId id = new UserInterestId();
                     id.setUserId(userId);
                     id.setInterestId(interestId);
-
                     UserInterest ui = new UserInterest();
                     ui.setId(id);
                     return ui;
                 })
                 .collect(Collectors.toList());
-
         if (!interests.isEmpty()) {
             userInterestRepository.saveAllAndFlush(interests);
         }
         entityManager.clear();
     }
-
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserGoals(UUID userId, List<String> goalIds) {
         userGoalRepository.deleteAllInBatch(
@@ -588,7 +531,6 @@ public class UserServiceImpl implements UserService {
         }
         entityManager.clear();
     }
-
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserCertifications(UUID userId, List<String> certIds) {
         userCertificateRepository.deleteAllInBatch(
@@ -618,23 +560,18 @@ public class UserServiceImpl implements UserService {
         }
         entityManager.clear();
     }
-
-
     @Transactional(readOnly = true)
     @Override
     public UserProfileResponse getUserProfile(UUID viewerId, UUID targetId) {
         if (targetId == null) throw new AppException(ErrorCode.INVALID_KEY);
-
         User target = userRepository.findByUserIdAndIsDeletedFalse(targetId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         List<String> languages = new ArrayList<>();
         try {
             languages = userLanguageRepository.findLanguageCodesByUserId(targetId);
         } catch (Exception e) {
             log.warn("Failed to fetch languages for user profile {}: {}", targetId, e.getMessage());
         }
-
         UserProfileResponse.UserProfileResponseBuilder respB = UserProfileResponse.builder()
                 .userId(target.getUserId())
                 .fullname(target.getFullname())
@@ -649,7 +586,6 @@ public class UserServiceImpl implements UserService {
                 .ageRange(target.getAgeRange())      
                 .proficiency(target.getProficiency())
                 .learningPace(target.getLearningPace());
-
         try {
              respB.allowStrangerChat(true); 
         } catch (Exception e) {
@@ -659,7 +595,6 @@ public class UserServiceImpl implements UserService {
         if (target.getCountry() != null) {
             respB.flag(target.getCountry().name());
         }
-
         try {
             if (target.getCharacter3dId() != null) {
                 Character3dResponse ch = character3dMapper.toResponse(
@@ -670,13 +605,11 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.debug("character3d mapping failed for user {}: {}", targetId, e.getMessage());
         }
-
         try {
             respB.stats(this.getUserStats(targetId));
         } catch (Exception e) {
             log.debug("getUserStats failed for {}: {}", targetId, e.getMessage());
         }
-
         try {
             if (badgeService != null) {
                 respB.badges(badgeService.getBadgesForUser(targetId));
@@ -684,13 +617,11 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.debug("getBadgesForUser failed: {}", e.getMessage());
         }
-
         boolean isFriend = false;
         FriendRequestStatusResponse friendReqStatus = FriendRequestStatusResponse.builder().status("NONE").build();
         boolean canSendFriendRequest = true;
         boolean canUnfriend = false;
         boolean canBlock = false;
-
         if (viewerId != null) {
             try {
                 isFriend = friendshipService.isFriends(viewerId, targetId);
@@ -704,20 +635,17 @@ public class UserServiceImpl implements UserService {
         } else {
             canSendFriendRequest = false;
         }
-
         respB.isFriend(isFriend)
                 .friendRequestStatus(friendReqStatus)
                 .canSendFriendRequest(canSendFriendRequest)
                 .canUnfriend(canUnfriend)
                 .canBlock(canBlock);
-
         long admirationCount = admirationRepository.countByUserId(targetId);
         boolean hasAdmired = false;
         if (viewerId != null) {
             hasAdmired = admirationRepository.existsByUserIdAndSenderId(targetId, viewerId);
         }
         respB.admirationCount(admirationCount).hasAdmired(hasAdmired);
-
         boolean isTeacher = false;
         List<CourseSummaryResponse> teacherCourses = Collections.emptyList();
         try {
@@ -729,31 +657,26 @@ public class UserServiceImpl implements UserService {
             log.debug("teacher check or courses load failed: {}", e.getMessage());
         }
         respB.isTeacher(isTeacher).teacherCourses(teacherCourses);
-
         Map<String, Integer> leaderboardRanks = new HashMap<>();
         try {
             Integer globalRank = leaderboardEntryService.getRankForUserByTab("global", "student", targetId);
             if (globalRank != null) leaderboardRanks.put("global_student", globalRank);
-
             if (target.getCountry() != null) {
                 Integer countryRank = leaderboardEntryService.getRankForUserByTab(target.getCountry().name(), "student", targetId);
                 if (countryRank != null) leaderboardRanks.put("country_student", countryRank);
             }
-
             Integer teacherRank = leaderboardEntryService.getRankForUserByTab("global", "teacher", targetId);
             if (teacherRank != null) leaderboardRanks.put("teacher", teacherRank);
         } catch (Exception e) {
             log.debug("leaderboard rank fetch failed: {}", e.getMessage());
         }
         respB.leaderboardRanks(leaderboardRanks);
-
         try {
             CoupleProfileSummary cps = null;
             if (coupleService != null) {
                 cps = coupleService.getCoupleProfileSummaryByUser(targetId, viewerId);
             }
             respB.coupleProfile(cps);
-
             boolean exploringExpiringSoon = false;
             String exploringExpiresInHuman = null;
             if (cps != null && cps.getStatus() != null && cps.getStatus().name().equals("EXPLORING") && cps.getCoupleId() != null) {
@@ -772,13 +695,11 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.debug("couple info fetch failed: {}", e.getMessage());
         }
-
         try {
             DatingInviteSummary inviteSummary = null;
             if (viewerId != null && datingInviteRepository != null) {
                 Optional<DatingInvite> sent = datingInviteRepository.findTopBySenderIdAndTargetIdAndStatus(viewerId, targetId, DatingInviteStatus.PENDING);
                 Optional<DatingInvite> received = datingInviteRepository.findTopBySenderIdAndTargetIdAndStatus(targetId, viewerId, DatingInviteStatus.PENDING);
-
                 DatingInvite di = sent.orElseGet(() -> received.orElse(null));
                 if (di != null) {
                     long secondsToExpire = di.getExpiresAt() != null ? Math.max(0, Duration.between(OffsetDateTime.now(), di.getExpiresAt()).getSeconds()) : 0;
@@ -798,7 +719,6 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.debug("dating invite check failed: {}", e.getMessage());
         }
-
         try {
             List<MemorySummaryResponse> mutualMemories = Collections.emptyList();
             if (viewerId != null && eventService != null) {
@@ -808,7 +728,6 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.debug("mutual memories fetch failed: {}", e.getMessage());
         }
-
         if (viewerId != null && viewerId.equals(targetId)) {
             try {
                 List<FriendshipResponse> pending = friendshipService.getPendingRequestsForUser(targetId, PageRequest.of(0,10)).getContent();
@@ -828,11 +747,8 @@ public class UserServiceImpl implements UserService {
                 log.debug("private inbox fetch failed: {}", e.getMessage());
             }
         }
-
         return respB.build();
     }
-
-
     @Override
     @Transactional
     public void deleteUser(UUID id) {
@@ -848,20 +764,15 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     public User getUserIfExists(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
     }
-
     @Override
     public User findByUserId(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
     }
-
-    // ... (include all other remaining methods: updateAvatarUrl, changePassword, deactivateUser, restoreUser, etc. as they were)
-    // For brevity, assuming they are present in the final file as they were in input.
     @Transactional
     public UserResponse updateAvatarUrl(UUID id, String avatarUrl) {
          try {
@@ -881,7 +792,6 @@ public class UserServiceImpl implements UserService {
              throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
          }
     }
-
     @Override
     @Transactional
     public UserResponse updateNativeLanguage(UUID id, String nativeLanguageCode) {
@@ -896,7 +806,6 @@ public class UserServiceImpl implements UserService {
             }
             user.setNativeLanguageCode(nativeLanguageCode);
             user = userRepository.saveAndFlush(user);
-
             NotificationRequest notificationRequest = NotificationRequest.builder()
                     .userId(id)
                     .title("Native Language Updated")
@@ -904,14 +813,12 @@ public class UserServiceImpl implements UserService {
                     .type("NATIVE_LANGUAGE_UPDATE")
                     .build();
             notificationService.createNotification(notificationRequest);
-
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating native language for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public UserResponse updateCountry(UUID id, Country country) {
@@ -923,7 +830,6 @@ public class UserServiceImpl implements UserService {
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             user.setCountry(country);
             user = userRepository.saveAndFlush(user);
-
             NotificationRequest notificationRequest = NotificationRequest.builder()
                     .userId(id)
                     .title("Country Updated")
@@ -931,14 +837,12 @@ public class UserServiceImpl implements UserService {
                     .type("COUNTRY_UPDATE")
                     .build();
             notificationService.createNotification(notificationRequest);
-
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating country for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public UserResponse updateExp(UUID id, int exp) {
@@ -973,14 +877,12 @@ public class UserServiceImpl implements UserService {
                 notificationService.createNotification(notificationRequest);
             }
             user = userRepository.saveAndFlush(user);
-
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating exp for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public UserResponse updateUserAvatar(UUID userId, String tempPath) {
@@ -988,23 +890,18 @@ public class UserServiceImpl implements UserService {
             if (tempPath == null || tempPath.isBlank()) {
                 throw new AppException(ErrorCode.INVALID_REQUEST);
             }
-
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
             String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
             String newFilename = String.format("avatar_%s_%s", timestamp, userId);
-
             UserMedia committedMedia = storageService.commit(
                     tempPath,
                     newFilename,
                     userId,
                     MediaType.IMAGE
             );
-
             user.setAvatarUrl(committedMedia.getFileUrl());
             User savedUser = userRepository.saveAndFlush(user);
-
             NotificationRequest notificationRequest = NotificationRequest.builder()
                     .userId(userId)
                     .title("Avatar Updated")
@@ -1012,14 +909,12 @@ public class UserServiceImpl implements UserService {
                     .type("AVATAR_UPDATE")
                     .build();
             notificationService.createNotification(notificationRequest);
-
             return mapUserToResponseWithAllDetails(savedUser);
         } catch (Exception e) {
             log.error("Error while updating avatar (Drive flow) for user ID {}: {}", userId, e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public void updateLastActive(UUID userId) {
@@ -1048,7 +943,6 @@ public class UserServiceImpl implements UserService {
             
             boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
             boolean streakAlreadyUpdatedToday = today.equals(user.getLastStreakCheckDate());
-
             if (hasHitDailyGoal && !streakAlreadyUpdatedToday) {
                 user.setStreak(currentStreak + 1);
                 user.setLastStreakCheckDate(today);
@@ -1070,7 +964,6 @@ public class UserServiceImpl implements UserService {
             } else {
                 log.info("User {} has not hit daily goal ({} mins). Current minutes: {}", id, minGoal, totalDurationMinutesToday);
             }
-
             return mapUserToResponseWithAllDetails(user);
             
         } catch (ObjectOptimisticLockingFailureException e) {
@@ -1081,7 +974,6 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public void resetStreakIfNoActivity(UUID id) {
@@ -1094,12 +986,10 @@ public class UserServiceImpl implements UserService {
             
             LocalDate yesterday = LocalDate.now().minusDays(1);
             int minGoal = user.getMinLearningDurationMinutes();
-
             Long totalDurationMinutesYesterday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, yesterday);
             boolean hasHitDailyGoalYesterday = totalDurationMinutesYesterday >= minGoal;
             
             boolean streakCheckYesterday = yesterday.equals(user.getLastStreakCheckDate());
-
             if (user.getStreak() > 0 && (!hasHitDailyGoalYesterday || !streakCheckYesterday)) {
                 user.setStreak(0);
                 user.setLastStreakCheckDate(null);
@@ -1118,7 +1008,6 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public void sendStreakReminder(UUID id) {
@@ -1131,10 +1020,8 @@ public class UserServiceImpl implements UserService {
             
             LocalDate today = LocalDate.now();
             int minGoal = user.getMinLearningDurationMinutes();
-
             Long totalDurationMinutesToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(id, today);
             boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
-
             if (!hasHitDailyGoal && user.getStreak() > 0) {
                 long minutesRemaining = minGoal - totalDurationMinutesToday;
                 
@@ -1174,19 +1061,16 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public void registerFcmToken(NotificationRequest request) {
         if (!userRepository.existsByUserIdAndIsDeletedFalse(request.getUserId())) {
             throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
-
         if (request.getDeviceId() == null || request.getDeviceId().isBlank()) {
             log.warn("Missing deviceId for user {}", request.getUserId());
             throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
         }
-
         UUID userId = request.getUserId();
         String fcmToken = request.getFcmToken();
         String deviceId = request.getDeviceId();
@@ -1206,7 +1090,6 @@ public class UserServiceImpl implements UserService {
         
         Optional<UserFcmToken> existingTokenForDevice = userFcmTokenRepository
                 .findByUserIdAndDeviceId(userId, deviceId);
-
         if (existingTokenForDevice.isPresent()) {
             UserFcmToken token = existingTokenForDevice.get();
             if (!token.getFcmToken().equals(fcmToken)) {
@@ -1226,7 +1109,6 @@ public class UserServiceImpl implements UserService {
             log.info("Created new FCM token for user {} on new device {}", userId, deviceId);
         }
     }
-
     @Override
     @Transactional
     public UserResponse updateSetupStatus(UUID id, boolean isFinished) {
@@ -1239,7 +1121,6 @@ public class UserServiceImpl implements UserService {
         
         return mapUserToResponseWithAllDetails(user);
     }
-
     @Override
     @Transactional
     public UserResponse updatePlacementTestStatus(UUID id, boolean isDone) {
@@ -1249,10 +1130,8 @@ public class UserServiceImpl implements UserService {
         
         user.setHasDonePlacementTest(isDone);
         user = userRepository.saveAndFlush(user);
-
         return mapUserToResponseWithAllDetails(user);
     }
-
     @Override
     @Transactional
     public UserResponse trackDailyWelcome(UUID id) {
@@ -1265,24 +1144,19 @@ public class UserServiceImpl implements UserService {
         
         return mapUserToResponseWithAllDetails(user);
     }
-
     private boolean isValidUrl(String url) {
         return url != null && (url.startsWith("http://") || url.startsWith("https://")) && url.length() <= 255;
     }
-
     private int calculateLevel(int exp) {
         return exp / EXP_PER_LEVEL + 1;
     }
-
     @Override
     public Character3dResponse getCharacter3dByUserId(UUID userId) {
         try {
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(()-> new AppException((ErrorCode.USER_NOT_FOUND)));
             if (user.getCharacter3dId() == null) throw new AppException(ErrorCode.CHARACTER3D_NOT_FOUND);
-
             Character3d character = character3dRepository.findByCharacter3dIdAndIsDeletedFalse(user.getCharacter3dId())
                     .orElseThrow(() -> new AppException(ErrorCode.CHARACTER3D_NOT_FOUND));
-
             return character3dMapper.toResponse(character);
         } catch (IllegalArgumentException e) {
             throw new AppException(ErrorCode.INVALID_KEY);
@@ -1290,15 +1164,12 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     @Override
     @Transactional
     public void changePassword(UUID id, PasswordUpdateRequest request) {
         if (id == null || request == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-
         User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         if (user.getPassword() != null && !user.getPassword().isBlank() && request.getCurrentPassword() != null) {
             if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
                 throw new AppException(ErrorCode.INCORRECT_PASSWORD);
@@ -1306,14 +1177,11 @@ public class UserServiceImpl implements UserService {
         } else if (user.getPassword() != null && !user.getPassword().isBlank() && request.getCurrentPassword() == null) {
             throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
         }
-
         if (request.getNewPassword() == null || request.getNewPassword().length() < 6) {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
-
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         userRepository.saveAndFlush(user);
-
         NotificationRequest notificationRequest = NotificationRequest.builder()
                 .userId(id)
                 .title("Password Changed")
@@ -1322,19 +1190,15 @@ public class UserServiceImpl implements UserService {
                 .build();
         notificationService.createNotification(notificationRequest);
     }
-
     @Override
     @Transactional
     public void deactivateUser(UUID id, int daysToKeep) {
         if (id == null) throw new AppException(ErrorCode.INVALID_KEY);
-
         User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         if (user.isDeleted()) {
             throw new AppException(ErrorCode.ACCOUNT_ALREADY_DEACTIVATED);
         }
-
         user.setDeleted(true);
         user.setDeletedAt(OffsetDateTime.now());
         
@@ -1348,7 +1212,6 @@ public class UserServiceImpl implements UserService {
                 .build();
         notificationService.createNotification(notificationRequest);
     }
-
     @Override
     @Transactional
     public UserResponse restoreUser(UUID id) {
@@ -1356,11 +1219,9 @@ public class UserServiceImpl implements UserService {
         
         User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         if (!user.isDeleted()) {
             throw new AppException(ErrorCode.ACCOUNT_NOT_DEACTIVATED);
         }
-
         if (user.getDeletedAt() != null) {
             OffsetDateTime permanentDeleteTime = user.getDeletedAt().plusDays(30);
             if (OffsetDateTime.now().isAfter(permanentDeleteTime)) {
@@ -1371,7 +1232,6 @@ public class UserServiceImpl implements UserService {
         user.setDeleted(false);
         user.setDeletedAt(null);
         user = userRepository.saveAndFlush(user);
-
         NotificationRequest notificationRequest = NotificationRequest.builder()
                 .userId(id)
                 .title("Account Restored")
@@ -1379,25 +1239,170 @@ public class UserServiceImpl implements UserService {
                 .type("ACCOUNT_RESTORED")
                 .build();
         notificationService.createNotification(notificationRequest);
-
         return mapUserToResponseWithAllDetails(user);
     }
 
-    @Override
-    public UserStatsResponse getUserStats(UUID userId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getUserStats'");
-    }
-
-    @Override
-    public void admire(UUID senderId, UUID targetId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'admire'");
-    }
-
-    @Override
-    public String getUserEmailByUserId(UUID userId) {
-        // TODO Auto-generated method stub
-        throw new UnsupportedOperationException("Unimplemented method 'getUserEmailByUserId'");
-    }
+        @Override
+    
+        public String getUserEmailByUserId(UUID userId) {
+    
+            try {
+    
+                User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+    
+                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    
+                return user.getEmail();
+    
+            } catch (Exception e) {
+    
+                throw new AppException(ErrorCode.USER_NOT_FOUND);
+    
+            }
+    
+        }
+    
+    
+    
+    
+        @Transactional
+    
+        @Override
+    
+        public void admire(UUID senderId, UUID targetId) {
+    
+            if (senderId == null || targetId == null) {
+    
+                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+    
+            }
+    
+            if (admirationRepository.existsByUserIdAndSenderId(targetId, senderId)) {
+    
+                throw new AppException(ErrorCode.ALREADY_EXISTS);
+    
+            }
+    
+    
+    
+            Admiration a = Admiration.builder()
+    
+                    .userId(targetId)
+    
+                    .senderId(senderId)
+    
+                    .createdAt(OffsetDateTime.now())
+    
+                    .build();
+    
+            admirationRepository.saveAndFlush(a);
+    
+    
+    
+            NotificationRequest notificationRequest = NotificationRequest.builder()
+    
+                    .userId(targetId)
+    
+                    .title("Bạn vừa được ngưỡng mộ")
+    
+                    .content("Bạn vừa nhận được một lượt ngưỡng mộ từ người dùng " + senderId)
+    
+                    .type("ADMIRE")
+    
+                    .build();
+    
+    
+    
+            notificationService.createNotification(notificationRequest);
+    
+    
+    
+            try {
+    
+                notificationService.createPushNotification(notificationRequest);
+    
+            } catch (Exception ex) {
+    
+                log.warn("Push notification failed for admire: sender={}, target={}, error={}", senderId, targetId, ex.getMessage());
+    
+            }
+    
+        }
+    
+    
+    
+        private Locale getLocaleByUserId(UUID userId) {
+    
+            User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+    
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    
+            return user.getNativeLanguageCode() != null ? Locale.forLanguageTag(user.getNativeLanguageCode()) : Locale.getDefault();
+    
+        }
+    
+    
+    
+    
+        @Override
+    
+        public UserStatsResponse getUserStats(UUID userId) {
+    
+            if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
+    
+    
+    
+            User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+    
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    
+    
+    
+            long totalMessages = chatMessageRepository.countMessagesForUser(userId);
+    
+            long translationsUsed = chatMessageRepository.countTranslationsForUser(userId);
+    
+            long videoCalls = videoCallRepository.countCompletedCallsForUser(userId);
+    
+            OffsetDateTime lastActive = user.getLastActiveAt();
+    
+    
+    
+            boolean online = false;
+    
+            if (lastActive != null) {
+    
+                online = lastActive.isAfter(OffsetDateTime.now().minusMinutes(5));
+    
+            }
+    
+    
+    
+            return UserStatsResponse.builder()
+    
+                    .userId(userId)
+    
+                    .totalMessages(totalMessages)
+    
+                    .translationsUsed(translationsUsed)
+    
+                    .videoCalls(videoCalls)
+    
+                    .lastActiveAt(lastActive)
+    
+                    .online(online)
+    
+                    .level(user.getLevel())
+    
+                    .exp(user.getExp())
+    
+                    .streak(user.getStreak())
+    
+                    .build();
+    
+        }
+    
+    
+    
+  
 }

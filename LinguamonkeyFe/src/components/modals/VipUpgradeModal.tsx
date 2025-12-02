@@ -151,7 +151,8 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
             type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
             status: Enums.TransactionStatus.SUCCESS,
             description: getDescription(),
-            coins: useCoins ? coinsToUse : 0
+            coins: useCoins ? coinsToUse : 0,
+            // receiverId: 
         };
 
         createTransaction.mutate(payload, {

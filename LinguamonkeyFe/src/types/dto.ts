@@ -645,6 +645,7 @@ export interface TransactionRequest {
     amount: number;
     coins: number;
     currency: string;
+    receiverId: string;
     provider: Enums.TransactionProvider;
     type: Enums.TransactionType;
     description: string;

@@ -19,6 +19,7 @@ interface CourseType {
   title: string;
   price: number;
   instructor: string;
+  creatorId?: string; // ADDED: ID of the instructor to receive money
 }
 
 const PaymentScreen = ({ navigation, route }: any) => {
@@ -140,10 +141,11 @@ const PaymentScreen = ({ navigation, route }: any) => {
       amount: cleanAmount,
       provider: Enums.TransactionProvider.INTERNAL,
       currency: userCurrency,
-      type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
+      type: Enums.TransactionType.PAYMENT,
       status: Enums.TransactionStatus.SUCCESS,
       description: `Payment for course: ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
-      coins: useCoins ? coinsToUse : 0
+      coins: useCoins ? coinsToUse : 0,
+      receiverId: course.creatorId
     };
 
     createTransaction.mutate(payload, {
@@ -163,7 +165,7 @@ const PaymentScreen = ({ navigation, route }: any) => {
       amount: cleanAmount,
       provider: gatewayProvider,
       currency: userCurrency,
-      type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
+      type: Enums.TransactionType.PAYMENT,
       returnUrl: "linguamonkey://payment/success",
       description: `Buy ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
       coins: useCoins ? coinsToUse : 0
