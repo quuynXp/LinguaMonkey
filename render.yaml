@@ -9,10 +9,10 @@ services:
     dockerContext: .
     healthCheckPath: /actuator/health
     numInstances: 1
-    disk:
-      name: app_data
-      mountPath: /var/lib/app_data
-      sizeGB: 1
+    # disk:
+    #   name: app_data
+    #   mountPath: /var/lib/app_data
+    #   sizeGB: 1
 
     # Mount secret files (Upload these in Render Dashboard)
     envVars:
