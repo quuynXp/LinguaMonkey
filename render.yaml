@@ -159,10 +159,6 @@ services:
     dockerContext: .
     numInstances: 1
 
-    # Mount public key for auth verification
-    secretFiles:
-      
-
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
