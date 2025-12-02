@@ -161,8 +161,7 @@ services:
 
     # Mount public key for auth verification
     secretFiles:
-      - name: public_key.pem
-        mountPath: /app/public_key.pem
+      
 
     envVars:
       - key: TZ
