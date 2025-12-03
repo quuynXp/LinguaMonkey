@@ -8,6 +8,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateCourseVersionRequest
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseSummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CreatorDashboardResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionEnrollment;
@@ -37,6 +38,8 @@ import com.connectJPA.LinguaVietnameseApp.service.CourseVersionDiscountService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseVersionEnrollmentService;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.connectJPA.LinguaVietnameseApp.service.RoomService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -46,6 +49,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -69,6 +73,7 @@ public class CourseServiceImpl implements CourseService {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
+    private final RoomService roomService;
 
     private final CourseMapper courseMapper;
     private final CourseVersionMapper versionMapper;
@@ -112,6 +117,84 @@ public class CourseServiceImpl implements CourseService {
         return response;
     }
 
+    // --- Existing Creator Stats (Preserved) ---
+    public CreatorDashboardResponse getCreatorDashboardStats(UUID creatorId) {
+        if (!userRepository.existsById(creatorId)) {
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
+        }
+
+        long totalStudents = courseEnrollmentRepository.countStudentsByCreatorId(creatorId);
+        long totalReviews = courseReviewRepository.countByCreatorId(creatorId);
+        Double avgRatingVal = courseReviewRepository.getAverageRatingByCreatorId(creatorId);
+        double averageRating = avgRatingVal != null ? avgRatingVal : 0.0;
+
+        return calculateDashboardMetrics(creatorId, totalStudents, totalReviews, averageRating, true);
+    }
+
+    // --- New Method for Specific Course Stats ---
+    public CreatorDashboardResponse getCourseDashboardStats(UUID courseId) {
+        if (!courseRepository.existsById(courseId)) {
+            throw new AppException(ErrorCode.COURSE_NOT_FOUND);
+        }
+
+        long totalStudents = courseEnrollmentRepository.countStudentsByCourseId(courseId);
+        long totalReviews = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(courseId);
+        Double avgRatingVal = courseReviewRepository.getAverageRatingByCourseId(courseId);
+        double averageRating = avgRatingVal != null ? avgRatingVal : 0.0;
+
+        return calculateDashboardMetrics(courseId, totalStudents, totalReviews, averageRating, false);
+    }
+
+    // Helper to avoid duplicating date logic
+    private CreatorDashboardResponse calculateDashboardMetrics(UUID id, long students, long reviews, double rating, boolean isCreatorContext) {
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime startOfDay = now.withHour(0).withMinute(0).withSecond(0).withNano(0);
+        OffsetDateTime startOfWeek = now.minusDays(now.getDayOfWeek().getValue() - 1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        OffsetDateTime startOfMonth = now.withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+        OffsetDateTime startOfYear = now.withDayOfYear(1).withHour(0).withMinute(0).withSecond(0).withNano(0);
+
+        BigDecimal revenueToday, revenueWeek, revenueMonth, revenueYear;
+
+        if (isCreatorContext) {
+            revenueToday = courseEnrollmentRepository.sumRevenueByCreatorIdAndDateRange(id, startOfDay, now);
+            revenueWeek = courseEnrollmentRepository.sumRevenueByCreatorIdAndDateRange(id, startOfWeek, now);
+            revenueMonth = courseEnrollmentRepository.sumRevenueByCreatorIdAndDateRange(id, startOfMonth, now);
+            revenueYear = courseEnrollmentRepository.sumRevenueByCreatorIdAndDateRange(id, startOfYear, now);
+        } else {
+            revenueToday = courseEnrollmentRepository.sumRevenueByCourseIdAndDateRange(id, startOfDay, now);
+            revenueWeek = courseEnrollmentRepository.sumRevenueByCourseIdAndDateRange(id, startOfWeek, now);
+            revenueMonth = courseEnrollmentRepository.sumRevenueByCourseIdAndDateRange(id, startOfMonth, now);
+            revenueYear = courseEnrollmentRepository.sumRevenueByCourseIdAndDateRange(id, startOfYear, now);
+        }
+
+        List<CreatorDashboardResponse.ChartDataPoint> chartData = new ArrayList<>();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM");
+        
+        for (int i = 6; i >= 0; i--) {
+            OffsetDateTime dayStart = now.minusDays(i).withHour(0).withMinute(0).withSecond(0).withNano(0);
+            OffsetDateTime dayEnd = dayStart.plusDays(1).minusNanos(1);
+            
+            BigDecimal dailyRev;
+            if (isCreatorContext) {
+                dailyRev = courseEnrollmentRepository.sumRevenueByCreatorIdAndDateRange(id, dayStart, dayEnd);
+            } else {
+                dailyRev = courseEnrollmentRepository.sumRevenueByCourseIdAndDateRange(id, dayStart, dayEnd);
+            }
+            chartData.add(new CreatorDashboardResponse.ChartDataPoint(dayStart.format(formatter), dailyRev));
+        }
+
+        return CreatorDashboardResponse.builder()
+                .totalStudents(students)
+                .totalReviews(reviews)
+                .averageRating(rating)
+                .revenueToday(revenueToday)
+                .revenueWeek(revenueWeek)
+                .revenueMonth(revenueMonth)
+                .revenueYear(revenueYear)
+                .revenueChart(chartData)
+                .build();
+    }
+
     @Override
     public Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
@@ -138,7 +221,7 @@ public class CourseServiceImpl implements CourseService {
         course.setApprovalStatus(CourseApprovalStatus.PENDING);
         course = courseRepository.save(course);
 
-        // Tạo Version đầu tiên (Draft v1)
+        // Create first Version (Draft v1)
         CourseVersion version = new CourseVersion();
         version.setCourse(course);
         version.setVersionNumber(1);
@@ -160,28 +243,40 @@ public class CourseServiceImpl implements CourseService {
         User creator = userRepository.findById(version.getCourse().getCreatorId())
                 .orElseThrow(() -> new AppException(ErrorCode.BAD_REQUEST));
 
-        version.setDescription(request.getDescription());
-        version.setThumbnailUrl(request.getThumbnailUrl());
+        // 1. Update Basic Info
+        if (request.getDescription() != null) version.setDescription(request.getDescription());
+        if (request.getThumbnailUrl() != null) version.setThumbnailUrl(request.getThumbnailUrl());
+        if (request.getPrice() != null) version.setPrice(request.getPrice());
+        if (request.getLanguageCode() != null) version.setLanguageCode(request.getLanguageCode());
+        if (request.getDifficultyLevel() != null) version.setDifficultyLevel(request.getDifficultyLevel());
+        if (request.getCategoryCode() != null) version.setCategoryCode(request.getCategoryCode());
 
-        if (version.getLessons() != null) {
-            version.getLessons().clear();
-        } else {
-            version.setLessons(new ArrayList<>());
-        }
-
-        int order = 0;
-        for (UUID lessonId : request.getLessonIds()) {
-            Lesson lesson = lessonRepository.findById(lessonId)
-                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-
-            if (!lesson.getCreatorId().equals(creator.getUserId())) {
-                throw new AppException(ErrorCode.UNAUTHORIZED);
+        // 2. Update Lessons & Order
+        if (request.getLessonIds() != null) {
+            // Clear existing relationships
+            if (version.getLessons() != null) {
+                version.getLessons().clear();
+            } else {
+                version.setLessons(new ArrayList<>());
             }
+            
+            // Re-add based on the ordered list
+            int order = 0;
+            for (UUID lessonId : request.getLessonIds()) {
+                Lesson lesson = lessonRepository.findById(lessonId)
+                        .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
-            CourseVersionLesson cvl = new CourseVersionLesson(version, lesson, order++);
-            version.getLessons().add(cvl);
+                // Security check: Lesson must belong to the same creator
+                if (!lesson.getCreatorId().equals(creator.getUserId())) {
+                    throw new AppException(ErrorCode.UNAUTHORIZED);
+                }
+
+                CourseVersionLesson cvl = new CourseVersionLesson(version, lesson, order++);
+                version.getLessons().add(cvl);
+            }
         }
 
+        // Reset validation status on content change
         version.setIsIntegrityValid(null);
         version.setIsContentValid(null);
         version.setValidationWarnings(null);
@@ -369,13 +464,17 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
-    public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Pageable pageable) {
+    public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable) {
         Page<Course> courses;
-        if (type == null) {
+
+        if (Boolean.TRUE.equals(isAdminCreated)) {
+            courses = courseRepository.findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(
+                    CourseApprovalStatus.APPROVED, pageable);
+        } else if (type != null) {
+            courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
+        } else {
             courses = courseRepository.findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
                     title, languageCode, CourseApprovalStatus.APPROVED, pageable);
-        } else {
-            courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
         }
         return courses.map(courseMapper::toResponse).map(this::enrichCourseResponse);
     }
@@ -420,7 +519,6 @@ public class CourseServiceImpl implements CourseService {
             Page<Course> fallbackCourses = courseRepository.findByCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
                     enrolledCourseIds,
                     CourseApprovalStatus.APPROVED,
-                    false,
                     pageable
             );
             recommendedCourses.addAll(fallbackCourses.getContent());
@@ -452,12 +550,6 @@ public class CourseServiceImpl implements CourseService {
                 .collect(Collectors.toList());
     }
 
-    // @Override
-    // public Page<CourseResponse> getDiscountedCourses(Pageable pageable) {
-    //     Page<Course> discounted = courseRepository.findDiscountedCourses(pageable);
-    //     return discounted.map(courseMapper::toResponse).map(this::enrichCourseResponse);
-    // }
-
     @Override
     public CourseResponse getCourseById(UUID id) {
         Course course = courseRepository
@@ -475,9 +567,8 @@ public class CourseServiceImpl implements CourseService {
         course.setDeleted(true);
         courseRepository.save(course);
 
-        // Xóa khuyến mãi của tất cả version thuộc course này
+        // Delete discounts and enrollments
         courseVersionDiscountService.deleteDiscountsByCourseId(id);
-        
         courseEnrollmentService.deleteCourseVersionEnrollmentsByCourseId(id);
     }
 
@@ -520,6 +611,8 @@ public class CourseServiceImpl implements CourseService {
         course.setApprovalStatus(CourseApprovalStatus.APPROVED);
         courseRepository.save(course);
         version = courseVersionRepository.save(version);
+        
+        roomService.ensureCourseRoomExists(course.getCourseId(), course.getTitle(), course.getCreatorId());
 
         NotificationRequest creatorNotif = NotificationRequest.builder()
                 .userId(course.getCreatorId())

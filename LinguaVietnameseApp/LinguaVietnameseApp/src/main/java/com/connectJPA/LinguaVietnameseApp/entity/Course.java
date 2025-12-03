@@ -60,4 +60,7 @@ public class Course extends BaseEntity {
                 .map(CourseVersionLesson::getLesson)
                 .collect(Collectors.toList());
     }
+
+    @Column(name = "is_admin_created", nullable = false)
+    private Boolean isAdminCreated = false;
 }

@@ -1,9 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.ApproveRefundRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.PaymentRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TransactionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.WebhookRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.RefundRequestResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.TransactionResponse;
 import com.connectJPA.LinguaVietnameseApp.service.TransactionService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -46,6 +48,50 @@ public class TransactionController {
                 .message(messageSource.getMessage("transaction.payment.created.success", null, locale))
                 .result(paymentUrl)
                 .build());
+    }
+
+    @Operation(summary = "[Admin] Get pending refund requests")
+    @GetMapping("/refunds/pending")
+    // @PreAuthorize("hasRole('ADMIN')") 
+    public AppApiResponse<Page<RefundRequestResponse>> getPendingRefunds(
+            Pageable pageable,
+            Locale locale) {
+        Page<RefundRequestResponse> refunds = transactionService.getPendingRefundRequests(pageable);
+        return AppApiResponse.<Page<RefundRequestResponse>>builder()
+                .code(200)
+                .message("Pending refunds retrieved")
+                .result(refunds)
+                .build();
+    }
+
+    @Operation(summary = "[Admin] Approve a refund")
+    @PostMapping("/refunds/approve")
+    // @PreAuthorize("hasRole('ADMIN')")
+    public AppApiResponse<TransactionResponse> approveRefund(
+            @RequestBody ApproveRefundRequest request,
+            Locale locale) {
+        TransactionResponse response = transactionService.approveRefund(request);
+        return AppApiResponse.<TransactionResponse>builder()
+                .code(200)
+                .message("Refund approved successfully")
+                .result(response)
+                .build();
+    }
+
+    @Operation(summary = "[Admin] Reject a refund")
+    @PostMapping("/refunds/{id}/reject")
+    // @PreAuthorize("hasRole('ADMIN')")
+    public AppApiResponse<TransactionResponse> rejectRefund(
+            @PathVariable UUID id,
+            @RequestParam UUID adminId,
+            @RequestParam String reason,
+            Locale locale) {
+        TransactionResponse response = transactionService.rejectRefund(id, adminId, reason);
+        return AppApiResponse.<TransactionResponse>builder()
+                .code(200)
+                .message("Refund rejected")
+                .result(response)
+                .build();
     }
 
     @Operation(summary = "Handle payment webhook", description = "Process webhook notifications from VNPAY, or Stripe")

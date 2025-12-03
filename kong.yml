@@ -52,14 +52,13 @@ services:
           minute: 200
 
   # ==============================================================================
-  # 2. PROTECTED JAVA SERVICE
+  # 2. PROTECTED JAVA SERVICE (API CHUNG)
   # ==============================================================================
   - name: java-service
     url: http://linguavietnameseapp:8080
-    # Tăng timeout cho các tác vụ tốn thời gian như upload
     connect_timeout: 60000
-    write_timeout: 300000
-    read_timeout: 300000
+    write_timeout: 60000
+    read_timeout: 60000
     routes:
       - name: java-api-protected
         strip_path: false
@@ -70,7 +69,8 @@ services:
           - /api/v1/course-version-enrollments
           - /api/v1/course-lessons
           - /api/v1/daily-challenges
-          - /api/v1/files
+          - /api/v1/files/
+          - /api/v1/files/user/
           - /api/v1/flashcards
           - /api/v1/friendships
           - /api/v1/group-answers
@@ -95,15 +95,6 @@ services:
           - /api/v1/video-calls
           - /api/v1/wallets
           - /api/v1/wallets/
-          - /api/v1/files/
-          - /api/v1/files/user/
-          - /api/v1/files/upload-temp
-      - name: java-stomp
-        strip_path: false
-        protocols: [http, https]
-        methods: [GET, POST, OPTIONS]
-        paths:
-          - /ws/
     plugins:
       - name: rate-limiting
         config:
@@ -116,7 +107,45 @@ services:
           minute: 500
       - name: request-size-limiting
         config:
-          allowed_payload_size: 200 # Tăng giới hạn payload lên 200MB
+          allowed_payload_size: 200
+
+  # ==============================================================================
+  # 2.1. JAVA UPLOAD SERVICE (RIÊNG CHO UPLOAD FILE)
+  # ==============================================================================
+  - name: java-upload-service
+    url: http://linguavietnameseapp:8080
+    connect_timeout: 60000
+    write_timeout: 300000
+    read_timeout: 300000
+    routes:
+      - name: java-upload-route
+        strip_path: false
+        methods: [POST, OPTIONS]
+        paths:
+          - /api/v1/files/upload-temp
+    plugins:
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 200
+
+  # ==============================================================================
+  # 2.2. JAVA WEBSOCKET SERVICE (Đã Tối Ưu Hóa)
+  # ==============================================================================
+  - name: java-websocket-service
+    url: http://linguavietnameseapp:8080
+    connect_timeout: 60000
+    write_timeout: 300000
+    read_timeout: 300000
+    routes:
+      - name: java-websocket-route
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+        paths:
+          - /ws/
+        # SỬA LỖI: Chỉ dùng http/https. Kong tự handle Upgrade header cho WS.
+        protocols: [http, https]
+        # SỬA LỖI: Đã xóa phần headers: host gây lỗi.
+        # Kong sẽ tự động chuyển tiếp Host header đúng tới linguavietnameseapp:8080
 
   # ==============================================================================
   # 3. PYTHON SERVICE
@@ -134,6 +163,7 @@ services:
           - /api/py/
       - name: python-ws
         strip_path: true
+        # SỬA LỖI: Chỉ dùng http/https cho Python WS
         protocols: [http, https]
         methods: [GET, OPTIONS]
         paths:
@@ -146,5 +176,5 @@ plugins:
       methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
       headers: ["*"]
       exposed_headers: ["*"]
-      credentials: true
+      credentials: false
       max_age: 3600

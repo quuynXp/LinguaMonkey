@@ -45,6 +45,9 @@ public class UserSettingsController {
         settings.setProfileVisibility(request.isProfileVisibility());
         settings.setProgressSharing(request.isProgressSharing());
         settings.setSearchPrivacy(request.isSearchPrivacy());
+        settings.setAutoTranslate(request.isAutoTranslate());
+        settings.setSoundEnabled(request.isSoundEnabled());
+        settings.setStudyReminders(request.isStudyReminders());
 
         return AppApiResponse.<UserSettings>builder()
                 .code(200)
@@ -64,6 +67,7 @@ public class UserSettingsController {
                 .vibrationEnabled(true)
                 .profileVisibility(true)
                 .progressSharing(false)
+                .autoTranslate(false)
                 .searchPrivacy(true)
                 .build();
         

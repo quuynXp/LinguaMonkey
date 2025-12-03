@@ -31,7 +31,9 @@ public class LessonCategoryServiceImpl implements LessonCategoryService {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
-            Page<LessonCategory> categories = lessonCategoryRepository.findByLessonCategoryNameAndLanguageCodeAndIsDeletedFalse(lessonCategoryName, languageCode, pageable);
+            
+            Page<LessonCategory> categories = lessonCategoryRepository.findByOptionalFilters(lessonCategoryName, languageCode, pageable);
+            
             return categories.map(lessonCategoryMapper::toResponse);
         } catch (Exception e) {
             log.error("Error while fetching all lesson categories: {}", e.getMessage());

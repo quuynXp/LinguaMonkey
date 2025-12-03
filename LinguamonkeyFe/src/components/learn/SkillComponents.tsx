@@ -1,7 +1,7 @@
-import React, { useEffect } from "react";
-import { View, Text, Image, StyleSheet, TouchableOpacity } from "react-native";
+import React from "react";
+import { View, Text, Image, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import { useVideoPlayer, VideoView } from 'expo-video';
+import { useVideoPlayer } from 'expo-video';
 import { useTranslation } from "react-i18next";
 import { LessonQuestionResponse } from "../../types/dto";
 import { getCourseImage } from "../../utils/courseUtils";
@@ -18,13 +18,23 @@ export const ListeningQuestionView = ({ question }: { question: LessonQuestionRe
         }
     });
 
+    const handlePlay = () => {
+        if (player) {
+            player.replay();
+        }
+    };
+
+    // FIX: Nếu không có Audio, chỉ hiển thị câu hỏi text bình thường (như trắc nghiệm)
+    // Không hiển thị biểu tượng "volume-off" gây rối mắt
     if (!mediaUrl) {
         return (
             <View style={styles.container}>
-                <View style={styles.placeholderBox}>
-                    <Icon name="volume-off" size={48} color="#9CA3AF" />
-                    <Text style={styles.placeholderText}>{t("quiz.noAudioAvailable")}</Text>
-                </View>
+                {/* Có thể thêm context transcript nếu có, nếu không chỉ hiện câu hỏi */}
+                {question.transcript ? (
+                    <View style={styles.readingPassageBox}>
+                        <Text style={styles.readingPassageText}>{question.transcript}</Text>
+                    </View>
+                ) : null}
                 <Text style={styles.questionText}>{question.question}</Text>
             </View>
         );
@@ -32,14 +42,12 @@ export const ListeningQuestionView = ({ question }: { question: LessonQuestionRe
 
     return (
         <View style={styles.container}>
-            <View style={styles.audioContainer}>
-                <Icon name="volume-up" size={32} color="#4F46E5" style={{ marginRight: 10 }} />
-                <VideoView
-                    player={player}
-                    style={{ width: 0, height: 0 }}
-                />
-                <Text style={styles.audioLabel}>{t("quiz.listenCarefully")}</Text>
-            </View>
+            <TouchableOpacity style={styles.audioButton} onPress={handlePlay}>
+                <Icon name="volume-up" size={32} color="#FFF" />
+                <Text style={styles.audioButtonText}>{t("quiz.listenAgain") || "Nghe lại"}</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.audioLabel}>{t("quiz.listenCarefully") || "Nghe kỹ đoạn hội thoại"}</Text>
             <Text style={styles.questionText}>{question.question}</Text>
         </View>
     );
@@ -48,14 +56,15 @@ export const ListeningQuestionView = ({ question }: { question: LessonQuestionRe
 // --- 2. SPEAKING COMPONENT ---
 export const SpeakingQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
     const { t } = useTranslation();
+    const contentToSpeak = question.transcript || question.question;
 
     return (
         <View style={styles.container}>
             <View style={styles.speakingBox}>
                 <Icon name="record-voice-over" size={48} color="#10B981" />
-                <Text style={styles.transcriptText}>{"{question.transcript || question.question}"}</Text>
+                <Text style={styles.transcriptText}>{contentToSpeak}</Text>
             </View>
-            <Text style={styles.questionText}>{t("quiz.chooseBestAnswer")}</Text>
+            <Text style={styles.questionText}>{t("quiz.readAloud") || "Đọc to câu trên"}</Text>
         </View>
     );
 };
@@ -66,18 +75,24 @@ export const ReadingQuestionView = ({ question }: { question: LessonQuestionResp
 
     return (
         <View style={styles.container}>
+            {/* Chỉ render ảnh nếu có URL hợp lệ */}
             {question.mediaUrl && (
                 <Image
                     source={getCourseImage(question.mediaUrl)}
                     style={styles.contextImage}
-                    resizeMode="cover"
+                    resizeMode="contain"
                 />
             )}
+
+            {/* Chỉ render transcript nếu có */}
             {question.transcript && (
                 <View style={styles.readingPassageBox}>
-                    <Text style={styles.readingPassageText}>{question.transcript}</Text>
+                    <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                        <Text style={styles.readingPassageText}>{question.transcript}</Text>
+                    </ScrollView>
                 </View>
             )}
+
             <Text style={styles.questionText}>{question.question}</Text>
         </View>
     );
@@ -93,14 +108,18 @@ export const WritingQuestionView = ({ question }: { question: LessonQuestionResp
                 <Image
                     source={getCourseImage(question.mediaUrl)}
                     style={styles.contextImage}
-                    resizeMode="cover"
+                    resizeMode="contain"
                 />
             )}
-            <View style={styles.writingBox}>
-                <Icon name="edit" size={32} color="#F59E0B" />
-                <Text style={styles.writingPrompt}>{t("quiz.writingPrompt")}</Text>
+
+            <View style={styles.writingHeader}>
+                <Icon name="edit" size={28} color="#F59E0B" />
+                <Text style={styles.writingLabel}>{t("quiz.writingTask") || "Bài tập viết"}</Text>
             </View>
-            <Text style={styles.questionText}>{question.question}</Text>
+
+            <View style={styles.writingPromptBox}>
+                <Text style={styles.writingPromptText}>{question.question}</Text>
+            </View>
         </View>
     );
 };
@@ -112,65 +131,69 @@ const styles = StyleSheet.create({
         width: '100%',
     },
     questionText: {
-        fontSize: 20,
-        fontWeight: '700',
+        fontSize: 18,
+        fontWeight: '600',
         color: '#1F2937',
         textAlign: 'center',
         marginTop: 16,
-        lineHeight: 28,
+        lineHeight: 26,
     },
-    audioContainer: {
+    // Listening Styles
+    audioButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#EEF2FF',
-        padding: 16,
-        borderRadius: 12,
-        width: '100%',
-        justifyContent: 'center',
+        backgroundColor: '#4F46E5',
+        paddingVertical: 12,
+        paddingHorizontal: 24,
+        borderRadius: 30,
+        elevation: 3,
+        shadowColor: '#4F46E5',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        marginBottom: 12
+    },
+    audioButtonText: {
+        color: '#FFF',
+        fontWeight: '700',
+        fontSize: 16,
+        marginLeft: 8
     },
     audioLabel: {
-        fontSize: 16,
-        color: '#4F46E5',
-        fontWeight: '600',
+        fontSize: 14,
+        color: '#6B7280',
+        marginBottom: 8
     },
-    placeholderBox: {
-        width: '100%',
-        height: 150,
-        backgroundColor: '#F3F4F6',
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    placeholderText: {
-        marginTop: 8,
-        color: '#9CA3AF',
-    },
+    // Speaking Styles
     speakingBox: {
         alignItems: 'center',
-        padding: 20,
+        padding: 24,
         backgroundColor: '#ECFDF5',
         borderRadius: 16,
         width: '100%',
         borderWidth: 1,
         borderColor: '#10B981',
+        borderStyle: 'dashed'
     },
     transcriptText: {
-        fontSize: 24,
-        fontWeight: '800',
+        fontSize: 22,
+        fontWeight: '700',
         color: '#065F46',
         marginTop: 12,
         textAlign: 'center',
+        lineHeight: 32
     },
+    // Reading Styles
     contextImage: {
         width: '100%',
-        height: 200,
+        height: 220,
         borderRadius: 12,
-        backgroundColor: '#E5E7EB',
+        backgroundColor: '#F9FAFB',
         marginBottom: 12,
     },
     readingPassageBox: {
         backgroundColor: '#FFF7ED',
-        padding: 12,
+        padding: 16,
         borderRadius: 8,
         marginBottom: 12,
         width: '100%',
@@ -178,19 +201,35 @@ const styles = StyleSheet.create({
         borderLeftColor: '#F97316'
     },
     readingPassageText: {
-        fontSize: 14,
+        fontSize: 15,
         color: '#431407',
-        lineHeight: 20,
+        lineHeight: 24,
     },
-    writingBox: {
+    // Writing Styles
+    writingHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 8,
+        alignSelf: 'flex-start'
     },
-    writingPrompt: {
-        fontSize: 14,
+    writingLabel: {
+        fontSize: 16,
         color: '#F59E0B',
-        fontWeight: '600',
+        fontWeight: '700',
         marginLeft: 8,
     },
+    writingPromptBox: {
+        width: '100%',
+        padding: 16,
+        backgroundColor: '#FFFBEB',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#FCD34D'
+    },
+    writingPromptText: {
+        fontSize: 18,
+        color: '#92400E',
+        fontWeight: '600',
+        textAlign: 'center'
+    }
 });

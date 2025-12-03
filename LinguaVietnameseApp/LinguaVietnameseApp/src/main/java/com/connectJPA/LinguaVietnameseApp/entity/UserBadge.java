@@ -7,6 +7,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 @Entity
 @Data
@@ -27,4 +28,7 @@ public class UserBadge extends BaseEntity {
     @MapsId("userId") // Ánh xạ tới trường 'userId' trong UserBadgeId
     @JoinColumn(name = "user_id")
     private User user;
+
+    @Column(name = "earned_At")
+    private OffsetDateTime earnedAt;
 }

@@ -19,7 +19,7 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useRooms } from '../../hooks/useRoom';
 import { RoomResponse } from '../../types/dto';
-import { RoomPurpose } from '../../types/enums';
+import { RoomPurpose, RoomType } from '../../types/enums';
 
 const PublicRoomListScreen = ({ navigation }: any) => {
     const { t } = useTranslation();
@@ -46,6 +46,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
         }).start();
     }, []);
 
+    // NOTE: Backend's `findPublicRoomsExcludingJoined` handles the filter "not currently in the room"
     const queryParams = {
         page: 0,
         size: 20,
@@ -69,28 +70,34 @@ const PublicRoomListScreen = ({ navigation }: any) => {
     };
 
     const handleRoomPress = (room: RoomResponse) => {
-        // Check if room has password (assuming room.password exists and is not null/empty if protected)
-        if (room.roomCode) {
-            setSelectedRoomId(room.roomId);
-            setPasswordInput('');
-            setShowPasswordModal(true);
-        } else {
+        // If room is public and NOT password protected (no roomCode used as password proxy here), join immediately
+        if (room.roomType === 'PUBLIC' && !room.password) {
             joinRoomApi({ roomId: room.roomId }, {
                 onSuccess: (data) => handleJoinSuccess(data),
                 onError: () => Alert.alert(t('common.error'), t('room.join.failed'))
             });
+            return;
         }
+
+        // If password is required (private room or public room with password)
+        setSelectedRoomId(room.roomId);
+        setPasswordInput('');
+        setShowPasswordModal(true);
     };
 
     const submitJoinByCode = () => {
-        if (!roomCodeInput.trim()) return;
+        if (!roomCodeInput.trim()) {
+            Alert.alert(t('error'), t('room.code.required'));
+            return;
+        }
+
+        // Use roomCode to join (backend will check if password is needed based on room config)
         joinRoomApi({ roomCode: roomCodeInput.trim(), password: passwordInput || undefined }, {
             onSuccess: (data) => handleJoinSuccess(data),
             onError: (err: any) => {
+                // Assuming Error Code 1009 = Password Required
                 if (err?.response?.data?.code === 1009) {
-                    Alert.alert(t('error'), t('room.password.required'), [
-                        { text: 'OK', onPress: () => setShowCodeModal(false) }
-                    ]);
+                    Alert.alert(t('error'), t('room.password.required'));
                 } else {
                     Alert.alert(t('error'), t('room.not.found.or.full'));
                 }
@@ -100,6 +107,8 @@ const PublicRoomListScreen = ({ navigation }: any) => {
 
     const submitPasswordJoin = () => {
         if (!selectedRoomId) return;
+
+        // Attempt to join using room ID and provided password
         joinRoomApi({ roomId: selectedRoomId, password: passwordInput }, {
             onSuccess: (data) => handleJoinSuccess(data),
             onError: () => Alert.alert(t('error'), t('room.password.invalid'))
@@ -107,6 +116,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
     };
 
     const renderRoomItem = ({ item }: { item: RoomResponse }) => {
+        const isPrivate = item.roomType === RoomType.PRIVATE;
         const avatarSource = item.avatarUrl
             ? { uri: item.avatarUrl }
             : require('../../assets/images/ImagePlacehoderCourse.png');
@@ -120,15 +130,20 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                 <View style={styles.roomInfo}>
                     <View style={styles.roomHeader}>
                         <Text style={styles.roomName} numberOfLines={1}>{item.roomName}</Text>
-                        {item.roomCode && (
+                        {(item.roomCode || item.password) && (
                             <Icon name="lock" size={16} color="#EF4444" style={{ marginLeft: 4 }} />
                         )}
                     </View>
 
                     <View style={styles.detailsRow}>
-                        <Text style={styles.roomCode}>ID: {item.roomCode || '---'}</Text>
-                        <Text style={styles.dot}>•</Text>
+                        {/* Displaying Room Code (ID 6 digits) only for non 1-1 chats */}
+                        {!isPrivate && item.roomCode && (
+                            <Text style={styles.roomCode}>ID: {item.roomCode}</Text>
+                        )}
+                        {!isPrivate && item.roomCode && <Text style={styles.dot}>•</Text>}
+
                         <Text style={styles.memberCount}>{item.memberCount}/{item.maxMembers} {t('members')}</Text>
+
                     </View>
 
                     <Text style={styles.roomDescription} numberOfLines={1}>
@@ -136,7 +151,10 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                     </Text>
                 </View>
 
-                <Icon name="chevron-right" size={24} color="#9CA3AF" />
+                <View style={styles.joinAction}>
+                    {isJoining && selectedRoomId === item.roomId ? <ActivityIndicator size="small" color="#4F46E5" /> :
+                        <Icon name="chevron-right" size={24} color="#9CA3AF" />}
+                </View>
             </TouchableOpacity>
         );
     };
@@ -184,6 +202,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                             {t('purpose.quiz')}
                         </Text>
                     </TouchableOpacity>
+                    {/* Add COURSE_CHAT filter if appropriate to list ALL course rooms */}
                 </View>
 
                 {isLoading ? (
@@ -215,7 +234,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                 <Icon name="add" size={28} color="#FFFFFF" />
             </TouchableOpacity>
 
-            {/* Code Join Modal */}
+            {/* Code Join Modal (for Private Rooms or joining by Code) */}
             <Modal visible={showCodeModal} transparent animationType="slide" onRequestClose={() => setShowCodeModal(false)}>
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -227,7 +246,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
 
                         <TextInput
                             style={styles.codeInput}
-                            placeholder="000000"
+                            placeholder="000000 (Mã phòng 6 số)"
                             placeholderTextColor="#9CA3AF"
                             value={roomCodeInput}
                             onChangeText={setRoomCodeInput}
@@ -260,7 +279,7 @@ const PublicRoomListScreen = ({ navigation }: any) => {
                 </KeyboardAvoidingView>
             </Modal>
 
-            {/* Password Modal */}
+            {/* Password Modal (For joining protected rooms directly from list) */}
             <Modal visible={showPasswordModal} transparent animationType="fade" onRequestClose={() => setShowPasswordModal(false)}>
                 <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -332,6 +351,7 @@ const styles = createScaledSheet({
     dot: { fontSize: 12, color: '#9CA3AF', marginHorizontal: 4 },
     memberCount: { fontSize: 12, color: '#6B7280' },
     roomDescription: { fontSize: 13, color: '#9CA3AF' },
+    joinAction: { marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
 
     fab: { position: 'absolute', bottom: 20, right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#4F46E5', shadowOpacity: 0.4, shadowRadius: 6, shadowOffset: { width: 0, height: 4 } },
 

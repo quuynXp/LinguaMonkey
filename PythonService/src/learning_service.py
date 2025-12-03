@@ -37,6 +37,7 @@ from .api.review_analyzer import analyze_review
 from .api.course_evaluator import evaluate_course_structure
 from .api.pronunciation_checker import check_pronunciation_logic, stream_pronunciation_logic
 from .api.writing_grader import grade_writing_logic
+from .core.translator import get_translator
 
 load_dotenv()
 
@@ -399,7 +400,8 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         
     @authenticated_grpc_method
     async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
-        translated_text, error = translate_text(
+        # Uses Hybrid LPM + Gemini + DB Write-through
+        translated_text, error = await self.translator.translate(
             request.text, 
             request.source_language, 
             request.target_language
@@ -408,7 +410,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         return learning_pb2.TranslateResponse(
             translated_text=translated_text,
             source_language_detected=request.source_language,
-            confidence=1.0 if not error else 0.0,
+            confidence=1.0 if not error else 0.5,
             error=error or ""
         )
 
@@ -588,9 +590,9 @@ async def serve():
 
     try:
         await server.wait_for_termination()
-    except KeyboardInterrupt:
-        logging.info("Stopping server...")
-        await server.stop(0)
+    # except KeyboardInterrupt:
+    #     logging.info("Stopping server...")
+    #     await server.stop(0)
     finally:
         await close_redis_client()
 

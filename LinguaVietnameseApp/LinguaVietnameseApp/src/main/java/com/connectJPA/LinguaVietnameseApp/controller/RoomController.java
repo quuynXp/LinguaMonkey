@@ -225,6 +225,19 @@ public class RoomController {
                 .build();
     }
 
+    @Operation(summary = "Get Room by Course ID", description = "Retrieves the dedicated chat room associated with a specific course.")
+    @GetMapping("/course/{courseId}")
+    public AppApiResponse<RoomResponse> getCourseRoomByCourseId(
+            @PathVariable UUID courseId,
+            Locale locale) {
+        RoomResponse room = roomService.getCourseRoomByCourseId(courseId);
+        return AppApiResponse.<RoomResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("room.get.success", null, locale))
+                .result(room)
+                .build();
+    }
+
     @Operation(summary = "Remove members from a group chat room", description = "Remove users from a GROUP_CHAT room")
     @DeleteMapping("/{id}/members")
     public AppApiResponse<Void> removeRoomMembers(

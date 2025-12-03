@@ -92,6 +92,17 @@ export const useUsers = () => {
     });
   };
 
+  const useCountOnlineUsers = () => {
+    return useQuery({
+      queryKey: ["users", "count-online"], // Key để cache
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<number>>("/api/v1/users/count-online");
+        return data.result || 0;
+      },
+      refetchInterval: 10000,
+    });
+  };
+
   const useUser = (id?: string) =>
     useQuery({
       queryKey: userKeys.detail(id!),
@@ -413,5 +424,6 @@ export const useUsers = () => {
     useFriendRequestStatus,
     useCheckIfFriends,
     useSuggestedUsers,
+    useCountOnlineUsers
   };
 };

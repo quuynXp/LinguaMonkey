@@ -7,15 +7,13 @@ import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
-import com.connectJPA.LinguaVietnameseApp.event.DailyChallengeCompletedEvent;
-import com.connectJPA.LinguaVietnameseApp.event.LessonCompletedEvent;
+import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserLearningActivityMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.UserLearningActivityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -24,13 +22,12 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @Service
 @RequiredArgsConstructor
@@ -38,14 +35,13 @@ import java.util.stream.Stream;
 public class UserLearningActivityServiceImpl implements UserLearningActivityService {
 
     private final UserLearningActivityRepository userLearningActivityRepository;
-    private final LessonProgressRepository lessonProgressRepository; // Cần repo này để query bảng lesson_progress
-    private final UserDailyChallengeRepository userDailyChallengeRepository; // Cần repo này để query bảng user_daily_challenges
-    private final CourseVersionEnrollmentRepository enrollmentRepository; // Cần repo này để query bảng enrollments
-    
-    private final UserLearningActivityMapper userLearningActivityMapper;
     private final LessonRepository lessonRepository;
+    private final UserRepository userRepository;
+    private final UserDailyChallengeRepository userDailyChallengeRepository;
+    private final UserLearningActivityMapper userLearningActivityMapper;
     private final DailyChallengeService dailyChallengeService;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final GrpcClientService grpcClientService;
 
     private static final String HISTORY_CACHE_KEY = "user:history:";
     private static final String ONLINE_TIME_KEY = "user:online_minutes:";
@@ -53,14 +49,14 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
     @Override
     public Page<UserLearningActivityResponse> getAllUserLearningActivities(UUID userId, Pageable pageable) {
         Page<UserLearningActivity> activities = userLearningActivityRepository.findByUserIdAndIsDeletedFalse(userId, pageable);
-        return activities.map(userLearningActivityMapper::toResponse);
+        return activities.map(userLearningActivityMapper::toUserLearningActivityResponse);
     }
 
     @Override
     public UserLearningActivityResponse getUserLearningActivityById(UUID id) {
         UserLearningActivity activity = userLearningActivityRepository.findByActivityIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new RuntimeException("User learning activity not found"));
-        return userLearningActivityMapper.toResponse(activity);
+        return userLearningActivityMapper.toUserLearningActivityResponse(activity);
     }
 
     @Override
@@ -82,6 +78,7 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             }
         }
 
+        // 1. Log Activity to DB
         UserLearningActivityResponse activityLog = logUserActivity(
                 request.getUserId(),
                 request.getActivityType(),
@@ -91,37 +88,44 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 details,
                 skillType
         );
+
+        // 2. Update User Coins/Exp
+        User user = userRepository.findById(request.getUserId()).orElse(null);
+        if (user != null) {
+            user.setExp(user.getExp() + expReward);
+            // Assuming 1 exp = 1 coin for now, or use specific logic
+            user.setCoins(user.getCoins() + expReward);
+            user.setLastActiveAt(OffsetDateTime.now());
+            userRepository.save(user);
+        }
         
-        // Invalidate cache
+        // 3. Invalidate cache
         redisTemplate.delete(HISTORY_CACHE_KEY + request.getUserId() + ":week");
         redisTemplate.delete(HISTORY_CACHE_KEY + request.getUserId() + ":month");
         redisTemplate.delete(HISTORY_CACHE_KEY + request.getUserId() + ":year");
         
+        // 4. Update Challenges
         DailyChallengeUpdateResponse challengeUpdate = null;
-        if (request.getActivityType() == ActivityType.LESSON_COMPLETED) {
-            challengeUpdate = dailyChallengeService.updateChallengeProgress(
-                    request.getUserId(), 
-                    ChallengeType.LESSON_COMPLETED, 
-                    1
-            );
+        UUID userId = request.getUserId();
+
+        if (request.getDurationInSeconds() > 0) {
+            dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, request.getDurationInSeconds() / 60);
+        }
+
+        switch (request.getActivityType()) {
+            case LESSON_COMPLETED -> challengeUpdate = dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
+            case SPEAKING -> challengeUpdate = dailyChallengeService.updateChallengeProgress(userId, ChallengeType.SPEAKING_PRACTICE, 1);
+            case LISTENING -> challengeUpdate = dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LISTENING_PRACTICE, 1);
+            case READING -> challengeUpdate = dailyChallengeService.updateChallengeProgress(userId, ChallengeType.READING_COMPREHENSION, 1);
+            case FLASHCARD_REVIEW -> challengeUpdate = dailyChallengeService.updateChallengeProgress(userId, ChallengeType.VOCABULARY_REVIEW, 1);
+            case TEST -> challengeUpdate = dailyChallengeService.updateChallengeProgress(userId, ChallengeType.REVIEW_SESSION, 1);
+            default -> {}
         }
 
         return ActivityCompletionResponse.builder()
                 .activityLog(activityLog)
                 .challengeUpdate(challengeUpdate)
                 .build();
-    }
-
-    @EventListener
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void handleLessonCompleted(LessonCompletedEvent event) {
-        log.info("Legacy listener event triggered for user: {}", event.getLessonProgress().getId().getUserId());
-    }
-
-    @EventListener
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void handleDailyChallengeCompleted(DailyChallengeCompletedEvent event) {
-        // Handle logic if needed
     }
 
     @Override
@@ -141,7 +145,7 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         activity.setCreatedAt(OffsetDateTime.now());
 
         activity = userLearningActivityRepository.save(activity);
-        return userLearningActivityMapper.toResponse(activity);
+        return userLearningActivityMapper.toUserLearningActivityResponse(activity);
     }
 
     @Override
@@ -168,153 +172,216 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 .orElseThrow(() -> new RuntimeException("User learning activity not found"));
         userLearningActivityMapper.updateEntityFromRequest(request, activity);
         activity = userLearningActivityRepository.save(activity);
-        return userLearningActivityMapper.toResponse(activity);
+        return userLearningActivityMapper.toUserLearningActivityResponse(activity);
     }
 
     @Override
     @Transactional
     public void deleteUserLearningActivity(UUID id) {
-        UserLearningActivity activity = userLearningActivityRepository.findByActivityIdAndIsDeletedFalse(id)
-                .orElseThrow(() -> new RuntimeException("User learning activity not found"));
         userLearningActivityRepository.softDeleteById(id);
     }
 
-    public void recordHeartbeat(UUID userId) {
-        String todayStr = LocalDate.now().toString();
-        String key = ONLINE_TIME_KEY + userId + ":" + todayStr;
-        redisTemplate.opsForValue().increment(key, 1);
-        // Lưu cache 30 ngày để biểu đồ không bị mất dữ liệu quá khứ
-        redisTemplate.expire(key, 30, TimeUnit.DAYS);
-    }
+    // --- MAIN STATS LOGIC ---
 
-    /**
-     * QUERY TOÀN BỘ ỨNG DỤNG:
-     * Thay vì chỉ dựa vào UserLearningActivity, hàm này quét qua tất cả các bảng:
-     * 1. lesson_progress (Tiến độ bài học)
-     * 2. user_daily_challenges (Thử thách)
-     * 3. user_learning_activities (Log)
-     * 4. Redis (Thời gian online)
-     */
     @Override
     public StudyHistoryResponse getAggregatedStudyHistory(UUID userId, String period) {
         LocalDate endDate = LocalDate.now();
         LocalDate startDate;
+        LocalDate prevStartDate;
 
         switch (period.toLowerCase()) {
-            case "week" -> startDate = endDate.minusDays(6);
-            case "year" -> startDate = endDate.minusMonths(11); // 12 tháng gần nhất
-            case "month" -> startDate = endDate.minusDays(29);
-            default -> startDate = endDate.minusDays(29); 
+            case "week" -> {
+                startDate = endDate.minusDays(6);
+                prevStartDate = startDate.minusDays(7);
+            }
+            case "year" -> {
+                startDate = endDate.minusMonths(11);
+                prevStartDate = startDate.minusMonths(12);
+            }
+            case "month" -> {
+                startDate = endDate.minusDays(29);
+                prevStartDate = startDate.minusDays(30);
+            }
+            default -> {
+                startDate = endDate.minusDays(29); 
+                prevStartDate = startDate.minusDays(30);
+            }
         }
 
         OffsetDateTime startOdt = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime endOdt = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime prevStartOdt = prevStartDate.atStartOfDay().atOffset(ZoneOffset.UTC);
 
-        // 1. Lấy dữ liệu từ bảng LOG (Activities)
-        List<UserLearningActivity> activities = userLearningActivityRepository
-                .findByUserIdAndCreatedAtBetween(userId, startOdt, endOdt);
+        // 1. Fetch Data
+        List<UserLearningActivity> activities = userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, startOdt, endOdt);
+        User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
-        // 2. Lấy dữ liệu từ bảng LESSON PROGRESS (Tiến độ học tập thực tế)
-        // Cần custom query trong LessonProgressRepository: findByUserIdAndUpdatedAtBetween
-        List<LessonProgress> progresses = lessonProgressRepository
-                .findByIdUserIdAndUpdatedAtBetween(userId, startOdt, endOdt);
+        // 2. Current Metrics
+        long currentTotalTime = activities.stream().mapToLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0).sum();
+        int currentLessons = (int) activities.stream().filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETED).count();
+        // Calculate Weighted Accuracy
+        double totalScore = activities.stream().mapToDouble(a -> a.getScore() != null ? a.getScore() : 0).sum();
+        double totalMaxScore = activities.stream().mapToDouble(a -> a.getMaxScore() != null ? a.getMaxScore() : 0).sum();
+        double currentAccuracy = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100.0 : 0.0;
 
-        // 3. Lấy dữ liệu từ bảng DAILY CHALLENGES (Thử thách đã làm)
-        // Cần custom query: findByUserIdAndCompletedAtBetween
-        // Lưu ý: user_daily_challenges thường dùng LocalDateTime, cần convert cẩn thận
-        List<UserDailyChallenge> challenges = userDailyChallengeRepository
-                .findByUser_UserIdAndCompletedAtBetween(userId, startOdt, endOdt);
-
-        // --- TỔNG HỢP DỮ LIỆU ---
+        // 3. Previous Metrics (For Comparison)
+        long prevTotalTime = userLearningActivityRepository.sumDurationByUserIdAndDateRange(userId, prevStartOdt, startOdt);
+        double prevAccuracy = userLearningActivityRepository.calculateAverageAccuracy(userId, prevStartOdt, startOdt);
         
-        // Map: Date String (yyyy-MM-dd) -> Total Seconds
-        Map<String, Long> durationMap = new HashMap<>();
-        // Map: Date String -> Session Count
-        Map<String, Long> sessionCountMap = new HashMap<>();
-        // Map: Date String -> Exp
-        Map<String, Integer> expMap = new HashMap<>();
+        double timeGrowth = prevTotalTime == 0 ? (currentTotalTime > 0 ? 100.0 : 0.0) : ((double)(currentTotalTime - prevTotalTime) / prevTotalTime) * 100;
+        double accuracyGrowth = prevAccuracy == 0 ? (currentAccuracy > 0 ? 100.0 : 0.0) : ((currentAccuracy - prevAccuracy) / prevAccuracy) * 100;
 
-        // Xử lý Activities Log
+        // 4. Find Weakest Skill
+        List<Object[]> weakSkills = userLearningActivityRepository.findWeakestSkills(userId, startOdt, endOdt);
+        String weakestSkill = weakSkills.isEmpty() ? "NONE" : weakSkills.get(0)[0].toString();
+
+        // 5. Build Charts
+        List<StatsResponse.ChartDataPoint> timeChart = new ArrayList<>();
+        List<StatsResponse.ChartDataPoint> accuracyChart = new ArrayList<>();
+        
+        Map<LocalDate, Long> dailyTime = new HashMap<>();
+        Map<LocalDate, List<Double>> dailyAccuracy = new HashMap<>();
+
         for (UserLearningActivity a : activities) {
-            String dateKey = a.getCreatedAt().toLocalDate().toString();
-            long duration = a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L;
-            durationMap.merge(dateKey, duration, Long::sum);
-            sessionCountMap.merge(dateKey, 1L, Long::sum);
-        }
-
-        // Xử lý Lesson Progress (Nếu log bị thiếu, dùng cái này bù vào)
-        // Giả định mỗi bài học hoàn thành ~ 10 phút (600s) nếu không có log thời gian chính xác
-        for (LessonProgress p : progresses) {
-            String dateKey = p.getUpdatedAt().toLocalDate().toString();
-            // Chỉ cộng nếu chưa có log tương ứng (đơn giản hóa bằng cách cộng thêm ước lượng)
-            // Hoặc coi mỗi progress là một session chắc chắn
-            sessionCountMap.merge(dateKey, 1L, Long::sum);
-            durationMap.merge(dateKey, 600L, Long::sum); // Ước tính 10 phút/bài
-            expMap.merge(dateKey, 10, Integer::sum); // Ước tính 10 EXP/bài
-        }
-
-        // Xử lý Daily Challenges
-        for (UserDailyChallenge c : challenges) {
-            if (c.getCompletedAt() != null) {
-                String dateKey = c.getCompletedAt().toLocalDate().toString();
-                sessionCountMap.merge(dateKey, 1L, Long::sum);
-                durationMap.merge(dateKey, 300L, Long::sum); // Ước tính 5 phút/thử thách
-                expMap.merge(dateKey, c.getExpReward() > 0 ? c.getExpReward() : 50, Integer::sum);
+            LocalDate d = a.getCreatedAt().toLocalDate();
+            dailyTime.merge(d, a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L, Long::sum);
+            if (a.getMaxScore() != null && a.getMaxScore() > 0) {
+                dailyAccuracy.computeIfAbsent(d, k -> new ArrayList<>()).add((double)a.getScore()/a.getMaxScore() * 100);
             }
         }
 
-        // --- KẾT HỢP VỚI REDIS (Heartbeat - Online Time) ---
-        List<StudySessionResponse> dailySessions = new ArrayList<>();
-        long totalSessions = 0;
-        long totalLearningTimeSeconds = 0;
-        long totalExp = 0;
+        LocalDate temp = startDate;
+        DateTimeFormatter labelFormatter = period.equals("year") ? DateTimeFormatter.ofPattern("MM/yy") : DateTimeFormatter.ofPattern("dd/MM");
+        
+        while (!temp.isAfter(endDate)) {
+            String label = temp.format(labelFormatter);
+            long timeVal = dailyTime.getOrDefault(temp, 0L);
+            List<Double> accList = dailyAccuracy.getOrDefault(temp, Collections.emptyList());
+            double accVal = accList.isEmpty() ? 0.0 : accList.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
 
-        LocalDate current = startDate;
-        while (!current.isAfter(endDate)) {
-            String dateStr = current.toString();
+            timeChart.add(new StatsResponse.ChartDataPoint(label, (double)timeVal / 60.0, temp.toString()));
+            accuracyChart.add(new StatsResponse.ChartDataPoint(label, accVal, temp.toString()));
             
-            long dbSeconds = durationMap.getOrDefault(dateStr, 0L);
-            long dbCount = sessionCountMap.getOrDefault(dateStr, 0L);
-            int dbExp = expMap.getOrDefault(dateStr, 0);
-
-            // Lấy từ Redis
-            String redisKey = ONLINE_TIME_KEY + userId + ":" + dateStr;
-            Integer redisMinutes = (Integer) redisTemplate.opsForValue().get(redisKey);
-            long redisSeconds = (redisMinutes != null) ? (redisMinutes * 60L) : 0L;
-
-            // Logic Merge: Lấy cái lớn nhất giữa (DB tính toán) và (Redis Heartbeat)
-            // Điều này đảm bảo nếu user online mà không học bài nào, vẫn có data hiển thị (Redis)
-            // Nếu user học nhiều bài (DB) mà Redis lỗi, vẫn có data hiển thị (DB)
-            long finalDailySeconds = Math.max(dbSeconds, redisSeconds); 
-            
-            if (finalDailySeconds > 0 || dbCount > 0) {
-                dailySessions.add(StudySessionResponse.builder()
-                        .date(current.atStartOfDay().atOffset(ZoneOffset.UTC))
-                        .duration(finalDailySeconds)
-                        .experience(dbExp + (int)(finalDailySeconds / 60)) // Cộng thêm exp dựa trên thời gian
-                        .title("Daily Activity")
-                        .type("DAILY_SUMMARY")
-                        .build());
-                
-                totalLearningTimeSeconds += finalDailySeconds;
-            }
-            
-            totalSessions += dbCount;
-            totalExp += dbExp;
-            
-            current = current.plusDays(1);
+            temp = period.equals("year") ? temp.plusMonths(1) : temp.plusDays(1);
         }
 
         StatsResponse stats = StatsResponse.builder()
-                .totalSessions((int) totalSessions)
-                .totalTime(totalLearningTimeSeconds) 
-                .totalExperience((int) totalExp) 
-                .averageScore(0.0) // Có thể tính trung bình từ lesson_progress nếu cần
+                .totalSessions(activities.size())
+                .totalTimeSeconds(currentTotalTime)
+                .totalCoins(user.getCoins()) 
+                .totalExperience(user.getExp())
+                .lessonsCompleted(currentLessons)
+                .averageScore(currentAccuracy) 
+                .timeGrowthPercent(timeGrowth)
+                .accuracyGrowthPercent(accuracyGrowth)
+                .coinsGrowthPercent(0.0) // Placeholder logic for coin growth
+                .weakestSkill(weakestSkill)
+                .improvementSuggestion(user.getLatestImprovementSuggestion())
+                .timeChartData(timeChart)
+                .accuracyChartData(accuracyChart)
                 .build();
 
+        // Compatibility for old "sessions" list UI
+        List<StudySessionResponse> sessionList = activities.stream()
+                .sorted(Comparator.comparing(UserLearningActivity::getCreatedAt).reversed())
+                .map(userLearningActivityMapper::toStudySessionResponse)
+                .collect(Collectors.toList());
+
         return StudyHistoryResponse.builder()
-                .sessions(dailySessions)
+                .sessions(sessionList)
                 .stats(stats)
                 .build();
+    }
+
+    // --- REAL AI LOGIC (TRIGGERED BY SCHEDULER) ---
+    
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void generateDailyAnalysisForUser(UUID userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) return;
+
+        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime yesterday = now.minusDays(1);
+        
+        // 1. Get Real Data from yesterday/today
+        List<UserLearningActivity> recentActivities = userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, yesterday, now);
+        
+        if (recentActivities.isEmpty()) return;
+
+        double totalScore = 0;
+        double totalMax = 0;
+        int totalSeconds = 0;
+        Set<String> weakSpots = new HashSet<>();
+        
+        for (UserLearningActivity a : recentActivities) {
+            if (a.getDurationInSeconds() != null) totalSeconds += a.getDurationInSeconds();
+            if (a.getMaxScore() != null && a.getMaxScore() > 0) {
+                totalScore += a.getScore();
+                totalMax += a.getMaxScore();
+                // If accuracy < 60% on this task, mark the skill as weak
+                if ((double)a.getScore()/a.getMaxScore() < 0.6) {
+                    weakSpots.add(a.getActivityType().toString());
+                }
+            }
+        }
+        
+        double accuracy = totalMax > 0 ? (totalScore / totalMax * 100) : 0;
+        int minutes = totalSeconds / 60;
+        String weakAreasStr = weakSpots.isEmpty() ? "None" : String.join(", ", weakSpots);
+        
+        // 2. Construct Real Prompt for AI
+        String prompt = String.format(
+            "Analyze this language learner's daily progress and give a short, encouraging 1-sentence tip. " +
+            "Data: Learned %d minutes today. Accuracy: %.1f%%. Struggled with: %s. " +
+            "Language: %s. Proficiency: %s.",
+            minutes, accuracy, weakAreasStr, 
+            user.getNativeLanguageCode() != null ? "Vietnamese" : "English", // Or target language logic
+            user.getProficiency() != null ? user.getProficiency().toString() : "Beginner"
+        );
+        
+        // 3. Call gRPC -> Python -> Gemini (REAL CALL)
+        try {
+            // Using empty history list for a single-turn instruction
+            grpcClientService.callChatWithAIAsync(null, userId.toString(), prompt, new ArrayList<>())
+                .thenAccept(suggestion -> {
+                    if (suggestion != null && !suggestion.isEmpty()) {
+                        // 4. Save result to DB
+                        user.setLatestImprovementSuggestion(suggestion);
+                        user.setLastSuggestionGeneratedAt(OffsetDateTime.now());
+                        userRepository.save(user);
+                    }
+                });
+        } catch (Exception e) {
+            log.error("Error calling AI for user analysis: {}", e.getMessage());
+        }
+    }
+
+   // --- LOGIC MỚI CHO HEARTBEAT ---
+    @Override
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordHeartbeat(UUID userId) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user == null) {
+            log.warn("Heartbeat received for unknown user ID: {}", userId);
+            return;
+        }
+
+        // 1. Cập nhật thời gian hoạt động cuối cùng trong DB
+        user.setLastActiveAt(OffsetDateTime.now());
+        userRepository.save(user);
+
+        // 2. Ghi nhận thời gian hoạt động trong Redis (cộng thêm 1 phút)
+        String todayStr = LocalDate.now().toString();
+        String key = ONLINE_TIME_KEY + userId + ":" + todayStr;
+        
+        // Tăng giá trị (mặc định là 0 nếu chưa có) thêm 1
+        redisTemplate.opsForValue().increment(key, 1);
+        
+        // Set thời gian hết hạn (ví dụ: 30 ngày)
+        redisTemplate.expire(key, 30, TimeUnit.DAYS);
+
+        // Log info
+        log.debug("Heartbeat recorded for user: {} minute count key: {}", userId, key);
     }
 }

@@ -4,7 +4,6 @@ import Toast from "react-native-toast-message";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "./src/services/queryClient";
 import RootNavigation from "./src/RootNavigation";
-import ChatBubble from "./src/components/chat/ChatBubble";
 import "./src/i18n";
 import { toastConfig } from "./src/components/Toast";
 import { StyleSheet } from "react-native";
@@ -17,9 +16,6 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <GestureHandlerRootView style={styles.container}>
             <RootNavigation />
-
-            <ChatBubble />
-
             <Toast config={toastConfig} />
           </GestureHandlerRootView>
         </QueryClientProvider>

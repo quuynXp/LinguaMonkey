@@ -27,5 +27,7 @@ public interface LeaderboardEntryService {
 
     List<LeaderboardEntryResponse> getTop3GlobalLeaderboardEntries();
 
+    LeaderboardEntryResponse getCurrentUserEntryWithRank(UUID leaderboardId, UUID userId);
+    
     Integer getRankForUserByTab(String tab, String type, UUID userId);
 }

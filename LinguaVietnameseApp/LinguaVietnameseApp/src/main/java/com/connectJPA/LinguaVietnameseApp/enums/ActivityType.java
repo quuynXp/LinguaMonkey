@@ -11,6 +11,13 @@ public enum ActivityType {
     DAILY_CHALLENGE_COMPLETED,
     AI_CHAT,
     CHAT,CALL, QUIZ,
+    SPEAKING,
+    LISTENING,
+    WRITING,
+    LESSON,
+    READING,
+    FLASHCARD_REVIEW,
+    TEST,
 
     // Bổ sung để đồng bộ từ service khác
     COURSE_ENROLL,

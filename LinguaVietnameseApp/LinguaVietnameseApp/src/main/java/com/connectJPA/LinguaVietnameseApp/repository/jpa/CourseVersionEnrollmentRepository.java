@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -87,4 +88,36 @@ public interface CourseVersionEnrollmentRepository extends JpaRepository<CourseV
        long countCompletedLessonsInVersion(@Param("userId") UUID userId,
                                           @Param("versionId") UUID versionId);
 
+       boolean existsByUserIdAndCourseVersion_VersionId(UUID userId, UUID courseVersionId);
+
+
+       // --- New Methods for Creator Dashboard ---
+
+    @Query("SELECT COUNT(DISTINCT ce.userId) FROM CourseVersionEnrollment ce " +
+           "JOIN ce.courseVersion cv JOIN cv.course c " +
+           "WHERE c.creatorId = :creatorId AND ce.isDeleted = false")
+    long countStudentsByCreatorId(@Param("creatorId") UUID creatorId);
+
+    @Query("SELECT COALESCE(SUM(cv.price), 0) FROM CourseVersionEnrollment ce " +
+           "JOIN ce.courseVersion cv JOIN cv.course c " +
+           "WHERE c.creatorId = :creatorId " +
+           "AND ce.enrolledAt BETWEEN :start AND :end " +
+           "AND ce.isDeleted = false")
+    BigDecimal sumRevenueByCreatorIdAndDateRange(@Param("creatorId") UUID creatorId, 
+                                                 @Param("start") OffsetDateTime start, 
+                                                 @Param("end") OffsetDateTime end);
+
+       @Query("SELECT COUNT(DISTINCT ce.userId) FROM CourseVersionEnrollment ce " +
+            "JOIN ce.courseVersion cv JOIN cv.course c " +
+            "WHERE c.courseId = :courseId AND ce.isDeleted = false")
+    long countStudentsByCourseId(@Param("courseId") UUID courseId);
+
+    @Query("SELECT COALESCE(SUM(cv.price), 0) FROM CourseVersionEnrollment ce " +
+            "JOIN ce.courseVersion cv JOIN cv.course c " +
+            "WHERE c.courseId = :courseId " +
+            "AND ce.enrolledAt BETWEEN :start AND :end " +
+            "AND ce.isDeleted = false")
+    BigDecimal sumRevenueByCourseIdAndDateRange(@Param("courseId") UUID courseId,
+                                                 @Param("start") OffsetDateTime start,
+                                                 @Param("end") OffsetDateTime end);
 }

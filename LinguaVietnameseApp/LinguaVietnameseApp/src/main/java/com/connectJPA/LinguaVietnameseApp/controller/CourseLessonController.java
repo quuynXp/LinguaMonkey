@@ -184,6 +184,7 @@ public class CourseLessonController {
             @ApiResponse(responseCode = "200", description = "Course lesson deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Course lesson not found")
     })
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     @DeleteMapping("/{courseId}/{lessonId}")
     public AppApiResponse<Void> deleteCourseLesson(
             @Parameter(description = "Course ID") @PathVariable UUID courseId,

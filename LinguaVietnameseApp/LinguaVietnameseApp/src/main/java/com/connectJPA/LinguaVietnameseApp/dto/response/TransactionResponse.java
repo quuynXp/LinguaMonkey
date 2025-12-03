@@ -1,5 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.dto.response;
 
+import com.connectJPA.LinguaVietnameseApp.entity.Transaction;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionProvider;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
@@ -34,4 +36,6 @@ public class TransactionResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
     private OffsetDateTime deletedAt;
+    private Transaction originalTransaction;
+    private User user;
 }

@@ -7,6 +7,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateCourseVersionRequest
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseSummaryResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CreatorDashboardResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import org.springframework.data.domain.Page;
@@ -26,7 +27,6 @@ public interface CourseService {
     CourseResponse updateCourseDetails(UUID id, UpdateCourseDetailsRequest request);
 
     // === LOGIC CŨ (ĐÃ ĐIỀU CHỈNH) ===
-    Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Pageable pageable);
     List<CourseResponse> getRecommendedCourses(UUID userId, int limit);
     List<CourseSummaryResponse> getCourseSummariesByTeacher(UUID teacherId, int limit);
     // Page<CourseResponse> getDiscountedCourses(Pageable pageable);
@@ -42,4 +42,7 @@ public interface CourseService {
     List<String> getCourseCategories();
     // THÊM: Phương thức tìm kiếm
     Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters);
+    Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated,
+            Pageable pageable);
+    CreatorDashboardResponse getCourseDashboardStats(UUID courseId);
 }

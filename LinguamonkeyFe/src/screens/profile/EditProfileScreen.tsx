@@ -271,23 +271,6 @@ const EditProfileScreen: React.FC = () => {
         <View style={styles.card}>
           <Text style={styles.title}>{t('profile.editProfile') ?? 'Edit profile'}</Text>
 
-          {/* User ID (Read-only) */}
-          <View style={styles.field}>
-            <Text style={styles.label}>User ID</Text>
-            <TextInput value={local.userId} style={[styles.input, styles.readOnlyInput]} editable={false} />
-          </View>
-
-          {/* VIP Status (Read-only) */}
-          <View style={styles.field}>
-            <Text style={styles.label}>VIP Status</Text>
-            <View style={[styles.input, styles.readOnlyInput, { flexDirection: 'row', justifyContent: 'space-between' }]}>
-              <Text style={{ color: local.vip ? '#D97706' : '#9CA3AF', fontWeight: 'bold' }}>
-                {local.vip ? 'ACTIVE VIP' : 'FREE ACCOUNT'}
-              </Text>
-              {local.vip && <Icon name="verified" size={20} color="#D97706" />}
-            </View>
-          </View>
-
           {/* Email (Read-only) */}
           <View style={styles.field}>
             <Text style={styles.label}>{t('profile.email') ?? 'Email'}</Text>

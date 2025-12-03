@@ -44,4 +44,11 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Friendsh
 
     List<Friendship> findByIdReceiverIdAndCreatedAtBetween(UUID userId, OffsetDateTime startOdt, OffsetDateTime endOdt);
 
+    @Query("SELECT COUNT(f) FROM Friendship f " +
+           "WHERE (f.id.requesterId  = :userId OR f.id.receiverId  = :userId) " +
+           "AND f.status = 'ACCEPTED' " +
+           "AND f.createdAt >= :startDate AND f.createdAt <= :endDate")
+    int countNewFriends(@Param("userId") UUID userId, 
+                        @Param("startDate") OffsetDateTime startDate, 
+                        @Param("endDate") OffsetDateTime endDate);
 }

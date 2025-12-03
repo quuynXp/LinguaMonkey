@@ -173,9 +173,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }, []);
 
   // useEffect(() => {
-  //   fetchLanguages()
-  //   fetchCharacters()
-  //   fetchInterests()
+  //   fetchLanguages()
+  //   fetchCharacters()
+  //   fetchInterests()
   // }, [])
 
   useEffect(() => {
@@ -228,18 +228,18 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   }, [])
 
   // const fetchCharacters = async () => {
-  //   try {
-  //     const response = await instance.get('/api/v1/character3ds');
-  //     const charactersArray = response.data.result?.content;
+  //   try {
+  //     const response = await instance.get('/api/v1/character3ds');
+  //     const charactersArray = response.data.result?.content;
 
-  //     if (Array.isArray(charactersArray)) {
-  //       setCharacters(charactersArray);
-  //     } else {
-  //       setCharacters([]);
-  //     }
-  //   } catch (error) {
-  //     Alert.alert(t("error.title"), t("error.loadCharacters"));
-  //   }
+  //     if (Array.isArray(charactersArray)) {
+  //       setCharacters(charactersArray);
+  //     } else {
+  //       setCharacters([]);
+  //     }
+  //   } catch (error) {
+  //     Alert.alert(t("error.title"), t("error.loadCharacters"));
+  //   }
   // };
 
   const fetchLanguages = async () => {
@@ -271,10 +271,12 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     }
   }
 
+  // Steps are now 1, 2, 3 (Basic Info, Interests/Goals, Certs/Pace). Step 4 (Summary) is now Step 3 and finishes.
   const handleNext = async () => {
-    if (currentStep === 2) {
+    // Step 1: Basic Info validation
+    if (currentStep === 1) {
       if (!accountName.trim()) {
-        Alert.alert(t("error.title"), t("error.nameRequired"))
+        Alert.alert(t("error.title"), t("error.nameRequired") || "Name is required.")
         return
       }
       if (!email.trim() || !email.includes('@')) {
@@ -283,22 +285,25 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
     }
 
-    if (currentStep < 4) {
+    if (currentStep < 3) {
       setCurrentStep(currentStep + 1)
-    } else {
+    } else if (currentStep === 3) {
+      // Final step (formerly step 4)
       await createTempAccountAndSetup()
     }
   }
 
   const handleSkip = async () => {
-    if (currentStep >= 3) {
+    // Skipping is allowed from Step 2 onwards.
+    if (currentStep >= 2) {
+      // Must ensure required fields from step 1 are filled
       if (!email.trim() || !email.includes('@') || !accountName.trim()) {
-        Alert.alert(t("error.title"), t("error.requiredFieldsMissing") || "Please complete the required fields in Step 2 (Name, Email) before skipping.");
+        Alert.alert(t("error.title"), t("error.requiredFieldsMissing") || "Please complete the required fields in Step 1 (Name, Email) before finishing/skipping.");
         return;
       }
       await createTempAccountAndSetup(true);
     } else {
-      Alert.alert(t("error.title"), t("setup.skipNotAllowed") || "Skipping is only allowed from step 3 onwards.");
+      Alert.alert(t("error.title"), t("setup.skipNotAllowed") || "Skipping is only allowed from step 2 onwards to finish setup.");
     }
   };
 
@@ -317,7 +322,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
 
       // if (selectedCharacter?.character3dId) {
-      //   payload.character3dId = selectedCharacter.character3dId
+      //   payload.character3dId = selectedCharacter.character3dId
       // }
 
       const mappedCountry = mapCountryToEnum(country ?? undefined)
@@ -394,7 +399,8 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       }
 
       await useUserStore.getState().finishSetup();
-      gotoTab("ProficiencyTestScreen");
+      // SỬA ĐIỂM ĐIỀU HƯỚNG: Bỏ qua ProficiencyTestScreen, chuyển thẳng về Home
+      gotoTab("TabApp");
 
     } catch (error: any) {
       console.error("createTempAccountAndSetup error:", error.response?.data || error.message);
@@ -478,61 +484,23 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
-      {[1, 2, 3, 4].map((step) => (
+      {/* Cập nhật số bước thành 3 (Basic Info, Interests/Goals, Certs/Pace) */}
+      {[1, 2, 3].map((step) => (
         <View key={`step-${step}`} style={styles.stepContainer}>
           <View style={[styles.stepCircle, currentStep >= step && styles.stepCircleActive]}>
             <Text style={[styles.stepText, currentStep >= step && styles.stepTextActive]}>{step}</Text>
           </View>
-          {step < 5 && <View style={[styles.stepLine, currentStep > step && styles.stepLineActive]} />}
+          {/* Bỏ điều kiện step < 5, dùng step < 3 vì có 3 bước */}
+          {step < 3 && <View style={[styles.stepLine, currentStep > step && styles.stepLineActive]} />}
         </View>
       ))}
     </View>
   )
 
   // const renderCharacterSelection = () => (
-  //   <View style={styles.stepContent}>
-  //     <Text style={styles.stepTitle}>{t("setup.chooseCompanion")}</Text>
-  //     <Text style={styles.stepSubtitle}>{t("setup.chooseCompanion.desc")}</Text>
-
-  //     <FlatList
-  //       data={characters}
-  //       numColumns={2}
-  //       keyExtractor={(item) => item.character3dId}
-  //       columnWrapperStyle={styles.charactersRow}
-  //       renderItem={({ item }) => (
-  //         <TouchableOpacity
-  //           key={item.character3dId}
-  //           style={[
-  //             styles.characterCard,
-  //             selectedCharacter?.character3dId === item.character3dId && styles.characterCardSelected
-  //           ]}
-  //           onPress={() => setSelectedCharacter(item)}
-  //         >
-  //           {item.modelUrl && typeof item.modelUrl === 'string' ? (
-  //             <Image
-  //               source={{ uri: item.modelUrl }}
-  //               style={styles.characterImage}
-  //               resizeMode="contain"
-  //             />
-  //           ) : (
-  //             <View style={styles.modelPlaceholder}>
-  //               <Icon name="image" size={40} color="#9CA3AF" />
-  //               <Text style={styles.modelErrorText}>No Image</Text>
-  //             </View>
-  //           )}
-  //           <Text style={styles.characterName}>{item.character3dName}</Text>
-  //           <Text style={styles.characterPersonality}>{item.description}</Text>
-
-  //           {selectedCharacter?.character3dId === item.character3dId && (
-  //             <View style={styles.selectedIndicator}>
-  //               <Icon name="check-circle" size={20} color="#10B981" />
-  //             </View>
-  //           )}
-  //         </TouchableOpacity>
-  //       )}
-  //       contentContainerStyle={styles.charactersGrid}
-  //     />
-  //   </View>
+  //   <View style={styles.stepContent}>
+  //     ...
+  //   </View>
   // )
 
   const renderBasicInfo = () => (
@@ -768,126 +736,15 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     </View>
   )
 
-  const renderSummary = () => (
-    <View style={styles.stepContent}>
-      <Text style={styles.stepTitle}>{t("setup.readyToStart")}</Text>
-      <Text style={styles.stepSubtitle}>{t("setup.readyToStart.desc")}</Text>
-
-      <View style={styles.summaryCard}>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>{t("setup.character")}:</Text>
-          {/* <Text style={styles.summaryText}>{selectedCharacter?.character3dName || "None"}</Text> */}
-        </View>
-
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryLabel}>{t("auth.fullName")}:</Text>
-          <Text style={styles.summaryText}>{accountName}</Text>
-        </View>
-
-        {email && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("auth.email")}:</Text>
-            <Text style={styles.summaryText}>{email}</Text>
-          </View>
-        )}
-
-        {country && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("profile.country")}:</Text>
-            <Text style={styles.summaryText}>{countries.find(c => c.code === country)?.name || country}</Text>
-          </View>
-        )}
-
-        {ageRange && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("setup.ageRange")}:</Text>
-            <Text style={styles.summaryText}>{ageRange}</Text>
-          </View>
-        )}
-
-        {nativeLanguage && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("language.nativeLanguage")}:</Text>
-            <Text style={styles.summaryText}>
-              {languages.find((lang) => lang.languageCode === nativeLanguage)?.languageName || nativeLanguage}
-            </Text>
-          </View>
-        )}
-
-        {targetLanguages.length > 0 && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("language.learningLanguage")}:</Text>
-            <View style={styles.summaryLanguages}>
-              {targetLanguages.map((code) => {
-                const lang = languages.find((l) => l.languageCode === code)
-                return (
-                  <Text key={code} style={styles.summaryLanguage}>
-                    {lang?.languageName || code}
-                  </Text>
-                )
-              })}
-            </View>
-          </View>
-        )}
-
-        {selectedInterests.length > 0 && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("setup.interests")}:</Text>
-            <View style={styles.summaryInterests}>
-              {selectedInterests.map((id) => {
-                const interest = interests.find((i) => i.interestId === id)
-                return (
-                  <Text key={id} style={styles.summaryInterest}>
-                    {interest?.interestName || id}
-                  </Text>
-                )
-              })}
-            </View>
-          </View>
-        )}
-
-        {learningGoalsSelected.length > 0 && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("setup.learningGoals")}:</Text>
-            <View style={styles.summaryInterests}>
-              {learningGoalsSelected.map((id) => {
-                const goal = learningGoals.find((g) => g.id === id)
-                return (
-                  <Text key={id} style={styles.summaryInterest}>
-                    {goal?.name || id}
-                  </Text>
-                )
-              })}
-            </View>
-          </View>
-        )}
-
-        {certificationsSelected.length > 0 && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("setup.certifications")}:</Text>
-            <Text style={styles.summaryText}>{certificationsSelected.length} {t("setup.selected")}</Text>
-          </View>
-        )}
-
-        {learningPace && (
-          <View style={styles.summaryRow}>
-            <Text style={styles.summaryLabel}>{t("setup.learningPace")}:</Text>
-            <Text style={styles.summaryText}>
-              {learningPaces.find((p) => p.id === learningPace)?.name || "None"}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.nextStepInfo}>
-        <Icon name="quiz" size={24} color="#4F46E5" />
-        <Text style={styles.nextStepText}>{t("setup.nextProficiencyTest")}</Text>
-      </View>
-    </View>
-  )
+  // const renderSummary = () => (
+  //   <View style={styles.stepContent}>
+  //     ...
+  //   </View>
+  // )
 
   const renderSkipButton = () => {
-    if (currentStep >= 3 && currentStep < 5) {
+    // Cho phép bỏ qua từ bước 2
+    if (currentStep >= 2 && currentStep <= 3) {
       return (
         <TouchableOpacity onPress={handleSkip}>
           <Text style={styles.skipButtonText}>{t("setup.skip") || "Skip"}</Text>
@@ -895,6 +752,21 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       )
     }
     return <View style={{ width: 24 }} />
+  }
+
+  const renderCurrentStepContent = () => {
+    switch (currentStep) {
+      // case 1: return renderCharacterSelection(); // Bỏ qua Character Selection
+      case 1:
+        return renderBasicInfo()
+      case 2:
+        return renderInterestsAndGoals()
+      case 3:
+        return renderCertificationsAndPace()
+      // case 4: return renderSummary(); // Bỏ qua Summary (hoặc gộp vào 3)
+      default:
+        return renderBasicInfo()
+    }
   }
 
   return (
@@ -919,16 +791,15 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         {renderStepIndicator()}
 
         <ScrollView>
-          {/* {currentStep === 1 && renderCharacterSelection()} */}
-          {currentStep === 1 && renderBasicInfo()}
-          {currentStep === 2 && renderInterestsAndGoals()}
-          {currentStep === 3 && renderCertificationsAndPace()}
-          {currentStep === 4 && renderSummary()}
+          {renderCurrentStepContent()}
         </ScrollView>
 
         <View style={styles.navigationButtons}>
           <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
-            <Text style={styles.nextButtonText}>{currentStep === 5 ? t("setup.takeTest") : t("setup.continue")}</Text>
+            <Text style={styles.nextButtonText}>
+              {/* Cập nhật text ở bước cuối cùng */}
+              {currentStep === 3 ? t("setup.startLearning") || "Start Learning" : t("setup.continue") || "Continue"}
+            </Text>
             <Icon name="arrow-forward" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>

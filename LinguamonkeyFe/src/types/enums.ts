@@ -118,7 +118,8 @@ export enum CourseApprovalStatus {
 export enum CourseVersionEnrollmentStatus {
     COMPLETED = "COMPLETED",
     PAUSE = "PAUSE",
-    ACTIVE = "ACTIVE"
+    ACTIVE = "ACTIVE",
+    IN_PROGRESS = "IN_PROGRESS"
 }
 
 export enum CourseType {
@@ -181,6 +182,7 @@ export enum GoalType {
 }
 
 export enum LearningPace {
+    NORMAL = "NORMAL",
     SLOW = "SLOW",
     MAINTAIN = "MAINTAIN",
     FAST = "FAST",
@@ -196,7 +198,11 @@ export enum LessonType {
     QUIZ = "QUIZ",
     SPEAKING = "SPEAKING",
     VIDEO = "VIDEO",
-    TEXT = "TEXT"
+    TEXT = "TEXT",
+    VOCABULARY = "VOCABULARY",
+    READING = "READING",
+    WRITING = "WRITING",
+    GRAMMAR_PRACTICE = "GRAMMAR_PRACTICE"
 }
 
 export enum MediaType {
@@ -272,7 +278,8 @@ export enum ProficiencyLevel {
     C1 = "C1",
     C2 = "C2",
     NATIVE = "NATIVE",
-    BEGINER = "BEGINER"
+    BEGINER = "BEGINER",
+    INTERMEDIATE = "INTERMEDIATE",
 }
 
 export enum QuestionType {
@@ -347,7 +354,8 @@ export enum SkillType {
     READING = "READING",
     WRITING = "WRITING",
     VOCABULARY = "VOCABULARY",
-    GRAMMAR = "GRAMMAR"
+    GRAMMAR = "GRAMMAR",
+    TRANSLATION = "TRANSLATION"
 }
 
 export interface BaseResponse {
@@ -468,7 +476,8 @@ export enum TransactionType {
     WITHDRAW = "WITHDRAW",
     TRANSFER = "TRANSFER",
     PAYMENT = "PAYMENT",
-    REFUND = "REFUND"
+    REFUND = "REFUND",
+    UPGRADE_VIP = "UPGRADE_VIP"
 }
 
 export enum VerificationStatus {

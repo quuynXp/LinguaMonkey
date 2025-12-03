@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
+import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
 
@@ -17,6 +18,21 @@ import java.util.UUID;
 
 @Repository
 public interface RoomRepository extends JpaRepository<Room, UUID> {
+       @Query("SELECT r FROM Room r WHERE " +
+            "(:roomName IS NULL OR r.roomName LIKE %:roomName%) AND " +
+            "(:creatorId IS NULL OR r.creatorId = :creatorId) AND " +
+            "(:purpose IS NULL OR r.purpose = :purpose) AND " +
+            "(:roomType IS NULL OR r.roomType = :roomType) AND " +
+            "r.purpose != 'AI_CHAT' AND " +
+            "r.isDeleted = false AND " +
+            "NOT EXISTS (SELECT rm FROM RoomMember rm WHERE rm.room.roomId = r.roomId AND rm.id.userId = :currentUserId AND rm.isDeleted = false)")
+    Page<Room> findPublicRoomsExcludingJoined(
+            @Param("roomName") String roomName,
+            @Param("creatorId") UUID creatorId,
+            @Param("purpose") RoomPurpose purpose,
+            @Param("roomType") RoomType roomType,
+            @Param("currentUserId") UUID currentUserId,
+            Pageable pageable);
 
     // Tìm phòng chung (cho màn hình ChatRoomList - Lobby)
     @Query("SELECT r FROM Room r WHERE " +
@@ -73,9 +89,22 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
 
     List<Room> findByCreatorIdAndPurposeAndIsDeletedFalse(UUID userId, RoomPurpose aiChat);
 
-
-
-
+    // 1. Must be joined by user
+    // 2. Not AI Chat
+    // 3. Must have >= 2 active members (User + at least 1 other)
+    // 4. Must have at least 1 message (history)
+    @Query("SELECT r FROM Room r " +
+            "JOIN RoomMember rm ON r.roomId = rm.id.roomId " +
+            "WHERE rm.id.userId = :userId AND rm.isDeleted = false AND r.isDeleted = false " +
+            "AND r.purpose != 'AI_CHAT' " +
+            "AND (:purpose IS NULL OR r.purpose = :purpose) " +
+            "AND (SELECT COUNT(mem) FROM RoomMember mem WHERE mem.room.roomId = r.roomId AND mem.isDeleted = false) >= 2 " +
+            "AND (SELECT COUNT(msg) FROM ChatMessage msg WHERE msg.roomId = r.roomId AND msg.isDeleted = false) > 0 " +
+            "ORDER BY r.updatedAt DESC") 
+    Page<Room> findJoinedRoomsStrict(
+            @Param("userId") UUID userId,
+            @Param("purpose") RoomPurpose purpose,
+            Pageable pageable);
 
     @Query("SELECT r FROM Room r WHERE " +
            "(:roomName IS NULL OR r.roomName LIKE %:roomName%) AND " +
@@ -103,6 +132,8 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             Pageable pageable);
 
     Optional<Room> findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(UUID userId, RoomPurpose purpose, RoomType roomType);
+
+    Optional<Room> findByCourseIdAndIsDeletedFalse(UUID courseId);
 
     
 }

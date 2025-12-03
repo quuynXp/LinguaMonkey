@@ -19,7 +19,7 @@ import { useUsers } from "../../hooks/useUsers";
 import { useFriendships } from "../../hooks/useFriendships";
 import { useGetStudyHistory } from "../../hooks/useUserActivity";
 import { useCourses } from "../../hooks/useCourses";
-import { useRooms } from "../../hooks/useRoom"; // <--- IMPORT MỚI
+import { useRooms } from "../../hooks/useRoom";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useToast } from "../../utils/useToast";
@@ -28,6 +28,7 @@ import type { UserProfileResponse } from "../../types/dto";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
 import { getCourseImage } from "../../utils/courseUtils";
+import { useChatStore } from "../../stores/ChatStore";
 
 const { width } = Dimensions.get("window");
 
@@ -35,7 +36,7 @@ type RootStackParamList = {
   UserProfileViewScreen: { userId: string };
   ChatStack: {
     screen: string;
-    params: { roomId: string; roomName: string }; // <--- Cập nhật params điều hướng
+    params: { roomId: string; roomName: string };
   };
   CourseStack: {
     screen: string;
@@ -63,37 +64,117 @@ const InfoRow = ({ icon, label, value, isBoolean }: { icon: string; label: strin
   );
 };
 
-const ActivityHeatmap = ({ userId, historyData }: { userId: string; historyData: any }) => {
+// --- NEW LOGIC: Activity Heatmap (GitHub Style Contribution Graph) ---
+const ActivityHeatmap = ({ historyData }: { historyData: any }) => {
   const { t } = useTranslation();
+  const { showToast } = useToast();
+
+  const chartData = useMemo(() => {
+    if (!historyData) return [];
+
+    const today = new Date();
+    // Calculate start date: Go back 16 weeks, then find the Sunday of that week
+    const numWeeks = 16;
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (numWeeks * 7));
+    const dayOfWeek = startDate.getDay(); // 0 is Sunday
+    startDate.setDate(startDate.getDate() - dayOfWeek); // Align to Sunday
+
+    const weeks = [];
+    let currentWeek = [];
+
+    // Generate dates until we reach today (or end of this week)
+    const itrDate = new Date(startDate);
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + (6 - today.getDay())); // Fill until end of current week
+
+    while (itrDate <= endDate) {
+      const dateStr = itrDate.toISOString().split('T')[0];
+
+      // Data Mapping Logic
+      let count = 0;
+      if (historyData.sessions && Array.isArray(historyData.sessions)) {
+        // Sum up duration/count for this specific day
+        const sessions = historyData.sessions.filter((s: any) => {
+          if (!s.date) return false;
+          return s.date.startsWith(dateStr);
+        });
+        // Logic: Use duration as intensity, or count of sessions if preferred
+        // Using duration (minutes) as intensity proxy
+        count = sessions.reduce((acc: number, curr: any) => acc + (Math.floor((curr.duration || 0) / 60)), 0);
+      } else if (historyData[dateStr]) {
+        count = historyData[dateStr];
+      }
+
+      currentWeek.push({ date: dateStr, count });
+
+      // If week is full (7 days), push to weeks array and start new week
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
+      }
+
+      // Next day
+      itrDate.setDate(itrDate.getDate() + 1);
+    }
+
+    // Push remaining days if any (shouldn't happen if logic aligns to weeks)
+    if (currentWeek.length > 0) weeks.push(currentWeek);
+
+    return weeks;
+  }, [historyData]);
+
+  // GitHub-like color scale (5 Levels)
+  const getLevelColor = (count: number) => {
+    if (count === 0) return '#EBEDF0'; // Level 0: Empty
+    if (count <= 15) return '#9BE9A8'; // Level 1: Low
+    if (count <= 30) return '#40C463'; // Level 2: Medium
+    if (count <= 60) return '#30A14E'; // Level 3: High
+    return '#216E39';                  // Level 4: Intense
+  };
+
+  const handleDayPress = (date: string, count: number) => {
+    // Simple tooltip feedback
+    showToast({ type: 'info', message: `${date}: ${count} mins activity` });
+  };
 
   if (!historyData) return <ActivityIndicator size="small" />;
 
-  const today = new Date();
-  const days = Array.from({ length: 70 }).map((_, i) => {
-    const d = new Date();
-    d.setDate(today.getDate() - (69 - i));
-    const dateStr = d.toISOString().split("T")[0];
-    const count = historyData[dateStr] || 0;
-    return { date: dateStr, count };
-  });
-
-  const getColor = (count: number) => {
-    if (count === 0) return "#ebedf0";
-    if (count < 15) return "#9be9a8";
-    if (count < 30) return "#40c463";
-    if (count < 60) return "#30a14e";
-    return "#216e39";
-  };
-
   return (
-    <View style={styles.sectionContainer}>
-      <Text style={styles.sectionTitle}>{t("profile.activityHeatmap")}</Text>
-      <View style={styles.heatmapContainer}>
-        <View style={styles.heatmapGrid}>
-          {days.map((day, index) => (
-            <View key={index} style={[styles.heatmapBox, { backgroundColor: getColor(day.count) }]} />
+    <View style={styles.heatmapContainer}>
+      <View style={styles.heatmapHeader}>
+        <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
+        <Text style={styles.heatmapSubtext}>{t('common.last_months', { count: 4 })}</Text>
+      </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={styles.heatmapGraph}>
+          {/* Render Columns (Weeks) */}
+          {chartData.map((week, wIndex) => (
+            <View key={wIndex} style={styles.heatmapColumn}>
+              {week.map((day, dIndex) => (
+                <Pressable
+                  key={day.date}
+                  style={[
+                    styles.heatmapCell,
+                    { backgroundColor: getLevelColor(day.count) }
+                  ]}
+                  onPress={() => handleDayPress(day.date, day.count)}
+                />
+              ))}
+            </View>
           ))}
         </View>
+      </ScrollView>
+
+      <View style={styles.heatmapLegend}>
+        <Text style={styles.legendText}>{t('common.less')}</Text>
+        <View style={[styles.heatmapCell, { backgroundColor: '#EBEDF0' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#9BE9A8' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#40C463' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#30A14E' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#216E39' }]} />
+        <Text style={styles.legendText}>{t('common.more')}</Text>
       </View>
     </View>
   );
@@ -111,7 +192,7 @@ const UserProfileViewScreen = () => {
   const { useUserProfile, useAdmireUser } = useUsers();
   const { useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
   const { useCreatorCourses } = useCourses();
-  const { useFindOrCreatePrivateRoom } = useRooms(); // <--- Sử dụng Hook Room
+  const { useFindOrCreatePrivateRoom } = useRooms();
 
   // Data Queries
   const { data: userProfile, isLoading, refetch } = useUserProfile(userId);
@@ -123,7 +204,7 @@ const UserProfileViewScreen = () => {
   const updateFriendshipMutation = useUpdateFriendship();
   const deleteFriendshipMutation = useDeleteFriendship();
   const admireMutation = useAdmireUser();
-  const { mutate: findOrCreateRoom, isPending: isCreatingRoom } = useFindOrCreatePrivateRoom(); // <--- Mutation tìm/tạo phòng
+  const { mutate: findOrCreateRoom, isPending: isCreatingRoom } = useFindOrCreatePrivateRoom();
 
   const publicCourses = creatorCoursesPage?.data || [];
   const isSelf = currentUser?.userId === userId;
@@ -134,20 +215,18 @@ const UserProfileViewScreen = () => {
     return userProfile;
   }, [userProfile]);
 
-  // --- LOGIC MỚI: CHAT 1-1 ---
+  // --- LOGIC: CHAT 1-1 ---
   const handleMessage = () => {
     if (!currentUser || !profileData || isCreatingRoom) return;
 
-    // Gọi API tìm hoặc tạo phòng
+    useChatStore.getState().initStompClient();
+
     findOrCreateRoom(profileData.userId, {
       onSuccess: (room) => {
-        // Sau khi có roomId, navigate thẳng vào màn hình Chat Chi Tiết (GroupChatScreen)
-        // Thay vì màn hình list
         navigation.navigate("ChatStack", {
-          screen: "GroupChatScreen", // Hoặc tên màn hình bạn định nghĩa trong Stack
+          screen: "GroupChatScreen",
           params: {
             roomId: room.roomId,
-            // Với chat 1-1, tên phòng hiển thị chính là tên User kia
             roomName: profileData.nickname || profileData.fullname
           },
         });
@@ -157,7 +236,6 @@ const UserProfileViewScreen = () => {
       }
     });
   };
-  // ---------------------------
 
   const handleAddFriend = () => {
     if (!currentUser || !profileData || createFriendshipMutation.isPending) return;
@@ -359,7 +437,6 @@ const UserProfileViewScreen = () => {
 
           {!isSelf && (
             <View style={styles.actionButtons}>
-              {/* UPDATE: Message Button with Loading State */}
               {canChat ? (
                 <TouchableOpacity
                   style={[styles.messageBtn, isCreatingRoom && styles.btnDisabled]}
@@ -382,7 +459,6 @@ const UserProfileViewScreen = () => {
                 </View>
               )}
 
-              {/* Friend Actions */}
               {isFriend ? (
                 <TouchableOpacity style={styles.secondaryBtn} onPress={handleUnfriend} disabled={deleteFriendshipMutation.isPending}>
                   <Icon name="person-remove" size={20} color="#EF4444" />
@@ -393,8 +469,9 @@ const UserProfileViewScreen = () => {
                   <Text style={styles.primaryBtnText}>{t("profile.accept")}</Text>
                 </TouchableOpacity>
               ) : hasSent ? (
-                <TouchableOpacity style={styles.secondaryBtn} onPress={handleCancelRequest} disabled={deleteFriendshipMutation.isPending}>
+                <TouchableOpacity style={styles.cancelRequestBtn} onPress={handleCancelRequest} disabled={deleteFriendshipMutation.isPending}>
                   <Icon name="close" size={20} color="#6B7280" />
+                  <Text style={styles.cancelRequestBtnText}>{t("profile.cancelRequest") || "Cancel Request"}</Text>
                 </TouchableOpacity>
               ) : canSendFriendRequest && (
                 <TouchableOpacity style={styles.primaryBtn} onPress={handleAddFriend} disabled={createFriendshipMutation.isPending}>
@@ -403,7 +480,6 @@ const UserProfileViewScreen = () => {
                 </TouchableOpacity>
               )}
 
-              {/* Admire */}
               <TouchableOpacity
                 style={[styles.admireBtn, profileData.hasAdmired && styles.admiredBtn]}
                 onPress={handleAdmire}
@@ -419,13 +495,13 @@ const UserProfileViewScreen = () => {
           )}
         </View>
 
-        {/* Heatmap */}
+        {/* Improved Activity Heatmap */}
         {isHistoryLoading ? (
-          <View style={styles.sectionContainer}>
+          <View style={[styles.heatmapContainer, { height: 160, justifyContent: 'center' }]}>
             <ActivityIndicator size="small" color="#2196F3" />
           </View>
         ) : (
-          <ActivityHeatmap userId={userId} historyData={historyData} />
+          <ActivityHeatmap historyData={historyData} />
         )}
 
         <View style={styles.sectionContainer}>
@@ -751,6 +827,22 @@ const styles = createScaledSheet({
     justifyContent: "center",
     alignItems: "center",
   },
+  cancelRequestBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#F3F4F6",
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 24,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#E5E7EB",
+  },
+  cancelRequestBtnText: {
+    color: "#6B7280",
+    fontWeight: "600",
+    fontSize: 14,
+  },
   admireBtn: {
     width: 44,
     height: 44,
@@ -886,23 +978,48 @@ const styles = createScaledSheet({
     fontWeight: "600",
     color: "#4B5563",
   },
+  // --- Heatmap Specific Styles ---
   heatmapContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    padding: 10,
-    backgroundColor: "#F9FAFB",
-    borderRadius: 8,
+    backgroundColor: '#fff',
+    padding: 16,
+    marginBottom: 12,
+    minHeight: 180,
   },
-  heatmapGrid: {
+  heatmapHeader: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 3,
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: 12,
   },
-  heatmapBox: {
-    width: 10,
-    height: 10,
-    backgroundColor: "#10B981",
+  heatmapSubtext: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  heatmapGraph: {
+    flexDirection: 'row',
+    gap: 4,
+    paddingBottom: 4,
+  },
+  heatmapColumn: {
+    gap: 4,
+    justifyContent: 'flex-start',
+  },
+  heatmapCell: {
+    width: 12,
+    height: 12,
     borderRadius: 2,
+  },
+  heatmapLegend: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 4,
+    justifyContent: 'flex-end',
+  },
+  legendText: {
+    fontSize: 10,
+    color: '#666',
+    marginHorizontal: 4,
   },
   footerSpacing: {
     height: 20,

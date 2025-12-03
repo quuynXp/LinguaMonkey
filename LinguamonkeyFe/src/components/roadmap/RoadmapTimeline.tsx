@@ -9,7 +9,8 @@ interface RoadmapTimelineProps {
     items: RoadmapItemUserResponse[];
     suggestions?: RoadmapSuggestionResponse[];
     isOwner?: boolean;
-    onCompleteItem?: (itemId: string) => void;
+    // FIX: Thay đổi kiểu trả về từ 'void' thành 'Promise<void>'
+    onCompleteItem?: (itemId: string) => Promise<void>;
     onAddSuggestion?: (itemId: string, text: string) => Promise<void>;
 }
 
@@ -50,6 +51,7 @@ const RoadmapTimeline: React.FC<RoadmapTimelineProps> = ({
                         isLast={index === items.length - 1}
                         isExpanded={expandedId === item.id}
                         onToggle={() => handleToggle(item.id)}
+                        // Propagate the updated type
                         onComplete={onCompleteItem}
                         onAddSuggestion={onAddSuggestion}
                         isOwner={isOwner}

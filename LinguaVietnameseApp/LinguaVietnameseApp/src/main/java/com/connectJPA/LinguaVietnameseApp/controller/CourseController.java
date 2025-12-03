@@ -6,6 +6,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionEnrollmentResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.CreatorDashboardResponse;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.service.CourseService;
@@ -40,10 +41,12 @@ public class CourseController {
             @RequestParam(required = false) String title,
             @RequestParam(required = false) String languageCode,
             @RequestParam(required = false) CourseType type,
+            @RequestParam(required = false) Boolean isAdminCreated, // <--- THÊM THAM SỐ NÀY
             Pageable pageable,
             Locale locale) {
 
-        Page<CourseResponse> courses = courseService.getAllCourses(title, languageCode, type, pageable);
+        Page<CourseResponse> courses = courseService.getAllCourses(title, languageCode, type, isAdminCreated, pageable);
+        
         return AppApiResponse.<Page<CourseResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("course.list.success", null, locale))
@@ -51,6 +54,17 @@ public class CourseController {
                 .build();
     }
 
+    @GetMapping("/{courseId}/stats")
+    public AppApiResponse<CreatorDashboardResponse> getCourseStats(@PathVariable UUID courseId, Locale locale) {
+        CreatorDashboardResponse result = courseService.getCourseDashboardStats(courseId);
+
+        return AppApiResponse.<CreatorDashboardResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("course.list.success", null, locale))
+                .result(result)
+                .build();
+        
+    }
 
         @Operation(summary = "Get all course categories", description = "Lấy danh sách các category (Enum/String)")
         @GetMapping("/categories") // PHẢI ĐẶT TRƯỚC @GetMapping("/{id}")
@@ -189,11 +203,11 @@ public class CourseController {
     }
 
     @Operation(summary = "[Creator] Delete a course", description = "Xóa mềm một khóa học (chỉ creator hoặc admin)")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #id.toString() == authentication.name")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteCourse(
             @Parameter(description = "Course ID") @PathVariable UUID id,
             Locale locale) {
-        // TODO: Thêm @PreAuthorize("hasRole('ADMIN') or @courseSecurity.isCreator(#id, principal)")
         courseService.deleteCourse(id);
         return AppApiResponse.<Void>builder()
                 .code(200)
@@ -205,7 +219,7 @@ public class CourseController {
 
     @Operation(summary = "[Admin] Approve a course version", description = "Admin duyệt một version đang PENDING_APPROVAL")
     @PostMapping("/versions/{versionId}/approve")
-    // @PreAuthorize("hasRole('ADMIN')")
+@PreAuthorize("hasAuthority('ROLE_ADMIN')") 
     public AppApiResponse<CourseVersionResponse> approveCourseVersion(
             @PathVariable UUID versionId, Locale locale) {
         CourseVersionResponse version = courseService.approveCourseVersion(versionId);
@@ -218,7 +232,7 @@ public class CourseController {
 
     @Operation(summary = "[Admin] Reject a course version", description = "Admin từ chối một version đang PENDING_APPROVAL")
     @PostMapping("/versions/{versionId}/reject")
-    // @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')") 
     public AppApiResponse<CourseVersionResponse> rejectCourseVersion(
             @PathVariable UUID versionId, @RequestParam String reason, Locale locale) {
         CourseVersionResponse version = courseService.rejectCourseVersion(versionId, reason);

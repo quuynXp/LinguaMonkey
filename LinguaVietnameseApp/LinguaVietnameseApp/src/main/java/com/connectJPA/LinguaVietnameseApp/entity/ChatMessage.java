@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.entity;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.MessageType;
@@ -58,4 +59,10 @@ public class ChatMessage{
 
     @Column(name = "is_read", nullable = false)
     private boolean isRead;
+
+    @Column(name = "translated_text", columnDefinition = "TEXT")
+    private String translatedText;
+
+    @Column(name = "translated_lang", length = 10)
+    private String translatedLang;
 }

@@ -31,4 +31,14 @@ public interface LessonQuestionRepository extends JpaRepository<LessonQuestion, 
 
     List<LessonQuestion> findByLesson_LessonIdOrderByOrderIndex(UUID lessonId);
 
+    @Query("SELECT q FROM LessonQuestion q " +
+           "JOIN q.lesson l " +
+           "JOIN l.courseVersions cvl " + // Giả sử Lesson có quan hệ với CourseVersionLesson
+           "JOIN cvl.courseVersion cv " +
+           "JOIN cv.course c " +
+           "WHERE (q.mediaUrl IS NULL OR q.mediaUrl = '') " +
+           "AND c.isAdminCreated = true " +
+           "AND c.approvalStatus = 'APPROVED' " + // Chỉ tạo cho khóa đã duyệt (tùy chọn)
+           "ORDER BY q.createdAt DESC")
+    List<LessonQuestion> findQuestionsMissingMedia(Pageable pageable);
 }

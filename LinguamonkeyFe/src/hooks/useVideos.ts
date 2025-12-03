@@ -8,13 +8,11 @@ import {
   CreateGroupCallRequest,
   UpdateParticipantStatusRequest,
   RoomResponse,
-  CallPreferencesRequest, // Thêm DTO Matchmaking
-  FindMatchResponse,      // Thêm DTO Matchmaking
+  CallPreferencesRequest,
 } from "../types/dto";
 
 import { VideoCallParticipant } from "../types/entity";
 
-// --- Keys Factory ---
 export const videoCallKeys = {
   all: ["videoCalls"] as const,
   lists: (params: any) => [...videoCallKeys.all, "list", params] as const,
@@ -24,7 +22,6 @@ export const videoCallKeys = {
   matchmaking: () => [...videoCallKeys.all, "matchmaking"] as const,
 };
 
-// --- Helper to standardize pagination return ---
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   data: (result?.content as T[]) || [],
   pagination: {
@@ -39,9 +36,16 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   },
 });
 
-/**
- * Hook: useVideoCalls (Bao gồm Matchmaking)
- */
+// Interface for the raw Map structure from Java
+export interface MatchResponseData {
+  status: 'MATCHED' | 'WAITING';
+  room?: RoomResponse;
+  queueSize?: number;
+  secondsWaited?: number;
+  currentCriteriaLevel?: number;
+  score?: number;
+}
+
 export const useVideoCalls = () => {
   const queryClient = useQueryClient();
   const BASE = "/api/v1/video-calls";
@@ -245,24 +249,20 @@ export const useVideoCalls = () => {
   const useFindCallPartner = () => {
     return useMutation({
       mutationFn: async (req: CallPreferencesRequest) => {
-        // Axios interceptor thường trả về data.result, nhưng ở đây ta cần check cả status code
-        // Nên ta sẽ request raw response hoặc cấu hình để lấy được code
-        const response = await instance.post<AppApiResponse<RoomResponse | null>>(
+        // Return explicit object with code and parsed data
+        const response = await instance.post<AppApiResponse<MatchResponseData>>(
           `${MATCHMAKING_BASE}/find-call`,
           req
         );
-
-        // Giả sử response.data là cấu trúc AppApiResponse
         return {
-          data: response.data.result, // RoomResponse hoặc null
-          code: response.data.code,   // 200 hoặc 202
-          message: response.data.message
+          code: response.data.code,
+          message: response.data.message,
+          data: response.data.result // This is the MatchResponseData Map
         };
       },
     });
   };
 
-  // POST /api/v1/matchmaking/cancel
   const useCancelFindMatch = () => {
     return useMutation({
       mutationFn: async () => {
@@ -270,7 +270,6 @@ export const useVideoCalls = () => {
       }
     });
   };
-
 
   return {
     useVideoCallsList,

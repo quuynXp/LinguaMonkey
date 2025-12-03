@@ -6,6 +6,7 @@ import ReviewInput from "./ReviewInput";
 import { CourseVersionReviewResponse } from "../../types/dto";
 import { useUserStore } from "../../stores/UserStore";
 import { useTranslation } from "react-i18next";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 interface ReviewSectionProps {
     entityId: string;
@@ -113,7 +114,7 @@ const ReviewSection: React.FC<ReviewSectionProps> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: {
         backgroundColor: "#FFF",
         marginTop: 10,

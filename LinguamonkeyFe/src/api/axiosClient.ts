@@ -46,7 +46,9 @@ const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (globa
 const logRequest = (config: CustomAxiosRequestConfig) => {
     if (!DEV_LOG_ENABLED) return;
     const { method, url, headers } = config;
-    console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url}`, { headers });
+    // Không log data của FormData để tránh crash console
+    const isFormData = config.data instanceof FormData;
+    console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url} ${isFormData ? '(FormData)' : ''}`, { headers });
 };
 
 const logResponse = (response: AxiosResponse) => {
@@ -100,9 +102,13 @@ privateClient.interceptors.request.use(
 
 export const mediaClient = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 300000, // Đã tăng timeout lên 5 phút (300000ms)
+    timeout: 300000, // 5 phút
     headers: {
         'Accept': 'application/json',
+    },
+    // QUAN TRỌNG: Ngăn Axios tự động serialize FormData thành JSON hoặc String
+    transformRequest: (data) => {
+        return data;
     },
 });
 
@@ -132,10 +138,14 @@ const handleErrorResponse = (error: AxiosError) => {
     const data = error.response?.data as AppApiResponseError | undefined;
 
     if (!httpStatus) {
-        showToast({
-            title: i18n.t('error.connection_message'),
-            type: 'error',
-        });
+        console.error("🔥 Network Error Details:", error.message);
+
+        if (error.message !== 'canceled') {
+            showToast({
+                title: i18n.t('error.connection_message'),
+                type: 'error',
+            });
+        }
         return;
     }
 

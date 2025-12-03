@@ -52,5 +52,8 @@ public class DailyChallenge extends BaseEntity {
     private ChallengePeriod period; // DAILY or WEEKLY
 
     @Column(name = "screen_route")
-    private String screenRoute; // Tên màn hình để navigate (VD: "LearnScreen")
+    private String screenRoute;
+    
+    @Column(name = "stack")
+    private String stack;
 }

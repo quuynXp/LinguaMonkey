@@ -1,9 +1,12 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.LearningActivityEventRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TestSubmissionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
+import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.service.TestService;
+import com.connectJPA.LinguaVietnameseApp.service.UserLearningActivityService;
 import com.connectJPA.LinguaVietnameseApp.utils.SecurityUtil;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -31,6 +34,7 @@ public class TestController {
     private final TestService testService;
     private final MessageSource messageSource;
     private final SecurityUtil securityUtil;
+    private final UserLearningActivityService userLearningActivityService;
 
     @Operation(summary = "Get available test configurations (Paginated)")
     @GetMapping("/available")
@@ -43,7 +47,6 @@ public class TestController {
         Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
         Page<TestConfigResponse> testsPage = testService.getAvailableTests(languageCode, pageable);
         
-        // Convert Spring Page to Custom PageResponse
         PageResponse<TestConfigResponse> pageResponse = new PageResponse<>();
         pageResponse.setContent(testsPage.getContent());
         pageResponse.setPageNumber(testsPage.getNumber());
@@ -105,10 +108,21 @@ public class TestController {
     public AppApiResponse<TestResultResponse> submitTest(
             @PathVariable UUID sessionId,
             @RequestBody TestSubmissionRequest submission,
+            @RequestParam(defaultValue = "0") int duration,
             Locale locale) {
         UUID userId = securityUtil.getCurrentUserId();
         try {
             TestResultResponse result = testService.submitTest(sessionId, userId, submission);
+
+            // CENTRALIZED LOGGING & CHALLENGE UPDATE
+            userLearningActivityService.logActivityEndAndCheckChallenges(LearningActivityEventRequest.builder()
+                    .userId(userId)
+                    .activityType(ActivityType.TEST)
+                    .relatedEntityId(sessionId)
+                    .durationInSeconds(duration) // FE sends total duration
+                    .details("Test Score: " + result.getScore())
+                    .build());
+
             return AppApiResponse.<TestResultResponse>builder()
                     .code(200)
                     .message("Submitted successfully")

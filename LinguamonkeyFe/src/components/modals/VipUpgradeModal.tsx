@@ -22,23 +22,19 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
     const navigation = useNavigation<any>();
     const { user } = useUserStore();
 
-    // Hooks
     const { convert, rates, isLoading: loadingRates } = useCurrencyConverter();
     const { data: walletData, isLoading: loadingBalance } = useWallet().useWalletBalance(user?.userId);
     const createTransaction = useTransactionsApi().useCreateTransaction();
     const createPaymentUrl = useTransactionsApi().useCreatePayment();
 
-    // State
     const [plan, setPlan] = useState<'monthly' | 'yearly' | 'trial'>('yearly');
     const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'gateway'>('gateway');
     const [gatewayProvider, setGatewayProvider] = useState<Enums.TransactionProvider>(Enums.TransactionProvider.STRIPE);
     const [isProcessing, setIsProcessing] = useState(false);
 
-    // Coin State
     const [useCoins, setUseCoins] = useState(false);
     const [coinsToUse, setCoinsToUse] = useState(0);
 
-    // Pricing Constants
     const BASE_PRICE_MONTHLY = 9.99;
     const BASE_PRICE_YEARLY = 99.00;
     const PRICE_TRIAL = 1.00;
@@ -55,7 +51,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
         }
     }, [isTrialEligible, isRenewal, visible]);
 
-    // Calculate Price
     let currentPriceUSD = 0;
     if (plan === 'monthly') currentPriceUSD = BASE_PRICE_MONTHLY;
     else if (plan === 'yearly') currentPriceUSD = BASE_PRICE_YEARLY;
@@ -83,18 +78,13 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
 
     const discountUSD = coinsToUse / COINS_PER_USD;
     const finalPriceUSD = Math.max(0, currentPriceUSD - discountUSD);
-
-    // Display Price Logic
     const displayPrice = convert(finalPriceUSD, userCurrency);
 
-    // Helper: Convert Balance to USD for display
     const getBalanceInUSD = () => {
         const balance = walletData?.balance || 0;
         if (userCurrency === 'USD') return '';
-
         const rate = convert(1, 'VND');
         if (!rate || rate === 0) return '';
-
         const balanceUSD = balance / rate;
         return `(≈ $${balanceUSD.toFixed(2)})`;
     };
@@ -148,11 +138,11 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
             amount: cleanAmount,
             currency: userCurrency,
             provider: Enums.TransactionProvider.INTERNAL,
-            type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
+            type: Enums.TransactionType.UPGRADE_VIP, // FIXED: Correct Enum Type
             status: Enums.TransactionStatus.SUCCESS,
             description: getDescription(),
             coins: useCoins ? coinsToUse : 0,
-            // receiverId: 
+            // receiverId and courseVersionId are OPTIONAL now
         };
 
         createTransaction.mutate(payload, {
@@ -175,7 +165,7 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
             amount: cleanAmount,
             currency: userCurrency,
             provider: gatewayProvider,
-            type: Enums.TransactionType.PAYMENT, // <--- FIXED: Added Type
+            type: Enums.TransactionType.UPGRADE_VIP, // FIXED: Correct Enum Type
             returnUrl: "linguamonkey://vip-success",
             description: getDescription(),
             coins: useCoins ? coinsToUse : 0
@@ -195,7 +185,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
         });
     };
 
-    // ... existing increaseCoins/decreaseCoins and Render code (Buttons, UI) ...
     const increaseCoins = () => {
         if (coinsToUse + 100 <= maxCoinsUsable) setCoinsToUse(prev => prev + 100);
         else setCoinsToUse(maxCoinsUsable);
@@ -214,7 +203,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                         <Icon name="close" size={24} color="#6B7280" />
                     </TouchableOpacity>
 
-                    {/* Header */}
                     <View style={styles.headerRow}>
                         <View style={styles.iconContainer}>
                             <Icon name={isRenewal ? "autorenew" : "workspace-premium"} size={40} color="#F59E0B" />
@@ -227,14 +215,12 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                         </View>
                     </View>
 
-                    {/* Trial Banner */}
                     {isTrialEligible && plan === 'trial' && (
                         <View style={styles.trialBanner}>
                             <Text style={styles.trialBannerText}>🎉 Special Offer: 14 Days Trial for $1!</Text>
                         </View>
                     )}
 
-                    {/* Plan Selector */}
                     <View style={styles.planSelector}>
                         {isTrialEligible && (
                             <TouchableOpacity
@@ -260,7 +246,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                         </TouchableOpacity>
                     </View>
 
-                    {/* Coin Section */}
                     {plan !== 'trial' && (
                         <View style={styles.coinSection}>
                             <View style={styles.coinHeader}>
@@ -286,7 +271,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                         </View>
                     )}
 
-                    {/* Total Price */}
                     <View style={styles.priceContainer}>
                         {loadingRates ? <ActivityIndicator color="#4F46E5" /> : (
                             <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 4 }}>
@@ -298,11 +282,9 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                         )}
                     </View>
 
-                    {/* Payment Methods Selection */}
                     <View style={styles.methodsContainer}>
                         <Text style={styles.sectionTitle}>{t('payment.selectMethod')}</Text>
 
-                        {/* Wallet Method */}
                         <TouchableOpacity
                             style={[styles.methodCard, paymentMethod === 'wallet' && styles.selectedMethod]}
                             onPress={() => setPaymentMethod('wallet')}
@@ -311,7 +293,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                                 <Icon name="account-balance-wallet" size={24} color={paymentMethod === 'wallet' ? '#4F46E5' : '#6B7280'} />
                                 <View style={{ flex: 1, marginLeft: 12 }}>
                                     <Text style={[styles.methodTitle, paymentMethod === 'wallet' && styles.selectedMethodText]}>{t('payment.myWallet')}</Text>
-                                    {/* Balance LEFT aligned with USD conversion */}
                                     <Text style={styles.balanceText}>
                                         {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} {userCurrency} {getBalanceInUSD()}
                                     </Text>
@@ -323,7 +304,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                             </View>
                         </TouchableOpacity>
 
-                        {/* Gateway Method */}
                         <TouchableOpacity
                             style={[styles.methodCard, paymentMethod === 'gateway' && styles.selectedMethod]}
                             onPress={() => setPaymentMethod('gateway')}
@@ -336,7 +316,6 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                                 {paymentMethod === 'gateway' && <Icon name="check-circle" size={20} color="#4F46E5" />}
                             </View>
 
-                            {/* Gateway Chips - Visible only when Gateway is selected */}
                             {paymentMethod === 'gateway' && (
                                 <View style={styles.gatewayOptions}>
                                     <TouchableOpacity

@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TypingStatusRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatMessageResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
@@ -15,6 +16,7 @@ import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
+import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -45,6 +47,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final MessageTranslationRepository messageTranslationRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
+    private final UserService userService;
     private final Gson gson = new Gson();
 
     @Override
@@ -91,27 +94,42 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         ChatMessageResponse response = chatMessageMapper.toResponse(savedMessage);
         response.setPurpose(room.getPurpose());
 
+        UserProfileResponse senderProfile = userService.getUserProfile(null, savedMessage.getSenderId());
+        response.setSenderProfile(senderProfile);
+
         try {
-            // 1. Send WebSocket Message (For Active Users)
+            // 1. Send WebSocket Message to the Room Topic (For users actively viewing the room or subscribed)
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
 
-            // 2. Send Push Notification (For Background/Killed Users)
-            try {
-                Map<String, String> dataPayload = Map.of(
-                    "screen", "TabApp",
-                    "stackScreen", "GroupChatScreen",
-                    "roomId", roomId.toString(),
-                    "initialFocusMessageId", response.getChatMessageId().toString()
-                );
-                String payloadJson = gson.toJson(dataPayload);
+            // Get all other members to send Notifications (Direct WS + Push)
+            List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
+                .stream()
+                .map(rm -> rm.getId().getUserId())
+                .filter(u -> !u.equals(request.getSenderId()))
+                .toList();
 
-                List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
-                    .stream()
-                    .map(rm -> rm.getId().getUserId())
-                    .filter(u -> !u.equals(request.getSenderId()))
-                    .toList();
+            for (UUID uId : memberIds) {
+                // 2. Send Direct WebSocket Notification (Signal for Bubbles/In-App Notifs when user is on another screen)
+                try {
+                    messagingTemplate.convertAndSendToUser(
+                        uId.toString(), 
+                        "/queue/notifications", 
+                        response
+                    );
+                } catch (Exception wsEx) {
+                    log.warn("Failed to send private WS notification to user {}", uId);
+                }
 
-                for (UUID uId : memberIds) {
+                // 3. Send Push Notification (For Background/Killed Users)
+                try {
+                    Map<String, String> dataPayload = Map.of(
+                        "screen", "TabApp",
+                        "stackScreen", "GroupChatScreen",
+                        "roomId", roomId.toString(),
+                        "initialFocusMessageId", response.getChatMessageId().toString()
+                    );
+                    String payloadJson = gson.toJson(dataPayload);
+
                     NotificationRequest nreq = NotificationRequest.builder()
                             .userId(uId)
                             .title("New message")
@@ -121,15 +139,18 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                             .build();
 
                     notificationService.createPushNotification(nreq);
+                } catch (Exception pushEx) {
+                    log.error("Failed to create push notification for user {}: {}", uId, pushEx.getMessage());
                 }
-            } catch (Exception ex) {
-                log.error("Failed to send push notifications for room {}: {}", roomId, ex.getMessage(), ex);
             }
+            
 
-            log.info("Sent WS message to /topic/room/{}", roomId);
+            log.info("Processed message delivery for room {}", roomId);
         } catch (Exception e) {
-            log.error("Failed to send websocket message", e);
+            log.error("Failed to process message delivery logic", e);
         }
+
+    
 
         return response;
     }

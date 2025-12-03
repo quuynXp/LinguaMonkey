@@ -139,7 +139,7 @@ public class StatisticsServiceImpl implements StatisticsService {
         List<UserLearningActivityResponse> recentActivities = userLearningActivityRepository
                 .findTop5ByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(userId)
                 .stream()
-                .map(userLearningActivityMapper::toResponse)
+                .map(userLearningActivityMapper::toUserLearningActivityResponse)
                 .collect(Collectors.toList());
 
         return DashboardStatisticsResponse.builder()

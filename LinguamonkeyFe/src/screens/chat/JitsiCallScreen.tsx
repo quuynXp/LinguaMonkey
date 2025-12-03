@@ -10,6 +10,7 @@ import { useTokenStore } from '../../stores/tokenStore';
 import { API_BASE_URL } from '../../api/apiConfig';
 import LiveAudioStream from 'react-native-live-audio-stream';
 import ScreenLayout from '../../components/layout/ScreenLayout';
+import { t } from 'i18next';
 
 // === TYPES ===
 type JitsiParams = {
@@ -36,6 +37,7 @@ type ModeOption = {
 
 // === CONSTANTS ===
 const LANGUAGES = [
+  { code: 'auto', name: t('auto_detect') },
   { code: 'en', name: 'English' },
   { code: 'vi', name: 'Vietnamese' },
   { code: 'ja', name: 'Japanese' },
@@ -60,6 +62,7 @@ const JitsiCallScreen = () => {
 
   // === STATE ===
   const [nativeLang, setNativeLang] = useState(defaultNativeLangCode);
+  const [spokenLang, setSpokenLang] = useState('auto');
   const [subtitleMode, setSubtitleMode] = useState<SubtitleMode>('dual');
   const [showSettings, setShowSettings] = useState(false);
   const [subtitle, setSubtitle] = useState<SubtitleData | null>(null);
@@ -141,7 +144,7 @@ const JitsiCallScreen = () => {
     if (!roomId || !accessToken) return;
 
     const wsBase = getWsUrl(API_BASE_URL);
-    const wsUrl = `${wsBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}`;
+    const wsUrl = `${wsBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
 
     console.log("Connecting Subtitle WS:", wsUrl);
     ws.current = new WebSocket(wsUrl);
@@ -186,12 +189,18 @@ const JitsiCallScreen = () => {
 
     return () => {
       LiveAudioStream.stop();
-      if (ws.current) {
+      if (ws.current?.readyState === WebSocket.OPEN) {
         ws.current.close();
-        ws.current = null;
       }
+      ws.current = null;
     };
-  }, [roomId, nativeLang, accessToken]);
+  }, [roomId, nativeLang, spokenLang, accessToken]);
+
+  const handleSpokenLangChange = (langCode: string) => {
+    setSpokenLang(langCode);
+    if (ws.current) ws.current.close(); // Reconnect để cập nhật config server
+    setShowSettings(false);
+  };
 
   const jitsiUrl = `https://meet.jit.si/${roomId}#config.startWithVideoMuted=false&config.prejoinPageEnabled=false&userInfo.displayName=${encodeURIComponent(getfullname())}`;
 
@@ -301,17 +310,13 @@ const JitsiCallScreen = () => {
             <FlatList
               data={LANGUAGES}
               keyExtractor={(item) => item.code}
-              style={{ maxHeight: 200 }}
               renderItem={({ item }) => (
                 <TouchableOpacity
-                  style={[
-                    styles.langItem,
-                    item.code === nativeLang && styles.langItemActive
-                  ]}
-                  onPress={() => handleLanguageChange(item.code)}
+                  style={[styles.langItem, item.code === spokenLang && styles.langItemActive]}
+                  onPress={() => handleSpokenLangChange(item.code)}
                 >
                   <Text style={styles.langText}>{item.name}</Text>
-                  {item.code === nativeLang && <Text style={styles.checkMark}>✓</Text>}
+                  {item.code === spokenLang && <Text style={styles.checkMark}>🎤</Text>}
                 </TouchableOpacity>
               )}
             />

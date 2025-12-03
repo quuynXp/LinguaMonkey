@@ -80,6 +80,29 @@ public class GrpcClientService {
         });
     }
 
+    public CompletableFuture<GenerateImageResponse> callGenerateImageAsync(String token, String userId, String prompt, String language) {
+    ManagedChannel channel = createChannelWithToken(token);
+    LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+    GenerateImageRequest request = GenerateImageRequest.newBuilder()
+            .setUserId(userId)
+            .setPrompt(prompt)
+            .setLanguage(language)
+            .build();
+
+    return CompletableFuture.supplyAsync(() -> {
+        try {
+            GenerateImageResponse response = stub.generateImage(request).get();
+            if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            return response;
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+        } finally {
+            channel.shutdown();
+        }
+    });
+}
+
     // --- EXISTING METHODS ---
 
     public CompletableFuture<CourseEvaluationResponse> callEvaluateCourseVersionAsync(
@@ -129,18 +152,25 @@ public class GrpcClientService {
 
         TranslateRequest request = TranslateRequest.newBuilder()
                 .setText(text == null ? "" : text)
-                .setSourceLanguage(sourceLang == null ? "" : sourceLang)
-                .setTargetLanguage(targetLang == null ? "" : targetLang)
+                .setSourceLanguage(sourceLang == null ? "auto" : sourceLang)
+                .setTargetLanguage(targetLang == null ? "vi" : targetLang)
                 .build();
 
         return CompletableFuture.supplyAsync(() -> {
             try {
+                // Python returns translation. Python also saved it to Lexicon DB/Redis.
                 TranslateResponse response = stub.translate(request).get();
-                if (response == null || !response.getError().isEmpty())
-                    throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                if (response == null || !response.getError().isEmpty()) {
+                    log.warn("Translation partial error: {}", response.getError());
+                }
                 return response;
             } catch (Exception e) {
-                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                log.error("gRPC Translate Failed: {}", e.getMessage());
+                // Return fallback structure to prevent app crash
+                return TranslateResponse.newBuilder()
+                        .setTranslatedText(text) // Fallback to original
+                        .setError("Service unavailable")
+                        .build();
             } finally {
                 channel.shutdown();
             }

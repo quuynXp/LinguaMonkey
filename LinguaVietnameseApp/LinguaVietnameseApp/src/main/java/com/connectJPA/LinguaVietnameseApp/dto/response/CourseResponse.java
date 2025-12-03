@@ -21,6 +21,7 @@ public class CourseResponse {
     private UUID courseId;
     private String title;
     private UUID creatorId;
+    private UUID RoomId;
 
     // Creator Info Enrichment
     private String creatorName;
@@ -37,7 +38,7 @@ public class CourseResponse {
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
 
-    // Rating enriched info
     private Double averageRating;
     private Integer reviewCount;
+    private Boolean isAdminCreated;
 }

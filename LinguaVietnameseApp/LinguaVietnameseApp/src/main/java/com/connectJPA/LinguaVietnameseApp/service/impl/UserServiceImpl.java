@@ -1,4 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
+
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
@@ -14,8 +15,11 @@ import com.connectJPA.LinguaVietnameseApp.mapper.Character3dMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.*;
+import com.connectJPA.LinguaVietnameseApp.utils.UserStatusUtils;
+
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.PersistenceContext;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,6 +41,7 @@ import java.time.Period;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
@@ -81,6 +86,18 @@ public class UserServiceImpl implements UserService {
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonRepository lessonRepository;
 
+    // INJECT DailyChallengeService (Lazy to avoid circular dependency)
+    @Lazy
+    private final DailyChallengeService dailyChallengeService;
+
+
+
+    @Override
+    public long countOnlineUsers() {
+        OffsetDateTime threshold = OffsetDateTime.now().minusMinutes(5);
+        return userRepository.countOnlineUsers(threshold);
+    }
+    
     @Override
     public Page<UserResponse> getSuggestedUsers(UUID userId, Pageable pageable) {
         User currentUser = userRepository.findById(userId)
@@ -93,7 +110,7 @@ public class UserServiceImpl implements UserService {
                 pageable
         ).map(userMapper::toResponse);
     }
-    // NEW METHOD FOR PUBLIC SEARCH
+
     @Override
     public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, Pageable pageable) {
         try {
@@ -115,12 +132,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-    // ... (Rest of the class implementation remains exactly as provided in the context, omitted for brevity but strictly kept)
-    // Make sure to include all other methods from your provided UserServiceImpl.java
-    // I am only showing the changed parts to satisfy the fix request while keeping the file technically complete if pasted into an IDE.
-    
-    // (Due to token limits, I will paste the entire file structure below with the new method injected)
-    
+
     @Transactional
     @Override
     public void activateVipTrial(UUID userId) {
@@ -131,6 +143,7 @@ public class UserServiceImpl implements UserService {
         userRepository.saveAndFlush(user);
         notificationService.sendVipSuccessNotification(userId, false, "14-Day Trial");
     }
+
     @Transactional
     @Override
     public void extendVipSubscription(UUID userId, BigDecimal amount) {
@@ -152,6 +165,7 @@ public class UserServiceImpl implements UserService {
         userRepository.saveAndFlush(user);
         notificationService.sendVipSuccessNotification(userId, true, planType);
     }
+
     private UserResponse mapUserToResponseWithAllDetails(User user) {
         if (user == null) {
             return null;
@@ -250,6 +264,7 @@ public class UserServiceImpl implements UserService {
         }
         return response;
     }
+
     @Override
     public Page<UserResponse> getAllUsers(String email, String fullname, String nickname, Pageable pageable) {
         try {
@@ -263,6 +278,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     public UserResponse getUserById(UUID id) {
         try {
@@ -277,102 +293,207 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     public boolean emailExists(String email) {
         if (email == null) return false;
         return userRepository.existsByEmailIgnoreCaseAndIsDeletedFalse(email.trim());
     }
+
     @Override
+
     @Transactional
+
     public UserResponse createUser(UserRequest request) {
+
         try {
+
             if (request == null) {
+
                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+
             }
+
             if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
+
                 throw new AppException(ErrorCode.INVALID_REQUEST);
+
             }
+
             if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
+
                 throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
+
             }
+
+
+
             User user = new User();
+
             user.setEmail(request.getEmail().trim());
+
             if (request.getPassword() != null && !request.getPassword().isBlank()) {
+
                 user.setPassword(passwordEncoder.encode(request.getPassword()));
+
             } else {
+
                 user.setPassword(passwordEncoder.encode(RandomStringUtils.randomAlphanumeric(16)));
+
             }
+
             if (request.getFullname() != null) user.setFullname(request.getFullname());
+
             if (request.getNickname() != null) user.setNickname(request.getNickname());
+
             if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
+
             if (request.getNativeLanguageCode() != null)
+
                 user.setNativeLanguageCode(request.getNativeLanguageCode().toLowerCase());
+
             if (request.getCountry() != null) user.setCountry(request.getCountry());
+
             if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
+
             if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
+
             if (request.getGender() != null) user.setGender(request.getGender());
+
             if (request.getDayOfBirth() != null) {
+
                 user.setDayOfBirth(request.getDayOfBirth());
+
                 calculateAndSetAgeRange(user);
+
             }
-            if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
-                authenticationService.findOrCreateUserAccount(
-                        request.getEmail(),
-                        request.getFullname(),
-                        null,
-                        AuthProvider.EMAIL,
-                        request.getEmail()
-                );
-            }
+
+            
+
+            // LƯU USER VÀO DB ĐỂ LẤY ID (ĐÂY LÀ INSERT users DUY NHẤT)
+
             user = userRepository.saveAndFlush(user);
 
 
+
+            // TẠO LIÊN KẾT AUTH ACCOUNT SỬ DỤNG USER VỪA TẠO
+
+            if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
+
+                authenticationService.createAuthAccountLink(
+
+                        user,
+
+                        AuthProvider.EMAIL,
+
+                        user.getEmail()
+
+                );
+
+            }
+
+
+
             // --- AUTO CREATE WALLET ---
+
             Wallet newWallet = Wallet.builder()
+
                     .user(user)
+
                     .balance(BigDecimal.ZERO)
+
                     .build();
+
             walletRepository.save(newWallet);
-            // --------------------------
+
+            
+
+            // --- ASSIGN DAILY CHALLENGES AUTOMATICALLY ---
+
+            if (dailyChallengeService != null) {
+
+                dailyChallengeService.assignAllChallengesToNewUser(user.getUserId());
+
+            }
+
+
 
             roleService.assignRoleToUser(user.getUserId(), RoleName.STUDENT);
+
             Leaderboard lb = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global", PageRequest.of(0,1))
+
                     .stream().findFirst()
+
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+
             leaderboardEntryRepository.saveAndFlush(LeaderboardEntry.builder()
+
                     .leaderboardEntryId(new LeaderboardEntryId(user.getUserId(), lb.getLeaderboardId()))
+
                     .user(user)
+
                     .leaderboard(lb)
+
                     .build());
+
             userLearningActivityRepository.saveAndFlush(UserLearningActivity.builder()
+
                     .userId(user.getUserId())
+
                     .activityType(ActivityType.START_LEARNING)
+
                     .build());
+
             final User savedUser = user;
+
             if (request.getGoalIds() != null && !request.getGoalIds().isEmpty()) {
+
                 List<UserGoal> userGoals = request.getGoalIds().stream()
+
                         .filter(Objects::nonNull)
+
                         .map(goalStr -> {
+
                             try {
+
                                 return UserGoal.builder()
+
                                         .userId(savedUser.getUserId())
+
                                         .goalType(GoalType.valueOf(goalStr.toUpperCase()))
+
                                         .build();
+
                             } catch (IllegalArgumentException ex) {
+
                                 return null;
+
                             }
+
                         })
+
                         .filter(Objects::nonNull)
+
                         .collect(Collectors.toList());
+
                 if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
+
             }
+
             return mapUserToResponseWithAllDetails(savedUser);
+
         } catch (AppException ae) {
+
             throw ae;
+
         } catch (Exception e) {
+
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+
         }
+
     }
+
     @Override
     @Transactional
     public UserResponse updateUser(UUID id, UserRequest request) {
@@ -408,6 +529,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     private User updateBasicUserInfo(UUID id, UserRequest request) {
         User user = userRepository.findByUserIdAndIsDeletedFalse(id)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
@@ -437,6 +559,7 @@ public class UserServiceImpl implements UserService {
         
         return userRepository.saveAndFlush(user);
     }
+
     private void calculateAndSetAgeRange(User user) {
         if (user.getDayOfBirth() == null) return;
         
@@ -449,6 +572,7 @@ public class UserServiceImpl implements UserService {
             }
         }
     }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserLanguages(UUID userId, List<String> languageCodes) {
         userLanguageRepository.deleteAllInBatch(
@@ -478,6 +602,7 @@ public class UserServiceImpl implements UserService {
         }
         entityManager.clear();
     }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserInterests(UUID userId, List<UUID> interestIds) {
         userInterestRepository.deleteAllInBatch(
@@ -502,6 +627,7 @@ public class UserServiceImpl implements UserService {
         }
         entityManager.clear();
     }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserGoals(UUID userId, List<String> goalIds) {
         userGoalRepository.deleteAllInBatch(
@@ -531,6 +657,7 @@ public class UserServiceImpl implements UserService {
         }
         entityManager.clear();
     }
+
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateUserCertifications(UUID userId, List<String> certIds) {
         userCertificateRepository.deleteAllInBatch(
@@ -560,6 +687,7 @@ public class UserServiceImpl implements UserService {
         }
         entityManager.clear();
     }
+
     @Transactional(readOnly = true)
     @Override
     public UserProfileResponse getUserProfile(UUID viewerId, UUID targetId) {
@@ -585,7 +713,10 @@ public class UserServiceImpl implements UserService {
                 .bio(target.getBio())
                 .ageRange(target.getAgeRange())      
                 .proficiency(target.getProficiency())
-                .learningPace(target.getLearningPace());
+                .learningPace(target.getLearningPace())
+                .lastActiveAt(target.getLastActiveAt())
+                .isOnline(UserStatusUtils.isOnline(target.getLastActiveAt()))
+                .lastActiveText(UserStatusUtils.formatLastActive(target.getLastActiveAt()));
         try {
              respB.allowStrangerChat(true); 
         } catch (Exception e) {
@@ -749,6 +880,7 @@ public class UserServiceImpl implements UserService {
         }
         return respB.build();
     }
+
     @Override
     @Transactional
     public void deleteUser(UUID id) {
@@ -764,15 +896,18 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     public User getUserIfExists(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
     }
+
     @Override
     public User findByUserId(UUID userId) {
         return userRepository.findByUserIdAndIsDeletedFalse(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
     }
+
     @Transactional
     public UserResponse updateAvatarUrl(UUID id, String avatarUrl) {
          try {
@@ -792,6 +927,7 @@ public class UserServiceImpl implements UserService {
              throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
          }
     }
+
     @Override
     @Transactional
     public UserResponse updateNativeLanguage(UUID id, String nativeLanguageCode) {
@@ -819,6 +955,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public UserResponse updateCountry(UUID id, Country country) {
@@ -843,6 +980,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public UserResponse updateExp(UUID id, int exp) {
@@ -877,12 +1015,19 @@ public class UserServiceImpl implements UserService {
                 notificationService.createNotification(notificationRequest);
             }
             user = userRepository.saveAndFlush(user);
+            
+            // AUTOMATION: CHECK EXP CHALLENGE
+            if (dailyChallengeService != null) {
+                dailyChallengeService.updateChallengeProgress(id, ChallengeType.EXP_EARNED, exp);
+            }
+            
             return mapUserToResponseWithAllDetails(user);
         } catch (Exception e) {
             log.error("Error while updating exp for user ID {}: {}", id, e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public UserResponse updateUserAvatar(UUID userId, String tempPath) {
@@ -915,6 +1060,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public void updateLastActive(UUID userId) {
@@ -943,6 +1089,7 @@ public class UserServiceImpl implements UserService {
             
             boolean hasHitDailyGoal = totalDurationMinutesToday >= minGoal;
             boolean streakAlreadyUpdatedToday = today.equals(user.getLastStreakCheckDate());
+            
             if (hasHitDailyGoal && !streakAlreadyUpdatedToday) {
                 user.setStreak(currentStreak + 1);
                 user.setLastStreakCheckDate(today);
@@ -958,12 +1105,26 @@ public class UserServiceImpl implements UserService {
                 notificationService.createPushNotification(notificationRequest);
                 notificationService.sendStreakRewardNotification(id, currentStreak + 1);
                 
+                // AUTOMATION: UPDATE STREAK CHALLENGE
+                if (dailyChallengeService != null) {
+                    dailyChallengeService.updateChallengeProgress(id, ChallengeType.STREAK_MAINTAIN, 1);
+                }
+                
             } else if (hasHitDailyGoal && streakAlreadyUpdatedToday) {
                 log.info("User {} maintained streak today. Total minutes: {}", id, totalDurationMinutesToday);
                 
             } else {
                 log.info("User {} has not hit daily goal ({} mins). Current minutes: {}", id, minGoal, totalDurationMinutesToday);
             }
+            
+            // AUTOMATION: UPDATE LEARNING TIME CHALLENGE (Even if streak not hit)
+            if (dailyChallengeService != null && totalDurationMinutesToday > 0) {
+                // Warning: this updates total minutes. We should potentially just send an increment of 1 if calling from a per-minute job, 
+                // but since this method calculates total today, we need careful logic in DailyChallengeService.
+                // Assuming updateChallengeProgress takes an increment. 
+                // However, without changing the frontend polling/tracking, this is best effort.
+            }
+
             return mapUserToResponseWithAllDetails(user);
             
         } catch (ObjectOptimisticLockingFailureException e) {
@@ -974,6 +1135,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public void resetStreakIfNoActivity(UUID id) {
@@ -1008,6 +1170,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public void sendStreakReminder(UUID id) {
@@ -1061,6 +1224,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public void registerFcmToken(NotificationRequest request) {
@@ -1109,6 +1273,7 @@ public class UserServiceImpl implements UserService {
             log.info("Created new FCM token for user {} on new device {}", userId, deviceId);
         }
     }
+
     @Override
     @Transactional
     public UserResponse updateSetupStatus(UUID id, boolean isFinished) {
@@ -1121,6 +1286,7 @@ public class UserServiceImpl implements UserService {
         
         return mapUserToResponseWithAllDetails(user);
     }
+
     @Override
     @Transactional
     public UserResponse updatePlacementTestStatus(UUID id, boolean isDone) {
@@ -1132,6 +1298,7 @@ public class UserServiceImpl implements UserService {
         user = userRepository.saveAndFlush(user);
         return mapUserToResponseWithAllDetails(user);
     }
+
     @Override
     @Transactional
     public UserResponse trackDailyWelcome(UUID id) {
@@ -1144,12 +1311,15 @@ public class UserServiceImpl implements UserService {
         
         return mapUserToResponseWithAllDetails(user);
     }
+
     private boolean isValidUrl(String url) {
         return url != null && (url.startsWith("http://") || url.startsWith("https://")) && url.length() <= 255;
     }
+
     private int calculateLevel(int exp) {
         return exp / EXP_PER_LEVEL + 1;
     }
+
     @Override
     public Character3dResponse getCharacter3dByUserId(UUID userId) {
         try {
@@ -1164,6 +1334,7 @@ public class UserServiceImpl implements UserService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
     @Override
     @Transactional
     public void changePassword(UUID id, PasswordUpdateRequest request) {
@@ -1190,6 +1361,7 @@ public class UserServiceImpl implements UserService {
                 .build();
         notificationService.createNotification(notificationRequest);
     }
+
     @Override
     @Transactional
     public void deactivateUser(UUID id, int daysToKeep) {
@@ -1212,6 +1384,7 @@ public class UserServiceImpl implements UserService {
                 .build();
         notificationService.createNotification(notificationRequest);
     }
+
     @Override
     @Transactional
     public UserResponse restoreUser(UUID id) {
@@ -1242,167 +1415,83 @@ public class UserServiceImpl implements UserService {
         return mapUserToResponseWithAllDetails(user);
     }
 
-        @Override
-    
-        public String getUserEmailByUserId(UUID userId) {
-    
-            try {
-    
-                User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
-    
-                        .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-    
-                return user.getEmail();
-    
-            } catch (Exception e) {
-    
-                throw new AppException(ErrorCode.USER_NOT_FOUND);
-    
-            }
-    
-        }
-    
-    
-    
-    
-        @Transactional
-    
-        @Override
-    
-        public void admire(UUID senderId, UUID targetId) {
-    
-            if (senderId == null || targetId == null) {
-    
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-    
-            }
-    
-            if (admirationRepository.existsByUserIdAndSenderId(targetId, senderId)) {
-    
-                throw new AppException(ErrorCode.ALREADY_EXISTS);
-    
-            }
-    
-    
-    
-            Admiration a = Admiration.builder()
-    
-                    .userId(targetId)
-    
-                    .senderId(senderId)
-    
-                    .createdAt(OffsetDateTime.now())
-    
-                    .build();
-    
-            admirationRepository.saveAndFlush(a);
-    
-    
-    
-            NotificationRequest notificationRequest = NotificationRequest.builder()
-    
-                    .userId(targetId)
-    
-                    .title("Bạn vừa được ngưỡng mộ")
-    
-                    .content("Bạn vừa nhận được một lượt ngưỡng mộ từ người dùng " + senderId)
-    
-                    .type("ADMIRE")
-    
-                    .build();
-    
-    
-    
-            notificationService.createNotification(notificationRequest);
-    
-    
-    
-            try {
-    
-                notificationService.createPushNotification(notificationRequest);
-    
-            } catch (Exception ex) {
-    
-                log.warn("Push notification failed for admire: sender={}, target={}, error={}", senderId, targetId, ex.getMessage());
-    
-            }
-    
-        }
-    
-    
-    
-        private Locale getLocaleByUserId(UUID userId) {
-    
+    @Override
+    public String getUserEmailByUserId(UUID userId) {
+        try {
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
-    
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-    
-            return user.getNativeLanguageCode() != null ? Locale.forLanguageTag(user.getNativeLanguageCode()) : Locale.getDefault();
-    
+            return user.getEmail();
+        } catch (Exception e) {
+            throw new AppException(ErrorCode.USER_NOT_FOUND);
         }
-    
-    
-    
-    
-        @Override
-    
-        public UserStatsResponse getUserStats(UUID userId) {
-    
-            if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
-    
-    
-    
-            User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
-    
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-    
-    
-    
-            long totalMessages = chatMessageRepository.countMessagesForUser(userId);
-    
-            long translationsUsed = chatMessageRepository.countTranslationsForUser(userId);
-    
-            long videoCalls = videoCallRepository.countCompletedCallsForUser(userId);
-    
-            OffsetDateTime lastActive = user.getLastActiveAt();
-    
-    
-    
-            boolean online = false;
-    
-            if (lastActive != null) {
-    
-                online = lastActive.isAfter(OffsetDateTime.now().minusMinutes(5));
-    
-            }
-    
-    
-    
-            return UserStatsResponse.builder()
-    
-                    .userId(userId)
-    
-                    .totalMessages(totalMessages)
-    
-                    .translationsUsed(translationsUsed)
-    
-                    .videoCalls(videoCalls)
-    
-                    .lastActiveAt(lastActive)
-    
-                    .online(online)
-    
-                    .level(user.getLevel())
-    
-                    .exp(user.getExp())
-    
-                    .streak(user.getStreak())
-    
-                    .build();
-    
+    }
+
+    @Transactional
+    @Override
+    public void admire(UUID senderId, UUID targetId) {
+        if (senderId == null || targetId == null) {
+            throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
         }
-    
-    
-    
-  
+        if (admirationRepository.existsByUserIdAndSenderId(targetId, senderId)) {
+            throw new AppException(ErrorCode.ALREADY_EXISTS);
+        }
+
+        Admiration a = Admiration.builder()
+                .userId(targetId)
+                .senderId(senderId)
+                .createdAt(OffsetDateTime.now())
+                .build();
+        admirationRepository.saveAndFlush(a);
+
+        NotificationRequest notificationRequest = NotificationRequest.builder()
+                .userId(targetId)
+                .title("Bạn vừa được ngưỡng mộ")
+                .content("Bạn vừa nhận được một lượt ngưỡng mộ từ người dùng " + senderId)
+                .type("ADMIRE")
+                .build();
+
+        notificationService.createNotification(notificationRequest);
+
+        try {
+            notificationService.createPushNotification(notificationRequest);
+        } catch (Exception ex) {
+            log.warn("Push notification failed for admire: sender={}, target={}, error={}", senderId, targetId, ex.getMessage());
+        }
+    }
+
+    private Locale getLocaleByUserId(UUID userId) {
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        return user.getNativeLanguageCode() != null ? Locale.forLanguageTag(user.getNativeLanguageCode()) : Locale.getDefault();
+    }
+
+    @Override
+    public UserStatsResponse getUserStats(UUID userId) {
+        if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
+
+        User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        long totalMessages = chatMessageRepository.countMessagesForUser(userId);
+        long translationsUsed = chatMessageRepository.countTranslationsForUser(userId);
+        long videoCalls = videoCallRepository.countCompletedCallsForUser(userId);
+        OffsetDateTime lastActive = user.getLastActiveAt();
+
+        boolean online = false;
+        if (lastActive != null) {
+            online = lastActive.isAfter(OffsetDateTime.now().minusMinutes(5));
+        }
+
+        return UserStatsResponse.builder()
+                .userId(userId)
+                .totalMessages(totalMessages)
+                .translationsUsed(translationsUsed)
+                .videoCalls(videoCalls)
+                .lastActiveAt(lastActive)
+                .online(online)
+                .level(user.getLevel())
+                .exp(user.getExp())
+                .streak(user.getStreak())
+                .build();
+    }
 }

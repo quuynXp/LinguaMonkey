@@ -30,8 +30,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserLearningActivityController {
     private final UserLearningActivityService userLearningActivityService;
-    // Cast to Impl to access heartbeat if not in interface yet, essentially interface should have it
-    private final UserLearningActivityServiceImpl userLearningActivityServiceImpl; 
+    // Không cần cast/inject Impl, chỉ cần dùng Interface sau khi đã cập nhật Interface
+    // private final UserLearningActivityServiceImpl userLearningActivityServiceImpl; 
     private final MessageSource messageSource;
     private final LessonService lessonService;
 
@@ -56,7 +56,8 @@ public class UserLearningActivityController {
     @Operation(summary = "Record User Heartbeat", description = "Call this every minute to track user online time. Updates Redis counters.")
     @PostMapping("/heartbeat")
     public AppApiResponse<Void> recordHeartbeat(@RequestParam UUID userId) {
-        userLearningActivityServiceImpl.recordHeartbeat(userId);
+        // SỬA LỖI 2: Gọi qua interface sau khi đã thêm phương thức vào UserLearningActivityService
+        userLearningActivityService.recordHeartbeat(userId); 
         return AppApiResponse.<Void>builder()
                 .code(200)
                 .message("Heartbeat recorded")
@@ -76,18 +77,32 @@ public class UserLearningActivityController {
 
         StudyHistoryResponse history = userLearningActivityService.getAggregatedStudyHistory(userId, period);
 
-        // Handle null result to ensure frontend always receives a valid object structure
         if (history == null) {
             history = StudyHistoryResponse.builder()
                     .sessions(Collections.emptyList())
                     .stats(StatsResponse.builder()
-                            .totalSessions(0)
-                            .totalTime(0L)
+                            .totalSessions(0L) // stats.totalSessions là long, không phải int
+                            // SỬA LỖI 1: Đổi totalTime thành totalTimeSeconds
+                            .totalTimeSeconds(0L) 
                             .totalExperience(0)
                             .averageScore(0.0)
+                            // Thêm các trường mới để tránh lỗi JSON/Frontend
+                            .totalCoins(0)
+                            .lessonsCompleted(0)
+                            .timeGrowthPercent(0.0)
+                            .accuracyGrowthPercent(0.0)
+                            .coinsGrowthPercent(0.0)
+                            .weakestSkill("NONE")
+                            .improvementSuggestion("")
+                            .timeChartData(Collections.emptyList())
+                            .accuracyChartData(Collections.emptyList())
                             .build())
                     .build();
         }
+        
+        // KIỂM TRA LẠI: Lỗi có thể do totalSessions là int, ta nên dùng 0L cho an toàn hoặc kiểm tra lại DTO
+        // Nếu DTO là int, thì dùng 0.
+        // Dựa trên DTO cũ, totalSessions là long. Ta dùng 0L.
 
         return AppApiResponse.<StudyHistoryResponse>builder()
                 .code(200)

@@ -38,15 +38,9 @@ public class LessonCategoryController {
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
 
-        // --- DEBUG LOG START: In ra xem Frontend gửi cái mẹ gì lên ---
-        System.out.println("DEBUG REQUEST - Name: " + lessonCategoryName + ", Lang: " + languageCode);
-        // --- DEBUG LOG END ---
-
-        Page<LessonCategoryResponse> categories = lessonCategoryService.getAllLessonCategories(null, null, pageable);
+        Page<LessonCategoryResponse> categories = lessonCategoryService.getAllLessonCategories(lessonCategoryName, languageCode, pageable);
         
-        // --- DEBUG LOG START: In ra xem service tìm được bao nhiêu bản ghi ---
         System.out.println("DEBUG RESPONSE - Total Elements Found: " + categories.getTotalElements());
-        // --- DEBUG LOG END ---
 
         return AppApiResponse.<Page<LessonCategoryResponse>>builder()
                 .code(200)

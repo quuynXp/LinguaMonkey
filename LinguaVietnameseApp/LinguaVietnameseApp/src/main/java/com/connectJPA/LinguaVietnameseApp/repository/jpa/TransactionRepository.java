@@ -1,7 +1,10 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.TransactionResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Transaction;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.TransactionType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -44,5 +47,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
     List<Transaction> findByCreatedAtBetween(OffsetDateTime startDate, OffsetDateTime endDate);
 
     List<Transaction> findByUserIdAndCreatedAtBetween(UUID userId, OffsetDateTime start, OffsetDateTime end);
+
+    Page<TransactionResponse> findByTypeAndStatus(TransactionType refund, TransactionStatus pending, Pageable pageable);
 
 }

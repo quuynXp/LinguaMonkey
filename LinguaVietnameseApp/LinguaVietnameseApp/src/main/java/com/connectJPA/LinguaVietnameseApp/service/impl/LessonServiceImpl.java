@@ -80,18 +80,11 @@ public class LessonServiceImpl implements LessonService {
 
     @Override
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
-                                              UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
+                                              UUID categoryId, UUID subCategoryId, UUID courseId, UUID versionId, UUID seriesId, SkillType skillType,
                                               Pageable pageable) {
         try {
             if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            }
-
-            if (categoryId != null && !lessonCategoryRepository.existsById(categoryId)) {
-                throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
-            }
-            if (subCategoryId != null && !lessonSubCategoryRepository.existsById(subCategoryId)) {
-                throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
             }
 
             Specification<Lesson> spec = (root, query, cb) -> {
@@ -113,16 +106,21 @@ public class LessonServiceImpl implements LessonService {
                 if (subCategoryId != null) {
                     predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
                 }
-                if (courseId != null) {
+                
+                // --- FIXED LOGIC: SEARCH BY VERSION ID ---
+                if (versionId != null) {
+                    Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
+                    predicates.add(cb.equal(cvlJoin.get("id").get("versionId"), versionId));
+                } else if (courseId != null) {
                     Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
                     Join<CourseVersionLesson, CourseVersion> cvJoin = cvlJoin.join("courseVersion");
                     Join<CourseVersion, Course> cJoin = cvJoin.join("course");
                     predicates.add(cb.equal(cJoin.get("courseId"), courseId));
                 }
+
                 if (seriesId != null) {
                     predicates.add(cb.equal(root.get("lessonSeriesId"), seriesId));
                 }
-                
                 if (skillType != null) {
                     predicates.add(cb.equal(root.get("skillTypes"), skillType));
                 }

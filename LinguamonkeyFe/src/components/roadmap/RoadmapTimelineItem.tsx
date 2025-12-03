@@ -7,13 +7,13 @@ import {
     LayoutAnimation,
     Platform,
     UIManager,
-    StyleSheet,
+    TextInput,
+    ActivityIndicator
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import type { RoadmapItemUserResponse, RoadmapSuggestionResponse } from "../../types/dto";
 import { useUserStore } from "../../stores/UserStore";
-import ReviewInput from "../reviews/ReviewInput"; // Integrating the Review Input
 
 // Enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -32,7 +32,7 @@ interface RoadmapTimelineItemProps {
     isLast: boolean;
     isExpanded: boolean;
     onToggle: () => void;
-    onComplete?: (itemId: string) => void;
+    onComplete?: (itemId: string) => Promise<void>; // Make sure promise is awaited
     onAddSuggestion?: (itemId: string, text: string) => Promise<void>;
     isOwner?: boolean;
 }
@@ -49,24 +49,38 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
     isOwner = false,
 }) => {
     const { user } = useUserStore();
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // Using ReviewInput requires a submit handler that matches its signature
-    const handleSubmitSuggestion = async (text: string) => {
-        if (!text.trim() || !onAddSuggestion) return;
-        setIsSubmitting(true);
-        try {
-            await onAddSuggestion(item.id, text);
-        } catch (error) {
-            console.error(error);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
+    const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+    const [isCompleting, setIsCompleting] = useState(false);
+    const [reviewText, setReviewText] = useState("");
 
     const handleToggle = () => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         onToggle();
+    };
+
+    const handleComplete = async () => {
+        if (!onComplete || isCompleting) return;
+        setIsCompleting(true);
+        try {
+            await onComplete(item.id);
+        } catch (error) {
+            console.error("Failed to complete item", error);
+        } finally {
+            setIsCompleting(false);
+        }
+    };
+
+    const handleSubmitSuggestion = async () => {
+        if (!reviewText.trim() || !onAddSuggestion) return;
+        setIsSubmittingReview(true);
+        try {
+            await onAddSuggestion(item.id, reviewText);
+            setReviewText("");
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setIsSubmittingReview(false);
+        }
     };
 
     const getStatusColor = () => {
@@ -138,11 +152,21 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
                             </View>
                         </View>
 
-                        {/* Action Buttons */}
+                        {/* Action Button (Mark Complete) */}
                         {isOwner && !item.completed && onComplete && (
-                            <TouchableOpacity style={styles.actionButton} onPress={() => onComplete(item.id)}>
-                                <Text style={styles.actionButtonText}>Mark as Complete</Text>
-                                <Icon name="check-circle" size={16} color="#FFF" />
+                            <TouchableOpacity
+                                style={[styles.actionButton, isCompleting && styles.disabledButton]}
+                                onPress={handleComplete}
+                                disabled={isCompleting}
+                            >
+                                {isCompleting ? (
+                                    <ActivityIndicator size="small" color="#FFF" />
+                                ) : (
+                                    <>
+                                        <Text style={styles.actionButtonText}>Mark as Complete</Text>
+                                        <Icon name="check-circle" size={16} color="#FFF" />
+                                    </>
+                                )}
                             </TouchableOpacity>
                         )}
 
@@ -162,7 +186,6 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
                                                 {s.applied && <Icon name="check-circle" size={12} color="#10B981" style={{ marginLeft: 4 }} />}
                                             </View>
                                             <Text style={styles.suggestionText}>{s.reason}</Text>
-                                            {/* Optional: Add Likes here if available in DTO */}
                                         </View>
                                     </View>
                                 ))
@@ -171,16 +194,35 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
                             )}
                         </View>
 
-                        {/* Add Suggestion Input - Integrated ReviewInput */}
+                        {/* Add Review / Suggestion Input - DIRECT IMPLEMENTATION */}
                         {onAddSuggestion && (
-                            <View style={{ marginTop: 8 }}>
-                                <ReviewInput
-                                    currentUserAvatar={user?.avatarUrl}
-                                    isSubmitting={isSubmitting}
-                                    replyContext={{ id: null, name: null }} // Suggestions are flat list for now
-                                    onCancelReply={() => { }}
-                                    onSubmit={handleSubmitSuggestion}
-                                />
+                            <View style={styles.reviewInputContainer}>
+                                <View style={styles.inputWrapper}>
+                                    <Image
+                                        source={user?.avatarUrl ? { uri: user.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')}
+                                        style={styles.myAvatar}
+                                    />
+                                    <TextInput
+                                        style={styles.textInput}
+                                        placeholder="Add a review or tip..."
+                                        value={reviewText}
+                                        onChangeText={setReviewText}
+                                        multiline
+                                    />
+                                </View>
+                                {reviewText.length > 0 && (
+                                    <TouchableOpacity
+                                        style={styles.sendButton}
+                                        onPress={handleSubmitSuggestion}
+                                        disabled={isSubmittingReview}
+                                    >
+                                        {isSubmittingReview ? (
+                                            <ActivityIndicator size="small" color="#FFF" />
+                                        ) : (
+                                            <Text style={styles.sendButtonText}>Post</Text>
+                                        )}
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         )}
                     </View>
@@ -191,174 +233,46 @@ const RoadmapTimelineItem: React.FC<RoadmapTimelineItemProps> = ({
 };
 
 const styles = createScaledSheet({
-    container: {
-        flexDirection: "row",
-        marginBottom: 0,
-        minHeight: 80,
-    },
-    connectorLine: {
-        position: "absolute",
-        left: 19, // Center of the 40px node icon
-        top: 40,
-        bottom: -40, // Extend to next item
-        width: 2,
-        zIndex: 0,
-    },
-    nodeIconContainer: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        borderWidth: 2,
-        justifyContent: "center",
-        alignItems: "center",
-        marginRight: 12,
-        zIndex: 1,
-        marginTop: 10,
-    },
-    cardContainer: {
-        flex: 1,
-        marginBottom: 16,
-        backgroundColor: "#FFF",
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "#F3F4F6",
-        elevation: 2,
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.05,
-        shadowRadius: 2,
-        overflow: "hidden",
-    },
-    cardHeader: {
-        flexDirection: "row",
-        padding: 12,
-        alignItems: "center",
-        justifyContent: "space-between",
-    },
-    headerContent: {
-        flex: 1,
-        marginRight: 8,
-    },
-    titleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 4,
-        gap: 8,
-    },
-    title: {
-        fontSize: 16,
-        fontWeight: "600",
-        color: "#1F2937",
-        flexShrink: 1,
-    },
-    titleCompleted: {
-        textDecorationLine: 'line-through',
-        color: '#9CA3AF',
-    },
-    levelBadge: {
-        backgroundColor: '#EFF6FF',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-        borderWidth: 1,
-        borderColor: '#DBEAFE',
-    },
-    levelText: {
-        fontSize: 10,
-        color: '#3B82F6',
-        fontWeight: '700',
-    },
-    description: {
-        fontSize: 13,
-        color: "#6B7280",
-    },
-    expandedContent: {
-        borderTopWidth: 1,
-        borderTopColor: "#F3F4F6",
-        padding: 12,
-        backgroundColor: "#FAFAFA",
-    },
-    metaContainer: {
-        flexDirection: 'row',
-        gap: 8,
-        marginBottom: 12,
-    },
-    metaChip: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        backgroundColor: '#F3F4F6',
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
-    },
-    metaText: {
-        fontSize: 12,
-        color: '#4B5563',
-        fontWeight: '500',
-    },
-    actionButton: {
-        flexDirection: "row",
-        backgroundColor: "#3B82F6",
-        padding: 10,
-        borderRadius: 8,
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 8,
-        marginBottom: 16,
-    },
-    actionButtonText: {
-        color: "#FFF",
-        fontWeight: "600",
-        fontSize: 14,
-    },
-    suggestionsContainer: {
-        marginBottom: 12,
-    },
-    sectionTitle: {
-        fontSize: 13,
-        fontWeight: "600",
-        color: "#374151",
-        marginBottom: 8,
-    },
-    suggestionItem: {
-        flexDirection: "row",
-        marginBottom: 8,
-        backgroundColor: "#FFF",
-        padding: 8,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: "#F3F4F6",
-    },
-    avatar: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
-        marginRight: 8,
-    },
-    suggestionContent: {
-        flex: 1,
-    },
-    suggestionHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    suggestionUser: {
-        fontSize: 12,
-        fontWeight: "600",
-        color: "#374151",
-    },
-    suggestionText: {
-        fontSize: 12,
-        color: "#4B5563",
-        marginTop: 2,
-    },
-    emptyText: {
-        fontSize: 12,
-        color: "#9CA3AF",
-        fontStyle: "italic",
-        marginBottom: 8,
-    },
+    container: { flexDirection: "row", marginBottom: 0, minHeight: 80 },
+    connectorLine: { position: "absolute", left: 19, top: 40, bottom: -40, width: 2, zIndex: 0 },
+    nodeIconContainer: { width: 40, height: 40, borderRadius: 20, borderWidth: 2, justifyContent: "center", alignItems: "center", marginRight: 12, zIndex: 1, marginTop: 10 },
+
+    cardContainer: { flex: 1, marginBottom: 16, backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#F3F4F6", elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, overflow: "hidden" },
+    cardHeader: { flexDirection: "row", padding: 12, alignItems: "center", justifyContent: "space-between" },
+    headerContent: { flex: 1, marginRight: 8 },
+    titleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4, gap: 8 },
+    title: { fontSize: 16, fontWeight: "600", color: "#1F2937", flexShrink: 1 },
+    titleCompleted: { textDecorationLine: 'line-through', color: '#9CA3AF' },
+    levelBadge: { backgroundColor: '#EFF6FF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, borderWidth: 1, borderColor: '#DBEAFE' },
+    levelText: { fontSize: 10, color: '#3B82F6', fontWeight: '700' },
+    description: { fontSize: 13, color: "#6B7280" },
+
+    expandedContent: { borderTopWidth: 1, borderTopColor: "#F3F4F6", padding: 12, backgroundColor: "#FAFAFA" },
+    metaContainer: { flexDirection: 'row', gap: 8, marginBottom: 12 },
+    metaChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+    metaText: { fontSize: 12, color: '#4B5563', fontWeight: '500' },
+
+    actionButton: { flexDirection: "row", backgroundColor: "#3B82F6", padding: 10, borderRadius: 8, alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 16 },
+    disabledButton: { backgroundColor: "#93C5FD" },
+    actionButtonText: { color: "#FFF", fontWeight: "600", fontSize: 14 },
+
+    suggestionsContainer: { marginBottom: 12 },
+    sectionTitle: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 8 },
+    suggestionItem: { flexDirection: "row", marginBottom: 8, backgroundColor: "#FFF", padding: 8, borderRadius: 8, borderWidth: 1, borderColor: "#F3F4F6" },
+    avatar: { width: 24, height: 24, borderRadius: 12, marginRight: 8 },
+    suggestionContent: { flex: 1 },
+    suggestionHeader: { flexDirection: 'row', alignItems: 'center' },
+    suggestionUser: { fontSize: 12, fontWeight: "600", color: "#374151" },
+    suggestionText: { fontSize: 12, color: "#4B5563", marginTop: 2 },
+    emptyText: { fontSize: 12, color: "#9CA3AF", fontStyle: "italic", marginBottom: 8 },
+
+    // Input Styles
+    reviewInputContainer: { marginTop: 8, borderTopWidth: 1, borderColor: '#E5E7EB', paddingTop: 12 },
+    inputWrapper: { flexDirection: 'row', gap: 8 },
+    myAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#E5E7EB' },
+    textInput: { flex: 1, backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, fontSize: 13, minHeight: 40, textAlignVertical: 'top' },
+    sendButton: { alignSelf: 'flex-end', backgroundColor: '#3B82F6', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6, marginTop: 8 },
+    sendButtonText: { color: '#FFF', fontWeight: '600', fontSize: 12 }
 });
 
 export default RoadmapTimelineItem;

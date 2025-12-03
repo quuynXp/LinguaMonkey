@@ -113,7 +113,9 @@ const SuggestedUsersScreen = () => {
         keyword: keyword,
         ...filters
     });
-    const allUsers = allUsersData?.data || [];
+    
+    // FIX: Type assertion to ensure allUsers is correctly typed as an array of UserResponse | UserProfileResponse
+    const allUsers = (allUsersData?.data || []) as (UserResponse | UserProfileResponse)[];
 
     const { data: requestsData, refetch: refetchRequests } = useAllFriendships({
         receiverId: user?.userId,
@@ -266,15 +268,14 @@ const SuggestedUsersScreen = () => {
         return (
             <View style={styles.headerSection}>
                 <Text style={styles.headerTitle}>{t('profile.suggestions')}</Text>
-                <FlatList
+                <FlatList<UserResponse>
                     horizontal
                     data={suggestions}
                     showsHorizontalScrollIndicator={false}
                     keyExtractor={(item) => item.userId}
                     contentContainerStyle={{ paddingHorizontal: 4 }}
                     renderItem={({ item }) => {
-                        // FIX: Explicitly cast `item` to `UserResponse` since `suggestions` array is of that type.
-                        const userItem = item as UserResponse;
+                        const userItem = item;
                         return (
                             <TouchableOpacity
                                 style={styles.suggestionCardHorizontal}
@@ -305,7 +306,6 @@ const SuggestedUsersScreen = () => {
                 <Text style={styles.headerTitle}>{t('profile.requests')} ({requests.length})</Text>
                 {requests.map((req, index) => (
                     <View key={req.id || index}>
-                        {/* FIX: Cast req.requester to UserResponse and ensure it exists */}
                         {req.requester && renderUserItem({ item: req.requester as UserResponse, isRequest: true, friendshipId: req.id })}
                     </View>
                 ))}
@@ -332,21 +332,20 @@ const SuggestedUsersScreen = () => {
                     <Icon name="filter-list" size={24} color="#4F46E5" />
                 </TouchableOpacity>
             </View>
-
-            <FlatList
-            data={allUsers}
-            renderItem={({ item }: { item: UserResponse | UserProfileResponse }) => renderUserItem({ item })}
-            keyExtractor={(item) => item.userId}
-            contentContainerStyle={styles.listContent}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            ListHeaderComponent={SuggestionsHeader}
-            ListEmptyComponent={!loadingAllUsers ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
-        />
+            <FlatList<(UserResponse | UserProfileResponse)>
+                data={allUsers}
+                renderItem={({ item }) => renderUserItem({ item })}
+                keyExtractor={(item) => item.userId}
+                contentContainerStyle={styles.listContent}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                ListHeaderComponent={SuggestionsHeader}
+                ListEmptyComponent={!loadingAllUsers ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
+            />
         </View>
     );
 
     const renderTab1 = () => (
-        <FlatList
+        <FlatList<UserResponse>
             data={friendsList}
             renderItem={({ item }) => renderUserItem({ item })}
             keyExtractor={(item) => item.userId}

@@ -1,5 +1,4 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
-
 import com.connectJPA.LinguaVietnameseApp.dto.request.AuthenticationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FacebookUserResponse;
@@ -50,27 +49,20 @@ import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
-
 import static lombok.AccessLevel.PRIVATE;
-
 @Slf4j
 @Service
 @FieldDefaults(level = PRIVATE)
 @RequiredArgsConstructor
 public class AuthenticationServiceImpl implements AuthenticationService {
-
     @Value("classpath:private_key.pem")
     Resource privateKeyResource;
-
     @Value("classpath:public_key.pem")
     Resource publicKeyResource;
-
     @Value("${google.client-id}")
     String googleClientId;
-
     @Value("${jwt.key-id}")
     private String jwtKeyId;
-
     final Map<String, String> verifyEmailCodes = new HashMap<>();
     final Map<String, String> resetPasswordCodes = new HashMap<>();
     final Map<String, String> otpLoginCodes = new HashMap<>();
@@ -78,7 +70,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     final Map<String, String> resetOtpCodes = new HashMap<>();
     final Map<String, Instant> resetOtpExpiry = new HashMap<>();
     final Map<String, String> secureResetTokens = new HashMap<>();
-
     final SmsService smsService;
     final EmailService emailService;
     final PasswordEncoder passwordEncoder;
@@ -89,7 +80,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     final RoleRepository roleRepository;
     final RestTemplate restTemplate;
     final UserAuthAccountRepository userAuthAccountRepository;
-
     private RSAPrivateKey getPrivateKey() throws Exception {
         try {
             byte[] keyBytes = privateKeyResource.getInputStream().readAllBytes();
@@ -106,7 +96,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.TOKEN_GENERATION_FAILED);
         }
     }
-
     private RSAPublicKey getPublicKey() throws Exception {
         try {
             byte[] keyBytes = publicKeyResource.getInputStream().readAllBytes();
@@ -124,14 +113,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
     }
 
-
     @Transactional
     public void logoutAll(UUID userId) {
         List<RefreshToken> tokens = refreshTokenRepository.findAllByUserId(userId);
         tokens.forEach(t -> t.setRevoked(true));
         refreshTokenRepository.saveAll(tokens);
     }
-
     @Override
     public String generateToken(User user) {
         try {
@@ -142,11 +129,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .expirationTime(Date.from(Instant.now().plus(30, ChronoUnit.DAYS)))
                     .claim("scope", buildScope(user.getUserId()))
                     .build();
-
             JWSHeader header = new JWSHeader.Builder(JWSAlgorithm.RS256)
                     .keyID(jwtKeyId)
                     .build();
-
             SignedJWT signedJWT = new SignedJWT(header, claims);
             signedJWT.sign(new RSASSASigner(getPrivateKey()));
             return signedJWT.serialize();
@@ -155,14 +140,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.TOKEN_GENERATION_FAILED);
         }
     }
-
     private String buildScope(UUID userId) {
         List<Role> roles = userRoleRepository.findRolesByUserId(userId);
         return roles.stream()
                 .map(role -> "ROLE_" + role.getRoleName().name())
                 .collect(Collectors.joining(" "));
     }
-
     @Transactional
     public IntrospectResponse introspect(String token) {
         try {
@@ -170,20 +153,17 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 log.info("Token introspection failed: Token is invalidated");
                 return IntrospectResponse.builder().valid(false).build();
             }
-
             SignedJWT signedJWT = SignedJWT.parse(token);
             boolean verified = signedJWT.verify(new RSASSAVerifier(getPublicKey()));
             if (!verified) {
                 log.info("Token introspection failed: Signature verification failed");
                 return IntrospectResponse.builder().valid(false).build();
             }
-
             Date expiry = signedJWT.getJWTClaimsSet().getExpirationTime();
             if (expiry.before(new Date())) {
                 log.info("Token introspection failed: Token is expired, expiry: {}", expiry);
                 return IntrospectResponse.builder().valid(false).build();
             }
-
             log.info("Token introspection succeeded for userId: {}", signedJWT.getJWTClaimsSet().getSubject());
             return IntrospectResponse.builder().valid(true).build();
         } catch (Exception e) {
@@ -191,50 +171,40 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.TOKEN_SIGNATURE_INVALID);
         }
     }
-
     @Transactional
     public void logout(String token) {
         invalidatedTokenRepository.save(InvalidatedToken.builder().token(token).build());
     }
-
     @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request) {
         User user = userRepository.findByEmailAndIsDeletedFalse(request.getEmail())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
-
         String accessToken = generateToken(user);
         String refreshToken = generateRefreshToken(user, 30);
-
         RefreshToken refreshTokenEntity = RefreshToken.builder()
                 .token(refreshToken)
                 .userId(user.getUserId())
                 .expiresAt(OffsetDateTime.now().plusDays(30))
                 .isRevoked(false)
                 .build();
-
         refreshTokenRepository.save(refreshTokenEntity);
-
         return AuthenticationResponse.builder()
                 .token(accessToken)
                 .refreshToken(refreshToken)
                 .authenticated(true)
                 .build();
     }
-
     @Transactional
     public AuthenticationResponse refreshToken(String oldRefreshToken) {
         try {
             SignedJWT jwt = SignedJWT.parse(oldRefreshToken);
             if (!jwt.verify(new RSASSAVerifier(getPublicKey())))
                 throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
-
             Date exp = jwt.getJWTClaimsSet().getExpirationTime();
             if (exp.before(new Date())) throw new AppException(ErrorCode.REFRESH_TOKEN_EXPIRED);
-
             String subject = jwt.getJWTClaimsSet().getSubject();
             if (subject == null || subject.isBlank()) {
                 throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
@@ -243,16 +213,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             RefreshToken oldToken = refreshTokenRepository
                     .findByUserIdAndTokenAndIsRevokedFalse(userId, oldRefreshToken)
                     .orElseThrow(() -> new AppException(ErrorCode.REFRESH_TOKEN_NOT_FOUND));
-
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
             String newAccessToken = generateToken(user);
             OffsetDateTime now = OffsetDateTime.now();
-
             long daysLeft = ChronoUnit.DAYS.between(now, oldToken.getExpiresAt());
             String newRefreshToken = oldRefreshToken;
-
             if (daysLeft <= 7) {
                 newRefreshToken = generateRefreshToken(user, 360);
                 oldToken.setToken(newRefreshToken);
@@ -263,18 +229,15 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 oldToken.setExpiresAt(now.plusDays(360));
                 refreshTokenRepository.save(oldToken);
             }
-
             return AuthenticationResponse.builder()
                     .token(newAccessToken)
                     .refreshToken(newRefreshToken)
                     .authenticated(true)
                     .build();
-
         } catch (Exception e) {
             throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
         }
     }
-
 
     @Override
     public String generateRefreshToken(User user, int days) {
@@ -285,7 +248,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .expirationTime(Date.from(Instant.now().plus(days, ChronoUnit.DAYS)))
                     .claim("type", "refresh")
                     .build();
-
             SignedJWT signedJWT = new SignedJWT(new JWSHeader(JWSAlgorithm.RS256), claims);
             signedJWT.sign(new RSASSASigner(getPrivateKey()));
             return signedJWT.serialize();
@@ -293,7 +255,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.TOKEN_GENERATION_FAILED);
         }
     }
-
     public LocalDateTime extractExpiration(String token) {
         try {
             Date exp = SignedJWT.parse(token).getJWTClaimsSet().getExpirationTime();
@@ -302,23 +263,19 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.INVALID_TOKEN_FORMAT);
         }
     }
-
     private String extractClientIp(HttpServletRequest request) {
         String xfHeader = request.getHeader("X-Forwarded-For");
         return xfHeader == null ? request.getRemoteAddr() : xfHeader.split(",")[0];
     }
-
     @Override
     @Transactional
     public AuthenticationResponse authenticate(AuthenticationRequest request,
                                                String deviceId, String ip, String userAgent) {
         User user = userRepository.findByEmailAndIsDeletedFalse(request.getEmail())
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
             throw new AppException(ErrorCode.INVALID_PASSWORD);
         }
-
         userAuthAccountRepository.findByUser_UserIdAndProvider(user.getUserId(), AuthProvider.EMAIL)
                 .or(() -> Optional.of(userAuthAccountRepository.save(UserAuthAccount.builder()
                         .user(user)
@@ -328,10 +285,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                         .isPrimary(true)
                         .linkedAt(OffsetDateTime.now())
                         .build())));
-
         return createAndSaveTokens(user, deviceId, ip, userAgent);
     }
-
 
     @Override
     @Transactional
@@ -340,30 +295,24 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
                     .setAudience(Collections.singletonList(googleClientId))
                     .build();
-
             GoogleIdToken googleIdToken = verifier.verify(idToken);
             if (googleIdToken == null) {
                 throw new AppException(ErrorCode.GOOGLE_TOKEN_INVALID);
             }
-
             GoogleIdToken.Payload payload = googleIdToken.getPayload();
             String email = payload.getEmail();
             String fullName = (String) payload.get("name");
             String googleUserId = payload.getSubject();
-
             if (email == null || googleUserId == null) {
                 throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
             }
-
             User user = findOrCreateUserAccount(email, fullName, null, AuthProvider.GOOGLE, googleUserId);
             return createAndSaveTokens(user, deviceId, ip, userAgent);
-
         } catch (Exception e) {
             log.error("Google login failed", e);
             throw new AppException(ErrorCode.GOOGLE_TOKEN_INVALID);
         }
     }
-
 
     @Override
     @Transactional
@@ -374,18 +323,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             if (fb == null || fb.email() == null) {
                 throw new AppException(ErrorCode.SOCIAL_USER_INFO_INVALID);
             }
-
             User user = findOrCreateUserAccount(fb.email(), fb.name(), null,
                     AuthProvider.FACEBOOK, fb.id());
-
             return createAndSaveTokens(user, deviceId, ip, userAgent);
-
         } catch (Exception e) {
             log.error("Facebook login failed", e);
             throw new AppException(ErrorCode.FACEBOOK_TOKEN_INVALID);
         }
     }
-
 
     @Override
     @Transactional
@@ -393,13 +338,10 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
         
         String key = isPhone ? normalizePhone(emailOrPhone) : emailOrPhone.toLowerCase().trim();
-
         String code = String.format("%06d", new Random().nextInt(999999));
         log.info("Generated OTP: {} for user: {} (key: {})", code, emailOrPhone, key);
-
         otpLoginCodes.put(key, code);
         otpLoginExpiry.put(key, Instant.now().plus(10, ChronoUnit.MINUTES));
-
         try {
             if (isPhone) {
                 smsService.sendSms(key, code); 
@@ -411,29 +353,22 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             log.error("Failed to send OTP for {}", key, e);
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
-
         return true;
     }
-
     @Override
     @Transactional
     public AuthenticationResponse verifyOtpAndLogin(String emailOrPhone, String code, String deviceId, String ip, String userAgent) {
         boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
         String key = isPhone ? normalizePhone(emailOrPhone) : emailOrPhone.toLowerCase().trim();
-
         String storedCode = otpLoginCodes.get(key);
         Instant expiry = otpLoginExpiry.get(key);
-
         if (storedCode == null || !storedCode.equals(code))
             throw new AppException(ErrorCode.OTP_INVALID);
         if (expiry == null || expiry.isBefore(Instant.now()))
             throw new AppException(ErrorCode.OTP_EXPIRED);
-
         otpLoginCodes.remove(emailOrPhone);
         otpLoginExpiry.remove(emailOrPhone);
-
         String providerUserId = key;
-
         User user = findOrCreateUserAccount(
                 isPhone ? null : emailOrPhone,
                 null,
@@ -441,10 +376,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 isPhone ? AuthProvider.PHONE : AuthProvider.EMAIL,
                 providerUserId
         );
-
         return createAndSaveTokens(user, deviceId, ip, userAgent);
     }
-
 
     @Transactional
     public AuthenticationResponse handleRefreshToken(String refreshToken, String deviceId, String ip, String userAgent) {
@@ -453,7 +386,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
         return refreshToken(refreshToken);
     }
-
     @Transactional
     public AuthenticationResponse refreshTokenWithDevice(String oldRefreshToken, String deviceId, String ip, String userAgent) {
         String cleanToken = null;
@@ -466,21 +398,17 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 log.error("Empty refresh token received");
                 throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
             }
-
             log.info("Processing refresh token: length={}, deviceId={}", cleanToken.length(), deviceId);
-
             SignedJWT jwt = SignedJWT.parse(cleanToken);
             if (!jwt.verify(new RSASSAVerifier(getPublicKey()))) {
                 log.error("Token signature verification failed");
                 throw new AppException(ErrorCode.REFRESH_TOKEN_INVALID);
             }
-
             Date exp = jwt.getJWTClaimsSet().getExpirationTime();
             if (exp.before(new Date())) {
                 log.error("Token expired at: {}", exp);
                 throw new AppException(ErrorCode.REFRESH_TOKEN_EXPIRED);
             }
-
             String subject = jwt.getJWTClaimsSet().getSubject();
             if (subject == null || subject.isBlank()) {
                 log.error("Token subject is null or blank");
@@ -511,13 +439,10 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             } catch (Exception e) {
                 log.warn("Failed to update deviceId, continuing anyway: {}", e.getMessage());
             }
-
             User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
             String newAccessToken = generateToken(user);
             OffsetDateTime now = OffsetDateTime.now();
-
             long daysLeft = 0;
             String newRefreshToken = cleanToken;
             
@@ -559,13 +484,11 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             } catch (Exception e) {
                 log.error("Failed to save token, but returning new tokens anyway: {}", e.getMessage());
             }
-
             return AuthenticationResponse.builder()
                     .token(newAccessToken)
                     .refreshToken(newRefreshToken)
                     .authenticated(true)
                     .build();
-
         } catch (AppException e) {
             log.error("Business exception during refresh for userId {}: {}", userId, e.getErrorCode());
             throw e;
@@ -621,24 +544,20 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
     }
 
-
     @Override
     @Transactional
     public boolean isTokenValid(String token) {
         try {
             SignedJWT signedJWT = SignedJWT.parse(token);
-
             System.out.println("Is Token Valid");
             return signedJWT.verify(new RSASSAVerifier(getPublicKey())) &&
                     signedJWT.getJWTClaimsSet().getExpirationTime().after(new Date()) &&
                     !invalidatedTokenRepository.existsByToken(token);
 
-
         } catch (Exception e) {
             return false;
         }
     }
-
     @Override
     @Transactional
     public UUID extractTokenByUserId(String token) {
@@ -649,7 +568,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.INVALID_TOKEN_FORMAT);
         }
     }
-
     @Override
     @Transactional
     public List<String> extractScope(String token) {
@@ -662,15 +580,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.INVALID_TOKEN_FORMAT);
         }
     }
-
     @Override
     @Transactional
     public void sendVerifyEmail(String email, UUID userId) {
         String code = UUID.randomUUID().toString().substring(0, 6); // lấy 6 ký tự
         verifyEmailCodes.put(email, code);
-
         String verifyLink = "https://lingua-monkey.com/verify?email=" + email + "&code=" + code;
-
         try {
             emailService.sendVerifyAccountEmail(email, verifyLink, Locale.getDefault());
         } catch (MessagingException e) {
@@ -678,18 +593,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.EMAIL_SEND_FAILED);
         }
     }
-
     @Override
     @Transactional
     public void sendPasswordResetCode(String email) {
         userRepository.findByEmailAndIsDeletedFalse(email)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
         String code = UUID.randomUUID().toString().substring(0, 6);
         resetPasswordCodes.put(email, code);
-
         String resetLink = "https://lingua-monkey.com/reset-password?email=" + email + "&code=" + code;
-
         try {
             emailService.sendPasswordResetEmail(email, resetLink, Locale.getDefault());
         } catch (MessagingException e) {
@@ -697,7 +608,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.EMAIL_SEND_FAILED);
         }
     }
-
     @Override
     @Transactional
     public String verifyResetCode(String email, String code) {
@@ -707,43 +617,33 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         }
         throw new AppException(ErrorCode.RESET_TOKEN_INVALID);
     }
-
     @Override
     @Transactional
     public void resetPassword(String resetToken, String newPassword) {
         // Tìm identifier (email/phone) bằng token an toàn
         String identifier = secureResetTokens.get(resetToken);
-
         if (identifier == null) {
             throw new AppException(ErrorCode.RESET_TOKEN_INVALID);
         }
-
         User user = findByIdentifier(identifier);
-
         user.setPassword(passwordEncoder.encode(newPassword));
         userRepository.save(user);
-
         // Xoá token sau khi đã dùng
         secureResetTokens.remove(resetToken);
     }
-
     public User findOrCreateUserAccount(String email, String fullName, String phone, AuthProvider provider, String providerUserId) {
         String normalizedPhone = (phone == null || phone.isBlank()) ? null : normalizePhone(phone);
-
         Optional<UserAuthAccount> existingAuth =
                 userAuthAccountRepository.findByProviderAndProviderUserId(provider, providerUserId);
-
         if (existingAuth.isPresent()) {
             return existingAuth.get().getUser();
         }
-
         Optional<User> existingUser = Optional.empty();
         if (email != null && !email.isBlank()) {
             existingUser = userRepository.findByEmailAndIsDeletedFalse(email.toLowerCase().trim());
         } else if (normalizedPhone != null) {
             existingUser = userRepository.findByPhoneAndIsDeletedFalse(normalizedPhone);
         }
-
         User user = existingUser.orElseGet(() -> {
             User u = User.builder()
                     .email(email != null ? email.toLowerCase().trim() : null)
@@ -751,34 +651,36 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .fullname(fullName != null ? fullName : "User")
                     .createdAt(OffsetDateTime.now())
                     .build();
-            return userRepository.save(u);
+            return userRepository.save(u); // INSERT USERS LẦN 1 (CHO SOCIAL/OTP LOGIN)
         });
-
-        // ✅ FIX 4: Check if auth account already exists before creating
-        boolean authExists = userAuthAccountRepository
-                .findByUser_UserIdAndProviderAndProviderUserId(user.getUserId(), provider, providerUserId)
-                .isPresent();
-
-        if (!authExists) {
+        
+        // DÙNG HÀM TÁCH BIỆT ĐỂ TẠO LIÊN KẾT
+        createAuthAccountLink(user, provider, providerUserId);
+        return user;
+    }
+    @Transactional
+    public void createAuthAccountLink(User user, AuthProvider provider, String providerUserId) {
+        // Kiểm tra xem liên kết đã tồn tại chưa để tránh trùng lặp trong bảng user_auth_accounts
+        Optional<UserAuthAccount> existingAuth =
+                userAuthAccountRepository.findByUser_UserIdAndProviderAndProviderUserId(
+                        user.getUserId(), provider, providerUserId);
+        if (existingAuth.isEmpty()) {
             UserAuthAccount authAccount = UserAuthAccount.builder()
                     .user(user)
                     .provider(provider)
                     .providerUserId(providerUserId)
                     .verified(true)
-                    .isPrimary(existingUser.isEmpty())
+                    // Thiết lập isPrimary nếu là tài khoản Auth đầu tiên được thêm (logic này có thể phức tạp hơn)
+                    .isPrimary(userAuthAccountRepository.countByUser_UserId(user.getUserId()) == 0) 
                     .linkedAt(OffsetDateTime.now())
                     .build();
-            userAuthAccountRepository.save(authAccount);
+            userAuthAccountRepository.save(authAccount); // INSERT user_auth_accounts
         }
-
-        return user;
     }
-
 
     private AuthenticationResponse createAndSaveTokens(User user, String deviceId, String ip, String userAgent) {
         String accessToken = generateToken(user);
         String refreshToken = generateRefreshToken(user, 30);
-
         RefreshToken refreshTokenEntity = RefreshToken.builder()
                 .token(refreshToken)
                 .userId(user.getUserId())
@@ -788,16 +690,13 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                 .expiresAt(OffsetDateTime.now().plusDays(30))
                 .isRevoked(false)
                 .build();
-
         refreshTokenRepository.save(refreshTokenEntity);
-
         return AuthenticationResponse.builder()
                 .token(accessToken)
                 .refreshToken(refreshToken)
                 .authenticated(true)
                 .build();
     }
-
     private String normalizePhone(String rawPhone) {
         if (rawPhone == null) return null;
         String p = rawPhone.trim();
@@ -829,24 +728,19 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             return "+" + digits;
         }
     }
-
     @Transactional
     @Override
     public void requestPasswordResetOtp(String identifier, String method) {
         User user = findByIdentifier(identifier);
         String code = String.format("%06d", new Random().nextInt(999999));
-
         // Dùng identifier (email hoặc SĐT chuẩn hoá) làm key
         String key = (method.equalsIgnoreCase("EMAIL")) ? user.getEmail() : user.getPhone();
         if (key == null) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
-
         resetOtpCodes.put(key, code);
         resetOtpExpiry.put(key, Instant.now().plus(10, ChronoUnit.MINUTES));
-
         log.info("Generated Password Reset OTP: {} for user: {}", code, key);
-
         try {
             if (method.equalsIgnoreCase("PHONE")) {
                 smsService.sendSms(user.getPhone(), code);
@@ -859,55 +753,43 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
     // ENDPOINT MỚI 3: Verify Password Reset OTP
     @Transactional
     @Override
     public String verifyPasswordResetOtp(String identifier, String code) {
         // Chuẩn hoá key
         String key = identifier.contains("@") ? identifier : normalizePhone(identifier);
-
         String storedCode = resetOtpCodes.get(key);
         Instant expiry = resetOtpExpiry.get(key);
-
         if (storedCode == null || !storedCode.equals(code))
             throw new AppException(ErrorCode.OTP_INVALID);
         if (expiry == null || expiry.isBefore(Instant.now()))
             throw new AppException(ErrorCode.OTP_EXPIRED);
-
         resetOtpCodes.remove(key);
         resetOtpExpiry.remove(key);
-
         // Tạo token reset AN TOÀN
         String secureToken = UUID.randomUUID().toString();
         // Lưu token an toàn, map nó với user's identifier
         secureResetTokens.put(secureToken, key);
-
         return secureToken;
     }
-
     @Transactional
     @Override
     public Map<String, Object> checkResetMethods(String identifier) {
         User user = findByIdentifier(identifier);
-
         List<UserAuthAccount> accounts = userAuthAccountRepository.findByUser_UserIdAndVerifiedTrue(user.getUserId());
-
         boolean hasEmail = accounts.stream()
                 .anyMatch(a -> a.getProvider() == AuthProvider.EMAIL);
         boolean hasPhone = accounts.stream()
                 .anyMatch(a -> a.getProvider() == AuthProvider.PHONE);
-
         Map<String, Object> response = new HashMap<>();
         response.put("hasEmail", hasEmail);
         response.put("hasPhone", hasPhone);
         // Trả về SĐT/Email đã chuẩn hoá/che mờ nếu cần
         response.put("email", user.getEmail());
         response.put("phone", user.getPhone());
-
         return response;
     }
-
     private User findByIdentifier(String identifier) {
         if (identifier.contains("@")) {
             return userRepository.findByEmailAndIsDeletedFalse(identifier)

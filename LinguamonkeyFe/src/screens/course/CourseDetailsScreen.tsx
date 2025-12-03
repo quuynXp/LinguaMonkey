@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCourses } from "../../hooks/useCourses";
+import { useRooms } from "../../hooks/useRoom";
 import { useUserStore } from "../../stores/UserStore";
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -23,8 +24,8 @@ import { CourseVersionEnrollmentStatus } from "../../types/enums";
 import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
-import { 
-  CourseVersionDiscountResponse, 
+import {
+  CourseVersionDiscountResponse,
   CourseVersionEnrollmentResponse,
   CourseVersionReviewResponse,
   CourseResponse
@@ -41,6 +42,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { convert } = useCurrencyConverter();
 
   const [purchaseModalVisible, setPurchaseModalVisible] = useState(false);
+  const [lessonPage, setLessonPage] = useState(0);
+  const [displayLessons, setDisplayLessons] = useState<any[]>([]);
 
   const {
     useCourse,
@@ -48,12 +51,43 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     useCreateEnrollment,
     useReviews,
     useDiscounts,
-    useCreateReview
+    useCreateReview,
+    useLessonsByVersion
   } = useCourses();
+
+  const { useCourseRoom } = useRooms();
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
-  
+  const { data: roomData } = useCourseRoom(courseId);
+
+  const version = course?.latestPublicVersion;
+  const versionId = version?.versionId;
+
+  // Tính toán giá tiền
+  const { data: discountsData } = useDiscounts({ versionId: versionId, size: 1 });
+  const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
+
+  const displayPriceRaw = version?.price || 0;
+  const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
+  const priceAfterDiscount = discountPercent > 0
+    ? displayPriceRaw * (1 - discountPercent / 100)
+    : displayPriceRaw;
+
+  // Logic Free/Paid
+  const isFreeCourse = priceAfterDiscount === 0;
+  const isPaidCourse = !isFreeCourse;
+
+  const {
+    data: lessonData,
+    isLoading: lessonsLoading,
+    isFetching: lessonsFetching
+  } = useLessonsByVersion({
+    versionId: versionId,
+    page: lessonPage,
+    size: 20
+  });
+
   const { data: reviewsData, refetch: refetchReviews } = useReviews({
     courseId,
     userId: user?.userId,
@@ -63,12 +97,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { mutate: enroll } = useCreateEnrollment();
   const { mutateAsync: createReviewAsync, isPending: isCreatingReview } = useCreateReview();
 
-  const version = course?.latestPublicVersion;
-  const versionId = version?.versionId;
-
-  const { data: discountsData } = useDiscounts({ versionId: versionId, size: 1 });
-  const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
-
   const activeEnrollment = useMemo(() => {
     return enrollments?.data?.find((e: any) =>
       e.courseVersion?.courseId === courseId ||
@@ -76,39 +104,47 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     ) as CourseVersionEnrollmentResponse | undefined;
   }, [enrollments, courseId]);
 
+  const isCreator = user?.userId === course?.creatorId;
   const isEnrolled = !!activeEnrollment;
-  const reviews = (reviewsData?.data as any[]) || [];
 
+  // Quyền truy cập: Đã mua HOẶC là Creator HOẶC là Course Free
+  const hasAccess = isEnrolled || isCreator || isFreeCourse;
+
+  useEffect(() => {
+    if (lessonData?.data) {
+      if (lessonPage === 0) {
+        setDisplayLessons(lessonData.data);
+      } else {
+        setDisplayLessons(prev => {
+          const newItems = lessonData.data.filter((newItem: any) =>
+            !prev.some(existing => existing.lessonId === newItem.lessonId)
+          );
+          return [...prev, ...newItems];
+        });
+      }
+    }
+  }, [lessonData, lessonPage]);
+
+  const reviews = (reviewsData?.data as any[]) || [];
   const displayThumbnail = version?.thumbnailUrl;
-  const displayPriceRaw = version?.price || 0;
   const displayLanguage = version?.languageCode;
   const displayDifficulty = version?.difficultyLevel;
   const displayDescription = version?.description;
-  const allLessons = version?.lessons || [];
-
   const originalPrice = displayPriceRaw;
-  const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
-  const priceAfterDiscount = discountPercent > 0
-    ? originalPrice * (1 - discountPercent / 100)
-    : originalPrice;
-
-  const isPaidCourse = priceAfterDiscount > 0;
 
   const canReview = useMemo(() => {
-    if (!isPaidCourse) return true;
+    if (isCreator) return false;
+    if (isFreeCourse) return true;
     if (!isEnrolled) return false;
     const progress = activeEnrollment?.progress || 0;
     return progress >= 50;
-  }, [isPaidCourse, isEnrolled, activeEnrollment]);
+  }, [isFreeCourse, isEnrolled, activeEnrollment, isCreator]);
 
   const displayPriceStr = convert(priceAfterDiscount, 'VND');
   const displayOriginalPriceStr = convert(originalPrice, 'VND');
 
-  const freeLessons = allLessons.filter(l => l.isFree);
-  const paidLessons = allLessons.filter(l => !l.isFree);
-
   const handleLessonPress = (lesson: any) => {
-    const isAccessible = isEnrolled || lesson.isFree;
+    const isAccessible = hasAccess || lesson.isFree;
 
     if (!isAccessible) {
       if (isPaidCourse) {
@@ -119,19 +155,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       return;
     }
 
-    if (lesson.videoUrls && lesson.videoUrls.length > 0) {
-      navigation.navigate("LessonVideoScreen", {
-        url: lesson.videoUrls[0],
-        title: lesson.title,
-        lessonId: lesson.lessonId
-      });
-    } else {
-      navigation.navigate("LessonDocumentScreen", {
-        url: "https://docs.google.com/viewer?embedded=true&url=" + (lesson.materialUrl || ""),
-        title: lesson.title,
-        lessonId: lesson.lessonId
-      });
+    if (isFreeCourse && !isEnrolled && !isCreator) {
+      handleFreeEnroll();
     }
+
+    gotoTab("CourseStack", "LessonScreen", { lesson: lesson });
   };
 
   const handleFreeEnroll = () => {
@@ -142,10 +170,14 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       status: CourseVersionEnrollmentStatus.ACTIVE
     }, {
       onSuccess: () => {
-        Alert.alert(t("success"), t("course.enrollmentSuccess"));
+        if (isPaidCourse) {
+          Alert.alert(t("success"), t("course.enrollmentSuccess"));
+        }
         refetchEnrollments();
       },
-      onError: () => Alert.alert(t("error"), t("course.enrollmentFailed"))
+      onError: () => {
+        if (isPaidCourse) Alert.alert(t("error"), t("course.enrollmentFailed"));
+      }
     });
   };
 
@@ -181,6 +213,23 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const handleLikeReview = (reviewId: string) => {
     console.log("Liked review:", reviewId);
+  };
+
+  const handleLoadMoreLessons = () => {
+    if (lessonData?.pagination?.hasNext) {
+      setLessonPage(prev => prev + 1);
+    }
+  };
+
+  const handleJoinRoom = () => {
+    if (roomData?.roomId) {
+      gotoTab("chatstack", "groupchatscreen", {
+        roomId: roomData.roomId,
+        roomName: roomData.roomName || course?.title
+      });
+    } else {
+      Alert.alert(t("notice"), t("course.noRoomAvailable"));
+    }
   };
 
   const renderAuthorInfo = () => {
@@ -226,7 +275,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const renderLessonItem = (item: any, index: number, isLocked: boolean) => (
     <TouchableOpacity
-      key={item.lessonId}
+      key={item.lessonId || index}
       style={[styles.lessonItem, isLocked && styles.lessonItemLocked]}
       onPress={() => handleLessonPress(item)}
       activeOpacity={0.7}
@@ -240,13 +289,18 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
       <View style={styles.lessonContent}>
         <Text style={[styles.lessonTitle, isLocked && styles.textLocked]} numberOfLines={2}>
-          {index + 1}. {item.title}
+          {item.orderIndex ? item.orderIndex + 1 : index + 1}. {item.lessonName || item.title}
         </Text>
         <View style={styles.lessonMetaRow}>
           <Icon name="schedule" size={12} color="#9CA3AF" />
           <Text style={styles.lessonDuration}>
-            {Math.ceil((item.durationSeconds || 0) / 60)} min • {item.lessonType}
+            {Math.ceil((item.durationSeconds || 0) / 60)} min • {item.lessonType || 'LESSON'}
           </Text>
+          {item.isFree && isPaidCourse && (
+            <View style={styles.freeTag}>
+              <Text style={styles.freeTagText}>FREE</Text>
+            </View>
+          )}
         </View>
       </View>
 
@@ -299,20 +353,26 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
             </View>
           </View>
 
-          {!isEnrolled && isPaidCourse && (
-            <TouchableOpacity
-              style={styles.headerBuyBtn}
-              onPress={() => setPurchaseModalVisible(true)}
-            >
+          {hasAccess && roomData ? (
+            <TouchableOpacity style={styles.headerBuyBtn} onPress={handleJoinRoom}>
+              <Text style={styles.headerBuyText}>{t('chat.join_room', 'Join Room')}</Text>
+              <Icon name="chat" size={16} color="#FFF" />
+            </TouchableOpacity>
+          ) : !hasAccess && isPaidCourse ? (
+            <TouchableOpacity style={styles.headerBuyBtn} onPress={() => setPurchaseModalVisible(true)}>
               <Text style={styles.headerBuyText}>{t('common.buy')}</Text>
               <Icon name="shopping-cart" size={16} color="#FFF" />
             </TouchableOpacity>
+          ) : isCreator && (
+            <View style={[styles.headerBuyBtn, { backgroundColor: '#F3F4F6' }]}>
+              <Text style={[styles.headerBuyText, { color: '#4F46E5' }]}>Creator View</Text>
+            </View>
           )}
         </View>
 
         {renderAuthorInfo()}
 
-        {!isEnrolled && (
+        {!hasAccess && (
           <View style={styles.priceContainer}>
             {discountPercent > 0 ? (
               <View style={styles.priceRow}>
@@ -351,21 +411,26 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeader}>{t("course.curriculum")}</Text>
+          <View style={styles.lessonGroup}>
+            {displayLessons.length > 0 ? (
+              displayLessons.map((l, i) => {
+                const isUnlocked = hasAccess || l.isFree;
+                const isLocked = !isUnlocked;
+                return renderLessonItem(l, i, isLocked);
+              })
+            ) : (
+              !lessonsLoading && <Text style={styles.emptyText}>{t("course.noContent")}</Text>
+            )}
+          </View>
 
-          {freeLessons.length > 0 && (
-            <View style={styles.lessonGroup}>
-              <Text style={styles.subSectionHeader}>{t("course.freeLessons")}</Text>
-              {freeLessons.map((l, i) => renderLessonItem(l, i, false))}
-            </View>
-          )}
-
-          {paidLessons.length > 0 ? (
-            <View style={styles.lessonGroup}>
-              <Text style={[styles.subSectionHeader, { marginTop: 12 }]}>{t("course.courseContent")}</Text>
-              {paidLessons.map((l, i) => renderLessonItem(l, i, !isEnrolled))}
-            </View>
-          ) : (
-            freeLessons.length === 0 && <Text style={styles.emptyText}>{t("course.noContent")}</Text>
+          {lessonData?.pagination?.hasNext && (
+            <TouchableOpacity style={styles.loadMoreBtn} onPress={handleLoadMoreLessons} disabled={lessonsFetching}>
+              {lessonsFetching ? (
+                <ActivityIndicator size="small" color="#4F46E5" />
+              ) : (
+                <Text style={styles.loadMoreText}>{t('common.loadMore', 'Load More')}</Text>
+              )}
+            </TouchableOpacity>
           )}
         </View>
       </View>
@@ -385,31 +450,13 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   return (
     <ScreenLayout>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 40 }}
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         {renderHeader()}
         <View style={styles.reviewsWrapper}>
-          <ReviewSection
-            entityId={courseId}
-            reviews={reviews}
-            onAddReview={handleAddReview}
-            isAddingReview={isCreatingReview}
-            onLikeReview={handleLikeReview}
-            canReview={canReview}
-          />
+          <ReviewSection entityId={courseId} reviews={reviews} onAddReview={handleAddReview} isAddingReview={isCreatingReview} onLikeReview={handleLikeReview} canReview={canReview} />
         </View>
       </ScrollView>
-
-      {/* Uses the provided CoursePurchaseModal which handles its own logic */}
-      <CoursePurchaseModal
-        visible={purchaseModalVisible}
-        onClose={() => setPurchaseModalVisible(false)}
-        course={course as CourseResponse}
-        activeDiscount={activeDiscount as any} 
-        onSuccess={handlePurchaseSuccess}
-      />
+      <CoursePurchaseModal visible={purchaseModalVisible} onClose={() => setPurchaseModalVisible(false)} course={course as CourseResponse} activeDiscount={activeDiscount as any} onSuccess={handlePurchaseSuccess} />
     </ScreenLayout>
   );
 };
@@ -420,53 +467,27 @@ const styles = StyleSheet.create({
   coverContainer: { height: 240, width: "100%", position: "relative" },
   coverImage: { width: "100%", height: "100%", backgroundColor: "#E5E7EB" },
   coverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' },
-  backBtn: {
-    position: 'absolute', left: 16,
-    backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20, padding: 8
-  },
-  discountBadge: {
-    position: 'absolute', bottom: 16, left: 16,
-    backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3
-  },
+  backBtn: { position: 'absolute', left: 16, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20, padding: 8 },
+  discountBadge: { position: 'absolute', bottom: 16, left: 16, backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
   discountBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
-  contentBody: {
-    padding: 20, marginTop: -20,
-    backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24
-  },
+  contentBody: { padding: 20, marginTop: -20, backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   title: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 12, lineHeight: 30 },
-
   statsWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   statsContainer: { flexDirection: 'row', alignItems: 'center' },
-  headerBuyBtn: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    backgroundColor: '#4F46E5', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20
-  },
+  headerBuyBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#4F46E5', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   headerBuyText: { color: '#FFF', fontWeight: '700', fontSize: 13 },
-
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { fontWeight: '700', color: '#374151', fontSize: 14 },
   statLabel: { color: '#6B7280', fontSize: 13 },
   verticalDivider: { width: 1, height: 14, backgroundColor: '#D1D5DB', marginHorizontal: 12 },
-  authorCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#F9FAFB', padding: 12, borderRadius: 16,
-    borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 24
-  },
+  authorCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 16, borderWidth: 1, borderColor: '#F3F4F6', marginBottom: 24 },
   authorAvatarContainer: { position: 'relative', marginRight: 12 },
   authorAvatar: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, borderColor: '#FFF' },
-  flagOverlay: {
-    position: 'absolute', top: -2, right: -4,
-    backgroundColor: '#FFF', borderRadius: 8, padding: 1,
-    shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 1, elevation: 2
-  },
+  flagOverlay: { position: 'absolute', top: -2, right: -4, backgroundColor: '#FFF', borderRadius: 8, padding: 1, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 1, elevation: 2 },
   authorInfo: { flex: 1 },
   authorNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 2 },
   authorName: { fontSize: 15, fontWeight: '700', color: '#1F2937', maxWidth: '70%' },
-  vipBadge: {
-    flexDirection: 'row', alignItems: 'center', gap: 2,
-    backgroundColor: '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4
-  },
+  vipBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   vipText: { fontSize: 10, color: '#FFF', fontWeight: '800' },
   authorMeta: { fontSize: 12, color: '#6B7280' },
   viewProfileBtn: { flexDirection: 'row', alignItems: 'center' },
@@ -480,6 +501,7 @@ const styles = StyleSheet.create({
   sectionHeader: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 },
   description: { fontSize: 15, color: "#4B5563", lineHeight: 24 },
 
+  // ✅ Đã thêm các styles bị thiếu
   systemReviewContainer: { backgroundColor: '#EFF6FF', padding: 16, borderRadius: 12, marginBottom: 24, borderLeftWidth: 4, borderLeftColor: '#3B82F6' },
   systemReviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   systemReviewTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E3A8A' },
@@ -487,28 +509,22 @@ const styles = StyleSheet.create({
   systemReviewText: { fontSize: 14, color: '#1E40AF', lineHeight: 20 },
 
   lessonGroup: { marginBottom: 8 },
-  subSectionHeader: { fontSize: 14, fontWeight: '600', color: '#6B7280', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  lessonItem: {
-    flexDirection: "row", alignItems: "center",
-    padding: 10, marginBottom: 10,
-    backgroundColor: "#FFF", borderRadius: 12,
-    borderWidth: 1, borderColor: "#E5E7EB",
-    shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, elevation: 1
-  },
+  lessonItem: { flexDirection: "row", alignItems: "center", padding: 10, marginBottom: 10, backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
   lessonItemLocked: { backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", opacity: 0.8 },
   lessonThumbContainer: { position: 'relative', width: 60, height: 60, marginRight: 12 },
   lessonThumb: { width: '100%', height: '100%', borderRadius: 8, backgroundColor: "#E5E7EB" },
-  playIconOverlay: {
-    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 8, justifyContent: 'center', alignItems: 'center'
-  },
+  playIconOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
   lessonContent: { flex: 1 },
   lessonTitle: { fontSize: 15, fontWeight: "600", color: "#1F2937", marginBottom: 4 },
   lessonMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   lessonDuration: { fontSize: 12, color: "#9CA3AF" },
   textLocked: { color: "#9CA3AF" },
   emptyText: { fontStyle: "italic", color: "#9CA3AF", marginBottom: 10 },
+  loadMoreBtn: { alignItems: 'center', padding: 12, marginTop: 10, backgroundColor: '#F3F4F6', borderRadius: 8 },
+  loadMoreText: { color: '#4F46E5', fontWeight: '600' },
   reviewsWrapper: { paddingHorizontal: 20 },
+  freeTag: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
+  freeTagText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
 });
 
 export default CourseDetailsScreen;

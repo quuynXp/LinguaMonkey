@@ -1,5 +1,4 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
-
 import com.connectJPA.LinguaVietnameseApp.dto.request.SubmitExerciseRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UpdateGrammarProgressRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
@@ -13,11 +12,9 @@ import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
 import java.time.OffsetDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
-
 @Service
 @RequiredArgsConstructor
 public class GrammarServiceImpl implements GrammarService {
@@ -28,7 +25,6 @@ public class GrammarServiceImpl implements GrammarService {
     private final GrammarProgressRepository progressRepo;
     private final UserService userService;
     private final UserLearningActivityRepository userLearningActivityRepository;
-
     @Override
     public List<GrammarTopicResponse> getAllTopics() {
         return topicRepo.findAll().stream()
@@ -38,7 +34,6 @@ public class GrammarServiceImpl implements GrammarService {
                 .map(this::mapToTopicResponse)
                 .collect(Collectors.toList());
     }
-
     @Override
     public GrammarTopicResponse getTopicById(UUID topicId) {
         GrammarTopic topic = topicRepo.findById(topicId)
@@ -46,7 +41,6 @@ public class GrammarServiceImpl implements GrammarService {
                 .orElseThrow(() -> new AppException(ErrorCode.GRAMMAR_TOPIC_NOT_FOUND));
         return mapToTopicResponse(topic);
     }
-
     @Override
     public GrammarLessonResponse getLessonById(UUID lessonId) {
         GrammarLesson lesson = lessonRepo.findById(lessonId)
@@ -54,7 +48,6 @@ public class GrammarServiceImpl implements GrammarService {
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
         return mapToLessonResponse(lesson);
     }
-
     @Override
     public GrammarRuleResponse getRuleById(UUID ruleId) {
         GrammarRule rule = ruleRepo.findById(ruleId)
@@ -62,17 +55,13 @@ public class GrammarServiceImpl implements GrammarService {
                 .orElseThrow(() -> new AppException(ErrorCode.GRAMMAR_RULE_NOT_FOUND));
         return mapToRuleResponse(rule);
     }
-
     @Override
     public GrammarTopicResponse getTopicById(UUID topicId, UUID userId) {
         GrammarTopic topic = topicRepo.findById(topicId)
                 .filter(t -> !t.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.GRAMMAR_TOPIC_NOT_FOUND));
-
         List<GrammarLesson> lessons = lessonRepo.findByTopicIdAndIsDeletedFalseOrderByCreatedAtAsc(topicId);
-
         List<GrammarRuleResponse> allRuleResponses = new ArrayList<>();
-
         for (GrammarLesson lesson : lessons) {
             if (lesson.getGrammarRules() != null) {
                 List<GrammarRuleResponse> ruleResponses = lesson.getGrammarRules().stream()
@@ -93,7 +82,6 @@ public class GrammarServiceImpl implements GrammarService {
                 allRuleResponses.addAll(ruleResponses);
             }
         }
-
         GrammarTopicResponse resp = new GrammarTopicResponse();
         resp.setTopicId(topic.getTopicId());
         resp.setTopicName(topic.getTopicName());
@@ -102,10 +90,8 @@ public class GrammarServiceImpl implements GrammarService {
         resp.setCreatedAt(topic.getCreatedAt());
         resp.setUpdatedAt(topic.getUpdatedAt());
         resp.setRules(allRuleResponses);
-
         return resp;
     }
-
     private GrammarTopicResponse mapToTopicResponse(GrammarTopic topic) {
         return GrammarTopicResponse.builder()
                 .topicId(topic.getTopicId())
@@ -116,7 +102,6 @@ public class GrammarServiceImpl implements GrammarService {
                 .updatedAt(topic.getUpdatedAt())
                 .build();
     }
-
     private GrammarLessonResponse mapToLessonResponse(GrammarLesson lesson) {
         List<GrammarRuleResponse> rules = new ArrayList<>();
         if (lesson.getGrammarRules() != null) {
@@ -125,7 +110,6 @@ public class GrammarServiceImpl implements GrammarService {
                     .map(this::mapToRuleResponse)
                     .collect(Collectors.toList());
         }
-
         return GrammarLessonResponse.builder()
                 .lessonId(lesson.getLessonId())
                 .topicId(lesson.getTopicId())
@@ -137,11 +121,9 @@ public class GrammarServiceImpl implements GrammarService {
                 .updatedAt(lesson.getUpdatedAt() != null ? lesson.getUpdatedAt().toString() : null)
                 .build();
     }
-
     private GrammarRuleResponse mapToRuleResponse(GrammarRule rule) {
         UUID lessonId = rule.getGrammarLesson() != null ? rule.getGrammarLesson().getLessonId() : null;
         UUID topicId = rule.getGrammarLesson() != null ? rule.getGrammarLesson().getTopicId() : null;
-
         return GrammarRuleResponse.builder()
                 .ruleId(rule.getRuleId())
                 .lessonId(lessonId)
@@ -154,13 +136,21 @@ public class GrammarServiceImpl implements GrammarService {
                 .updatedAt(rule.getUpdatedAt())
                 .build();
     }
-
+    private GrammarExerciseResponse mapToExerciseResponse(GrammarExercise exercise) {
+        return GrammarExerciseResponse.builder()
+                .exerciseId(exercise.getExerciseId())
+                .type(exercise.getType())
+                .question(exercise.getQuestion())
+                .options(exercise.getOptions())
+                .correct(exercise.getCorrect())
+                .explanation(exercise.getExplanation())
+                .build();
+    }
     @Override
     @Transactional
     public List<MindMapNode> getMindMap() {
         List<GrammarTopic> topics = topicRepo.findByIsDeletedFalseOrderByCreatedAtAsc();
         List<MindMapNode> nodes = new ArrayList<>();
-
         MindMapNode root = new MindMapNode();
         root.setId("root");
         root.setTitle("Vietnamese Grammar");
@@ -170,25 +160,18 @@ public class GrammarServiceImpl implements GrammarService {
         root.setRules(new ArrayList<>());
         root.setType("root");
         nodes.add(root);
-
         for (GrammarTopic topic : topics) {
             List<GrammarLesson> lessons = lessonRepo.findByTopicIdAndIsDeletedFalseOrderByCreatedAtAsc(topic.getTopicId());
-
             MindMapNode topicNode = new MindMapNode();
             topicNode.setId(topic.getTopicId().toString());
             topicNode.setTitle(topic.getTopicName());
             topicNode.setDescription(topic.getDescription());
-
             List<String> ruleChildrenIds = new ArrayList<>();
-
             for (GrammarLesson lesson : lessons) {
                 if (lesson.getGrammarRules() == null) continue;
-
                 for (GrammarRule rule : lesson.getGrammarRules()) {
                     if (rule.isDeleted()) continue;
-
                     ruleChildrenIds.add(rule.getRuleId().toString());
-
                     MindMapNode ruleNode = new MindMapNode();
                     ruleNode.setId(rule.getRuleId().toString());
                     ruleNode.setTitle(rule.getTitle());
@@ -200,41 +183,33 @@ public class GrammarServiceImpl implements GrammarService {
                     nodes.add(ruleNode);
                 }
             }
-
             topicNode.setChildren(ruleChildrenIds);
             topicNode.setExamples(new ArrayList<>());
             topicNode.setRules(new ArrayList<>());
             topicNode.setType("topic");
             nodes.add(topicNode);
         }
-
         assignPositions(nodes, "root", 800, 600);
         return nodes;
     }
-
     private void assignPositions(List<MindMapNode> nodes, String rootId, int width, int height) {
         Map<String, MindMapNode> nodeMap = nodes.stream().collect(Collectors.toMap(MindMapNode::getId, n -> n));
         Queue<PositionQueueItem> queue = new LinkedList<>();
         queue.add(new PositionQueueItem(rootId, 0, 0, 0));
-
         String[] colors = {"#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"};
         int index = 0;
-
         while (!queue.isEmpty()) {
             PositionQueueItem item = queue.poll();
             MindMapNode node = nodeMap.get(item.id);
             if (node == null) continue;
-
             double radius = 150 * item.level;
             double angle = item.angleStart;
             double x = width / 2.0 + radius * Math.cos(angle);
             double y = height / 3.0 + radius * Math.sin(angle);
-
             node.setX(x);
             node.setY(y);
             node.setColor(colors[item.level % colors.length]);
             node.setLevel(item.level);
-
             List<String> children = node.getChildren();
             if (children != null && !children.isEmpty()) {
                 double childAngleStep = Math.PI / children.size();
@@ -245,13 +220,11 @@ public class GrammarServiceImpl implements GrammarService {
             }
         }
     }
-
     private static class PositionQueueItem {
         String id;
         int level;
         double angleStart;
         int parentIndex;
-
         PositionQueueItem(String id, int level, double angleStart, int parentIndex) {
             this.id = id;
             this.level = level;
@@ -259,7 +232,6 @@ public class GrammarServiceImpl implements GrammarService {
             this.parentIndex = parentIndex;
         }
     }
-
     @Override
     @Transactional
     public SubmitExerciseResponse submitExercise(SubmitExerciseRequest request) {
@@ -267,15 +239,11 @@ public class GrammarServiceImpl implements GrammarService {
         UUID userId = request.getUserId();
         if (userId == null) throw new AppException(ErrorCode.INVALID_INPUT);
         userService.getUserIfExists(userId);
-
         GrammarRule rule = ruleRepo.findById(ruleId).filter(r -> !r.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.GRAMMAR_RULE_NOT_FOUND));
-
         UUID topicId = rule.getGrammarLesson().getTopicId();
-
         List<GrammarExercise> exercises = exerciseRepo.findByRuleIdAndIsDeletedFalseOrderByCreatedAtAsc(ruleId);
         if (exercises.isEmpty()) throw new AppException(ErrorCode.GRAMMAR_EXERCISES_NOT_FOUND);
-
         int total = exercises.size();
         int correct = 0;
         Map<UUID, Boolean> detail = new LinkedHashMap<>();
@@ -286,7 +254,6 @@ public class GrammarServiceImpl implements GrammarService {
             detail.put(ex.getExerciseId(), ok);
         }
         int score = Math.round((correct * 100f) / total);
-
         GrammarProgressId pid = new GrammarProgressId(topicId, userId, ruleId);
         GrammarProgress progress = progressRepo.findById(pid).orElseGet(() -> {
             GrammarProgress p = new GrammarProgress();
@@ -297,7 +264,6 @@ public class GrammarServiceImpl implements GrammarService {
         progress.setScore(Math.max(progress.getScore() == null ? 0 : progress.getScore(), score));
         progress.setCompletedAt(OffsetDateTime.now());
         progressRepo.save(progress);
-
         userLearningActivityRepository.save(
                 com.connectJPA.LinguaVietnameseApp.entity.UserLearningActivity.builder()
                         .userId(userId)
@@ -305,7 +271,6 @@ public class GrammarServiceImpl implements GrammarService {
                         .createdAt(OffsetDateTime.now())
                         .build()
         );
-
         SubmitExerciseResponse resp = new SubmitExerciseResponse();
         resp.setScore(score);
         resp.setTotal(total);
@@ -313,13 +278,11 @@ public class GrammarServiceImpl implements GrammarService {
         resp.setDetails(detail);
         return resp;
     }
-
     @Override
     @Transactional
     public void updateProgress(UpdateGrammarProgressRequest request) {
         UUID userId = request.getUserId();
         userService.getUserIfExists(userId);
-
         GrammarProgressId pid = new GrammarProgressId(request.getTopicId(), userId, request.getRuleId());
         GrammarProgress progress = progressRepo.findById(pid).orElseGet(() -> {
             GrammarProgress p = new GrammarProgress();
@@ -331,7 +294,6 @@ public class GrammarServiceImpl implements GrammarService {
         progress.setCompletedAt(OffsetDateTime.now());
         progressRepo.save(progress);
     }
-
     private boolean evaluateAnswer(GrammarExercise ex, String submitted) {
         if (submitted == null) submitted = "";
         String correct = ex.getCorrect() == null ? "" : ex.getCorrect().trim();
@@ -344,9 +306,21 @@ public class GrammarServiceImpl implements GrammarService {
                 return submitted.trim().equalsIgnoreCase(correct);
         }
     }
-
     @Override
     public GrammarRuleResponse getRuleDetailsWithExercises(UUID ruleId) {
-        throw new UnsupportedOperationException("Unimplemented method 'getRuleDetailsWithExercises'");
+        GrammarRule rule = ruleRepo.findById(ruleId)
+                .filter(r -> !r.isDeleted())
+                .orElseThrow(() -> new AppException(ErrorCode.GRAMMAR_RULE_NOT_FOUND));
+        // 1. Map Rule cơ bản
+        GrammarRuleResponse response = mapToRuleResponse(rule);
+        // 2. Lấy danh sách Exercises
+        List<GrammarExercise> exercises = exerciseRepo.findByRuleIdAndIsDeletedFalseOrderByCreatedAtAsc(ruleId);
+        // 3. Map Exercises sang Response DTO và gán vào Rule Response
+        List<GrammarExerciseResponse> exerciseResponses = exercises.stream()
+                .map(this::mapToExerciseResponse)
+                .collect(Collectors.toList());
+        
+        response.setExercises(exerciseResponses);
+        return response;
     }
 }

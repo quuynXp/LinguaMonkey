@@ -19,6 +19,7 @@ import {
   CourseLessonRequest,
   CourseVersionDiscountRequest,
   CourseVersionReviewRequest,
+  CreatorDashboardResponse,
 } from "../types/dto";
 import { CourseType } from "../types/enums";
 
@@ -38,6 +39,8 @@ export const courseKeys = {
   lessons: (params: any) => [...courseKeys.all, "lessons", params] as const,
   discounts: (params: any) => [...courseKeys.all, "discounts", params] as const,
   reviews: (params: any) => [...courseKeys.all, "reviews", params] as const,
+  creatorStats: (creatorId: string) => [...courseKeys.all, "creatorStats", creatorId] as const,
+  courseStats: (courseId: string) => [...courseKeys.all, "courseStats", courseId] as const, // New key
 };
 
 export const useCourses = () => {
@@ -50,10 +53,11 @@ export const useCourses = () => {
     languageCode?: string;
     type?: CourseType;
     categoryCode?: string;
+    isAdminCreated?: boolean;
   }) => {
-    const { page = 0, size = 10, title, languageCode, type, categoryCode } = params || {};
+    const { page = 0, size = 10, title, languageCode, type, categoryCode, isAdminCreated } = params || {};
     return useQuery({
-      queryKey: courseKeys.list({ page, size, title, languageCode, type, categoryCode }),
+      queryKey: courseKeys.list({ page, size, title, languageCode, type, categoryCode, isAdminCreated }),
       queryFn: async () => {
         const qp = new URLSearchParams();
         qp.append("page", page.toString());
@@ -62,6 +66,7 @@ export const useCourses = () => {
         if (languageCode) qp.append("languageCode", languageCode);
         if (type) qp.append("type", type);
         if (categoryCode) qp.append("categoryCode", categoryCode);
+        if (isAdminCreated !== undefined) qp.append("isAdminCreated", String(isAdminCreated));
 
         const { data } = await instance.get<AppApiResponse<PageResponse<CourseResponse>>>(
           `/api/v1/courses?${qp.toString()}`
@@ -196,6 +201,35 @@ export const useCourses = () => {
         return mapPageResponse(data.result, page, size);
       },
       enabled: !!creatorId,
+    });
+  };
+
+  const useCreatorStats = (creatorId?: string) => {
+    return useQuery({
+      queryKey: courseKeys.creatorStats(creatorId!),
+      queryFn: async () => {
+        if (!creatorId) throw new Error("Creator ID required");
+        const { data } = await instance.get<AppApiResponse<CreatorDashboardResponse>>(
+          `/api/v1/courses/creator/${creatorId}/stats`
+        );
+        return data.result!;
+      },
+      enabled: !!creatorId,
+    });
+  };
+
+  // --- New Hook for Course Specific Stats ---
+  const useCourseStats = (courseId?: string) => {
+    return useQuery({
+      queryKey: courseKeys.courseStats(courseId!),
+      queryFn: async () => {
+        if (!courseId) throw new Error("Course ID required");
+        const { data } = await instance.get<AppApiResponse<CreatorDashboardResponse>>(
+          `/api/v1/courses/${courseId}/stats`
+        );
+        return data.result!;
+      },
+      enabled: !!courseId,
     });
   };
 
@@ -392,8 +426,6 @@ export const useCourses = () => {
   const usePurchaseCourse = () => {
     return useMutation({
       mutationFn: async ({ userId, courseVersionId }: { userId: string, courseVersionId: string }) => {
-        // Assuming endpoint for paying/purchasing. 
-        // If your backend uses the same 'enrollment' endpoint but with a Payment DTO, adjust accordingly.
         const { data } = await instance.post<AppApiResponse<CourseVersionEnrollmentResponse>>(
           "/api/v1/course-version-enrollments/purchase",
           { userId, courseVersionId, paymentMethod: 'WALLET' }
@@ -402,7 +434,6 @@ export const useCourses = () => {
       },
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: courseKeys.enrollments({}) });
-        // Also invalidate user profile to update wallet balance if needed
         queryClient.invalidateQueries({ queryKey: ["userProfile"] });
       }
     });
@@ -444,7 +475,7 @@ export const useCourses = () => {
   };
 
   const useCourseLessons = (params?: { courseId?: string; lessonId?: string; page?: number; size?: number }) => {
-    const { courseId, lessonId, page = 0, size = 50 } = params || {};
+    const { courseId, lessonId, page = 0, size = 20 } = params || {};
     return useQuery({
       queryKey: courseKeys.lessons({ courseId, lessonId, page, size }),
       queryFn: async () => {
@@ -456,7 +487,7 @@ export const useCourses = () => {
         );
         return mapPageResponse(data.result, page, size);
       },
-      enabled: !!(courseId || lessonId),
+      enabled: !!courseId && !lessonId,
     });
   };
 
@@ -631,6 +662,26 @@ export const useCourses = () => {
     });
   };
 
+  const useLessonsByVersion = (params: { versionId?: string; page?: number; size?: number }) => {
+    const { versionId, page = 0, size = 20 } = params;
+    return useQuery({
+      queryKey: courseKeys.lessons({ versionId, page, size }),
+      queryFn: async () => {
+        if (!versionId) return mapPageResponse(null, page, size);
+        const qp = new URLSearchParams();
+        qp.append("versionId", versionId);
+        qp.append("page", page.toString());
+        qp.append("size", size.toString());
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<LessonResponse>>>(
+          `/api/v1/lessons?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
+      },
+      enabled: !!versionId
+    });
+  };
+
   const useValidateDiscount = () => {
     return useMutation({
       mutationFn: async ({ code, versionId }: { code: string; versionId: string }) => {
@@ -648,6 +699,8 @@ export const useCourses = () => {
     useCourseVersions,
     useGetVersion,
     useCreatorCourses,
+    useCreatorStats,
+    useCourseStats, // Exported new hook
     useLoadReplies,
     useRecommendedCourses,
     useCourseLevels,
@@ -663,7 +716,7 @@ export const useCourses = () => {
     useEnrollments,
     useEnrollmentDetail,
     useCreateEnrollment,
-    usePurchaseCourse, // Added new hook
+    usePurchaseCourse,
     useSwitchVersion,
     useUpdateEnrollment,
     useDeleteEnrollment,
@@ -672,6 +725,7 @@ export const useCourses = () => {
     useCreateCourseLesson,
     useUpdateCourseLesson,
     useDeleteCourseLesson,
+    useLessonsByVersion,
     useReviews,
     useReviewDetail,
     useCreateReview,

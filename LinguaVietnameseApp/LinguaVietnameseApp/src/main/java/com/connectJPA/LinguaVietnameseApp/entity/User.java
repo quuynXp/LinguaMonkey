@@ -24,7 +24,6 @@ public class User extends BaseEntity {
     private static final long ONLINE_THRESHOLD_MINUTES = 5;
     private static final int DEFAULT_MIN_LEARNING_DURATION_MINUTES = 15;
 
-    // @org.springframework.data.annotation.Id
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "user_id")
@@ -55,6 +54,7 @@ public class User extends BaseEntity {
     private String avatarUrl;
 
     @Column(name = "allow_stranger_chat")
+    @Builder.Default
     private boolean allowStrangerChat = true;
 
     @Column(name = "character3d_id")
@@ -115,16 +115,23 @@ public class User extends BaseEntity {
     @Column(name = "last_streak_check_date")
     private LocalDate lastStreakCheckDate;
 
-
     @Column(name = "coins", nullable = false)
     @Builder.Default
     private int coins = 0;
 
     @Column(name = "gender")
+    @Builder.Default
     private String gender = "any";
 
     @Column(name = "vip_expiration_date")
     private OffsetDateTime vipExpirationDate;
+
+    // --- New Fields for AI Progress Assessment ---
+    @Column(name = "latest_improvement_suggestion", columnDefinition = "text")
+    private String latestImprovementSuggestion;
+
+    @Column(name = "last_suggestion_generated_at")
+    private OffsetDateTime lastSuggestionGeneratedAt;
 
     @Transient
     public boolean isOnline() {

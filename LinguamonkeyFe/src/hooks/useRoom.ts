@@ -17,6 +17,8 @@ export const roomKeys = {
     detail: (id: string) => [...roomKeys.all, "detail", id] as const,
     members: (id: string) => [...roomKeys.all, "members", id] as const,
     ai: () => [...roomKeys.all, "aiRoom"] as const,
+    // 💡 Key mới để lấy Room liên quan đến Course
+    courseRoom: (courseId: string) => [...roomKeys.all, "courseRoom", courseId] as const,
 };
 
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
@@ -85,6 +87,23 @@ export const useRooms = () => {
                 return data.result!;
             },
             enabled: !!id,
+        });
+    };
+
+    // 💡 HOOK MỚI: Lấy Room ID/Room Response của Course
+    const useCourseRoom = (courseId: string | null) => {
+        return useQuery({
+            queryKey: roomKeys.courseRoom(courseId!),
+            queryFn: async () => {
+                if (!courseId) return null;
+                // 💡 API endpoint giả định để lấy Room ID liên kết với Course
+                const { data } = await instance.get<AppApiResponse<RoomResponse>>(
+                    `${BASE}/course/${courseId}`
+                );
+                return data.result || null;
+            },
+            enabled: !!courseId,
+            staleTime: Infinity,
         });
     };
 
@@ -199,6 +218,7 @@ export const useRooms = () => {
         usePublicRooms,
         useJoinedRooms,
         useRoom,
+        useCourseRoom, // 💡 Export hook mới
         useRoomMembers,
         useCreateRoom,
         useJoinRoom,

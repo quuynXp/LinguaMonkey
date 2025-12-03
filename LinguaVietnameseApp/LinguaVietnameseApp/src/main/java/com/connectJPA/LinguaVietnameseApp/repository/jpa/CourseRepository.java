@@ -84,7 +84,6 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     Page<Course> findByCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
             List<UUID> courseId, 
             CourseApprovalStatus approvalStatus, 
-            boolean isDeleted, 
             Pageable pageable
     );
 
@@ -101,4 +100,7 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
            ") AND c.isDeleted = false AND c.approvalStatus = com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED " +
            "ORDER BY c.createdAt DESC")
     Page<Course> searchCoursesByKeyword(@Param("keyword") String keyword, Pageable pageable);
+
+    Page<Course> findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(CourseApprovalStatus approved,
+            Pageable pageable);
 }

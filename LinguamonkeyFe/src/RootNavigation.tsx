@@ -8,7 +8,7 @@ import notificationService from "./services/notificationService";
 import { useTokenStore } from "./stores/tokenStore";
 import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
-import { useChatStore } from "./stores/ChatStore"; // Import ChatStore
+import { useChatStore } from "./stores/ChatStore";
 import * as Localization from "expo-localization";
 import instance from "./api/axiosClient";
 import SplashScreen from "./screens/Splash/SplashScreen";
@@ -17,7 +17,7 @@ import permissionService from "./services/permissionService";
 import i18n from "./i18n";
 import AuthStack from "./navigation/stack/AuthStack";
 import MainStack, { MainStackParamList } from "./navigation/stack/MainStack";
-import ChatBubble from "./components/chat/ChatBubble"; // Import ChatBubble
+import ChatBubble from "./components/chat/ChatBubble";
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
@@ -55,7 +55,6 @@ const RootNavigation = () => {
           screens: { Home: "home", Chat: "chats" },
         },
         ChatStack: "chat-full",
-        // ... other mapping
       },
     },
     subscribe(listener: (url: string) => void) {
@@ -94,7 +93,6 @@ const RootNavigation = () => {
         if (i18n.language !== savedLanguage) await i18n.changeLanguage(savedLanguage);
 
         if (hasValidToken && useTokenStore.getState().accessToken) {
-          // ... User Fetch Logic (kept identical to your context) ...
           const currentToken = useTokenStore.getState().accessToken;
           const payload = decodeToken(currentToken!);
           if (payload?.userId) {
@@ -102,7 +100,8 @@ const RootNavigation = () => {
             const rawUser = userRes.data.result || {};
             setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: getRoleFromToken(currentToken!) }, savedLanguage);
             notificationService.registerTokenToBackend();
-            setInitialMainRoute("TabApp"); // Simplified for brevity
+
+            setInitialMainRoute("TabApp");
           }
         }
       } catch (e) { console.error("Boot error:", e); }
@@ -131,9 +130,10 @@ const RootNavigation = () => {
         }}
       >
         {accessToken ? <MainStack initialRouteName={initialMainRoute} /> : <AuthStack initialParams={initialAuthParams} />}
+
+        {accessToken && <ChatBubble />}
+
       </NavigationContainer>
-      {/* Mount ChatBubble here to float over entire app */}
-      {accessToken && <ChatBubble />}
     </View>
   );
 };

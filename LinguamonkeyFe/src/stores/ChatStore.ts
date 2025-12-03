@@ -39,6 +39,7 @@ interface UseChatState {
   isBubbleOpen: boolean;
   currentAppScreen: string | null;
   appIsActive: boolean;
+  currentViewedRoomId: string | null;
 
   initStompClient: () => void;
   subscribeToRoom: (roomId: string) => void;
@@ -51,6 +52,7 @@ interface UseChatState {
   sendAiPrompt: (content: string) => void;
   sendAiWelcomeMessage: () => void;
   loadMessages: (roomId: string, page?: number, size?: number) => Promise<void>;
+  searchMessages: (roomId: string, keyword: string) => Promise<void>;
   sendMessage: (roomId: string, content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO', mediaUrl?: string) => void;
   editMessage: (roomId: string, messageId: string, newContent: string) => Promise<void>;
   deleteMessage: (roomId: string, messageId: string) => Promise<void>;
@@ -65,86 +67,32 @@ interface UseChatState {
   minimizeBubble: () => void;
   setCurrentAppScreen: (screen: string | null) => void;
   setAppIsActive: (isActive: boolean) => void;
+  setCurrentViewedRoomId: (roomId: string | null) => void;
 }
 
-const decideNotificationAction = async (parsedMsg: any) => {
-  try {
-    // Robustly extract roomId. ChatMessageResponse usually has roomId as UUID string.
-    const roomId = parsedMsg?.roomId || parsedMsg?.room_id;
-
-    if (!roomId) {
-      console.warn('decideNotificationAction: roomId missing in message', parsedMsg);
-      return;
-    }
-
-    const currentUser = useUserStore.getState().user;
-    if (!currentUser) return;
-
-    const currentUserId = currentUser.userId;
-    const senderId = parsedMsg?.senderId || parsedMsg?.sender_id;
-
-    // Don't notify if I sent the message
-    if (senderId === currentUserId) return;
-
-    const state = useChatStore.getState();
-    const appIsActive = state.appIsActive;
-    const currentScreen = state.currentAppScreen;
-
-    console.log(`Notification Check - Active: ${appIsActive}, Screen: ${currentScreen}, Room: ${roomId}`);
-
-    if (appIsActive) {
-      // Logic: If user is inside THIS chat screen, do nothing (or subtle sound).
-      // If user is in app but OTHER screen, show bubble + sound.
-
-      const isInSpecificChat = currentScreen === 'GroupChatScreen' && state.activeBubbleRoomId === roomId;
-      // Note: activeBubbleRoomId might track the 'open' bubble, but to check navigation stack efficiently
-      // we usually rely on Route Params. For now, assuming if they are in 'GroupChatScreen', 
-      // we might want to suppress ONLY if params.roomId matches. 
-      // Since we don't have direct access to route params here easily without nav ref, 
-      // we'll assume "If screen is GroupChatScreen", we might suppress OR verify via state.
-
-      // Better approach: Always play sound. Only open bubble if NOT in chat.
-      await playInAppSound();
-
-      if (!isInSpecificChat) {
-        state.openBubble(roomId);
-      }
-    } else {
-      // App is in background (but not killed, assuming JS still runs briefly).
-      // Stomp might disconnect, but if alive:
-      // Let FCM handle the visual notification to avoid double toast.
-      // But we can update badge counts here if implemented.
-    }
-  } catch (e) {
-    console.warn('decideNotificationAction error', e);
-  }
-};
-
+// Helper: Normalize messages
 const normalizeMessage = (msg: any): Message => {
   if (!msg) {
     return {
       id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() },
     } as Message;
   }
-  if (msg?.id?.chatMessageId) return msg as Message;
+  const mapTranslationFields = (source: any) => ({
+    translatedText: source.translatedText || source.translated_text || null,
+    translatedLang: source.translatedLang || source.translated_lang || null,
+  });
+
+  if (msg?.id?.chatMessageId) {
+    return { ...msg, ...mapTranslationFields(msg) } as Message;
+  }
   if (msg?.chatMessageId) {
     return {
       ...msg,
-      id: {
-        chatMessageId: msg.chatMessageId,
-        sentAt: msg.sentAt || new Date().toISOString()
-      },
+      id: { chatMessageId: msg.chatMessageId, sentAt: msg.sentAt || new Date().toISOString() },
       senderId: msg.senderId,
-      content: msg.content
+      content: msg.content,
+      ...mapTranslationFields(msg)
     } as Message;
-  }
-  if (typeof msg === 'string') {
-    try {
-      const parsed = JSON.parse(msg);
-      return normalizeMessage(parsed);
-    } catch (e) {
-      console.warn("normalizeMessage: cannot parse string message", e);
-    }
   }
   return {
     ...msg,
@@ -155,8 +103,10 @@ const normalizeMessage = (msg: any): Message => {
 const parseDate = (dateInput: any): number => {
   if (!dateInput) return Date.now();
   if (Array.isArray(dateInput)) {
-    const [y, M, d, h, m, s] = dateInput;
-    return new Date(y, M - 1, d, h || 0, m || 0, s || 0).getTime();
+    const [y, M, d, h, m, s, ns] = dateInput;
+    const date = new Date(y, M - 1, d, h || 0, m || 0, s || 0);
+    if (ns) date.setMilliseconds(Math.floor(ns / 1000000));
+    return date.getTime();
   }
   return new Date(dateInput).getTime();
 };
@@ -164,17 +114,23 @@ const parseDate = (dateInput: any): number => {
 function upsertMessage(list: Message[], rawMsg: any): Message[] {
   if (!rawMsg) return list;
   const msg = normalizeMessage(rawMsg);
-  if (msg.isDeleted) {
-    return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
+  const currentUserId = useUserStore.getState().user?.userId;
+  if (msg.isDeleted) return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
+
+  let workingList = [...list];
+  if (msg.senderId === currentUserId && !msg.isLocal) {
+    workingList = workingList.filter(m => !(m.isLocal && m.content === msg.content));
   }
-  const exists = list.find((m) => m.id.chatMessageId === msg.id.chatMessageId);
+  const exists = workingList.find((m) => m.id.chatMessageId === msg.id.chatMessageId);
   if (exists) {
-    return list.map((m) => (m.id.chatMessageId === msg.id.chatMessageId ? msg : m));
+    workingList = workingList.map((m) => (m.id.chatMessageId === msg.id.chatMessageId ? msg : m));
+  } else {
+    workingList = [msg, ...workingList];
   }
-  const newList = [msg, ...list];
-  return newList.sort((a, b) => {
+  return workingList.sort((a, b) => {
     const timeA = parseDate(a.id?.sentAt);
     const timeB = parseDate(b.id?.sentAt);
+    if (timeA === timeB) return (b.id?.chatMessageId || '').localeCompare(a.id?.chatMessageId || '');
     return timeB - timeA;
   });
 }
@@ -183,6 +139,12 @@ function extractRoomIdFromTopic(topic: string) {
   const parts = topic.split('/');
   return parts[parts.length - 1];
 }
+
+// --- Throttling Variables for AI Streaming ---
+let streamBuffer = "";
+let lastStreamUpdate = 0;
+let streamTimeout: number | null = null;
+const STREAM_THROTTLE_MS = 60;
 
 export const useChatStore = create<UseChatState>((set, get) => ({
   stompConnected: false,
@@ -205,9 +167,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   isBubbleOpen: false,
   currentAppScreen: null,
   appIsActive: true,
+  currentViewedRoomId: null,
 
   setCurrentAppScreen: (screen) => set({ currentAppScreen: screen }),
   setAppIsActive: (isActive) => set({ appIsActive: isActive }),
+  setCurrentViewedRoomId: (roomId) => set({ currentViewedRoomId: roomId }),
 
   initStompClient: () => {
     if (stompService.isConnected || get().stompConnected) {
@@ -221,11 +185,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         try {
           stompService.subscribe(dest, (rawMsg: any) => {
             const roomId = extractRoomIdFromTopic(dest);
-            // Ensure rawMsg has roomId for decideNotificationAction
-            if (rawMsg && !rawMsg.roomId) {
-              rawMsg.roomId = roomId;
-            }
-            decideNotificationAction(rawMsg);
+            if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
             set((state) => ({
               messagesByRoom: {
                 ...state.messagesByRoom,
@@ -233,11 +193,36 @@ export const useChatStore = create<UseChatState>((set, get) => ({
               },
             }));
           });
-        } catch (e) {
-          console.warn('Flush subscribe error', dest, e);
-        }
+        } catch (e) { console.warn('Flush subscribe error', dest, e); }
       });
       set({ pendingSubscriptions: [] });
+
+      try {
+        stompService.subscribe('/user/queue/notifications', async (rawMsg: any) => {
+          // Basic notification logic embedded directly to avoid circular dependency issues
+          try {
+            const roomId = rawMsg?.roomId || rawMsg?.room_id;
+            const senderId = rawMsg?.senderId || rawMsg?.sender_id;
+            const currentUserId = useUserStore.getState().user?.userId;
+            const state = get();
+            if (roomId && senderId !== currentUserId) {
+              if (state.currentViewedRoomId !== roomId && !(state.isBubbleOpen && state.activeBubbleRoomId === roomId)) {
+                if (state.appIsActive) {
+                  await playInAppSound();
+                  state.openBubble(roomId);
+                }
+              }
+              set((s) => ({
+                messagesByRoom: {
+                  ...s.messagesByRoom,
+                  [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], rawMsg),
+                },
+              }));
+            }
+          } catch (e) { console.warn("Notify error", e); }
+        });
+      } catch (e) { console.warn("Failed to subscribe to global notifications", e); }
+
       const pendingPubs = get().pendingPublishes || [];
       pendingPubs.forEach(p => {
         try { stompService.publish(p.destination, p.payload); }
@@ -250,21 +235,16 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   subscribeToRoom: (roomId: string) => {
     const dest = `/topic/room/${roomId}`;
     if (stompService.isConnected) {
-      try {
-        stompService.subscribe(dest, (rawMsg: any) => {
-          if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
-          decideNotificationAction(rawMsg);
-          set((state) => ({
-            messagesByRoom: {
-              ...state.messagesByRoom,
-              [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg),
-            },
-          }));
-        });
-        return;
-      } catch (e) {
-        // fallthrough
-      }
+      stompService.subscribe(dest, (rawMsg: any) => {
+        if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
+        set((state) => ({
+          messagesByRoom: {
+            ...state.messagesByRoom,
+            [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg),
+          },
+        }));
+      });
+      return;
     }
     set((s) => ({ pendingSubscriptions: Array.from(new Set([...s.pendingSubscriptions, dest])) }));
     get().initStompClient();
@@ -272,35 +252,92 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   unsubscribeFromRoom: (roomId: string) => {
     const dest = `/topic/room/${roomId}`;
-    if (stompService.isConnected) {
-      stompService.unsubscribe(dest);
-    } else {
-      set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== dest) }));
-    }
+    if (stompService.isConnected) stompService.unsubscribe(dest);
+    else set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== dest) }));
   },
 
+  // --- OPTIMIZED AI CLIENT ---
   initAiClient: () => {
     if (!pythonAiWsService.isConnected) {
       pythonAiWsService.connect((msg: any) => {
         const state = get();
+
         if (msg.type === 'chat_response_chunk') {
-          const lastMsg = state.aiChatHistory[state.aiChatHistory.length - 1];
-          if (lastMsg && lastMsg.role === 'assistant' && lastMsg.isStreaming) {
-            lastMsg.content += msg.content || '';
-            set({ aiChatHistory: [...state.aiChatHistory] });
+          // Accumulate content in buffer
+          streamBuffer += (msg.content || '');
+
+          const now = Date.now();
+          // Throttle updates
+          if (now - lastStreamUpdate > STREAM_THROTTLE_MS) {
+            const currentHistory = [...get().aiChatHistory];
+            const lastMsgIndex = currentHistory.length - 1;
+
+            if (lastMsgIndex >= 0 && currentHistory[lastMsgIndex].role === 'assistant' && currentHistory[lastMsgIndex].isStreaming) {
+              // Update existing message
+              // We append the buffer to the message content and clear buffer
+              currentHistory[lastMsgIndex] = {
+                ...currentHistory[lastMsgIndex],
+                content: currentHistory[lastMsgIndex].content + streamBuffer
+              };
+              streamBuffer = ""; // Reset buffer
+              lastStreamUpdate = now;
+              set({ aiChatHistory: currentHistory });
+            } else {
+              // Should trigger new message creation if not found (handled below usually)
+              // But usually 'chat_response_chunk' comes after an initial setup or we create it here
+              // Only if buffer has content and we haven't set up the message yet
+            }
           } else {
+            // If throttled, ensure we have a timeout to flush eventually
+            if (streamTimeout) clearTimeout(streamTimeout);
+            streamTimeout = setTimeout(() => {
+              const currentHistory = [...get().aiChatHistory];
+              const lastMsgIndex = currentHistory.length - 1;
+              if (lastMsgIndex >= 0 && currentHistory[lastMsgIndex].isStreaming) {
+                currentHistory[lastMsgIndex] = {
+                  ...currentHistory[lastMsgIndex],
+                  content: currentHistory[lastMsgIndex].content + streamBuffer
+                };
+                streamBuffer = "";
+                lastStreamUpdate = Date.now();
+                set({ aiChatHistory: currentHistory });
+              }
+            }, STREAM_THROTTLE_MS + 10) as any as number;
+          }
+
+          // Case: New Streaming Message (Handling start)
+          // Ensure we have a placeholder if the last message isn't a streaming assistant message
+          const lastMsg = state.aiChatHistory[state.aiChatHistory.length - 1];
+          if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.isStreaming) {
             set({
               aiChatHistory: [
                 ...state.aiChatHistory,
-                { id: Date.now().toString(), role: 'assistant', content: msg.content || '', isStreaming: true, roomId: msg.roomId || state.activeAiRoomId || '' },
+                { id: Date.now().toString(), role: 'assistant', content: '', isStreaming: true, roomId: msg.roomId || state.activeAiRoomId || '' },
               ],
               isAiInitialMessageSent: true,
             });
+            // Buffer will be picked up by next throttle or timeout
           }
+
         } else if (msg.type === 'chat_response_complete') {
-          set({ isAiStreaming: false });
-          const lastMsg = state.aiChatHistory[state.aiChatHistory.length - 1];
-          if (lastMsg) lastMsg.isStreaming = false;
+          // Flush remaining buffer
+          if (streamBuffer.length > 0) {
+            const currentHistory = [...get().aiChatHistory];
+            const lastMsgIndex = currentHistory.length - 1;
+            if (lastMsgIndex >= 0) {
+              currentHistory[lastMsgIndex].content += streamBuffer;
+            }
+            set({ aiChatHistory: currentHistory });
+            streamBuffer = "";
+          }
+
+          set((s) => {
+            const history = [...s.aiChatHistory];
+            const last = history[history.length - 1];
+            if (last) last.isStreaming = false;
+            return { isAiStreaming: false, aiChatHistory: history };
+          });
+          if (streamTimeout) clearTimeout(streamTimeout);
         }
       }, () => set({ aiWsConnected: true }));
     }
@@ -316,10 +353,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         return room;
       }
       return null;
-    } catch (error) {
-      console.error('Failed to start private chat:', error);
-      return null;
-    }
+    } catch (error) { console.error('Failed to start private chat:', error); return null; }
   },
 
   fetchAiRoomList: async () => {
@@ -375,7 +409,12 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         const uniqueMap = new Map();
         updatedList.forEach(item => { if (item?.id?.chatMessageId) uniqueMap.set(item.id.chatMessageId, item); });
         const uniqueList = Array.from(uniqueMap.values()) as Message[];
-        uniqueList.sort((a, b) => parseDate(b.id.sentAt) - parseDate(a.id.sentAt));
+        uniqueList.sort((a, b) => {
+          const timeA = parseDate(a.id.sentAt);
+          const timeB = parseDate(b.id.sentAt);
+          if (timeA === timeB) return (b.id.chatMessageId || '').localeCompare(a.id.chatMessageId || '');
+          return timeB - timeA;
+        });
         return {
           messagesByRoom: { ...currentState.messagesByRoom, [roomId]: uniqueList },
           pageByRoom: { ...currentState.pageByRoom, [roomId]: page },
@@ -383,16 +422,33 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           loadingByRoom: { ...currentState.loadingByRoom, [roomId]: false },
         };
       });
-    } catch (e) {
-      set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } }));
-    }
+    } catch (e) { set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } })); }
+  },
+
+  searchMessages: async (roomId: string, keyword: string) => {
+    if (!keyword.trim()) { await get().loadMessages(roomId, 0, 20); return; }
+    set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: true } }));
+    try {
+      const res = await instance.get<AppApiResponse<PageResponse<any>>>(`/api/v1/chat/room/${roomId}/messages`, { params: { page: 0, size: 50, keyword } });
+      const rawMessages = res.data.result?.content || [];
+      const newMessages = rawMessages.map(normalizeMessage);
+      set((currentState) => ({
+        messagesByRoom: { ...currentState.messagesByRoom, [roomId]: newMessages },
+        loadingByRoom: { ...currentState.loadingByRoom, [roomId]: false },
+        hasMoreByRoom: { ...currentState.hasMoreByRoom, [roomId]: false }
+      }));
+    } catch (e) { set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } })); }
   },
 
   sendMessage: (roomId, content, type, mediaUrl) => {
     const state = get();
     const room = state.rooms[roomId];
     const payload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null };
-    const optimisticMsg = { id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() }, senderId: useUserStore.getState().user?.userId, content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true } as any;
+    const optimisticMsg = {
+      id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() },
+      senderId: useUserStore.getState().user?.userId,
+      content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true
+    } as any;
     set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg) } }));
     const dest = `/app/chat/room/${roomId}`;
     if (stompService.isConnected) {
@@ -404,9 +460,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     }
   },
 
-  editMessage: async (roomId, messageId, newContent) => {
-    await instance.put(`/api/v1/chat/messages/${messageId}`, { content: newContent });
-  },
+  editMessage: async (roomId, messageId, newContent) => { await instance.put(`/api/v1/chat/messages/${messageId}`, { content: newContent }); },
 
   deleteMessage: async (roomId, messageId) => {
     await instance.delete(`/api/v1/chat/messages/${messageId}`);
@@ -442,7 +496,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   disconnectStomp: () => { stompService.disconnect(); set({ stompConnected: false, pendingSubscriptions: [], pendingPublishes: [] }); },
   disconnectAi: () => { pythonAiWsService.disconnect(); set({ aiWsConnected: false, aiChatHistory: [], isAiInitialMessageSent: false, activeAiRoomId: null }); },
   disconnectAll: () => { get().disconnectStomp(); get().disconnectAi(); get().disconnectVideoSubtitles(); set({ activeBubbleRoomId: null, isBubbleOpen: false, currentVideoSubtitles: null }); },
-
   openBubble: (roomId) => set({ activeBubbleRoomId: roomId, isBubbleOpen: true }),
   closeBubble: () => set({ activeBubbleRoomId: null, isBubbleOpen: false }),
   minimizeBubble: () => set({ isBubbleOpen: false }),

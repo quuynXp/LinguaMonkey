@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-    SafeAreaView,
     View,
     Text,
     Button,
@@ -11,6 +10,7 @@ import {
 import * as DocumentPicker from 'expo-document-picker';
 import Video from 'react-native-video';
 import { uploadTemp } from '../services/cloudinary';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 type DocumentPickerResult = DocumentPicker.DocumentPickerResult;
 
@@ -30,7 +30,6 @@ const VideoUploader = () => {
             });
 
             if (result.canceled) {
-                console.log('User cancelled the picker');
                 return;
             }
 
@@ -49,6 +48,10 @@ const VideoUploader = () => {
 
     const handleUpload = async (file: DocumentPicker.DocumentPickerAsset) => {
         setLoading(true);
+
+        console.log('Uploading file.uri =', file.uri);
+        console.log('file mimeType =', file.mimeType, 'file name =', file.name);
+
         try {
             const filePayload = {
                 uri: file.uri,

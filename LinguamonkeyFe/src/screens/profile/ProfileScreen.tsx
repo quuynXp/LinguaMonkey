@@ -13,7 +13,6 @@ import {
   FlatList,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useFocusEffect } from '@react-navigation/native';
 import { useUserStore } from '../../stores/UserStore';
@@ -22,8 +21,6 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import {
   Character3dResponse,
   FriendshipResponse,
-  CoupleResponse,
-  UserResponse,
 } from '../../types/dto';
 import { useWallet } from '../../hooks/useWallet';
 import { getAvatarSource } from '../../utils/avatarUtils';
@@ -32,9 +29,9 @@ import { useGetStudyHistory, useHeartbeat } from '../../hooks/useUserActivity';
 import { getCountryFlag } from '../../utils/flagUtils';
 import { useBadgeProgress } from '../../hooks/useBadge';
 import { useFriendships, AllFriendshipsParams } from '../../hooks/useFriendships';
-import { useCouples } from '../../hooks/useCouples';
 import { useUsers } from '../../hooks/useUsers';
 import { FriendshipStatus } from '../../types/enums';
+import FileUploader from '../../components/common/FileUploader';
 
 const { width } = Dimensions.get('window');
 
@@ -176,10 +173,11 @@ const CombinedFriendsSection = () => {
   const user = useUserStore((state) => state.user);
   const currentUserId = user?.userId;
   const { useSuggestedUsers } = useUsers();
-  const { useAllFriendships, useCreateFriendship, useUpdateFriendship } = useFriendships();
+  const { useAllFriendships, useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
 
   const createFriendshipMutation = useCreateFriendship();
   const updateFriendshipMutation = useUpdateFriendship();
+  const deleteFriendshipMutation = useDeleteFriendship();
 
   const requestParams: AllFriendshipsParams = { receiverId: currentUserId, status: 'PENDING', page: 0, size: 50 };
   const { data: friendRequestsData, isLoading: isLoadingRequests, refetch: refetchRequests } = useAllFriendships(requestParams);
@@ -189,6 +187,7 @@ const CombinedFriendsSection = () => {
   const suggestions = suggestionsData?.content || [];
 
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [sentRequestIds, setSentRequestIds] = useState<Set<string>>(new Set());
 
   const handleSeeAll = () => gotoTab('Profile', 'SuggestedUsersScreen', { initialTab: 0 });
 
@@ -214,10 +213,31 @@ const CombinedFriendsSection = () => {
         receiverId: targetUserId,
         status: FriendshipStatus.PENDING,
       });
+      setSentRequestIds(prev => new Set(prev).add(targetUserId));
     } catch (error) {
       console.error(error);
     } finally {
-      setTimeout(() => setActionLoadingId(null), 1000);
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleCancelRequest = async (targetUserId: string) => {
+    if (!currentUserId || !targetUserId) return;
+    setActionLoadingId(targetUserId);
+    try {
+      await deleteFriendshipMutation.mutateAsync({
+        user1Id: currentUserId,
+        user2Id: targetUserId,
+      });
+      setSentRequestIds(prev => {
+        const next = new Set(prev);
+        next.delete(targetUserId);
+        return next;
+      });
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
@@ -237,6 +257,7 @@ const CombinedFriendsSection = () => {
     const userToDisplay = isRequest ? item.requester : item;
     const itemId = isRequest ? item.id : item.userId;
     const isLoadingItem = actionLoadingId === itemId;
+    const isSent = !isRequest && sentRequestIds.has(userToDisplay.userId);
 
     if (!userToDisplay) return null;
 
@@ -264,6 +285,14 @@ const CombinedFriendsSection = () => {
             disabled={isLoadingItem}
           >
             {isLoadingItem ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.acceptButtonTextHorizontal}>{t('common.accept')}</Text>}
+          </TouchableOpacity>
+        ) : isSent ? (
+          <TouchableOpacity
+            style={styles.cancelButton}
+            onPress={() => handleCancelRequest(userToDisplay.userId)}
+            disabled={isLoadingItem}
+          >
+            {isLoadingItem ? <ActivityIndicator color="#6B7280" size="small" /> : <Icon name="close" size={16} color="#6B7280" />}
           </TouchableOpacity>
         ) : (
           <TouchableOpacity
@@ -304,7 +333,7 @@ const CombinedFriendsSection = () => {
 const ProfileScreen: React.FC = () => {
   const { t } = useTranslation();
   const userStore = useUserStore();
-  const { user, fetchCharacter3d, uploadTemp, updateUserAvatar, refreshUserProfile } = userStore;
+  const { user, fetchCharacter3d, updateUserAvatar, refreshUserProfile } = userStore;
   const { data: walletData } = useWallet().useWalletBalance(user?.userId);
   const balance = walletData?.balance || 0;
   const [uploading, setUploading] = useState(false);
@@ -337,19 +366,25 @@ const ProfileScreen: React.FC = () => {
     setIsRefreshing(false);
   };
 
-  const pickImage = useCallback(async () => {
+  const handleAvatarUploadSuccess = useCallback(async (response: any) => {
+    if (!user?.userId) return;
+    setUploading(true);
     try {
-      const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8, allowsEditing: true, aspect: [1, 1] });
-      if (res.canceled || !res.assets?.length) return;
-      if (!user?.userId) return;
-      setUploading(true);
-      const tempPath = await uploadTemp({ uri: res.assets[0].uri, name: 'avatar.jpg', type: 'image/jpeg' });
-      if (!tempPath) throw new Error('Upload failed');
+      // API uploadTemp thường trả về object, cần lấy fileId hoặc đường dẫn
+      const tempPath = response?.fileId || response?.id || response?.url || response;
+
       await updateUserAvatar(tempPath);
       await refreshUserProfile();
       Alert.alert(t('common.success'), t('profile.avatarUpdated'));
-    } catch (e: any) { Alert.alert(t('errors.server'), e?.message ?? t('errors.uploadFailed')); } finally { setUploading(false); }
-  }, [user?.userId, uploadTemp, updateUserAvatar, refreshUserProfile, t]);
+    } catch (e: any) {
+      Alert.alert(t('errors.server'), e?.message ?? t('errors.uploadFailed'));
+    } finally {
+      setUploading(false);
+    }
+  }, [user?.userId, updateUserAvatar, refreshUserProfile, t]);
+
+  const handleUploadStart = useCallback(() => setUploading(true), []);
+  const handleUploadEnd = useCallback(() => setUploading(false), []);
 
   const renderSingleHeader = () => {
     const singleAvatarSource = getAvatarSource(user?.avatarUrl, user?.gender);
@@ -365,9 +400,18 @@ const ProfileScreen: React.FC = () => {
               <Text style={styles.flagTextSmall}>{getCountryFlag(user?.country)}</Text>
             </View>
           )}
-          <TouchableOpacity style={styles.editAvatarButton} onPress={pickImage} disabled={uploading}>
+
+          {/* FIX: Đưa style position absolute vào trực tiếp FileUploader */}
+          <FileUploader
+            mediaType="image"
+            allowEditing={true}
+            onUploadSuccess={handleAvatarUploadSuccess}
+            onUploadStart={handleUploadStart}
+            onUploadEnd={handleUploadEnd}
+            style={styles.editAvatarButton}
+          >
             {uploading ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="camera-alt" size={18} color="#FFF" />}
-          </TouchableOpacity>
+          </FileUploader>
         </View>
         <View style={styles.nameContainer}>
           <Text style={styles.fullname}>{user?.fullname || user?.nickname || t('profile.noName')}</Text>
@@ -396,10 +440,16 @@ const ProfileScreen: React.FC = () => {
 
   const renderWalletCard = () => (
     <View style={styles.walletCard}>
-      <View style={styles.walletHeader}>
+      <TouchableOpacity
+        style={styles.walletHeader}
+        onPress={() => gotoTab('PaymentStack', 'WalletScreen')}
+        activeOpacity={0.8}
+      >
         <View style={styles.walletIconContainer}><Icon name="account-balance-wallet" size={24} color="#FFF" /></View>
         <View style={{ flex: 1 }}><Text style={styles.walletTitle}>{t('profile.myWallet')}</Text><Text style={styles.walletBalance}>{balance.toLocaleString()} {user?.country === 'VIETNAM' ? 'VND' : 'USD'}</Text></View>
-      </View>
+        <Icon name="chevron-right" size={24} color="rgba(255,255,255,0.6)" />
+      </TouchableOpacity>
+
       <View style={styles.walletActions}>
         <TouchableOpacity style={styles.actionButtonPrimary} onPress={() => gotoTab('PaymentStack', 'DepositScreen')}><Icon name="add" size={20} color="#064E3B" /><Text style={styles.actionButtonTextPrimary}>{t('profile.deposit')}</Text></TouchableOpacity>
         <View style={{ width: 12 }} />
@@ -518,6 +568,7 @@ const styles = createScaledSheet({
   suggestionCard: { width: 120, alignItems: 'center', backgroundColor: '#F9FAFB', padding: 12, borderRadius: 16, marginRight: 12, borderWidth: 1, borderColor: '#E5E7EB' },
   suggestionName: { fontSize: 14, fontWeight: '600', color: '#111827', marginTop: 8, marginBottom: 2, textAlign: 'center' },
   addButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
+  cancelButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
   flagBadgeSmall: { position: 'absolute', top: -2, left: -2, zIndex: 10, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 8, padding: 1, elevation: 2 },
   acceptButtonHorizontal: { backgroundColor: '#10B981', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20 },
   acceptButtonTextHorizontal: { color: '#FFF', fontSize: 12, fontWeight: '600' },

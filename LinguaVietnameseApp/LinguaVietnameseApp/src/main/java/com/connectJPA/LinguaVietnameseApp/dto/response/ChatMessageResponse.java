@@ -27,6 +27,7 @@ public class ChatMessageResponse {
     private RoomPurpose purpose;
     private boolean isRead;
     private boolean isDeleted;
+    private UserProfileResponse senderProfile;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime sentAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

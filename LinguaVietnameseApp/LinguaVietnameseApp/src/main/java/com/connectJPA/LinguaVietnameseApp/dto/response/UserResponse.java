@@ -41,6 +41,7 @@ public class UserResponse {
     private Long vipDaysRemaining;
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
+     private String latestImprovementSuggestion;
 
     private List<String> certificationIds;
     private List<UUID> interestIds;        

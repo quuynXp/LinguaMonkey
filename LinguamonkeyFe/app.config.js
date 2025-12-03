@@ -32,7 +32,6 @@ export default ({ config }) => {
         },
       },
       android: {
-        // 👇 THÊM DÒNG NÀY VÀO ĐÂY
         usesCleartextTraffic: true,
 
         icon: "./src/assets/images/icon.png",

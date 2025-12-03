@@ -3,7 +3,6 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import CertificationLearningScreen from '../../screens/learn/CertificationLearningScreen';
 import LearnScreen from '../../screens/learn/LearnScreen';
-import LessonScreen from '../../screens/learn/LessonScreen';
 import ListeningScreen from '../../screens/learn/ListeningScreen';
 // import ReadingScreen from '../../screens/learn/ReadingScreen';
 import SpeakingScreen from '../../screens/learn/SpeakingScreen';
@@ -19,7 +18,6 @@ import CreateLessonScreen from '../../screens/learn/CreateLessonScreen';
 type SkillsLearnStackParamList = {
   LearnScreen: undefined;
   CertificationLearningScreen: undefined;
-  LessonScreen: undefined;
   VocabularyFlashcardsScreen: undefined;
   IPAScreen: undefined;
   ListeningScreen: undefined;
@@ -43,7 +41,6 @@ const SkillsLearnStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }} id={undefined}>
     <Stack.Screen name="LearnScreen" component={LearnScreen} />
     <Stack.Screen name="CertificationLearningScreen" component={CertificationLearningScreen} />
-    <Stack.Screen name="LessonScreen" component={LessonScreen} />
     <Stack.Screen name="VocabularyFlashcardsScreen" component={VocabularyFlashcardsScreen} />
     <Stack.Screen name="IPAScreen" component={IPAScreen} />
     <Stack.Screen name="ListeningScreen" component={ListeningScreen} />

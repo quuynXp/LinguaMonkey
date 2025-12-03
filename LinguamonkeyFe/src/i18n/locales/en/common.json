@@ -221,6 +221,10 @@
         "roomNotReady": "Chat room is not ready.",
         "userNotFound": "User not found"
     },
+    "user": {
+        "proficiency": "Your Proficiency Level",
+        "learningPace": "Your Learning Pace"
+    },
     "success": {
         "noteCreated": "Note created successfully",
         "noteUpdated": "Note updated successfully",

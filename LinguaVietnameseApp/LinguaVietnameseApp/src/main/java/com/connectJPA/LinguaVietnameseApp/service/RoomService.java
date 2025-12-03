@@ -19,6 +19,8 @@ public interface RoomService {
 
     RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2);
 
+    RoomResponse getCourseRoomByCourseId(UUID courseId);
+    
 // Thêm method signature
 Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pageable);
 
@@ -40,4 +42,8 @@ Page<RoomResponse> getJoinedRooms(UUID userId, RoomPurpose purpose, Pageable pag
     List<RoomResponse> getAiChatHistory(UUID userId);
 
     void leaveRoom(UUID roomId, UUID targetAdminId);
+
+    void addUserToCourseRoom(UUID courseId, UUID userId);
+
+    void ensureCourseRoomExists(UUID courseId, String courseTitle, UUID creatorId);
 }

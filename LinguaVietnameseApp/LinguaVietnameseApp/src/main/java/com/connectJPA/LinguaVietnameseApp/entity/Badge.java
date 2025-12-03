@@ -46,4 +46,10 @@ public class Badge extends BaseEntity {
     @Column(name = "tier")
     @Enumerated(EnumType.STRING)
     private BadgeTier tier; // BRONZE, SILVER...
+
+        @Column(name = "screen_route")
+    private String screenRoute;
+    
+    @Column(name = "stack")
+    private String stack;
 }

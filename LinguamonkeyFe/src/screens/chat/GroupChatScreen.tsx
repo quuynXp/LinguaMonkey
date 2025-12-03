@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState, useMemo } from "react";
-import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, TextInput, KeyboardAvoidingView, Platform } from "react-native";
+import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Switch } from "react-native";
 import { useRoute, RouteProp, useFocusEffect, useNavigation } from "@react-navigation/native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
@@ -8,9 +8,12 @@ import ChatInnerView from "../../components/chat/ChatInnerView";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
+import { useAppStore } from "../../stores/appStore"; // Import AppStore
 import { useRooms } from "../../hooks/useRoom";
-import { MemberResponse } from "../../types/dto";
+import { MemberResponse, AppApiResponse, UserSettings } from "../../types/dto";
 import { RoomType } from "../../types/enums";
+import instance from "../../api/axiosClient";
+import { useToast } from "../../utils/useToast";
 
 type ChatRoomParams = {
     ChatRoom: {
@@ -25,6 +28,10 @@ const GroupChatScreen = () => {
     const { t } = useTranslation();
     const { roomId, roomName: initialRoomName } = route.params;
     const { user } = useUserStore();
+    const { showToast } = useToast();
+
+    // App Store cho Settings
+    const { chatSettings, setChatSettings } = useAppStore();
 
     const {
         activeBubbleRoomId, closeBubble,
@@ -34,7 +41,7 @@ const GroupChatScreen = () => {
 
     const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom, useUpdateMemberNickname } = useRooms();
 
-    const { data: members, isLoading: loadingMembers } = useRoomMembers(roomId);
+    const { data: members } = useRoomMembers(roomId);
     const { data: roomInfo } = useRoom(roomId);
     const { mutate: kickMember } = useRemoveRoomMembers();
     const { mutate: leaveRoom } = useLeaveRoom();
@@ -44,6 +51,33 @@ const GroupChatScreen = () => {
     const [showEditNickname, setShowEditNickname] = useState(false);
     const [newNickname, setNewNickname] = useState('');
 
+    // --- SYNC SETTINGS LOGIC ---
+    // Hàm gọi API update setting
+    const syncSettingToBackend = async (newSettings: Partial<UserSettings>) => {
+        if (!user?.userId) return;
+        try {
+            await instance.patch(`/api/v1/user-settings/${user.userId}`, newSettings);
+        } catch (error) {
+            console.error("Failed to sync settings", error);
+            showToast({ type: "error", message: t("error.update_settings_failed") });
+        }
+    };
+
+    // Handler toggle Auto Translate
+    const toggleAutoTranslate = (value: boolean) => {
+        // 1. Update UI ngay lập tức (AppStore)
+        setChatSettings({ autoTranslate: value });
+        // 2. Gọi API update BE
+        syncSettingToBackend({ autoTranslate: value });
+    };
+
+    // Handler toggle Sound
+    const toggleSound = (value: boolean) => {
+        setChatSettings({ soundNotifications: value });
+        syncSettingToBackend({ soundEnabled: value });
+    };
+
+    // --- OTHER LOGIC ---
     const currentUserMember = members?.find(m => m.userId === user?.userId);
     const isAdmin = currentUserMember?.role === 'ADMIN' || currentUserMember?.isAdmin;
     const isPrivateRoom = roomInfo?.roomType === RoomType.PRIVATE || roomInfo?.roomType === RoomType.COUPLE;
@@ -69,103 +103,59 @@ const GroupChatScreen = () => {
 
     useFocusEffect(
         useCallback(() => {
-            if (user) {
-                initStompClient();
-            }
+            if (user) initStompClient();
         }, [user, initStompClient])
     );
 
     useEffect(() => {
-        if (stompConnected && roomId) {
-            subscribeToRoom(roomId);
-        }
-        return () => {
-            unsubscribeFromRoom(roomId);
-        };
+        if (stompConnected && roomId) subscribeToRoom(roomId);
+        return () => { unsubscribeFromRoom(roomId); };
     }, [stompConnected, roomId, subscribeToRoom, unsubscribeFromRoom]);
 
     useEffect(() => {
         if (activeBubbleRoomId === roomId) closeBubble();
     }, [roomId, activeBubbleRoomId, closeBubble]);
 
+    // ... (Giữ nguyên logic Kick, Leave, Rename) ...
     const handleKickUser = (memberId: string, memberName: string) => {
-        Alert.alert(
-            t('common.confirm'),
-            t('chat.kick_confirm', { name: memberName }),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('common.delete'),
-                    style: 'destructive',
-                    onPress: () => kickMember({ roomId, userIds: [memberId] })
-                }
-            ]
-        );
+        Alert.alert(t('common.confirm'), t('chat.kick_confirm', { name: memberName }), [
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('common.delete'), style: 'destructive', onPress: () => kickMember({ roomId, userIds: [memberId] }) }
+        ]);
     };
 
     const handleLeaveRoom = () => {
-        Alert.alert(
-            t('common.confirm'),
-            t('chat.leave_confirm'),
-            [
-                { text: t('common.cancel'), style: 'cancel' },
-                {
-                    text: t('chat.leave'),
-                    style: 'destructive',
-                    onPress: () => {
-                        leaveRoom({ roomId }, {
-                            onSuccess: () => {
-                                setShowSettings(false);
-                                navigation.navigate('ChatRoomListScreen');
-                            }
-                        });
-                    }
+        Alert.alert(t('common.confirm'), t('chat.leave_confirm'), [
+            { text: t('common.cancel'), style: 'cancel' },
+            {
+                text: t('chat.leave'), style: 'destructive', onPress: () => {
+                    leaveRoom({ roomId }, { onSuccess: () => { setShowSettings(false); navigation.navigate('ChatRoomListScreen'); } });
                 }
-            ]
-        );
-    };
-
-    const handleEditNickname = () => {
-        if (!currentUserMember) return;
-        // Set current nickname if exists
-        setNewNickname(currentUserMember.nickNameInRoom || currentUserMember.nickname || currentUserMember.fullname || '');
-        setShowEditNickname(true);
+            }
+        ]);
     };
 
     const submitNickname = () => {
-        updateNickname({ roomId, nickname: newNickname }, {
-            onSuccess: () => {
-                setShowEditNickname(false);
-            }
-        });
+        updateNickname({ roomId, nickname: newNickname }, { onSuccess: () => setShowEditNickname(false) });
     };
 
     const renderMemberItem = ({ item }: { item: MemberResponse }) => {
         const displayName = item.nickNameInRoom || item.nickname || item.fullname;
         const isSelf = item.userId === user?.userId;
-
         return (
             <View style={styles.memberItem}>
-                <Image
-                    source={item.avatarUrl ? { uri: item.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')}
-                    style={styles.memberAvatar}
-                />
+                <Image source={item.avatarUrl ? { uri: item.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={styles.memberAvatar} />
                 <View style={{ flex: 1, marginLeft: 12 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.memberName} numberOfLines={1}>
-                            {displayName} {isSelf && t('chat.you')}
-                        </Text>
+                        <Text style={styles.memberName} numberOfLines={1}>{displayName} {isSelf && t('chat.you')}</Text>
                         {isSelf && !isPrivateRoom && (
-                            <TouchableOpacity onPress={handleEditNickname} style={{ marginLeft: 8 }}>
+                            <TouchableOpacity onPress={() => { setNewNickname(displayName || ''); setShowEditNickname(true); }} style={{ marginLeft: 8 }}>
                                 <Icon name="edit" size={16} color="#4F46E5" />
                             </TouchableOpacity>
                         )}
                     </View>
-                    <Text style={styles.memberRole}>
-                        {item.role === 'ADMIN' ? t('chat.admin') : t('chat.member')}
-                    </Text>
+                    <Text style={styles.memberRole}>{item.role === 'ADMIN' ? t('chat.admin') : t('chat.member')}</Text>
                 </View>
-
                 {isAdmin && !isSelf && !isPrivateRoom && (
                     <TouchableOpacity onPress={() => handleKickUser(item.userId, displayName)} style={styles.iconBtn}>
                         <Icon name="remove-circle-outline" size={24} color="#EF4444" />
@@ -177,45 +167,42 @@ const GroupChatScreen = () => {
 
     return (
         <ScreenLayout>
+            {/* HEADER */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
                     <Icon name="arrow-back" size={24} color="#374151" />
                 </TouchableOpacity>
-
                 <View style={styles.headerContent}>
                     {isPrivateRoom && targetMember && (
                         <View style={{ position: 'relative', marginRight: 10 }}>
-                            <Image
-                                source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')}
-                                style={{ width: 32, height: 32, borderRadius: 16 }}
-                            />
+                            <Image source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={{ width: 32, height: 32, borderRadius: 16 }} />
                             {renderActiveDot()}
                         </View>
                     )}
-
                     <View style={{ alignItems: isPrivateRoom ? 'flex-start' : 'center', flex: 1 }}>
                         <Text style={styles.headerTitle} numberOfLines={1}>{displayRoomName}</Text>
-                        {isPrivateRoom && targetMember ? (
-                            <Text style={styles.headerSubtitle}>{(targetMember as any).isOnline ? "Active now" : "Offline"}</Text>
-                        ) : (
-                            <Text style={styles.headerSubtitle}>{members?.length || 0} {t('chat.members')}</Text>
-                        )}
+                        <Text style={styles.headerSubtitle}>
+                            {isPrivateRoom && targetMember ? ((targetMember as any).isOnline ? "Active now" : "Offline") : `${members?.length || 0} ${t('chat.members')}`}
+                        </Text>
                     </View>
                 </View>
-
                 <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
                     <Icon name="settings" size={24} color="#4F46E5" />
                 </TouchableOpacity>
             </View>
 
+            {/* CHAT VIEW - Truyền Setting thật xuống */}
             <View style={{ flex: 1 }}>
                 <ChatInnerView
                     roomId={roomId}
                     initialRoomName={displayRoomName}
                     isBubbleMode={false}
+                    autoTranslate={chatSettings.autoTranslate} // Sử dụng giá trị từ AppStore
+                    soundEnabled={chatSettings.soundNotifications} // Sử dụng giá trị từ AppStore
                 />
             </View>
 
+            {/* SETTINGS MODAL */}
             <Modal visible={showSettings} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSettings(false)}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
@@ -225,16 +212,54 @@ const GroupChatScreen = () => {
                         </TouchableOpacity>
                     </View>
 
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>{t('chat.members')} ({members?.length || 0})</Text>
+                    {/* NEW: PREFERENCES SECTION */}
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>{t('settings.preferences')}</Text>
+
+                        {/* Auto Translate Toggle */}
+                        <View style={styles.settingRow}>
+                            <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Icon name="translate" size={20} color="#4F46E5" />
+                                    <Text style={styles.settingLabel}>{t('settings.auto_translate')}</Text>
+                                </View>
+                                <Text style={styles.settingDesc}>{t('settings.auto_translate_desc')}</Text>
+                            </View>
+                            <Switch
+                                value={chatSettings.autoTranslate}
+                                onValueChange={toggleAutoTranslate}
+                                trackColor={{ false: "#767577", true: "#818cf8" }}
+                                thumbColor={chatSettings.autoTranslate ? "#4F46E5" : "#f4f3f4"}
+                            />
+                        </View>
+
+                        {/* Sound Toggle */}
+                        <View style={styles.settingRow}>
+                            <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Icon name="volume-up" size={20} color="#4F46E5" />
+                                    <Text style={styles.settingLabel}>{t('settings.sound')}</Text>
+                                </View>
+                            </View>
+                            <Switch
+                                value={chatSettings.soundNotifications}
+                                onValueChange={toggleSound}
+                                trackColor={{ false: "#767577", true: "#818cf8" }}
+                                thumbColor={chatSettings.soundNotifications ? "#4F46E5" : "#f4f3f4"}
+                            />
+                        </View>
                     </View>
 
-                    <FlatList
-                        data={members}
-                        renderItem={renderMemberItem}
-                        keyExtractor={item => item.userId}
-                        contentContainerStyle={{ padding: 16 }}
-                    />
+                    {/* MEMBERS SECTION */}
+                    <View style={styles.sectionContainer}>
+                        <Text style={styles.sectionTitle}>{t('chat.members')} ({members?.length || 0})</Text>
+                        <FlatList
+                            data={members}
+                            renderItem={renderMemberItem}
+                            keyExtractor={item => item.userId}
+                            scrollEnabled={false} // Để FlatList cuộn theo View cha nếu cần
+                        />
+                    </View>
 
                     {!isPrivateRoom && (
                         <View style={styles.footerActions}>
@@ -245,25 +270,15 @@ const GroupChatScreen = () => {
                         </View>
                     )}
 
-                    {/* Nickname Edit Modal Overlay */}
+                    {/* Nickname Modal Overlay */}
                     <Modal visible={showEditNickname} transparent animationType="fade" onRequestClose={() => setShowEditNickname(false)}>
                         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.overlay}>
                             <View style={styles.dialog}>
                                 <Text style={styles.dialogTitle}>{t('chat.change_nickname')}</Text>
-                                <TextInput
-                                    style={styles.input}
-                                    value={newNickname}
-                                    onChangeText={setNewNickname}
-                                    placeholder={t('chat.nickname_placeholder')}
-                                    autoFocus
-                                />
+                                <TextInput style={styles.input} value={newNickname} onChangeText={setNewNickname} placeholder={t('chat.nickname_placeholder')} autoFocus />
                                 <View style={styles.dialogActions}>
-                                    <TouchableOpacity onPress={() => setShowEditNickname(false)} style={styles.dialogButton}>
-                                        <Text style={styles.dialogButtonText}>{t('cancel')}</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity onPress={submitNickname} style={[styles.dialogButton, styles.primaryButton]}>
-                                        <Text style={[styles.dialogButtonText, { color: '#FFF' }]}>{t('save')}</Text>
-                                    </TouchableOpacity>
+                                    <TouchableOpacity onPress={() => setShowEditNickname(false)} style={styles.dialogButton}><Text style={styles.dialogButtonText}>{t('cancel')}</Text></TouchableOpacity>
+                                    <TouchableOpacity onPress={submitNickname} style={[styles.dialogButton, styles.primaryButton]}><Text style={[styles.dialogButtonText, { color: '#FFF' }]}>{t('save')}</Text></TouchableOpacity>
                                 </View>
                             </View>
                         </KeyboardAvoidingView>
@@ -275,25 +290,34 @@ const GroupChatScreen = () => {
 };
 
 const styles = StyleSheet.create({
+    // ... (Giữ các style cũ)
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#EEE' },
     headerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 10 },
     headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
     headerSubtitle: { fontSize: 12, color: '#9CA3AF' },
     headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 1.5, borderColor: '#FFF' },
+
     modalContainer: { flex: 1, backgroundColor: '#F9FAFB' },
-    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF' },
-    modalTitle: { fontSize: 18, fontWeight: 'bold' },
-    sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, marginTop: 20, marginBottom: 8 },
-    sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
-    memberItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 8, marginBottom: 8 },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
+    modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
+
+    // NEW: Setting Styles
+    sectionContainer: { marginTop: 16, backgroundColor: '#FFF', paddingVertical: 8 },
+    sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280', paddingHorizontal: 16, marginBottom: 8, textTransform: 'uppercase' },
+    settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+    settingLabel: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
+    settingDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 2, marginLeft: 28 }, // Indent to align with text
+
+    memberItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
     memberAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB' },
     memberName: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
     memberRole: { fontSize: 12, color: '#9CA3AF' },
     iconBtn: { padding: 8 },
-    footerActions: { padding: 20, borderTopWidth: 1, borderColor: '#EEE', backgroundColor: '#FFF' },
+    footerActions: { padding: 20, marginTop: 20 },
     leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', padding: 12, borderRadius: 8 },
     leaveBtnText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8 },
 
+    // Dialog Styles
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     dialog: { backgroundColor: '#FFF', borderRadius: 12, padding: 20, width: '100%', maxWidth: 320 },
     dialogTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#1F2937' },

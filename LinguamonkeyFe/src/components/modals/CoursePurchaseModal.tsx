@@ -142,7 +142,8 @@ const CoursePurchaseModal: React.FC<CoursePurchaseModalProps> = ({ visible, onCl
             status: Enums.TransactionStatus.SUCCESS,
             description: getDescription(),
             coins: useCoins ? coinsToUse : 0,
-            receiverId: course.creatorId
+            receiverId: course.creatorId,
+            courseVersionId: course.latestPublicVersion.versionId
         };
 
         createTransaction.mutate(payload, {

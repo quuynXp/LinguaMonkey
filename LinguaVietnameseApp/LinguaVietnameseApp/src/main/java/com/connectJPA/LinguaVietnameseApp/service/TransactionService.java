@@ -1,6 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.service;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
+import com.connectJPA.LinguaVietnameseApp.dto.response.RefundRequestResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.TransactionResponse;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -27,4 +28,5 @@ public interface TransactionService {
     
     // Updated: payment URL now needs IP for VNPay Prod
     String createPaymentUrl(PaymentRequest request, String clientIp);
+    Page<RefundRequestResponse> getPendingRefundRequests(Pageable pageable);
 }

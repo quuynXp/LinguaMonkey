@@ -19,6 +19,7 @@ export const leaderboardKeys = {
     all: ["leaderboardEntries"] as const,
     list: (params: any) => [...leaderboardKeys.entries.all, "list", params] as const,
     detail: (leaderboardId: string) => [...leaderboardKeys.entries.all, "detail", leaderboardId] as const,
+    me: (leaderboardId: string, userId: string) => [...leaderboardKeys.entries.all, "me", { leaderboardId, userId }] as const,
   }
 };
 
@@ -36,15 +37,26 @@ export const useLeaderboards = () => {
       queryFn: async () => {
         const qp = new URLSearchParams();
         qp.append("tab", params.tab);
-        if (params.page !== undefined) qp.append("page", String(params.page));
-        if (params.size !== undefined) qp.append("size", String(params.size));
-
         const { data } = await instance.get<AppApiResponse<PageResponse<LeaderboardResponse>>>(
           `/api/v1/leaderboards?${qp.toString()}`
         );
-        return mapPageResponse(data.result, params.page || 0, params.size || 10);
+        return data.result;
       },
-      staleTime: 60_000, // Cache 1 min
+      staleTime: 60_000,
+    });
+  };
+
+  const useMyEntry = (leaderboardId: string | null, userId: string | undefined) => {
+    return useQuery({
+      queryKey: leaderboardKeys.entries.me(leaderboardId!, userId!),
+      queryFn: async () => {
+        if (!leaderboardId || !userId) return null;
+        const { data } = await instance.get<AppApiResponse<LeaderboardEntryResponse>>(
+          `/api/v1/leaderboard-entries/me?leaderboardId=${leaderboardId}&userId=${userId}`
+        );
+        return data.result;
+      },
+      enabled: !!leaderboardId && !!userId,
     });
   };
 
@@ -131,17 +143,22 @@ export const useLeaderboards = () => {
     return useQuery({
       queryKey: leaderboardKeys.entries.list({ leaderboardId, page, size }),
       queryFn: async () => {
+        if (!leaderboardId) return { data: [], pagination: {} };
         const qp = new URLSearchParams();
-        if (leaderboardId) qp.append("leaderboardId", leaderboardId);
+        qp.append("leaderboardId", leaderboardId);
         qp.append("page", String(page));
         qp.append("size", String(size));
-
         const { data } = await instance.get<AppApiResponse<PageResponse<LeaderboardEntryResponse>>>(
           `/api/v1/leaderboard-entries?${qp.toString()}`
         );
-        return mapPageResponse(data.result, page, size);
+        return {
+          data: data.result?.content || [],
+          pagination: {
+            isLast: data.result?.isLast
+          }
+        };
       },
-      ...options, // Spread the options here
+      ...options,
     });
   };
 
@@ -207,6 +224,7 @@ export const useLeaderboards = () => {
     useDeleteLeaderboard,
     useEntries,
     useEntryDetail,
+    useMyEntry,
     useCreateEntry,
     useUpdateEntry,
     useDeleteEntry,

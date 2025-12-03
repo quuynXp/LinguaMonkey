@@ -51,7 +51,7 @@ public class LessonController {
     private final VideoRepository videoRepository;
     private final LessonProgressWrongItemService wrongItemService;
 
-    @Operation(summary = "Get all lessons", description = "Retrieve a paginated list of lessons with optional filtering by name, language, EXP reward, category, subcategory, course, or series")
+    @Operation(summary = "Get all lessons", description = "Retrieve a paginated list of lessons with optional filtering")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved lessons"),
             @ApiResponse(responseCode = "400", description = "Invalid query parameters"),
@@ -62,15 +62,16 @@ public class LessonController {
             @Parameter(description = "Lesson name filter") @RequestParam(required = false) String lessonName,
             @Parameter(description = "Language code filter") @RequestParam(required = false) String languageCode,
             @Parameter(description = "Minimum EXP reward filter") @RequestParam(required = false) Integer minExpReward,
-            @Parameter(description = "Category ID filter (e.g., certificate-related)") @RequestParam(required = false) UUID categoryId,
-            @Parameter(description = "Subcategory ID filter (e.g., specific topic)") @RequestParam(required = false) UUID subCategoryId,
+            @Parameter(description = "Category ID filter") @RequestParam(required = false) UUID categoryId,
+            @Parameter(description = "Subcategory ID filter") @RequestParam(required = false) UUID subCategoryId,
             @Parameter(description = "Course ID filter") @RequestParam(required = false) UUID courseId,
+            @Parameter(description = "Version ID filter (Specific Course Version)") @RequestParam(required = false) UUID versionId,
             @Parameter(description = "Series ID filter") @RequestParam(required = false) UUID seriesId,
             @Parameter(description = "SkillType filter") @RequestParam(required = false) SkillType skillType,
             @Parameter(description = "Pagination and sorting") Pageable pageable,
             Locale locale) {
         try {
-            Page<LessonResponse> lessons = lessonService.getAllLessons(lessonName, languageCode, minExpReward, categoryId, subCategoryId, courseId, seriesId, skillType, pageable);
+            Page<LessonResponse> lessons = lessonService.getAllLessons(lessonName, languageCode, minExpReward, categoryId, subCategoryId, courseId, versionId, seriesId, skillType, pageable);
             return AppApiResponse.<Page<LessonResponse>>builder()
                     .code(200)
                     .message(messageSource.getMessage("lesson.list.success", null, locale))

@@ -14,12 +14,18 @@ import { PaymentRequest, TransactionRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
+interface CourseVersion {
+  versionId: string;
+  price: number;
+  currency?: string;
+}
+
 interface CourseType {
   courseId: string;
   title: string;
-  price: number;
   instructor: string;
-  creatorId?: string; // ADDED: ID of the instructor to receive money
+  creatorId: string;
+  latestPublicVersion: CourseVersion;
 }
 
 const PaymentScreen = ({ navigation, route }: any) => {
@@ -44,7 +50,7 @@ const PaymentScreen = ({ navigation, route }: any) => {
   const { mutate: validateDiscount, isPending: isValidatingCoupon } = useCourses().useValidateDiscount();
 
   const COINS_PER_USD = 1000;
-  const originalPrice = course.price;
+  const originalPrice = course.latestPublicVersion?.price || 0;
 
   const discountAmount = appliedDiscount
     ? (originalPrice * appliedDiscount.percent) / 100
@@ -71,7 +77,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
 
   const finalAmount = Math.max(0, priceAfterCoupon - coinDiscountAmount);
 
-  // Logic currency thống nhất
   const userCurrency = user?.country === Enums.Country.VIETNAM ? 'VND' : 'USD';
 
   const displayFinalPrice = convert(finalAmount, userCurrency);
@@ -83,7 +88,7 @@ const PaymentScreen = ({ navigation, route }: any) => {
     Keyboard.dismiss();
     if (!couponCode.trim()) return;
 
-    validateDiscount({ code: couponCode, courseId: course.courseId }, {
+    validateDiscount({ code: couponCode, versionId: course.latestPublicVersion.versionId }, {
       onSuccess: (data) => {
         setAppliedDiscount({
           code: data.code,
@@ -145,7 +150,9 @@ const PaymentScreen = ({ navigation, route }: any) => {
       status: Enums.TransactionStatus.SUCCESS,
       description: `Payment for course: ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
       coins: useCoins ? coinsToUse : 0,
-      receiverId: course.creatorId
+      receiverId: course.creatorId,
+      // CRITICAL: Send versionId so backend can create enrollment
+      courseVersionId: course.latestPublicVersion.versionId
     };
 
     createTransaction.mutate(payload, {
@@ -167,23 +174,22 @@ const PaymentScreen = ({ navigation, route }: any) => {
       currency: userCurrency,
       type: Enums.TransactionType.PAYMENT,
       returnUrl: "linguamonkey://payment/success",
-      description: `Buy ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
+      description: `Buy ${course.title}`,
       coins: useCoins ? coinsToUse : 0
+      // Note: PaymentRequest for gateway usually handles enrollment via webhook or returnUrl callback
+      // Ensure backend createPaymentUrl or handleWebhook logic also considers courseVersionId if needed later.
     };
 
     createPaymentUrl.mutate(payload, {
       onSuccess: async (url) => {
         if (url) {
           const result = await WebBrowser.openBrowserAsync(url);
-          if (result.type === 'dismiss' || result.type === 'cancel') {
-          }
         }
       },
       onError: () => Alert.alert(t('common.error'), t('payment.gatewayError'))
     });
   };
 
-  // ... Render code (UI) ...
   const renderPriceDisplay = () => {
     if (loadingRates) return <ActivityIndicator size="small" color="#4F46E5" />;
     return (

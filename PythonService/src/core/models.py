@@ -11,12 +11,26 @@ from sqlalchemy import (
     Numeric,
     DATE,
 )
-from sqlalchemy.dialects.postgresql import UUID, ARRAY
+from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 import uuid
 from datetime import datetime
+from sqlalchemy import Column, String, Integer, Text, TIMESTAMP, BigInteger
+from sqlalchemy.sql import func
 
 Base = declarative_base()
+
+class TranslationLexicon(Base):
+    __tablename__ = "translation_lexicon"
+    __table_args__ = {"schema": "public"}
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    original_text = Column(Text, nullable=False)
+    original_lang = Column(String(10), nullable=False)
+    translations = Column(JSONB, default={})
+    usage_count = Column(BigInteger, default=1)
+    last_used_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+    created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
 
 class MessageType(str, Enum):
@@ -34,9 +48,12 @@ class ChatMessage(Base):
     content = Column(Text)
     room_id = Column(UUID(as_uuid=True), ForeignKey("public.rooms.room_id"))
     sender_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"))
+    message_type = Column(String(20))
     sent_at = Column(
         TIMESTAMP(timezone=True), default=datetime.utcnow, primary_key=True
     )
+    translated_text = Column(Text, nullable=True)
+    translated_lang = Column(String(10), nullable=True)
 
 
 class Users(Base):

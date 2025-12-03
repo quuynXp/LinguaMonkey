@@ -70,13 +70,11 @@ public class BadgeController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<BadgeResponse> createBadge(@Valid @RequestBody BadgeRequest request) {
         return AppApiResponse.<BadgeResponse>builder().code(201).result(badgeService.createBadge(request)).build();
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     public AppApiResponse<BadgeResponse> updateBadge(@PathVariable UUID id, @Valid @RequestBody BadgeRequest request) {
         return AppApiResponse.<BadgeResponse>builder().code(200).result(badgeService.updateBadge(id, request)).build();
     }

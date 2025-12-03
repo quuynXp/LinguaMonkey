@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.NotificationResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Notification;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserFcmToken;
+import com.connectJPA.LinguaVietnameseApp.entity.UserSettings;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
@@ -12,6 +13,7 @@ import com.connectJPA.LinguaVietnameseApp.mapper.NotificationMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.NotificationRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserFcmTokenRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserSettingsRepository;
 import com.connectJPA.LinguaVietnameseApp.service.EmailService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.google.firebase.messaging.*;
@@ -41,6 +43,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final FirebaseMessaging firebaseMessaging;
     private final UserFcmTokenRepository userFcmTokenRepository;
     private final UserRepository userRepository;
+    private final UserSettingsRepository userSettingsRepository;
     private final Gson gson = new Gson();
 
     @Override
@@ -159,20 +162,25 @@ public class NotificationServiceImpl implements NotificationService {
             return;
         }
 
-        // --- CRITICAL FIX: Add Priority and Channel ID for Background/Killed State ---
+        boolean isSoundEnabled = userSettingsRepository.findById(request.getUserId())
+                .map(UserSettings::isSoundEnabled)
+                .orElse(true);
+
+        String soundValue = isSoundEnabled ? "default" : null;
+
         AndroidConfig androidConfig = AndroidConfig.builder()
                 .setPriority(AndroidConfig.Priority.HIGH) // Bắt buộc để đánh thức app khi bị kill
                 .setTtl(3600 * 1000) // Time to live 1 giờ
                 .setNotification(AndroidNotification.builder()
-                        .setSound("default")
-                        .setChannelId("default_channel_id") // Phải khớp với FE setup
-                        .setClickAction("FLUTTER_NOTIFICATION_CLICK") // Chuẩn chung cho hybrid app
+                        .setSound(soundValue)
+                        .setChannelId("default_channel_id")
+                        .setClickAction("FLUTTER_NOTIFICATION_CLICK")
                         .build())
                 .build();
         
         ApnsConfig apnsConfig = ApnsConfig.builder()
                 .setAps(Aps.builder()
-                        .setSound("default")
+                        .setSound(soundValue)
                         .setContentAvailable(true)
                         .build())
                 .build();

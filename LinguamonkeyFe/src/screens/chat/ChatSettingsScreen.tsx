@@ -318,6 +318,7 @@ const styles = createScaledSheet({
   container: {
     flex: 1,
     backgroundColor: '#F8FAFC',
+    paddingTop: 10,
   },
   header: {
     flexDirection: 'row',

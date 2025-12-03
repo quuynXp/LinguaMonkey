@@ -85,6 +85,15 @@ public class UserController {
                 .build();
     }
 
+    @GetMapping("/count-online")
+public AppApiResponse<Long> countOnlineUsers() {
+    return AppApiResponse.<Long>builder()
+            .code(200)
+            .message("Success")
+            .result(userService.countOnlineUsers())
+            .build();
+}
+
     @Operation(summary = "Get suggested users", description = "Get users with similar profile features")
     @GetMapping("/{userId}/suggestions")
     public AppApiResponse<Page<UserResponse>> getSuggestedUsers(

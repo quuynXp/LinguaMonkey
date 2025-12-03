@@ -19,16 +19,17 @@ public class UserDailyChallengeResponse {
     private String description;
     
     private int progress;
-    private int targetAmount; // Thêm Target Amount để tính Progress
+    private int targetAmount; 
     
-    private boolean completed; // Sửa tên thành 'completed' (không dùng isCompleted) để khớp với JSON property getCompleted() trong Entity
+    private boolean completed; 
     
     private int expReward;
     private int rewardCoins;
     
-    private ChallengeStatus status; // Thêm Status để kiểm tra CAN_CLAIM
-    private ChallengePeriod period; // Thêm Period để lọc Daily/Weekly
-    private String screenRoute; // Thêm Screen Route để navigate
+    private ChallengeStatus status; 
+    private ChallengePeriod period; 
+    private String screenRoute; 
+    private String stack; // New field
 
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime assignedAt;

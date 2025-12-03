@@ -25,7 +25,14 @@ public interface LessonCategoryRepository extends JpaRepository<LessonCategory, 
     @Query("UPDATE LessonCategory lc SET lc.isDeleted = true, lc.deletedAt = CURRENT_TIMESTAMP WHERE lc.lessonCategoryId = :id AND lc.lessonCategoryName = 'CERTIFICATE' AND lc.isDeleted = false")
     void softDeleteCertificateById(@Param("id") UUID id);
 
-    Page<LessonCategory> findByLessonCategoryNameAndLanguageCodeAndIsDeletedFalse(String lessonCategoryName, String languageCode, Pageable pageable);
+    @Query("""
+        SELECT lc FROM LessonCategory lc 
+        WHERE (:lessonCategoryName IS NULL OR lc.lessonCategoryName = :lessonCategoryName)
+        AND (:languageCode IS NULL OR lc.languageCode = :languageCode)
+        AND lc.isDeleted = false
+        """)
+    Page<LessonCategory> findByOptionalFilters(@Param("lessonCategoryName") String lessonCategoryName, @Param("languageCode") String languageCode, Pageable pageable);
+
 
     Optional<LessonCategory> findByLessonCategoryIdAndIsDeletedFalse(UUID id);
 

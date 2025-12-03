@@ -1,6 +1,8 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionProvider;
+import com.connectJPA.LinguaVietnameseApp.enums.TransactionType;
+
 import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -28,6 +30,8 @@ public class PaymentRequest {
     private String returnUrl;
 
     private Integer coins;
+
+    private TransactionType type;
 
     @NotBlank(message = "Currency is required")
     private String currency;

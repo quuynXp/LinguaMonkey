@@ -80,9 +80,36 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
         }
     };
 
-    const handleNavigate = (screenRoute?: string) => {
+    // SỬA ĐỔI: Chấp nhận stack và screenRoute
+    const handleNavigate = (stack?: string, screenRoute?: string) => {
         if (screenRoute) {
-            try { navigation.navigate(screenRoute); } catch (e) { gotoTab(screenRoute); }
+            // Ưu tiên dùng gotoTab(stack, screenRoute) nếu có stack, đúng với yêu cầu "goToTab("stack", "màn hình")"
+            if (stack) {
+                try {
+                    // Nếu gotoTab được cấu hình đúng để xử lý điều hướng Stack lồng (nested stack navigation)
+                    // thì nó sẽ không cần dùng đến navigation.navigate của props nữa.
+                    // Tuy nhiên, để đảm bảo an toàn, vẫn giữ logic hiện tại:
+                    gotoTab(stack, screenRoute);
+                } catch (e) {
+                    // Fallback nếu gotoTab không thành công hoặc không tồn tại (chỉ giữ lại logic này nếu bạn muốn)
+                    // Vì bạn đã có gotoTab, nên loại bỏ navigation.navigate ở đây.
+                    // Nếu bạn *bắt buộc* phải dùng navigation.navigate, thì cần đảm bảo screenRoute là màn hình trực tiếp.
+                    console.error("gotoTab failed, trying navigation.navigate:", e);
+                    try {
+                        navigation.navigate(screenRoute);
+                    } catch (e) {
+                        console.error("navigation.navigate also failed:", e);
+                    }
+                }
+            } else {
+                // Nếu không có stack, chỉ thử điều hướng màn hình trực tiếp.
+                try {
+                    navigation.navigate(screenRoute);
+                } catch (e) {
+                    // Thử gọi gotoTab nếu navigation.navigate thất bại (ví dụ: màn hình là Tab)
+                    gotoTab(screenRoute);
+                }
+            }
         }
     };
 
@@ -96,7 +123,8 @@ const DailyChallengeBadgeScreen = ({ route, navigation }: any) => {
             <TouchableOpacity
                 key={item.challengeId}
                 style={[styles.taskCard, isFinished && styles.taskCardGrayedOut]}
-                onPress={() => !isFinished && !canClaim && handleNavigate(item.screenRoute)}
+                // SỬA ĐỔI: Truyền cả item.stack và item.screenRoute vào handleNavigate
+                onPress={() => !isFinished && !canClaim && handleNavigate(item.stack, item.screenRoute)}
                 activeOpacity={0.9}
                 disabled={isFinished}
             >

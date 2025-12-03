@@ -22,7 +22,6 @@ export const roadmapKeys = {
   defaults: (lang?: string) => [...roadmapKeys.all, "defaults", { lang }] as const,
   publicStats: (lang?: string, page?: number) => [...roadmapKeys.all, "publicStats", { lang, page }] as const,
   detail: (id: string) => [...roadmapKeys.all, "detail", id] as const,
-  // FIX: Removed language from userList key as we fetch ALL roadmaps
   userList: (userId: string) => [...roadmapKeys.all, "userList", userId] as const,
   progressDetail: (roadmapId: string, userId: string) => [...roadmapKeys.all, "progressDetail", roadmapId, userId] as const,
   itemDetail: (itemId: string) => [...roadmapKeys.all, "itemDetail", itemId] as const,
@@ -38,13 +37,11 @@ export const useRoadmap = () => {
   const userId = user?.userId;
 
   // --- 1. USER ROADMAPS (My Learning) ---
-  // FIX: Removed languageCode parameter. User should see ALL assigned roadmaps.
   const useUserRoadmaps = () =>
     useQuery({
       queryKey: roadmapKeys.userList(userId!),
       queryFn: async () => {
         if (!userId) return [];
-        // The backend now ignores language filter for "my roadmaps"
         const res = await instance.get<AppApiResponse<RoadmapUserResponse[]>>(
           `/api/v1/roadmaps/user/${userId}`
         );
@@ -219,7 +216,7 @@ export const useRoadmap = () => {
         return res.data.result;
       },
       onSuccess: (_data, itemId) => {
-        queryClient.invalidateQueries({ queryKey: roadmapKeys.all }); // Broad invalidation to ensure home updates
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.all });
         queryClient.invalidateQueries({ queryKey: roadmapKeys.itemDetail(itemId) });
       },
     });
@@ -233,7 +230,7 @@ export const useRoadmap = () => {
         return res.data.result;
       },
       onSuccess: (_data, { itemId }) => {
-        queryClient.invalidateQueries({ queryKey: roadmapKeys.all }); // Broad invalidation
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.all });
         queryClient.invalidateQueries({ queryKey: roadmapKeys.itemDetail(itemId) });
       },
     });
@@ -246,7 +243,7 @@ export const useRoadmap = () => {
         const res = await instance.post<AppApiResponse<RoadmapResponse>>("/api/v1/roadmaps/generate", payload);
         return res.data.result;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.all }),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.all })
     });
 
   const useEditRoadmap = () =>
@@ -257,6 +254,16 @@ export const useRoadmap = () => {
       },
       onSuccess: (data) => {
         queryClient.invalidateQueries({ queryKey: roadmapKeys.detail(data!.id) });
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.all });
+      },
+    });
+
+  const useDeleteRoadmap = () =>
+    useMutation({
+      mutationFn: async (id: string) => {
+        await instance.delete(`/api/v1/roadmaps/${id}`);
+      },
+      onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: roadmapKeys.all });
       },
     });
@@ -278,6 +285,7 @@ export const useRoadmap = () => {
     useStartRoadmapItem,
     useCompleteRoadmapItem,
     useGenerateRoadmap,
-    useEditRoadmap
+    useEditRoadmap,
+    useDeleteRoadmap
   };
 };

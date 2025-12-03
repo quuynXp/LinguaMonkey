@@ -37,4 +37,6 @@ public class TransactionRequest {
     private String currency;
 
     private TransactionStatus status;
+
+    private UUID courseVersionId;
 }

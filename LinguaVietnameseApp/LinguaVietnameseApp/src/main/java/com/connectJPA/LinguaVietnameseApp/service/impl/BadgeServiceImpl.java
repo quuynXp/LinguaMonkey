@@ -7,30 +7,33 @@ import com.connectJPA.LinguaVietnameseApp.entity.Badge;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserBadge;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserBadgeId;
+import com.connectJPA.LinguaVietnameseApp.enums.CriteriaType;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.BadgeMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Comparator;
-import java.util.List;
-import java.util.Set;
-import java.util.UUID;
+import java.time.OffsetDateTime;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class BadgeServiceImpl implements BadgeService {
     private final BadgeRepository badgeRepository;
     private final BadgeMapper badgeMapper;
     private final UserBadgeRepository userBadgeRepository;
     private final UserRepository userRepository;
+    
+    // Repositories for Real-time metrics
     private final LessonProgressRepository lessonProgressRepository;
     private final FriendshipRepository friendshipRepository;
     private final UserDailyChallengeRepository userDailyChallengeRepository;
@@ -41,19 +44,29 @@ public class BadgeServiceImpl implements BadgeService {
         return badges.map(badgeMapper::toResponse);
     }
 
+    /**
+     * Logic Real-time:
+     * 1. Lấy tất cả huy hiệu hệ thống.
+     * 2. Lấy danh sách huy hiệu user ĐÃ NHẬN (claimed).
+     * 3. Với mỗi huy hiệu, tính toán tiến độ hiện tại từ DB gốc (Learning, Friends, Streak...).
+     * 4. Trả về response bao gồm cả tiến độ hiện tại để FE hiển thị thanh progress.
+     */
     @Override
     @Transactional(readOnly = true)
     public List<BadgeProgressResponse> getBadgeProgressForUser(UUID userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-        String userLang = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
+        String userLang = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "vi";
 
+        // Lấy danh sách ID các badge đã claim
         Set<UUID> achievedBadgeIds = userBadgeRepository.findBadgeIdsByUserId(userId);
 
+        // Lấy tất cả badge hệ thống theo ngôn ngữ
         List<Badge> allBadges = badgeRepository.findAllByLanguageCodeAndIsDeletedFalse(userLang);
 
-        long lessonsCompleted = lessonProgressRepository.countById_UserIdAndCompletedAtIsNotNull(userId);
+        // --- PRE-FETCH METRICS (Tối ưu hóa: Query 1 lần dùng cho nhiều badge) ---
+        long lessonsCompleted = lessonProgressRepository.countByIdUserIdAndCompletedAtIsNotNullAndIsDeletedFalse(userId);
         long friendsMade = friendshipRepository.countAcceptedFriends(userId);
         long challengesCompleted = userDailyChallengeRepository.countByIdUserIdAndIsCompletedTrue(userId);
         int userExp = user.getExp();
@@ -61,22 +74,28 @@ public class BadgeServiceImpl implements BadgeService {
 
         List<BadgeProgressResponse> responseList = allBadges.stream().map(badge -> {
             boolean isAchieved = achievedBadgeIds.contains(badge.getBadgeId());
-            int currentUserProgress = 0;
+            long currentProgress = 0;
             int threshold = badge.getCriteriaThreshold();
 
-            switch (badge.getCriteriaType()) {
-                case LESSONS_COMPLETED -> currentUserProgress = (int) lessonsCompleted;
-                case LOGIN_STREAK -> currentUserProgress = userStreak;
-                case FRIENDS_MADE -> currentUserProgress = (int) friendsMade;
-                case DAILY_CHALLENGES_COMPLETED -> currentUserProgress = (int) challengesCompleted;
-                case EXP_EARNED -> currentUserProgress = userExp;
+            // Map CriteriaType sang Metric thực tế
+            if (badge.getCriteriaType() != null) {
+                switch (badge.getCriteriaType()) {
+                    case LESSONS_COMPLETED -> currentProgress = lessonsCompleted;
+                    case LOGIN_STREAK -> currentProgress = userStreak;
+                    case FRIENDS_MADE -> currentProgress = friendsMade;
+                    case DAILY_CHALLENGES_COMPLETED -> currentProgress = challengesCompleted;
+                    case EXP_EARNED -> currentProgress = userExp;
+                    default -> currentProgress = 0;
+                }
             }
 
-            if (!isAchieved && currentUserProgress > threshold) {
-                currentUserProgress = threshold;
-            }
+            // Cap progress tại threshold để hiển thị (ví dụ 50/50 thay vì 60/50)
+            // Trừ khi đã đạt nhưng chưa claim, khi đó hiển thị max.
+            long displayProgress = currentProgress;
             if (isAchieved) {
-                currentUserProgress = threshold;
+                displayProgress = threshold;
+            } else if (displayProgress > threshold) {
+                displayProgress = threshold;
             }
 
             return new BadgeProgressResponse(
@@ -86,15 +105,15 @@ public class BadgeServiceImpl implements BadgeService {
                     badge.getImageUrl(),
                     badge.getCriteriaType(),
                     threshold,
-                    currentUserProgress,
+                    (int) displayProgress,
                     isAchieved
             );
         }).collect(Collectors.toList());
 
+        // Sort: Có thể nhận thưởng -> Chưa nhận -> Đã nhận
         return responseList.stream()
                 .sorted(Comparator.comparingInt((BadgeProgressResponse b) -> {
                     boolean canClaim = !b.isAchieved() && b.getCurrentUserProgress() >= b.getCriteriaThreshold();
-
                     if (canClaim) return 1;
                     if (!b.isAchieved()) return 2;
                     return 3;
@@ -115,28 +134,31 @@ public class BadgeServiceImpl implements BadgeService {
             throw new RuntimeException("Badge already claimed!");
         }
 
+        // Validate Real-time (Server-side check)
         long currentMetric = 0;
         switch (badge.getCriteriaType()) {
-            case LESSONS_COMPLETED -> currentMetric = lessonProgressRepository.countById_UserIdAndCompletedAtIsNotNull(userId);
-            case LOGIN_STREAK -> currentMetric = user.getStreak();
-            case FRIENDS_MADE -> currentMetric = friendshipRepository.countAcceptedFriends(userId);
-            case DAILY_CHALLENGES_COMPLETED -> currentMetric = userDailyChallengeRepository.countByIdUserIdAndIsCompletedTrue(userId);
+            case CriteriaType.LESSONS_COMPLETED -> currentMetric = lessonProgressRepository.countByIdUserIdAndCompletedAtIsNotNullAndIsDeletedFalse(userId);
+            case CriteriaType.LOGIN_STREAK -> currentMetric = user.getStreak();
+            case CriteriaType.FRIENDS_MADE -> currentMetric = friendshipRepository.countAcceptedFriends(userId);
+            case CriteriaType.DAILY_CHALLENGES_COMPLETED -> currentMetric = userDailyChallengeRepository.countByIdUserIdAndIsCompletedTrue(userId);
             case EXP_EARNED -> currentMetric = user.getExp();
         }
 
         if (currentMetric < badge.getCriteriaThreshold()) {
-            throw new RuntimeException("Criteria not met yet!");
+            throw new RuntimeException("Tiêu chí chưa đạt! Bạn cần cố gắng thêm.");
         }
 
         UserBadge userBadge = UserBadge.builder()
                 .id(new UserBadgeId(badgeId, userId))
                 .user(userRepository.getReferenceById(userId))
                 .badge(badge)
+                .earnedAt(OffsetDateTime.now())
                 .isDeleted(false)
                 .build();
         
         userBadgeRepository.saveAndFlush(userBadge);
 
+        // Cộng xu thưởng
         user.setCoins(user.getCoins() + badge.getCoins());
         userRepository.save(user);
     }
@@ -172,6 +194,9 @@ public class BadgeServiceImpl implements BadgeService {
 
     @Override
     public List<BadgeResponse> getBadgesForUser(UUID userId) {
-        throw new UnsupportedOperationException("Unimplemented method 'getBadgesForUser'");
+        Set<UUID> achievedIds = userBadgeRepository.findBadgeIdsByUserId(userId);
+        return badgeRepository.findAllById(achievedIds).stream()
+                .map(badgeMapper::toResponse)
+                .collect(Collectors.toList());
     }
 }

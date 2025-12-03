@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from "react"
-import { Animated, Dimensions, Text, TouchableOpacity, View, Image } from "react-native"
+import { useEffect, useRef, useState } from "react";
+import { Animated, Dimensions, Text, TouchableOpacity, View, Image } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { gotoTab } from "../../utils/navigationRef";
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { ScrollView } from "react-native-gesture-handler";

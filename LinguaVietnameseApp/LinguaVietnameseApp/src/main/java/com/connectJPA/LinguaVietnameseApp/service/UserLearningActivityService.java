@@ -18,8 +18,10 @@ public interface UserLearningActivityService {
     UserLearningActivityResponse createUserLearningActivity(UserLearningActivityRequest request);
     UserLearningActivityResponse updateUserLearningActivity(UUID id, UserLearningActivityRequest request);
     void deleteUserLearningActivity(UUID id);
+    void recordHeartbeat(UUID userId);
 
     StudyHistoryResponse getAggregatedStudyHistory(UUID userId, String period);
     ActivityCompletionResponse logActivityEndAndCheckChallenges(LearningActivityEventRequest request);
     UserLearningActivityResponse logUserActivity(UUID userId, ActivityType activityType, UUID relatedEntityId, Integer durationInSeconds, int expReward, String details, SkillType skillTypes);
+    void generateDailyAnalysisForUser(UUID userId);
 }

@@ -98,7 +98,7 @@ public class CertificateController {
             @ApiResponse(responseCode = "200", description = "Certification deleted successfully"),
             @ApiResponse(responseCode = "404", description = "Certification not found")
     })
-//    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+   @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteCertificate(
             @Parameter(description = "Certification ID") @PathVariable UUID id) {

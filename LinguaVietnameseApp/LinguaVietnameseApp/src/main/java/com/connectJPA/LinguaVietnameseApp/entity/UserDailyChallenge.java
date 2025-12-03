@@ -3,7 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserDailyChallengeId;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeStatus;
-import com.connectJPA.LinguaVietnameseApp.enums.ChallengePeriod; // Import ChallengePeriod
+import com.connectJPA.LinguaVietnameseApp.enums.ChallengePeriod;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -70,12 +70,11 @@ public class UserDailyChallenge extends BaseEntity {
     private int rewardCoins;
 
     @Transient
-    @JsonProperty("completed") // Match FE property name
+    @JsonProperty("completed")
     public boolean getCompleted() {
         return this.status == ChallengeStatus.CAN_CLAIM || this.status == ChallengeStatus.CLAIMED;
     }
 
-    // FIX: Expose fields from nested DailyChallenge to the top level response
     @JsonProperty("title")
     public String getTitle() {
         return challenge != null ? challenge.getTitle() : null;
@@ -96,6 +95,11 @@ public class UserDailyChallenge extends BaseEntity {
         return challenge != null ? challenge.getScreenRoute() : null;
     }
 
+    @JsonProperty("stack")
+    public String getStack() {
+        return challenge != null ? challenge.getStack() : null;
+    }
+
     @JsonProperty("userId")
     public UUID getUserId() {
         return id != null ? id.getUserId() : null;
@@ -107,7 +111,7 @@ public class UserDailyChallenge extends BaseEntity {
     }
 
     @JsonProperty("dailyChallenge")
-    @JsonIgnore // Hide the full nested object if fields are exposed above
+    @JsonIgnore
     public DailyChallenge getDailyChallenge() {
         return challenge;
     }

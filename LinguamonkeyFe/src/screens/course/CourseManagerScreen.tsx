@@ -10,6 +10,7 @@ import {
     Image,
     FlatList,
     Switch,
+    Dimensions,
 } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useRoute, useNavigation } from "@react-navigation/native"
@@ -21,7 +22,10 @@ import { createScaledSheet } from "../../utils/scaledStyles"
 import { DifficultyLevel } from "../../types/enums"
 import type { CourseVersionReviewResponse } from "../../types/dto"
 
-type TabType = "INFO" | "CURRICULUM" | "REVIEWS"
+// Added DASHBOARD type
+type TabType = "DASHBOARD" | "INFO" | "CURRICULUM" | "REVIEWS"
+
+const SCREEN_WIDTH = Dimensions.get("window").width;
 
 const CourseManagerScreen = () => {
     const { t } = useTranslation()
@@ -30,7 +34,9 @@ const CourseManagerScreen = () => {
     const { courseId } = route.params
     const user = useUserStore((state) => state.user)
 
-    const [activeTab, setActiveTab] = useState<TabType>("INFO")
+    // Set Dashboard as default tab
+    const [activeTab, setActiveTab] = useState<TabType>("DASHBOARD")
+    const [revenueFilter, setRevenueFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
 
     // --- Hooks ---
     const {
@@ -40,10 +46,14 @@ const CourseManagerScreen = () => {
         useCreateDraftVersion,
         usePublishVersion,
         useReviews,
+        useCourseStats, // Added
     } = useCourses()
 
     const { data: course, isLoading: courseLoading, refetch } = useCourse(courseId)
     const { data: reviewsData, isLoading: reviewsLoading } = useReviews({ courseId })
+
+    // Fetch Course Specific Stats
+    const { data: statsData, isLoading: statsLoading, refetch: refetchStats } = useCourseStats(courseId)
 
     const { mutate: updateDetails, isPending: isUpdatingDetails } = useUpdateCourseDetails()
     const { mutate: updateVersion, isPending: isUpdatingVersion } = useUpdateCourseVersion()
@@ -92,15 +102,14 @@ const CourseManagerScreen = () => {
         // Extract Ids
         const newLessonIds = lessons.map(l => l.lessonId)
 
-        // FIX: Truyền đủ các trường bắt buộc của UpdateCourseVersionRequest
         if (isDraft) {
             updateVersion(
                 {
                     versionId: currentVersion.versionId,
                     req: {
                         lessonIds: newLessonIds,
-                        description: formState.description, // Gửi kèm thông tin hiện tại
-                        thumbnailUrl: formState.thumbnailUrl, // Gửi kèm thông tin hiện tại
+                        description: formState.description,
+                        thumbnailUrl: formState.thumbnailUrl,
                     }
                 },
                 { onSuccess: () => refetch() }
@@ -114,22 +123,14 @@ const CourseManagerScreen = () => {
 
     const handleSaveInfo = () => {
         if (!course) return
-        // 1. Cập nhật Course Details (Title, Price, Difficulty)
         updateDetails(
             {
                 id: courseId,
-                req: {
-                    title: formState.title,
-                    // price: parseFloat(formState.price) || 0,
-                    // languageCode: course.latestPublicVersion.languageCode || "en",
-                    // difficultyLevel: formState.difficulty,
-                },
+                req: { title: formState.title },
             },
             {
                 onSuccess: () => {
-                    // 2. Cập nhật Course Version (Description, Thumbnail)
                     if (isDraft && currentVersion) {
-                        // FIX: Đảm bảo lessonIds luôn được gửi đi để tránh lỗi thiếu trường
                         const currentLessonIds = currentVersion.lessons?.map((l) => l.lessonId) || []
                         updateVersion(
                             {
@@ -137,7 +138,7 @@ const CourseManagerScreen = () => {
                                 req: {
                                     description: formState.description,
                                     thumbnailUrl: formState.thumbnailUrl,
-                                    lessonIds: currentLessonIds, // Gửi lessonIds hiện tại
+                                    lessonIds: currentLessonIds,
                                 },
                             },
                             { onSuccess: () => Alert.alert(t("success"), t("course.saved")) }
@@ -175,11 +176,92 @@ const CourseManagerScreen = () => {
     }
 
     const handlePreview = () => {
-        // Navigate to the CourseDetailScreen (Public View) with params
         navigation.navigate("CourseDetailsScreen", { courseId })
     }
 
     // --- Renderers ---
+
+    // 
+
+
+    const renderDashboardTab = () => {
+        if (statsLoading) return <ActivityIndicator style={{ marginTop: 20 }} />
+
+        let displayRevenue = 0;
+        switch (revenueFilter) {
+            case 'day': displayRevenue = statsData?.revenueToday || 0; break;
+            case 'week': displayRevenue = statsData?.revenueWeek || 0; break;
+            case 'month': displayRevenue = statsData?.revenueMonth || 0; break;
+            case 'year': displayRevenue = statsData?.revenueYear || 0; break;
+        }
+
+        const chartData = statsData?.revenueChart || [];
+        const maxValue = Math.max(...chartData.map(d => d.value), 1);
+
+        return (
+            <ScrollView style={styles.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
+                {/* Stats Grid */}
+                <View style={styles.statsGrid}>
+                    <View style={styles.statCard}>
+                        <View style={[styles.statIconContainer, { backgroundColor: `#4F46E520` }]}>
+                            <Icon name="people" size={24} color="#4F46E5" />
+                        </View>
+                        <Text style={styles.statValue}>{statsData?.totalStudents || 0}</Text>
+                        <Text style={styles.statLabel}>{t("creator.totalStudents")}</Text>
+                    </View>
+                    <View style={styles.statCard}>
+                        <View style={[styles.statIconContainer, { backgroundColor: `#F59E0B20` }]}>
+                            <Icon name="star" size={24} color="#F59E0B" />
+                        </View>
+                        <Text style={styles.statValue}>{statsData?.averageRating?.toFixed(1) || "0.0"}</Text>
+                        <Text style={styles.statLabel}>{t("creator.avgRating")}</Text>
+                        <Text style={styles.statSubLabel}>{statsData?.totalReviews || 0} reviews</Text>
+                    </View>
+                </View>
+
+                {/* Revenue Summary */}
+                <View style={styles.revenueCard}>
+                    <Text style={styles.revenueTitle}>{t("creator.totalRevenue")}</Text>
+                    <Text style={styles.revenueAmount}>${displayRevenue.toFixed(2)}</Text>
+                    <View style={styles.filterRow}>
+                        {(['day', 'week', 'month', 'year'] as const).map((f) => (
+                            <TouchableOpacity
+                                key={f}
+                                style={[styles.filterChip, revenueFilter === f && styles.filterChipActive]}
+                                onPress={() => setRevenueFilter(f)}
+                            >
+                                <Text style={[styles.filterText, revenueFilter === f && styles.filterTextActive]}>
+                                    {t(`common.${f}`)}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                </View>
+
+                {/* Revenue Chart */}
+                {chartData.length > 0 && (
+                    <View style={styles.chartContainer}>
+                        <View style={styles.chartHeader}>
+                            <Text style={styles.chartTitle}>{t("creator.revenueTrend", "Revenue (Last 7 Days)")}</Text>
+                        </View>
+                        <View style={styles.barChartRow}>
+                            {chartData.map((item, index) => {
+                                const barHeight = (item.value / maxValue) * 100;
+                                return (
+                                    <View key={index} style={styles.barContainer}>
+                                        <View style={styles.barWrapper}>
+                                            <View style={[styles.barFill, { height: barHeight || 4 }]} />
+                                        </View>
+                                        <Text style={styles.barLabel}>{item.label}</Text>
+                                    </View>
+                                )
+                            })}
+                        </View>
+                    </View>
+                )}
+            </ScrollView>
+        )
+    }
 
     const renderInfoTab = () => (
         <ScrollView style={styles.tabContent} contentContainerStyle={{ paddingBottom: 40 }}>
@@ -204,7 +286,7 @@ const CourseManagerScreen = () => {
 
             <View style={styles.inputGroup}>
                 <Text style={styles.label}>{t("course.difficulty")}</Text>
-                <TextInput // Cần thay bằng Picker/Dropdown
+                <TextInput
                     style={styles.input}
                     value={formState.difficulty}
                     onChangeText={(t) => setFormState({ ...formState, difficulty: t as DifficultyLevel })}
@@ -387,7 +469,7 @@ const CourseManagerScreen = () => {
 
             {/* Tabs */}
             <View style={styles.tabBar}>
-                {(["INFO", "CURRICULUM", "REVIEWS"] as TabType[]).map((tab) => (
+                {(["DASHBOARD", "INFO", "CURRICULUM", "REVIEWS"] as TabType[]).map((tab) => (
                     <TouchableOpacity
                         key={tab}
                         style={[styles.tabItem, activeTab === tab && styles.tabItemActive]}
@@ -402,6 +484,7 @@ const CourseManagerScreen = () => {
 
             {/* Content */}
             <View style={styles.contentContainer}>
+                {activeTab === "DASHBOARD" && renderDashboardTab()}
                 {activeTab === "INFO" && renderInfoTab()}
                 {activeTab === "CURRICULUM" && renderCurriculumTab()}
                 {activeTab === "REVIEWS" && renderReviewsTab()}
@@ -439,6 +522,44 @@ const styles = createScaledSheet({
 
     contentContainer: { flex: 1, backgroundColor: "#F8FAFC" },
     tabContent: { padding: 20, flex: 1 },
+
+    // Stats Grid
+    statsGrid: { flexDirection: "row", gap: 12, marginBottom: 16 },
+    statCard: {
+        flex: 1, backgroundColor: "#FFF", borderRadius: 12, padding: 16, alignItems: "center",
+        shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05,
+        shadowRadius: 2, elevation: 1, borderWidth: 1, borderColor: "#E5E7EB",
+    },
+    statIconContainer: { width: 40, height: 40, borderRadius: 20, justifyContent: "center", alignItems: "center", marginBottom: 8 },
+    statValue: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
+    statLabel: { fontSize: 12, color: "#6B7280", marginTop: 2 },
+    statSubLabel: { fontSize: 10, color: "#9CA3AF" },
+
+    // Revenue Card
+    revenueCard: {
+        backgroundColor: "#FFF", borderRadius: 16, padding: 16, marginBottom: 16,
+        borderWidth: 1, borderColor: "#E5E7EB",
+    },
+    revenueTitle: { fontSize: 14, color: "#6B7280", marginBottom: 4 },
+    revenueAmount: { fontSize: 32, fontWeight: "800", color: "#10B981", marginBottom: 16 },
+    filterRow: { flexDirection: "row", backgroundColor: "#F3F4F6", borderRadius: 8, padding: 4 },
+    filterChip: { flex: 1, paddingVertical: 6, alignItems: "center", borderRadius: 6 },
+    filterChipActive: { backgroundColor: "#FFF", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 },
+    filterText: { fontSize: 12, fontWeight: "500", color: "#6B7280" },
+    filterTextActive: { color: "#1F2937", fontWeight: "600" },
+
+    // Chart Styles
+    chartContainer: {
+        marginBottom: 24, backgroundColor: "#FFF", borderRadius: 16, padding: 16,
+        borderWidth: 1, borderColor: "#E5E7EB",
+    },
+    chartHeader: { marginBottom: 16 },
+    chartTitle: { fontSize: 16, fontWeight: "700", color: "#1F2937" },
+    barChartRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-end", height: 140, paddingBottom: 20 },
+    barContainer: { alignItems: "center", flex: 1 },
+    barWrapper: { height: 100, width: 20, justifyContent: "flex-end", backgroundColor: "#F3F4F6", borderRadius: 4, overflow: "hidden" },
+    barFill: { backgroundColor: "#4F46E5", borderRadius: 4, width: "100%" },
+    barLabel: { fontSize: 10, color: "#6B7280", marginTop: 6 },
 
     // Info Form
     inputGroup: { marginBottom: 16 },

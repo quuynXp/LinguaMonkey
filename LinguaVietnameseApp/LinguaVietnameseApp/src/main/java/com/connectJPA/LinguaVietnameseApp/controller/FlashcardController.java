@@ -1,10 +1,13 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateFlashcardRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.LearningActivityEventRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FlashcardResponse;
+import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.FlashcardService;
+import com.connectJPA.LinguaVietnameseApp.service.UserLearningActivityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.*;
@@ -18,6 +21,7 @@ import java.util.UUID;
 public class FlashcardController {
     private final FlashcardService flashcardService;
     private final AuthenticationService auth;
+    private final UserLearningActivityService userLearningActivityService;
 
     private String extractToken(String authorization) {
         if (authorization != null && authorization.startsWith("Bearer ")) {
@@ -32,15 +36,9 @@ public class FlashcardController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String query,
-            @RequestParam(required = false) Boolean isPublic,
-            @RequestParam(required = false) UUID userId, // Accept explicit userId param if sent
             @RequestHeader("Authorization") String authorization) {
         
-        // Priority: Use Token to identify the "current user" for private cards.
-        // The service logic "findPublicOrPrivateFlashcards" uses this ID to find 
-        // cards owned by THIS user OR cards that are public.
         UUID tokenUserId = auth.extractTokenByUserId(extractToken(authorization));
-        
         Page<FlashcardResponse> result = flashcardService.getFlashcardsByLesson(tokenUserId, lessonId, query, page, size);
         return AppApiResponse.<Page<FlashcardResponse>>builder()
                 .code(200)
@@ -125,9 +123,20 @@ public class FlashcardController {
             @PathVariable UUID lessonId,
             @PathVariable UUID id,
             @RequestParam int quality,
+            @RequestParam(defaultValue = "0") int duration,
             @RequestHeader("Authorization") String authorization) {
         UUID userId = auth.extractTokenByUserId(extractToken(authorization));
         FlashcardResponse reviewed = flashcardService.reviewFlashcard(id, quality, userId);
+
+        // CENTRALIZED LOGGING & CHALLENGE UPDATE
+        userLearningActivityService.logActivityEndAndCheckChallenges(LearningActivityEventRequest.builder()
+                .userId(userId)
+                .activityType(ActivityType.FLASHCARD_REVIEW)
+                .relatedEntityId(id)
+                .durationInSeconds(duration)
+                .details("Review Quality: " + quality)
+                .build());
+
         return AppApiResponse.<FlashcardResponse>builder()
                 .code(200)
                 .message("Flashcard reviewed")

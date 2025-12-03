@@ -24,7 +24,11 @@ public class UserSettings extends BaseEntity {
     @JoinColumn(name = "user_id")
     private User user;
 
-    // Notification Preferences
+
+    @Column(name = "sound_enabled", nullable = false)
+    @Builder.Default
+    private boolean soundEnabled = true;
+
     @Column(name = "study_reminders", nullable = false)
     @Builder.Default
     private boolean studyReminders = true;
@@ -32,10 +36,10 @@ public class UserSettings extends BaseEntity {
     @Column(name = "streak_reminders", nullable = false)
     @Builder.Default
     private boolean streakReminders = true;
-
-    @Column(name = "sound_enabled", nullable = false)
+    
+    @Column(name = "auto_translate", nullable = false)
     @Builder.Default
-    private boolean soundEnabled = true;
+    private boolean autoTranslate = false;
 
     @Column(name = "vibration_enabled", nullable = false)
     @Builder.Default

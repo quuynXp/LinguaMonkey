@@ -44,6 +44,20 @@ public class LeaderboardEntryController {
                 .build();
     }
 
+    @Operation(summary = "Get current user entry with rank", description = "Used for the fixed bottom bar")
+    @GetMapping("/me")
+    public AppApiResponse<LeaderboardEntryResponse> getCurrentUserEntry(
+            @RequestParam UUID leaderboardId,
+            @RequestParam UUID userId,
+            Locale locale) {
+        LeaderboardEntryResponse entry = leaderboardEntryService.getCurrentUserEntryWithRank(leaderboardId, userId);
+        return AppApiResponse.<LeaderboardEntryResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("leaderboardEntry.get.success", null, locale))
+                .result(entry)
+                .build();
+    }
+
     @Operation(summary = "Get leaderboard entry by IDs", description = "Retrieve a leaderboard entry by leaderboardId and userId")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Successfully retrieved leaderboard entry"),

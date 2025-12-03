@@ -6,5 +6,5 @@ public enum TransactionType {
     TRANSFER,   // Chuyển khoản (P2P)
     PAYMENT,    // Thanh toán (ví dụ: mua course)
     REFUND,      // Hoàn tiền
-    DEFAULT_TYPE,PURCHASE
+    DEFAULT_TYPE,PURCHASE, UPGRADE_VIP
 }

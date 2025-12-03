@@ -9,6 +9,22 @@ export interface AppApiResponse<T> {
     message: string;
     result: T;
 }
+
+export interface RefundRequestResponse {
+    refundTransactionId: string;
+    originalTransactionId: string;
+    requesterName: string;
+    requesterEmail: string;
+    courseName: string;
+    amount: number;
+    reason: string;
+    status: "PENDING" | "SUCCESS" | "REJECTED";
+    requestDate: string;
+}
+
+export interface ApproveRefundRequest {
+    refundTransactionId: string;
+}
 export interface LessonHierarchicalResponse {
     categoryId: string;
     categoryName: string;
@@ -44,12 +60,12 @@ export interface AddSuggestionRequest {
     reason: string;
 }
 
-export interface ApproveRefundRequest {
-    transactionId: string;
-    adminId: string;
-    approved: boolean;
-    adminComment: string;
-}
+// export interface ApproveRefundRequest {
+//     transactionId: string;
+//     adminId: string;
+//     approved: boolean;
+//     adminComment: string;
+// }
 
 export interface AssignRoadmapRequest {
     userId: string;
@@ -138,12 +154,13 @@ export interface BasicLessonRequest {
 export interface CallPreferencesRequest {
     interests?: string[];
     gender?: string;
-    nativeLanguage?: string;
-    learningLanguage?: string;
+    nativeLanguage?: string; // Singular
+    learningLanguages?: string[]; // FIX: Đã đổi tên/thêm trường List
     ageRange?: string;
-    callDuration?: string;
+    proficiency?: Enums.ProficiencyLevel; // FIX: Thêm trường
+    learningPace?: Enums.LearningPace; // FIX: Thêm trường
+    callDuration?: string; // Giữ lại string theo DTO gốc
 }
-
 export interface CertificateRequest {
     name: string;
     description: string;
@@ -446,10 +463,12 @@ export interface LessonQuestionRequest {
     optionsJson: string;
     skillType: Enums.SkillType;
     mediaUrl: string;
+    transcript: string;
     weight: number;
     correctOption: string;
     orderIndex: number;
     explainAnswer: string;
+    isDeleted: boolean;
 }
 
 export interface LessonRequest {
@@ -459,20 +478,22 @@ export interface LessonRequest {
     expReward: number;
     creatorId: string;
     orderIndex: number;
-    description: string;
-    isFree: boolean;
-    lessonType: Enums.LessonType;
-    skillTypes: string;
-    lessonSeriesId: string;
-    lessonCategoryId: string;
-    lessonSubCategoryId: string;
-    difficultyLevel: Enums.DifficultyLevel;
-    thumbnailUrl: string;
-    durationSeconds: number;
-    certificateCode: string;
-    passScorePercent: number;
-    shuffleQuestions: boolean;
-    allowedRetakeCount: number;
+    courseId: string;
+    description?: string;
+    isFree?: boolean;
+    lessonType?: Enums.LessonType;
+    skillType?: string;
+    transcript?: string;
+    lessonSeriesId?: string;
+    lessonCategoryId?: string;
+    lessonSubCategoryId?: string;
+    difficultyLevel?: Enums.DifficultyLevel;
+    thumbnailUrl?: string;
+    durationSeconds?: number;
+    certificateCode?: string;
+    passScorePercent?: number;
+    shuffleQuestions?: boolean;
+    allowedRetakeCount?: number;
 }
 
 export interface LessonReviewRequest {
@@ -584,6 +605,8 @@ export interface RoomRequest {
     roomName: string;
     creatorId: string;
     description: string;
+    password: string;
+    roomCode: string;
     maxMembers: number;
     purpose: Enums.RoomPurpose;
     roomType: Enums.RoomType;
@@ -645,11 +668,12 @@ export interface TransactionRequest {
     amount: number;
     coins: number;
     currency: string;
-    receiverId: string;
+    receiverId?: string;
     provider: Enums.TransactionProvider;
     type: Enums.TransactionType;
     description: string;
     status: Enums.TransactionStatus;
+    courseVersionId?: string;
 }
 
 export interface TransferRequest {
@@ -785,6 +809,21 @@ export interface UserSettingRequest {
     notificationPreferences?: string; // Legacy or map manually
     studyReminders?: boolean;
     streakReminders?: boolean;
+    soundEnabled?: boolean;
+    vibrationEnabled?: boolean;
+    profileVisibility?: boolean;
+    progressSharing?: boolean;
+    searchPrivacy?: boolean; // Added
+    theme?: string;
+    language?: string;
+    isDeleted?: boolean;
+}
+export interface UserSettings {
+    userId: string;
+    notificationPreferences?: string; // Legacy or map manually
+    studyReminders?: boolean;
+    streakReminders?: boolean;
+    autoTranslate?: boolean;
     soundEnabled?: boolean;
     vibrationEnabled?: boolean;
     profileVisibility?: boolean;
@@ -933,6 +972,7 @@ export interface ChatMessageResponse {
     purpose: Enums.RoomPurpose;
     isRead: boolean;
     isDeleted: boolean;
+    senderProfile: UserProfileResponse;
     sentAt: string;
     updatedAt: string;
     deletedAt: string;
@@ -991,6 +1031,9 @@ export interface CourseLessonResponse {
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
+    title?: string;
+    duration?: string;
+    LessonSummaryResponse?: LessonSummaryResponse[];
 }
 
 export interface CoursePerformanceResponse {
@@ -1007,22 +1050,16 @@ export interface CourseResponse {
     courseId: string;
     title: string;
     creatorId: string;
+    roomId: string;
     approvalStatus: Enums.CourseApprovalStatus;
     createdAt: string;
     updatedAt: string;
     latestPublicVersion: CourseVersionResponse;
 
-    // Các trường đã bị loại bỏ khỏi Course Entity, chỉ nên truy cập qua latestPublicVersion
-    // price: number;
-    // languageCode: string;
-    // categoryCode?: string;
-    // thumbnailUrl?: string;
-    // difficultyLevel?: Enums.DifficultyLevel;
-
-    // Creator Info Enrichment
     creatorNickname?: string;
     creatorCountry?: Enums.Country;
     creatorVip?: boolean;
+    isAdminCreated?: boolean;
     creatorLevel?: number;
     creatorName?: string;
     creatorAvatar?: string;
@@ -1383,6 +1420,17 @@ export interface LessonResponse {
     passScorePercent: number;
     shuffleQuestions: boolean;
     allowedRetakeCount: number;
+}
+
+export interface CreatorDashboardResponse {
+    totalStudents: number;
+    totalReviews: number;
+    averageRating: number;
+    revenueToday: number;
+    revenueWeek: number;
+    revenueMonth: number;
+    revenueYear: number;
+    revenueChart: ChartDataPoint[];
 }
 
 export interface LessonReviewResponse {
@@ -1754,6 +1802,7 @@ export interface RoomResponse {
     creatorId: string;
     creatorName: string;
     roomCode: string;
+    password: string;
     content: string;
     description: string;
     avatarUrl: string;
@@ -1761,6 +1810,8 @@ export interface RoomResponse {
     maxMembers: number;
     purpose: Enums.RoomPurpose;
     lastMessageTime: string;
+    partnerIsOnline: boolean;
+    partnerLastActiveText: string;
     lastMessage: string;
     roomType: Enums.RoomType;
     status: Enums.RoomStatus;
@@ -1817,24 +1868,53 @@ export interface StatisticsResponse {
     timeSeries: TimeSeriesPoint[];
 }
 
+export interface ChartDataPoint {
+    label: string;      // Ví dụ: "Mon", "Tue" hoặc "01/12"
+    value: number;      // Giá trị (phút hoặc % accuracy)
+    fullDate: string;   // ISO date string để tooltip nếu cần
+}
+
 export interface StatsResponse {
+    // Current Period Stats
     totalSessions: number;
-    totalTime: number;
+    totalTimeSeconds: number; // Backend trả về giây
     totalExperience: number;
-    averageScore: number;
+    totalCoins: number;
+    lessonsCompleted: number;
+    averageAccuracy: number;
+    averageScore: number;     // Tên field cũ là averageScore (tương đương accuracy)
+
+    // Comparisons (Tăng trưởng so với kỳ trước - trả về số % ví dụ: 15.5 hoặc -5.0)
+    timeGrowthPercent: number;
+    accuracyGrowthPercent: number;
+    coinsGrowthPercent: number;
+
+    // Insights & AI
+    weakestSkill: string;           // Ví dụ: "LISTENING"
+    improvementSuggestion: string;  // Lời khuyên từ Gemini
+
+    // Charts Data
+    timeChartData: ChartDataPoint[];
+    accuracyChartData: ChartDataPoint[];
 }
 
 export interface StudySessionResponse {
-    id: string;
-    type: string;
+    id: string; // UUID
     title: string;
-    date: string;
-    duration: number;
-    score: number;
-    maxScore: number;
+    type: string; // ActivityType enum
+    date: string; // ISO String
+    duration: number; // Seconds
+    score?: number;
+    maxScore?: number;
     experience: number;
     skills: string[];
     completed: boolean;
+}
+
+export interface StudyHistoryResponse {
+    sessions: StudySessionResponse[];
+    stats?: StatsResponse;
+    totalTime?: number;
 }
 
 export interface SubmitExerciseResponse {
@@ -2016,12 +2096,6 @@ export interface LearningActivityEventRequest {
     details?: string;
 }
 
-export interface StudyHistoryResponse {
-    sessions?: StudySessionResponse[];
-    stats?: StatsResponse;
-    // totalDuration: number;
-    // activitiesCount: number;
-}
 
 // === NEW DTOs ===
 export interface DailyChallengeUpdateResponse {
@@ -2050,6 +2124,7 @@ export interface UserDailyChallengeResponse {
     period: 'DAILY' | 'WEEKLY';
     expReward: number;
     rewardCoins: number;
+    stack: string;
     screenRoute?: string;
     completed: boolean;
 }
@@ -2063,7 +2138,9 @@ export interface UserProfileResponse {
     gender: string;
     country?: Enums.Country;
     vip?: boolean;
-
+    isOnline?: boolean;
+    lastActiveText?: string; // "5m", "2h", "100d"
+    lastActiveAt?: string;
     ageRange?: Enums.AgeRange;
     proficiency?: Enums.ProficiencyLevel;
     learningPace?: Enums.LearningPace;
@@ -2171,6 +2248,7 @@ export interface UserSettingResponse {
     streakReminders: boolean;
     soundEnabled: boolean;
     vibrationEnabled: boolean;
+    autoTranslate: boolean;
     profileVisibility: boolean;
     progressSharing: boolean;
     searchPrivacy: boolean;

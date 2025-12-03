@@ -1,4 +1,3 @@
-# --- Google GenAI stack ---
 protobuf==4.25.3
 proto-plus==1.25.0
 google-api-core==2.17.1
@@ -6,21 +5,15 @@ google-generativeai==0.7.2
 googleapis-common-protos==1.63.0
 azure-cognitiveservices-speech
 websockets
-# --- AI libraries ---
-transformers==4.52.1
 tenacity
 sentence-transformers~=5.0.0
 librosa~=0.11.0
 sentencepiece
-# STRICT PINNING REQUIRED FOR COMPATIBILITY
 torch==2.6.0
 torchvision==0.21.0
 torchaudio==2.6.0
 langdetect
 svgwrite
-grpcio
-grpcio-tools
-
 # --- Other libs ---
 soundfile==0.12.1
 language-tool-python==2.8
@@ -40,3 +33,28 @@ sqlalchemy
 asyncpg
 redis>=5.0.0
 aiokafka
+celery
+psycopg2-binary
+spacy
+
+fastapi==0.115.2
+uvicorn==0.32.0
+grpcio
+grpcio-tools
+protobuf==4.25.3
+google-generativeai==0.7.2
+deep-translator==1.11.4
+sqlalchemy
+asyncpg
+psycopg2-binary
+redis>=5.0.0
+python-dotenv~=1.1.1
+PyJWT~=2.10.1
+cryptography~=45.0.6
+tenacity
+numpy==1.26.4
+# Audio processing
+torch==2.6.0
+torchaudio==2.6.0
+transformers==4.52.1
+librosa~=0.11.0

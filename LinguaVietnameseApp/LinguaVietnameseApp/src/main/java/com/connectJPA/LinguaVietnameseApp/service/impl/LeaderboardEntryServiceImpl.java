@@ -46,7 +46,8 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             dto.setNickname(u.getNickname());
             dto.setLevel(u.getLevel());
             dto.setGender(u.getGender());
-            dto.setExp(u.getExp()); // Map EXP từ User để hiển thị riêng
+            dto.setExp(u.getExp());
+            dto.setCountry(u.getCountry()); // Map EXP từ User để hiển thị riêng
         }
         return dto;
     }
@@ -54,27 +55,20 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     @Override
     public Page<LeaderboardEntryResponse> getAllLeaderboardEntries(String leaderboardId, Pageable pageable) {
         try {
-            if (pageable == null) {
-                throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            }
-            if (leaderboardId == null || leaderboardId.trim().isEmpty()) {
-                throw new AppException(ErrorCode.INVALID_KEY);
-            }
+            if (pageable == null) throw new AppException(ErrorCode.INVALID_PAGEABLE);
+            if (leaderboardId == null || leaderboardId.trim().isEmpty()) throw new AppException(ErrorCode.INVALID_KEY);
 
             UUID leaderboardUuid = UUID.fromString(leaderboardId);
-
             Leaderboard leaderboard = leaderboardRepository.findByLeaderboardIdAndIsDeletedFalse(leaderboardUuid)
                     .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
 
             String tab = leaderboard.getTab();
             Page<LeaderboardEntry> entries;
 
-            // Global, Couples, Country dùng logic sort Level -> Score
-            if ("global".equalsIgnoreCase(tab) || "couples".equalsIgnoreCase(tab) || "country".equalsIgnoreCase(tab)) {
+            if ("global".equalsIgnoreCase(tab)) {
                 Pageable unsortedPageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize());
                 entries = leaderboardEntryRepository.findEntriesWithLevelSort(leaderboardUuid, unsortedPageable);
             } else {
-                // Admire hoặc các loại khác sort theo Score (điểm ngưỡng mộ) DESC
                 Pageable effectivePageable = pageable;
                 if (pageable.getSort().isUnsorted()) {
                     effectivePageable = PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, "score"));
@@ -83,13 +77,35 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
             }
 
             return entries.map(this::mapToResponseWithUserInfo);
-
         } catch (AppException e) {
             throw e;
-        } catch (IllegalArgumentException e) {
-            throw new AppException(ErrorCode.INVALID_KEY);
         } catch (Exception e) {
-            log.error("Error while fetching all leaderboard entries: {}", e.getMessage());
+            log.error("Error fetching entries: {}", e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    @Override
+    public LeaderboardEntryResponse getCurrentUserEntryWithRank(UUID leaderboardId, UUID userId) {
+        try {
+            LeaderboardEntry entry = ensureEntryExists(userId, leaderboardId);
+            LeaderboardEntryResponse response = mapToResponseWithUserInfo(entry);
+
+            Leaderboard leaderboard = entry.getLeaderboard();
+            Integer rank;
+
+            if ("global".equalsIgnoreCase(leaderboard.getTab())) {
+                User u = entry.getUser();
+                rank = leaderboardEntryRepository.calculateRankByLevelAndExp(leaderboardId, u.getLevel(), u.getExp());
+            } else {
+                // For Hours, Coins, Admire - mapped to 'score'
+                rank = leaderboardEntryRepository.calculateRankByScore(leaderboardId, entry.getScore());
+            }
+
+            response.setRank(rank != null ? rank : 0);
+            return response;
+        } catch (Exception e) {
+            log.error("Error fetching current user entry with rank: {}", e.getMessage());
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -99,8 +115,6 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
     public LeaderboardEntry ensureEntryExists(UUID userId, UUID leaderboardId) {
         return leaderboardEntryRepository.findByLeaderboardIdAndUserIdAndIsDeletedFalse(leaderboardId, userId)
                 .orElseGet(() -> {
-                    log.info("Creating missing leaderboard entry for User {} in Leaderboard {}", userId, leaderboardId);
-                    
                     User user = userRepository.findByUserIdAndIsDeletedFalse(userId)
                             .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
                     
@@ -111,9 +125,14 @@ public class LeaderboardEntryServiceImpl implements LeaderboardEntryService {
                     newEntry.setLeaderboardEntryId(new LeaderboardEntryId(leaderboardId, userId));
                     newEntry.setUser(user);
                     newEntry.setLeaderboard(leaderboard);
-                    newEntry.setScore(0);
-                    newEntry.setDeleted(false);
                     
+                    if ("coins".equalsIgnoreCase(leaderboard.getTab())) {
+                        newEntry.setScore(user.getCoins());
+                    } else {
+                        newEntry.setScore(0);
+                    }
+                    
+                    newEntry.setDeleted(false);
                     return leaderboardEntryRepository.save(newEntry);
                 });
     }

@@ -6,7 +6,6 @@ import {
     TouchableOpacity,
     ActivityIndicator,
     TextInput,
-    Image,
     Alert,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
@@ -14,6 +13,7 @@ import { useRoute, useNavigation } from "@react-navigation/native";
 import { useCourses } from "../../hooks/useCourses";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useUserStore } from "../../stores/UserStore";
 
 const AdminCourseDetailScreen = () => {
     const navigation = useNavigation();
@@ -23,6 +23,9 @@ const AdminCourseDetailScreen = () => {
 
     const isNew = !courseId;
     const { data: course, isLoading } = useCourse(courseId);
+    
+    // Lấy userId từ UserStore
+    const currentUserId = useUserStore.getState().user?.userId;
 
     const [title, setTitle] = useState("");
     const [price, setPrice] = useState("0");
@@ -35,12 +38,17 @@ const AdminCourseDetailScreen = () => {
     useEffect(() => {
         if (course) {
             setTitle(course.title);
-            setPrice(String(course.price));
+            setPrice(String(course.latestPublicVersion.price));
             setDesc(course.latestPublicVersion?.description || "");
         }
     }, [course]);
 
     const handleSave = () => {
+        if (isNew && !currentUserId) {
+            Alert.alert("Error", "User not authenticated. Cannot create course.");
+            return;
+        }
+
         const payload = {
             title,
             price: Number(price),
@@ -51,19 +59,34 @@ const AdminCourseDetailScreen = () => {
         };
 
         if (isNew) {
-            createCourse(payload, {
-                onSuccess: () => navigation.goBack()
+            // FIX: Thêm creatorId vào payload để phù hợp với CreateCourseRequest
+            const createPayload = {
+                ...payload,
+                creatorId: currentUserId!,
+            };
+
+            createCourse(createPayload, {
+                onSuccess: () => navigation.goBack(),
+                onError: (error) => Alert.alert("Error Creating Course", (error as any)?.message || "An error occurred")
             });
         } else if (courseId) {
             updateCourse({ id: courseId, req: payload }, {
-                onSuccess: () => Alert.alert("Success", "Course updated")
+                onSuccess: () => Alert.alert("Success", "Course updated"),
+                onError: (error) => Alert.alert("Error Updating Course", (error as any)?.message || "An error occurred")
             });
         }
     };
 
     const handleDelete = () => {
         if (courseId) {
-            deleteCourse(courseId, { onSuccess: () => navigation.goBack() });
+            Alert.alert(
+                "Confirm Delete",
+                "Are you sure you want to delete this course?",
+                [
+                    { text: "Cancel", style: "cancel" },
+                    { text: "Delete", onPress: () => deleteCourse(courseId, { onSuccess: () => navigation.goBack() }) },
+                ]
+            );
         }
     };
 
@@ -78,7 +101,7 @@ const AdminCourseDetailScreen = () => {
                     </TouchableOpacity>
                     <Text style={styles.title}>{isNew ? "New Course" : "Edit Course"}</Text>
                     <TouchableOpacity onPress={handleSave} disabled={creating || updating}>
-                        {creating || updating ? <ActivityIndicator /> : <Icon name="save" size={24} color="#4F46E5" />}
+                        {creating || updating ? <ActivityIndicator color="#4F46E5" /> : <Icon name="save" size={24} color="#4F46E5" />}
                     </TouchableOpacity>
                 </View>
 
@@ -101,7 +124,7 @@ const AdminCourseDetailScreen = () => {
 
                 {!isNew && (
                     <TouchableOpacity style={styles.delBtn} onPress={handleDelete} disabled={deleting}>
-                        <Text style={styles.delText}>Delete Course</Text>
+                        {deleting ? <ActivityIndicator color="#EF4444" /> : <Text style={styles.delText}>Delete Course</Text>}
                     </TouchableOpacity>
                 )}
             </ScrollView>

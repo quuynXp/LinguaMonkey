@@ -8,6 +8,7 @@ import { vi } from "date-fns/locale";
 import { useCourses } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
 import StaticStarRating from "../common/StaticStarRating";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 interface ReviewItemProps {
     review: CourseVersionReviewResponse;
@@ -258,7 +259,7 @@ const ReviewItem: React.FC<ReviewItemProps> = ({ review, onReply, depth = 0 }) =
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: { flexDirection: "row", marginBottom: 12 },
 
     // flatContainer: Dùng cho Level 3 trở đi. 
@@ -266,7 +267,8 @@ const styles = StyleSheet.create({
     // KHÔNG có marginLeft để nó thẳng hàng với cha nó (Level 2).
     flatContainer: {
         marginTop: 8,
-        marginLeft: 0
+        marginLeft: 0,
+        padding: 10,
     },
 
     avatarContainer: { marginRight: 8 },

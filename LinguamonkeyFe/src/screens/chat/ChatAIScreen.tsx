@@ -1,4 +1,6 @@
-import React, { useEffect, useState } from "react";
+// /d:/LinguaApp/LinguamonkeyFe/src/screens/chat/ChatAIScreen.tsx
+
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -29,15 +31,70 @@ type AiMessage = {
   isStreaming?: boolean;
 };
 
-type LocalTranslationStore = {
-  [msgId: string]: {
-    [targetLang: string]: string;
-  };
-};
+// --- OPTIMIZED MESSAGE ITEM COMPONENT ---
+const MessageItem = React.memo(({
+  message,
+  onToggleTranslation,
+  translationData,
+  toggleState,
+  isTranslating
+}: {
+  message: AiMessage,
+  onToggleTranslation: (id: string, text: string) => void,
+  translationData: string | undefined,
+  toggleState: string | 'original',
+  isTranslating: boolean
+}) => {
+  const isUser = message.role === 'user';
+  const displayedText = (toggleState !== 'original' && translationData)
+    ? translationData
+    : message.content;
 
-type MessageViewState = {
-  [msgId: string]: string | 'original';
-};
+  return (
+    <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.aiMessageContainer]}>
+      <View style={styles.messageRow}>
+        <TouchableOpacity
+          onPress={() => !isUser && onToggleTranslation(message.id, message.content)}
+          style={{ maxWidth: "80%" }}
+          disabled={isUser}
+        >
+          <View style={[styles.messageBubble, isUser ? styles.userMessage : styles.aiMessage]}>
+            <Text style={[styles.messageText, isUser ? styles.userMessageText : styles.aiMessageText]}>
+              {displayedText}
+              {message.isStreaming && <Text style={{ color: '#9CA3AF' }}> •</Text>}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
+        {!isUser && (
+          <TouchableOpacity
+            style={styles.translateButtonIcon}
+            onPress={() => onToggleTranslation(message.id, message.content)}
+            disabled={isTranslating}
+          >
+            {isTranslating ? (
+              <ActivityIndicator size="small" color="#9CA3AF" />
+            ) : (
+              <Icon name={toggleState !== 'original' ? "undo" : "translate"} size={16} color="#9CA3AF" />
+            )}
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}, (prev, next) => {
+  // Custom comparison to prevent re-renders of non-changing items
+  return (
+    prev.message.content === next.message.content &&
+    prev.message.isStreaming === next.message.isStreaming &&
+    prev.translationData === next.translationData &&
+    prev.toggleState === next.toggleState &&
+    prev.isTranslating === next.isTranslating
+  );
+});
+
+// THÊM displayName VÀO ĐÂY ĐỂ KHẮC PHỤC LỖI react/display-name
+MessageItem.displayName = 'MessageItem';
 
 const ChatAIScreen = () => {
   const { t, i18n } = useTranslation();
@@ -46,8 +103,8 @@ const ChatAIScreen = () => {
   const navigation = useNavigation();
 
   const [inputText, setInputText] = useState("");
-  const [localTranslations, setLocalTranslations] = useState<LocalTranslationStore>({});
-  const [messagesToggleState, setMessagesToggleState] = useState<MessageViewState>({});
+  const [localTranslations, setLocalTranslations] = useState<{ [msgId: string]: { [lang: string]: string } }>({});
+  const [messagesToggleState, setMessagesToggleState] = useState<{ [msgId: string]: string | 'original' }>({});
   const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
   const [isHistoryVisible, setIsHistoryVisible] = useState(false);
   const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
@@ -61,7 +118,7 @@ const ChatAIScreen = () => {
   const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
   const pageByRoom = useChatStore(s => s.pageByRoom);
   const isAiInitialMessageSent = useChatStore(s => s.isAiInitialMessageSent);
-  const aiWsConnected = useChatStore(s => s.aiWsConnected); // Lấy trạng thái kết nối
+  const aiWsConnected = useChatStore(s => s.aiWsConnected);
 
   // ACTIONS
   const initAiClient = useChatStore(s => s.initAiClient);
@@ -75,43 +132,27 @@ const ChatAIScreen = () => {
 
   const isLoading = activeAiRoomId ? loadingByRoom[activeAiRoomId] : false;
 
-  const displayMessages = React.useMemo(() => [...aiHistory].reverse(), [aiHistory]);
+  // Memoize the reversed list to avoid recalculation on every render
+  const displayMessages = useMemo(() => [...aiHistory].reverse(), [aiHistory]);
 
-  // Lifecycle AI Connection
   useEffect(() => {
     initAiClient();
-
     const initializeData = async () => {
       await fetchAiRoomList();
       if (!activeAiRoomId) {
         await startNewAiChat();
       }
     };
-
-    if (user?.userId) {
-      initializeData();
-    }
-
-    return () => {
-      disconnectAi();
-    };
+    if (user?.userId) initializeData();
+    return () => { disconnectAi(); };
   }, [user?.userId, initAiClient, disconnectAi]);
 
-  // Effect to trigger Welcome Message if history is empty
   useEffect(() => {
-    // Thêm aiWsConnected vào điều kiện để đảm bảo socket đã sẵn sàng
     if (activeAiRoomId && aiWsConnected && !isLoading && !isAiStreaming) {
-      // Check if we have history. 
-      // Note: aiHistory might be empty initially before loadMessages completes.
-      // But if loadMessages finished (isLoading false) and length is 0, send welcome.
       if (aiHistory.length === 0 && !isAiInitialMessageSent) {
-
-        // Gửi tin nhắn chào mừng ngay lập tức vì aiWsConnected đã đảm bảo socket open
         sendAiWelcomeMessage();
-
       }
     }
-    // Thay thế dependency isAiInitialMessageSent bằng aiWsConnected để kích hoạt khi kết nối hoàn tất
   }, [activeAiRoomId, isLoading, aiHistory.length, isAiStreaming, aiWsConnected, sendAiWelcomeMessage]);
 
   const handleLoadMore = () => {
@@ -151,7 +192,8 @@ const ChatAIScreen = () => {
     },
   });
 
-  const handleToggleTranslation = (messageId: string, messageText: string) => {
+  // Callbacks
+  const handleToggleTranslation = useCallback((messageId: string, messageText: string) => {
     const currentView = messagesToggleState[messageId] || 'original';
     if (currentView !== 'original') {
       setMessagesToggleState(prev => ({ ...prev, [messageId]: 'original' }));
@@ -160,7 +202,7 @@ const ChatAIScreen = () => {
     } else {
       translateMutate({ messageId, text: messageText, targetLanguage: translationTargetLang });
     }
-  };
+  }, [messagesToggleState, localTranslations, translationTargetLang, translateMutate]);
 
   const changeLanguage = (lang: string) => {
     setTranslationTargetLang(lang);
@@ -174,46 +216,22 @@ const ChatAIScreen = () => {
     }
   };
 
-  const renderMessage = ({ item: message }: { item: AiMessage }) => {
-    const isUser = message.role === 'user';
-    const currentView = messagesToggleState[message.id] || 'original';
-    const displayedText = (currentView !== 'original' && localTranslations[message.id]?.[currentView])
-      ? localTranslations[message.id]?.[currentView]
-      : message.content;
+  const renderMessageItem = useCallback(({ item }: { item: AiMessage }) => {
+    const currentView = messagesToggleState[item.id] || 'original';
+    const translation = localTranslations[item.id]?.[currentView];
 
     return (
-      <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.aiMessageContainer]}>
-        <View style={styles.messageRow}>
-          <TouchableOpacity
-            onPress={() => !isUser && handleToggleTranslation(message.id, message.content)}
-            style={{ maxWidth: "80%" }}
-            disabled={isUser}
-          >
-            <View style={[styles.messageBubble, isUser ? styles.userMessage : styles.aiMessage]}>
-              <Text style={[styles.messageText, isUser ? styles.userMessageText : styles.aiMessageText]}>
-                {displayedText}
-                {message.isStreaming && "..."}
-              </Text>
-            </View>
-          </TouchableOpacity>
-
-          {!isUser && (
-            <TouchableOpacity
-              style={styles.translateButtonIcon}
-              onPress={() => handleToggleTranslation(message.id, message.content)}
-              disabled={translatingMessageId === message.id}
-            >
-              {translatingMessageId === message.id ? (
-                <ActivityIndicator size="small" color="#9CA3AF" />
-              ) : (
-                <Icon name={currentView !== 'original' ? "undo" : "translate"} size={16} color="#9CA3AF" />
-              )}
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
+      <MessageItem
+        message={item}
+        onToggleTranslation={handleToggleTranslation}
+        translationData={translation}
+        toggleState={currentView}
+        isTranslating={translatingMessageId === item.id}
+      />
     );
-  };
+  }, [messagesToggleState, localTranslations, translatingMessageId, handleToggleTranslation]);
+
+  const keyExtractor = useCallback((item: AiMessage) => item.id, []);
 
   return (
     <ScreenLayout>
@@ -229,18 +247,15 @@ const ChatAIScreen = () => {
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
                 <Icon name="arrow-back" size={24} color="#1F2937" />
               </TouchableOpacity>
-
               <View style={styles.headerTitleContainer}>
                 <Icon name="smart-toy" size={24} color="#3B82F6" style={{ marginRight: 8 }} />
                 <Text style={styles.headerTitle}>AI Assistant</Text>
               </View>
             </View>
-
             <View style={styles.headerRight}>
               <TouchableOpacity onPress={() => setIsHistoryVisible(true)} style={styles.iconButton}>
                 <Icon name="history" size={24} color="#4B5563" />
               </TouchableOpacity>
-
               <View style={styles.langContainer}>
                 {['vi', 'en'].map((lang) => (
                   <TouchableOpacity key={lang} onPress={() => changeLanguage(lang)}>
@@ -256,13 +271,17 @@ const ChatAIScreen = () => {
           {/* Chat List */}
           <FlatList
             data={displayMessages}
-            renderItem={renderMessage}
-            keyExtractor={(item) => item.id}
+            renderItem={renderMessageItem}
+            keyExtractor={keyExtractor}
             style={styles.chatList}
             contentContainerStyle={styles.chatContent}
             inverted={true}
             onEndReached={handleLoadMore}
             onEndReachedThreshold={0.2}
+            removeClippedSubviews={true}
+            initialNumToRender={15}
+            maxToRenderPerBatch={10}
+            windowSize={10}
             ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
             ListEmptyComponent={!isLoading && !isAiStreaming ? (
               <View style={{ alignItems: 'center', marginTop: 50 }}>
@@ -271,7 +290,7 @@ const ChatAIScreen = () => {
             ) : null}
           />
 
-          {isAiStreaming && (
+          {isAiStreaming && !aiHistory.length && (
             <View style={styles.streamingIndicator}>
               <ActivityIndicator size="small" color="#6B7280" />
               <Text style={styles.streamingText}>{t("loading.ai")}</Text>

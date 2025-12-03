@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     libfreetype6-dev \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip setuptools wheel
@@ -26,22 +27,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo \
     libfreetype6 \
     zlib1g \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
+
 
 WORKDIR /app
 
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+RUN chown -R appuser:appuser /app
+
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-# FIX: Set PYTHONPATH to /app
+# SỬA PYTHON PATH: Không cần thiết cho VENV, nhưng nếu dùng thì nên trỏ tới thư mục code chính.
+# Vì volume mapping sẽ ghi đè, ta tạm thời để là /app. Lỗi này có thể do thư viện không được cài.
 ENV PYTHONPATH="/app"
 
-COPY . ./PythonService
+# Copy tất cả nội dung từ BUILD CONTEXT (./PythonService trên host) vào /app
+COPY . ./
 
-# FIX: Đường dẫn tới script
-RUN chmod +x /app/PythonService/start_services_local.sh
+# Khắc phục lỗi: Lệnh này đã đúng vị trí.
+RUN chmod +x ./start_services_local.sh
 
 EXPOSE 8001 50051
 
-# FIX: Chạy script từ thư mục PythonService
-WORKDIR /app/PythonService
+WORKDIR /app
 CMD ["./start_services_local.sh"]

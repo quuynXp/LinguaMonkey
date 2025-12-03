@@ -11,17 +11,15 @@ import {
   ListRenderItem,
   Dimensions,
   ImageBackground,
-  Alert
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import FontAwesome5 from "react-native-vector-icons/FontAwesome5";
 import { useTranslation } from "react-i18next";
 import { useFocusEffect } from "@react-navigation/native";
 
 import { useUserStore } from "../../stores/UserStore";
 import { useCourses } from "../../hooks/useCourses";
 import { useLessons } from "../../hooks/useLessons";
-import { useLessonStructure } from "../../hooks/useLessonStructure"; // Import hook for categories
+import { useLessonStructure } from "../../hooks/useLessonStructure";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import type {
   CourseResponse,
@@ -29,7 +27,7 @@ import type {
   CourseVersionEnrollmentResponse,
   LessonCategoryResponse,
 } from "../../types/dto";
-import { CourseType, SkillType } from "../../types/enums";
+import { CourseType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCourseImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
@@ -63,7 +61,6 @@ const CategoryLessonsView = ({
   const { useAllLessons } = useLessons();
   const [page, setPage] = useState(0);
 
-  // Fetch lessons for this category
   const { data, isLoading, isFetching, refetch } = useAllLessons({
     categoryId,
     page,
@@ -236,31 +233,43 @@ const AllCoursesView = ({ navigation, onBack }: { navigation: any; onBack: () =>
     }
   };
 
-  const renderItem: ListRenderItem<CourseResponse> = ({ item }) => (
-    <TouchableOpacity
-      style={styles.verticalCard}
-      onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: item.courseId })}
-    >
-      <Image
-        source={getCourseImage(item.latestPublicVersion?.thumbnailUrl)}
-        style={styles.verticalCardImage}
-      />
-      <View style={styles.verticalCardContent}>
-        <Text style={styles.verticalCardTitle} numberOfLines={2}>{item.title}</Text>
-        <View style={styles.verticalCardMeta}>
-          <Icon name="star" size={14} color="#F59E0B" />
-          <Text style={styles.metaText}>4.5</Text>
-          <View style={styles.dot} />
-          <Text style={[styles.metaText, { color: '#4F46E5', fontWeight: 'bold' }]}>
-            {item.latestPublicVersion.price === 0 ? t("courses.free") : `$${item.latestPublicVersion.price}`}
+  const handleCoursePress = (item: CourseResponse) => {
+    // Navigate to CourseDetailsScreen with latestPublicVersion info
+    gotoTab("CourseStack", "CourseDetailsScreen", { courseId: item.courseId });
+  };
+
+  const renderItem: ListRenderItem<CourseResponse> = ({ item }) => {
+    // Logic hiển thị rating và giá thực tế
+    const rating = item.averageRating ? item.averageRating.toFixed(1) : "0.0";
+    const price = item.latestPublicVersion?.price ?? 0;
+    const reviewCount = item.reviewCount || 0;
+
+    return (
+      <TouchableOpacity
+        style={styles.verticalCard}
+        onPress={() => handleCoursePress(item)}
+      >
+        <Image
+          source={getCourseImage(item.latestPublicVersion?.thumbnailUrl)}
+          style={styles.verticalCardImage}
+        />
+        <View style={styles.verticalCardContent}>
+          <Text style={styles.verticalCardTitle} numberOfLines={2}>{item.title}</Text>
+          <View style={styles.verticalCardMeta}>
+            <Icon name="star" size={14} color="#F59E0B" />
+            <Text style={styles.metaText}>{rating} ({reviewCount})</Text>
+            <View style={styles.dot} />
+            <Text style={[styles.metaText, { color: '#4F46E5', fontWeight: 'bold' }]}>
+              {price === 0 ? t("courses.free") : `$${price}`}
+            </Text>
+          </View>
+          <Text style={styles.verticalCardAuthor} numberOfLines={1}>
+            {t("common.by")} {item?.creatorName || item?.creatorId || "Instructor"}
           </Text>
         </View>
-        <Text style={styles.verticalCardAuthor} numberOfLines={1}>
-          {t("common.by")} {item?.creatorId || "Instructor"}
-        </Text>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.subScreenContainer}>
@@ -302,6 +311,74 @@ const AllCoursesView = ({ navigation, onBack }: { navigation: any; onBack: () =>
   );
 };
 
+// --- NEW Sub-View: Admin Courses List (REPLACED Categories Grid logic) ---
+const AdminCoursesList = ({
+  t,
+  navigation,
+  courses,
+  isLoading,
+  refetch,
+}: {
+  t: ReturnType<typeof useTranslation>['t'];
+  navigation: any;
+  courses: CourseResponse[];
+  isLoading: boolean;
+  refetch: () => void;
+}) => {
+  const handleCoursePress = (course: CourseResponse) => {
+    // Navigates to CourseDetailsScreen (with latest public version) as requested
+    gotoTab("CourseStack", "CourseDetailsScreen", { courseId: course.courseId });
+  };
+
+  const renderItem: ListRenderItem<CourseResponse> = ({ item, index }) => {
+    const colors = ["#EFF6FF", "#ECFDF5", "#FFFBEB", "#FDF2F8"];
+    const iconColors = ["#3B82F6", "#10B981", "#F59E0B", "#EC4899"];
+    const bgColor = colors[index % colors.length];
+    const iconColor = iconColors[index % iconColors.length];
+
+    // Check if latestPublicVersion exists to show the card
+    if (!item.latestPublicVersion) return null;
+
+    return (
+      <TouchableOpacity
+        style={styles.gridCardFlat}
+        onPress={() => handleCoursePress(item)}
+      >
+        <View style={[styles.toolIconContainer, { backgroundColor: bgColor }]}>
+          <Icon name="verified" size={24} color={iconColor} />
+        </View>
+        <Text style={styles.toolName} numberOfLines={2}>{item.title}</Text>
+        <View style={styles.adminTag}>
+          <Text style={styles.adminTagText}>Official</Text>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+
+  return (
+    <View style={styles.section}>
+      <Text style={styles.sectionTitle}>{t("learn.adminCourses", "Khóa học chính thức")}</Text>
+      {isLoading ? (
+        <ActivityIndicator color="#4F46E5" />
+      ) : (
+        <FlatList
+          data={courses}
+          keyExtractor={(item) => item.courseId}
+          renderItem={renderItem}
+          numColumns={2}
+          columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: COLUMN_GAP }}
+          scrollEnabled={false}
+          ListEmptyComponent={
+            <Text style={styles.emptyText}>{t("common.noData", "Không có dữ liệu")}</Text>
+          }
+        />
+      )}
+    </View>
+  );
+};
+
+
 const LearnScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const userStore = useUserStore();
@@ -309,7 +386,7 @@ const LearnScreen = ({ navigation }: any) => {
   const { user, refreshUserProfile } = userStore;
 
   // Hooks
-  const { useEnrollments, useRecommendedCourses, useCreatorCourses } = useCourses();
+  const { useEnrollments, useRecommendedCourses, useCreatorCourses, useAllCourses } = useCourses();
   const { useCategories } = useLessonStructure();
 
   const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
@@ -342,7 +419,7 @@ const LearnScreen = ({ navigation }: any) => {
   const { data: enrolledData, isLoading: enrolledLoading, refetch: refetchEnrolled } = useEnrollments({
     userId: user?.userId,
     page: 0,
-    size: 10,
+    size: 20,
   });
 
   const {
@@ -356,6 +433,14 @@ const LearnScreen = ({ navigation }: any) => {
     5
   );
 
+  // NEW: Fetch Admin Courses
+  const { data: adminCoursesData, isLoading: adminCoursesLoading, refetch: refetchAdminCourses } = useAllCourses({
+    page: 0,
+    size: 20,
+    isAdminCreated: true, // Use the new param
+  });
+
+  // Old category data fetching - Not used for main display anymore
   const { data: categoryData, isLoading: catLoading, refetch: refetchCats } = useCategories({
     lang: selectedLanguage.code,
     page: 0,
@@ -372,46 +457,64 @@ const LearnScreen = ({ navigation }: any) => {
     refetchEnrolled();
     refetchRec();
     refetchCreator();
+    refetchAdminCourses(); // New refetch
     refetchCats();
     await refreshUserProfile();
   };
 
-  const handleVipFeature = (mode: string, type: string) => {
-    if (!isVip) {
+  // NEW: Filter Admin Courses from allCoursesData
+  const adminCourses = useMemo(() => (adminCoursesData?.data as CourseResponse[]) || [], [adminCoursesData]);
+
+
+  // MODIFIED: Logic xử lý khi click vào banner Creator Dashboard / VIP
+  const handleVipFeature = () => {
+    if (isVip) {
+      // Nếu là VIP, navigate đến Creator Dashboard
+      gotoTab("CourseStack", "CreatorDashboardScreen");
+    } else {
+      // Nếu chưa là VIP, hiển thị modal nâng cấp
       setShowVipModal(true);
-      return;
     }
-    navigation.navigate("ProficiencyTestScreen", { mode, examType: type, skillType: type });
   };
 
-  const openCreatorDashboard = () => {
+  const openCreatorDashboardList = () => {
+    // Navigates to the list of all creator courses
     navigation.navigate("CourseStack", "CreatorDashboardScreen");
   };
 
-  // Handle Category Click
-  const onCategoryPress = (category: LessonCategoryResponse) => {
-    setSelectedCategory({ id: category.lessonCategoryId, name: category.lessonCategoryName });
-    setViewMode('CATEGORY_LESSONS');
+  const handleMyCoursePress = (enrollment: CourseVersionEnrollmentResponse) => {
+    // Robust extraction of courseId
+    const courseId = enrollment.course?.courseId || enrollment.courseVersion?.courseId;
+
+    if (!courseId) {
+      console.error("Course ID is undefined in enrollment", enrollment);
+      return;
+    }
+
+    // Check if the current user is the creator of this course
+    const creatorId = enrollment.course?.creatorId;
+    const isCreator = user?.userId === creatorId;
+
+    if (isCreator) {
+      // Creator Logic: Navigate to the Dashboard for THIS specific course (CourseManager)
+      gotoTab("CourseStack", "CourseManagerScreen", { courseId });
+    } else {
+      // Learner Logic: Standard Course Details
+      gotoTab("CourseStack", "CourseDetailsScreen", { courseId, isPurchased: true });
+    }
   };
 
-  // Learning Tools (Removed Notes, kept others)
-  const learningTools = useMemo(() => [
-    { name: t("learn.vocabularyFlashcards"), icon: "style", screen: "VocabularyFlashcardsScreen", color: "#EF4444", bg: "#FEF2F2" },
-    { name: t("learn.ipaPronunciation"), icon: "record-voice-over", screen: "IPAScreen", color: "#F59E0B", bg: "#FFFBEB" },
-    { name: t("learn.bilingual"), icon: "language", screen: "BilingualVideoScreen", color: "#8B5CF6", bg: "#F5F3FF" },
-    { name: t("learn.grammar"), icon: "spellcheck", screen: "GrammarLearningScreen", color: "#4F46E5", bg: "#EEF2FF" },
-  ], [t]);
+  // REMOVED: learningTools array (Grammar, Video, Flashcards, etc.)
 
   const purchasedCourses = useMemo(() => (enrolledData?.data as CourseVersionEnrollmentResponse[]) || [], [enrolledData]);
   const creatorCourses = useMemo(() => (creatorData?.data as CourseResponse[]) || [], [creatorData]);
   const categories = useMemo(() => (categoryData?.data as LessonCategoryResponse[]) || [], [categoryData]);
 
-  // --- Views Switching ---
-
   if (viewMode === 'ALL_COURSES') {
     return <AllCoursesView navigation={navigation} onBack={() => setViewMode('HOME')} />;
   }
 
+  // Keep CategoryLessonsView logic in case it's needed elsewhere or by other buttons
   if (viewMode === 'CATEGORY_LESSONS' && selectedCategory) {
     return (
       <CategoryLessonsView
@@ -423,10 +526,11 @@ const LearnScreen = ({ navigation }: any) => {
     );
   }
 
-  const isRefreshing = enrolledLoading || recLoading || creatorLoading || catLoading;
+  const isRefreshing = enrolledLoading || recLoading || creatorLoading || adminCoursesLoading; // Updated loading check
 
   return (
     <ScreenLayout>
+      {/* VipUpgradeModal được sử dụng khi chưa là VIP click vào banner */}
       <VipUpgradeModal
         visible={showVipModal}
         onClose={() => setShowVipModal(false)}
@@ -437,7 +541,6 @@ const LearnScreen = ({ navigation }: any) => {
           <Icon name="school" size={32} color="#4F46E5" />
 
           <View style={styles.headerRightGroup}>
-            {/* Note Button moved to Header */}
             <TouchableOpacity
               style={styles.headerIconButton}
               onPress={() => navigation.navigate("NotesScreen")}
@@ -460,12 +563,12 @@ const LearnScreen = ({ navigation }: any) => {
           showsVerticalScrollIndicator={false}
         >
 
-          {/* Banner Section */}
+          {/* Banner Section - VIP Course / Creator Dashboard */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("learn.certPreparation", "Luyện thi Chứng Chỉ")}</Text>
+            <Text style={styles.sectionTitle}>{isVip ? t("learn.creatorDashboardTitle", "Quản lý Khóa học") : t("learn.becomeCreator", "Trở thành Giảng viên")}</Text>
             <TouchableOpacity
               style={styles.certBigCard}
-              onPress={() => handleVipFeature('certification', 'IELTS')}
+              onPress={handleVipFeature} // Logic đã được MODIFIED
               activeOpacity={0.9}
             >
               <ImageBackground
@@ -473,99 +576,73 @@ const LearnScreen = ({ navigation }: any) => {
                 style={styles.certBigCardBg}
                 imageStyle={{ borderRadius: 16 }}
               >
-                {!isVip && (
-                  <View style={styles.certDarkOverlay}>
-                    <Icon name="lock" size={36} color="#FFFFFF" />
-                  </View>
-                )}
+                {!isVip && <View style={styles.certDarkOverlay} />} {/* Hiển thị overlay khóa nếu chưa VIP */}
                 <View style={styles.certContentOverlay}>
-                  <View style={[styles.certIconContainer, { backgroundColor: '#FFFFFF' }]}>
-                    <Icon name="verified" size={24} color="#0369A1" />
+                  <View style={[styles.certIconContainer, { backgroundColor: isVip ? '#FFFFFF' : '#FFF0E5' }]}>
+                    <Icon name={isVip ? "cast-for-education" : "lock"} size={24} color={isVip ? "#0369A1" : "#F97316"} />
                   </View>
                   <View>
-                    <Text style={styles.certBigTitle}>IELTS & TOEIC</Text>
-                    <Text style={styles.certBigDesc}>{t("learn.simulation", "Mô phỏng 1-1")}</Text>
+                    <Text style={[styles.certBigTitle, !isVip && styles.certBigTitleLocked]}>
+                      {isVip ? t("learn.creatorDashboard", "Creator Dashboard") : t("learn.vipCourseTitle", "VIP Creator Course")}
+                    </Text>
+                    <Text style={[styles.certBigDesc, !isVip && styles.certBigDescLocked]}>
+                      {isVip ? t("learn.manageCourses", "Quản lý và tạo khóa học") : t("learn.vipCourseDesc", "Khu vực đặc biệt chỉ dành cho VIP")}
+                    </Text>
                   </View>
                   <View style={styles.vipTagAbs}>
-                    <Text style={styles.vipTagText}>VIP</Text>
+                    <Text style={styles.vipTagText}>{isVip ? 'TEACH' : 'VIP'}</Text>
                   </View>
                 </View>
+                {!isVip && (
+                  <View style={styles.certUnlockTextContainer}>
+                    <Text style={styles.certUnlockText}>{t("common.unlock", "Mở khóa")}</Text>
+                  </View>
+                )}
               </ImageBackground>
             </TouchableOpacity>
           </View>
 
-          {/* Categories Grid (Replaces 4-Skill) */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("learn.categories", "Danh mục bài học")}</Text>
-            {catLoading ? (
-              <ActivityIndicator color="#4F46E5" />
-            ) : (
-              <FlatList
-                data={categories}
-                keyExtractor={(item) => item.lessonCategoryId}
-                renderItem={({ item, index }) => {
-                  // Generate colors based on index for variety
-                  const colors = ["#EFF6FF", "#ECFDF5", "#FFFBEB", "#FDF2F8"];
-                  const iconColors = ["#3B82F6", "#10B981", "#F59E0B", "#EC4899"];
-                  const bgColor = colors[index % colors.length];
-                  const iconColor = iconColors[index % iconColors.length];
+          {/* ADDED/REPLACED: Admin Courses Grid (REPLACED Categories Grid & 4 Tabs) */}
+          {adminCourses.length > 0 && (
+            <AdminCoursesList
+              t={t}
+              navigation={navigation}
+              courses={adminCourses}
+              isLoading={adminCoursesLoading}
+              refetch={refetchAdminCourses}
+            />
+          )}
 
-                  return (
-                    <TouchableOpacity
-                      style={styles.gridCardFlat}
-                      onPress={() => onCategoryPress(item)}
-                    >
-                      <View style={[styles.toolIconContainer, { backgroundColor: bgColor }]}>
-                        <Icon name="category" size={24} color={iconColor} />
-                      </View>
-                      <Text style={styles.toolName} numberOfLines={2}>{item.lessonCategoryName}</Text>
-                    </TouchableOpacity>
-                  );
-                }}
-                numColumns={2}
-                columnWrapperStyle={{ justifyContent: 'space-between', marginBottom: COLUMN_GAP }}
-                scrollEnabled={false}
-                ListEmptyComponent={
-                  <Text style={styles.emptyText}>{t("common.noData", "Không có dữ liệu")}</Text>
-                }
-              />
-            )}
-          </View>
 
-          {/* Enrolled Courses Section */}
+          {/* Enrolled Courses Section (My Courses) */}
           {purchasedCourses.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>{t("learn.enrolledCourses", "Khóa học đã đăng ký")}</Text>
-                {/* Click 'See All' -> Navigate to studentCourseScreen */}
+                <Text style={styles.sectionTitle}>{t("learn.enrolledCourses", "Khóa học của tôi")}</Text>
                 <TouchableOpacity onPress={() => gotoTab("CourseStack", "StudentCoursesScreen")}>
                   <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
                 </TouchableOpacity>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
                 {purchasedCourses.map((enrollment: CourseVersionEnrollmentResponse, index: number) => {
-                  const courseId = enrollment.courseVersion?.courseId;
-
-                  if (!courseId) return null;
-
-                  // Format logic similar to other courses
-                  const rating = 5.0; // Placeholder as enrollment DTO might not have live rating
+                  const courseVersion = enrollment.courseVersion;
+                  if (!courseVersion) return null;
+                  const key = courseVersion.versionId || `enroll-${index}`;
                   const dateEnrolled = enrollment.enrolledAt ? new Date(enrollment.enrolledAt).toLocaleDateString() : '';
 
                   return (
                     <TouchableOpacity
-                      key={`my-course-${enrollment.courseVersion.versionId || index}`}
+                      key={key}
                       style={styles.myCourseCard}
-                      onPress={() => gotoTab("CourseStack", "CourseDetailsScreen", { courseId: courseId, isPurchased: true })}
+                      onPress={() => handleMyCoursePress(enrollment)}
                     >
                       <Image
-                        source={getCourseImage(enrollment.courseVersion?.thumbnailUrl)}
+                        source={getCourseImage(courseVersion.thumbnailUrl)}
                         style={styles.myCourseImage}
                       />
                       <View style={styles.myCourseInfo}>
-                        <Text style={styles.myCourseTitle} numberOfLines={1}>{enrollment.courseVersion.title || "Course Title"}</Text>
-                        <Text style={styles.myCourseDate}>Enrolled: {dateEnrolled}</Text>
-
+                        <Text style={styles.myCourseTitle} numberOfLines={1}>{courseVersion.title || "Untitled"}</Text>
+                        <Text style={styles.myCourseDate}>Start: {dateEnrolled}</Text>
                         <View style={styles.progressBar}>
                           <View style={[styles.progressFill, { width: `${enrollment.progress || 0}%` }]} />
                         </View>
@@ -578,50 +655,27 @@ const LearnScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          {/* Learning Tools (Filtered) */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t("learn.learningTools")}</Text>
-            <FlatList
-              data={learningTools}
-              keyExtractor={(item, idx) => `tool-${idx}`}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  style={styles.gridCardFlat}
-                  onPress={() => navigation.navigate(item.screen)}
-                >
-                  <View style={[styles.toolIconContainer, { backgroundColor: item.bg }]}>
-                    <Icon name={item.icon} size={28} color={item.color} />
-                  </View>
-                  <Text style={styles.toolName} numberOfLines={2}>{item.name}</Text>
-                </TouchableOpacity>
-              )}
-              numColumns={2}
-              columnWrapperStyle={{ justifyContent: "space-between", marginBottom: COLUMN_GAP }}
-              scrollEnabled={false}
-            />
-          </View>
-
-          {/* Creator Courses */}
+          {/* Creator Courses List (General View) */}
           {creatorCourses.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
-                <Text style={styles.sectionTitle}>{t("learn.myCreatorCourses", "Khóa học của tôi (Giảng viên)")}</Text>
-                <TouchableOpacity onPress={openCreatorDashboard}>
+                <Text style={styles.sectionTitle}>{t("learn.myCreatorCourses", "Khóa học đã tạo")}</Text>
+                <TouchableOpacity onPress={openCreatorDashboardList}>
                   <Text style={styles.seeAllText}>{t("learn.myCourseManagement", "Quản lý")}</Text>
                 </TouchableOpacity>
               </View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
                 {creatorCourses.map((course: CourseResponse) => {
                   if (!course.courseId) return null;
-                  const rating = course.averageRating || 4.5;
+                  // SỬ DỤNG DỮ LIỆU THẬT
+                  const rating = course.averageRating ? course.averageRating.toFixed(1) : "0.0";
                   const reviewCount = course.reviewCount || 0;
-                  const authorName = course.creatorName || course.creatorId || "Instructor";
 
                   return (
                     <TouchableOpacity
                       key={`creator-${course.courseId}`}
                       style={styles.recCourseCard}
-                      onPress={() => navigation.navigate("CourseStack", "EditCourseScreen", { courseId: course.courseId })}
+                      onPress={() => gotoTab("CourseStack", "CourseManagerScreen", { courseId: course.courseId })}
                     >
                       <Image
                         source={getCourseImage(course.latestPublicVersion?.thumbnailUrl)}
@@ -655,9 +709,12 @@ const LearnScreen = ({ navigation }: any) => {
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
                 {recommendedData.map((course: CourseResponse) => {
-                  const rating = course.averageRating || 4.5;
+                  // SỬ DỤNG DỮ LIỆU THẬT
+                  const rating = course.averageRating ? course.averageRating.toFixed(1) : "0.0";
                   const reviewCount = course.reviewCount || 0;
                   const authorName = course.creatorName || course.creatorId || "Instructor";
+                  // SỬ DỤNG DỮ LIỆU THẬT CHO PRICE
+                  const price = course.latestPublicVersion?.price ?? 0;
 
                   if (!course.courseId) return null;
 
@@ -680,7 +737,7 @@ const LearnScreen = ({ navigation }: any) => {
                           <Text style={styles.recAuthorName} numberOfLines={1}>{authorName}</Text>
                         </View>
                         <View style={styles.recCourseFooter}>
-                          <Text style={styles.recPrice}>{course.latestPublicVersion.price === 0 ? "Free" : `$${course.latestPublicVersion.price}`}</Text>
+                          <Text style={styles.recPrice}>{price === 0 ? "Free" : `$${price}`}</Text>
                           <View style={styles.recRatingContainer}>
                             <Icon name="star" size={12} color="#F59E0B" />
                             <Text style={styles.recRatingText}>{rating} ({reviewCount})</Text>
@@ -781,7 +838,6 @@ const styles = createScaledSheet({
     textAlign: 'right',
     paddingVertical: 6,
   },
-
   subHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -807,7 +863,6 @@ const styles = createScaledSheet({
     justifyContent: 'center',
     alignItems: 'center',
   },
-
   scrollContainer: {
     flex: 1,
   },
@@ -834,7 +889,6 @@ const styles = createScaledSheet({
     color: "#4F46E5",
     fontWeight: "600",
   },
-
   certBigCard: {
     width: '100%',
     height: 120,
@@ -866,7 +920,7 @@ const styles = createScaledSheet({
   certContentOverlay: {
     flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 1,
+    zIndex: 3, // Tăng zIndex để nội dung hiển thị trên overlay khóa
   },
   certIconContainer: {
     width: 48,
@@ -892,6 +946,33 @@ const styles = createScaledSheet({
     paddingHorizontal: 4,
     borderRadius: 4,
   },
+  certBigTitleLocked: {
+    color: "#FFFFFF",
+    backgroundColor: 'transparent',
+  },
+  certBigDescLocked: {
+    color: "#E5E7EB",
+    backgroundColor: 'transparent',
+  },
+  certUnlockTextContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 4,
+    // Cần điều chỉnh để không che nội dung khác
+  },
+  certUnlockText: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    textShadowColor: 'rgba(0, 0, 0, 0.75)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 3,
+  },
   vipTagAbs: {
     position: 'absolute',
     top: -8,
@@ -908,7 +989,6 @@ const styles = createScaledSheet({
     fontWeight: '700',
     color: '#D97706',
   },
-
   gridCardFlat: {
     width: '48%',
     backgroundColor: "#FFFFFF",
@@ -922,6 +1002,7 @@ const styles = createScaledSheet({
     elevation: 2,
     height: 110,
     justifyContent: 'center',
+    position: 'relative',
   },
   toolIconContainer: {
     width: 40,
@@ -937,7 +1018,20 @@ const styles = createScaledSheet({
     color: "#374151",
     textAlign: "center",
   },
-
+  adminTag: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    backgroundColor: '#4F46E5',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  adminTagText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
   horizontalList: {
     marginHorizontal: -SCREEN_PADDING,
     paddingHorizontal: SCREEN_PADDING,
@@ -990,7 +1084,6 @@ const styles = createScaledSheet({
     color: '#4B5563',
     fontWeight: '500',
   },
-
   recCourseCard: {
     width: 200,
     marginRight: 16,
@@ -1055,7 +1148,6 @@ const styles = createScaledSheet({
     fontSize: 11,
     color: '#6B7280',
   },
-
   listContainer: {
     flex: 1,
     padding: 16,
@@ -1109,7 +1201,6 @@ const styles = createScaledSheet({
     backgroundColor: "#9CA3AF",
     marginHorizontal: 8,
   },
-
   lessonRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -1160,7 +1251,6 @@ const styles = createScaledSheet({
     alignItems: 'center',
     justifyContent: 'center',
   },
-
   footerLoader: {
     paddingVertical: 20,
     alignItems: "center",

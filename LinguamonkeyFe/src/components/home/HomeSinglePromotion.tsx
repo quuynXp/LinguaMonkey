@@ -4,7 +4,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { gotoTab } from "../../utils/navigationRef"
-import { ITEM_WIDTH, SCREEN_WIDTH } from "../../constants/Dimensions"
+import { SCREEN_WIDTH } from "../../constants/Dimensions"
 
 // Dữ liệu mẫu (chỉ lấy item đầu tiên để hiển thị)
 const PROMOTION_ITEM = {
@@ -31,8 +31,8 @@ const getPromotionBackgroundImage = (type: string) => {
 
 const HomeSinglePromotion = ({ navigation }: any) => {
     const { t } = useTranslation()
-    const pulseAnim = useRef(new Animated.Value(1)).current // Dành cho hiệu ứng nhấp nháy/phóng to-thu nhỏ
-    const shakeAnim = useRef(new Animated.Value(0)).current // Dành cho hiệu ứng rung lắc
+    const pulseAnim = useRef(new Animated.Value(1)).current
+    const shakeAnim = useRef(new Animated.Value(0)).current
 
     const item = PROMOTION_ITEM
 
@@ -114,7 +114,7 @@ const HomeSinglePromotion = ({ navigation }: any) => {
                             <View style={styles.textContainer}>
                                 <View style={styles.badge}>
                                     <Text style={styles.badgeText}>{t("common.hot")}</Text>
-                                    <Icon name="whatshot" size={12} color="#FF6B35" style={{ marginLeft: 4 }} />
+                                    <Icon name="whatshot" size={10} color="#FF6B35" style={{ marginLeft: 4 }} />
                                 </View>
                                 <Text style={styles.title}>{t("home.promo.title")}</Text>
                                 <Text style={styles.subtitle}>{t("home.promo.subtitle")}</Text>
@@ -125,7 +125,7 @@ const HomeSinglePromotion = ({ navigation }: any) => {
                         </View>
                         {/* Animated Icon (Bounce) */}
                         <Animated.View style={styles.iconContainer}>
-                            <Icon name={item.icon} size={70} color="rgba(255,255,255,0.7)" />
+                            <Icon name={item.icon} size={50} color="rgba(255,255,255,0.7)" />
                         </Animated.View>
                     </ImageBackground>
                 </TouchableOpacity>
@@ -134,17 +134,16 @@ const HomeSinglePromotion = ({ navigation }: any) => {
     )
 }
 
-// Thay thế ITEM_WIDTH bằng 100% (hoặc SCREEN_WIDTH trừ padding) cho 1 item
-const PROMO_WIDTH = SCREEN_WIDTH - 48 // 24px padding mỗi bên
-
 const styles = createScaledSheet({
+    // ĐÃ SỬA: Giảm padding horizontal từ 24px (của HomeScreen) xuống 16px.
+    // Điều này làm cho component hẹp hơn và vẫn căn giữa.
     container: {
         marginVertical: 16,
-        paddingHorizontal: 24,
+        paddingHorizontal: 16,
     },
     wrapper: {
-        width: PROMO_WIDTH,
-        height: 160,
+        width: "100%",
+        height: 120,
     },
     touchable: {
         width: "100%",
@@ -169,7 +168,7 @@ const styles = createScaledSheet({
         ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(0,0,0,0.3)',
         borderRadius: 20,
-        padding: 20,
+        padding: 16,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
@@ -181,45 +180,47 @@ const styles = createScaledSheet({
     },
     badge: {
         backgroundColor: "rgba(255,255,255,0.9)",
-        paddingHorizontal: 8,
-        paddingVertical: 4,
-        borderRadius: 12,
+        paddingHorizontal: 6,
+        paddingVertical: 3,
+        borderRadius: 10,
         alignSelf: "flex-start",
-        marginBottom: 8,
+        marginBottom: 6,
         flexDirection: 'row',
         alignItems: 'center',
     },
     badgeText: {
         color: "#1F2937",
-        fontSize: 10,
+        fontSize: 9,
         fontWeight: "bold",
     },
     title: {
         color: "#fff",
-        fontSize: 26,
+        fontSize: 20,
         fontWeight: "bold",
-        marginBottom: 4,
+        marginBottom: 2,
     },
     subtitle: {
         color: "rgba(255,255,255,0.9)",
-        fontSize: 14,
+        fontSize: 12,
     },
     discountTag: {
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 12,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 10,
         alignSelf: 'flex-start',
-        marginTop: 4,
+        marginTop: 2,
+        height: 30,
+        justifyContent: 'center'
     },
     discountText: {
         color: "#fff",
-        fontSize: 16,
+        fontSize: 14,
         fontWeight: "bold",
     },
     iconContainer: {
         position: "absolute",
-        right: 15,
-        bottom: 10,
+        right: 10,
+        bottom: 5,
         opacity: 0.5,
         zIndex: 1,
         transform: [{ rotate: "-10deg" }],

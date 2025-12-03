@@ -1,3 +1,4 @@
+import { UserProfileResponse } from './api';
 // src/types/entity.ts
 import * as Enums from './enums';
 
@@ -177,6 +178,11 @@ export interface ChatMessage {
     sentAt?: string;
     deletedAt?: string;
     isRead: boolean;
+    translatedText?: string; // Bản dịch được cache trong DB
+    translatedLang?: string; // Mã ngôn ngữ của bản dịch (ví dụ: 'vi', 'en')
+
+    // Local UI state (không từ DB)
+    isLocal?: boolean;
 }
 
 export interface Couple extends BaseEntity {

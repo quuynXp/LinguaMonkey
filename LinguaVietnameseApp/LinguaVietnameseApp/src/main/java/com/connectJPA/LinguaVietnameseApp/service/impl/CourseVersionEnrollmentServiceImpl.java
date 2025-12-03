@@ -11,6 +11,8 @@ import com.connectJPA.LinguaVietnameseApp.mapper.CourseVersionEnrollmentMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
 import com.connectJPA.LinguaVietnameseApp.service.CourseVersionEnrollmentService;
+import com.connectJPA.LinguaVietnameseApp.service.RoomService;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,6 +30,7 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
     private final CourseVersionEnrollmentMapper CourseVersionEnrollmentMapper;
     private final RedisTemplate<String, Object> redisTemplate;
     private final CourseVersionRepository courseVersionRepository;
+    private final RoomService roomService;
 
     @Override
     public Page<CourseVersionEnrollmentResponse> getAllCourseVersionEnrollments(UUID courseId, UUID userId, Pageable pageable) {
@@ -87,8 +90,12 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
             CourseVersion version = courseVersionRepository.findById(request.getCourseVersionId())
                     .orElseThrow(() -> new AppException(ErrorCode.COURSE_VERSION_NOT_FOUND));
             enrollment.setCourseVersion(version);
-            
+
             enrollment = courseVersionEnrollmentRepository.save(enrollment);
+
+            UUID courseId = version.getCourse().getCourseId();
+            roomService.addUserToCourseRoom(courseId, enrollment.getUserId());
+
             return CourseVersionEnrollmentMapper.toResponse(enrollment);
         } catch (RedisConnectionFailureException e) {
             throw new AppException(ErrorCode.REDIS_CONNECTION_FAILED);

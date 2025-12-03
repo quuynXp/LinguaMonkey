@@ -202,6 +202,19 @@
         "duration15min": "15 minutes",
         "duration30min": "30 minutes",
         "duration1hour": "1 hour",
+        "findingPartner": "Finding Partner",
+        "matchFound": "Match Found!",
+        "onlineUsers": "Online Users",
+        "elapsedTime": "Time Elapsed",
+        "yourNativeLanguage": "Your Native Language",
+        "age": {
+            "AGE_13_17": "13-17",
+            "AGE_18_24": "18-24",
+            "AGE_25_34": "25-34",
+            "AGE_35_44": "35-44",
+            "AGE_45_54": "45-54",
+            "AGE_55_PLUS": "55+"
+        },
         "languages": {
             "vi": "Vietnamese",
             "en": "English",
@@ -219,6 +232,26 @@
         "cancelSearch": "Cancel Search",
         "connecting": "Connecting...",
         "searchingTitle": "Searching for Partner"
+    },
+    "enums": {
+        "proficiency": {
+            "A1": "A1 (Beginner)",
+            "A2": "A2 (Elementary)",
+            "B1": "B1 (Intermediate)",
+            "B2": "B2 (Upper-Intermediate)",
+            "C1": "C1 (Advanced)",
+            "C2": "C2 (Proficiency)",
+            "NATIVE": "Native",
+            "BEGINER": "Beginner",
+            "INTERMEDIATE": "Intermediate"
+        },
+        "pace": {
+            "NORMAL": "Normal",
+            "SLOW": "Slow",
+            "MAINTAIN": "Maintain",
+            "FAST": "Fast",
+            "ACCELERATED": "Accelerated"
+        }
     },
     "group": {
         "share": {

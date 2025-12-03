@@ -33,6 +33,7 @@ public class StorageServiceImpl implements StorageService {
     @Value("${google.drive.folderId}")
     private String folderId;
 
+    // Link download trực tiếp (lưu ý: link này cần file được set permission public reader nếu user không đăng nhập Google)
     private static final String DOWNLOAD_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
 
     @Transactional
@@ -57,21 +58,28 @@ public class StorageServiceImpl implements StorageService {
                     new ByteArrayInputStream(data)
             );
 
+            // Upload file
             File uploadedFile = driveService.files().create(fileMetadata, mediaContent)
-                    .setFields("id")
+                    .setFields("id, webContentLink, webViewLink")
                     .execute();
 
-            Permission permission = new Permission()
-                    .setType("anyone")
-                    .setRole("reader");
+            String fileId = uploadedFile.getId();
 
-            driveService.permissions().create(uploadedFile.getId(), permission).execute();
+            // Cấp quyền "Anyone with link" là "Reader" để thẻ <Image> hoặc <Video> ở Frontend load được
+            try {
+                Permission permission = new Permission()
+                        .setType("anyone")
+                        .setRole("reader");
+                driveService.permissions().create(fileId, permission).execute();
+            } catch (Exception e) {
+                log.warn("Could not set public permission for file {}. Frontend might not view it.", fileId);
+            }
 
-            log.info("Uploaded {} to Drive. ID: {}", fileName, uploadedFile.getId());
-            return uploadedFile.getId();
+            log.info("Uploaded {} to Drive (OAuth2). ID: {}", fileName, fileId);
+            return fileId;
         } catch (IOException e) {
             log.error("Google Drive byte upload failed", e);
-            throw new RuntimeException("Failed to upload bytes to Google Drive", e);
+            throw new RuntimeException("Failed to upload bytes to Google Drive: " + e.getMessage(), e);
         }
     }
 
@@ -84,11 +92,16 @@ public class StorageServiceImpl implements StorageService {
     @Override
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
         try {
+            // tempPath chính là fileId trong Google Drive
             File driveFile = driveService.files().get(tempPath).setFields("name").execute();
             String fileName = driveFile.getName();
 
+            // Nếu muốn rename file theo newPath (logic cũ), Drive API dùng lệnh update.
+            // Tuy nhiên với Drive, ID là định danh duy nhất, tên file chỉ là display.
+            // Ở đây ta giữ nguyên ID, chỉ lưu vào DB.
+
             UserMedia media = UserMedia.builder()
-                    .filePath(tempPath)
+                    .filePath(tempPath) // Lưu fileId vào DB
                     .fileName(fileName)
                     .userId(userId)
                     .mediaType(mediaType)
@@ -109,6 +122,7 @@ public class StorageServiceImpl implements StorageService {
     public void deleteFile(String objectPath) {
         try {
             driveService.files().delete(objectPath).execute();
+            log.info("Deleted file from Drive: {}", objectPath);
         } catch (IOException e) {
             log.error("Google Drive delete failed for File ID: {}", objectPath, e);
             throw new RuntimeException("Delete file failed: " + e.getMessage(), e);

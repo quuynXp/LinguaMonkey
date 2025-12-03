@@ -54,4 +54,6 @@ public interface UserService {
     String getUserEmailByUserId(UUID userId);
     User findByUserId(UUID userId);
     User getUserIfExists(UUID userId);
+
+    long countOnlineUsers();
 }

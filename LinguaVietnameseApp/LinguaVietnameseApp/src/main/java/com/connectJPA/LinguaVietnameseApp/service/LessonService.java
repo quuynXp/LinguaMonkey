@@ -14,9 +14,10 @@ import java.util.Map;
 import java.util.UUID;
 
 public interface LessonService {
+
     Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
-                                        UUID categoryId, UUID subCategoryId, UUID courseId, UUID seriesId, SkillType skillType,
-                                         Pageable pageable);
+                                       UUID categoryId, UUID subCategoryId, UUID courseId, UUID versionId, UUID seriesId, SkillType skillType,
+                                       Pageable pageable);
 
     Map<String, Object> startTest(UUID lessonId, UUID userId);
     Map<String, Object> submitTest(UUID lessonId, UUID userId, Map<String,Object> payload);

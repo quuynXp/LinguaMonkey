@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { UserResponse, Character3dResponse } from '../types/dto';
 import { privateClient, mediaClient } from '../api/axiosClient';
 
@@ -71,6 +71,9 @@ interface UserState {
   updateStreakAndDailyGoal: (id: string) => Promise<UserResponse | null>;
   registerVip: () => Promise<string | null>;
   refreshUserProfile: () => Promise<void>;
+
+  initOnlineStatusTracker: () => void;
+  sendHeartbeat: () => Promise<void>;
 }
 
 const defaultUserState: any = {
@@ -108,9 +111,8 @@ const defaultUserState: any = {
   vipDaysRemaining: 0,
 };
 
-const getInitialState = (): Partial<UserState> => ({
-  ...defaultUserState
-});
+// Use `number | null` which is the correct type for timer IDs in React Native.
+let heartbeatInterval: number | null = null;
 
 export const useUserStore = create<UserState>()(
   persist(
@@ -123,7 +125,8 @@ export const useUserStore = create<UserState>()(
 
       setUser: (user, detectedLanguage) => {
         if (!user) {
-          set(getInitialState() as UserState);
+          if (heartbeatInterval) clearInterval(heartbeatInterval);
+          set({ ...defaultUserState });
           return;
         }
 
@@ -167,11 +170,16 @@ export const useUserStore = create<UserState>()(
           get().updateNativeLanguageOnServer(detectedLanguage);
           set({ nativeLanguageId: detectedLanguage });
         }
+
+        get().initOnlineStatusTracker();
       },
 
       setAuthenticated: (authenticated) => set({ isAuthenticated: authenticated }),
       setProfileData: (data) => set((state) => ({ ...state, ...data })),
-      logout: () => set(getInitialState() as UserState),
+      logout: () => {
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+        set({ ...defaultUserState });
+      },
 
       setLocalNativeLanguage: (languageId: string) => {
         set({ nativeLanguageId: languageId });
@@ -220,8 +228,6 @@ export const useUserStore = create<UserState>()(
 
       uploadTemp: async (file: UploadFile) => {
         const form = new FormData();
-
-        // Ensure URI format for Android
         const uri = Platform.OS === 'android' ? file.uri : file.uri.replace('file://', '');
         const filename = file.name || uri.split('/').pop() || 'upload.jpg';
         const match = /\.(\w+)$/.exec(filename);
@@ -234,7 +240,6 @@ export const useUserStore = create<UserState>()(
         } as any);
 
         try {
-          // Use mediaClient for multipart/form-data
           const res = await mediaClient.post('/api/v1/files/upload-temp', form);
           return res.data as string;
         } catch (error) {
@@ -363,6 +368,34 @@ export const useUserStore = create<UserState>()(
         } catch (e) {
           console.error("Failed to refresh user profile", e);
         }
+      },
+
+      sendHeartbeat: async () => {
+        const { user } = get();
+        if (!user?.userId) return;
+        try {
+          await privateClient.patch(`/api/v1/users/${user.userId}/last-active`);
+        } catch (e) {
+        }
+      },
+
+      initOnlineStatusTracker: () => {
+        if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+        get().sendHeartbeat();
+
+        // setInterval returns a number in React Native, which is now correctly typed.
+        heartbeatInterval = setInterval(() => {
+          if (AppState.currentState === 'active') {
+            get().sendHeartbeat();
+          }
+        }, 120000);
+
+        AppState.addEventListener('change', (nextAppState: AppStateStatus) => {
+          if (nextAppState === 'active') {
+            get().sendHeartbeat();
+          }
+        });
       }
     }),
     {

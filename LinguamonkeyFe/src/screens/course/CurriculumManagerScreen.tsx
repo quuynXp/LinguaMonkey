@@ -16,7 +16,6 @@ import ScreenLayout from "../../components/layout/ScreenLayout"
 import type { CourseVersionResponse, LessonSummaryResponse } from "../../types/dto"
 import { createScaledSheet } from "../../utils/scaledStyles"
 
-// Use LessonSummaryResponse since that's what comes inside CourseVersionResponse
 type LessonDisplayItem = LessonSummaryResponse
 
 const CurriculumManagerScreen = () => {

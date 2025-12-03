@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.id.LeaderboardEntryId;
+import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
 import lombok.*;
@@ -24,6 +25,7 @@ public class LeaderboardEntryResponse {
     private int level;
     private int exp;
     private String gender;
+    private Country country;
     private Integer rank;
     private Double change;
     private Integer streak;
@@ -39,6 +41,7 @@ public class LeaderboardEntryResponse {
                 .avatarUrl(user.getAvatarUrl())
                 .level(user.getLevel())
                 .exp(user.getExp())
+                .country(user.getCountry())
                 .build();
     }
 }

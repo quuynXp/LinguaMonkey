@@ -14,6 +14,7 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import StarRatingInput from "../common/StarRatingInput";
 import { getAvatarSource } from "../../utils/avatarUtils";
+import { createScaledSheet } from "../../utils/scaledStyles";
 
 interface ReviewInputProps {
     currentUserAvatar?: string | null;
@@ -134,7 +135,7 @@ const ReviewInput: React.FC<ReviewInputProps> = ({
     );
 };
 
-const styles = StyleSheet.create({
+const styles = createScaledSheet({
     container: {
         padding: 16,
         borderTopWidth: 1,

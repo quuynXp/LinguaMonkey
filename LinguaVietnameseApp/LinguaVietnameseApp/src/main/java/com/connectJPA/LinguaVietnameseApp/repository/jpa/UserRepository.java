@@ -19,6 +19,9 @@ import java.util.UUID;
 @Repository
 public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecificationExecutor<User> {
 
+        @Query("SELECT COUNT(u) FROM User u WHERE u.lastActiveAt >= :threshold AND u.isDeleted = false")
+    long countOnlineUsers(@Param("threshold") OffsetDateTime threshold);
+    
     long countByCreatedAtBetween(OffsetDateTime startDate, OffsetDateTime endDate);
 
     @Query("SELECT u FROM User u WHERE (" +

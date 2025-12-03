@@ -10,6 +10,7 @@ import {
   LearningActivityEventRequest,
   ActivityCompletionResponse,
   UserDailyChallengeResponse,
+  // Thêm ChartDataPoint nếu cần
 } from "../types/dto";
 import { useUserStore } from "../stores/UserStore";
 import { useToast } from "../utils/useToast";
@@ -46,14 +47,24 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 
 const BASE = "/api/v1/user-learning-activities";
 
-// Default Zero Object
+// FIX TS2740: Định nghĩa đầy đủ các trường trong StatsResponse
 const DEFAULT_STUDY_HISTORY: StudyHistoryResponse = {
   sessions: [],
   stats: {
     totalSessions: 0,
-    totalTime: 0,
+    totalTimeSeconds: 0,
     totalExperience: 0,
+    totalCoins: 0, // Thiếu
+    lessonsCompleted: 0, // Thiếu
+    averageAccuracy: 0, // Thiếu
     averageScore: 0,
+    timeGrowthPercent: 0, // Thiếu
+    accuracyGrowthPercent: 0, // Thiếu
+    coinsGrowthPercent: 0, // Thiếu
+    weakestSkill: "NONE", // Thiếu
+    improvementSuggestion: "", // Thiếu
+    timeChartData: [], // Thiếu
+    accuracyChartData: [], // Thiếu
   },
 };
 

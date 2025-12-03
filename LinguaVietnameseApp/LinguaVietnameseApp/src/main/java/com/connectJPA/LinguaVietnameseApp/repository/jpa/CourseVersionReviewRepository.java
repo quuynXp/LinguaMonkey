@@ -29,4 +29,17 @@ public interface CourseVersionReviewRepository extends JpaRepository<CourseVersi
             BigDecimal rating, Pageable pageable);
             
     long countByCourseIdAndParentIsNullAndIsDeletedFalse(UUID courseId);
+
+
+        // --- New Methods for Creator Dashboard ---
+
+    @Query("SELECT COUNT(r) FROM CourseVersionReview r " +
+           "JOIN Course c ON r.courseId = c.courseId " +
+           "WHERE c.creatorId = :creatorId AND r.parent IS NULL AND r.isDeleted = false")
+    long countByCreatorId(@Param("creatorId") UUID creatorId);
+
+    @Query("SELECT AVG(r.rating) FROM CourseVersionReview r " +
+           "JOIN Course c ON r.courseId = c.courseId " +
+           "WHERE c.creatorId = :creatorId AND r.parent IS NULL AND r.isDeleted = false")
+    Double getAverageRatingByCreatorId(@Param("creatorId") UUID creatorId);
 }

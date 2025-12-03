@@ -33,6 +33,9 @@ public class RoomResponse {
     private String avatarUrl; // Dynamic: User Avatar (1-1) or Group Avatar
     private int memberCount;
     
+    private boolean partnerIsOnline;
+    private String partnerLastActiveText;
+    
     // Preview Info
     private String lastMessage;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
