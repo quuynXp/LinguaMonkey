@@ -13,36 +13,30 @@ import java.util.UUID;
 
 public interface FlashcardRepository extends JpaRepository<Flashcard, UUID> {
 
+    @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.userId = :userId AND f.isDeleted = false")
+    Page<Flashcard> findMyFlashcards(@Param("lessonId") UUID lessonId, @Param("userId") UUID userId, Pageable pageable);
+
+    @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.userId = :userId AND f.isDeleted = false AND (LOWER(f.front) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(f.back) LIKE LOWER(CONCAT('%', :query, '%')))")
+    Page<Flashcard> searchMyFlashcards(@Param("lessonId") UUID lessonId, @Param("userId") UUID userId, @Param("query") String query, Pageable pageable);
+
+    @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.isPublic = true AND f.isDeleted = false")
+    Page<Flashcard> findCommunityFlashcards(@Param("lessonId") UUID lessonId, Pageable pageable);
+
+    @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.isPublic = true AND f.isDeleted = false AND (LOWER(f.front) LIKE LOWER(CONCAT('%', :query, '%')) OR LOWER(f.back) LIKE LOWER(CONCAT('%', :query, '%')))")
+    Page<Flashcard> searchCommunityFlashcards(@Param("lessonId") UUID lessonId, @Param("query") String query, Pageable pageable);
+
+    // FIXED: Return Entity (Flashcard) instead of DTO (FlashcardResponse)
+    @Query("select f from Flashcard f where f.userId = :userId and f.lessonId = :lessonId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
+    List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
+            @Param("userId") UUID userId, @Param("lessonId") UUID lessonId, @Param("now") OffsetDateTime now, Pageable pageable);
+
     @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.isDeleted = false AND (f.isPublic = true OR f.userId = :userId)")
     Page<Flashcard> findPublicOrPrivateFlashcards(@Param("lessonId") UUID lessonId, @Param("userId") UUID userId, Pageable pageable);
 
     @Query("SELECT f FROM Flashcard f WHERE f.lessonId = :lessonId AND f.isDeleted = false AND (f.isPublic = true OR f.userId = :userId) AND LOWER(f.front) LIKE LOWER(CONCAT('%', :query, '%'))")
     Page<Flashcard> searchPublicOrPrivateFlashcards(@Param("lessonId") UUID lessonId, @Param("userId") UUID userId, @Param("query") String query, Pageable pageable);
-
-    // Kept for internal logic if needed, but UI fetch should use the methods above
-    Page<Flashcard> findByLessonIdAndIsDeletedFalse(UUID lessonId, Pageable pageable);
-
-    List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
-            UUID userId, UUID lessonId, OffsetDateTime now, Pageable pageable);
-
-    @Query("select f from Flashcard f where f.userId = :userId and f.isDeleted = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
-    List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
-            UUID userId, OffsetDateTime now, Pageable pageable);
-
-    List<Flashcard> findByLessonIdAndIsDeletedFalseAndNextReviewAtBefore(UUID lessonId, OffsetDateTime time);
-
-    List<Flashcard> findByUserIdAndIsDeletedFalseAndNextReviewAtBefore(UUID userId, OffsetDateTime now);
-
-    @Query("select f from Flashcard f where f.userId = :userId and f.lessonId = :lessonId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
-    List<Flashcard> findByUserIdAndLessonIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
-            UUID userId, UUID lessonId, OffsetDateTime now, Pageable pageable);
-
-    @Query("SELECT DISTINCT f.userId FROM Flashcard f WHERE f.isDeleted = false AND f.isSuspended = false AND f.nextReviewAt <= :now AND f.userId IS NOT NULL")
-    List<UUID> findUserIdsWithPendingReviews(@Param("now") OffsetDateTime now);
-
+    
     @Query("select f from Flashcard f where f.userId = :userId and f.isDeleted = false and f.isSuspended = false and f.nextReviewAt <= :now order by f.nextReviewAt asc")
     List<Flashcard> findByUserIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(
-            UUID userId, OffsetDateTime now, Pageable pageable);
-
-    Page<Flashcard> findByLessonIdAndFrontContainingIgnoreCaseAndIsDeletedFalse(UUID lessonId, String q, Pageable p);
+            @Param("userId") UUID userId, @Param("now") OffsetDateTime now, Pageable pageable);
 }

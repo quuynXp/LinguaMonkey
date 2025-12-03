@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateFlashcardRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FlashcardResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Flashcard;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
@@ -14,6 +15,7 @@ import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.time.OffsetDateTime;
@@ -31,18 +33,46 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
     private final CloudinaryService cloudinaryService;
 
     @Override
-    public Page<FlashcardResponse> getFlashcardsByLesson(UUID userId, UUID lessonId, String query, int page, int size) {
-        PageRequest pageable = PageRequest.of(page, size);
+    public Page<FlashcardResponse> getMyFlashcards(UUID userId, UUID lessonId, String query, int page, int size) {
+        PageRequest pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<Flashcard> flashcards;
-        
-        // Logic: Lấy Flashcard do User sở hữu HOẶC là Flashcard Public của lesson này
-        // Điều này đảm bảo FE không bị null nếu User chưa tạo card nhưng có card cộng đồng
         if (query != null && !query.isEmpty()) {
-            flashcards = flashcardRepository.searchPublicOrPrivateFlashcards(lessonId, userId, query, pageable);
+            flashcards = flashcardRepository.searchMyFlashcards(lessonId, userId, query, pageable);
         } else {
-            flashcards = flashcardRepository.findPublicOrPrivateFlashcards(lessonId, userId, pageable);
+            flashcards = flashcardRepository.findMyFlashcards(lessonId, userId, pageable);
         }
         return flashcards.map(flashcardMapper::toResponse);
+    }
+
+    @Override
+    public Page<FlashcardResponse> getCommunityFlashcards(UUID lessonId, String query, int page, int size, String sort) {
+        Sort sortObj = Sort.by(Sort.Direction.DESC, "claimCount"); // Default popular
+        if ("newest".equalsIgnoreCase(sort)) {
+            sortObj = Sort.by(Sort.Direction.DESC, "createdAt");
+        }
+        
+        PageRequest pageable = PageRequest.of(page, size, sortObj);
+        Page<Flashcard> flashcards;
+        
+        if (query != null && !query.isEmpty()) {
+            flashcards = flashcardRepository.searchCommunityFlashcards(lessonId, query, pageable);
+        } else {
+            flashcards = flashcardRepository.findCommunityFlashcards(lessonId, pageable);
+        }
+        
+        // Enrich with User Profile
+        return flashcards.map(f -> {
+            FlashcardResponse res = flashcardMapper.toResponse(f);
+            try {
+                // FIXED: getUserProfile requires (viewerId, targetId). 
+                // Passed null as viewerId since this is a public list view.
+                UserProfileResponse profile = userService.getUserProfile(null, f.getUserId());
+                res.setAuthorProfile(profile);
+            } catch (Exception e) {
+                res.setAuthorProfile(null);
+            }
+            return res;
+        });
     }
 
     @Override
@@ -71,11 +101,49 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         entity.setDeleted(false);
         entity.setCreatedAt(OffsetDateTime.now());
         entity.setNextReviewAt(OffsetDateTime.now());
+        entity.setClaimCount(0);
         
-        entity.setIsPublic(req.getIsPublic() != null ? req.getIsPublic() : false);
+        entity.setIsPublic(req.getIsPublic() != null ? req.getIsPublic() : true);
 
         Flashcard saved = flashcardRepository.save(entity);
         return flashcardMapper.toResponse(saved);
+    }
+
+    @Transactional
+    @Override
+    public FlashcardResponse claimFlashcard(UUID flashcardId, UUID userId) {
+        Flashcard source = flashcardRepository.findById(flashcardId)
+                .orElseThrow(() -> new AppException(ErrorCode.INVALID_INPUT));
+
+        if (source.getUserId().equals(userId)) {
+             return flashcardMapper.toResponse(source);
+        }
+
+        source.setClaimCount((source.getClaimCount() == null ? 0 : source.getClaimCount()) + 1);
+        flashcardRepository.save(source);
+
+        Flashcard copy = Flashcard.builder()
+                .lessonId(source.getLessonId())
+                .userId(userId)
+                .front(source.getFront())
+                .back(source.getBack())
+                .exampleSentence(source.getExampleSentence())
+                .imageUrl(source.getImageUrl())
+                .audioUrl(source.getAudioUrl())
+                .tags(source.getTags())
+                .isPublic(false)
+                .isDeleted(false)
+                .isSuspended(false)
+                .easeFactor(2.5f)
+                .intervalDays(0)
+                .repetitions(0)
+                .claimCount(0)
+                .createdAt(OffsetDateTime.now())
+                .nextReviewAt(OffsetDateTime.now())
+                .build();
+
+        Flashcard savedCopy = flashcardRepository.save(copy);
+        return flashcardMapper.toResponse(savedCopy);
     }
 
     @Transactional
@@ -118,8 +186,6 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
     public List<FlashcardResponse> getDueFlashcards(UUID userId, UUID lessonId, int limit) {
         OffsetDateTime now = OffsetDateTime.now();
         List<Flashcard> list;
-        // Chỉ lấy card của User (vì chỉ user mới review card của mình)
-        // Nếu muốn review card public, user phải "clone" hoặc hệ thống phải tracking progress riêng (chưa có trong context)
         if (lessonId != null) {
             list = flashcardRepository
                     .findByUserIdAndLessonIdAndIsDeletedFalseAndIsSuspendedFalseAndNextReviewAtBeforeOrderByNextReviewAtAsc(userId, lessonId, now, PageRequest.of(0, limit));
@@ -177,12 +243,10 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         if (!f.getUserId().equals(userId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-
         f.setRepetitions(0);
         f.setIntervalDays(0);
         f.setEaseFactor(2.5f);
         f.setNextReviewAt(OffsetDateTime.now());
-
         Flashcard saved = flashcardRepository.save(f);
         return flashcardMapper.toResponse(saved);
     }
@@ -195,10 +259,8 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         if (!f.getUserId().equals(userId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-
         Boolean currentStatus = f.getIsSuspended() != null && f.getIsSuspended();
         f.setIsSuspended(!currentStatus);
-
         Flashcard saved = flashcardRepository.save(f);
         return flashcardMapper.toResponse(saved);
     }
@@ -211,16 +273,11 @@ public class FlashcardServiceImpl implements com.connectJPA.LinguaVietnameseApp.
         if (!f.getUserId().equals(userId)) {
             throw new AppException(ErrorCode.UNAUTHORIZED);
         }
-
         String textToSpeak = (text == null || text.isEmpty()) ? f.getFront() : text;
-
-        byte[] audio = grpcClientService.callGenerateTtsAsync(token, textToSpeak, language)
-                .join();
-
+        byte[] audio = grpcClientService.callGenerateTtsAsync(token, textToSpeak, language).join();
         String fileName = "tts-" + flashcardId;
         var result = cloudinaryService.uploadBytes(audio, fileName, "tts", "auto");
         String url = (String) result.get("secure_url");
-
         f.setAudioUrl(url);
         Flashcard saved = flashcardRepository.save(f);
         return flashcardMapper.toResponse(saved);

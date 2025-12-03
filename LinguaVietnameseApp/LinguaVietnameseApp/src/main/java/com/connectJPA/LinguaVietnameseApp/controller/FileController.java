@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.FileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.UserMedia;
 import com.connectJPA.LinguaVietnameseApp.enums.MediaType;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserMediaRepository;
@@ -10,7 +11,9 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -23,15 +26,27 @@ public class FileController {
     private final UserMediaRepository userMediaRepository;
 
     @PostMapping(value = "/upload-temp", consumes = "multipart/form-data")
-    public ResponseEntity<?> uploadTemp(@RequestPart("file") MultipartFile file) {
+    public ResponseEntity<FileResponse> uploadTemp(@RequestPart("file") MultipartFile file) {
         log.info("Received upload request. Name: {}, Size: {}", file.getOriginalFilename(), file.getSize());
-        return ResponseEntity.ok(storageService.uploadTemp(file));
+        
+        String fileId = storageService.uploadTemp(file);
+        String fileUrl = storageService.getFileUrl(fileId);
+
+        FileResponse response = FileResponse.builder()
+                .fileId(fileId)
+                .fileUrl(fileUrl)
+                .fileName(file.getOriginalFilename())
+                .fileType(file.getContentType())
+                .size(file.getSize())
+                .build();
+
+        return ResponseEntity.ok(response);
     }
 
     @DeleteMapping("/temp")
-    public ResponseEntity<?> deleteTemp(@RequestParam String path) {
+    public ResponseEntity<Map<String, String>> deleteTemp(@RequestParam String path) {
         storageService.deleteFile(path);
-        return ResponseEntity.ok("Deleted");
+        return ResponseEntity.ok(Collections.singletonMap("message", "File deleted successfully"));
     }
 
     @GetMapping("/user/{userId}")

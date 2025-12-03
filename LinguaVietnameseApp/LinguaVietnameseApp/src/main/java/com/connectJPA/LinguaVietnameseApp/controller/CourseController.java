@@ -35,13 +35,13 @@ public class CourseController {
 
     // === LEARNER API (API CHO NGƯỜI HỌC) ===
 
-    @Operation(summary = "Get all public courses (paginated)", description = "Lấy danh sách khóa học public cho learner")
+    @Operation(summary = "Get all public courses (paginated)")
     @GetMapping
     public AppApiResponse<Page<CourseResponse>> getAllCourses(
             @RequestParam(required = false) String title,
             @RequestParam(required = false) String languageCode,
             @RequestParam(required = false) CourseType type,
-            @RequestParam(required = false) Boolean isAdminCreated, // <--- THÊM THAM SỐ NÀY
+            @RequestParam(required = false) Boolean isAdminCreated,
             Pageable pageable,
             Locale locale) {
 
@@ -51,6 +51,24 @@ public class CourseController {
                 .code(200)
                 .message(messageSource.getMessage("course.list.success", null, locale))
                 .result(courses)
+                .build();
+    }
+
+    @Operation(summary = "Get special offers (active discounts)")
+    @GetMapping("/special-offers")
+    public AppApiResponse<Page<CourseResponse>> getSpecialOffers(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String languageCode,
+            @RequestParam(required = false) Integer minRating,
+            Pageable pageable,
+            Locale locale) {
+
+        Page<CourseResponse> offers = courseService.getSpecialOffers(keyword, languageCode, minRating, pageable);
+
+        return AppApiResponse.<Page<CourseResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("course.list.success", null, locale))
+                .result(offers)
                 .build();
     }
 
@@ -66,16 +84,15 @@ public class CourseController {
         
     }
 
-        @Operation(summary = "Get all course categories", description = "Lấy danh sách các category (Enum/String)")
-        @GetMapping("/categories") // PHẢI ĐẶT TRƯỚC @GetMapping("/{id}")
-        public AppApiResponse<List<String>> getCourseCategories(Locale locale) {
-                List<String> categories = courseService.getCourseCategories(); // Giả định service này tồn tại
-                return AppApiResponse.<List<String>>builder()
-                        .code(200)
-                        .message(messageSource.getMessage("course.categories.success", null, locale))
-                        .result(categories)
-                        .build();
-        }
+        @GetMapping("/categories")
+    public AppApiResponse<List<String>> getCourseCategories(Locale locale) {
+            List<String> categories = courseService.getCourseCategories();
+            return AppApiResponse.<List<String>>builder()
+                    .code(200)
+                    .message(messageSource.getMessage("course.categories.success", null, locale))
+                    .result(categories)
+                    .build();
+    }
 
     @Operation(summary = "Get course by ID", description = "Lấy chi tiết khóa học (và version public mới nhất)")
     @GetMapping("/{id}")
@@ -123,7 +140,6 @@ public class CourseController {
             @PathVariable UUID creatorId,
             Pageable pageable,
             Locale locale) {
-        // Hàm này sẽ được dùng cho cả 'My P2P Courses' và xem profile creator
         Page<CourseResponse> courses = courseService.getCoursesByCreator(creatorId, pageable);
         return AppApiResponse.<Page<CourseResponse>>builder()
                 .code(200)

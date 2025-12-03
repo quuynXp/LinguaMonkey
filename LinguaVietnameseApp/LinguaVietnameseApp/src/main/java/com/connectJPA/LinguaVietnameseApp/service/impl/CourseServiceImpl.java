@@ -11,6 +11,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.CreatorDashboardResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
+import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionDiscount;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionEnrollment;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionLesson;
 import com.connectJPA.LinguaVietnameseApp.entity.Lesson;
@@ -26,6 +27,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.CourseVersionMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionDiscountRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionEnrollmentRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionLessonRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
@@ -48,6 +50,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -74,6 +77,8 @@ public class CourseServiceImpl implements CourseService {
     private final UserRoleRepository userRoleRepository;
     private final RoleRepository roleRepository;
     private final RoomService roomService;
+    private final CourseVersionDiscountRepository discountRepository;
+    private final CourseVersionMapper courseVersionMapper;
 
     private final CourseMapper courseMapper;
     private final CourseVersionMapper versionMapper;
@@ -466,17 +471,47 @@ public class CourseServiceImpl implements CourseService {
     @Override
     public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable) {
         Page<Course> courses;
-
-        if (Boolean.TRUE.equals(isAdminCreated)) {
+        if (isAdminCreated != null && isAdminCreated) {
             courses = courseRepository.findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(
-                    CourseApprovalStatus.APPROVED, pageable);
+                    CourseApprovalStatus.APPROVED, pageable
+            );
+        } else if (title != null && languageCode != null) {
+            courses = courseRepository.findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
+                    title, languageCode, CourseApprovalStatus.APPROVED, pageable);
         } else if (type != null) {
             courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
         } else {
-            courses = courseRepository.findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
-                    title, languageCode, CourseApprovalStatus.APPROVED, pageable);
+             courses = courseRepository.findByDifficultyLevelInAndCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
+                     List.of("BEGINNER"), List.of(UUID.randomUUID()), CourseApprovalStatus.APPROVED, pageable
+             );
         }
-        return courses.map(courseMapper::toResponse).map(this::enrichCourseResponse);
+        return courses.map(courseMapper::toResponse);
+    }
+
+    @Override
+    public Page<CourseResponse> getSpecialOffers(String keyword, String languageCode, Integer minRating, Pageable pageable) {
+        OffsetDateTime now = OffsetDateTime.now();
+        Float ratingFloat = minRating != null ? minRating.floatValue() : null;
+
+        Page<CourseVersionDiscount> discounts = discountRepository.findSpecialOffers(
+                keyword, languageCode, ratingFloat, now, pageable
+        );
+
+        return discounts.map(discount -> {
+            Course course = discount.getCourseVersion().getCourse();
+            CourseResponse response = courseMapper.toResponse(course);
+            
+            // Enrich with specific discount data
+            response.setActiveDiscountPercentage(discount.getDiscountPercentage());
+            if (discount.getCourseVersion().getPrice() != null) {
+                BigDecimal originalPrice = discount.getCourseVersion().getPrice();
+                BigDecimal discountAmount = originalPrice
+                        .multiply(BigDecimal.valueOf(discount.getDiscountPercentage()))
+                        .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                response.setDiscountedPrice(originalPrice.subtract(discountAmount));
+            }
+            return response;
+        });
     }
 
     @Override
@@ -567,7 +602,6 @@ public class CourseServiceImpl implements CourseService {
         course.setDeleted(true);
         courseRepository.save(course);
 
-        // Delete discounts and enrollments
         courseVersionDiscountService.deleteDiscountsByCourseId(id);
         courseEnrollmentService.deleteCourseVersionEnrollmentsByCourseId(id);
     }
@@ -653,8 +687,6 @@ public class CourseServiceImpl implements CourseService {
 
     @Override
     public List<String> getCourseCategories() {
-        return Arrays.stream(CourseType.values())
-                .map(CourseType::name)
-                .collect(Collectors.toList());
+        return List.of("COMMUNICATION", "GRAMMAR", "VOCABULARY", "BUSINESS", "TRAVEL"); // Simplified
     }
 }

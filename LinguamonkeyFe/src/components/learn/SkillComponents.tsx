@@ -1,35 +1,40 @@
-import React from "react";
+import React, { useState } from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useVideoPlayer } from 'expo-video';
 import { useTranslation } from "react-i18next";
 import { LessonQuestionResponse } from "../../types/dto";
-import { getCourseImage } from "../../utils/courseUtils";
+import { getLessonImage } from "../../utils/courseUtils";
+
+const MediaNotFound = ({ type }: { type: string }) => (
+    <View style={styles.notFoundContainer}>
+        <Icon name="broken-image" size={32} color="#EF4444" />
+        <Text style={styles.notFoundText}>{type} Not Found</Text>
+    </View>
+);
 
 // --- 1. LISTENING COMPONENT ---
 export const ListeningQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
     const { t } = useTranslation();
-    const mediaUrl = question.mediaUrl || "";
+    const mediaUrl = question.mediaUrl;
 
-    const player = useVideoPlayer(mediaUrl, (player) => {
+    // Logic: If url exists but player fails, we treat as not found. 
+    // Since expo-video hook doesn't easily expose error state in this simple usage, 
+    // we assume if mediaUrl is provided, it should work. 
+    // If mediaUrl is null, we check if we should hide or show "No Source".
+
+    const player = useVideoPlayer(mediaUrl ?? "", (player) => {
         player.loop = false;
-        if (mediaUrl) {
-            player.play();
-        }
+        if (mediaUrl) player.play();
     });
 
     const handlePlay = () => {
-        if (player) {
-            player.replay();
-        }
+        if (player && mediaUrl) player.replay();
     };
 
-    // FIX: Nếu không có Audio, chỉ hiển thị câu hỏi text bình thường (như trắc nghiệm)
-    // Không hiển thị biểu tượng "volume-off" gây rối mắt
     if (!mediaUrl) {
         return (
             <View style={styles.container}>
-                {/* Có thể thêm context transcript nếu có, nếu không chỉ hiện câu hỏi */}
                 {question.transcript ? (
                     <View style={styles.readingPassageBox}>
                         <Text style={styles.readingPassageText}>{question.transcript}</Text>
@@ -46,7 +51,6 @@ export const ListeningQuestionView = ({ question }: { question: LessonQuestionRe
                 <Icon name="volume-up" size={32} color="#FFF" />
                 <Text style={styles.audioButtonText}>{t("quiz.listenAgain") || "Nghe lại"}</Text>
             </TouchableOpacity>
-
             <Text style={styles.audioLabel}>{t("quiz.listenCarefully") || "Nghe kỹ đoạn hội thoại"}</Text>
             <Text style={styles.questionText}>{question.question}</Text>
         </View>
@@ -57,9 +61,21 @@ export const ListeningQuestionView = ({ question }: { question: LessonQuestionRe
 export const SpeakingQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
     const { t } = useTranslation();
     const contentToSpeak = question.transcript || question.question;
+    const [imgError, setImgError] = useState(false);
 
     return (
         <View style={styles.container}>
+            {question.mediaUrl && !imgError ? (
+                <Image
+                    source={getLessonImage(question.mediaUrl)}
+                    style={styles.contextImage}
+                    resizeMode="contain"
+                    onError={() => setImgError(true)}
+                />
+            ) : question.mediaUrl && imgError ? (
+                <MediaNotFound type="Image" />
+            ) : null}
+
             <View style={styles.speakingBox}>
                 <Icon name="record-voice-over" size={48} color="#10B981" />
                 <Text style={styles.transcriptText}>{contentToSpeak}</Text>
@@ -71,20 +87,21 @@ export const SpeakingQuestionView = ({ question }: { question: LessonQuestionRes
 
 // --- 3. READING COMPONENT ---
 export const ReadingQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
-    const { t } = useTranslation();
+    const [imgError, setImgError] = useState(false);
 
     return (
         <View style={styles.container}>
-            {/* Chỉ render ảnh nếu có URL hợp lệ */}
-            {question.mediaUrl && (
+            {question.mediaUrl && !imgError ? (
                 <Image
-                    source={getCourseImage(question.mediaUrl)}
+                    source={getLessonImage(question.mediaUrl)}
                     style={styles.contextImage}
                     resizeMode="contain"
+                    onError={() => setImgError(true)}
                 />
-            )}
+            ) : question.mediaUrl && imgError ? (
+                <MediaNotFound type="Image" />
+            ) : null}
 
-            {/* Chỉ render transcript nếu có */}
             {question.transcript && (
                 <View style={styles.readingPassageBox}>
                     <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
@@ -101,16 +118,20 @@ export const ReadingQuestionView = ({ question }: { question: LessonQuestionResp
 // --- 4. WRITING COMPONENT ---
 export const WritingQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
     const { t } = useTranslation();
+    const [imgError, setImgError] = useState(false);
 
     return (
         <View style={styles.container}>
-            {question.mediaUrl && (
+            {question.mediaUrl && !imgError ? (
                 <Image
-                    source={getCourseImage(question.mediaUrl)}
+                    source={getLessonImage(question.mediaUrl)}
                     style={styles.contextImage}
                     resizeMode="contain"
+                    onError={() => setImgError(true)}
                 />
-            )}
+            ) : question.mediaUrl && imgError ? (
+                <MediaNotFound type="Image" />
+            ) : null}
 
             <View style={styles.writingHeader}>
                 <Icon name="edit" size={28} color="#F59E0B" />
@@ -137,6 +158,24 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: 16,
         lineHeight: 26,
+    },
+    // Media Not Found
+    notFoundContainer: {
+        width: '100%',
+        height: 150,
+        backgroundColor: '#FEE2E2',
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 12,
+        borderWidth: 1,
+        borderColor: '#EF4444',
+        borderStyle: 'dashed'
+    },
+    notFoundText: {
+        marginTop: 8,
+        color: '#B91C1C',
+        fontWeight: '600'
     },
     // Listening Styles
     audioButton: {
@@ -173,7 +212,8 @@ const styles = StyleSheet.create({
         width: '100%',
         borderWidth: 1,
         borderColor: '#10B981',
-        borderStyle: 'dashed'
+        borderStyle: 'dashed',
+        marginTop: 12
     },
     transcriptText: {
         fontSize: 22,
@@ -186,7 +226,7 @@ const styles = StyleSheet.create({
     // Reading Styles
     contextImage: {
         width: '100%',
-        height: 220,
+        height: 200,
         borderRadius: 12,
         backgroundColor: '#F9FAFB',
         marginBottom: 12,
@@ -210,7 +250,8 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         marginBottom: 8,
-        alignSelf: 'flex-start'
+        alignSelf: 'flex-start',
+        marginTop: 12
     },
     writingLabel: {
         fontSize: 16,

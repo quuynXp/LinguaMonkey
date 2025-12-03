@@ -115,7 +115,11 @@
         "inbox": "Inbox",
         "no_messages": "No messages",
         "ai_assistant": "AI Assistant",
-        "click_to_view": "Click to view"
+        "click_to_view": "Click to view",
+        "room_settings": "Room Settings",
+        "leave_room": "Leave Room",
+        "change_nickname": "Change Nickname",
+        "nickname_placeholder": "Enter your nickname"
     },
     "groupStudy": {
         "title": "Group Study Rooms",
@@ -296,7 +300,9 @@
             "couples": "Couples",
             "admire": "Admire",
             "global": "Global",
-            "country": "Country"
+            "country": "Country",
+            "coins": "Coins",
+            "hours": "Hours"
         },
         "sort": {
             "highestScore": "Highest Score",
@@ -387,7 +393,8 @@
     "gender": {
         "MALE": "Male",
         "FEMALE": "Female",
-        "OTHER": "Other"
+        "OTHER": "Other",
+        "ANY": "Any"
     },
     "challenge": {
         "tab": {

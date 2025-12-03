@@ -30,8 +30,8 @@ public class FlashcardController {
         throw new IllegalArgumentException("Invalid Authorization header");
     }
 
-    @GetMapping
-    public AppApiResponse<Page<FlashcardResponse>> getFlashcards(
+    @GetMapping("/my")
+    public AppApiResponse<Page<FlashcardResponse>> getMyFlashcards(
             @PathVariable UUID lessonId,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
@@ -39,7 +39,27 @@ public class FlashcardController {
             @RequestHeader("Authorization") String authorization) {
         
         UUID tokenUserId = auth.extractTokenByUserId(extractToken(authorization));
-        Page<FlashcardResponse> result = flashcardService.getFlashcardsByLesson(tokenUserId, lessonId, query, page, size);
+        Page<FlashcardResponse> result = flashcardService.getMyFlashcards(tokenUserId, lessonId, query, page, size);
+        return AppApiResponse.<Page<FlashcardResponse>>builder()
+                .code(200)
+                .message("OK")
+                .result(result)
+                .build();
+    }
+
+    @GetMapping("/community")
+    public AppApiResponse<Page<FlashcardResponse>> getCommunityFlashcards(
+            @PathVariable UUID lessonId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) String query,
+            @RequestParam(defaultValue = "popular") String sort,
+            @RequestHeader("Authorization") String authorization) {
+        
+        // Validate token exists, even if logic handles public data
+        auth.extractTokenByUserId(extractToken(authorization));
+        
+        Page<FlashcardResponse> result = flashcardService.getCommunityFlashcards(lessonId, query, page, size, sort);
         return AppApiResponse.<Page<FlashcardResponse>>builder()
                 .code(200)
                 .message("OK")
@@ -90,6 +110,20 @@ public class FlashcardController {
                 .build();
     }
 
+    @PostMapping("/{id}/claim")
+    public AppApiResponse<FlashcardResponse> claimFlashcard(
+            @PathVariable UUID lessonId,
+            @PathVariable UUID id,
+            @RequestHeader("Authorization") String authorization) {
+        UUID userId = auth.extractTokenByUserId(extractToken(authorization));
+        FlashcardResponse response = flashcardService.claimFlashcard(id, userId);
+        return AppApiResponse.<FlashcardResponse>builder()
+                .code(200)
+                .message("Card Claimed")
+                .result(response)
+                .build();
+    }
+
     @PutMapping("/{id}")
     public AppApiResponse<FlashcardResponse> updateFlashcard(
             @PathVariable UUID lessonId,
@@ -128,7 +162,6 @@ public class FlashcardController {
         UUID userId = auth.extractTokenByUserId(extractToken(authorization));
         FlashcardResponse reviewed = flashcardService.reviewFlashcard(id, quality, userId);
 
-        // CENTRALIZED LOGGING & CHALLENGE UPDATE
         userLearningActivityService.logActivityEndAndCheckChallenges(LearningActivityEventRequest.builder()
                 .userId(userId)
                 .activityType(ActivityType.FLASHCARD_REVIEW)

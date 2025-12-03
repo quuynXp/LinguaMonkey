@@ -436,7 +436,10 @@
         "doLessonToKeepStreak": "Do a lesson today to keep your streak going!"
     },
     "home": {
-        
+        "promo": {
+            "title": "Premium Access",
+            "subtitle": "Upgrade to get unlimited access"
+        },
         "challenge": {
             "defaultDescShort": "Hoàn thành thử thách này để nhận thưởng.",
             "xp": "+{{exp}} XP",

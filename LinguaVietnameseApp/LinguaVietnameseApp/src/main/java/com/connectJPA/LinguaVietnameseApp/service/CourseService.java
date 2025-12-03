@@ -26,6 +26,10 @@ public interface CourseService {
     CourseVersionResponse createNewDraftVersion(UUID courseId);
     CourseResponse updateCourseDetails(UUID id, UpdateCourseDetailsRequest request);
 
+    Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable);
+
+    Page<CourseResponse> getSpecialOffers(String keyword, String languageCode, Integer minRating, Pageable pageable);
+
     // === LOGIC CŨ (ĐÃ ĐIỀU CHỈNH) ===
     List<CourseResponse> getRecommendedCourses(UUID userId, int limit);
     List<CourseSummaryResponse> getCourseSummariesByTeacher(UUID teacherId, int limit);
@@ -42,7 +46,6 @@ public interface CourseService {
     List<String> getCourseCategories();
     // THÊM: Phương thức tìm kiếm
     Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters);
-    Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated,
-            Pageable pageable);
+
     CreatorDashboardResponse getCourseDashboardStats(UUID courseId);
 }

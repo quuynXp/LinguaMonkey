@@ -67,4 +67,8 @@ public class Flashcard extends BaseEntity {
 
     @Column(name = "is_public")
     private Boolean isPublic;
+
+    @Column(name = "claim_count")
+    @Builder.Default
+    private Integer claimCount = 0;
 }

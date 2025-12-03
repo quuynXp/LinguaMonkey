@@ -37,6 +37,8 @@ public class CourseVersionDiscount extends BaseEntity {
     @Column(name = "end_date")
     private OffsetDateTime endDate;
 
+    private CourseVersion courseVersion;
+
     @Column(name = "is_active", nullable = false)
     private Boolean isActive = true;
 }

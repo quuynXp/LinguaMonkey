@@ -55,11 +55,11 @@ public class SearchController {
         return messages.map(chatMessageMapper::toResponse);
     }
 
-    @GetMapping("/courses")
-    public Page<CourseResponse> searchCourses(@RequestParam String keyword, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
-        Page<Course> courses = courseService.searchCourses(keyword, page, size, null);
-        return courses.map(courseMapper::toResponse);
-    }
+    // @GetMapping("/courses")
+    // public Page<CourseResponse> searchCourses(@RequestParam String keyword, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
+    //     Page<Course> courses = courseService.searchCourses(keyword, page, size, null);
+    //     return courses.map(courseMapper::toResponse);
+    // }
 
     @GetMapping("/lessons")
     public Page<LessonResponse> searchLessons(@RequestParam String keyword, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {

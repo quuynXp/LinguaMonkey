@@ -4,7 +4,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useAppStore, CallPreferences } from "../../stores/appStore"
 import { useUserStore } from "../../stores/UserStore"
-import { useUsers } from "../../hooks/useUsers" // Cần hook này
+import { useUsers } from "../../hooks/useUsers"
 import { useVideoCalls, MatchResponseData } from "../../hooks/useVideos"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { AgeRange, ProficiencyLevel, LearningPace } from "../../types/enums"
@@ -18,6 +18,7 @@ const ICON_MAP = {
   film: "movie",
   cutlery: "restaurant",
 }
+
 const getMaterialIconName = (iconName) => {
   if (!iconName) return "star"
   return ICON_MAP[iconName] || iconName
@@ -42,9 +43,8 @@ const CallSetupScreen = ({ navigation }) => {
   const { callPreferences: savedPreferences, setCallPreferences, supportLanguage: rawSupportedLangs = [] } = useAppStore()
   const supportedLanguages = rawSupportedLangs as unknown as LanguageResponse[]
 
-  // SỬ DỤNG HOOK MỚI TỪ useUsers
   const { useInterests, useCountOnlineUsers } = useUsers()
-  const { data: realOnlineCount } = useCountOnlineUsers(); // Gọi hook để lấy số người online thực tế
+  const { data: realOnlineCount } = useCountOnlineUsers()
 
   const { useFindCallPartner, useCancelFindMatch } = useVideoCalls()
   const { mutate: findMatch } = useFindCallPartner()
@@ -53,7 +53,6 @@ const CallSetupScreen = ({ navigation }) => {
   const [isSearching, setIsSearching] = useState(false)
   const [startTime, setStartTime] = useState(0)
   const [elapsedSeconds, setElapsedSeconds] = useState(0)
-  const [onlineUsersCount, setOnlineUsersCount] = useState(1) // Vẫn giữ state này, nhưng sẽ bị override/dùng giá trị từ hook
   const [searchStatusMessage, setSearchStatusMessage] = useState(t("call.searchingTitle"))
 
   const defaultPreferences: FinalCallPreferences = {
@@ -71,7 +70,7 @@ const CallSetupScreen = ({ navigation }) => {
     ...(savedPreferences ? {
       interests: savedPreferences.interests || defaultPreferences.interests,
       gender: savedPreferences.gender || defaultPreferences.gender,
-      nativeLanguage: defaultPreferences.nativeLanguage,
+      nativeLanguage: user?.nativeLanguageCode || defaultPreferences.nativeLanguage,
       learningLanguages: (savedPreferences as any).learningLanguages || defaultPreferences.learningLanguages,
       ageRange: savedPreferences.ageRange || defaultPreferences.ageRange,
       proficiency: (savedPreferences as any).proficiency || defaultPreferences.proficiency,
@@ -186,8 +185,6 @@ const CallSetupScreen = ({ navigation }) => {
           if (result.status === 'MATCHED' && result.room) {
             handleMatchSuccess(result.room);
           } else {
-            // Cập nhật queueSize chỉ mang tính phụ trợ, nhưng ưu tiên hiển thị realOnlineCount
-            // setOnlineUsersCount(result.queueSize || 1) 
             pollingTimeout.current = setTimeout(performSearch, 5000)
           }
         },
@@ -303,9 +300,7 @@ const CallSetupScreen = ({ navigation }) => {
           </Animated.View>
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
-              {/* SỬ DỤNG DỮ LIỆU ONLINE THỰC TẾ */}
               <Text style={styles.statValue}>
-                {/* Hiển thị số lượng online, nếu chưa load được thì dùng giá trị mặc định (1) */}
                 {realOnlineCount !== undefined ? realOnlineCount : 1}
               </Text>
               <Text style={styles.statLabel}>{t("call.onlineUsers")}</Text>
@@ -339,18 +334,6 @@ const CallSetupScreen = ({ navigation }) => {
         <Animated.View style={[styles.scrollContent, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
           <Text style={styles.pageTitle}>{t("call.setupTitle")}</Text>
           <Text style={styles.pageSubtitle}>{t("call.setupDescription")}</Text>
-
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {t("call.yourNativeLanguage")} <Text style={styles.subLabel}>(What you can teach)</Text>
-            </Text>
-            <View style={styles.readOnlyLangContainer}>
-              {getCountryFlag(preferences.nativeLanguage, 20)}
-              <Text style={styles.readOnlyLangText}>
-                {supportedLanguages.find(l => l.languageCode === preferences.nativeLanguage)?.languageName || preferences.nativeLanguage}
-              </Text>
-            </View>
-          </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
@@ -444,8 +427,6 @@ const styles = createScaledSheet({
   section: { marginBottom: 28 },
   sectionTitle: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 },
   subLabel: { fontWeight: '400', fontSize: 14, color: '#666' },
-  readOnlyLangContainer: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 12, backgroundColor: '#E0E7FF', borderWidth: 1, borderColor: '#4F46E5', gap: 8, width: 'auto', alignSelf: 'flex-start', marginBottom: 16 },
-  readOnlyLangText: { fontSize: 16, fontWeight: '700', color: '#4F46E5' },
   languagesGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   languageOption: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FFFFFF", gap: 6 },
   selectedLanguageOption: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },

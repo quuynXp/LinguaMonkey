@@ -85,30 +85,30 @@ public class LearningContentScheduler {
         userReminderRepository.saveAll(reminders);
     }
 
-    @Scheduled(cron = "0 0 * * * ?", zone = "UTC")
-    @Transactional(readOnly = true)
-    public void sendFlashcardReminders() {
-        OffsetDateTime now = OffsetDateTime.now();
-        List<UUID> userIds = flashcardRepository.findUserIdsWithPendingReviews(now);
+    // @Scheduled(cron = "0 0 * * * ?", zone = "UTC")
+    // @Transactional(readOnly = true)
+    // public void sendFlashcardReminders() {
+    //     OffsetDateTime now = OffsetDateTime.now();
+    //     List<UUID> userIds = flashcardRepository.findUserIdsWithPendingReviews(now);
 
-        if (userIds.isEmpty()) return;
+    //     if (userIds.isEmpty()) return;
 
-        log.info("Sending flashcard reminders to {} users.", userIds.size());
+    //     log.info("Sending flashcard reminders to {} users.", userIds.size());
 
-        List<User> users = userRepository.findAllById(userIds);
+    //     List<User> users = userRepository.findAllById(userIds);
         
-        for (User user : users) {
-            String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
-            String[] message = NotificationI18nUtil.getLocalizedMessage("FLASHCARD_REMINDER", langCode);
+    //     for (User user : users) {
+    //         String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
+    //         String[] message = NotificationI18nUtil.getLocalizedMessage("FLASHCARD_REMINDER", langCode);
 
-            NotificationRequest request = NotificationRequest.builder()
-                    .userId(user.getUserId())
-                    .title(message[0])
-                    .content(message[1])
-                    .type("FLASHCARD_REMINDER")
-                    .payload("{\"screen\":\"Learn\"}")
-                    .build();
-            notificationService.createPushNotification(request);
-        }
-    }
+    //         NotificationRequest request = NotificationRequest.builder()
+    //                 .userId(user.getUserId())
+    //                 .title(message[0])
+    //                 .content(message[1])
+    //                 .type("FLASHCARD_REMINDER")
+    //                 .payload("{\"screen\":\"Learn\"}")
+    //                 .build();
+    //         notificationService.createPushNotification(request);
+    //     }
+    // }
 }

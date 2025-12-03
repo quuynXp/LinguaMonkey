@@ -40,7 +40,8 @@ export const courseKeys = {
   discounts: (params: any) => [...courseKeys.all, "discounts", params] as const,
   reviews: (params: any) => [...courseKeys.all, "reviews", params] as const,
   creatorStats: (creatorId: string) => [...courseKeys.all, "creatorStats", creatorId] as const,
-  courseStats: (courseId: string) => [...courseKeys.all, "courseStats", courseId] as const, // New key
+  courseStats: (courseId: string) => [...courseKeys.all, "courseStats", courseId] as const,
+  specialOffers: (params: any) => [...courseKeys.all, "specialOffers", params] as const, // New Key
 };
 
 export const useCourses = () => {
@@ -74,6 +75,33 @@ export const useCourses = () => {
         return mapPageResponse(data.result, page, size);
       },
       staleTime: 5 * 60 * 1000,
+    });
+  };
+
+  // --- New Hook for Special Offers ---
+  const useSpecialOffers = (params?: {
+    keyword?: string;
+    languageCode?: string;
+    minRating?: number;
+    page?: number;
+    size?: number;
+  }) => {
+    const { keyword, languageCode, minRating, page = 0, size = 10 } = params || {};
+    return useQuery({
+      queryKey: courseKeys.specialOffers({ keyword, languageCode, minRating, page, size }),
+      queryFn: async () => {
+        const qp = new URLSearchParams();
+        qp.append("page", page.toString());
+        qp.append("size", size.toString());
+        if (keyword) qp.append("keyword", keyword);
+        if (languageCode) qp.append("languageCode", languageCode);
+        if (minRating) qp.append("minRating", minRating.toString());
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseResponse>>>(
+          `/api/v1/courses/special-offers?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, page, size);
+      }
     });
   };
 
@@ -218,7 +246,6 @@ export const useCourses = () => {
     });
   };
 
-  // --- New Hook for Course Specific Stats ---
   const useCourseStats = (courseId?: string) => {
     return useQuery({
       queryKey: courseKeys.courseStats(courseId!),
@@ -695,12 +722,13 @@ export const useCourses = () => {
 
   return {
     useAllCourses,
+    useSpecialOffers, // Export new hook
     useCourse,
     useCourseVersions,
     useGetVersion,
     useCreatorCourses,
     useCreatorStats,
-    useCourseStats, // Exported new hook
+    useCourseStats,
     useLoadReplies,
     useRecommendedCourses,
     useCourseLevels,

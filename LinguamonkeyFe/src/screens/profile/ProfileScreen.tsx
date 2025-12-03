@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   Alert,
   ScrollView,
@@ -11,6 +11,7 @@ import {
   Clipboard,
   Dimensions,
   FlatList,
+  Pressable,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
@@ -32,55 +33,118 @@ import { useFriendships, AllFriendshipsParams } from '../../hooks/useFriendships
 import { useUsers } from '../../hooks/useUsers';
 import { FriendshipStatus } from '../../types/enums';
 import FileUploader from '../../components/common/FileUploader';
+import { useToast } from '../../utils/useToast';
 
 const { width } = Dimensions.get('window');
 
 const ActivityHeatmap = ({ userId }: { userId: string }) => {
   const { data: historyData, isLoading } = useGetStudyHistory(userId, 'year');
   const { t } = useTranslation();
+  const { showToast } = useToast();
 
-  if (isLoading) return <ActivityIndicator size="small" />;
+  const chartData = useMemo(() => {
+    if (!historyData) return [];
 
-  const today = new Date();
-  const days = Array.from({ length: 84 }).map((_, i) => {
-    const d = new Date();
-    d.setDate(today.getDate() - (83 - i));
-    const dateStr = d.toISOString().split('T')[0];
+    const today = new Date();
+    // Calculate start date: Go back 16 weeks, then find the Sunday of that week
+    const numWeeks = 16;
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - (numWeeks * 7));
+    const dayOfWeek = startDate.getDay(); // 0 is Sunday
+    startDate.setDate(startDate.getDate() - dayOfWeek); // Align to Sunday
 
-    const session = historyData?.sessions?.find(s => {
-      if (!s.date) return false;
-      const sDate = new Date(s.date).toISOString().split('T')[0];
-      return sDate === dateStr;
-    });
+    const weeks = [];
+    let currentWeek = [];
 
-    const count = session ? Math.floor((session.duration || 0) / 60) : 0;
-    return { date: dateStr, count };
-  });
+    // Generate dates until we reach today (or end of this week)
+    const itrDate = new Date(startDate);
+    const endDate = new Date(today);
+    endDate.setDate(today.getDate() + (6 - today.getDay())); // Fill until end of current week
 
-  const getColor = (count: number) => {
-    if (count === 0) return '#ebedf0';
-    if (count < 15) return '#9be9a8';
-    if (count < 30) return '#40c463';
-    if (count < 60) return '#30a14e';
-    return '#216e39';
+    while (itrDate <= endDate) {
+      const dateStr = itrDate.toISOString().split('T')[0];
+
+      // Data Mapping Logic
+      let count = 0;
+      if (historyData.sessions && Array.isArray(historyData.sessions)) {
+        const sessions = historyData.sessions.filter((s: any) => {
+          if (!s.date) return false;
+          return s.date.startsWith(dateStr);
+        });
+        count = sessions.reduce((acc: number, curr: any) => acc + (Math.floor((curr.duration || 0) / 60)), 0);
+      } else if (historyData[dateStr]) {
+        count = historyData[dateStr];
+      }
+
+      currentWeek.push({ date: dateStr, count });
+
+      if (currentWeek.length === 7) {
+        weeks.push(currentWeek);
+        currentWeek = [];
+      }
+
+      itrDate.setDate(itrDate.getDate() + 1);
+    }
+
+    if (currentWeek.length > 0) weeks.push(currentWeek);
+
+    return weeks;
+  }, [historyData]);
+
+  const getLevelColor = (count: number) => {
+    if (count === 0) return '#EBEDF0';
+    if (count <= 15) return '#9BE9A8';
+    if (count <= 30) return '#40C463';
+    if (count <= 60) return '#30A14E';
+    return '#216E39';
   };
+
+  const handleDayPress = (date: string, count: number) => {
+    showToast({ type: 'info', message: `${date}: ${count} mins activity` });
+  };
+
+  if (isLoading) {
+    return (
+      <View style={[styles.heatmapContainer, { height: 180, justifyContent: 'center' }]}>
+        <ActivityIndicator size="small" color="#2196F3" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.heatmapContainer}>
-      <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
-      <View style={styles.heatmapGrid}>
-        {days.map((day, index) => (
-          <View
-            key={index}
-            style={[styles.heatmapCell, { backgroundColor: getColor(day.count) }]}
-          />
-        ))}
+      <View style={styles.heatmapHeader}>
+        <Text style={styles.sectionTitle}>{t('profile.activity')}</Text>
+        <Text style={styles.heatmapSubtext}>{t('common.last_months', { count: 4 })}</Text>
       </View>
+
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View style={styles.heatmapGraph}>
+          {chartData.map((week, wIndex) => (
+            <View key={wIndex} style={styles.heatmapColumn}>
+              {week.map((day) => (
+                <Pressable
+                  key={day.date}
+                  style={[
+                    styles.heatmapCell,
+                    { backgroundColor: getLevelColor(day.count) }
+                  ]}
+                  onPress={() => handleDayPress(day.date, day.count)}
+                />
+              ))}
+            </View>
+          ))}
+        </View>
+      </ScrollView>
+
       <View style={styles.heatmapLegend}>
-        <Text style={styles.legendText}>Less</Text>
-        <View style={[styles.heatmapCell, { backgroundColor: '#ebedf0' }]} />
-        <View style={[styles.heatmapCell, { backgroundColor: '#30a14e' }]} />
-        <Text style={styles.legendText}>More</Text>
+        <Text style={styles.legendText}>{t('common.less')}</Text>
+        <View style={[styles.heatmapCell, { backgroundColor: '#EBEDF0' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#9BE9A8' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#40C463' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#30A14E' }]} />
+        <View style={[styles.heatmapCell, { backgroundColor: '#216E39' }]} />
+        <Text style={styles.legendText}>{t('common.more')}</Text>
       </View>
     </View>
   );
@@ -370,7 +434,6 @@ const ProfileScreen: React.FC = () => {
     if (!user?.userId) return;
     setUploading(true);
     try {
-      // API uploadTemp thường trả về object, cần lấy fileId hoặc đường dẫn
       const tempPath = response?.fileId || response?.id || response?.url || response;
 
       await updateUserAvatar(tempPath);
@@ -401,7 +464,6 @@ const ProfileScreen: React.FC = () => {
             </View>
           )}
 
-          {/* FIX: Đưa style position absolute vào trực tiếp FileUploader */}
           <FileUploader
             mediaType="image"
             allowEditing={true}
@@ -538,11 +600,14 @@ const styles = createScaledSheet({
   expLabel: { fontSize: 12, color: '#374151', fontWeight: '700' },
   expBarBg: { height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden', marginTop: 6 },
   expBarFill: { height: 8, backgroundColor: '#4F46E5', borderRadius: 4 },
-  heatmapContainer: { backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, elevation: 2 },
-  heatmapGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: 'center' },
-  heatmapCell: { width: 10, height: 10, borderRadius: 2 },
-  heatmapLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 4, justifyContent: 'flex-end' },
-  legendText: { fontSize: 10, color: '#666' },
+  heatmapContainer: { backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, elevation: 2, minHeight: 180 },
+  heatmapHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
+  heatmapSubtext: { fontSize: 12, color: '#6B7280' },
+  heatmapGraph: { flexDirection: 'row', gap: 4, paddingBottom: 4 },
+  heatmapColumn: { gap: 4, justifyContent: 'flex-start' },
+  heatmapCell: { width: 12, height: 12, borderRadius: 2 },
+  heatmapLegend: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 4, justifyContent: 'flex-end' },
+  legendText: { fontSize: 10, color: '#666', marginHorizontal: 4 },
   card: { backgroundColor: '#fff', padding: 16, borderRadius: 20, marginBottom: 16, elevation: 2 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingRight: 4 },
   sectionTitle: { fontSize: 17, fontWeight: '700', color: '#1F2937', paddingLeft: 4 },

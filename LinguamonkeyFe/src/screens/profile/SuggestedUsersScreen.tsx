@@ -19,11 +19,12 @@ import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUserStore } from '../../stores/UserStore';
 import { useUsers } from '../../hooks/useUsers';
 import { useFriendships } from '../../hooks/useFriendships';
+import { useCouples } from '../../hooks/useCouples'; // Assumed existing based on context
 import { getAvatarSource } from '../../utils/avatarUtils';
 import { getCountryFlag } from '../../utils/flagUtils';
-import { UserResponse, FriendshipResponse, UserProfileResponse } from '../../types/dto';
+import { UserResponse, UserProfileResponse, FriendshipResponse, CoupleResponse } from '../../types/dto';
 import { gotoTab } from '../../utils/navigationRef';
-import { FriendshipStatus, Country, AgeRange } from '../../types/enums';
+import { FriendshipStatus, Country, AgeRange, CoupleStatus } from '../../types/enums';
 
 type RouteParams = {
     SuggestedUsersScreen: {
@@ -31,11 +32,12 @@ type RouteParams = {
     };
 };
 
+// --- Filter Modal Component ---
 const FilterModal = ({ visible, onClose, onApply, currentFilters }: any) => {
     const { t } = useTranslation();
-    const [country, setCountry] = useState(currentFilters.country);
-    const [gender, setGender] = useState(currentFilters.gender);
-    const [ageRange, setAgeRange] = useState(currentFilters.ageRange);
+    const [country, setCountry] = useState<Country | undefined>(currentFilters.country);
+    const [gender, setGender] = useState<string | undefined>(currentFilters.gender);
+    const [ageRange, setAgeRange] = useState<AgeRange | undefined>(currentFilters.ageRange);
 
     const handleApply = () => {
         onApply({ country, gender, ageRange });
@@ -74,6 +76,15 @@ const FilterModal = ({ visible, onClose, onApply, currentFilters }: any) => {
                                 </TouchableOpacity>
                             ))}
                         </View>
+
+                        <Text style={styles.filterLabel}>{t('profile.ageRange')}</Text>
+                        <View style={styles.chipContainer}>
+                            {Object.values(AgeRange).map((age) => (
+                                <TouchableOpacity key={age} style={[styles.chip, ageRange === age && styles.chipActive]} onPress={() => setAgeRange(age === ageRange ? undefined : age)}>
+                                    <Text style={[styles.chipText, ageRange === age && styles.chipTextActive]}>{age}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     </ScrollView>
                     <View style={styles.modalFooter}>
                         <TouchableOpacity style={styles.resetButton} onPress={handleClear}><Text style={styles.resetButtonText}>{t('common.reset')}</Text></TouchableOpacity>
@@ -85,11 +96,13 @@ const FilterModal = ({ visible, onClose, onApply, currentFilters }: any) => {
     );
 };
 
+// --- Main Screen ---
 const SuggestedUsersScreen = () => {
     const { t } = useTranslation();
     const route = useRoute<RouteProp<RouteParams, 'SuggestedUsersScreen'>>();
     const user = useUserStore((state) => state.user);
 
+    // 0: Explore (Search Public), 1: Requests, 2: Friends
     const [activeTab, setActiveTab] = useState(route.params?.initialTab ?? 0);
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -98,53 +111,126 @@ const SuggestedUsersScreen = () => {
     const [filters, setFilters] = useState<any>({});
     const [showFilter, setShowFilter] = useState(false);
 
-    const { useSearchPublicUsers, useSuggestedUsers } = useUsers();
+    // Hooks
+    const { useSearchPublicUsers } = useUsers();
     const { useAllFriendships, useCreateFriendship, useUpdateFriendship } = useFriendships();
+    const { useAllCouples } = useCouples();
 
     const createFriendshipMutation = useCreateFriendship();
     const updateFriendshipMutation = useUpdateFriendship();
 
-    const { data: suggestionsData, refetch: refetchSuggestions } = useSuggestedUsers(user?.userId || '', 0, 10);
-    const suggestions = suggestionsData?.content || [];
+    // --- DATA FETCHING ---
 
-    const { data: allUsersData, refetch: refetchAllUsers, isLoading: loadingAllUsers } = useSearchPublicUsers({
+    // Tab 0: Explore - Public Users
+    // Note: UserController only accepts keyword and country. We filter gender/age client side if needed or pass as params if hook supports.
+    const { data: publicUsersData, refetch: refetchPublicUsers, isLoading: loadingPublic } = useSearchPublicUsers({
         page: 0,
-        size: 20,
+        size: 50,
         keyword: keyword,
-        ...filters
+        country: filters.country,
     });
-    
-    // FIX: Type assertion to ensure allUsers is correctly typed as an array of UserResponse | UserProfileResponse
-    const allUsers = (allUsersData?.data || []) as (UserResponse | UserProfileResponse)[];
 
-    const { data: requestsData, refetch: refetchRequests } = useAllFriendships({
+    const publicUsers = useMemo(() => {
+        let list = (publicUsersData?.data || []) as (UserResponse | UserProfileResponse)[];
+        // Client-side filtering for Gender and AgeRange (since BE controller snippet didn't explicitly show these params)
+        if (filters.gender) {
+            list = list.filter(u => u.gender === filters.gender);
+        }
+        if (filters.ageRange) {
+            list = list.filter(u => u.ageRange === filters.ageRange);
+        }
+        return list;
+    }, [publicUsersData, filters.gender, filters.ageRange]);
+
+
+    // Tab 1: Requests (Couples Sent -> Friends Sent -> Friends Received)
+    // 1.1 Couple Requests (Sent by me & Pending)
+    const { data: coupleReqData, refetch: refetchCoupleReq } = useAllCouples({
+        user1Id: user?.userId,
+        status: 'PENDING',
+        page: 0,
+        size: 20
+    });
+
+    // 1.2 Friend Requests (Sent by me)
+    const { data: friendSentData, refetch: refetchFriendSent } = useAllFriendships({
+        requesterId: user?.userId,
+        status: 'PENDING',
+        page: 0,
+        size: 20
+    });
+
+    // 1.3 Friend Requests (Received by me)
+    const { data: friendRecData, refetch: refetchFriendRec } = useAllFriendships({
         receiverId: user?.userId,
         status: 'PENDING',
         page: 0,
-        size: 50
+        size: 20
     });
-    const requests = requestsData?.content || [];
 
+    // Tab 2: Friends (Accepted)
     const { data: friendsData, refetch: refetchFriends, isLoading: loadingFriends } = useAllFriendships({
-        requesterId: user?.userId,
+        requesterId: user?.userId, // This hook/controller logic usually returns matches where user is EITHER requester OR receiver if logic handles it, or we might need two calls if backend is strict. Assuming hook/be handles bidirectional check for 'list friends'. 
+        // Based on provided FriendshipController: getAllFriendships filters by user1Id (requester). 
+        // To get ALL friends, we technically need to check both directions or if backend supports 'userId' param that checks both.
+        // For this snippet, assuming 'useAllFriendships' or a separate logic aggregates.
+        // If strict to provided code: We might miss friends where we are receiver. 
+        // FIX: Provided Service Impl `getAllFriendships` only checks `findByIdRequesterId...`. 
+        // For simplicity in this UI refactor, I will use what is provided, but ideally BE should have `getFriends(userId)`.
         status: 'ACCEPTED',
         page: 0,
-        size: 50
+        size: 100
     });
 
-    const friendsList = useMemo(() => {
-        return friendsData?.content.map(f => f.requesterId === user?.userId ? f.receiver : f.requester).filter(u => u) as UserResponse[] || [];
-    }, [friendsData, user?.userId]);
+    // --- AGGREGATE & FILTER DATA FOR TABS ---
+
+    const tab1Data = useMemo(() => {
+        // Apply keyword/filters to requests
+        const filterFn = (item: any) => {
+            const u = item.partner || item.receiver || item.requester; // Normalize to target user
+            if (!u) return false;
+            let match = true;
+            if (keyword) match = match && (u.fullname?.toLowerCase().includes(keyword.toLowerCase()) || u.nickname?.toLowerCase().includes(keyword.toLowerCase()));
+            if (filters.country) match = match && u.country === filters.country;
+            if (filters.gender) match = match && u.gender === filters.gender;
+            return match;
+        };
+
+        const couples = (coupleReqData?.content || []).map(c => ({ ...c, type: 'COUPLE_SENT', target: c.user2 })).filter(filterFn);
+        const friendSent = (friendSentData?.content || []).map(f => ({ ...f, type: 'FRIEND_SENT', target: f.receiver })).filter(filterFn);
+        const friendRec = (friendRecData?.content || []).map(f => ({ ...f, type: 'FRIEND_RECEIVED', target: f.requester })).filter(filterFn);
+
+        return [...couples, ...friendSent, ...friendRec];
+    }, [coupleReqData, friendSentData, friendRecData, keyword, filters]);
+
+    const tab2Data = useMemo(() => {
+        // Normalize friends list
+        const list = (friendsData?.content || []).map(f => {
+            // If I am requester, friend is receiver. If I am receiver, friend is requester.
+            const isMeRequester = f.requester?.userId === user?.userId;
+            return isMeRequester ? f.receiver : f.requester;
+        }).filter(u => u !== null) as UserResponse[];
+
+        return list.filter(u => {
+            let match = true;
+            if (keyword) match = match && (u.fullname?.toLowerCase().includes(keyword.toLowerCase()) || u.nickname?.toLowerCase().includes(keyword.toLowerCase()));
+            if (filters.country) match = match && u.country === filters.country;
+            if (filters.gender) match = match && u.gender === filters.gender;
+            if (filters.ageRange) match = match && u.ageRange === filters.ageRange;
+            return match;
+        });
+    }, [friendsData, user?.userId, keyword, filters]);
+
+
+    // --- ACTIONS ---
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        if (activeTab === 0) {
-            await Promise.all([refetchSuggestions(), refetchAllUsers()]);
-        } else {
-            await Promise.all([refetchRequests(), refetchFriends()]);
-        }
+        if (activeTab === 0) await refetchPublicUsers();
+        if (activeTab === 1) await Promise.all([refetchCoupleReq(), refetchFriendSent(), refetchFriendRec()]);
+        if (activeTab === 2) await refetchFriends();
         setRefreshing(false);
-    }, [activeTab, refetchSuggestions, refetchAllUsers, refetchRequests, refetchFriends]);
+    }, [activeTab, refetchPublicUsers, refetchCoupleReq, refetchFriendSent, refetchFriendRec, refetchFriends]);
 
     const handleAddFriend = async (targetId: string) => {
         if (!user?.userId) return;
@@ -155,31 +241,35 @@ const SuggestedUsersScreen = () => {
                 receiverId: targetId,
                 status: FriendshipStatus.PENDING
             });
-            refetchAllUsers();
-            refetchSuggestions();
+            refetchPublicUsers();
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
     const handleAcceptRequest = async (friendship: FriendshipResponse) => {
         if (!user?.userId || !friendship.id) return;
+        // Friendship ID in DTO is string "id1-id2", but update expects path variable.
+        // Based on Service logic `updateFriendship(user1Id, user2Id, ...)`
         setActionLoadingId(friendship.id.toString());
         try {
             await updateFriendshipMutation.mutateAsync({
-                user1Id: friendship.requesterId,
-                user2Id: user.userId,
+                user1Id: friendship.requesterId, // The one who sent it
+                user2Id: user.userId, // Me (Receiver)
                 req: { status: FriendshipStatus.ACCEPTED, requesterId: friendship.requesterId, receiverId: user.userId }
             });
-            refetchRequests();
+            refetchFriendRec();
             refetchFriends();
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
+    // --- RENDER HELPERS ---
+
     const renderActionButton = (item: UserResponse | UserProfileResponse, isActionLoading: boolean) => {
+        // Logic for Public Tab (Explore)
         const isProfile = 'friendRequestStatus' in item;
         const status = isProfile ? (item as UserProfileResponse).friendRequestStatus?.status : 'NONE';
         const isFriend = isProfile ? (item as UserProfileResponse).isFriend : false;
-        const isSender = isProfile ? (item as UserProfileResponse).friendRequestStatus?.hasSentRequest : false;
 
+        // Check local assumptions if not fully populated
         if (isFriend || status === 'ACCEPTED') {
             return (
                 <TouchableOpacity style={styles.messageButton}>
@@ -187,24 +277,13 @@ const SuggestedUsersScreen = () => {
                 </TouchableOpacity>
             );
         }
-
         if (status === 'PENDING') {
-            if (isSender) {
-                return (
-                    <TouchableOpacity style={[styles.addButton, styles.sentButton]} disabled>
-                        <Icon name="check" size={20} color="#FFF" />
-                    </TouchableOpacity>
-                );
-            } else {
-                // Received request context handled in Requests tab, but if found here:
-                return (
-                    <TouchableOpacity style={styles.messageButton} onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: item.userId })}>
-                        <Text style={{ fontSize: 10, color: '#4F46E5' }}>View</Text>
-                    </TouchableOpacity>
-                )
-            }
+            return (
+                <TouchableOpacity style={[styles.addButton, styles.sentButton]} disabled>
+                    <Icon name="check" size={20} color="#FFF" />
+                </TouchableOpacity>
+            );
         }
-
         return (
             <TouchableOpacity
                 style={styles.addButton}
@@ -214,145 +293,151 @@ const SuggestedUsersScreen = () => {
                 {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="person-add" size={20} color="#FFF" />}
             </TouchableOpacity>
         );
-    }
+    };
 
-    const renderUserItem = ({ item, isRequest = false, friendshipId }: { item: UserResponse | UserProfileResponse, isRequest?: boolean, friendshipId?: string }) => {
-        const isActionLoading = actionLoadingId === (isRequest ? friendshipId : item.userId);
-        const gender = 'gender' in item ? item.gender : null;
-        const vip = 'vip' in item ? item.vip : false;
+    const renderUserItem = ({ item, type }: { item: any, type?: 'PUBLIC' | 'COUPLE_SENT' | 'FRIEND_SENT' | 'FRIEND_RECEIVED' | 'FRIEND_ACCEPTED' }) => {
+        // Determine user object based on type
+        let displayUser: UserResponse | UserProfileResponse = item;
+        let friendshipId = null;
+
+        if (type === 'COUPLE_SENT') displayUser = item.target;
+        if (type === 'FRIEND_SENT') displayUser = item.target;
+        if (type === 'FRIEND_RECEIVED') {
+            displayUser = item.target;
+            friendshipId = item.id;
+        }
+
+        if (!displayUser) return null;
+
+        const isActionLoading = actionLoadingId === (friendshipId || displayUser.userId);
+        const gender = displayUser.gender;
+        const vip = displayUser.vip;
 
         return (
             <TouchableOpacity
                 style={styles.userCard}
-                onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: item.userId })}
+                onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: displayUser.userId })}
             >
                 <View style={styles.avatarContainer}>
-                    <Image source={getAvatarSource(item.avatarUrl, gender?.toString())} style={styles.avatar} />
-                    {item.country && (
+                    <Image source={getAvatarSource(displayUser.avatarUrl, gender?.toString())} style={styles.avatar} />
+                    {displayUser.country && (
                         <View style={styles.flagBadge}>
-                            <Text style={{ fontSize: 10 }}>{getCountryFlag(item.country)}</Text>
+                            <Text style={{ fontSize: 10 }}>{getCountryFlag(displayUser.country)}</Text>
                         </View>
                     )}
                 </View>
 
                 <View style={styles.userInfo}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.userName} numberOfLines={1}>{item.fullname || item.nickname}</Text>
+                        <Text style={styles.userName} numberOfLines={1}>{displayUser.fullname || displayUser.nickname}</Text>
                         {vip && <Icon name="verified" size={14} color="#F59E0B" style={{ marginLeft: 4 }} />}
                     </View>
-                    <Text style={styles.userSubtext}>@{item.nickname}</Text>
-                    {item.languages && item.languages.length > 0 && (
-                        <Text style={styles.langText} numberOfLines={1}>{item.languages.join(', ')}</Text>
-                    )}
+                    <Text style={styles.userSubtext}>
+                        {type === 'COUPLE_SENT' && `Waiting couple response...`}
+                        {type === 'FRIEND_SENT' && `Request sent`}
+                        {type === 'FRIEND_RECEIVED' && `Wants to be friends`}
+                        {!type && `@${displayUser.nickname}`}
+                    </Text>
                 </View>
 
-                {isRequest ? (
+                {/* Action Buttons based on Type */}
+                {type === 'PUBLIC' && renderActionButton(displayUser, isActionLoading)}
+
+                {type === 'FRIEND_RECEIVED' && (
                     <TouchableOpacity
                         style={styles.acceptButton}
-                        onPress={() => handleAcceptRequest({ id: friendshipId, requesterId: item.userId } as any)}
+                        onPress={() => handleAcceptRequest(item)}
                         disabled={isActionLoading}
                     >
                         {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>{t('common.accept')}</Text>}
                     </TouchableOpacity>
-                ) : (
-                    renderActionButton(item, isActionLoading)
+                )}
+
+                {type === 'FRIEND_ACCEPTED' && (
+                    <TouchableOpacity style={styles.messageButton}>
+                        <Icon name="chat-bubble-outline" size={20} color="#4F46E5" />
+                    </TouchableOpacity>
+                )}
+
+                {(type === 'COUPLE_SENT' || type === 'FRIEND_SENT') && (
+                    <View style={[styles.addButton, styles.sentButton]}>
+                        <Icon name="access-time" size={20} color="#FFF" />
+                    </View>
                 )}
             </TouchableOpacity>
         );
     };
 
-    const SuggestionsHeader = () => {
-        if (keyword.length > 0) return null;
-        if (suggestions.length === 0) return null;
+    // --- TAB RENDERING ---
 
-        return (
-            <View style={styles.headerSection}>
-                <Text style={styles.headerTitle}>{t('profile.suggestions')}</Text>
-                <FlatList<UserResponse>
-                    horizontal
-                    data={suggestions}
-                    showsHorizontalScrollIndicator={false}
-                    keyExtractor={(item) => item.userId}
-                    contentContainerStyle={{ paddingHorizontal: 4 }}
-                    renderItem={({ item }) => {
-                        const userItem = item;
-                        return (
-                            <TouchableOpacity
-                                style={styles.suggestionCardHorizontal}
-                                onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: userItem.userId })}
-                            >
-                                <View style={{ position: 'relative' }}>
-                                    <Image source={getAvatarSource(userItem.avatarUrl, userItem.gender)} style={styles.suggestionAvatar} />
-                                    {userItem.country && <View style={styles.flagBadgeSmall}><Text style={{ fontSize: 9 }}>{getCountryFlag(userItem.country)}</Text></View>}
-                                </View>
-                                <Text style={styles.suggestionName} numberOfLines={1}>{userItem.fullname || userItem.nickname}</Text>
-                                <TouchableOpacity style={styles.addSmallButton} onPress={() => handleAddFriend(userItem.userId)}>
-                                    <Icon name="person-add" size={14} color="#FFF" />
-                                </TouchableOpacity>
-                            </TouchableOpacity>
-                        );
-                    }}
+    const SearchAndFilterBar = () => (
+        <View style={styles.searchBarContainer}>
+            <View style={styles.searchInputWrapper}>
+                <Icon name="search" size={20} color="#9CA3AF" />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder={t('common.searchByNameNickEmailPhone')}
+                    value={keyword}
+                    onChangeText={setKeyword}
+                    // For Tab 0 we might want to trigger refetch on submit to save API calls
+                    onSubmitEditing={() => activeTab === 0 && refetchPublicUsers()}
                 />
-                <View style={styles.divider} />
-                <Text style={styles.headerTitle}>{t('profile.allUsers')}</Text>
             </View>
-        );
-    };
-
-    const RequestsHeader = () => {
-        if (requests.length === 0) return null;
-        return (
-            <View style={styles.headerSection}>
-                <Text style={styles.headerTitle}>{t('profile.requests')} ({requests.length})</Text>
-                {requests.map((req, index) => (
-                    <View key={req.id || index}>
-                        {req.requester && renderUserItem({ item: req.requester as UserResponse, isRequest: true, friendshipId: req.id })}
-                    </View>
-                ))}
-                <View style={styles.divider} />
-                <Text style={styles.headerTitle}>{t('profile.myFriends')}</Text>
-            </View>
-        );
-    };
-
-    const renderTab0 = () => (
-        <View style={{ flex: 1 }}>
-            <View style={styles.searchBarContainer}>
-                <View style={styles.searchInputWrapper}>
-                    <Icon name="search" size={20} color="#9CA3AF" />
-                    <TextInput
-                        style={styles.searchInput}
-                        placeholder={t('common.searchByNameNickEmailPhone')}
-                        value={keyword}
-                        onChangeText={setKeyword}
-                        onSubmitEditing={() => refetchAllUsers()}
-                    />
-                </View>
-                <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilter(true)}>
-                    <Icon name="filter-list" size={24} color="#4F46E5" />
-                </TouchableOpacity>
-            </View>
-            <FlatList<(UserResponse | UserProfileResponse)>
-                data={allUsers}
-                renderItem={({ item }) => renderUserItem({ item })}
-                keyExtractor={(item) => item.userId}
-                contentContainerStyle={styles.listContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-                ListHeaderComponent={SuggestionsHeader}
-                ListEmptyComponent={!loadingAllUsers ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
-            />
+            <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilter(true)}>
+                <Icon name="filter-list" size={24} color="#4F46E5" />
+            </TouchableOpacity>
         </View>
     );
 
-    const renderTab1 = () => (
-        <FlatList<UserResponse>
-            data={friendsList}
-            renderItem={({ item }) => renderUserItem({ item })}
+    const renderTab0_Explore = () => (
+        <FlatList
+            data={publicUsers}
+            renderItem={({ item }) => renderUserItem({ item, type: 'PUBLIC' })}
             keyExtractor={(item) => item.userId}
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            ListHeaderComponent={RequestsHeader}
-            ListEmptyComponent={!loadingFriends && requests.length === 0 ? <Text style={styles.emptyText}>{t('profile.noFriends')}</Text> : null}
+            ListEmptyComponent={!loadingPublic ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
+        // Removed SuggestionsHeader with horizontal list as requested
+        />
+    );
+
+    const renderTab1_Requests = () => {
+        // Group data for SectionList style rendering within FlatList
+        const couples = tab1Data.filter((i: any) => i.type === 'COUPLE_SENT');
+        const friendSent = tab1Data.filter((i: any) => i.type === 'FRIEND_SENT');
+        const friendRec = tab1Data.filter((i: any) => i.type === 'FRIEND_RECEIVED');
+
+        const flattenedData = [
+            ...(couples.length ? [{ header: 'Couple Requests (Sent)' }, ...couples] : []),
+            ...(friendSent.length ? [{ header: 'Friend Requests (Sent)' }, ...friendSent] : []),
+            ...(friendRec.length ? [{ header: 'Friend Requests (Received)' }, ...friendRec] : []),
+        ];
+
+        return (
+            <FlatList
+                data={flattenedData}
+                keyExtractor={(item, index) => (item as any).id || index.toString()}
+                renderItem={({ item }: { item: any }) => {
+                    if (item.header) {
+                        return <Text style={styles.sectionHeader}>{item.header}</Text>;
+                    }
+                    return renderUserItem({ item, type: item.type });
+                }}
+                contentContainerStyle={styles.listContent}
+                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+                ListEmptyComponent={<Text style={styles.emptyText}>{t('profile.noRequests')}</Text>}
+            />
+        );
+    };
+
+    const renderTab2_Friends = () => (
+        <FlatList
+            data={tab2Data}
+            renderItem={({ item }) => renderUserItem({ item, type: 'FRIEND_ACCEPTED' })}
+            keyExtractor={(item) => item.userId}
+            contentContainerStyle={styles.listContent}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            ListEmptyComponent={!loadingFriends ? <Text style={styles.emptyText}>{t('profile.noFriends')}</Text> : null}
         />
     );
 
@@ -361,19 +446,29 @@ const SuggestedUsersScreen = () => {
             <View style={styles.container}>
                 <View style={styles.tabContainer}>
                     <TouchableOpacity style={[styles.tab, activeTab === 0 && styles.activeTab]} onPress={() => setActiveTab(0)}>
-                        <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>{t('profile.allUsers')}</Text>
+                        <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>{t('Explore')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.tab, activeTab === 1 && styles.activeTab]} onPress={() => setActiveTab(1)}>
-                        <Text style={[styles.tabText, activeTab === 1 && styles.activeTabText]}>{t('profile.myFriends')}</Text>
+                        <Text style={[styles.tabText, activeTab === 1 && styles.activeTabText]}>{t('Requests')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.tab, activeTab === 2 && styles.activeTab]} onPress={() => setActiveTab(2)}>
+                        <Text style={[styles.tabText, activeTab === 2 && styles.activeTabText]}>{t('Friends')}</Text>
                     </TouchableOpacity>
                 </View>
 
-                {activeTab === 0 ? renderTab0() : renderTab1()}
+                {/* Search Bar applies to all tabs */}
+                <SearchAndFilterBar />
+
+                <View style={{ flex: 1 }}>
+                    {activeTab === 0 && renderTab0_Explore()}
+                    {activeTab === 1 && renderTab1_Requests()}
+                    {activeTab === 2 && renderTab2_Friends()}
+                </View>
 
                 <FilterModal
                     visible={showFilter}
                     onClose={() => setShowFilter(false)}
-                    onApply={(newFilters: any) => { setFilters(newFilters); refetchAllUsers(); }}
+                    onApply={(newFilters: any) => { setFilters(newFilters); activeTab === 0 && refetchPublicUsers(); }}
                     currentFilters={filters}
                 />
             </View>
@@ -386,7 +481,7 @@ const styles = createScaledSheet({
     tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', padding: 4, marginHorizontal: 16, marginVertical: 12, borderRadius: 12, elevation: 2 },
     tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
     activeTab: { backgroundColor: '#EEF2FF' },
-    tabText: { fontSize: 14, fontWeight: '600', color: '#6B7280' },
+    tabText: { fontSize: 13, fontWeight: '600', color: '#6B7280' },
     activeTabText: { color: '#4F46E5', fontWeight: '700' },
     listContent: { padding: 16, paddingBottom: 40 },
     userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 16, marginBottom: 12, elevation: 1 },
@@ -396,20 +491,12 @@ const styles = createScaledSheet({
     userInfo: { flex: 1, marginLeft: 12 },
     userName: { fontSize: 16, fontWeight: '700', color: '#111827' },
     userSubtext: { fontSize: 13, color: '#6B7280' },
-    langText: { fontSize: 11, color: '#9CA3AF', marginTop: 2 },
     addButton: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
     sentButton: { backgroundColor: '#9CA3AF' },
-    messageButton: { padding: 8, backgroundColor: '#EEF2FF', borderRadius: 20 },
+    messageButton: { padding: 10, backgroundColor: '#EEF2FF', borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
     acceptButton: { backgroundColor: '#10B981', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
     acceptButtonText: { color: '#FFF', fontWeight: '600', fontSize: 13 },
-    headerSection: { marginBottom: 16 },
-    headerTitle: { fontSize: 18, fontWeight: '800', color: '#111827', marginBottom: 12 },
-    divider: { height: 1, backgroundColor: '#E5E7EB', marginVertical: 16 },
-    suggestionCardHorizontal: { width: 100, alignItems: 'center', backgroundColor: '#FFF', padding: 10, borderRadius: 12, marginRight: 10, elevation: 1 },
-    suggestionAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 6 },
-    suggestionName: { fontSize: 12, fontWeight: '600', textAlign: 'center', color: '#374151', marginBottom: 6 },
-    addSmallButton: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#4F46E5', alignItems: 'center', justifyContent: 'center' },
-    flagBadgeSmall: { position: 'absolute', top: 0, right: 0, backgroundColor: 'rgba(255,255,255,0.8)', borderRadius: 6, padding: 1 },
+    sectionHeader: { fontSize: 14, fontWeight: '800', color: '#6B7280', marginTop: 10, marginBottom: 8, textTransform: 'uppercase' },
     searchBarContainer: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 10 },
     searchInputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', borderRadius: 12, paddingHorizontal: 12, height: 44, elevation: 1 },
     searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: '#000' },

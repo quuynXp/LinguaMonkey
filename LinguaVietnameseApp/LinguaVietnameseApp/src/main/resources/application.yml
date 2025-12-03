@@ -98,7 +98,7 @@ google:
   oauth:
     client-secret: ${GOOGLE_OAUTH_CLIENT_SECRET}
     refresh-token: ${GOOGLE_OAUTH_REFRESH_TOKEN}
-    client-id: ${GOOGLE_CLIENT_ID}
+    client-id: ${GOOGLE_OAUTH_CLIENT_ID}
   drive:
     folderId: ${GOOGLE_FOLDER_ID}
     serviceAccountKey: ${GOOGLE_CREDENTIALS_FILE_URL}

@@ -31,4 +31,26 @@ public interface CourseVersionDiscountRepository extends JpaRepository<CourseVer
     @Modifying
     @Query("UPDATE CourseVersionDiscount d SET d.isActive = false WHERE d.isDeleted = false AND d.isActive = true AND d.endDate IS NOT NULL AND d.endDate < :now")
     int deactivateDiscounts(@Param("now") OffsetDateTime now);
+
+    // New Query for Special Offer Screen
+    @Query("SELECT d FROM CourseVersionDiscount d " +
+           "JOIN FETCH d.courseVersion v " +
+           "JOIN FETCH v.course c " +
+           "WHERE d.isActive = true " +
+           "AND d.isDeleted = false " +
+           "AND d.startDate <= :now " +
+           "AND (d.endDate IS NULL OR d.endDate >= :now) " +
+           "AND c.isDeleted = false " +
+           "AND v.status = 'PUBLIC' " +
+           "AND (:keyword IS NULL OR LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+           "AND (:languageCode IS NULL OR v.languageCode = :languageCode) " +
+           "AND (:minRating IS NULL OR v.systemRating >= :minRating) " +
+           "ORDER BY d.discountPercentage DESC")
+    Page<CourseVersionDiscount> findSpecialOffers(
+            @Param("keyword") String keyword,
+            @Param("languageCode") String languageCode,
+            @Param("minRating") Float minRating,
+            @Param("now") OffsetDateTime now,
+            Pageable pageable
+    );
 }

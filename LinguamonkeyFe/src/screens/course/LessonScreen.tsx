@@ -6,7 +6,7 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  StyleSheet,
+  FlatList,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
@@ -18,9 +18,8 @@ import {
   LessonResponse,
   LessonQuestionResponse,
   LessonProgressRequest,
-  LessonProgressWrongItemRequest,
 } from "../../types/dto";
-import { SkillType, QuestionType, LessonType } from "../../types/enums";
+import { SkillType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 
@@ -30,45 +29,17 @@ import {
   ReadingQuestionView,
   WritingQuestionView
 } from "../../components/learn/SkillComponents";
+import { GrammarQuestionView } from "../../components/learn/GrammarQuestionView";
+import { VocabularyFlashcardView } from "../../components/learn/VocabularyFlashcardView";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
 
-const QUESTION_TIME_LIMIT = 30;
+// --- CONFIGURANTS ---
+const TIME_DO_ALL_QUESTION = 30;
+const TIME_DO_ALL_FEEDBACK = 15;
+const TIME_SINGLE_QUESTION = 45;
 
-// Component hiển thị mô tả bài học (nếu có) nhưng nhỏ gọn
-const LessonContentDisplay = ({ lesson, t, navigation }: { lesson: LessonResponse, t: (key: string) => string, navigation: any }) => {
-  const isExternalContent = lesson.lessonType === LessonType.DOCUMENT || lesson.lessonType === LessonType.VIDEO;
-  const hasMedia = (lesson.videoUrls && lesson.videoUrls.length > 0) || (lesson.description && lesson.description.startsWith('http'));
-
-  if (isExternalContent && hasMedia) {
-    const url = (lesson.videoUrls && lesson.videoUrls.length > 0) ? lesson.videoUrls[0] : lesson.description;
-    return (
-      <View style={lessonContentStyles.container}>
-        <TouchableOpacity
-          style={lessonContentStyles.openButton}
-          onPress={() => navigation.navigate("WebViewScreen", { url: url, title: lesson.title })}
-        >
-          <Icon name="open-in-new" size={20} color="#FFF" />
-          <Text style={lessonContentStyles.openButtonText}>{t("lesson.openMaterial") || "Mở tài liệu học"}</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-  return null;
-};
-
-const lessonContentStyles = StyleSheet.create({
-  container: { marginBottom: 16 },
-  openButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#3B82F6',
-    padding: 12,
-    borderRadius: 8,
-    justifyContent: 'center',
-    gap: 8,
-  },
-  openButtonText: { color: '#FFF', fontWeight: '600', fontSize: 14 }
-});
+type ViewMode = 'LIST' | 'DO_ALL' | 'SINGLE';
+type Phase = 'ANSWER' | 'FEEDBACK';
 
 const LessonScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
@@ -76,26 +47,32 @@ const LessonScreen = ({ navigation, route }: any) => {
   const userStore = useUserStore();
   const userId = userStore.user?.userId;
 
+  // Hooks
   const { useAllQuestions, useUpdateProgress, useCreateWrongItem } = useLessons();
   const { useStreamPronunciation, useCheckWriting, useSubmitQuiz } = useSkillLessons();
-
   const streamPronunciationMutation = useStreamPronunciation();
   const checkWritingMutation = useCheckWriting();
   const submitQuizMutation = useSubmitQuiz();
   const updateProgressMutation = useUpdateProgress();
   const createWrongItemMutation = useCreateWrongItem();
 
+  // State
+  const [viewMode, setViewMode] = useState<ViewMode>('LIST');
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
-  const [isAnswered, setIsAnswered] = useState(false);
-  const [selectedAnswer, setSelectedAnswer] = useState<string | null>(null);
-  const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_LIMIT);
-  const [timeElapsed, setTimeElapsed] = useState(0);
 
+  // Question Runner State
+  const [phase, setPhase] = useState<Phase>('ANSWER');
+  const [timeLeft, setTimeLeft] = useState(0);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  const [isAnswered, setIsAnswered] = useState(false);
+  const [selectedAnswer, setSelectedAnswer] = useState<any>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+
+  // Media State
   const [isRecording, setIsRecording] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
-  const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
 
   const timerRef = useRef<number | null>(null);
   const intervalRef = useRef<number | null>(null);
@@ -106,70 +83,140 @@ const LessonScreen = ({ navigation, route }: any) => {
     size: 50,
   });
 
-  const questions: LessonQuestionResponse[] = useMemo(() => (questionsData?.data || []) as LessonQuestionResponse[], [questionsData]);
+  const questions: LessonQuestionResponse[] = useMemo(() => {
+    const raw = (questionsData?.data || []) as LessonQuestionResponse[];
+    return raw.filter(q => {
+      // Allow Flashcards (Vocab) which might only have question/transcript
+      if (lesson.skillTypes === SkillType.VOCABULARY) return true;
+      const hasText = q.question || q.transcript;
+      const hasMedia = q.mediaUrl;
+      const hasOptions = q.optionA || q.optionB;
+      return hasText || hasMedia || hasOptions;
+    });
+  }, [questionsData, lesson.skillTypes]);
+
   const currentQuestion = questions[currentQuestionIndex];
 
-  // Timer Logic
+  // --- TIMER LOGIC ---
   useEffect(() => {
-    if (!currentQuestion || isAnswered || isLoading) return;
-
-    setTimeLeft(QUESTION_TIME_LIMIT);
-    setTimeElapsed(0);
-    const isQuiz = currentQuestion.questionType === QuestionType.MULTIPLE_CHOICE || currentQuestion.questionType === QuestionType.FILL_IN_THE_BLANK;
-
-    intervalRef.current = window.setInterval(() => setTimeElapsed(p => p + 1), 1000);
-
-    if (isQuiz) {
-      timerRef.current = window.setInterval(() => {
-        setTimeLeft((prev) => {
-          if (prev <= 1) {
-            handleTimeOut();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
+    if (viewMode === 'LIST') {
+      stopTimers();
+      return;
     }
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [currentQuestionIndex, isAnswered, isLoading, currentQuestion]);
 
-  const handleTimeOut = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (intervalRef.current) clearInterval(intervalRef.current);
-    handleSubmitAnswer(false, "TIMEOUT", true);
+
+    let limit = 0;
+    if (phase === 'ANSWER') {
+      limit = viewMode === 'DO_ALL' ? TIME_DO_ALL_QUESTION : TIME_SINGLE_QUESTION;
+    } else {
+      limit = viewMode === 'DO_ALL' ? TIME_DO_ALL_FEEDBACK : 999999;
+    }
+
+    setTimeLeft(limit);
+    if (phase === 'ANSWER') setTimeElapsed(0);
+
+    intervalRef.current = window.setInterval(() => {
+      if (phase === 'ANSWER') setTimeElapsed(p => p + 1);
+    }, 1000);
+
+    timerRef.current = window.setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          handleTimerTickZero();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => stopTimers();
+  }, [viewMode, phase, currentQuestionIndex]);
+
+  const stopTimers = () => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    if (intervalRef.current) clearInterval(intervalRef.current);
+  };
+
+  const handleTimerTickZero = () => {
+    if (phase === 'ANSWER') {
+      // Auto-submit for timeouts if not Vocab (Vocab might just be viewing)
+      if (lesson.skillTypes !== SkillType.VOCABULARY) {
+        handleSubmitAnswer(false, "TIMEOUT", true);
+      }
+    } else if (phase === 'FEEDBACK') {
+      if (viewMode === 'DO_ALL') {
+        handleNext();
+      }
+    }
+  };
+
+  // --- NAVIGATION ACTIONS ---
+  const handleStartAll = () => {
+    if (questions.length === 0) return;
+    setCurrentQuestionIndex(0);
+    setCorrectCount(0);
+    resetQuestionState();
+    setViewMode('DO_ALL');
+  };
+
+  const handleStartSingle = (index: number) => {
+    setCurrentQuestionIndex(index);
+    setCorrectCount(0);
+    resetQuestionState();
+    setViewMode('SINGLE');
+  };
+
+  const resetQuestionState = () => {
+    setPhase('ANSWER');
+    setIsAnswered(false);
+    setSelectedAnswer(null);
+    setFeedbackMessage(null);
+    setIsRecording(false);
+    setIsStreaming(false);
+    setTimeElapsed(0);
   };
 
   const handleNext = useCallback(() => {
-    setFeedbackMessage(null);
+    stopTimers();
     if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
-      setIsAnswered(false);
-      setSelectedAnswer(null);
+      resetQuestionState();
     } else {
-      Alert.alert(t("common.congratulations"), `${t("learn.yourScore")}: ${correctCount}/${questions.length}`, [
-        { text: "OK", onPress: () => navigation.goBack() }
+      Alert.alert("Hoàn thành", `Kết quả: ${correctCount}/${questions.length}`, [
+        {
+          text: "OK", onPress: () => {
+            setViewMode('LIST');
+            navigation.goBack();
+          }
+        }
       ]);
     }
-  }, [currentQuestionIndex, questions.length, correctCount, navigation, t]);
+  }, [currentQuestionIndex, questions.length, correctCount]);
 
+  const handleBackToList = () => {
+    stopTimers();
+    setViewMode('LIST');
+  };
+
+  // --- SUBMISSION LOGIC ---
   const handleSubmitAnswer = async (isCorrect: boolean, answerValue: any, isTimeoutOrSkip = false) => {
     if (isAnswered) return;
-    if (timerRef.current) clearInterval(timerRef.current);
-    if (intervalRef.current) clearInterval(intervalRef.current);
+    stopTimers();
 
     setIsAnswered(true);
     setSelectedAnswer(answerValue);
+    setPhase('FEEDBACK');
+
     if (isCorrect) setCorrectCount(prev => prev + 1);
 
     if (userId && currentQuestion) {
       const progressReq: LessonProgressRequest = {
         lessonId: lesson.lessonId,
         userId: userId,
-        score: isCorrect ? correctCount + 1 : correctCount,
-        maxScore: questions.length,
+        score: isCorrect ? 1 : 0,
+        maxScore: 1,
         attemptNumber: 1,
         completedAt: new Date().toISOString(),
         needsReview: !isCorrect,
@@ -182,24 +229,32 @@ const LessonScreen = ({ navigation, route }: any) => {
           lessonId: lesson.lessonId,
           userId: userId,
           lessonQuestionId: currentQuestion.lessonQuestionId,
-          wrongAnswer: typeof answerValue === 'string' ? answerValue : "AUDIO_FILE"
+          wrongAnswer: typeof answerValue === 'string' ? answerValue : "MEDIA_FILE"
         });
       }
     }
-    // Auto next for Multiple Choice
-    if (currentQuestion && (currentQuestion.questionType === QuestionType.MULTIPLE_CHOICE || currentQuestion.questionType === QuestionType.FILL_IN_THE_BLANK)) {
-      setTimeout(handleNext, 1500);
+
+    if (isTimeoutOrSkip && !feedbackMessage) {
+      setFeedbackMessage(`Hết giờ/Bỏ qua. Đáp án đúng: ${currentQuestion?.correctOption || 'N/A'}`);
     }
   };
 
   const handleSkip = () => {
     handleSubmitAnswer(false, "SKIPPED", true);
-    Alert.alert("Đã bỏ qua", `Đáp án đúng là: ${currentQuestion.correctOption}`);
-    setTimeout(handleNext, 1000);
   };
 
+  // --- SKILL HANDLERS ---
   const handleQuizAnswer = (optionKey: string) => {
     if (!currentQuestion) return;
+    // For local Grammar check without API roundtrip if options are clear
+    if (lesson.skillTypes === SkillType.GRAMMAR) {
+      const isCorrect = optionKey === currentQuestion.correctOption;
+      setFeedbackMessage(isCorrect ? "Chính xác!" : `Sai rồi. Đáp án: ${currentQuestion.correctOption}`);
+      handleSubmitAnswer(isCorrect, optionKey);
+      return;
+    }
+
+    // Default API check for other types
     setIsStreaming(true);
     submitQuizMutation.mutate({
       lessonQuestionId: currentQuestion.lessonQuestionId,
@@ -209,15 +264,22 @@ const LessonScreen = ({ navigation, route }: any) => {
       onSuccess: (feedback) => {
         setIsStreaming(false);
         const isCorrect = feedback.includes("Correct");
-        setFeedbackMessage(isCorrect ? "Chính xác!" : "Chưa chính xác");
+        setFeedbackMessage(isCorrect ? "Chính xác!" : `Sai rồi! Lý do: ${feedback}`);
         handleSubmitAnswer(isCorrect, optionKey);
       },
       onError: () => {
         setIsStreaming(false);
         const isCorrect = optionKey === currentQuestion.correctOption;
+        setFeedbackMessage(isCorrect ? "Chính xác!" : "Sai rồi.");
         handleSubmitAnswer(isCorrect, optionKey);
       }
     });
+  };
+
+  // Vocabulary "I know it" handler
+  const handleVocabKnown = () => {
+    setFeedbackMessage("Đã thuộc từ này!");
+    handleSubmitAnswer(true, "KNOWN");
   };
 
   const startRecording = async () => {
@@ -253,8 +315,8 @@ const LessonScreen = ({ navigation, route }: any) => {
       }, {
         onError: () => {
           setIsStreaming(false);
-          Alert.alert("Lỗi", "Không thể chấm điểm nói.");
           handleSubmitAnswer(false, "AUDIO_ERROR");
+          setFeedbackMessage("Lỗi xử lý âm thanh.");
         }
       });
     }
@@ -277,40 +339,41 @@ const LessonScreen = ({ navigation, route }: any) => {
       },
       onError: () => {
         setIsStreaming(false);
-        Alert.alert("Lỗi", "Không thể chấm bài viết.");
         handleSubmitAnswer(false, "WRITING_ERROR");
+        setFeedbackMessage("Lỗi chấm bài viết.");
       }
     });
   };
 
-  // --- LOGIC RENDER QUESTION VIEW ---
+  // --- RENDERERS ---
   const renderQuestionView = () => {
     if (!currentQuestion) return null;
 
-    // FIX: Logic kiểm tra media trước
-    const hasMedia = !!currentQuestion.mediaUrl;
-    const hasTranscript = !!currentQuestion.transcript;
-
-    // Nếu là skill WRITING/SPEAKING, luôn render component đặc biệt (vì cần input đặc thù)
-    if (lesson.skillTypes === SkillType.SPEAKING) return <SpeakingQuestionView question={currentQuestion} />;
-    if (lesson.skillTypes === SkillType.WRITING) return <WritingQuestionView question={currentQuestion} />;
-
-    // Đối với LISTENING & READING:
-    // Nếu có Media (Audio/Image) -> Render component Skill tương ứng
-    if (hasMedia) {
-      if (lesson.skillTypes === SkillType.LISTENING) return <ListeningQuestionView question={currentQuestion} />;
-      return <ReadingQuestionView question={currentQuestion} />;
+    switch (lesson.skillTypes) {
+      case SkillType.SPEAKING:
+        return <SpeakingQuestionView question={currentQuestion} />;
+      case SkillType.WRITING:
+        return <WritingQuestionView question={currentQuestion} />;
+      case SkillType.LISTENING:
+        return <ListeningQuestionView question={currentQuestion} />;
+      case SkillType.GRAMMAR:
+        return (
+          <GrammarQuestionView
+            question={currentQuestion}
+            selectedAnswer={selectedAnswer}
+            onAnswer={(ans) => setSelectedAnswer(ans)} // Update local state before submit
+            isAnswered={isAnswered}
+            correctAnswer={currentQuestion.correctOption}
+          />
+        );
+      case SkillType.VOCABULARY:
+        return <VocabularyFlashcardView question={currentQuestion} />;
+      default:
+        return <ReadingQuestionView question={currentQuestion} />;
     }
-
-    // Nếu KHÔNG có media nhưng có Transcript dài (đoạn văn) -> Render ReadingView
-    if (hasTranscript && currentQuestion.transcript.length > 50) {
-      return <ReadingQuestionView question={currentQuestion} />;
-    }
-
-    // Fallback: Nếu không có gì đặc biệt -> Render dạng câu hỏi Text đơn giản (dùng ReadingView nhưng nó đã được tối ưu để hiện text nếu ko có ảnh)
-    return <ReadingQuestionView question={currentQuestion} />;
   };
 
+  // --- MAIN RENDER ---
   if (isLoading) {
     return (
       <ScreenLayout style={styles.loadingContainer}>
@@ -319,85 +382,127 @@ const LessonScreen = ({ navigation, route }: any) => {
     );
   }
 
-  const hasQuestions = questions.length > 0;
-  const progressPercent = hasQuestions ? ((currentQuestionIndex + 1) / questions.length) * 100 : 0;
-  const isTimerVisible = currentQuestion && (currentQuestion.questionType === QuestionType.MULTIPLE_CHOICE || currentQuestion.questionType === QuestionType.FILL_IN_THE_BLANK);
+  // 1. LIST MODE
+  if (viewMode === 'LIST') {
+    return (
+      <ScreenLayout style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
+            <Icon name="close" size={24} color="#374151" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>{lesson.title}</Text>
+        </View>
+
+        <View style={styles.listContainer}>
+          <TouchableOpacity style={styles.startAllBtn} onPress={handleStartAll}>
+            <Icon name="play-circle-filled" size={24} color="#FFF" />
+            <Text style={styles.startAllText}>Start All ({questions.length})</Text>
+          </TouchableOpacity>
+
+          <FlatList
+            data={questions}
+            keyExtractor={(item) => item.lessonQuestionId}
+            contentContainerStyle={{ paddingBottom: 40 }}
+            renderItem={({ item, index }) => (
+              <TouchableOpacity style={styles.questionItem} onPress={() => handleStartSingle(index)}>
+                <View style={styles.qIndexBadge}>
+                  <Text style={styles.qIndexText}>{index + 1}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.qSkillType}>{lesson.skillTypes}</Text>
+                  <Text style={styles.qText} numberOfLines={2}>
+                    {item.question || item.transcript || "View Question"}
+                  </Text>
+                </View>
+                <Icon name="chevron-right" size={24} color="#9CA3AF" />
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </ScreenLayout>
+    );
+  }
+
+  // 2. RUNNER MODE (DO_ALL & SINGLE)
+  const isTimerUrgent = phase === 'ANSWER' && timeLeft < 10;
+  const isFeedbackPhase = phase === 'FEEDBACK';
 
   return (
     <ScreenLayout style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-          <Icon name="close" size={24} color="#374151" />
+        <TouchableOpacity onPress={handleBackToList} style={styles.closeBtn}>
+          <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
 
-        {hasQuestions ? (
-          <>
-            <View style={styles.progressBarBg}>
-              <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-            </View>
-            {isTimerVisible && (
-              <View style={styles.timerBadge}>
-                <Icon name="timer" size={16} color={timeLeft < 10 ? "#EF4444" : "#4F46E5"} />
-                <Text style={[styles.timerText, { color: timeLeft < 10 ? "#EF4444" : "#4F46E5" }]}>{timeLeft}s</Text>
-              </View>
-            )}
-          </>
-        ) : (
-          <Text style={{ fontSize: 16, fontWeight: '700', color: '#1F2937', marginLeft: 8 }}>{lesson.title}</Text>
-        )}
+        <View style={styles.progressBarBg}>
+          <View style={[styles.progressBarFill, { width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }]} />
+        </View>
+
+        <View style={styles.timerBadge}>
+          <Icon name="timer" size={16} color={isTimerUrgent ? "#EF4444" : "#4F46E5"} />
+          <Text style={[styles.timerText, { color: isTimerUrgent ? "#EF4444" : "#4F46E5" }]}>
+            {phase === 'ANSWER' ? `${timeLeft}s` : (viewMode === 'DO_ALL' ? `Next: ${timeLeft}s` : "Done")}
+          </Text>
+        </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
+        {renderQuestionView()}
 
-        {/* Chỉ hiện nút mở tài liệu nếu là bài VIDEO/DOC */}
-        <LessonContentDisplay lesson={lesson} t={t} navigation={navigation} />
+        {/* Feedback Section */}
+        {isFeedbackPhase && feedbackMessage && (
+          <View style={[styles.feedbackContainer, { borderColor: feedbackMessage.includes("Sai") ? '#EF4444' : '#10B981' }]}>
+            <Text style={[styles.feedbackText, { color: feedbackMessage.includes("Sai") ? '#B91C1C' : '#064E3B' }]}>
+              {feedbackMessage}
+            </Text>
 
-        {hasQuestions && currentQuestion ? (
-          <View style={{ paddingTop: 10 }}>
-            {/* Context (Audio/Image/Text) */}
-            {renderQuestionView()}
-
-            {/* Feedback & Next Button */}
-            {feedbackMessage && isAnswered && (
-              <View style={styles.feedbackContainer}>
-                <Text style={styles.feedbackText}>{feedbackMessage}</Text>
-                <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-                  <Text style={styles.nextBtnText}>Tiếp tục</Text>
-                </TouchableOpacity>
-              </View>
+            {viewMode === 'SINGLE' && (
+              <TouchableOpacity style={styles.manualNextBtn} onPress={handleBackToList}>
+                <Text style={styles.manualNextBtnText}>Return to List</Text>
+              </TouchableOpacity>
             )}
-
-            {/* Input Area (Answers/Mic/Input) */}
-            {!feedbackMessage && (
-              <LessonInputArea
-                question={currentQuestion}
-                isAnswered={isAnswered}
-                selectedAnswer={selectedAnswer}
-                isLoading={isStreaming}
-                onAnswer={(ans) => {
-                  if (lesson.skillTypes === SkillType.WRITING) {
-                    handleWritingSubmit(ans);
-                  } else {
-                    handleQuizAnswer(ans);
-                  }
-                }}
-                onSkip={handleSkip}
-                isRecording={isRecording}
-                isStreaming={isStreaming}
-                onStartRecording={startRecording}
-                onStopRecording={stopRecording}
-              />
+            {viewMode === 'DO_ALL' && (
+              <TouchableOpacity style={styles.manualNextBtn} onPress={handleNext}>
+                <Text style={styles.manualNextBtnText}>Continue</Text>
+              </TouchableOpacity>
             )}
           </View>
-        ) : (
-          /* Empty State / Description Only */
-          <View style={{ marginTop: 20, alignItems: 'center' }}>
-            <Text style={styles.descText}>{lesson.description}</Text>
-            <TouchableOpacity style={styles.nextBtn} onPress={() => navigation.goBack()}>
-              <Text style={styles.nextBtnText}>{t("lesson.backToCourse") || "Hoàn thành"}</Text>
-            </TouchableOpacity>
-          </View>
+        )}
+
+        {/* Input Section - Only show if not handled internally by component (like Grammar) or if Vocab needs confirmation */}
+        {lesson.skillTypes !== SkillType.GRAMMAR && lesson.skillTypes !== SkillType.VOCABULARY && (
+          <LessonInputArea
+            question={currentQuestion}
+            isAnswered={isAnswered}
+            selectedAnswer={selectedAnswer}
+            isLoading={isStreaming}
+            onAnswer={(ans) => {
+              if (lesson.skillTypes === SkillType.WRITING) handleWritingSubmit(ans);
+              else handleQuizAnswer(ans);
+            }}
+            onSkip={handleSkip}
+            isRecording={isRecording}
+            isStreaming={isStreaming}
+            onStartRecording={startRecording}
+            onStopRecording={stopRecording}
+          />
+        )}
+
+        {/* Special Input handling for Grammar (uses internal state passed up via onAnswer, but needs Submit button) */}
+        {lesson.skillTypes === SkillType.GRAMMAR && !isAnswered && (
+          <TouchableOpacity
+            style={styles.submitButton}
+            onPress={() => selectedAnswer ? handleQuizAnswer(selectedAnswer) : null}
+          >
+            <Text style={styles.submitButtonText}>{t('common.submit') || "Check Answer"}</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Special Input for Vocabulary (Simple Known/Unknown) */}
+        {lesson.skillTypes === SkillType.VOCABULARY && !isAnswered && (
+          <TouchableOpacity style={styles.submitButton} onPress={handleVocabKnown}>
+            <Text style={styles.submitButtonText}>I Know This Word</Text>
+          </TouchableOpacity>
         )}
 
       </ScrollView>
@@ -409,18 +514,50 @@ const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: "#F8FAFC" },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E5E7EB', gap: 12 },
+  headerTitle: { fontSize: 18, fontWeight: '700', color: '#1F2937', flex: 1 },
   closeBtn: { padding: 4 },
+
+  // List Mode
+  listContainer: { padding: 16, flex: 1 },
+  startAllBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#4F46E5', padding: 16, borderRadius: 12, marginBottom: 16, gap: 8
+  },
+  startAllText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  questionItem: {
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
+    padding: 12, borderRadius: 12, marginBottom: 10, gap: 12,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1
+  },
+  qIndexBadge: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' },
+  qIndexText: { fontWeight: '700', color: '#6B7280' },
+  qSkillType: { fontSize: 12, color: '#6366F1', fontWeight: '600', marginBottom: 2, textTransform: 'uppercase' },
+  qText: { fontSize: 14, color: '#374151', fontWeight: '500' },
+
+  // Runner Mode
   progressBarBg: { flex: 1, height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: '#4F46E5', borderRadius: 4 },
   timerBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, gap: 4 },
   timerText: { fontWeight: 'bold', fontSize: 14 },
   content: { padding: 20, paddingBottom: 40 },
-  descText: { fontSize: 16, color: '#374151', lineHeight: 24, textAlign: 'center', marginBottom: 20 },
 
-  feedbackContainer: { marginTop: 20, padding: 16, backgroundColor: '#ECFDF5', borderRadius: 12, borderWidth: 1, borderColor: '#10B981', alignItems: 'center' },
-  feedbackText: { fontSize: 16, color: '#064E3B', textAlign: 'center', marginBottom: 16, fontWeight: '500' },
-  nextBtn: { backgroundColor: '#10B981', paddingHorizontal: 32, paddingVertical: 12, borderRadius: 24 },
-  nextBtnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  feedbackContainer: { marginVertical: 20, padding: 16, backgroundColor: '#FFF', borderRadius: 12, borderWidth: 2, alignItems: 'center' },
+  feedbackText: { fontSize: 16, textAlign: 'center', marginBottom: 12, fontWeight: '600' },
+  manualNextBtn: { backgroundColor: '#374151', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
+  manualNextBtnText: { color: '#FFF', fontWeight: 'bold' },
+
+  submitButton: {
+    backgroundColor: '#4F46E5',
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 20
+  },
+  submitButtonText: {
+    color: '#FFF',
+    fontWeight: 'bold',
+    fontSize: 16
+  }
 });
 
 export default LessonScreen;

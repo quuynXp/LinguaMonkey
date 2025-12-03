@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import instance from "../api/axiosClient";
 import {
   AppApiResponse,
@@ -9,7 +9,6 @@ import {
   LeaderboardEntryRequest
 } from "../types/dto";
 
-// --- Query Keys Factory ---
 export const leaderboardKeys = {
   all: ["leaderboards"] as const,
   lists: (tab?: string) => [...leaderboardKeys.all, "list", { tab }] as const,
@@ -18,6 +17,7 @@ export const leaderboardKeys = {
   entries: {
     all: ["leaderboardEntries"] as const,
     list: (params: any) => [...leaderboardKeys.entries.all, "list", params] as const,
+    infinite: (params: any) => [...leaderboardKeys.entries.all, "infinite", params] as const,
     detail: (leaderboardId: string) => [...leaderboardKeys.entries.all, "detail", leaderboardId] as const,
     me: (leaderboardId: string, userId: string) => [...leaderboardKeys.entries.all, "me", { leaderboardId, userId }] as const,
   }
@@ -26,11 +26,6 @@ export const leaderboardKeys = {
 export const useLeaderboards = () => {
   const queryClient = useQueryClient();
 
-  // ==========================================
-  // === 1. LEADERBOARDS (Config/Structure) ===
-  // ==========================================
-
-  // GET /api/v1/leaderboards?tab={tab}
   const useLeaderboardList = (params: { tab: string; page?: number; size?: number }) => {
     return useQuery({
       queryKey: leaderboardKeys.lists(params.tab),
@@ -60,7 +55,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // GET /api/v1/leaderboards/{id}
   const useLeaderboard = (id: string | null) => {
     return useQuery({
       queryKey: leaderboardKeys.detail(id!),
@@ -75,7 +69,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // GET /api/v1/leaderboards/top-3
   const useTopThree = (leaderboardId?: string | null) => {
     return useQuery({
       queryKey: leaderboardKeys.top3(leaderboardId!),
@@ -91,7 +84,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // POST /api/v1/leaderboards
   const useCreateLeaderboard = () => {
     return useMutation({
       mutationFn: async (req: LeaderboardRequest) => {
@@ -105,7 +97,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // PUT /api/v1/leaderboards/{id}
   const useUpdateLeaderboard = () => {
     return useMutation({
       mutationFn: async ({ id, req }: { id: string; req: LeaderboardRequest }) => {
@@ -119,7 +110,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // DELETE /api/v1/leaderboards/{id}
   const useDeleteLeaderboard = () => {
     return useMutation({
       mutationFn: async (id: string) => {
@@ -129,12 +119,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // ==========================================
-  // === 2. LEADERBOARD ENTRIES (User Data) ===
-  // ==========================================
-
-  // GET /api/v1/leaderboard-entries
-  // FIXED: Added 'options' parameter and spread it into useQuery to support 'enabled'
   const useEntries = (
     params?: { leaderboardId?: string; page?: number; size?: number; },
     options?: { enabled?: boolean }
@@ -162,7 +146,39 @@ export const useLeaderboards = () => {
     });
   };
 
-  // GET /api/v1/leaderboard-entries/{leaderboardId}
+  const useInfiniteEntries = (
+    params: { leaderboardId?: string; size?: number },
+    options?: { enabled?: boolean }
+  ) => {
+    const { leaderboardId, size = 20 } = params;
+    return useInfiniteQuery({
+      queryKey: leaderboardKeys.entries.infinite({ leaderboardId, size }),
+      queryFn: async ({ pageParam = 0 }) => {
+        if (!leaderboardId) return { content: [], isLast: true, pageNumber: 0 };
+        const qp = new URLSearchParams();
+        qp.append("leaderboardId", leaderboardId);
+        qp.append("page", String(pageParam));
+        qp.append("size", String(size));
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<LeaderboardEntryResponse>>>(
+          `/api/v1/leaderboard-entries?${qp.toString()}`
+        );
+
+        return {
+          content: data.result?.content || [],
+          isLast: data.result?.isLast ?? true,
+          pageNumber: data.result?.pageNumber ?? pageParam
+        };
+      },
+      getNextPageParam: (lastPage) => {
+        if (lastPage.isLast) return undefined;
+        return lastPage.pageNumber + 1;
+      },
+      initialPageParam: 0,
+      ...options
+    });
+  };
+
   const useEntryDetail = (leaderboardId: string | null) => {
     return useQuery({
       queryKey: leaderboardKeys.entries.detail(leaderboardId!),
@@ -177,7 +193,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // POST /api/v1/leaderboard-entries
   const useCreateEntry = () => {
     return useMutation({
       mutationFn: async (req: LeaderboardEntryRequest) => {
@@ -191,7 +206,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // PUT /api/v1/leaderboard-entries/{leaderboardId}/{userId}
   const useUpdateEntry = () => {
     return useMutation({
       mutationFn: async ({ lId, uId, req }: { lId: string; uId: string; req: LeaderboardEntryRequest }) => {
@@ -205,7 +219,6 @@ export const useLeaderboards = () => {
     });
   };
 
-  // DELETE /api/v1/leaderboard-entries/{leaderboardId}/{userId}
   const useDeleteEntry = () => {
     return useMutation({
       mutationFn: async ({ lId, uId }: { lId: string; uId: string }) => {
@@ -223,6 +236,7 @@ export const useLeaderboards = () => {
     useUpdateLeaderboard,
     useDeleteLeaderboard,
     useEntries,
+    useInfiniteEntries,
     useEntryDetail,
     useMyEntry,
     useCreateEntry,
@@ -230,18 +244,3 @@ export const useLeaderboards = () => {
     useDeleteEntry,
   };
 };
-
-// Helper to map response
-const mapPageResponse = <T>(result: any, page: number, size: number) => ({
-  data: (result?.content as T[]) || [],
-  pagination: {
-    pageNumber: result?.pageNumber ?? page,
-    pageSize: result?.pageSize ?? size,
-    totalElements: result?.totalElements ?? 0,
-    totalPages: result?.totalPages ?? 0,
-    isLast: result?.isLast ?? true,
-    isFirst: result?.isFirst ?? true,
-    hasNext: result?.hasNext ?? false,
-    hasPrevious: result?.hasPrevious ?? false,
-  }
-});

@@ -2,8 +2,6 @@ package com.connectJPA.LinguaVietnameseApp.dto.response;
 
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
-import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
-import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -41,4 +39,8 @@ public class CourseResponse {
     private Double averageRating;
     private Integer reviewCount;
     private Boolean isAdminCreated;
+
+    // Special Offer Fields
+    private Integer activeDiscountPercentage;
+    private BigDecimal discountedPrice;
 }

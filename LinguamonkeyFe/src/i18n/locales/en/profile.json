@@ -57,6 +57,19 @@
         "currentLevel": "Current Level",
         "myWallet": "My Wallet",
         "menu": "Menu",
+        "noBio": "No bio available",
+        "cancelRequest": "Cancel Request",
+        "gender": "Gender",
+        "pace": "Pace",
+        "chatAccess": "Chat Access",
+        "translationsUsed": "Translations Used",
+        "totalExp": "Total EXP",
+        "report": "Report User",
+        "block": "Block User",
+        "deposit": "Deposit",
+        "history": "History",
+        "aboutMe": "About Me",
+        "connect": "Connect",
         "stats": {
             "title": "Statistics",
             "currentLevel": "Level",
@@ -65,7 +78,10 @@
             "totalStudyTime": "Study Time",
             "lessonsCompleted": "Lessons",
             "wordsLearned": "Words",
-            "averageScore": "Avg Score"
+            "averageScore": "Avg Score",
+            "level": "Level",
+            "streak": "Streak",
+            "admires": "Admires"
         },
         "timeframes": {
             "week": "Week",
@@ -183,7 +199,11 @@
         "language": "Language",
         "privacy": "Privacy",
         "security": "Security",
-        "logout": "Log Out"
+        "logout": "Log Out",
+        "preferences": "Preferences",
+        "auto_translate": "Auto Translate",
+        "auto_translate_desc": "Automatically translate messages",
+        "sound": "Sound"
     },
     "notification": {
         "settingsTitle": "Notification Settings",
@@ -523,6 +543,7 @@
         }
     },
     "wallet": {
+        "title": "Wallet",
         "availableBalance": "Available Balance",
         "topup": "Top Up",
         "withdraw": "Withdraw",

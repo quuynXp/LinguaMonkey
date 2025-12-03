@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { LessonQuestionResponse } from "../../types/dto";
@@ -30,6 +30,11 @@ export const LessonInputArea = ({
     onStopRecording
 }: LessonInputAreaProps) => {
     const [textInput, setTextInput] = useState("");
+
+    // Reset input when question changes
+    useEffect(() => {
+        setTextInput("");
+    }, [question.lessonQuestionId]);
 
     const renderSkipButton = () => (
         <TouchableOpacity
@@ -97,15 +102,15 @@ export const LessonInputArea = ({
                     ) : (
                         <View style={{ alignItems: 'center' }}>
                             <TouchableOpacity
-                                style={[styles.recordBtn, isRecording && styles.recordingBtn]}
-                                onPressIn={onStartRecording}
-                                onPressOut={onStopRecording}
+                                style={[styles.recordBtn, isRecording && styles.recordingBtn, isAnswered && styles.disabledRecordBtn]}
+                                onPressIn={!isAnswered ? onStartRecording : undefined}
+                                onPressOut={!isAnswered ? onStopRecording : undefined}
                                 disabled={isAnswered}
                             >
                                 <Icon name={isRecording ? "graphic-eq" : "mic"} size={40} color="#FFF" />
                             </TouchableOpacity>
                             <Text style={styles.hintText}>
-                                {isRecording ? "Thả để gửi" : "Nhấn giữ để nói"}
+                                {isAnswered ? "Đã trả lời" : isRecording ? "Thả để gửi" : "Nhấn giữ để nói"}
                             </Text>
                         </View>
                     )}
@@ -171,6 +176,7 @@ const styles = StyleSheet.create({
         shadowColor: '#4F46E5', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4
     },
     recordingBtn: { backgroundColor: '#EF4444', transform: [{ scale: 1.1 }] },
+    disabledRecordBtn: { backgroundColor: '#9CA3AF' },
     hintText: { marginTop: 12, color: '#6B7280', fontSize: 14 },
     processingContainer: { alignItems: 'center', padding: 20 },
     processingText: { marginTop: 8, color: '#4F46E5', fontWeight: '600' },

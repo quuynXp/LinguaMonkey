@@ -288,5 +288,16 @@
     "Focus Areas": "Focus Areas",
     "Study Time (minutes/day)": "Study Time (minutes/day)",
     "Additional Requirements": "Additional Requirements",
-    "Any specific goals or interests?": "Any specific goals or interests?"
+    "Any specific goals or interests?": "Any specific goals or interests?",
+    "errorLabel": "Error",
+    "auto_detect": "Auto Detect",
+    "public": "Public",
+    "close": "Close",
+    "last_months": "Last Months",
+    "less": "Less",
+    "more": "More",
+    "viewAll": "View All",
+    "hot": "Hot",
+    "items": "items",
+    "no": "No"
 }

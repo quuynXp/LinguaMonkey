@@ -1047,6 +1047,8 @@ export interface CoursePerformanceResponse {
 }
 
 export interface CourseResponse {
+    activeDiscountPercentage: number;
+    discountedPrice: number;
     courseId: string;
     title: string;
     creatorId: string;
@@ -1182,6 +1184,9 @@ export interface FlashcardResponse {
     exampleSentence: string;
     imageUrl: string;
     audioUrl: string;
+    authorProfile: UserProfileResponse;
+    createdAt: string;
+    claimCount: number;
     tags: string;
     nextReviewAt: string;
     lastReviewedAt: string;

@@ -2,72 +2,43 @@ import React, { useState } from "react"
 import {
     View,
     Text,
-    ScrollView,
     TouchableOpacity,
     FlatList,
-    Modal,
     Image,
-    Alert,
-    TextInput,
     ActivityIndicator,
+    TextInput,
+    Modal,
+    ScrollView,
+    ListRenderItem
 } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
 import { useCourses } from "../../hooks/useCourses"
-import { useUserStore } from "../../stores/UserStore"
 import { getCourseImage } from "../../utils/courseUtils"
-import Slider from "@react-native-community/slider"
+import { CourseResponse } from "../../types/dto"
 
-const SpecialOfferScreen = ({ navigation, route }: any) => {
+const SpecialOfferScreen = ({ navigation }: any) => {
     const { t } = useTranslation()
-    const { user } = useUserStore()
-    const [activeTab, setActiveTab] = useState("ALL") // ALL, FLASH, P2P
-    const [createModalVisible, setCreateModalVisible] = useState(false)
+    const [activeTab, setActiveTab] = useState("ALL")
 
-    // Create Discount State
-    const [selectedCourse, setSelectedCourse] = useState<any>(null)
-    const [discountPercent, setDiscountPercent] = useState(10)
-    const [customCode, setCustomCode] = useState("")
+    const [searchQuery, setSearchQuery] = useState("")
+    const [filterModalVisible, setFilterModalVisible] = useState(false)
+    const [selectedLanguage, setSelectedLanguage] = useState<string | undefined>(undefined)
+    const [selectedRating, setSelectedRating] = useState<number | undefined>(undefined)
 
-    const {
-        useDiscounts,
-        useCreatorCourses,
-        useCreateDiscount
-    } = useCourses()
+    const { useSpecialOffers } = useCourses()
 
-    const { data: discountsData, isLoading } = useDiscounts({ size: 50 })
-    const { data: myCoursesData } = useCreatorCourses(user?.userId)
-    const createDiscountMutation = useCreateDiscount()
+    const { data, refetch, isRefetching, isLoading } = useSpecialOffers({
+        keyword: searchQuery,
+        languageCode: selectedLanguage,
+        minRating: selectedRating,
+        page: 0,
+        size: 20
+    })
 
-    const discounts = discountsData?.data || []
-    const myCourses = myCoursesData?.data || []
-
-    const handleCreateDiscount = () => {
-        if (!selectedCourse) {
-            Alert.alert(t("error"), t("offer.selectCourseRequired"))
-            return
-        }
-
-        createDiscountMutation.mutate({
-            courseId: selectedCourse.courseId,
-            code: customCode || `SALE${discountPercent}`,
-            discountPercentage: discountPercent,
-            startDate: new Date().toISOString(),
-            endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-            isActive: true
-        }, {
-            onSuccess: () => {
-                setCreateModalVisible(false)
-                Alert.alert(t("success"), t("offer.createSuccess"))
-                setSelectedCourse(null)
-                setDiscountPercent(10)
-                setCustomCode("")
-            },
-            onError: () => Alert.alert(t("error"), t("offer.createFailed"))
-        })
-    }
+    const courses = (data?.data || []) as CourseResponse[]
 
     const renderHeader = () => (
         <View style={styles.header}>
@@ -75,175 +46,212 @@ const SpecialOfferScreen = ({ navigation, route }: any) => {
                 <Icon name="arrow-back" size={24} color="#1F2937" />
             </TouchableOpacity>
             <Text style={styles.headerTitle}>{t("offer.title")}</Text>
+            <View style={{ width: 40 }} />
+        </View>
+    )
+
+    const renderSearchBar = () => (
+        <View style={styles.searchContainer}>
+            <View style={styles.searchBox}>
+                <Icon name="search" size={24} color="#9CA3AF" />
+                <TextInput
+                    style={styles.searchInput}
+                    placeholder={t("offer.searchPlaceholder")}
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                    returnKeyType="search"
+                    onSubmitEditing={() => refetch()}
+                />
+                {searchQuery.length > 0 && (
+                    <TouchableOpacity onPress={() => setSearchQuery("")}>
+                        <Icon name="close" size={20} color="#9CA3AF" />
+                    </TouchableOpacity>
+                )}
+            </View>
             <TouchableOpacity
-                style={styles.createBtn}
-                onPress={() => setCreateModalVisible(true)}
+                style={[styles.filterBtn, (selectedLanguage || selectedRating) && styles.filterBtnActive]}
+                onPress={() => setFilterModalVisible(true)}
             >
-                <Icon name="add" size={24} color="#FFF" />
+                <Icon name="tune" size={24} color={selectedLanguage || selectedRating ? "#FFF" : "#4B5563"} />
             </TouchableOpacity>
         </View>
     )
 
-    const renderDiscountItem = ({ item }: any) => {
-        // Assuming item contains course info or we fetch it. 
-        // For this snippet, we assume the discount object has basic course details mapped or joined.
-        // If pure discount object, we'd need to fetch course details.
-        // Simulating structure: item.courseId, item.discountPercentage, item.code
+    const renderRatingStars = (rating: number = 0) => {
+        return (
+            <View style={{ flexDirection: 'row' }}>
+                {[1, 2, 3, 4, 5].map((star) => (
+                    <Icon
+                        key={star}
+                        name={star <= Math.round(rating) ? "star" : "star-border"}
+                        size={14}
+                        color="#F59E0B"
+                    />
+                ))}
+            </View>
+        )
+    }
+
+    const renderCourseCard: ListRenderItem<CourseResponse> = ({ item }) => {
+        const discount = item.activeDiscountPercentage || 0
+        const oldPrice = item.latestPublicVersion?.price || 0
+        const newPrice = item.discountedPrice || oldPrice
 
         return (
             <TouchableOpacity
-                style={styles.offerCard}
+                style={styles.card}
                 onPress={() => navigation.navigate("CourseDetailsScreen", { courseId: item.courseId })}
             >
-                <View style={styles.offerBadge}>
-                    <Text style={styles.offerBadgeText}>-{item.discountPercentage}%</Text>
+                <View style={styles.imageContainer}>
+                    <Image source={getCourseImage(item.latestPublicVersion?.thumbnailUrl)} style={styles.cardImage} />
+                    {discount > 0 && (
+                        <View style={styles.badge}>
+                            <Text style={styles.badgeText}>-{discount}%</Text>
+                        </View>
+                    )}
                 </View>
-                <View style={styles.offerContent}>
-                    <View style={styles.iconContainer}>
-                        <Icon name="local-offer" size={24} color="#F59E0B" />
+
+                <View style={styles.cardContent}>
+                    <View style={styles.topRow}>
+                        <Text style={styles.langTag}>{item.latestPublicVersion?.languageCode || 'EN'}</Text>
+                        <View style={styles.ratingRow}>
+                            {renderRatingStars(item.latestPublicVersion?.systemRating || 5)}
+                            <Text style={styles.ratingText}>({item.reviewCount || 0})</Text>
+                        </View>
                     </View>
-                    <View style={{ flex: 1, marginLeft: 12 }}>
-                        <Text style={styles.offerTitle}>{item.code}</Text>
-                        <Text style={styles.offerSub}>{t("offer.expiresIn7Days")}</Text>
+
+                    <Text numberOfLines={2} style={styles.courseTitle}>
+                        {item.title}
+                    </Text>
+
+                    <View style={styles.creatorRow}>
+                        <Image
+                            source={{ uri: item.creatorAvatar || "https://ui-avatars.com/api/?name=" + item.creatorName }}
+                            style={styles.creatorAvatar}
+                        />
+                        <Text numberOfLines={1} style={styles.creatorName}>{item.creatorName}</Text>
                     </View>
-                    <View style={styles.actionArrow}>
-                        <Icon name="chevron-right" size={24} color="#9CA3AF" />
+
+                    <View style={styles.priceRow}>
+                        <Text style={styles.newPrice}>${Number(newPrice).toFixed(2)}</Text>
+                        {discount > 0 && (
+                            <Text style={styles.oldPrice}>${Number(oldPrice).toFixed(2)}</Text>
+                        )}
                     </View>
                 </View>
             </TouchableOpacity>
         )
     }
 
+    const renderFilterModal = () => (
+        <Modal
+            visible={filterModalVisible}
+            transparent
+            animationType="fade"
+            onRequestClose={() => setFilterModalVisible(false)}
+        >
+            <View style={styles.modalOverlay}>
+                <View style={styles.modalContent}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.modalTitle}>{t("offer.filter.title")}</Text>
+                        <TouchableOpacity onPress={() => setFilterModalVisible(false)}>
+                            <Icon name="close" size={24} color="#6B7280" />
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView style={styles.modalBody}>
+                        <Text style={styles.filterLabel}>{t("offer.filter.rating")}</Text>
+                        <View style={styles.chipContainer}>
+                            {[5, 4, 3, 2, 1].map(r => (
+                                <TouchableOpacity
+                                    key={r}
+                                    style={[styles.chip, selectedRating === r && styles.chipSelected]}
+                                    onPress={() => setSelectedRating(selectedRating === r ? undefined : r)}
+                                >
+                                    <Text style={[styles.chipText, selectedRating === r && styles.chipTextSelected]}>
+                                        {r} {t("common.stars")} & Up
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        <Text style={styles.filterLabel}>{t("offer.filter.language")}</Text>
+                        <View style={styles.chipContainer}>
+                            {["EN", "VN", "CN", "JP", "KR"].map(lang => (
+                                <TouchableOpacity
+                                    key={lang}
+                                    style={[styles.chip, selectedLanguage === lang && styles.chipSelected]}
+                                    onPress={() => setSelectedLanguage(selectedLanguage === lang ? undefined : lang)}
+                                >
+                                    <Text style={[styles.chipText, selectedLanguage === lang && styles.chipTextSelected]}>
+                                        {lang}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </ScrollView>
+
+                    <View style={styles.modalFooter}>
+                        <TouchableOpacity
+                            style={styles.resetBtn}
+                            onPress={() => {
+                                setSelectedRating(undefined)
+                                setSelectedLanguage(undefined)
+                            }}
+                        >
+                            <Text style={styles.resetBtnText}>{t("common.reset")}</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.applyBtn}
+                            onPress={() => {
+                                setFilterModalVisible(false)
+                                refetch()
+                            }}
+                        >
+                            <Text style={styles.applyBtnText}>{t("common.apply")}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        </Modal>
+    )
+
     return (
         <ScreenLayout>
             {renderHeader()}
+            {renderSearchBar()}
 
             <View style={styles.tabs}>
-                {["ALL", "FLASH", "P2P"].map(tab => (
-                    <TouchableOpacity
-                        key={tab}
-                        style={[styles.tab, activeTab === tab && styles.activeTab]}
-                        onPress={() => setActiveTab(tab)}
-                    >
-                        <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                            {t(`offer.tab.${tab.toLowerCase()}`)}
-                        </Text>
-                    </TouchableOpacity>
-                ))}
+                <TouchableOpacity style={[styles.tab, activeTab === "ALL" && styles.activeTab]}>
+                    <Text style={[styles.tabText, activeTab === "ALL" && styles.activeTabText]}>
+                        {t("offer.tab.all")}
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.tab} disabled>
+                    <Text style={[styles.tabText, { opacity: 0.5 }]}>{t("offer.tab.flash")}</Text>
+                </TouchableOpacity>
             </View>
 
-            {isLoading ? (
+            {isLoading && !isRefetching ? (
                 <ActivityIndicator size="large" color="#4F46E5" style={{ marginTop: 40 }} />
             ) : (
-                <FlatList
-                    data={discounts}
-                    renderItem={renderDiscountItem}
-                    keyExtractor={(item: any) => item.discountId}
+                <FlatList<CourseResponse>
+                    data={courses}
+                    renderItem={renderCourseCard}
+                    keyExtractor={(item) => item.courseId}
                     contentContainerStyle={styles.list}
+                    refreshing={isRefetching}
+                    onRefresh={refetch}
                     ListEmptyComponent={
                         <View style={styles.empty}>
-                            <Icon name="campaign" size={60} color="#E5E7EB" />
-                            <Text style={styles.emptyText}>{t("offer.noActiveOffers")}</Text>
+                            <Icon name="search-off" size={60} color="#E5E7EB" />
+                            <Text style={styles.emptyText}>{t("offer.noResults")}</Text>
                         </View>
                     }
                 />
             )}
 
-            <Modal
-                visible={createModalVisible}
-                transparent
-                animationType="slide"
-                onRequestClose={() => setCreateModalVisible(false)}
-            >
-                <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.modalHeader}>
-                            <Text style={styles.modalTitle}>{t("offer.createDiscount")}</Text>
-                            <TouchableOpacity onPress={() => setCreateModalVisible(false)}>
-                                <Icon name="close" size={24} color="#6B7280" />
-                            </TouchableOpacity>
-                        </View>
-
-                        <ScrollView contentContainerStyle={styles.modalBody}>
-                            <Text style={styles.label}>{t("offer.selectCourse")}</Text>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.courseSelectScroll}>
-                                {myCourses.map((c: any) => (
-                                    <TouchableOpacity
-                                        key={c.courseId}
-                                        style={[
-                                            styles.courseOption,
-                                            selectedCourse?.courseId === c.courseId && styles.courseOptionSelected
-                                        ]}
-                                        onPress={() => setSelectedCourse(c)}
-                                    >
-                                        <Image source={getCourseImage(c.thumbnailUrl)} style={styles.courseThumb} />
-                                        <Text numberOfLines={1} style={styles.courseOptionTitle}>{c.title}</Text>
-                                        <Text style={styles.coursePrice}>${c.price}</Text>
-                                    </TouchableOpacity>
-                                ))}
-                            </ScrollView>
-
-                            {selectedCourse && (
-                                <>
-                                    <Text style={styles.label}>
-                                        {t("offer.discountPercent")}: <Text style={{ color: '#4F46E5' }}>{discountPercent}%</Text>
-                                    </Text>
-                                    <View style={styles.sliderContainer}>
-                                        <Slider
-                                            style={{ width: '100%', height: 40 }}
-                                            minimumValue={1}
-                                            maximumValue={99}
-                                            step={1}
-                                            value={discountPercent}
-                                            onValueChange={setDiscountPercent}
-                                            minimumTrackTintColor="#4F46E5"
-                                            maximumTrackTintColor="#E5E7EB"
-                                            thumbTintColor="#4F46E5"
-                                        />
-                                        <View style={styles.sliderLabels}>
-                                            <Text style={styles.sliderLabel}>1%</Text>
-                                            <Text style={styles.sliderLabel}>99%</Text>
-                                        </View>
-                                    </View>
-
-                                    <View style={styles.previewRow}>
-                                        <Text style={styles.previewLabel}>{t("offer.newPrice")}:</Text>
-                                        <Text style={styles.previewOldPrice}>${selectedCourse.price}</Text>
-                                        <Icon name="arrow-right-alt" size={20} color="#6B7280" />
-                                        <Text style={styles.previewNewPrice}>
-                                            ${(selectedCourse.price * (100 - discountPercent) / 100).toFixed(2)}
-                                        </Text>
-                                    </View>
-
-                                    <Text style={styles.label}>{t("offer.customCode")} ({t("common.optional")})</Text>
-                                    <TextInput
-                                        style={styles.input}
-                                        placeholder="MYCOURSE2025"
-                                        value={customCode}
-                                        onChangeText={setCustomCode}
-                                        autoCapitalize="characters"
-                                    />
-                                    <Text style={styles.helperText}>{t("offer.customCodeHelper")}</Text>
-                                </>
-                            )}
-                        </ScrollView>
-
-                        <View style={styles.modalFooter}>
-                            <TouchableOpacity
-                                style={[styles.confirmBtn, !selectedCourse && styles.disabledBtn]}
-                                disabled={!selectedCourse || createDiscountMutation.isPending}
-                                onPress={handleCreateDiscount}
-                            >
-                                {createDiscountMutation.isPending ? (
-                                    <ActivityIndicator color="#FFF" />
-                                ) : (
-                                    <Text style={styles.confirmBtnText}>{t("offer.createButton")}</Text>
-                                )}
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </View>
-            </Modal>
+            {renderFilterModal()}
         </ScreenLayout>
     )
 }
@@ -265,10 +273,38 @@ const styles = createScaledSheet({
     backBtn: {
         padding: 8,
     },
-    createBtn: {
+    searchContainer: {
+        flexDirection: 'row',
+        paddingHorizontal: 20,
+        paddingBottom: 12,
+        backgroundColor: '#FFF',
+        gap: 12,
+    },
+    searchBox: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        borderRadius: 12,
+        paddingHorizontal: 12,
+        height: 48,
+    },
+    searchInput: {
+        flex: 1,
+        marginLeft: 8,
+        fontSize: 16,
+        color: '#1F2937',
+    },
+    filterBtn: {
+        width: 48,
+        height: 48,
+        borderRadius: 12,
+        backgroundColor: '#F3F4F6',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    filterBtnActive: {
         backgroundColor: '#4F46E5',
-        padding: 8,
-        borderRadius: 8,
     },
     tabs: {
         flexDirection: 'row',
@@ -296,86 +332,131 @@ const styles = createScaledSheet({
     list: {
         padding: 20,
     },
-    offerCard: {
+    card: {
         backgroundColor: '#FFF',
         borderRadius: 16,
-        marginBottom: 16,
-        padding: 16,
-        flexDirection: 'row',
-        alignItems: 'center',
+        marginBottom: 20,
+        overflow: 'hidden',
         shadowColor: "#000",
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.05,
+        shadowOpacity: 0.1,
         shadowRadius: 4,
-        elevation: 2,
+        elevation: 3,
     },
-    offerBadge: {
+    imageContainer: {
+        height: 180,
+        width: '100%',
+        backgroundColor: '#E5E7EB',
+    },
+    cardImage: {
+        width: '100%',
+        height: '100%',
+    },
+    badge: {
         position: 'absolute',
-        top: 0,
-        right: 0,
-        backgroundColor: '#EF4444',
+        top: 12,
+        left: 12,
+        backgroundColor: '#DC2626',
         paddingHorizontal: 8,
         paddingVertical: 4,
-        borderTopRightRadius: 16,
-        borderBottomLeftRadius: 8,
+        borderRadius: 6,
     },
-    offerBadgeText: {
+    badgeText: {
         color: '#FFF',
-        fontSize: 12,
         fontWeight: 'bold',
+        fontSize: 14,
     },
-    offerContent: {
+    cardContent: {
+        padding: 16,
+    },
+    topRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 8,
+    },
+    langTag: {
+        fontSize: 12,
+        color: '#6B7280',
+        backgroundColor: '#F3F4F6',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        fontWeight: '600',
+    },
+    ratingRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        flex: 1,
+        gap: 4,
     },
-    iconContainer: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: '#FFF7ED',
-        alignItems: 'center',
-        justifyContent: 'center',
+    ratingText: {
+        fontSize: 12,
+        color: '#6B7280',
     },
-    offerTitle: {
+    courseTitle: {
         fontSize: 16,
         fontWeight: 'bold',
         color: '#1F2937',
+        marginBottom: 8,
+        lineHeight: 22,
     },
-    offerSub: {
-        fontSize: 13,
-        color: '#6B7280',
-        marginTop: 2,
+    creatorRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 12,
     },
-    actionArrow: {
-        marginLeft: 8,
+    creatorAvatar: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        marginRight: 8,
+        backgroundColor: '#E5E7EB',
+    },
+    creatorName: {
+        fontSize: 14,
+        color: '#4B5563',
+        flex: 1,
+    },
+    priceRow: {
+        flexDirection: 'row',
+        alignItems: 'flex-end',
+        gap: 8,
+    },
+    newPrice: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: '#1F2937',
+    },
+    oldPrice: {
+        fontSize: 14,
+        color: '#9CA3AF',
+        textDecorationLine: 'line-through',
+        marginBottom: 2,
     },
     empty: {
         alignItems: 'center',
-        justifyContent: 'center',
         marginTop: 60,
     },
     emptyText: {
-        color: '#9CA3AF',
         marginTop: 12,
+        color: '#6B7280',
         fontSize: 16,
     },
     modalOverlay: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
-        justifyContent: 'flex-end',
+        justifyContent: 'center',
+        padding: 20,
     },
     modalContent: {
         backgroundColor: '#FFF',
-        borderTopLeftRadius: 24,
-        borderTopRightRadius: 24,
-        height: '80%',
+        borderRadius: 16,
+        maxHeight: '80%',
     },
     modalHeader: {
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        padding: 20,
+        padding: 16,
         borderBottomWidth: 1,
         borderBottomColor: '#F3F4F6',
     },
@@ -385,118 +466,72 @@ const styles = createScaledSheet({
         color: '#1F2937',
     },
     modalBody: {
-        padding: 20,
+        padding: 16,
     },
-    label: {
-        fontSize: 15,
+    filterLabel: {
+        fontSize: 16,
         fontWeight: '600',
         color: '#374151',
         marginBottom: 12,
         marginTop: 8,
     },
-    courseSelectScroll: {
-        marginBottom: 20,
-    },
-    courseOption: {
-        width: 140,
-        padding: 10,
-        borderRadius: 12,
-        borderWidth: 2,
-        borderColor: '#E5E7EB',
-        marginRight: 12,
-        backgroundColor: '#F9FAFB',
-    },
-    courseOptionSelected: {
-        borderColor: '#4F46E5',
-        backgroundColor: '#EEF2FF',
-    },
-    courseThumb: {
-        width: '100%',
-        height: 80,
-        borderRadius: 8,
-        marginBottom: 8,
-        backgroundColor: '#E5E7EB',
-    },
-    courseOptionTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#1F2937',
-        marginBottom: 4,
-    },
-    coursePrice: {
-        color: '#059669',
-        fontWeight: 'bold',
-    },
-    sliderContainer: {
-        marginBottom: 20,
-        backgroundColor: '#F9FAFB',
-        padding: 16,
-        borderRadius: 12,
-    },
-    sliderLabels: {
+    chipContainer: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
-        paddingHorizontal: 4,
-    },
-    sliderLabel: {
-        fontSize: 12,
-        color: '#6B7280',
-    },
-    previewRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
+        flexWrap: 'wrap',
         gap: 8,
-        marginBottom: 20,
-        padding: 12,
-        backgroundColor: '#F0FDF4',
-        borderRadius: 8,
+        marginBottom: 16,
     },
-    previewLabel: {
-        fontSize: 14,
-        color: '#166534',
-        fontWeight: '500',
-    },
-    previewOldPrice: {
-        fontSize: 14,
-        color: '#6B7280',
-        textDecorationLine: 'line-through',
-    },
-    previewNewPrice: {
-        fontSize: 18,
-        color: '#166534',
-        fontWeight: 'bold',
-    },
-    input: {
+    chip: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderRadius: 20,
         backgroundColor: '#F3F4F6',
-        borderRadius: 12,
-        padding: 12,
-        fontSize: 16,
-        color: '#1F2937',
+        borderWidth: 1,
+        borderColor: 'transparent',
     },
-    helperText: {
-        fontSize: 12,
-        color: '#9CA3AF',
-        marginTop: 6,
-        fontStyle: 'italic',
+    chipSelected: {
+        backgroundColor: '#EEF2FF',
+        borderColor: '#4F46E5',
+    },
+    chipText: {
+        color: '#4B5563',
+        fontSize: 14,
+    },
+    chipTextSelected: {
+        color: '#4F46E5',
+        fontWeight: '600',
     },
     modalFooter: {
-        padding: 20,
+        flexDirection: 'row',
+        padding: 16,
         borderTopWidth: 1,
         borderTopColor: '#F3F4F6',
+        gap: 12,
     },
-    confirmBtn: {
-        backgroundColor: '#4F46E5',
-        padding: 16,
-        borderRadius: 12,
+    resetBtn: {
+        flex: 1,
+        padding: 12,
         alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: '#D1D5DB',
     },
-    disabledBtn: {
-        backgroundColor: '#A5B4FC',
+    resetBtnText: {
+        color: '#374151',
+        fontWeight: '600',
     },
-    confirmBtnText: {
+    applyBtn: {
+        flex: 1,
+        padding: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 8,
+        backgroundColor: '#4F46E5',
+    },
+    applyBtnText: {
         color: '#FFF',
-        fontWeight: 'bold',
-        fontSize: 16,
+        fontWeight: '600',
     },
 })
 

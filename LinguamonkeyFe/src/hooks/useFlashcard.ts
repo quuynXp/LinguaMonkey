@@ -7,76 +7,66 @@ import {
   CreateFlashcardRequest,
 } from "../types/dto";
 
-// --- Keys Factory ---
 export const flashcardKeys = {
   all: ["flashcards"] as const,
   lists: () => [...flashcardKeys.all, "list"] as const,
-  // Params includes page, size, query, isPublic, and userId
-  list: (lessonId: string, params: any) => [...flashcardKeys.lists(), lessonId, params] as const,
+  // Differentiate My vs Community keys
+  myList: (lessonId: string, params: any) => [...flashcardKeys.lists(), "my", lessonId, params] as const,
+  communityList: (lessonId: string, params: any) => [...flashcardKeys.lists(), "community", lessonId, params] as const,
   due: (lessonId: string) => [...flashcardKeys.lists(), "due", lessonId] as const,
   details: () => [...flashcardKeys.all, "detail"] as const,
   detail: (id: string) => [...flashcardKeys.details(), id] as const,
 };
 
-// ==========================================
-// === FLASHCARDS HOOKS ===
-// ==========================================
-
 export const useFlashcards = () => {
   const queryClient = useQueryClient();
 
-  // 1. GET /api/v1/lessons/{lessonId}/flashcards
-  const useGetFlashcards = (
+  // 1. GET /api/v1/lessons/{lessonId}/flashcards/my
+  const useGetMyFlashcards = (
     lessonId: string | null,
-    params: {
-      page?: number;
-      size?: number;
-      query?: string;
-      isPublic?: boolean;
-      userId?: string; // Added userId to params
-    }
+    params: { page?: number; size?: number; query?: string }
   ) => {
-    const { page = 0, size = 20, query = "", isPublic, userId } = params;
-
+    const { page = 0, size = 20, query = "" } = params;
     return useQuery({
-      // Include userId in queryKey to differentiate cache if user changes
-      queryKey: flashcardKeys.list(lessonId!, { page, size, query, isPublic, userId }),
+      queryKey: flashcardKeys.myList(lessonId!, { page, size, query }),
       queryFn: async () => {
-        if (!lessonId) throw new Error("Lesson ID is required");
-
-        // Send userId explicitly in params as requested
+        if (!lessonId) throw new Error("Lesson ID required");
         const { data } = await instance.get<AppApiResponse<PageResponse<FlashcardResponse>>>(
-          `/api/v1/lessons/${lessonId}/flashcards`,
-          { params: { page, size, query, isPublic, userId } }
+          `/api/v1/lessons/${lessonId}/flashcards/my`,
+          { params: { page, size, query } }
         );
         return data.result;
       },
       enabled: !!lessonId,
-      placeholderData: (previousData) => previousData,
     });
   };
 
-  // 2. GET /api/v1/lessons/{lessonId}/flashcards/{id} (Detail)
-  const useGetFlashcard = (lessonId: string | null, flashcardId: string | null) => {
+  // 2. GET /api/v1/lessons/{lessonId}/flashcards/community
+  const useGetCommunityFlashcards = (
+    lessonId: string | null,
+    params: { page?: number; size?: number; query?: string; sort?: string }
+  ) => {
+    const { page = 0, size = 20, query = "", sort = "popular" } = params;
     return useQuery({
-      queryKey: flashcardKeys.detail(flashcardId!),
+      queryKey: flashcardKeys.communityList(lessonId!, { page, size, query, sort }),
       queryFn: async () => {
-        if (!lessonId || !flashcardId) throw new Error("IDs are required");
-        const { data } = await instance.get<AppApiResponse<FlashcardResponse>>(
-          `/api/v1/lessons/${lessonId}/flashcards/${flashcardId}`
+        if (!lessonId) throw new Error("Lesson ID required");
+        const { data } = await instance.get<AppApiResponse<PageResponse<FlashcardResponse>>>(
+          `/api/v1/lessons/${lessonId}/flashcards/community`,
+          { params: { page, size, query, sort } }
         );
         return data.result;
       },
-      enabled: !!lessonId && !!flashcardId,
+      enabled: !!lessonId,
     });
   };
 
-  // 3. GET /api/v1/lessons/{lessonId}/flashcards/due (Due for review)
+  // 3. GET Due
   const useGetDue = (lessonId: string | null, limit = 20) => {
     return useQuery({
       queryKey: flashcardKeys.due(lessonId!),
       queryFn: async () => {
-        if (!lessonId) throw new Error("Lesson ID is required");
+        if (!lessonId) throw new Error("Lesson ID required");
         const { data } = await instance.get<AppApiResponse<FlashcardResponse[]>>(
           `/api/v1/lessons/${lessonId}/flashcards/due`,
           { params: { limit } }
@@ -88,7 +78,7 @@ export const useFlashcards = () => {
     });
   };
 
-  // 4. POST /api/v1/lessons/{lessonId}/flashcards (Create)
+  // 4. Create
   const useCreateFlashcard = () => {
     return useMutation({
       mutationFn: async ({ lessonId, payload }: { lessonId: string; payload: CreateFlashcardRequest }) => {
@@ -99,54 +89,31 @@ export const useFlashcards = () => {
         return data.result;
       },
       onSuccess: (_, vars) => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.lists() });
+        queryClient.invalidateQueries({ queryKey: flashcardKeys.lists() }); // invalidates both my and community
         queryClient.invalidateQueries({ queryKey: flashcardKeys.due(vars.lessonId) });
       },
     });
   };
 
-  // 5. PUT /api/v1/lessons/{lessonId}/flashcards/{id} (Update)
-  const useUpdateFlashcard = () => {
+  // 5. CLAIM
+  const useClaimFlashcard = () => {
     return useMutation({
-      mutationFn: async ({
-        lessonId,
-        flashcardId,
-        payload,
-      }: {
-        lessonId: string;
-        flashcardId: string;
-        payload: CreateFlashcardRequest;
-      }) => {
-        const { data } = await instance.put<AppApiResponse<FlashcardResponse>>(
-          `/api/v1/lessons/${lessonId}/flashcards/${flashcardId}`,
-          payload
+      mutationFn: async ({ lessonId, flashcardId }: { lessonId: string; flashcardId: string }) => {
+        const { data } = await instance.post<AppApiResponse<FlashcardResponse>>(
+          `/api/v1/lessons/${lessonId}/flashcards/${flashcardId}/claim`
         );
         return data.result;
       },
-      onSuccess: (data, vars) => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.detail(vars.flashcardId) });
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.lists() });
-      },
-    });
-  };
-
-  // 6. DELETE /api/v1/lessons/{lessonId}/flashcards/{id} (Delete)
-  const useDeleteFlashcard = () => {
-    return useMutation({
-      mutationFn: async ({ lessonId, flashcardId }: { lessonId: string; flashcardId: string }) => {
-        await instance.delete<AppApiResponse<void>>(
-          `/api/v1/lessons/${lessonId}/flashcards/${flashcardId}`
-        );
-      },
       onSuccess: (_, vars) => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.lists() });
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.due(vars.lessonId) });
-        queryClient.removeQueries({ queryKey: flashcardKeys.detail(vars.flashcardId) });
-      },
+        // Refresh My List to show the new card
+        queryClient.invalidateQueries({ queryKey: flashcardKeys.myList(vars.lessonId, {}) });
+        // Refresh Community List to update claim count
+        queryClient.invalidateQueries({ queryKey: flashcardKeys.communityList(vars.lessonId, {}) });
+      }
     });
   };
 
-  // 7. POST /api/v1/lessons/{lessonId}/flashcards/{id}/review
+  // 6. Review
   const useReviewFlashcard = () => {
     return useMutation({
       mutationFn: async ({
@@ -169,78 +136,16 @@ export const useFlashcards = () => {
         queryClient.setQueryData(flashcardKeys.due(vars.lessonId), (old: FlashcardResponse[] | undefined) =>
           old ? old.filter((c) => c.flashcardId !== vars.flashcardId) : []
         );
-        queryClient.setQueryData(flashcardKeys.detail(vars.flashcardId), updatedCard);
-      },
-    });
-  };
-
-  // 8. POST /api/v1/lessons/{lessonId}/flashcards/{id}/reset
-  const useResetProgress = () => {
-    return useMutation({
-      mutationFn: async ({ lessonId, flashcardId }: { lessonId: string; flashcardId: string }) => {
-        const { data } = await instance.post<AppApiResponse<FlashcardResponse>>(
-          `/api/v1/lessons/${lessonId}/flashcards/${flashcardId}/reset`
-        );
-        return data.result;
-      },
-      onSuccess: (data, vars) => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.detail(vars.flashcardId) });
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.due(vars.lessonId) });
-      },
-    });
-  };
-
-  // 9. POST /api/v1/lessons/{lessonId}/flashcards/{id}/suspend
-  const useToggleSuspend = () => {
-    return useMutation({
-      mutationFn: async ({ lessonId, flashcardId }: { lessonId: string; flashcardId: string }) => {
-        const { data } = await instance.post<AppApiResponse<FlashcardResponse>>(
-          `/api/v1/lessons/${lessonId}/flashcards/${flashcardId}/suspend`
-        );
-        return data.result;
-      },
-      onSuccess: (data, vars) => {
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.detail(vars.flashcardId) });
-        queryClient.invalidateQueries({ queryKey: flashcardKeys.due(vars.lessonId) });
-      },
-    });
-  };
-
-  // 10. POST /api/v1/lessons/{lessonId}/flashcards/{id}/tts
-  const useGenerateTts = () => {
-    return useMutation({
-      mutationFn: async ({
-        lessonId,
-        flashcardId,
-        languageCode,
-      }: {
-        lessonId: string;
-        flashcardId: string;
-        languageCode: string;
-      }) => {
-        const { data } = await instance.post<AppApiResponse<FlashcardResponse>>(
-          `/api/v1/lessons/${lessonId}/flashcards/${flashcardId}/tts`,
-          null,
-          { params: { languageCode } }
-        );
-        return data.result;
-      },
-      onSuccess: (data, vars) => {
-        queryClient.setQueryData(flashcardKeys.detail(vars.flashcardId), data);
       },
     });
   };
 
   return {
-    useGetFlashcards,
-    useGetFlashcard,
+    useGetMyFlashcards,
+    useGetCommunityFlashcards,
     useGetDue,
     useCreateFlashcard,
-    useUpdateFlashcard,
-    useDeleteFlashcard,
+    useClaimFlashcard,
     useReviewFlashcard,
-    useResetProgress,
-    useToggleSuspend,
-    useGenerateTts,
   };
 };

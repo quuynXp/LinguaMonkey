@@ -13,7 +13,8 @@ import java.util.UUID;
 public class FlashcardResponse {
     private UUID flashcardId;
     private UUID lessonId;
-    private UUID userId; // Added field to identify owner
+    private UUID userId;
+    private UserProfileResponse authorProfile; // Added for Community Tab
     private String front;
     private String back;
     private String exampleSentence;
@@ -25,4 +26,6 @@ public class FlashcardResponse {
     private Float easeFactor;
     private String tags;
     private Boolean isPublic;
+    private Integer claimCount;
+    private OffsetDateTime createdAt;
 }
