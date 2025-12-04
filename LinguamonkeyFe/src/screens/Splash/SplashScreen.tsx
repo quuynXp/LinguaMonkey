@@ -70,6 +70,13 @@ const SplashScreen = ({ serverError }: SplashScreenProps) => {
         outputRange: ['0%', '100%'],
     });
 
+    const getStatusMessage = () => {
+        if (!serverError) return t('Loading');
+        if (serverError === 'no_internet') return t('common.no_internet', { defaultValue: 'No Internet Connection' });
+        if (serverError === 'server_maintenance') return t('common.server_maintenance', { defaultValue: 'Server is undergoing maintenance' });
+        return serverError;
+    };
+
     return (
         <ScreenLayout
             style={styles.container}
@@ -82,10 +89,9 @@ const SplashScreen = ({ serverError }: SplashScreenProps) => {
             </View>
 
             <View style={styles.bottomContainer}>
-                {/* 🚨 SỬA LỖI JITTER: Tách Loading và ... và bao bọc trong View */}
                 <View style={styles.loadingWrapper}>
                     <Text style={styles.loadingText}>
-                        {serverError ? t('common.reconnecting', { defaultValue: 'Reconnecting' }) : 'Loading'}
+                        {getStatusMessage()}
                     </Text>
                     <Text style={[styles.loadingText, styles.dotsPlaceholder]}>
                         {loadingDots}
@@ -106,7 +112,7 @@ const SplashScreen = ({ serverError }: SplashScreenProps) => {
 
                 {serverError ? (
                     <Text style={styles.errorText}>
-                        {serverError}
+                        {t('common.please_wait_reconnecting', { defaultValue: 'Please wait, reconnecting...' })}
                     </Text>
                 ) : (
                     <Text style={styles.quoteText}>{randomQuote}</Text>
@@ -137,20 +143,17 @@ const styles = createScaledSheet({
         paddingBottom: 60,
         alignItems: 'center',
     },
-    // Style mới để bao bọc Loading và ...
     loadingWrapper: {
         flexDirection: 'row',
-        marginBottom: 8, // Di chuyển marginBottom từ loadingText lên đây
+        marginBottom: 8,
     },
     loadingText: {
         fontSize: 14,
         color: '#666666',
         fontWeight: '500',
-        // Đã loại bỏ marginBottom vì nó đã được chuyển lên loadingWrapper
     },
-    // Style mới để cố định chiều rộng của dấu chấm
     dotsPlaceholder: {
-        width: 16, // Chiều rộng cố định, đảm bảo chứa 3 dấu chấm
+        width: 16,
     },
     progressBarContainer: {
         width: '100%',
@@ -171,6 +174,7 @@ const styles = createScaledSheet({
         lineHeight: 20,
         fontStyle: 'italic',
         opacity: 0.8,
+        marginTop: 15,
     },
     errorText: {
         fontSize: 14,
@@ -178,6 +182,7 @@ const styles = createScaledSheet({
         textAlign: 'center',
         lineHeight: 22,
         fontWeight: '500',
+        marginTop: 15,
     }
 });
 

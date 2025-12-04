@@ -542,12 +542,15 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
 
     @authenticated_grpc_method
     async def RefundDecision(self, request, context, claims) -> learning_pb2.RefundDecisionResponse:
-        decision, label, confidence, explanations, error = decide_refund(
+        logging.info(f"Processing Refund Decision for Transaction: {request.transaction_id}")
+        
+        decision, label, confidence, explanations, error = await decide_refund(
             request.transaction_id,
             request.user_id,
             request.course_id,
             request.reason_text,
         )
+
         return learning_pb2.RefundDecisionResponse(
             decision=decision,
             label=label,

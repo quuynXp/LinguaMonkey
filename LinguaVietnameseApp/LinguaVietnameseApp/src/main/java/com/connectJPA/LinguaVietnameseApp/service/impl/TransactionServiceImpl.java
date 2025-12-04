@@ -87,7 +87,7 @@ public class TransactionServiceImpl implements TransactionService {
     public Page<TransactionResponse> getAllUserTransactions(UUID userId, Pageable pageable) {
         return transactionRepository.findByUser_UserIdOrSender_UserIdOrReceiver_UserId(
                 userId, userId, userId, pageable
-        ).map(transactionMapper::toResponse);
+        ).map(transactionMapper::approveRefundtoResponse);
     }
 
     @Override
@@ -111,44 +111,30 @@ public class TransactionServiceImpl implements TransactionService {
                 });
     }
 
-    @Override
+   @Override
     @Transactional
     public TransactionResponse approveRefund(ApproveRefundRequest request) {
         Transaction refundTx = getRefundTx(request.getRefundTransactionId());
         Transaction originalTx = refundTx.getOriginalTransaction();
         
-        try {
-            // 1. Process Refund (Money back)
-            walletService.debit(refundTx.getSender().getUserId(), refundTx.getAmount()); // Debit Seller
-            walletService.credit(refundTx.getReceiver().getUserId(), refundTx.getAmount()); // Credit Buyer
-            
-            refundTx.setStatus(TransactionStatus.SUCCESS);
-            originalTx.setStatus(TransactionStatus.REFUNDED);
-            
-            transactionRepository.save(refundTx);
-            transactionRepository.save(originalTx);
+        // Debit Seller / Credit Buyer
+        walletService.debit(refundTx.getSender().getUserId(), refundTx.getAmount());
+        walletService.credit(refundTx.getReceiver().getUserId(), refundTx.getAmount());
+        
+        refundTx.setStatus(TransactionStatus.SUCCESS);
+        originalTx.setStatus(TransactionStatus.REFUNDED);
+        
+        transactionRepository.save(refundTx);
+        transactionRepository.save(originalTx);
 
-            NotificationRequest buyerNotif = NotificationRequest.builder()
-                    .userId(refundTx.getReceiver().getUserId())
-                    .title("Refund Approved")
-                    .content("Your refund request for " + originalTx.getDescription() + " has been approved.")
-                    .type("REFUND_APPROVED")
-                    .build();
-            notificationService.createPushNotification(buyerNotif);
+        notificationService.createPushNotification(NotificationRequest.builder()
+                .userId(refundTx.getReceiver().getUserId())
+                .title("Refund Approved")
+                .content("Your refund for " + originalTx.getDescription() + " has been approved by Admin.")
+                .type("REFUND_APPROVED")
+                .build());
 
-            // Notify Seller
-            NotificationRequest sellerNotif = NotificationRequest.builder()
-                    .userId(refundTx.getSender().getUserId())
-                    .title("Refund Processed")
-                    .content("A refund has been processed for " + originalTx.getDescription() + ".")
-                    .type("REFUND_PROCESSED")
-                    .build();
-            notificationService.createPushNotification(sellerNotif);
-
-            return transactionMapper.toResponse(refundTx);
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        return transactionMapper.approveRefundtoResponse(refundTx);
     }
 
     @Override
@@ -157,20 +143,18 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction refundTx = getRefundTx(refundTxId);
         
         refundTx.setStatus(TransactionStatus.REJECTED);
-        refundTx.getOriginalTransaction().setStatus(TransactionStatus.SUCCESS); // Revert original status
+        refundTx.getOriginalTransaction().setStatus(TransactionStatus.SUCCESS); // Revert
         
         transactionRepository.save(refundTx);
 
-        // Notify Buyer Only
-        NotificationRequest buyerNotif = NotificationRequest.builder()
+        notificationService.createPushNotification(NotificationRequest.builder()
                 .userId(refundTx.getUser().getUserId())
                 .title("Refund Rejected")
-                .content("Your refund request was rejected. Reason: " + reason)
+                .content("Admin rejected your refund: " + reason)
                 .type("REFUND_REJECTED")
-                .build();
-        notificationService.createPushNotification(buyerNotif);
+                .build());
 
-        return transactionMapper.toResponse(refundTx);
+        return transactionMapper.approveRefundtoResponse(refundTx);
     }
 
     @Override
@@ -178,7 +162,7 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionResponse getTransactionById(UUID id) {
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-        return transactionMapper.toResponse(transaction);
+        return transactionMapper.approveRefundtoResponse(transaction);
     }
 
     @Override
@@ -493,7 +477,7 @@ public class TransactionServiceImpl implements TransactionService {
         if (request.getIdempotencyKey() != null) {
             var existingTx = transactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
             if (existingTx.isPresent()) {
-                return transactionMapper.toResponse(existingTx.get());
+                return transactionMapper.approveRefundtoResponse(existingTx.get());
             }
         }
 
@@ -520,7 +504,7 @@ public class TransactionServiceImpl implements TransactionService {
             transaction.setStatus(TransactionStatus.SUCCESS);
             transaction = transactionRepository.save(transaction);
 
-            return transactionMapper.toResponse(transaction);
+            return transactionMapper.approveRefundtoResponse(transaction);
         } catch (Exception e) {
             transaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(transaction);
@@ -536,16 +520,28 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = Transaction.builder().user(user).wallet(wallet).amount(request.getAmount()).currency("USD").type(TransactionType.WITHDRAW).status(TransactionStatus.PENDING).provider(TransactionProvider.INTERNAL).description("Withdraw").build();
         transaction = transactionRepository.save(transaction);
         walletService.debit(user.getUserId(), request.getAmount());
-        return transactionMapper.toResponse(transaction);
+        return transactionMapper.approveRefundtoResponse(transaction);
     }
-    @Override @Transactional public TransactionResponse requestRefund(RefundRequest request) { 
-        Transaction original = transactionRepository.findById(request.getOriginalTransactionId()).orElseThrow(()->new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-        if (original.getStatus() != TransactionStatus.SUCCESS) throw new AppException(ErrorCode.TRANSACTION_NOT_REFUNDABLE);
+    @Override public TransactionResponse requestRefund(RefundRequest request) { 
+        Transaction original = transactionRepository.findById(request.getOriginalTransactionId())
+            .orElseThrow(()->new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
         original.setStatus(TransactionStatus.PENDING_REFUND);
         transactionRepository.save(original);
-        User requester = getUser(request.getRequesterId());
-        Transaction refundTx = Transaction.builder().user(requester).wallet(original.getWallet()).sender(original.getReceiver()).receiver(original.getSender()).amount(original.getAmount()).currency(original.getCurrency()).type(TransactionType.REFUND).status(TransactionStatus.PENDING).provider(TransactionProvider.INTERNAL).originalTransaction(original).description("Refund Req").build();
-        return transactionMapper.toResponse(transactionRepository.save(refundTx));
+        User requester = userRepository.findById(request.getRequesterId()).orElseThrow();
+        Transaction refundTx = Transaction.builder()
+            .user(requester)
+            .wallet(original.getWallet())
+            .sender(original.getReceiver()) // Seller pays
+            .receiver(original.getSender()) // Buyer receives
+            .amount(original.getAmount())
+            .currency(original.getCurrency())
+            .type(TransactionType.REFUND)
+            .status(TransactionStatus.PENDING) // Start as PENDING for Scheduler
+            .provider(TransactionProvider.INTERNAL)
+            .originalTransaction(original)
+            .description(request.getReason())
+            .build();
+        return transactionMapper.approveRefundtoResponse(transactionRepository.save(refundTx));
     }
 
     @Override public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) { return null; }
@@ -614,7 +610,7 @@ public class TransactionServiceImpl implements TransactionService {
              }
         }
 
-        return transactionMapper.toResponse(transaction);
+        return transactionMapper.approveRefundtoResponse(transaction);
     }
 
     private void createEnrollment(User user, UUID courseVersionId) {
@@ -651,10 +647,13 @@ public class TransactionServiceImpl implements TransactionService {
                 .orElseThrow(() -> new AppException(ErrorCode.WALLET_NOT_FOUND));
     }
 
-    private Transaction getRefundTx(UUID refundTxId) {
+   private Transaction getRefundTx(UUID refundTxId) {
         Transaction refundTx = transactionRepository.findById(refundTxId)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-        if (refundTx.getStatus() != TransactionStatus.PENDING || refundTx.getType() != TransactionType.REFUND) {
+        
+        // Allow PENDING or PENDING_REVIEW to be processed
+        if (refundTx.getType() != TransactionType.REFUND || 
+           (refundTx.getStatus() != TransactionStatus.PENDING && refundTx.getStatus() != TransactionStatus.PENDING_REVIEW)) {
             throw new AppException(ErrorCode.TRANSACTION_NOT_REFUNDABLE);
         }
         return refundTx;

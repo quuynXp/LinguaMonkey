@@ -19,6 +19,7 @@ import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { formatCurrency } from "../../utils/formatCurrency";
+
 type TabType = "COURSES" | "REFUNDS";
 
 const AdminCourseManagementScreen = () => {
@@ -120,7 +121,16 @@ const AdminCourseManagementScreen = () => {
         <Text style={styles.refundAmount}>${item.amount}</Text>
       </View>
       <Text style={styles.refundCourse}>Course: {item.courseName}</Text>
-      <Text style={styles.refundReason}>{"Reason: {item.reason}"}</Text>
+
+      <View style={styles.reasonBox}>
+        <Icon name="psychology" size={16} color="#6366F1" style={{ marginRight: 4 }} />
+        <Text style={styles.refundReason}>Reason: {item.reason}</Text>
+      </View>
+
+      <View style={styles.aiTag}>
+        <Text style={styles.aiTagText}>⚠️ Pending Admin Review (AI Unsure)</Text>
+      </View>
+
       <Text style={styles.refundDate}>{new Date(item.requestDate).toLocaleDateString()}</Text>
 
       <View style={styles.refundActions}>
@@ -129,14 +139,20 @@ const AdminCourseManagementScreen = () => {
           onPress={() => openRejectModal(item.refundTransactionId)}
           disabled={isRejecting || isApproving}
         >
-          <Text style={styles.btnTextReject}>{t("common.reject")}</Text>
+          {isRejecting && selectedRefundId === item.refundTransactionId ?
+            <ActivityIndicator size="small" color="#991B1B" /> :
+            <Text style={styles.btnTextReject}>{t("common.reject")}</Text>
+          }
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.refundBtn, styles.btnApprove]}
           onPress={() => handleApproveRefund(item)}
           disabled={isRejecting || isApproving}
         >
-          <Text style={styles.btnTextApprove}>{t("common.approve")}</Text>
+          {isApproving ?
+            <ActivityIndicator size="small" color="#166534" /> :
+            <Text style={styles.btnTextApprove}>{t("common.approve")}</Text>
+          }
         </TouchableOpacity>
       </View>
     </View>
@@ -162,7 +178,7 @@ const AdminCourseManagementScreen = () => {
             onPress={() => setActiveTab("REFUNDS")}
           >
             <Text style={[styles.tabText, activeTab === "REFUNDS" && styles.activeTabText]}>
-              Refunds {refundData?.totalElements ? `(${refundData.totalElements})` : ""}
+              Refund Requests {refundData?.totalElements ? `(${refundData.totalElements})` : ""}
             </Text>
           </TouchableOpacity>
         </View>
@@ -201,7 +217,7 @@ const AdminCourseManagementScreen = () => {
               <Text style={styles.modalTitle}>{t("admin.refunds.rejectReason")}</Text>
               <TextInput
                 style={styles.modalInput}
-                placeholder="Reason..."
+                placeholder="Reason for rejection..."
                 value={rejectReason}
                 onChangeText={setRejectReason}
                 multiline
@@ -244,19 +260,25 @@ const styles = createScaledSheet({
   actionBtn: { padding: 8 },
 
   // Refund Card
-  refundCard: { backgroundColor: "#fff", padding: 16, borderRadius: 12, marginBottom: 12, elevation: 1, borderLeftWidth: 4, borderLeftColor: "#F59E0B" },
+  refundCard: { backgroundColor: "#fff", padding: 16, borderRadius: 12, marginBottom: 12, elevation: 2, borderLeftWidth: 4, borderLeftColor: "#6366F1" },
   refundHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
   refundUser: { fontWeight: "700", fontSize: 16, color: "#1F2937" },
   refundAmount: { fontWeight: "800", fontSize: 16, color: "#EF4444" },
-  refundCourse: { fontSize: 14, color: "#4B5563", marginBottom: 4 },
-  refundReason: { fontSize: 14, fontStyle: "italic", color: "#6B7280", marginBottom: 8 },
+  refundCourse: { fontSize: 14, color: "#4B5563", marginBottom: 8 },
+
+  reasonBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', padding: 8, borderRadius: 6, marginBottom: 8 },
+  refundReason: { fontSize: 14, fontStyle: "italic", color: "#4B5563", flex: 1 },
+
+  aiTag: { alignSelf: 'flex-start', backgroundColor: '#FFF7ED', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, marginBottom: 12, borderWidth: 1, borderColor: '#FED7AA' },
+  aiTagText: { fontSize: 12, color: '#C2410C', fontWeight: '600' },
+
   refundDate: { fontSize: 12, color: "#9CA3AF", marginBottom: 12 },
   refundActions: { flexDirection: "row", gap: 12 },
-  refundBtn: { flex: 1, paddingVertical: 8, borderRadius: 6, alignItems: "center" },
+  refundBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, alignItems: "center", justifyContent: 'center' },
   btnReject: { backgroundColor: "#FEE2E2" },
   btnApprove: { backgroundColor: "#DCFCE7" },
-  btnTextReject: { color: "#991B1B", fontWeight: "600" },
-  btnTextApprove: { color: "#166534", fontWeight: "600" },
+  btnTextReject: { color: "#991B1B", fontWeight: "700" },
+  btnTextApprove: { color: "#166534", fontWeight: "700" },
 
   emptyText: { textAlign: "center", marginTop: 40, color: "#94A3B8" },
 

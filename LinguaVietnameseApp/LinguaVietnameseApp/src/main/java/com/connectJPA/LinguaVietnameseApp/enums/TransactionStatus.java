@@ -9,5 +9,5 @@ public enum TransactionStatus {
     PENDING_REFUND, // Chờ admin duyệt refund
     REFUNDED,
     REJECTED,
-    COMPLETED
+    COMPLETED,PENDING_REVIEW
 }

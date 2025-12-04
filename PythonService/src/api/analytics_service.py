@@ -1,53 +1,52 @@
-# src/api/analytics_service.py
+import json
 import logging
+from .chat_ai import chat_with_ai
 
+async def decide_refund(transaction_id: str, user_id: str, course_id: str, reason_text: str):
+    prompt = f"""
+    You are an AI arbitrator for a Course Platform. Analyze this refund request.
+    
+    Context:
+    - User ID: {user_id}
+    - Course ID: {course_id}
+    - Refund Reason: "{reason_text}"
 
-def analyze_course_quality(course_id: str, lesson_ids: list[str]):
+    Policy:
+    1. REJECT if the reason indicates USER ERROR or PREFERENCE. 
+       Examples: "Bought by mistake", "Changed mind", "Don't like it anymore", "Too expensive", "Accidental purchase", "Forgot to cancel".
+    2. APPROVE if the reason indicates PLATFORM/CREATOR FAULT.
+       Examples: "Course is empty", "Video not playing", "Scam content", "Audio missing", "Content doesn't match description", "Duplicate charge".
+    3. REVIEW if the reason is ambiguous, mixed, or requires human investigation.
+
+    Task:
+    - Detect the language of the reason automatically.
+    - Classify the request based on the meaning, not just keywords.
+    - Return a JSON object ONLY.
+
+    Format:
+    {{
+        "decision": "APPROVE" | "REJECT" | "REVIEW",
+        "confidence": 0.95,
+        "explanation": "Brief explanation in English"
+    }}
     """
-    Mock analysis of course quality.
-    In reality, this might run NLP on reviews or check lesson completion rates.
-    """
-    logging.info(
-        f"Analyzing quality for course {course_id} "
-        f"(lessons: {len(lesson_ids)})"
-    )
 
-    score = 0.85
-    warnings = []
-    verdict = "pass"
+    try:
+        response_text, error = await chat_with_ai(prompt, [], "en")
+        
+        if error:
+            logging.error(f"Gemini Refund Analysis Error: {error}")
+            return "REVIEW", "AI_ERROR", 0.0, [str(error)], str(error)
 
-    if len(lesson_ids) < 5:
-        warnings.append("Course has very few lessons.")
-        verdict = "review_needed"
-        score = 0.6
+        clean_text = response_text.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean_text)
 
-    return score, warnings, verdict, ""
+        decision = data.get("decision", "REVIEW")
+        explanation = data.get("explanation", "No explanation provided")
+        confidence = float(data.get("confidence", 0.0))
 
+        return decision, decision, confidence, [explanation], ""
 
-def decide_refund(transaction_id: str, user_id: str, course_id: str,
-                  reason_text: str):
-    """
-    Mock refund decision.
-    In reality, this might use a classification model on 'reason_text'
-    and check user's activity (e.g., 'time_spent_in_course').
-    """
-    logging.info(
-        f"Deciding refund for tx {transaction_id} "
-        f"(User: {user_id}, Course: {course_id})"
-    )
-
-    decision = "approve"
-    label = "policy_violation"  # (e.g., 'user_unsatisfied', 'technical_issue')
-    confidence = 0.92
-    explanations = [
-        (
-            "Mock: User reason text 'I didn't like it' "
-            "matches 'user_unsatisfied' policy."
-        )
-    ]
-
-    if "technical issue" in reason_text.lower():
-        label = "technical_issue"
-        explanations = ["Mock: User mentioned technical issues."]
-
-    return decision, label, confidence, explanations, ""
+    except Exception as e:
+        logging.error(f"Refund Analysis Exception: {e}")
+        return "REVIEW", "EXCEPTION", 0.0, [str(e)], str(e)

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
-import { View, Text, AppState, AppStateStatus } from "react-native";
+import { View, AppState } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { RootNavigationRef, flushPendingActions } from "./utils/navigationRef";
@@ -21,12 +21,10 @@ import ChatBubble from "./components/chat/ChatBubble";
 
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
-  const [isConnected, setIsConnected] = useState(true);
   const [serverErrorMsg, setServerErrorMsg] = useState<string | null>(null);
 
   const accessToken = useTokenStore((state) => state.accessToken);
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
-  const clearTokens = useTokenStore((state) => state.clearTokens);
   const { setUser, setLocalNativeLanguage } = useUserStore();
   const { setAppIsActive, setCurrentAppScreen } = useChatStore();
 
@@ -34,13 +32,11 @@ const RootNavigation = () => {
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
   const appState = useRef(AppState.currentState);
 
-  // AppState Listener for Notification Logic
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       appState.current = nextAppState;
       const isActive = nextAppState === "active";
       setAppIsActive(isActive);
-      console.log(`AppState changed to: ${nextAppState}`);
     });
     return () => { subscription.remove(); };
   }, [setAppIsActive]);
@@ -65,16 +61,40 @@ const RootNavigation = () => {
   }), []);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => { setIsConnected(state.isConnected ?? false); });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
     notificationService.initialize();
     const cleanup = notificationService.setupNotificationListeners();
     permissionService.checkNotificationPermission();
     return () => { if (cleanup) cleanup(); };
   }, []);
+
+  const waitForConnectivity = async () => {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const netState = await NetInfo.fetch();
+      if (!netState.isConnected) {
+        setServerErrorMsg("no_internet");
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        continue;
+      }
+
+      try {
+        // Ping Kong/Server root or a lightweight endpoint
+        await instance.get("/", { timeout: 3000 });
+        setServerErrorMsg(null);
+        break;
+      } catch (error: any) {
+        // If we get a response (even 404, 401, 500), the server is alive/reachable.
+        // If we get no response (Network Error, Timeout), the server/gateway is down.
+        if (error.response) {
+          setServerErrorMsg(null);
+          break;
+        } else {
+          setServerErrorMsg("server_maintenance");
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
+      }
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -82,6 +102,10 @@ const RootNavigation = () => {
       if (!mounted) return;
       try {
         setIsLoading(true);
+
+        await waitForConnectivity();
+        if (!mounted) return;
+
         const hasValidToken = await initializeTokens();
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
@@ -96,22 +120,28 @@ const RootNavigation = () => {
           const currentToken = useTokenStore.getState().accessToken;
           const payload = decodeToken(currentToken!);
           if (payload?.userId) {
-            const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
-            const rawUser = userRes.data.result || {};
-            setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: getRoleFromToken(currentToken!) }, savedLanguage);
-            notificationService.registerTokenToBackend();
-
-            setInitialMainRoute("TabApp");
+            try {
+              const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
+              const rawUser = userRes.data.result || {};
+              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: getRoleFromToken(currentToken!) }, savedLanguage);
+              notificationService.registerTokenToBackend();
+              setInitialMainRoute("TabApp");
+            } catch (userErr) {
+              console.error("Fetch user failed, might need re-login or server hiccup after check", userErr);
+              // Optional: Decide if we want to force logout or retry here
+            }
           }
         }
-      } catch (e) { console.error("Boot error:", e); }
-      finally { if (mounted) setIsLoading(false); }
+      } catch (e) {
+        console.error("Boot error:", e);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
     };
     boot();
     return () => { mounted = false; };
-  }, [initializeTokens, setUser, setLocalNativeLanguage, accessToken]);
+  }, [initializeTokens, setUser, setLocalNativeLanguage]);
 
-  if (!isConnected) return <View style={{ flex: 1, justifyContent: "center" }}><Text>No Internet</Text></View>;
   if (isLoading) return <SplashScreen serverError={serverErrorMsg} />;
 
   return (

@@ -18,7 +18,9 @@ public interface TransactionMapper {
     @Mapping(target = "deletedAt", ignore = true)
     Transaction toEntity(TransactionRequest request);
 
-    TransactionResponse toResponse(Transaction transaction);
+    TransactionResponse approveRefundtoResponse(Transaction transaction);
+
+        TransactionResponse tResponse(Transaction transaction);
 
     @Mapping(target = "transactionId", ignore = true)
     @Mapping(target = "deleted", ignore = true)
