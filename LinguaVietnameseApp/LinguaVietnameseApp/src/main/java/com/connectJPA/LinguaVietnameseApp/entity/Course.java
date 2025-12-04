@@ -2,22 +2,20 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
-import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
-import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-@Data
+@Getter
+@Setter
+@ToString(callSuper = true, exclude = {"latestPublicVersion", "allVersions"})
 @Entity
 @Table(name = "courses")
 @SuperBuilder
@@ -34,14 +32,11 @@ public class Course extends BaseEntity {
     private String title;
 
     @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "latest_public_version_id")
+    @JoinColumn(name = "latest_public_version_id", referencedColumnName = "version_id")
     private CourseVersion latestPublicVersion;
 
-    @OneToMany(
-            mappedBy = "course",
-            cascade = CascadeType.ALL,
-            orphanRemoval = true
-    )
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_id")
     private List<CourseVersion> allVersions;
 
     @Column(name = "creator_id")
@@ -50,6 +45,9 @@ public class Course extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false)
     private CourseApprovalStatus approvalStatus = CourseApprovalStatus.PENDING;
+
+    @Column(name = "is_admin_created", nullable = false)
+    private Boolean isAdminCreated = false;
 
     public List<Lesson> getLessons() {
         if (this.latestPublicVersion == null || this.latestPublicVersion.getLessons() == null) {
@@ -60,7 +58,4 @@ public class Course extends BaseEntity {
                 .map(CourseVersionLesson::getLesson)
                 .collect(Collectors.toList());
     }
-
-    @Column(name = "is_admin_created", nullable = false)
-    private Boolean isAdminCreated = false;
 }

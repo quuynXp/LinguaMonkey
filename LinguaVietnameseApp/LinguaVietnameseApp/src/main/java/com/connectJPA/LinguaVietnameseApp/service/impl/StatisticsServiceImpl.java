@@ -5,7 +5,6 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
-import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserLearningActivityMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
@@ -20,7 +19,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
-import java.time.format.DateTimeFormatter;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -87,7 +85,9 @@ public class StatisticsServiceImpl implements StatisticsService {
 
         List<CourseProgressDto> courseProgressList = new ArrayList<>();
         for (CourseVersionEnrollment e : enrollments) {
-            Course course = e.getCourseVersion().getCourse();
+            // Fix: Fetch Course manually because relationship is cut
+            Course course = courseRepository.findById(e.getCourseVersion().getCourseId()).orElse(null);
+            
             CourseVersion version = (course != null) ? course.getLatestPublicVersion() : null;
             if (course == null || version == null) continue;
 

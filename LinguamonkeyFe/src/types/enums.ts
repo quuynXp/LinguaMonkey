@@ -514,7 +514,8 @@ export enum VideoCallStatus {
 export enum VideoCallType {
     ONE_ONE = "ONE_ONE",
     MANY = "MANY",
-    ONE_TO_ONE = "ONE_TO_ONE"
+    ONE_TO_ONE = "ONE_TO_ONE",
+    GROUP = "GROUP"
 }
 
 export enum VideoType {

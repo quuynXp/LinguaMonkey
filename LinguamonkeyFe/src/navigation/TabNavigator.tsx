@@ -5,7 +5,7 @@ import ChatStack from './stack/ChatStack';
 import HomeStack from './stack/HomeStack';
 import ProfileStack from './stack/ProfileStack';
 import ProgressStack from './stack/ProgressStack';
-import SkillsLearnStack from './stack/LearnStack';
+import LearnStack from './stack/LearnStack';
 
 
 const Tab = createBottomTabNavigator();
@@ -45,7 +45,7 @@ export default function TabNavigator() {
       })}
     >
       <Tab.Screen name="Home" component={HomeStack} />
-      <Tab.Screen name="Learn" component={SkillsLearnStack} />
+      <Tab.Screen name="Learn" component={LearnStack} />
       <Tab.Screen name="Progress" component={ProgressStack} />
       <Tab.Screen name="Chat" component={ChatStack} />
       <Tab.Screen name="Profile" component={ProfileStack} />

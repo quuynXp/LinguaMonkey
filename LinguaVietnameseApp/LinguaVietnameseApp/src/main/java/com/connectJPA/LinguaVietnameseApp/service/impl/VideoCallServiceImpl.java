@@ -15,14 +15,19 @@ import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoCallParticipantRepository;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.VideoCallRepository;
+import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
+import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.VideoCallService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,6 +42,12 @@ public class VideoCallServiceImpl implements VideoCallService {
     private final VideoCallParticipantRepository videoCallParticipantRepository;
     private final UserRepository userRepository;
     private final RoomRepository roomRepository;
+    private final SimpMessagingTemplate messagingTemplate;
+
+    @Lazy
+    private final DailyChallengeService dailyChallengeService;
+    @Lazy
+    private final BadgeService badgeService;
 
     @Override
     public Page<VideoCallResponse> getAllVideoCalls(String callerId, String status, Pageable pageable) {
@@ -86,6 +97,7 @@ public class VideoCallServiceImpl implements VideoCallService {
     }
 
     @Override
+    @Transactional
     public VideoCallResponse createGroupVideoCall(UUID callerId, List<UUID> participantIds, VideoCallType type) {
         Room room = Room.builder()
                 .creatorId(callerId)
@@ -101,26 +113,70 @@ public class VideoCallServiceImpl implements VideoCallService {
                 .roomId(roomSaved.getRoomId())
                 .videoCallType(type)
                 .status(VideoCallStatus.INITIATED)
+                .startTime(OffsetDateTime.now())
                 .build();
         videoCall = videoCallRepository.save(videoCall);
 
         List<VideoCallParticipant> participants = new ArrayList<>();
+        
+        VideoCallParticipant host = VideoCallParticipant.builder()
+                .id(new VideoCallParticipantId(videoCall.getVideoCallId(), callerId))
+                .videoCall(videoCall)
+                .user(userRepository.getReferenceById(callerId))
+                .joinedAt(OffsetDateTime.now())
+                .role(VideoCallRole.HOST)
+                .status(VideoCallParticipantStatus.CONNECTED)
+                .build();
+        participants.add(host);
+
         for (UUID userId : participantIds) {
-            VideoCallParticipant participant = VideoCallParticipant.builder()
-                    .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
-                    .videoCall(videoCall)
-                    .user(userRepository.getReferenceById(userId))
-                    .joinedAt(OffsetDateTime.now())
-                    .role(userId.equals(callerId) ? VideoCallRole.HOST : VideoCallRole.GUEST)
-                    .status(VideoCallParticipantStatus.CONNECTED)
-                    .build();
-            participants.add(participant);
+            if (!userId.equals(callerId)) {
+                VideoCallParticipant participant = VideoCallParticipant.builder()
+                        .id(new VideoCallParticipantId(videoCall.getVideoCallId(), userId))
+                        .videoCall(videoCall)
+                        .user(userRepository.getReferenceById(userId))
+                        .joinedAt(OffsetDateTime.now())
+                        .role(VideoCallRole.GUEST)
+                        .status(VideoCallParticipantStatus.WAITING)
+                        .build();
+                participants.add(participant);
+            }
         }
         videoCallParticipantRepository.saveAll(participants);
-        return videoCallMapper.toResponse(videoCall);
+
+        VideoCallResponse response = videoCallMapper.toResponse(videoCall);
+        
+        messagingTemplate.convertAndSend("/topic/room/" + roomSaved.getRoomId(), 
+            wrapWithMessageType(response, "VIDEO_CALL"));
+
+        for (UUID userId : participantIds) {
+            if (!userId.equals(callerId)) {
+                try {
+                    messagingTemplate.convertAndSendToUser(
+                        userId.toString(), 
+                        "/queue/notifications", 
+                        wrapWithMessageType(response, "VIDEO_CALL")
+                    );
+                } catch (Exception e) {
+                    log.warn("Failed to send socket notification to user {}", userId);
+                }
+            }
+        }
+
+        return response;
     }
 
-    // Participants management
+    private java.util.Map<String, Object> wrapWithMessageType(VideoCallResponse response, String type) {
+        java.util.Map<String, Object> map = new java.util.HashMap<>();
+        map.put("type", type);
+        map.put("roomId", response.getRoomId());
+        map.put("videoCallId", response.getVideoCallId());
+        map.put("callerId", response.getCallerId());
+        map.put("videoCallType", response.getVideoCallType());
+        map.put("content", "Video call started"); 
+        return map;
+    }
+
     @Transactional
     @Override
     public void addParticipant(UUID videoCallId, UUID userId) {
@@ -151,14 +207,11 @@ public class VideoCallServiceImpl implements VideoCallService {
         return videoCallParticipantRepository.findByVideoCall_VideoCallId(videoCallId);
     }
 
-
     @Override
     public List<VideoCallResponse> getVideoCallHistoryByUser(UUID userId) {
         try {
-            // 1. Lấy tất cả VideoCallParticipant của user
             List<VideoCallParticipant> participantList = videoCallParticipantRepository.findByUser_UserId(userId);
 
-            // 2. Map sang VideoCallResponse
             List<VideoCallResponse> responses = new ArrayList<>();
             for (VideoCallParticipant participant : participantList) {
                 VideoCall videoCall = participant.getVideoCall();
@@ -167,7 +220,6 @@ public class VideoCallServiceImpl implements VideoCallService {
                 }
             }
 
-            // 3. Thêm cả video call mà user là caller nhưng chưa tham gia participant
             List<VideoCall> callerVideoCalls = videoCallRepository.findByCallerIdAndIsDeletedFalse(userId);
             for (VideoCall vc : callerVideoCalls) {
                 if (responses.stream().noneMatch(r -> r.getVideoCallId().equals(vc.getVideoCallId()))) {
@@ -182,7 +234,6 @@ public class VideoCallServiceImpl implements VideoCallService {
         }
     }
 
-
     @Transactional
     @Override
     public void updateParticipantStatus(UUID videoCallId, UUID userId, VideoCallParticipantStatus status) {
@@ -193,7 +244,6 @@ public class VideoCallServiceImpl implements VideoCallService {
         videoCallParticipantRepository.save(participant);
     }
 
-
     @Override
     @Transactional
     public VideoCallResponse updateVideoCall(UUID id, VideoCallRequest request) {
@@ -203,7 +253,40 @@ public class VideoCallServiceImpl implements VideoCallService {
             }
             VideoCall videoCall = videoCallRepository.findByVideoCallIdAndIsDeletedFalse(id)
                     .orElseThrow(() -> new AppException(ErrorCode.VIDEO_CALL_NOT_FOUND));
+            
+            VideoCallStatus previousStatus = videoCall.getStatus();
             videoCallMapper.updateEntityFromRequest(request, videoCall);
+            
+            // Handle End Call Logic
+            if (request.getStatus() == VideoCallStatus.ENDED && previousStatus != VideoCallStatus.ENDED) {
+                videoCall.setEndTime(OffsetDateTime.now());
+                
+                // Calculate duration
+                int durationMinutes = 0;
+                if (videoCall.getStartTime() != null) {
+                    long seconds = Duration.between(videoCall.getStartTime(), videoCall.getEndTime()).getSeconds();
+                    durationMinutes = (int) (seconds / 60);
+                }
+
+                // Update Progress for All Participants
+                List<VideoCallParticipant> participants = videoCallParticipantRepository.findByVideoCall_VideoCallId(id);
+                for (VideoCallParticipant p : participants) {
+                    if (p.getStatus() == VideoCallParticipantStatus.CONNECTED || p.getRole() == VideoCallRole.HOST) {
+                        
+                        // 1. Update Daily Challenge (Speaking Practice & Learning Time)
+                        if (dailyChallengeService != null) {
+                            dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.SPEAKING_PRACTICE, Math.max(1, durationMinutes));
+                            dailyChallengeService.updateChallengeProgress(p.getId().getUserId(), ChallengeType.LEARNING_TIME, durationMinutes);
+                        }
+
+                        // 2. Update Badge (Video Call Count)
+                        if (badgeService != null) {
+                            badgeService.updateBadgeProgress(p.getId().getUserId(), BadgeType.VIDEO_CALL_COUNT, 1);
+                        }
+                    }
+                }
+            }
+
             videoCall = videoCallRepository.save(videoCall);
             return videoCallMapper.toResponse(videoCall);
         } catch (Exception e) {

@@ -27,7 +27,6 @@ import type {
   CourseVersionEnrollmentResponse,
   LessonCategoryResponse,
 } from "../../types/dto";
-import { CourseType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCourseImage } from "../../utils/courseUtils";
 import { getCountryFlag } from "../../utils/flagUtils";
@@ -213,152 +212,58 @@ const LearningLanguageSelector = ({
   );
 };
 
-// --- Sub-View: All Courses ---
-const AllCoursesView = ({ navigation, onBack }: { navigation: any; onBack: () => void }) => {
-  const { t } = useTranslation();
-  const { useAllCourses } = useCourses();
-  const [page, setPage] = useState(0);
-
-  const { data, isLoading, refetch, isFetching } = useAllCourses({
-    page,
-    size: 10,
-    type: CourseType.FREE,
-  });
-
-  const courses = useMemo(() => (data?.data as CourseResponse[]) || [], [data]);
-
-  const loadMore = () => {
-    if (data?.pagination && !data.pagination.isLast && !isFetching) {
-      setPage(prev => prev + 1);
-    }
-  };
-
-  const handleCoursePress = (item: CourseResponse) => {
-    // Navigate to CourseDetailsScreen with latestPublicVersion info
-    gotoTab("CourseStack", "CourseDetailsScreen", { courseId: item.courseId });
-  };
-
-  const renderItem: ListRenderItem<CourseResponse> = ({ item }) => {
-    // Logic hiển thị rating và giá thực tế
-    const rating = item.averageRating ? item.averageRating.toFixed(1) : "0.0";
-    const price = item.latestPublicVersion?.price ?? 0;
-    const reviewCount = item.reviewCount || 0;
-
-    return (
-      <TouchableOpacity
-        style={styles.verticalCard}
-        onPress={() => handleCoursePress(item)}
-      >
-        <Image
-          source={getCourseImage(item.latestPublicVersion?.thumbnailUrl)}
-          style={styles.verticalCardImage}
-        />
-        <View style={styles.verticalCardContent}>
-          <Text style={styles.verticalCardTitle} numberOfLines={2}>{item.title}</Text>
-          <View style={styles.verticalCardMeta}>
-            <Icon name="star" size={14} color="#F59E0B" />
-            <Text style={styles.metaText}>{rating} ({reviewCount})</Text>
-            <View style={styles.dot} />
-            <Text style={[styles.metaText, { color: '#4F46E5', fontWeight: 'bold' }]}>
-              {price === 0 ? t("courses.free") : `$${price}`}
-            </Text>
-          </View>
-          <Text style={styles.verticalCardAuthor} numberOfLines={1}>
-            {t("common.by")} {item?.creatorName || item?.creatorId || "Instructor"}
-          </Text>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  return (
-    <View style={styles.subScreenContainer}>
-      <View style={styles.subHeader}>
-        <TouchableOpacity onPress={onBack} style={styles.backButton}>
-          <Icon name="arrow-back" size={24} color="#1F2937" />
-        </TouchableOpacity>
-        <Text style={styles.subHeaderTitle}>{t("learn.allCourses") || "All Courses"}</Text>
-        <View style={{ width: 40 }} />
-      </View>
-
-      {isLoading && page === 0 ? (
-        <ActivityIndicator style={{ marginTop: 20 }} color="#4F46E5" />
-      ) : (
-        <FlatList<CourseResponse>
-          data={courses}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.courseId}
-          contentContainerStyle={styles.listContainer}
-          onEndReached={() => { }}
-          ListFooterComponent={
-            <View style={styles.footerLoader}>
-              {!data?.pagination?.isLast ? (
-                <TouchableOpacity style={styles.loadMoreBtn} onPress={loadMore} disabled={isFetching}>
-                  {isFetching ? <ActivityIndicator color="#4F46E5" /> : <Text style={styles.loadMoreText}>{t("common.loadMore")}</Text>}
-                </TouchableOpacity>
-              ) : courses.length > 0 ? <Text style={styles.endText}>{t("common.endOfList")}</Text> : null}
-            </View>
-          }
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Text style={styles.emptyText}>{t("common.noData")}</Text>
-            </View>
-          }
-        />
-      )}
-    </View>
-  );
-};
-
-// --- NEW Sub-View: Admin Courses List (REPLACED Categories Grid logic) ---
-const AdminCoursesList = ({
+// --- NEW Sub-View: Top 10 Best Selling Courses ---
+const TopSellingCoursesList = ({
   t,
-  navigation,
+  onSeeAll,
   courses,
   isLoading,
-  refetch,
 }: {
   t: ReturnType<typeof useTranslation>['t'];
-  navigation: any;
+  onSeeAll: () => void;
   courses: CourseResponse[];
   isLoading: boolean;
-  refetch: () => void;
 }) => {
   const handleCoursePress = (course: CourseResponse) => {
-    // Navigates to CourseDetailsScreen (with latest public version) as requested
     gotoTab("CourseStack", "CourseDetailsScreen", { courseId: course.courseId });
   };
 
   const renderItem: ListRenderItem<CourseResponse> = ({ item, index }) => {
-    const colors = ["#EFF6FF", "#ECFDF5", "#FFFBEB", "#FDF2F8"];
-    const iconColors = ["#3B82F6", "#10B981", "#F59E0B", "#EC4899"];
-    const bgColor = colors[index % colors.length];
-    const iconColor = iconColors[index % iconColors.length];
-
-    // Check if latestPublicVersion exists to show the card
     if (!item.latestPublicVersion) return null;
+
+    // Use a field for student count (purchase count), defaulting to 0
+    const studentCount = item.totalStudents || 0;
 
     return (
       <TouchableOpacity
         style={styles.gridCardFlat}
         onPress={() => handleCoursePress(item)}
       >
-        <View style={[styles.toolIconContainer, { backgroundColor: bgColor }]}>
-          <Icon name="verified" size={24} color={iconColor} />
-        </View>
-        <Text style={styles.toolName} numberOfLines={2}>{item.title}</Text>
-        <View style={styles.adminTag}>
-          <Text style={styles.adminTagText}>Official</Text>
+        <Image
+          source={getCourseImage(item.latestPublicVersion.thumbnailUrl)}
+          style={styles.gridCardImage}
+          resizeMode="cover"
+        />
+        <View style={styles.gridCardContent}>
+          <Text style={styles.gridCardTitle} numberOfLines={2}>{item.title}</Text>
+          <View style={styles.gridCardMeta}>
+            <Icon name="people" size={14} color="#6B7280" />
+            <Text style={styles.gridCardMetaText}>{studentCount} students</Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
   };
 
-
   return (
     <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{t("learn.adminCourses", "Khóa học chính thức")}</Text>
+      <View style={styles.sectionHeaderRow}>
+        <Text style={styles.sectionTitle}>{t("learn.topSelling", "Top khóa học bán chạy")}</Text>
+        <TouchableOpacity onPress={onSeeAll}>
+          <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
+        </TouchableOpacity>
+      </View>
+
       {isLoading ? (
         <ActivityIndicator color="#4F46E5" />
       ) : (
@@ -386,7 +291,7 @@ const LearnScreen = ({ navigation }: any) => {
   const { user, refreshUserProfile } = userStore;
 
   // Hooks
-  const { useEnrollments, useRecommendedCourses, useCreatorCourses, useAllCourses } = useCourses();
+  const { useEnrollments, useRecommendedCourses, useCreatorCourses, useTopSellingCourses } = useCourses();
   const { useCategories } = useLessonStructure();
 
   const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
@@ -403,7 +308,7 @@ const LearnScreen = ({ navigation }: any) => {
   }, [userStore.languages, getLanguageOption]);
 
   const [showVipModal, setShowVipModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'HOME' | 'ALL_COURSES' | 'CATEGORY_LESSONS'>('HOME');
+  const [viewMode, setViewMode] = useState<'HOME' | 'CATEGORY_LESSONS'>('HOME');
   const [selectedLanguage, setSelectedLanguage] = useState<LanguageOption>(
     learningLanguages[0] || getLanguageOption('en')
   );
@@ -433,12 +338,8 @@ const LearnScreen = ({ navigation }: any) => {
     5
   );
 
-  // NEW: Fetch Admin Courses
-  const { data: adminCoursesData, isLoading: adminCoursesLoading, refetch: refetchAdminCourses } = useAllCourses({
-    page: 0,
-    size: 20,
-    isAdminCreated: true, // Use the new param
-  });
+  // NEW: Fetch Top 10 Selling Courses
+  const { data: topSellingData, isLoading: topSellingLoading, refetch: refetchTopSelling } = useTopSellingCourses(10);
 
   // Old category data fetching - Not used for main display anymore
   const { data: categoryData, isLoading: catLoading, refetch: refetchCats } = useCategories({
@@ -457,33 +358,31 @@ const LearnScreen = ({ navigation }: any) => {
     refetchEnrolled();
     refetchRec();
     refetchCreator();
-    refetchAdminCourses(); // New refetch
+    refetchTopSelling();
     refetchCats();
     await refreshUserProfile();
   };
 
-  // NEW: Filter Admin Courses from allCoursesData
-  const adminCourses = useMemo(() => (adminCoursesData?.data as CourseResponse[]) || [], [adminCoursesData]);
+  const topSellingCourses = useMemo(() => (topSellingData as CourseResponse[]) || [], [topSellingData]);
 
+  // Hàm xử lý chung để chuyển sang màn hình danh sách tất cả khóa học
+  const handleSeeAll = () => {
+    gotoTab("CourseStack", "StudentCoursesScreen");
+  };
 
-  // MODIFIED: Logic xử lý khi click vào banner Creator Dashboard / VIP
   const handleVipFeature = () => {
     if (isVip) {
-      // Nếu là VIP, navigate đến Creator Dashboard
       gotoTab("CourseStack", "CreatorDashboardScreen");
     } else {
-      // Nếu chưa là VIP, hiển thị modal nâng cấp
       setShowVipModal(true);
     }
   };
 
   const openCreatorDashboardList = () => {
-    // Navigates to the list of all creator courses
     navigation.navigate("CourseStack", "CreatorDashboardScreen");
   };
 
   const handleMyCoursePress = (enrollment: CourseVersionEnrollmentResponse) => {
-    // Robust extraction of courseId
     const courseId = enrollment.course?.courseId || enrollment.courseVersion?.courseId;
 
     if (!courseId) {
@@ -491,30 +390,19 @@ const LearnScreen = ({ navigation }: any) => {
       return;
     }
 
-    // Check if the current user is the creator of this course
     const creatorId = enrollment.course?.creatorId;
     const isCreator = user?.userId === creatorId;
 
     if (isCreator) {
-      // Creator Logic: Navigate to the Dashboard for THIS specific course (CourseManager)
       gotoTab("CourseStack", "CourseManagerScreen", { courseId });
     } else {
-      // Learner Logic: Standard Course Details
       gotoTab("CourseStack", "CourseDetailsScreen", { courseId, isPurchased: true });
     }
   };
 
-  // REMOVED: learningTools array (Grammar, Video, Flashcards, etc.)
-
   const purchasedCourses = useMemo(() => (enrolledData?.data as CourseVersionEnrollmentResponse[]) || [], [enrolledData]);
   const creatorCourses = useMemo(() => (creatorData?.data as CourseResponse[]) || [], [creatorData]);
-  const categories = useMemo(() => (categoryData?.data as LessonCategoryResponse[]) || [], [categoryData]);
 
-  if (viewMode === 'ALL_COURSES') {
-    return <AllCoursesView navigation={navigation} onBack={() => setViewMode('HOME')} />;
-  }
-
-  // Keep CategoryLessonsView logic in case it's needed elsewhere or by other buttons
   if (viewMode === 'CATEGORY_LESSONS' && selectedCategory) {
     return (
       <CategoryLessonsView
@@ -526,11 +414,10 @@ const LearnScreen = ({ navigation }: any) => {
     );
   }
 
-  const isRefreshing = enrolledLoading || recLoading || creatorLoading || adminCoursesLoading; // Updated loading check
+  const isRefreshing = enrolledLoading || recLoading || creatorLoading || topSellingLoading;
 
   return (
     <ScreenLayout>
-      {/* VipUpgradeModal được sử dụng khi chưa là VIP click vào banner */}
       <VipUpgradeModal
         visible={showVipModal}
         onClose={() => setShowVipModal(false)}
@@ -568,7 +455,7 @@ const LearnScreen = ({ navigation }: any) => {
             <Text style={styles.sectionTitle}>{isVip ? t("learn.creatorDashboardTitle", "Quản lý Khóa học") : t("learn.becomeCreator", "Trở thành Giảng viên")}</Text>
             <TouchableOpacity
               style={styles.certBigCard}
-              onPress={handleVipFeature} // Logic đã được MODIFIED
+              onPress={handleVipFeature}
               activeOpacity={0.9}
             >
               <ImageBackground
@@ -576,7 +463,7 @@ const LearnScreen = ({ navigation }: any) => {
                 style={styles.certBigCardBg}
                 imageStyle={{ borderRadius: 16 }}
               >
-                {!isVip && <View style={styles.certDarkOverlay} />} {/* Hiển thị overlay khóa nếu chưa VIP */}
+                {!isVip && <View style={styles.certDarkOverlay} />}
                 <View style={styles.certContentOverlay}>
                   <View style={[styles.certIconContainer, { backgroundColor: isVip ? '#FFFFFF' : '#FFF0E5' }]}>
                     <Icon name={isVip ? "cast-for-education" : "lock"} size={24} color={isVip ? "#0369A1" : "#F97316"} />
@@ -602,17 +489,15 @@ const LearnScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* ADDED/REPLACED: Admin Courses Grid (REPLACED Categories Grid & 4 Tabs) */}
-          {adminCourses.length > 0 && (
-            <AdminCoursesList
+          {/* TOP SELLING COURSES (Replaced Admin Courses) */}
+          {topSellingCourses.length > 0 && (
+            <TopSellingCoursesList
               t={t}
-              navigation={navigation}
-              courses={adminCourses}
-              isLoading={adminCoursesLoading}
-              refetch={refetchAdminCourses}
+              onSeeAll={handleSeeAll}
+              courses={topSellingCourses}
+              isLoading={topSellingLoading}
             />
           )}
-
 
           {/* Enrolled Courses Section (My Courses) */}
           {purchasedCourses.length > 0 && (
@@ -667,7 +552,6 @@ const LearnScreen = ({ navigation }: any) => {
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
                 {creatorCourses.map((course: CourseResponse) => {
                   if (!course.courseId) return null;
-                  // SỬ DỤNG DỮ LIỆU THẬT
                   const rating = course.averageRating ? course.averageRating.toFixed(1) : "0.0";
                   const reviewCount = course.reviewCount || 0;
 
@@ -702,18 +586,16 @@ const LearnScreen = ({ navigation }: any) => {
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>{t("learn.recommendedCourses")}</Text>
-                <TouchableOpacity onPress={() => setViewMode('ALL_COURSES')}>
+                <TouchableOpacity onPress={handleSeeAll}>
                   <Text style={styles.seeAllText}>{t("common.seeAll", "Xem tất cả")}</Text>
                 </TouchableOpacity>
               </View>
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.horizontalList}>
                 {recommendedData.map((course: CourseResponse) => {
-                  // SỬ DỤNG DỮ LIỆU THẬT
                   const rating = course.averageRating ? course.averageRating.toFixed(1) : "0.0";
                   const reviewCount = course.reviewCount || 0;
                   const authorName = course.creatorName || course.creatorId || "Instructor";
-                  // SỬ DỤNG DỮ LIỆU THẬT CHO PRICE
                   const price = course.latestPublicVersion?.price ?? 0;
 
                   if (!course.courseId) return null;
@@ -920,7 +802,7 @@ const styles = createScaledSheet({
   certContentOverlay: {
     flexDirection: 'row',
     alignItems: 'center',
-    zIndex: 3, // Tăng zIndex để nội dung hiển thị trên overlay khóa
+    zIndex: 3,
   },
   certIconContainer: {
     width: 48,
@@ -963,7 +845,6 @@ const styles = createScaledSheet({
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 4,
-    // Cần điều chỉnh để không che nội dung khác
   },
   certUnlockText: {
     fontSize: 28,
@@ -989,48 +870,42 @@ const styles = createScaledSheet({
     fontWeight: '700',
     color: '#D97706',
   },
+  // Modified to support Course Image Fallback and Top Selling style
   gridCardFlat: {
     width: '48%',
     backgroundColor: "#FFFFFF",
     borderRadius: 16,
-    padding: 12,
-    alignItems: "center",
+    marginBottom: 12,
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
-    height: 110,
-    justifyContent: 'center',
-    position: 'relative',
   },
-  toolIconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 8,
+  gridCardImage: {
+    width: '100%',
+    height: 100,
+    backgroundColor: '#E5E7EB',
   },
-  toolName: {
-    fontSize: 12,
-    fontWeight: "600",
+  gridCardContent: {
+    padding: 10,
+  },
+  gridCardTitle: {
+    fontSize: 14,
+    fontWeight: "700",
     color: "#374151",
-    textAlign: "center",
+    marginBottom: 4,
+    height: 40,
   },
-  adminTag: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    backgroundColor: '#4F46E5',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
+  gridCardMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
-  adminTagText: {
-    fontSize: 10,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  gridCardMetaText: {
+    fontSize: 11,
+    color: "#6B7280",
+    marginLeft: 4,
   },
   horizontalList: {
     marginHorizontal: -SCREEN_PADDING,
@@ -1151,55 +1026,6 @@ const styles = createScaledSheet({
   listContainer: {
     flex: 1,
     padding: 16,
-  },
-  verticalCard: {
-    flexDirection: "row",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 12,
-    marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    elevation: 2,
-  },
-  verticalCardImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 12,
-    backgroundColor: "#F3F4F6",
-  },
-  verticalCardContent: {
-    flex: 1,
-    marginLeft: 14,
-    justifyContent: "space-between",
-    paddingVertical: 2,
-  },
-  verticalCardTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1F2937",
-    lineHeight: 22,
-  },
-  verticalCardAuthor: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  verticalCardMeta: {
-    flexDirection: "row",
-    alignItems: 'center',
-  },
-  metaText: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: "#374151",
-    marginLeft: 4,
-  },
-  dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
-    backgroundColor: "#9CA3AF",
-    marginHorizontal: 8,
   },
   lessonRow: {
     flexDirection: "row",

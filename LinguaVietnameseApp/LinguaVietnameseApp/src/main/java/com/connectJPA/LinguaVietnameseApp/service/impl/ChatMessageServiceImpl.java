@@ -8,18 +8,23 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.ChatStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.entity.id.ChatMessagesId;
+import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
+import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
+import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
+import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.google.gson.Gson;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -49,6 +54,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final NotificationService notificationService;
     private final UserService userService;
     private final Gson gson = new Gson();
+
+    @Lazy
+    private final DailyChallengeService dailyChallengeService;
+    @Lazy
+    private final BadgeService badgeService;
 
     @Override
     public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
@@ -91,6 +101,24 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
 
+        // --- UPDATE CHALLENGES AND BADGES ---
+        try {
+            // 1. Badge Update (Message Count)
+            if (badgeService != null) {
+                badgeService.updateBadgeProgress(request.getSenderId(), BadgeType.MESSAGE_COUNT, 1);
+            }
+
+            // 2. Daily Challenge Update
+            // If the room is for Learning/Practice, we can count it as Review
+            // If we don't have explicit CHAT type, we can map to VOCABULARY_REVIEW as a proxy for "using language"
+            if (dailyChallengeService != null) {
+                 // Using VOCABULARY_REVIEW as a proxy for social practice/chatting in target language
+                dailyChallengeService.updateChallengeProgress(request.getSenderId(), ChallengeType.VOCABULARY_REVIEW, 1);
+            }
+        } catch (Exception e) {
+            log.warn("Failed to update challenge/badge progress for message: {}", e.getMessage());
+        }
+
         ChatMessageResponse response = chatMessageMapper.toResponse(savedMessage);
         response.setPurpose(room.getPurpose());
 
@@ -98,10 +126,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         response.setSenderProfile(senderProfile);
 
         try {
-            // 1. Send WebSocket Message to the Room Topic (For users actively viewing the room or subscribed)
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
 
-            // Get all other members to send Notifications (Direct WS + Push)
             List<UUID> memberIds = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId)
                 .stream()
                 .map(rm -> rm.getId().getUserId())
@@ -109,7 +135,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                 .toList();
 
             for (UUID uId : memberIds) {
-                // 2. Send Direct WebSocket Notification (Signal for Bubbles/In-App Notifs when user is on another screen)
                 try {
                     messagingTemplate.convertAndSendToUser(
                         uId.toString(), 
@@ -120,7 +145,6 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     log.warn("Failed to send private WS notification to user {}", uId);
                 }
 
-                // 3. Send Push Notification (For Background/Killed Users)
                 try {
                     Map<String, String> dataPayload = Map.of(
                         "screen", "TabApp",
@@ -143,14 +167,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
                     log.error("Failed to create push notification for user {}: {}", uId, pushEx.getMessage());
                 }
             }
-            
-
             log.info("Processed message delivery for room {}", roomId);
         } catch (Exception e) {
             log.error("Failed to process message delivery logic", e);
         }
-
-    
 
         return response;
     }

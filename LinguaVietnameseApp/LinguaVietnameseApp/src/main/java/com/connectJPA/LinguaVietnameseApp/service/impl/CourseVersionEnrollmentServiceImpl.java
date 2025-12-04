@@ -93,7 +93,7 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
 
             enrollment = courseVersionEnrollmentRepository.save(enrollment);
 
-            UUID courseId = version.getCourse().getCourseId();
+            UUID courseId = version.getCourseId();
             roomService.addUserToCourseRoom(courseId, enrollment.getUserId());
 
             return CourseVersionEnrollmentMapper.toResponse(enrollment);

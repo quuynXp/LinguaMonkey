@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
     View,
     Text,
@@ -11,39 +11,35 @@ import {
     Modal,
     KeyboardAvoidingView,
     Platform,
-    Image,
 } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLessons } from '../../hooks/useLessons';
 import { useUserStore } from '../../stores/UserStore';
-import { uploadTemp } from '../../services/cloudinary';
 import { LessonRequest, LessonQuestionRequest } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { gotoTab } from '../../utils/navigationRef';
-import { SkillType, QuestionType } from '../../types/enums'; 
+import FileUploader from '../../components/common/FileUploader';
 
 // --- TYPES ---
 
 type RouteParams = {
-    versionId?: string; 
+    versionId?: string;
     courseId?: string;
     lessonCategoryId?: string;
     lessonSubCategoryId?: string;
 };
 
 interface LocalQuestionState {
-    id: string; 
+    id: string;
     question: string;
-    questionType: string; 
+    questionType: string;
     options: { A: string; B: string; C: string; D: string };
     correctOption: string;
     transcript: string;
     explainAnswer: string;
-    weight: string; 
-    mediaFile: DocumentPicker.DocumentPickerAsset | null;
+    weight: string;
+    mediaUrl: string; // Changed from File Asset to URL string
 }
 
 const CreateLessonScreen = () => {
@@ -59,10 +55,10 @@ const CreateLessonScreen = () => {
     // --- LESSON STATE ---
     const [lessonName, setLessonName] = useState('');
     const [description, setDescription] = useState('');
-    const [skillType, setSkillType] = useState<string>('READING'); 
-    const [languageCode, setLanguageCode] = useState<string>('vi'); // NEW FIELD
-    const [thumbnailAsset, setThumbnailAsset] = useState<ImagePicker.ImagePickerAsset | null>(null);
-    const [lessonMediaFile, setLessonMediaFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+    const [skillType, setSkillType] = useState<string>('READING');
+    const [languageCode, setLanguageCode] = useState<string>('vi');
+    const [thumbnailUrl, setThumbnailUrl] = useState<string>('');
+    const [lessonMediaUrl, setLessonMediaUrl] = useState<string>('');
 
     // --- QUESTIONS STATE ---
     const [questions, setQuestions] = useState<LocalQuestionState[]>([]);
@@ -80,57 +76,33 @@ const CreateLessonScreen = () => {
         transcript: '',
         explainAnswer: '',
         weight: '1',
-        mediaFile: null,
+        mediaUrl: '',
     };
     const [currentQuestion, setCurrentQuestion] = useState<LocalQuestionState>(defaultQuestionState);
     const [isEditingIndex, setIsEditingIndex] = useState<number | null>(null);
+    const [isUploadingQMedia, setIsUploadingQMedia] = useState(false);
 
     const LANGUAGES = [
         { code: 'vi', name: 'Vietnamese' },
         { code: 'en', name: 'English' },
-        { code: 'jp', name: 'Japanese' },
-        { code: 'kr', name: 'Korean' }
+        { code: 'zh', name: 'China' },
     ];
 
     const SKILL_TYPES = ['READING', 'SPEAKING', 'LISTENING', 'WRITING', 'VOCABULARY'];
 
     // --- HELPERS ---
 
-    const pickImage = async (setter: (asset: ImagePicker.ImagePickerAsset) => void) => {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [16, 9],
-            quality: 0.8,
-        });
-        if (!result.canceled) setter(result.assets[0]);
-    };
-
-    const pickDocument = async (setter: (asset: DocumentPicker.DocumentPickerAsset) => void) => {
-        try {
-            const result = await DocumentPicker.getDocumentAsync({
-                type: ['video/*', 'audio/*', 'application/pdf'],
-                copyToCacheDirectory: true,
-            });
-            if (!result.canceled) setter(result.assets[0]);
-        } catch (err) { console.warn(err); }
-    };
-
-    const uploadFileToDrive = async (file: DocumentPicker.DocumentPickerAsset | ImagePicker.ImagePickerAsset, isImage = false): Promise<string> => {
-        const payload = {
-            uri: file.uri,
-            type: (file as any).mimeType || (isImage ? 'image/jpeg' : 'video/mp4'),
-            name: (file as any).name || (isImage ? 'image.jpg' : 'video.mp4'),
-        };
-        const id = await uploadTemp(payload as any);
-        return `https://drive.google.com/uc?export=download&id=${id}`;
-    };
+    const formatDriveUrl = (id: string) => `https://drive.google.com/uc?export=download&id=${id}`;
 
     // --- HANDLERS ---
 
     const handleAddOrUpdateQuestion = () => {
         if (!currentQuestion.question.trim()) {
             Alert.alert("Missing Info", "Please enter a question text.");
+            return;
+        }
+        if (isUploadingQMedia) {
+            Alert.alert("Wait", "File is still uploading.");
             return;
         }
 
@@ -174,68 +146,47 @@ const CreateLessonScreen = () => {
         if (!user?.userId) return Alert.alert('Error', 'User invalid. Login again.');
 
         setIsSubmitting(true);
-        setLoadingMessage('Uploading Lesson Media...');
+        setLoadingMessage('Creating Lesson...');
 
         try {
-            // 1. Upload Lesson Media
-            let lessonThumbUrl = '';
-            let lessonMediaUrl = '';
-
-            if (thumbnailAsset) lessonThumbUrl = await uploadFileToDrive(thumbnailAsset, true);
-            if (lessonMediaFile) lessonMediaUrl = await uploadFileToDrive(lessonMediaFile);
-
             const finalDescription = lessonMediaUrl
                 ? `${description || ''}\n\n[Media]: ${lessonMediaUrl}`
                 : (description || '');
 
-            // 2. Create Lesson Request
+            // 1. Create Lesson Request
             const lessonPayload: LessonRequest = {
                 lessonName: lessonName.trim(),
                 title: lessonName.trim(),
                 creatorId: user.userId,
                 description: finalDescription,
-                thumbnailUrl: lessonThumbUrl,
+                thumbnailUrl: thumbnailUrl,
                 skillType: skillType as any,
-                
-                // NEW FIELD
                 languageCode: languageCode,
-
-                // Context Props
-                courseId: courseId ? (courseId as any) : undefined, 
+                courseId: courseId ? (courseId as any) : undefined,
                 lessonCategoryId: lessonCategoryId ? (lessonCategoryId as any) : undefined,
                 lessonSubCategoryId: lessonSubCategoryId ? (lessonSubCategoryId as any) : undefined,
-                
-                // Defaults
-                expReward: 10 + (questions.length * 2), 
+                expReward: 10 + (questions.length * 2),
                 orderIndex: 0,
                 isFree: true,
-                lessonType: 'VOCABULARY' as any, 
+                lessonType: 'VOCABULARY' as any,
                 lessonSeriesId: '',
                 difficultyLevel: 'BEGINNER' as any,
-                durationSeconds: questions.length * 60, 
+                durationSeconds: questions.length * 60,
                 certificateCode: '',
                 passScorePercent: 80,
                 shuffleQuestions: true,
                 allowedRetakeCount: 999
             };
 
-            setLoadingMessage('Creating Lesson...');
             const newLesson = await createLessonMutation.mutateAsync(lessonPayload);
             const newLessonId = newLesson.lessonId;
 
-            // 3. Create Questions Loop
+            // 2. Create Questions Loop
             setLoadingMessage(`Creating ${questions.length} Questions...`);
-            
+
             for (let i = 0; i < questions.length; i++) {
                 const qLocal = questions[i];
-                let qMediaUrl = '';
 
-                if (qLocal.mediaFile) {
-                    setLoadingMessage(`Uploading media for question ${i + 1}...`);
-                    qMediaUrl = await uploadFileToDrive(qLocal.mediaFile);
-                }
-
-                // TẠO optionsJson cho các câu hỏi có options
                 const optionsJson = JSON.stringify({
                     A: qLocal.options.A,
                     B: qLocal.options.B,
@@ -247,28 +198,22 @@ const CreateLessonScreen = () => {
                     lessonId: newLessonId,
                     question: qLocal.question,
                     questionType: qLocal.questionType as any,
-                    
-                    // FIXED: Thêm các trường bị thiếu
-                    languageCode: languageCode, 
+                    languageCode: languageCode,
                     skillType: skillType as any,
-                    optionsJson: optionsJson, 
-
-                    // Options Mapping
+                    optionsJson: optionsJson,
                     optionA: qLocal.options.A,
                     optionB: qLocal.options.B,
                     optionC: qLocal.options.C,
                     optionD: qLocal.options.D,
                     correctOption: qLocal.correctOption,
-                    
-                    // Extra Fields
                     transcript: qLocal.transcript || undefined,
                     weight: parseInt(qLocal.weight) || 1,
                     orderIndex: i,
-                    mediaUrl: qMediaUrl,
+                    mediaUrl: qLocal.mediaUrl,
                     explainAnswer: qLocal.explainAnswer,
                     isDeleted: false
                 };
-                
+
                 await createQuestionMutation.mutateAsync(qPayload);
             }
 
@@ -280,7 +225,7 @@ const CreateLessonScreen = () => {
                 {
                     text: 'Open Lesson',
                     onPress: () => {
-                         gotoTab("LearnStack",'VocabularyFlashcardsScreen', {
+                        gotoTab("LearnStack", 'VocabularyFlashcardsScreen', {
                             lessonId: newLesson.lessonId,
                             lessonName: newLesson.lessonName
                         });
@@ -311,7 +256,7 @@ const CreateLessonScreen = () => {
 
             <ScrollView contentContainerStyle={styles.scrollContent}>
                 <Text style={styles.sectionTitle}>1. Lesson Details</Text>
-                
+
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Lesson Name <Text style={styles.required}>*</Text></Text>
                     <TextInput
@@ -322,12 +267,11 @@ const CreateLessonScreen = () => {
                     />
                 </View>
 
-                {/* NEW FIELD: Language Code */}
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Language Code</Text>
                     <View style={styles.rowWrap}>
                         {LANGUAGES.map((lang) => (
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 key={lang.code}
                                 style={[styles.pill, languageCode === lang.code && styles.pillActive]}
                                 onPress={() => setLanguageCode(lang.code)}
@@ -337,13 +281,12 @@ const CreateLessonScreen = () => {
                         ))}
                     </View>
                 </View>
-                
-                {/* Skill Type (Cập nhật vị trí) */}
+
                 <View style={styles.inputGroup}>
                     <Text style={styles.label}>Primary Skill Type</Text>
                     <View style={styles.rowWrap}>
                         {SKILL_TYPES.map((skill) => (
-                            <TouchableOpacity 
+                            <TouchableOpacity
                                 key={skill}
                                 style={[styles.pill, skillType === skill && styles.pillActive]}
                                 onPress={() => setSkillType(skill)}
@@ -366,20 +309,27 @@ const CreateLessonScreen = () => {
                 </View>
 
                 <View style={styles.mediaRow}>
-                    <TouchableOpacity style={styles.mediaBtn} onPress={() => pickImage(setThumbnailAsset)}>
-                        <Ionicons name="image-outline" size={24} color={thumbnailAsset ? "#4ECDC4" : "#666"} />
-                        <Text style={styles.mediaText}>{thumbnailAsset ? "Thumb Selected" : "Add Thumbnail"}</Text>
-                    </TouchableOpacity>
+                    <FileUploader
+                        mediaType="image"
+                        style={styles.mediaBtn}
+                        onUploadSuccess={(id) => setThumbnailUrl(formatDriveUrl(id))}
+                    >
+                        <Ionicons name="image-outline" size={24} color={thumbnailUrl ? "#4ECDC4" : "#666"} />
+                        <Text style={styles.mediaText}>{thumbnailUrl ? "Thumb Uploaded" : "Upload Thumbnail"}</Text>
+                    </FileUploader>
 
-                    <TouchableOpacity style={styles.mediaBtn} onPress={() => pickDocument(setLessonMediaFile)}>
-                        <Ionicons name="videocam-outline" size={24} color={lessonMediaFile ? "#4ECDC4" : "#666"} />
-                        <Text style={styles.mediaText}>{lessonMediaFile ? "Media Selected" : "Add Intro Video"}</Text>
-                    </TouchableOpacity>
+                    <FileUploader
+                        mediaType="video"
+                        style={styles.mediaBtn}
+                        onUploadSuccess={(id) => setLessonMediaUrl(formatDriveUrl(id))}
+                    >
+                        <Ionicons name="videocam-outline" size={24} color={lessonMediaUrl ? "#4ECDC4" : "#666"} />
+                        <Text style={styles.mediaText}>{lessonMediaUrl ? "Video Uploaded" : "Upload Intro Video"}</Text>
+                    </FileUploader>
                 </View>
 
                 <View style={styles.divider} />
 
-                {/* --- Section 2: Questions --- */}
                 <View style={styles.sectionHeaderRow}>
                     <Text style={styles.sectionTitle}>2. Questions ({questions.length})</Text>
                     <TouchableOpacity onPress={openNewQuestionModal} style={styles.addQBtn}>
@@ -393,7 +343,7 @@ const CreateLessonScreen = () => {
                         <View style={styles.qCardHeader}>
                             <Text style={styles.qTypeBadge}>{q.questionType}</Text>
                             <View style={styles.qActions}>
-                                <TouchableOpacity onPress={() => editQuestion(index)} style={{marginRight: 10}}>
+                                <TouchableOpacity onPress={() => editQuestion(index)} style={{ marginRight: 10 }}>
                                     <Ionicons name="pencil" size={20} color="#666" />
                                 </TouchableOpacity>
                                 <TouchableOpacity onPress={() => deleteQuestion(index)}>
@@ -402,14 +352,13 @@ const CreateLessonScreen = () => {
                             </View>
                         </View>
                         <Text style={styles.qText} numberOfLines={2}>{q.question}</Text>
-                        {q.mediaFile && <Text style={styles.qMediaBadge}>Has Media Attachment</Text>}
+                        {q.mediaUrl ? <Text style={styles.qMediaBadge}>Has Media Attachment</Text> : null}
                     </View>
                 ))}
 
-                <View style={{height: 100}} /> 
+                <View style={{ height: 100 }} />
             </ScrollView>
 
-            {/* --- Footer Submit --- */}
             <View style={styles.footer}>
                 <TouchableOpacity
                     style={[styles.createButton, isSubmitting && styles.disabledButton]}
@@ -417,9 +366,9 @@ const CreateLessonScreen = () => {
                     disabled={isSubmitting}
                 >
                     {isSubmitting ? (
-                        <View style={{flexDirection: 'row', alignItems: 'center'}}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <ActivityIndicator color="#FFF" />
-                            <Text style={[styles.createButtonText, {marginLeft: 10}]}>{loadingMessage}</Text>
+                            <Text style={[styles.createButtonText, { marginLeft: 10 }]}>{loadingMessage}</Text>
                         </View>
                     ) : (
                         <Text style={styles.createButtonText}>Create Lesson & Questions</Text>
@@ -427,7 +376,6 @@ const CreateLessonScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* --- Question Modal --- */}
             <Modal animationType="slide" transparent={true} visible={modalVisible}>
                 <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
@@ -437,41 +385,38 @@ const CreateLessonScreen = () => {
                                 <Ionicons name="close" size={24} color="#333" />
                             </TouchableOpacity>
                         </View>
-                        
+
                         <ScrollView style={styles.modalBody}>
-                            {/* Question Type */}
                             <Text style={styles.label}>Question Type</Text>
                             <View style={styles.rowWrap}>
                                 {['MULTIPLE_CHOICE', 'SPEAKING', 'WRITING', 'FILL_IN_THE_BLANK', 'ESSAY', 'ORDERING'].map(t => (
-                                    <TouchableOpacity 
+                                    <TouchableOpacity
                                         key={t}
                                         style={[styles.pillSmall, currentQuestion.questionType === t && styles.pillActive]}
-                                        onPress={() => setCurrentQuestion({...currentQuestion, questionType: t})}
+                                        onPress={() => setCurrentQuestion({ ...currentQuestion, questionType: t })}
                                     >
                                         <Text style={[styles.pillTextSmall, currentQuestion.questionType === t && styles.pillTextActive]}>{t}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
 
-                            {/* Question Text */}
                             <Text style={styles.label}>Question / Prompt <Text style={styles.required}>*</Text></Text>
                             <TextInput
-                                style={[styles.input, {height: 60}]}
+                                style={[styles.input, { height: 60 }]}
                                 multiline
                                 value={currentQuestion.question}
-                                onChangeText={t => setCurrentQuestion({...currentQuestion, question: t})}
+                                onChangeText={t => setCurrentQuestion({ ...currentQuestion, question: t })}
                                 placeholder="Enter the question here..."
                             />
 
-                            {/* Conditional Fields based on Type */}
                             {currentQuestion.questionType === 'MULTIPLE_CHOICE' && (
                                 <View>
                                     <Text style={styles.label}>Options</Text>
                                     {['A', 'B', 'C', 'D'].map((optKey) => (
                                         <View key={optKey} style={styles.optionRow}>
                                             <Text style={styles.optLabel}>{optKey}</Text>
-                                            <TextInput 
-                                                style={[styles.input, {flex: 1, marginBottom: 5}]} 
+                                            <TextInput
+                                                style={[styles.input, { flex: 1, marginBottom: 5 }]}
                                                 value={(currentQuestion.options as any)[optKey]}
                                                 onChangeText={(t) => setCurrentQuestion({
                                                     ...currentQuestion,
@@ -479,8 +424,8 @@ const CreateLessonScreen = () => {
                                                 })}
                                                 placeholder={`Option ${optKey}`}
                                             />
-                                            <TouchableOpacity 
-                                                onPress={() => setCurrentQuestion({...currentQuestion, correctOption: optKey})}
+                                            <TouchableOpacity
+                                                onPress={() => setCurrentQuestion({ ...currentQuestion, correctOption: optKey })}
                                                 style={styles.radio}
                                             >
                                                 {currentQuestion.correctOption === optKey ? (
@@ -498,65 +443,71 @@ const CreateLessonScreen = () => {
                                 <View style={styles.inputGroup}>
                                     <Text style={styles.label}>Transcript (Reference Text)</Text>
                                     <TextInput
-                                        style={[styles.input, {height: 60}]}
+                                        style={[styles.input, { height: 60 }]}
                                         multiline
                                         value={currentQuestion.transcript}
-                                        onChangeText={t => setCurrentQuestion({...currentQuestion, transcript: t})}
+                                        onChangeText={t => setCurrentQuestion({ ...currentQuestion, transcript: t })}
                                         placeholder="Expected speech text or audio script..."
                                     />
                                 </View>
                             )}
-                            
+
                             {currentQuestion.questionType === 'FILL_IN_THE_BLANK' && (
                                 <View style={styles.inputGroup}>
                                     <Text style={styles.label}>Correct Answer (Use || for multiple valid answers)</Text>
                                     <TextInput
                                         style={styles.input}
                                         value={currentQuestion.correctOption}
-                                        onChangeText={t => setCurrentQuestion({...currentQuestion, correctOption: t})}
+                                        onChangeText={t => setCurrentQuestion({ ...currentQuestion, correctOption: t })}
                                         placeholder="e.g. apple || banana"
                                     />
                                 </View>
                             )}
 
-                            {/* Common Fields */}
                             <View style={styles.row}>
-                                <View style={{flex: 1, marginRight: 10}}>
+                                <View style={{ flex: 1, marginRight: 10 }}>
                                     <Text style={styles.label}>Weight (Score)</Text>
-                                    <TextInput 
-                                        style={styles.input} 
+                                    <TextInput
+                                        style={styles.input}
                                         keyboardType="numeric"
                                         value={currentQuestion.weight}
-                                        onChangeText={t => setCurrentQuestion({...currentQuestion, weight: t})}
+                                        onChangeText={t => setCurrentQuestion({ ...currentQuestion, weight: t })}
                                     />
                                 </View>
-                                <View style={{flex: 1}}>
-                                    <Text style={styles.label}>Media (Audio/Video/Image)</Text>
-                                    <TouchableOpacity 
-                                        style={[styles.input, {justifyContent: 'center', alignItems: 'center'}]}
-                                        onPress={() => pickDocument(asset => setCurrentQuestion({...currentQuestion, mediaFile: asset}))}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.label}>Media</Text>
+                                    <FileUploader
+                                        mediaType="all"
+                                        style={[styles.input, { justifyContent: 'center', alignItems: 'center' }]}
+                                        onUploadStart={() => setIsUploadingQMedia(true)}
+                                        onUploadSuccess={(id) => setCurrentQuestion({ ...currentQuestion, mediaUrl: formatDriveUrl(id) })}
+                                        onUploadEnd={() => setIsUploadingQMedia(false)}
                                     >
-                                        <Text style={{fontSize: 12, color: currentQuestion.mediaFile ? '#4ECDC4' : '#999'}}>
-                                            {currentQuestion.mediaFile ? 'File Selected' : 'Tap to Upload'}
-                                        </Text>
-                                    </TouchableOpacity>
+                                        {isUploadingQMedia ? (
+                                            <ActivityIndicator color="#4ECDC4" />
+                                        ) : (
+                                            <Text style={{ fontSize: 12, color: currentQuestion.mediaUrl ? '#4ECDC4' : '#999' }}>
+                                                {currentQuestion.mediaUrl ? 'Media Uploaded' : 'Tap to Upload'}
+                                            </Text>
+                                        )}
+                                    </FileUploader>
                                 </View>
                             </View>
 
                             <Text style={styles.label}>Explanation (Optional)</Text>
                             <TextInput
-                                style={[styles.input, {height: 50}]}
+                                style={[styles.input, { height: 50 }]}
                                 multiline
                                 value={currentQuestion.explainAnswer}
-                                onChangeText={t => setCurrentQuestion({...currentQuestion, explainAnswer: t})}
+                                onChangeText={t => setCurrentQuestion({ ...currentQuestion, explainAnswer: t })}
                                 placeholder="Why is this answer correct?"
                             />
-                            
-                            <View style={{height: 20}}/>
+
+                            <View style={{ height: 20 }} />
                             <TouchableOpacity style={styles.saveModalBtn} onPress={handleAddOrUpdateQuestion}>
                                 <Text style={styles.saveModalText}>Save Question</Text>
                             </TouchableOpacity>
-                            <View style={{height: 40}}/>
+                            <View style={{ height: 40 }} />
                         </ScrollView>
                     </View>
                 </KeyboardAvoidingView>
@@ -573,13 +524,13 @@ const styles = StyleSheet.create({
     scrollContent: { padding: 20 },
     sectionTitle: { fontSize: 16, fontWeight: '700', color: '#333', marginBottom: 15 },
     divider: { height: 1, backgroundColor: '#E0E0E0', marginVertical: 20 },
-    
+
     inputGroup: { marginBottom: 15 },
     label: { fontSize: 13, fontWeight: '600', color: '#555', marginBottom: 6 },
     required: { color: 'red' },
     input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#E0E0E0', borderRadius: 8, padding: 12, fontSize: 15 },
     textArea: { height: 80, textAlignVertical: 'top' },
-    
+
     row: { flexDirection: 'row' },
     rowWrap: { flexDirection: 'row', flexWrap: 'wrap', marginBottom: 10 },
     pill: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, backgroundColor: '#EEE', marginRight: 8, marginBottom: 8 },

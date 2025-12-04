@@ -1,3 +1,84 @@
+# name: LinguamonkeyFe - Signed APK Build (Local EAS)
+
+# on:
+#   push:
+#     paths:
+#       - "LinguamonkeyFe/**"
+#     branches:
+#       - master
+#   workflow_dispatch:
+
+# jobs:
+#   build-android:
+#     runs-on: ubuntu-latest
+#     defaults:
+#       run:
+#         working-directory: ./LinguamonkeyFe
+
+#     steps:
+#       - name: 🧱 Checkout repository
+#         uses: actions/checkout@v4
+
+#       - name: 🧩 Setup Node.js
+#         uses: actions/setup-node@v4
+#         with:
+#           node-version: 24.4
+#           cache: 'yarn'
+#           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
+
+#       - name: 📦 Install dependencies
+#         run: yarn install --frozen-lockfile
+
+#       - name: ☕ Setup Java (JDK)
+#         uses: actions/setup-java@v4
+#         with:
+#           distribution: 'temurin'
+#           java-version: '17'
+
+#       - name: 🐘 Cache Gradle dependencies
+#         uses: actions/cache@v4
+#         with:
+#           path: |
+#             ~/.gradle/caches
+#             ~/.gradle/wrapper
+#           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
+#           restore-keys: |
+#             ${{ runner.os }}-gradle-fe-
+
+#       - name: 🔐 Install EAS CLI
+#         run: npm install -g eas-cli
+
+#       - name: 🔑 Setup Expo authentication
+#         run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
+
+#       - name: 🔑 Decode Android keystore
+#         run: |
+#           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
+
+#       - name: ⚙️ Build signed APK locally
+#         env:
+#           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+#           ANDROID_KEYSTORE_PATH: ./my-release-key.keystore
+#           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+#           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+#           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+#         run: |
+#           echo "🔧 Start signed local EAS build..."
+#           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
+
+#       - name: 📤 Upload signed APK to GitHub Artifacts
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: android-signed-apk
+#           path: LinguamonkeyFe/app-release.apk
+          
+#       # - name: 🚀 Submit to Google Play
+#       #   env:
+#       #     EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
+#       #     GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+#       #   run: |
+#       #     echo "📤 Submitting local APK to Google Play..."
+#       #     eas submit -p android --path ./app-release.apk --non-interactive
 name: LinguamonkeyFe - Signed APK Build (Local EAS)
 
 on:
@@ -22,7 +103,7 @@ jobs:
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24.4
+          node-version: 20
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
@@ -48,34 +129,37 @@ jobs:
       - name: 🔐 Install EAS CLI
         run: npm install -g eas-cli
 
-      - name: 🔑 Setup Expo authentication
-        run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
-
       - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
 
+      - name: 📝 Generate credentials.json
+        # EAS Local Build cần file này để biết cách ký app (không dùng ENV trực tiếp được)
+        run: |
+          cat <<EOF > credentials.json
+          {
+            "android": {
+              "keystore": {
+                "keystorePath": "my-release-key.keystore",
+                "keystorePassword": "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}",
+                "keyAlias": "${{ secrets.ANDROID_KEY_ALIAS }}",
+                "keyPassword": "${{ secrets.ANDROID_KEY_PASSWORD }}"
+              }
+            }
+          }
+          EOF
+
       - name: ⚙️ Build signed APK locally
         env:
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
-          ANDROID_KEYSTORE_PATH: ./my-release-key.keystore
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          # Các biến ENV khác đã được đưa vào credentials.json ở trên
         run: |
           echo "🔧 Start signed local EAS build..."
-          eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
+          # Dùng profile production-apk để ra .apk thay vì .aab
+          eas build --platform android --profile production-apk --local --non-interactive --output ./app-release.apk
 
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
-          
-      # - name: 🚀 Submit to Google Play
-      #   env:
-      #     EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
-      #     GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-      #   run: |
-      #     echo "📤 Submitting local APK to Google Play..."
-      #     eas submit -p android --path ./app-release.apk --non-interactive

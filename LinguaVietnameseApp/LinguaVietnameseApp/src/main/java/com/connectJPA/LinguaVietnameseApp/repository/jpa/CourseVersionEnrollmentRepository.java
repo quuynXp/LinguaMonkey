@@ -120,4 +120,6 @@ public interface CourseVersionEnrollmentRepository extends JpaRepository<CourseV
     BigDecimal sumRevenueByCourseIdAndDateRange(@Param("courseId") UUID courseId,
                                                  @Param("start") OffsetDateTime start,
                                                  @Param("end") OffsetDateTime end);
+
+    List<CourseVersionEnrollment> findByCourseVersion_CourseIdAndIsDeletedFalse(UUID courseId);
 }

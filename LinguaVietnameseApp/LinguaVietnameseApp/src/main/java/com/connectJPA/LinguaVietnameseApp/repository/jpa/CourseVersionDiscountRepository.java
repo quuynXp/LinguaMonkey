@@ -17,12 +17,11 @@ public interface CourseVersionDiscountRepository extends JpaRepository<CourseVer
     
     Page<CourseVersionDiscount> findAllByVersionIdAndDiscountPercentageAndIsDeletedFalse(UUID versionId, Integer discountPercentage, Pageable pageable);
     
-    List<CourseVersionDiscount> findAllByVersionIdAndIsDeletedFalse(UUID versionId);
+    List<CourseVersionDiscount> findAllByCourseVersion_VersionIdAndIsDeletedFalse(UUID versionId);
     
     Optional<CourseVersionDiscount> findByCodeAndVersionIdAndIsDeletedFalse(String code, UUID versionId);
 
-    @Query("SELECT d FROM CourseVersionDiscount d JOIN CourseVersion cv ON d.versionId = cv.versionId WHERE cv.course.courseId = :courseId AND d.isDeleted = false")
-    List<CourseVersionDiscount> findAllByCourseId(@Param("courseId") UUID courseId);
+    List<CourseVersionDiscount> findAllByCourseVersion_CourseId(@Param("courseId") UUID courseId);
 
     @Modifying
     @Query("UPDATE CourseVersionDiscount d SET d.isActive = true WHERE d.isDeleted = false AND d.isActive = false AND d.startDate <= :now AND (d.endDate IS NULL OR d.endDate >= :now)")

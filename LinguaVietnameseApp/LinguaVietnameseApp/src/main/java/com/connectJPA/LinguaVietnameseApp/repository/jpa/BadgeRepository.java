@@ -1,6 +1,9 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Badge;
+import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
+
 import io.lettuce.core.dynamic.annotation.Param;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,5 +35,9 @@ public interface BadgeRepository extends JpaRepository<Badge, UUID> {
     void softDeleteBadgeByBadgeId(@Param("id") UUID id);
 
     List<Badge> findAllByIsDeletedFalse();
+
+    List<Badge> findByBadgeTypeAndIsDeletedFalse(BadgeType type);
+
+    Page<Badge> findByLanguageCodeAndIsDeletedFalse(String languageCode, Pageable pageable);
 }
 

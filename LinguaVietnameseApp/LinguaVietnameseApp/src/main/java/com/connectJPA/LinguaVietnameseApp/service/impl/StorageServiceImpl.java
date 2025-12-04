@@ -33,12 +33,16 @@ public class StorageServiceImpl implements StorageService {
     @Value("${google.drive.folderId}")
     private String folderId;
 
-    // Link download trực tiếp (lưu ý: link này cần file được set permission public reader nếu user không đăng nhập Google)
+    // Hard limit 50MB for upload to prevent latency issues
+    private static final long MAX_FILE_SIZE = 50 * 1024 * 1024;
     private static final String DOWNLOAD_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
 
     @Transactional
     @Override
     public String uploadTemp(MultipartFile file) {
+        if (file.getSize() > MAX_FILE_SIZE) {
+            throw new RuntimeException("File too large. Max size is 50MB to ensure chat performance.");
+        }
         try {
             return uploadBytes(file.getBytes(), file.getOriginalFilename(), file.getContentType());
         } catch (IOException e) {
@@ -65,7 +69,7 @@ public class StorageServiceImpl implements StorageService {
 
             String fileId = uploadedFile.getId();
 
-            // Cấp quyền "Anyone with link" là "Reader" để thẻ <Image> hoặc <Video> ở Frontend load được
+            // Set public permission for immediate access
             try {
                 Permission permission = new Permission()
                         .setType("anyone")
@@ -76,7 +80,7 @@ public class StorageServiceImpl implements StorageService {
             }
 
             log.info("Uploaded {} to Drive (OAuth2). ID: {}", fileName, fileId);
-            return fileId;
+            return getFileUrl(fileId); // Return full URL so frontend can use directly
         } catch (IOException e) {
             log.error("Google Drive byte upload failed", e);
             throw new RuntimeException("Failed to upload bytes to Google Drive: " + e.getMessage(), e);
@@ -91,17 +95,19 @@ public class StorageServiceImpl implements StorageService {
     @Transactional
     @Override
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
+        // For Chat, usually tempPath (FileID) is sufficient
         try {
-            // tempPath chính là fileId trong Google Drive
-            File driveFile = driveService.files().get(tempPath).setFields("name").execute();
+            // Extract File ID if tempPath is a full URL, otherwise assume it's ID
+            String fileId = tempPath;
+            if (tempPath.contains("id=")) {
+                fileId = tempPath.substring(tempPath.indexOf("id=") + 3);
+            }
+
+            File driveFile = driveService.files().get(fileId).setFields("name").execute();
             String fileName = driveFile.getName();
 
-            // Nếu muốn rename file theo newPath (logic cũ), Drive API dùng lệnh update.
-            // Tuy nhiên với Drive, ID là định danh duy nhất, tên file chỉ là display.
-            // Ở đây ta giữ nguyên ID, chỉ lưu vào DB.
-
             UserMedia media = UserMedia.builder()
-                    .filePath(tempPath) // Lưu fileId vào DB
+                    .filePath(fileId)
                     .fileName(fileName)
                     .userId(userId)
                     .mediaType(mediaType)
@@ -109,7 +115,7 @@ public class StorageServiceImpl implements StorageService {
                     .build();
 
             UserMedia savedMedia = mediaRepo.save(media);
-            savedMedia.setFileUrl(getFileUrl(tempPath));
+            savedMedia.setFileUrl(getFileUrl(fileId));
 
             return savedMedia;
         } catch (IOException e) {

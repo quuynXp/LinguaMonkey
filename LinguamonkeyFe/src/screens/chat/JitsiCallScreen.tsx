@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Modal, FlatList, PermissionsAndroid, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../../stores/appStore';
 import { useUserStore } from '../../stores/UserStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
@@ -10,12 +10,14 @@ import { useTokenStore } from '../../stores/tokenStore';
 import { API_BASE_URL } from '../../api/apiConfig';
 import LiveAudioStream from 'react-native-live-audio-stream';
 import ScreenLayout from '../../components/layout/ScreenLayout';
-import { t } from 'i18next';
+import { useVideoCalls } from '../../hooks/useVideos';
+import { VideoCallStatus } from '../../types/enums';
 
 // === TYPES ===
 type JitsiParams = {
   JitsiCall: {
     roomId: string;
+    videoCallId: string;
   };
 };
 
@@ -37,7 +39,7 @@ type ModeOption = {
 
 // === CONSTANTS ===
 const LANGUAGES = [
-  { code: 'auto', name: t('auto_detect') },
+  { code: 'auto', name: 'Auto Detect' },
   { code: 'en', name: 'English' },
   { code: 'vi', name: 'Vietnamese' },
   { code: 'ja', name: 'Japanese' },
@@ -54,11 +56,17 @@ const getWsUrl = (baseUrl: string) => {
 const JitsiCallScreen = () => {
   const { t } = useTranslation();
   const route = useRoute<RouteProp<JitsiParams, 'JitsiCall'>>();
-  const { roomId } = route.params;
+  const navigation = useNavigation();
+  const { roomId, videoCallId } = route.params;
 
+  // Lấy user từ UserStore để lấy userId làm callerId
   const { user } = useUserStore();
   const accessToken = useTokenStore.getState().accessToken;
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
+
+  // === API HOOKS ===
+  const { useUpdateVideoCall } = useVideoCalls();
+  const { mutate: updateCallStatus } = useUpdateVideoCall();
 
   // === STATE ===
   const [nativeLang, setNativeLang] = useState(defaultNativeLangCode);
@@ -67,13 +75,14 @@ const JitsiCallScreen = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [subtitle, setSubtitle] = useState<SubtitleData | null>(null);
   const [isMicOn, setIsMicOn] = useState(true);
+  const [callEnded, setCallEnded] = useState(false);
 
   const ws = useRef<WebSocket | null>(null);
 
   const subtitleModes: ModeOption[] = [
     { id: 'dual', label: t('dual_sub'), icon: '📝' },
-    { id: 'native', label: t('native_sub'), icon: '🎯' }, // Translated
-    { id: 'original', label: t('original_sub'), icon: '🗣️' }, // Speaker's lang
+    { id: 'native', label: t('native_sub'), icon: '🎯' },
+    { id: 'original', label: t('original_sub'), icon: '🗣️' },
     { id: 'off', label: t('off'), icon: '🚫' },
   ];
 
@@ -86,10 +95,59 @@ const JitsiCallScreen = () => {
     wavFile: 'temp_stream.wav'
   };
 
+  // === LIFECYCLE: STATUS UPDATE ===
+  useEffect(() => {
+    if (!videoCallId || !user?.userId) return;
+
+    // 1. Khi vào màn hình: Update status -> ONGOING
+    console.log(`[Call] Starting call ${videoCallId}`);
+    updateCallStatus({
+      id: videoCallId,
+      payload: {
+        callerId: user.userId, // <--- THÊM callerId TỪ USER STORE
+        status: VideoCallStatus.ONGOING
+      }
+    });
+
+    // 2. Khi thoát màn hình (Unmount): Update status -> ENDED
+    return () => {
+      console.log(`[Call] Ending call ${videoCallId}`);
+      if (!callEnded && user?.userId) {
+        updateCallStatus({
+          id: videoCallId,
+          payload: {
+            callerId: user.userId, // <--- THÊM callerId TỪ USER STORE
+            status: VideoCallStatus.ENDED
+          }
+        });
+      }
+    };
+  }, [videoCallId, user?.userId]); // Thêm user.userId vào dependency
+
   // === HANDLERS ===
+  const handleCallEnd = useCallback(() => {
+    if (callEnded || !user?.userId) return;
+    setCallEnded(true);
+
+    // Explicitly update status before navigating back
+    updateCallStatus({
+      id: videoCallId,
+      payload: {
+        callerId: user.userId, // <--- THÊM callerId TỪ USER STORE
+        status: VideoCallStatus.ENDED
+      }
+    }, {
+      onSuccess: () => {
+        navigation.goBack();
+      },
+      onError: () => {
+        navigation.goBack(); // Go back anyway
+      }
+    });
+  }, [callEnded, videoCallId, updateCallStatus, navigation, user?.userId]);
+
   const handleLanguageChange = (langCode: string) => {
     setNativeLang(langCode);
-    // Note: We don't close the modal here to allow user to see the change or change mode
     if (ws.current) {
       ws.current.close();
     }
@@ -198,7 +256,7 @@ const JitsiCallScreen = () => {
 
   const handleSpokenLangChange = (langCode: string) => {
     setSpokenLang(langCode);
-    if (ws.current) ws.current.close(); // Reconnect để cập nhật config server
+    if (ws.current) ws.current.close();
     setShowSettings(false);
   };
 
@@ -231,7 +289,7 @@ const JitsiCallScreen = () => {
         {showTranslated && (
           <Text style={[
             styles.subtitleTextTranslated,
-            !showOriginal && { marginTop: 0 } // Remove margin if it's the only text
+            !showOriginal && { marginTop: 0 }
           ]}>
             {subtitle.translated}
           </Text>
@@ -252,7 +310,19 @@ const JitsiCallScreen = () => {
           mediaCapturePermissionGrantType="grant"
           allowsInlineMediaPlayback
           userAgent="Mozilla/5.0 (Linux; Android 10; Android SDK built for x86) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
+          // Xử lý khi người dùng cúp máy trong giao diện Jitsi
+          onNavigationStateChange={(navState) => {
+            // Jitsi thường redirect về url này khi kết thúc
+            if (navState.url && (navState.url.includes('meet.jit.si/close') || navState.url.includes('about:blank'))) {
+              handleCallEnd();
+            }
+          }}
         />
+
+        {/* Floating End Call Button (Custom) */}
+        <TouchableOpacity style={styles.endCallButton} onPress={handleCallEnd}>
+          <Text style={styles.endCallText}>📞</Text>
+        </TouchableOpacity>
 
         {/* Subtitle Display Area */}
         {subtitleMode !== 'off' && (
@@ -275,12 +345,10 @@ const JitsiCallScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Settings Modal */}
+        {/* Settings Modal - Giữ nguyên như cũ */}
         <Modal visible={showSettings} transparent animationType="slide">
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
           <View style={styles.modalContainer}>
-
-            {/* Section 1: Display Mode (Grid) */}
             <Text style={styles.sectionTitle}>{t('subtitle_mode')}</Text>
             <View style={styles.modeGrid}>
               {subtitleModes.map((mode) => (
@@ -305,7 +373,6 @@ const JitsiCallScreen = () => {
 
             <View style={styles.divider} />
 
-            {/* Section 2: Target Language (List) */}
             <Text style={styles.sectionTitle}>{t('translate_to')}</Text>
             <FlatList
               data={LANGUAGES}
@@ -330,6 +397,26 @@ const JitsiCallScreen = () => {
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
   webview: { flex: 1 },
+  // ... Các style cũ giữ nguyên ...
+  endCallButton: {
+    position: 'absolute',
+    bottom: 40,
+    alignSelf: 'center',
+    backgroundColor: '#ef4444',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    elevation: 5,
+    borderWidth: 2,
+    borderColor: 'white'
+  },
+  endCallText: {
+    fontSize: 28,
+    color: 'white'
+  },
   subtitleContainer: {
     position: 'absolute',
     bottom: 120,
@@ -385,12 +472,7 @@ const styles = createScaledSheet({
     borderColor: 'rgba(255,255,255,0.2)'
   },
   iconText: { fontSize: 24, color: 'white' },
-
-  // Modal Styles
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.7)',
-  },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },
   modalContainer: {
     height: '60%',
     backgroundColor: '#111827',
@@ -399,76 +481,18 @@ const styles = createScaledSheet({
     padding: 24,
     marginTop: 'auto',
   },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#9ca3af',
-    marginBottom: 12,
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#374151',
-    marginVertical: 20,
-  },
-  // Grid Styles for Modes
-  modeGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  modeButton: {
-    width: '48%',
-    backgroundColor: '#1f2937',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#374151',
-    marginBottom: 8,
-  },
-  modeButtonActive: {
-    backgroundColor: 'rgba(79, 70, 229, 0.2)',
-    borderColor: '#6366f1',
-  },
-  modeIcon: {
-    fontSize: 24,
-    marginBottom: 8,
-  },
-  modeLabel: {
-    color: '#d1d5db',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modeLabelActive: {
-    color: '#818cf8',
-  },
-  // List Styles for Language
-  langItem: {
-    backgroundColor: '#1f2937',
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  langItemActive: {
-    backgroundColor: '#4f46e5',
-    borderWidth: 1,
-    borderColor: '#818cf8'
-  },
-  langText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500'
-  },
-  checkMark: {
-    color: 'white',
-    fontWeight: 'bold',
-  }
+  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#9ca3af', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 1 },
+  divider: { height: 1, backgroundColor: '#374151', marginVertical: 20 },
+  modeGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 10 },
+  modeButton: { width: '48%', backgroundColor: '#1f2937', padding: 16, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#374151', marginBottom: 8 },
+  modeButtonActive: { backgroundColor: 'rgba(79, 70, 229, 0.2)', borderColor: '#6366f1' },
+  modeIcon: { fontSize: 24, marginBottom: 8 },
+  modeLabel: { color: '#d1d5db', fontSize: 14, fontWeight: '600' },
+  modeLabelActive: { color: '#818cf8' },
+  langItem: { backgroundColor: '#1f2937', padding: 14, borderRadius: 12, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  langItemActive: { backgroundColor: '#4f46e5', borderWidth: 1, borderColor: '#818cf8' },
+  langText: { color: 'white', fontSize: 16, fontWeight: '500' },
+  checkMark: { color: 'white', fontWeight: 'bold' }
 });
 
 export default JitsiCallScreen;

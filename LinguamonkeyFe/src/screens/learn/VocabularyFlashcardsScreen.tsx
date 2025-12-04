@@ -1,5 +1,4 @@
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import * as ImagePicker from 'expo-image-picker';
 import React, { useEffect, useState, useRef } from "react";
 import {
   ActivityIndicator,
@@ -18,6 +17,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTranslation } from 'react-i18next';
+import { useVideoPlayer } from 'expo-video'; // CHANGED: Use expo-video
 import { useFlashcards } from "../../hooks/useFlashcard";
 import { useLessons } from "../../hooks/useLessons";
 import { useUserStore } from "../../stores/UserStore";
@@ -26,6 +26,7 @@ import { FlashcardResponse, CreateFlashcardRequest } from '../../types/dto';
 import { getLessonImage } from '../../utils/imageUtil';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { formatDistanceToNow } from 'date-fns';
+import FileUploader from '../../components/common/FileUploader';
 
 const { width } = Dimensions.get("window");
 
@@ -34,6 +35,7 @@ interface NewCardState {
   back: string;
   exampleSentence: string;
   imageUrl: string;
+  audioUrl: string;
   tags: string;
   isPublic: boolean;
 }
@@ -43,6 +45,7 @@ const initialNewCardState: NewCardState = {
   back: "",
   exampleSentence: "",
   imageUrl: "",
+  audioUrl: "",
   tags: "",
   isPublic: true,
 };
@@ -56,7 +59,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
   const { t } = useTranslation();
   const user = useUserStore((state) => state.user);
 
-  // Params are now typed correctly via the component prop
   const params = route.params;
   const routeLessonId: string | null = params?.lessonId ?? null;
   const routeLessonName: string = params?.lessonName || "";
@@ -64,7 +66,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
   const [selectedLessonId, setSelectedLessonId] = useState<string | null>(routeLessonId);
   const [selectedLessonName, setSelectedLessonName] = useState<string>(routeLessonName);
 
-  // Tab State
   const [activeTab, setActiveTab] = useState<'my' | 'community'>('my');
 
   const {
@@ -79,7 +80,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
   const { useCreatorLessons } = useLessons();
   const userLessonsQuery = useCreatorLessons(user?.userId || null, 0, 100);
 
-  // Queries
   const myCardsQuery = useGetMyFlashcards(selectedLessonId, { page: 0, size: 100 });
   const communityCardsQuery = useGetCommunityFlashcards(selectedLessonId, { page: 0, size: 50, sort: 'popular' });
   const dueQuery = useGetDue(selectedLessonId, 20);
@@ -99,6 +99,32 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
   const flipAnimation = useRef(new Animated.Value(0)).current;
 
   const [newCard, setNewCard] = useState<NewCardState>(initialNewCardState);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+
+  // --- CHANGED: Audio Logic using expo-video ---
+  // We keep track of the current URL. When it changes, useVideoPlayer updates.
+  const [currentAudioUrl, setCurrentAudioUrl] = useState<string | null>(null);
+
+  const player = useVideoPlayer(currentAudioUrl ?? "", (player) => {
+    player.loop = false;
+    // Auto play when source changes and is valid
+    if (currentAudioUrl) {
+      player.play();
+    }
+  });
+
+  const playAudio = (url: string) => {
+    if (!url) return;
+
+    if (currentAudioUrl === url) {
+      // If same URL, just replay
+      player.replay();
+    } else {
+      // If new URL, update state -> triggers hook -> triggers player.play()
+      setCurrentAudioUrl(url);
+    }
+  };
+  // ---------------------------------------------
 
   useEffect(() => {
     if (params?.lessonId) {
@@ -117,6 +143,11 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
     setShowAnswer(false);
     setIsStudying(true);
     flipAnimation.setValue(0);
+
+    // Auto play audio if available
+    if (list[0].audioUrl) {
+      playAudio(list[0].audioUrl);
+    }
   };
 
   const handlePressStudy = () => {
@@ -138,6 +169,8 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
     }
   }
 
+  const formatDriveUrl = (id: string) => `https://drive.google.com/uc?export=download&id=${id}`;
+
   const handleCreateCard = async () => {
     if (!selectedLessonId) return;
     if (!newCard.front || !newCard.back) {
@@ -152,7 +185,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
         exampleSentence: newCard.exampleSentence,
         imageUrl: newCard.imageUrl,
         tags: newCard.tags,
-        audioUrl: "",
+        audioUrl: newCard.audioUrl,
         isPublic: newCard.isPublic,
       };
       await createFlashcard({ lessonId: selectedLessonId, payload });
@@ -164,20 +197,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
     }
   };
 
-  const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.8,
-    });
-    if (!result.canceled) {
-      setNewCard((prev) => ({ ...prev, imageUrl: result.assets[0].uri }));
-    }
-  };
-
-  // --- Study Logic ---
   const flipCard = () => {
     if (showAnswer) return;
     Animated.spring(flipAnimation, {
@@ -185,7 +204,12 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
       friction: 8,
       tension: 10,
       useNativeDriver: true,
-    }).start(() => setShowAnswer(true));
+    }).start(() => {
+      setShowAnswer(true);
+      // Optional: Replay audio on flip if desired
+      // const currentCard = studyList[currentCardIndex];
+      // if (currentCard?.audioUrl) playAudio(currentCard.audioUrl);
+    });
   };
 
   const onPressQuality = async (q: number) => {
@@ -196,7 +220,11 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
       if (currentCardIndex < studyList.length - 1) {
         setShowAnswer(false);
         flipAnimation.setValue(0);
-        setCurrentCardIndex(prev => prev + 1);
+        setCurrentCardIndex(prev => {
+          const next = prev + 1;
+          if (studyList[next].audioUrl) playAudio(studyList[next].audioUrl);
+          return next;
+        });
       } else {
         setIsStudying(false);
         setStudyList([]);
@@ -215,10 +243,17 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
           <Text style={styles.cardWord}>{item.front}</Text>
           <Text style={styles.cardDefinition} numberOfLines={2}>{item.back}</Text>
         </View>
-        <View style={styles.cardStatusStrip}>
-          {item.nextReviewAt && new Date(item.nextReviewAt) < new Date() && (
-            <View style={styles.dueDot} />
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          {item.audioUrl && (
+            <TouchableOpacity onPress={() => playAudio(item.audioUrl!)} style={{ marginRight: 8 }}>
+              <Icon name="volume-up" size={20} color="#4ECDC4" />
+            </TouchableOpacity>
           )}
+          <View style={styles.cardStatusStrip}>
+            {item.nextReviewAt && new Date(item.nextReviewAt) < new Date() && (
+              <View style={styles.dueDot} />
+            )}
+          </View>
         </View>
       </View>
     );
@@ -226,7 +261,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
 
   const renderCommunityCard = ({ item }: { item: FlashcardResponse }) => {
     const imageSource = getLessonImage(item.imageUrl);
-    const avatarSource = item.authorProfile?.avatarUrl ? { uri: item.authorProfile.avatarUrl } : require('../../assets/images/default-avatar.png');
+    const avatarSource = item.authorProfile?.avatarUrl ? { uri: item.authorProfile.avatarUrl } : null;
 
     return (
       <View style={styles.communityCardItem}>
@@ -247,7 +282,14 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
         <View style={styles.communityBody}>
           <Image source={imageSource} style={styles.communityImage} />
           <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.communityWord}>{item.front}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.communityWord}>{item.front}</Text>
+              {item.audioUrl && (
+                <TouchableOpacity onPress={() => playAudio(item.audioUrl!)} style={{ marginLeft: 8 }}>
+                  <Icon name="volume-up" size={18} color="#4ECDC4" />
+                </TouchableOpacity>
+              )}
+            </View>
             <Text style={styles.communityDef}>{item.back}</Text>
             <Text style={styles.communityLessonName} numberOfLines={1}>Lesson: {selectedLessonName}</Text>
           </View>
@@ -271,13 +313,11 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
     );
   };
 
-  // --- Animation Interpolation ---
   const frontInterpolate = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['0deg', '180deg'] });
   const backInterpolate = flipAnimation.interpolate({ inputRange: [0, 180], outputRange: ['180deg', '360deg'] });
   const frontOpacity = flipAnimation.interpolate({ inputRange: [89, 90], outputRange: [1, 0] });
   const backOpacity = flipAnimation.interpolate({ inputRange: [89, 90], outputRange: [0, 1] });
 
-  // --- Study Mode View ---
   if (isStudying) {
     const currentCard = studyList[currentCardIndex];
     if (!currentCard) { setIsStudying(false); return null; }
@@ -292,11 +332,17 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
         <TouchableOpacity activeOpacity={1} style={styles.cardWrapper} onPress={flipCard}>
           <Animated.View style={[styles.cardFace, styles.cardFront, { transform: [{ rotateY: frontInterpolate }], opacity: frontOpacity }]}>
             <Text style={styles.studyLabel}>QUESTION</Text>
+            {currentCard.audioUrl && (
+              <TouchableOpacity style={styles.audioPlayBtn} onPress={() => playAudio(currentCard.audioUrl!)}>
+                <Icon name="volume-up" size={30} color="#4ECDC4" />
+              </TouchableOpacity>
+            )}
             <Text style={styles.studyFrontText}>{currentCard.front}</Text>
           </Animated.View>
           <Animated.View style={[styles.cardFace, styles.cardBack, { transform: [{ rotateY: backInterpolate }], opacity: backOpacity }]}>
             <Text style={styles.studyLabel}>ANSWER</Text>
             <Text style={styles.studyBackText}>{currentCard.back}</Text>
+            {currentCard.exampleSentence ? <Text style={styles.studyExample}>{currentCard.exampleSentence}</Text> : null}
           </Animated.View>
         </TouchableOpacity>
         <View style={styles.controlsContainer}>
@@ -315,7 +361,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
 
   return (
     <ScreenLayout style={styles.container}>
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}><Icon name="arrow-back" size={24} color="#333" /></TouchableOpacity>
         <View style={{ alignItems: 'center' }}>
@@ -327,7 +372,6 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
         <TouchableOpacity onPress={() => setShowCreateModal(true)}><Icon name="add" size={28} color="#4ECDC4" /></TouchableOpacity>
       </View>
 
-      {/* Tabs */}
       <View style={styles.tabContainer}>
         <TouchableOpacity style={[styles.tab, activeTab === 'my' && styles.activeTab]} onPress={() => setActiveTab('my')}>
           <Text style={[styles.tabText, activeTab === 'my' && styles.activeTabText]}>My Deck</Text>
@@ -374,7 +418,7 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
         )}
       </View>
 
-      {/* Modals: Lesson Selector & Create Card */}
+      {/* Modals */}
       <Modal visible={showLessonSelector} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.selectorContainer}>
@@ -395,14 +439,40 @@ const VocabularyFlashcardsScreen = ({ navigation, route }: { navigation: any, ro
             <TouchableOpacity onPress={() => setShowCreateModal(false)}><Icon name="close" size={24} color="#333" /></TouchableOpacity>
           </View>
           <ScrollView contentContainerStyle={{ padding: 20 }}>
-            <TextInput style={styles.input} placeholder="Front" value={newCard.front} onChangeText={t => setNewCard({ ...newCard, front: t })} />
-            <TextInput style={styles.input} placeholder="Back" value={newCard.back} onChangeText={t => setNewCard({ ...newCard, back: t })} />
+            <TextInput style={styles.input} placeholder="Front (Word)" value={newCard.front} onChangeText={t => setNewCard({ ...newCard, front: t })} />
+            <TextInput style={styles.input} placeholder="Back (Definition)" value={newCard.back} onChangeText={t => setNewCard({ ...newCard, back: t })} />
+            <TextInput style={styles.input} placeholder="Example Sentence" value={newCard.exampleSentence} onChangeText={t => setNewCard({ ...newCard, exampleSentence: t })} />
+
+            <View style={styles.mediaRow}>
+              <FileUploader
+                mediaType="image"
+                style={styles.mediaBtn}
+                onUploadStart={() => setIsUploadingMedia(true)}
+                onUploadEnd={() => setIsUploadingMedia(false)}
+                onUploadSuccess={(id) => setNewCard({ ...newCard, imageUrl: formatDriveUrl(id) })}
+              >
+                <Icon name="image" size={20} color={newCard.imageUrl ? "#4ECDC4" : "#999"} />
+                <Text style={styles.mediaText}>{newCard.imageUrl ? "Image Set" : "Add Image"}</Text>
+              </FileUploader>
+
+              <FileUploader
+                mediaType="audio"
+                style={styles.mediaBtn}
+                onUploadStart={() => setIsUploadingMedia(true)}
+                onUploadEnd={() => setIsUploadingMedia(false)}
+                onUploadSuccess={(id) => setNewCard({ ...newCard, audioUrl: formatDriveUrl(id) })}
+              >
+                <Icon name="mic" size={20} color={newCard.audioUrl ? "#4ECDC4" : "#999"} />
+                <Text style={styles.mediaText}>{newCard.audioUrl ? "Audio Set" : "Add Audio"}</Text>
+              </FileUploader>
+            </View>
+
             <View style={styles.switchRow}>
               <Text>Public (Community)?</Text>
               <Switch value={newCard.isPublic} onValueChange={v => setNewCard({ ...newCard, isPublic: v })} />
             </View>
-            <TouchableOpacity style={styles.saveBtnFull} onPress={handleCreateCard}>
-              {isCreating ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Create</Text>}
+            <TouchableOpacity style={styles.saveBtnFull} onPress={handleCreateCard} disabled={isUploadingMedia || isCreating}>
+              {isCreating || isUploadingMedia ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Create</Text>}
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
@@ -470,6 +540,8 @@ const styles = createScaledSheet({
   studyLabel: { position: 'absolute', top: 20, fontSize: 12, fontWeight: '700', color: '#BDC3C7' },
   studyFrontText: { fontSize: 32, fontWeight: '700', color: '#2C3E50', textAlign: 'center' },
   studyBackText: { fontSize: 24, color: '#34495E', textAlign: 'center' },
+  studyExample: { fontSize: 14, color: '#7F8C8D', marginTop: 20, fontStyle: 'italic', textAlign: 'center' },
+  audioPlayBtn: { marginBottom: 10 },
   controlsContainer: { position: 'absolute', bottom: 40, left: 20, right: 20 },
   showAnswerBtn: { backgroundColor: '#34495E', paddingVertical: 18, borderRadius: 12, alignItems: 'center' },
   showAnswerText: { color: '#FFF', fontWeight: '700' },
@@ -485,6 +557,9 @@ const styles = createScaledSheet({
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: '#EEE' },
   modalTitle: { fontSize: 18, fontWeight: '700' },
   input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 8, padding: 12, marginBottom: 16 },
+  mediaRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+  mediaBtn: { flex: 0.48, padding: 15, borderRadius: 8, borderWidth: 1, borderColor: '#eee', alignItems: 'center', justifyContent: 'center' },
+  mediaText: { fontSize: 12, color: '#666', marginTop: 5 },
   switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   saveBtnFull: { backgroundColor: '#4ECDC4', padding: 16, borderRadius: 12, alignItems: 'center' },
   saveBtnText: { color: '#FFF', fontWeight: '700' }

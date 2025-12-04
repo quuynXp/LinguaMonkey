@@ -1,16 +1,13 @@
 package com.connectJPA.LinguaVietnameseApp.scheduler;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
+import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersion;
 import com.connectJPA.LinguaVietnameseApp.entity.Transaction;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionDiscountRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionEnrollmentRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.CourseVersionRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.TransactionRepository;
-import com.connectJPA.LinguaVietnameseApp.repository.jpa.UserRepository;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.utils.NotificationI18nUtil;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -36,6 +34,7 @@ public class CommerceScheduler {
     private final CourseVersionRepository courseVersionRepository;
     private final CourseVersionEnrollmentRepository CourseVersionEnrollmentRepository;
     private final UserRepository userRepository;
+    private final CourseRepository courseRepository; // Inject thêm repository này
 
     @Scheduled(cron = "0 0/15 * * * ?", zone = "UTC")
     @Transactional
@@ -103,15 +102,23 @@ public class CommerceScheduler {
         log.info("Publishing {} new course versions.", versionsToPublish.size());
 
         for (CourseVersion version : versionsToPublish) {
+            // Lấy Course dựa trên courseId
+            Optional<Course> courseOpt = courseRepository.findById(version.getCourseId());
+            if (courseOpt.isEmpty()) continue;
+            Course course = courseOpt.get();
+
             version.setStatus(VersionStatus.PUBLISHED);
-            version.getCourse().setLatestPublicVersion(version);
+            
+            // Cập nhật ngược lại vào Course
+            course.setLatestPublicVersion(version);
+            courseRepository.save(course);
             courseVersionRepository.save(version);
 
-            List<UUID> userIds = CourseVersionEnrollmentRepository.findActiveUserIdsByCourseId(version.getCourse().getCourseId());
+            List<UUID> userIds = CourseVersionEnrollmentRepository.findActiveUserIdsByCourseId(course.getCourseId());
 
             if (userIds.isEmpty()) continue;
             
-            log.info("Sending COURSE_UPDATE notification to {} users for courseId {}", userIds.size(), version.getCourse().getCourseId());
+            log.info("Sending COURSE_UPDATE notification to {} users for courseId {}", userIds.size(), course.getCourseId());
 
             Map<UUID, String> userLangMap = userRepository.findAllById(userIds).stream()
                     .collect(Collectors.toMap(User::getUserId, user -> user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en"));
@@ -123,9 +130,9 @@ public class CommerceScheduler {
                 NotificationRequest request = NotificationRequest.builder()
                         .userId(userId)
                         .title(message[0])
-                        .content(String.format(message[1], version.getCourse().getTitle()))
+                        .content(String.format(message[1], course.getTitle()))
                         .type("COURSE_UPDATE")
-                        .payload(String.format("{\"screen\":\"CourseStack\", \"stackScreen\":\"CourseDetail\", \"courseId\":\"%s\"}", version.getCourse().getCourseId()))
+                        .payload(String.format("{\"screen\":\"CourseStack\", \"stackScreen\":\"CourseDetail\", \"courseId\":\"%s\"}", course.getCourseId()))
                         .build();
                 notificationService.createPushNotification(request);
             }

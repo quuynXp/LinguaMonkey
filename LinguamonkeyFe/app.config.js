@@ -20,7 +20,7 @@ export default ({ config }) => {
       version: "1.0.0",
       orientation: "portrait",
       icon: "./src/assets/images/icon.png",
-      scheme: "monkeylingua",
+      scheme: ["monkeylingua", "fb1230650165201263"],
       userInterfaceStyle: "automatic",
       newArchEnabled: true,
       ios: {
@@ -33,7 +33,14 @@ export default ({ config }) => {
       },
       android: {
         usesCleartextTraffic: true,
-
+        config: {
+          facebook: {
+            appId: "1230650165201263",
+            displayName: "LinguaMonkey",
+            autoLogAppEventsEnabled: true,
+            advertiserIDCollectionEnabled: true,
+          },
+        },
         icon: "./src/assets/images/icon.png",
         adaptiveIcon: {
           foregroundImage: "./src/assets/images/icon.png",

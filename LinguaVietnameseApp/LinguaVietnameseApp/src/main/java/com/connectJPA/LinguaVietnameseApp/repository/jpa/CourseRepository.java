@@ -26,6 +26,15 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     Optional<Course> findByCourseIdAndIsDeletedFalse(UUID courseId);
     Page<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId, Pageable pageable);
     List<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId);
+
+    @Query("SELECT c FROM Course c " +
+           "JOIN c.latestPublicVersion cv " +
+           "LEFT JOIN CourseVersionEnrollment cve ON cve.courseVersion = cv " +
+           "WHERE c.isDeleted = false " +
+           "AND c.approvalStatus = com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED " +
+           "GROUP BY c " +
+           "ORDER BY COUNT(cve) DESC")
+    List<Course> findTopSellingCourses(Pageable pageable);
     
     // 5. Cập nhật để tìm kiếm theo type của latestPublicVersion (Sử dụng HQL)
     // NOTE: Removed the derived query method 'findByTypeAndIsDeletedFalse' which caused the error.

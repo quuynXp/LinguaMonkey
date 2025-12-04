@@ -74,7 +74,7 @@ public class CourseVersionDiscountServiceImpl implements CourseVersionDiscountSe
     @Override
     @Transactional
     public void deleteDiscountsByCourseId(UUID courseId) {
-        courseVersionDiscountRepository.findAllByCourseId(courseId).forEach(discount -> {
+        courseVersionDiscountRepository.findAllByCourseVersion_CourseId(courseId).forEach(discount -> {
             discount.setDeleted(true);
             courseVersionDiscountRepository.save(discount);
         });

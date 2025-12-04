@@ -301,197 +301,87 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-
     @Transactional
-
     public UserResponse createUser(UserRequest request) {
-
         try {
-
-            if (request == null) {
-
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-
-            }
-
-            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) {
-
-                throw new AppException(ErrorCode.INVALID_REQUEST);
-
-            }
-
-            if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) {
-
-                throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
-
-            }
-
-
+            if (request == null) throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+            if (request.getEmail() == null || request.getEmail().trim().isEmpty()) throw new AppException(ErrorCode.INVALID_REQUEST);
+            if (userRepository.existsByEmailAndIsDeletedFalse(request.getEmail())) throw new AppException(ErrorCode.EMAIL_ALREADY_EXISTS);
 
             User user = new User();
-
             user.setEmail(request.getEmail().trim());
-
             if (request.getPassword() != null && !request.getPassword().isBlank()) {
-
                 user.setPassword(passwordEncoder.encode(request.getPassword()));
-
             } else {
-
                 user.setPassword(passwordEncoder.encode(RandomStringUtils.randomAlphanumeric(16)));
-
             }
-
             if (request.getFullname() != null) user.setFullname(request.getFullname());
-
             if (request.getNickname() != null) user.setNickname(request.getNickname());
-
             if (request.getCharacter3dId() != null) user.setCharacter3dId(request.getCharacter3dId());
-
-            if (request.getNativeLanguageCode() != null)
-
-                user.setNativeLanguageCode(request.getNativeLanguageCode().toLowerCase());
-
+            if (request.getNativeLanguageCode() != null) user.setNativeLanguageCode(request.getNativeLanguageCode().toLowerCase());
             if (request.getCountry() != null) user.setCountry(request.getCountry());
-
             if (request.getLearningPace() != null) user.setLearningPace(request.getLearningPace());
-
             if (request.getAgeRange() != null) user.setAgeRange(request.getAgeRange());
-
             if (request.getGender() != null) user.setGender(request.getGender());
-
             if (request.getDayOfBirth() != null) {
-
                 user.setDayOfBirth(request.getDayOfBirth());
-
                 calculateAndSetAgeRange(user);
-
             }
-
             
-
-            // LƯU USER VÀO DB ĐỂ LẤY ID (ĐÂY LÀ INSERT users DUY NHẤT)
-
             user = userRepository.saveAndFlush(user);
 
-
-
-            // TẠO LIÊN KẾT AUTH ACCOUNT SỬ DỤNG USER VỪA TẠO
-
             if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
-
-                authenticationService.createAuthAccountLink(
-
-                        user,
-
-                        AuthProvider.EMAIL,
-
-                        user.getEmail()
-
-                );
-
+                authenticationService.createAuthAccountLink(user, AuthProvider.EMAIL, user.getEmail());
             }
 
-
-
-            // --- AUTO CREATE WALLET ---
-
-            Wallet newWallet = Wallet.builder()
-
-                    .user(user)
-
-                    .balance(BigDecimal.ZERO)
-
-                    .build();
-
+            Wallet newWallet = Wallet.builder().user(user).balance(BigDecimal.ZERO).build();
             walletRepository.save(newWallet);
-
             
-
-            // --- ASSIGN DAILY CHALLENGES AUTOMATICALLY ---
-
+            // --- AUTO ASSIGN CHALLENGES ---
             if (dailyChallengeService != null) {
-
                 dailyChallengeService.assignAllChallengesToNewUser(user.getUserId());
-
             }
 
-
+            // --- AUTO ASSIGN STARTER BADGES ---
+            if (badgeService != null) {
+                badgeService.assignStarterBadges(user.getUserId());
+            }
 
             roleService.assignRoleToUser(user.getUserId(), RoleName.STUDENT);
-
             Leaderboard lb = leaderboardRepository.findLatestByTabAndIsDeletedFalse("global", PageRequest.of(0,1))
-
-                    .stream().findFirst()
-
-                    .orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
-
+                    .stream().findFirst().orElseThrow(() -> new AppException(ErrorCode.LEADERBOARD_NOT_FOUND));
+            
             leaderboardEntryRepository.saveAndFlush(LeaderboardEntry.builder()
-
                     .leaderboardEntryId(new LeaderboardEntryId(user.getUserId(), lb.getLeaderboardId()))
-
                     .user(user)
-
                     .leaderboard(lb)
-
                     .build());
-
+            
             userLearningActivityRepository.saveAndFlush(UserLearningActivity.builder()
-
                     .userId(user.getUserId())
-
                     .activityType(ActivityType.START_LEARNING)
-
                     .build());
 
             final User savedUser = user;
-
             if (request.getGoalIds() != null && !request.getGoalIds().isEmpty()) {
-
                 List<UserGoal> userGoals = request.getGoalIds().stream()
-
                         .filter(Objects::nonNull)
-
                         .map(goalStr -> {
-
                             try {
-
-                                return UserGoal.builder()
-
-                                        .userId(savedUser.getUserId())
-
-                                        .goalType(GoalType.valueOf(goalStr.toUpperCase()))
-
-                                        .build();
-
-                            } catch (IllegalArgumentException ex) {
-
-                                return null;
-
-                            }
-
+                                return UserGoal.builder().userId(savedUser.getUserId()).goalType(GoalType.valueOf(goalStr.toUpperCase())).build();
+                            } catch (IllegalArgumentException ex) { return null; }
                         })
-
                         .filter(Objects::nonNull)
-
                         .collect(Collectors.toList());
-
                 if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
-
             }
 
             return mapUserToResponseWithAllDetails(savedUser);
-
         } catch (AppException ae) {
-
             throw ae;
-
         } catch (Exception e) {
-
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-
         }
-
     }
 
     @Override

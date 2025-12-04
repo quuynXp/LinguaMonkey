@@ -19,18 +19,11 @@ import {
   LessonQuestionResponse,
   LessonProgressRequest,
 } from "../../types/dto";
-import { SkillType } from "../../types/enums";
+import { SkillType, QuestionType } from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 
-import {
-  ListeningQuestionView,
-  SpeakingQuestionView,
-  ReadingQuestionView,
-  WritingQuestionView
-} from "../../components/learn/SkillComponents";
-import { GrammarQuestionView } from "../../components/learn/GrammarQuestionView";
-import { VocabularyFlashcardView } from "../../components/learn/VocabularyFlashcardView";
+import { UniversalQuestionView } from "../../components/learn/SkillComponents";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
 
 // --- CONFIGURANTS ---
@@ -84,16 +77,8 @@ const LessonScreen = ({ navigation, route }: any) => {
   });
 
   const questions: LessonQuestionResponse[] = useMemo(() => {
-    const raw = (questionsData?.data || []) as LessonQuestionResponse[];
-    return raw.filter(q => {
-      // Allow Flashcards (Vocab) which might only have question/transcript
-      if (lesson.skillTypes === SkillType.VOCABULARY) return true;
-      const hasText = q.question || q.transcript;
-      const hasMedia = q.mediaUrl;
-      const hasOptions = q.optionA || q.optionB;
-      return hasText || hasMedia || hasOptions;
-    });
-  }, [questionsData, lesson.skillTypes]);
+    return (questionsData?.data || []) as LessonQuestionResponse[];
+  }, [questionsData]);
 
   const currentQuestion = questions[currentQuestionIndex];
 
@@ -141,10 +126,8 @@ const LessonScreen = ({ navigation, route }: any) => {
 
   const handleTimerTickZero = () => {
     if (phase === 'ANSWER') {
-      // Auto-submit for timeouts if not Vocab (Vocab might just be viewing)
-      if (lesson.skillTypes !== SkillType.VOCABULARY) {
-        handleSubmitAnswer(false, "TIMEOUT", true);
-      }
+      // TIMEOUT: Must show correct answer and reason
+      handleSubmitAnswer(false, "TIMEOUT", true);
     } else if (phase === 'FEEDBACK') {
       if (viewMode === 'DO_ALL') {
         handleNext();
@@ -234,8 +217,12 @@ const LessonScreen = ({ navigation, route }: any) => {
       }
     }
 
-    if (isTimeoutOrSkip && !feedbackMessage) {
-      setFeedbackMessage(`Hết giờ/Bỏ qua. Đáp án đúng: ${currentQuestion?.correctOption || 'N/A'}`);
+    // Force Feedback Message for Timeout/Skip logic as requested
+    if (isTimeoutOrSkip || !feedbackMessage) {
+      const correctInfo = currentQuestion?.correctOption ? `Đáp án đúng: ${currentQuestion.correctOption}` : '';
+      // Assuming there might be an explanation field, otherwise we use generic
+      const explanation = "Hết giờ hoặc đã bỏ qua.";
+      setFeedbackMessage(`${explanation}\n${correctInfo}`);
     }
   };
 
@@ -246,15 +233,16 @@ const LessonScreen = ({ navigation, route }: any) => {
   // --- SKILL HANDLERS ---
   const handleQuizAnswer = (optionKey: string) => {
     if (!currentQuestion) return;
-    // For local Grammar check without API roundtrip if options are clear
-    if (lesson.skillTypes === SkillType.GRAMMAR) {
+
+    // Fallback local check if simple type
+    if ([QuestionType.MULTIPLE_CHOICE, QuestionType.TRUE_FALSE, QuestionType.FILL_IN_THE_BLANK].includes(currentQuestion.questionType)) {
       const isCorrect = optionKey === currentQuestion.correctOption;
       setFeedbackMessage(isCorrect ? "Chính xác!" : `Sai rồi. Đáp án: ${currentQuestion.correctOption}`);
       handleSubmitAnswer(isCorrect, optionKey);
       return;
     }
 
-    // Default API check for other types
+    // Default API check for complex types
     setIsStreaming(true);
     submitQuizMutation.mutate({
       lessonQuestionId: currentQuestion.lessonQuestionId,
@@ -263,7 +251,7 @@ const LessonScreen = ({ navigation, route }: any) => {
     }, {
       onSuccess: (feedback) => {
         setIsStreaming(false);
-        const isCorrect = feedback.includes("Correct");
+        const isCorrect = feedback.includes("Correct") || feedback.includes("True") || feedback.includes("success");
         setFeedbackMessage(isCorrect ? "Chính xác!" : `Sai rồi! Lý do: ${feedback}`);
         handleSubmitAnswer(isCorrect, optionKey);
       },
@@ -274,12 +262,6 @@ const LessonScreen = ({ navigation, route }: any) => {
         handleSubmitAnswer(isCorrect, optionKey);
       }
     });
-  };
-
-  // Vocabulary "I know it" handler
-  const handleVocabKnown = () => {
-    setFeedbackMessage("Đã thuộc từ này!");
-    handleSubmitAnswer(true, "KNOWN");
   };
 
   const startRecording = async () => {
@@ -345,34 +327,6 @@ const LessonScreen = ({ navigation, route }: any) => {
     });
   };
 
-  // --- RENDERERS ---
-  const renderQuestionView = () => {
-    if (!currentQuestion) return null;
-
-    switch (lesson.skillTypes) {
-      case SkillType.SPEAKING:
-        return <SpeakingQuestionView question={currentQuestion} />;
-      case SkillType.WRITING:
-        return <WritingQuestionView question={currentQuestion} />;
-      case SkillType.LISTENING:
-        return <ListeningQuestionView question={currentQuestion} />;
-      case SkillType.GRAMMAR:
-        return (
-          <GrammarQuestionView
-            question={currentQuestion}
-            selectedAnswer={selectedAnswer}
-            onAnswer={(ans) => setSelectedAnswer(ans)} // Update local state before submit
-            isAnswered={isAnswered}
-            correctAnswer={currentQuestion.correctOption}
-          />
-        );
-      case SkillType.VOCABULARY:
-        return <VocabularyFlashcardView question={currentQuestion} />;
-      default:
-        return <ReadingQuestionView question={currentQuestion} />;
-    }
-  };
-
   // --- MAIN RENDER ---
   if (isLoading) {
     return (
@@ -409,7 +363,7 @@ const LessonScreen = ({ navigation, route }: any) => {
                   <Text style={styles.qIndexText}>{index + 1}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.qSkillType}>{lesson.skillTypes}</Text>
+                  <Text style={styles.qSkillType}>{item.questionType}</Text>
                   <Text style={styles.qText} numberOfLines={2}>
                     {item.question || item.transcript || "View Question"}
                   </Text>
@@ -447,12 +401,13 @@ const LessonScreen = ({ navigation, route }: any) => {
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {renderQuestionView()}
+        {/* Render Question Body (Universal) */}
+        {currentQuestion && <UniversalQuestionView question={currentQuestion} />}
 
         {/* Feedback Section */}
         {isFeedbackPhase && feedbackMessage && (
-          <View style={[styles.feedbackContainer, { borderColor: feedbackMessage.includes("Sai") ? '#EF4444' : '#10B981' }]}>
-            <Text style={[styles.feedbackText, { color: feedbackMessage.includes("Sai") ? '#B91C1C' : '#064E3B' }]}>
+          <View style={[styles.feedbackContainer, { borderColor: feedbackMessage.includes("Sai") || feedbackMessage.includes("Lỗi") ? '#EF4444' : '#10B981' }]}>
+            <Text style={[styles.feedbackText, { color: feedbackMessage.includes("Sai") || feedbackMessage.includes("Lỗi") ? '#B91C1C' : '#064E3B' }]}>
               {feedbackMessage}
             </Text>
 
@@ -469,16 +424,19 @@ const LessonScreen = ({ navigation, route }: any) => {
           </View>
         )}
 
-        {/* Input Section - Only show if not handled internally by component (like Grammar) or if Vocab needs confirmation */}
-        {lesson.skillTypes !== SkillType.GRAMMAR && lesson.skillTypes !== SkillType.VOCABULARY && (
+        {/* Input Section - Depends on Question Type */}
+        {currentQuestion && (
           <LessonInputArea
             question={currentQuestion}
             isAnswered={isAnswered}
             selectedAnswer={selectedAnswer}
             isLoading={isStreaming}
             onAnswer={(ans) => {
-              if (lesson.skillTypes === SkillType.WRITING) handleWritingSubmit(ans);
-              else handleQuizAnswer(ans);
+              if (currentQuestion.questionType === QuestionType.WRITING || currentQuestion.questionType === QuestionType.ESSAY) {
+                handleWritingSubmit(ans);
+              } else {
+                handleQuizAnswer(ans);
+              }
             }}
             onSkip={handleSkip}
             isRecording={isRecording}
@@ -487,24 +445,6 @@ const LessonScreen = ({ navigation, route }: any) => {
             onStopRecording={stopRecording}
           />
         )}
-
-        {/* Special Input handling for Grammar (uses internal state passed up via onAnswer, but needs Submit button) */}
-        {lesson.skillTypes === SkillType.GRAMMAR && !isAnswered && (
-          <TouchableOpacity
-            style={styles.submitButton}
-            onPress={() => selectedAnswer ? handleQuizAnswer(selectedAnswer) : null}
-          >
-            <Text style={styles.submitButtonText}>{t('common.submit') || "Check Answer"}</Text>
-          </TouchableOpacity>
-        )}
-
-        {/* Special Input for Vocabulary (Simple Known/Unknown) */}
-        {lesson.skillTypes === SkillType.VOCABULARY && !isAnswered && (
-          <TouchableOpacity style={styles.submitButton} onPress={handleVocabKnown}>
-            <Text style={styles.submitButtonText}>I Know This Word</Text>
-          </TouchableOpacity>
-        )}
-
       </ScrollView>
     </ScreenLayout>
   );
@@ -545,19 +485,6 @@ const styles = createScaledSheet({
   feedbackText: { fontSize: 16, textAlign: 'center', marginBottom: 12, fontWeight: '600' },
   manualNextBtn: { backgroundColor: '#374151', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
   manualNextBtnText: { color: '#FFF', fontWeight: 'bold' },
-
-  submitButton: {
-    backgroundColor: '#4F46E5',
-    padding: 16,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 20
-  },
-  submitButtonText: {
-    color: '#FFF',
-    fontWeight: 'bold',
-    fontSize: 16
-  }
 });
 
 export default LessonScreen;

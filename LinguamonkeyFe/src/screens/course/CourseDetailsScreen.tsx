@@ -28,7 +28,8 @@ import {
   CourseVersionDiscountResponse,
   CourseVersionEnrollmentResponse,
   CourseVersionReviewResponse,
-  CourseResponse
+  CourseResponse,
+  LessonSummaryResponse
 } from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
 
@@ -42,8 +43,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { convert } = useCurrencyConverter();
 
   const [purchaseModalVisible, setPurchaseModalVisible] = useState(false);
-  const [lessonPage, setLessonPage] = useState(0);
-  const [displayLessons, setDisplayLessons] = useState<any[]>([]);
+  const [displayLessons, setDisplayLessons] = useState<LessonSummaryResponse[]>([]);
 
   const {
     useCourse,
@@ -52,7 +52,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     useReviews,
     useDiscounts,
     useCreateReview,
-    useLessonsByVersion
   } = useCourses();
 
   const { useCourseRoom } = useRooms();
@@ -64,7 +63,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const version = course?.latestPublicVersion;
   const versionId = version?.versionId;
 
-  // Tính toán giá tiền
   const { data: discountsData } = useDiscounts({ versionId: versionId, size: 1 });
   const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
 
@@ -74,19 +72,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     ? displayPriceRaw * (1 - discountPercent / 100)
     : displayPriceRaw;
 
-  // Logic Free/Paid
   const isFreeCourse = priceAfterDiscount === 0;
   const isPaidCourse = !isFreeCourse;
-
-  const {
-    data: lessonData,
-    isLoading: lessonsLoading,
-    isFetching: lessonsFetching
-  } = useLessonsByVersion({
-    versionId: versionId,
-    page: lessonPage,
-    size: 20
-  });
 
   const { data: reviewsData, refetch: refetchReviews } = useReviews({
     courseId,
@@ -107,23 +94,16 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const isCreator = user?.userId === course?.creatorId;
   const isEnrolled = !!activeEnrollment;
 
-  // Quyền truy cập: Đã mua HOẶC là Creator HOẶC là Course Free
   const hasAccess = isEnrolled || isCreator || isFreeCourse;
 
   useEffect(() => {
-    if (lessonData?.data) {
-      if (lessonPage === 0) {
-        setDisplayLessons(lessonData.data);
-      } else {
-        setDisplayLessons(prev => {
-          const newItems = lessonData.data.filter((newItem: any) =>
-            !prev.some(existing => existing.lessonId === newItem.lessonId)
-          );
-          return [...prev, ...newItems];
-        });
-      }
+    if (version?.lessons) {
+      const sortedLessons = [...version.lessons].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+      setDisplayLessons(sortedLessons);
+    } else {
+      setDisplayLessons([]);
     }
-  }, [lessonData, lessonPage]);
+  }, [version]);
 
   const reviews = (reviewsData?.data as any[]) || [];
   const displayThumbnail = version?.thumbnailUrl;
@@ -215,12 +195,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     console.log("Liked review:", reviewId);
   };
 
-  const handleLoadMoreLessons = () => {
-    if (lessonData?.pagination?.hasNext) {
-      setLessonPage(prev => prev + 1);
-    }
-  };
-
   const handleJoinRoom = () => {
     if (roomData?.roomId) {
       gotoTab("chatstack", "groupchatscreen", {
@@ -289,7 +263,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
       <View style={styles.lessonContent}>
         <Text style={[styles.lessonTitle, isLocked && styles.textLocked]} numberOfLines={2}>
-          {item.orderIndex ? item.orderIndex + 1 : index + 1}. {item.lessonName || item.title}
+          {item.orderIndex !== undefined ? item.orderIndex + 1 : index + 1}. {item.lessonName || item.title}
         </Text>
         <View style={styles.lessonMetaRow}>
           <Icon name="schedule" size={12} color="#9CA3AF" />
@@ -419,19 +393,9 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
                 return renderLessonItem(l, i, isLocked);
               })
             ) : (
-              !lessonsLoading && <Text style={styles.emptyText}>{t("course.noContent")}</Text>
+              <Text style={styles.emptyText}>{t("course.noContent")}</Text>
             )}
           </View>
-
-          {lessonData?.pagination?.hasNext && (
-            <TouchableOpacity style={styles.loadMoreBtn} onPress={handleLoadMoreLessons} disabled={lessonsFetching}>
-              {lessonsFetching ? (
-                <ActivityIndicator size="small" color="#4F46E5" />
-              ) : (
-                <Text style={styles.loadMoreText}>{t('common.loadMore', 'Load More')}</Text>
-              )}
-            </TouchableOpacity>
-          )}
         </View>
       </View>
     </View>
@@ -500,14 +464,11 @@ const styles = StyleSheet.create({
   sectionContainer: { marginBottom: 24 },
   sectionHeader: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 },
   description: { fontSize: 15, color: "#4B5563", lineHeight: 24 },
-
-  // ✅ Đã thêm các styles bị thiếu
   systemReviewContainer: { backgroundColor: '#EFF6FF', padding: 16, borderRadius: 12, marginBottom: 24, borderLeftWidth: 4, borderLeftColor: '#3B82F6' },
   systemReviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   systemReviewTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E3A8A' },
   systemReviewRating: { fontSize: 14, fontWeight: '700', color: '#2563EB', marginBottom: 4 },
   systemReviewText: { fontSize: 14, color: '#1E40AF', lineHeight: 20 },
-
   lessonGroup: { marginBottom: 8 },
   lessonItem: { flexDirection: "row", alignItems: "center", padding: 10, marginBottom: 10, backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
   lessonItemLocked: { backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", opacity: 0.8 },

@@ -1,10 +1,11 @@
 import React, { useState } from "react";
 import { View, Text, Image, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
-import { useVideoPlayer } from 'expo-video';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useTranslation } from "react-i18next";
 import { LessonQuestionResponse } from "../../types/dto";
 import { getLessonImage } from "../../utils/courseUtils";
+import { QuestionType } from "../../types/enums";
 
 const MediaNotFound = ({ type }: { type: string }) => (
     <View style={styles.notFoundContainer}>
@@ -13,134 +14,91 @@ const MediaNotFound = ({ type }: { type: string }) => (
     </View>
 );
 
-// --- 1. LISTENING COMPONENT ---
-export const ListeningQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
+export const UniversalQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
     const { t } = useTranslation();
+    const [imgError, setImgError] = useState(false);
     const mediaUrl = question.mediaUrl;
 
-    // Logic: If url exists but player fails, we treat as not found. 
-    // Since expo-video hook doesn't easily expose error state in this simple usage, 
-    // we assume if mediaUrl is provided, it should work. 
-    // If mediaUrl is null, we check if we should hide or show "No Source".
+    // Determine media type based on extension or context (simplification for this logic)
+    const isVideoOrAudio = mediaUrl && (mediaUrl.endsWith('.mp4') || mediaUrl.endsWith('.mp3') || mediaUrl.startsWith('http'));
+    const isImage = mediaUrl && !isVideoOrAudio;
 
-    const player = useVideoPlayer(mediaUrl ?? "", (player) => {
+    const player = useVideoPlayer(isVideoOrAudio ? mediaUrl : "", (player) => {
         player.loop = false;
-        if (mediaUrl) player.play();
+        // Auto play if it's audio/video context
+        if (isVideoOrAudio) player.play();
     });
 
-    const handlePlay = () => {
-        if (player && mediaUrl) player.replay();
+    const renderMedia = () => {
+        if (!mediaUrl) return null;
+
+        if (isVideoOrAudio) {
+            // Simple Audio/Video Player wrapper
+            return (
+                <View style={styles.mediaContainer}>
+                    <TouchableOpacity style={styles.audioButton} onPress={() => player.replay()}>
+                        <Icon name="volume-up" size={32} color="#FFF" />
+                        <Text style={styles.audioButtonText}>{t("quiz.playMedia") || "Phát Multimedia"}</Text>
+                    </TouchableOpacity>
+                </View>
+            );
+        }
+
+        if (isImage) {
+            if (imgError) return <MediaNotFound type="Image" />;
+            return (
+                <Image
+                    source={getLessonImage(mediaUrl)}
+                    style={styles.contextImage}
+                    resizeMode="contain"
+                    onError={() => setImgError(true)}
+                />
+            );
+        }
+        return null;
     };
 
-    if (!mediaUrl) {
-        return (
-            <View style={styles.container}>
-                {question.transcript ? (
-                    <View style={styles.readingPassageBox}>
-                        <Text style={styles.readingPassageText}>{question.transcript}</Text>
-                    </View>
-                ) : null}
-                <Text style={styles.questionText}>{question.question}</Text>
-            </View>
-        );
-    }
+    const renderTranscript = () => {
+        // For Speaking, the transcript IS the content to read
+        if (question.questionType === QuestionType.SPEAKING) {
+            return (
+                <View style={styles.speakingBox}>
+                    <Icon name="record-voice-over" size={48} color="#10B981" />
+                    <Text style={styles.transcriptText}>{question.transcript || question.question}</Text>
+                </View>
+            );
+        }
 
-    return (
-        <View style={styles.container}>
-            <TouchableOpacity style={styles.audioButton} onPress={handlePlay}>
-                <Icon name="volume-up" size={32} color="#FFF" />
-                <Text style={styles.audioButtonText}>{t("quiz.listenAgain") || "Nghe lại"}</Text>
-            </TouchableOpacity>
-            <Text style={styles.audioLabel}>{t("quiz.listenCarefully") || "Nghe kỹ đoạn hội thoại"}</Text>
-            <Text style={styles.questionText}>{question.question}</Text>
-        </View>
-    );
-};
-
-// --- 2. SPEAKING COMPONENT ---
-export const SpeakingQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
-    const { t } = useTranslation();
-    const contentToSpeak = question.transcript || question.question;
-    const [imgError, setImgError] = useState(false);
-
-    return (
-        <View style={styles.container}>
-            {question.mediaUrl && !imgError ? (
-                <Image
-                    source={getLessonImage(question.mediaUrl)}
-                    style={styles.contextImage}
-                    resizeMode="contain"
-                    onError={() => setImgError(true)}
-                />
-            ) : question.mediaUrl && imgError ? (
-                <MediaNotFound type="Image" />
-            ) : null}
-
-            <View style={styles.speakingBox}>
-                <Icon name="record-voice-over" size={48} color="#10B981" />
-                <Text style={styles.transcriptText}>{contentToSpeak}</Text>
-            </View>
-            <Text style={styles.questionText}>{t("quiz.readAloud") || "Đọc to câu trên"}</Text>
-        </View>
-    );
-};
-
-// --- 3. READING COMPONENT ---
-export const ReadingQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
-    const [imgError, setImgError] = useState(false);
-
-    return (
-        <View style={styles.container}>
-            {question.mediaUrl && !imgError ? (
-                <Image
-                    source={getLessonImage(question.mediaUrl)}
-                    style={styles.contextImage}
-                    resizeMode="contain"
-                    onError={() => setImgError(true)}
-                />
-            ) : question.mediaUrl && imgError ? (
-                <MediaNotFound type="Image" />
-            ) : null}
-
-            {question.transcript && (
+        // For others, transcript is supporting text (reading passage, etc.)
+        if (question.transcript) {
+            return (
                 <View style={styles.readingPassageBox}>
                     <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
                         <Text style={styles.readingPassageText}>{question.transcript}</Text>
                     </ScrollView>
                 </View>
-            )}
-
-            <Text style={styles.questionText}>{question.question}</Text>
-        </View>
-    );
-};
-
-// --- 4. WRITING COMPONENT ---
-export const WritingQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
-    const { t } = useTranslation();
-    const [imgError, setImgError] = useState(false);
+            );
+        }
+        return null;
+    };
 
     return (
         <View style={styles.container}>
-            {question.mediaUrl && !imgError ? (
-                <Image
-                    source={getLessonImage(question.mediaUrl)}
-                    style={styles.contextImage}
-                    resizeMode="contain"
-                    onError={() => setImgError(true)}
-                />
-            ) : question.mediaUrl && imgError ? (
-                <MediaNotFound type="Image" />
-            ) : null}
+            {/* 1. MEDIA (Highest Priority) */}
+            {renderMedia()}
 
-            <View style={styles.writingHeader}>
-                <Icon name="edit" size={28} color="#F59E0B" />
-                <Text style={styles.writingLabel}>{t("quiz.writingTask") || "Bài tập viết"}</Text>
-            </View>
+            {/* 2. TRANSCRIPT / CONTEXT */}
+            {renderTranscript()}
 
-            <View style={styles.writingPromptBox}>
-                <Text style={styles.writingPromptText}>{question.question}</Text>
-            </View>
+            {/* 3. QUESTION TEXT (If not Speaking, as speaking usually embeds text in transcript box) */}
+            {question.questionType !== QuestionType.SPEAKING && (
+                <Text style={styles.questionText}>{question.question}</Text>
+            )}
+
+            {/* Speaking specific instruction */}
+            {question.questionType === QuestionType.SPEAKING && (
+                <Text style={styles.questionText}>{t("quiz.readAloud") || "Đọc to câu trên"}</Text>
+            )}
         </View>
     );
 };
@@ -159,7 +117,11 @@ const styles = StyleSheet.create({
         marginTop: 16,
         lineHeight: 26,
     },
-    // Media Not Found
+    mediaContainer: {
+        width: '100%',
+        alignItems: 'center',
+        marginBottom: 16
+    },
     notFoundContainer: {
         width: '100%',
         height: 150,
@@ -177,7 +139,6 @@ const styles = StyleSheet.create({
         color: '#B91C1C',
         fontWeight: '600'
     },
-    // Listening Styles
     audioButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -190,7 +151,6 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 4,
-        marginBottom: 12
     },
     audioButtonText: {
         color: '#FFF',
@@ -198,32 +158,6 @@ const styles = StyleSheet.create({
         fontSize: 16,
         marginLeft: 8
     },
-    audioLabel: {
-        fontSize: 14,
-        color: '#6B7280',
-        marginBottom: 8
-    },
-    // Speaking Styles
-    speakingBox: {
-        alignItems: 'center',
-        padding: 24,
-        backgroundColor: '#ECFDF5',
-        borderRadius: 16,
-        width: '100%',
-        borderWidth: 1,
-        borderColor: '#10B981',
-        borderStyle: 'dashed',
-        marginTop: 12
-    },
-    transcriptText: {
-        fontSize: 22,
-        fontWeight: '700',
-        color: '#065F46',
-        marginTop: 12,
-        textAlign: 'center',
-        lineHeight: 32
-    },
-    // Reading Styles
     contextImage: {
         width: '100%',
         height: 200,
@@ -245,32 +179,23 @@ const styles = StyleSheet.create({
         color: '#431407',
         lineHeight: 24,
     },
-    // Writing Styles
-    writingHeader: {
-        flexDirection: 'row',
+    speakingBox: {
         alignItems: 'center',
-        marginBottom: 8,
-        alignSelf: 'flex-start',
+        padding: 24,
+        backgroundColor: '#ECFDF5',
+        borderRadius: 16,
+        width: '100%',
+        borderWidth: 1,
+        borderColor: '#10B981',
+        borderStyle: 'dashed',
         marginTop: 12
     },
-    writingLabel: {
-        fontSize: 16,
-        color: '#F59E0B',
+    transcriptText: {
+        fontSize: 22,
         fontWeight: '700',
-        marginLeft: 8,
+        color: '#065F46',
+        marginTop: 12,
+        textAlign: 'center',
+        lineHeight: 32
     },
-    writingPromptBox: {
-        width: '100%',
-        padding: 16,
-        backgroundColor: '#FFFBEB',
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: '#FCD34D'
-    },
-    writingPromptText: {
-        fontSize: 18,
-        color: '#92400E',
-        fontWeight: '600',
-        textAlign: 'center'
-    }
 });

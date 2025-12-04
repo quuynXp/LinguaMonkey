@@ -35,6 +35,7 @@ public class CourseResponse {
 
     private OffsetDateTime createdAt;
     private OffsetDateTime updatedAt;
+    private Integer totalStudents;
 
     private Double averageRating;
     private Integer reviewCount;

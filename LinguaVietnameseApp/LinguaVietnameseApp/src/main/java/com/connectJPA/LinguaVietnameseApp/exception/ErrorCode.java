@@ -26,7 +26,7 @@ public enum ErrorCode {
     COURSE_VALIDATION_PENDING(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
     QUESTION_NOT_FOUND(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
     INVALID_DATA_FORMAT(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
-
+    CHALLENGE_ALREADY_CLAIMED(1009, "You must purchase this course to review.", HttpStatus.BAD_REQUEST, true),
 
     // Nhóm: User & Auth Logic (400) (11xx)
     INVALID_USER_INFO(1100, "error.invalid_user_info", HttpStatus.BAD_REQUEST, true),
@@ -38,7 +38,8 @@ public enum ErrorCode {
     GOOGLE_TOKEN_INVALID(1106, "error.google_token_invalid", HttpStatus.BAD_REQUEST, true),
     FACEBOOK_TOKEN_INVALID(1107, "error.facebook_token_invalid", HttpStatus.BAD_REQUEST, true),
     MAX_SESSIONS_EXCEEDED(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
-    
+        CHALLENGE_NOT_COMPLETED(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
+
     // Đã chuẩn hoá lại code và key cho các enum cũ
     INCORRECT_PASSWORD(1109, "error.incorrect_password", HttpStatus.BAD_REQUEST, true),
     ACCOUNT_ALREADY_DEACTIVATED(1120, "error.account_already_deactivated", HttpStatus.BAD_REQUEST, true),

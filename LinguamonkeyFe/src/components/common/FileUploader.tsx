@@ -10,12 +10,15 @@ type MediaType = 'image' | 'video' | 'audio' | 'document' | 'all';
 interface FileUploaderProps {
     onUploadStart?: () => void;
     onUploadEnd?: () => void;
-    onUploadSuccess: (result: any) => void;
+    // UPDATED: Accept 'any' for result to handle FileUploadResponse object
+    onUploadSuccess: (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => void;
     onUploadError?: (error: any) => void;
     mediaType?: MediaType;
     style?: StyleProp<ViewStyle>;
     children: ReactNode;
     allowEditing?: boolean;
+    maxSizeMB?: number;
+    maxDuration?: number;
 }
 
 const FileUploader: React.FC<FileUploaderProps> = ({
@@ -27,14 +30,34 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     style,
     children,
     allowEditing = false,
+    maxSizeMB = 10,
+    maxDuration = 60,
 }) => {
     const { t } = useTranslation();
+
+    const validateFile = (fileSize: number | undefined, duration: number | undefined, type: string) => {
+        if (fileSize && fileSize > maxSizeMB * 1024 * 1024) {
+            Alert.alert(t('common.error'), t('errors.fileTooLarge', { size: maxSizeMB }));
+            return false;
+        }
+        if (type.startsWith('video') && duration && duration > maxDuration) {
+            Alert.alert(t('common.error'), t('errors.videoTooLong', { seconds: maxDuration }));
+            return false;
+        }
+        return true;
+    };
 
     const handleUpload = async (file: { uri: string; name: string; type: string }) => {
         try {
             if (onUploadStart) onUploadStart();
             const response = await uploadTemp(file);
-            onUploadSuccess(response);
+
+            let msgType: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'DOCUMENT';
+            if (file.type.startsWith('image')) msgType = 'IMAGE';
+            else if (file.type.startsWith('video')) msgType = 'VIDEO';
+            else if (file.type.startsWith('audio')) msgType = 'AUDIO';
+
+            onUploadSuccess(response, msgType);
         } catch (error) {
             console.error('Upload failed:', error);
             if (onUploadError) {
@@ -56,18 +79,22 @@ const FileUploader: React.FC<FileUploaderProps> = ({
             }
 
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                mediaTypes: mediaType === 'video' ? ImagePicker.MediaTypeOptions.Videos :
+                    mediaType === 'image' ? ImagePicker.MediaTypeOptions.Images :
+                        ImagePicker.MediaTypeOptions.All,
                 allowsEditing: allowEditing,
-                aspect: [1, 1],
                 quality: 0.8,
+                videoMaxDuration: maxDuration,
             });
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (!validateFile(asset.fileSize, asset.duration, asset.type || 'image')) return;
+
                 const filePayload = {
                     uri: asset.uri,
-                    name: asset.fileName || `image_${Date.now()}.jpg`,
-                    type: asset.mimeType || 'image/jpeg',
+                    name: asset.fileName || `upload_${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
+                    type: asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg'),
                 };
                 await handleUpload(filePayload);
             }
@@ -94,6 +121,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
 
             if (!result.canceled && result.assets && result.assets.length > 0) {
                 const asset = result.assets[0];
+                if (!validateFile(asset.size, undefined, asset.mimeType || 'application')) return;
+
                 const filePayload = {
                     uri: asset.uri,
                     name: asset.name,
@@ -108,7 +137,7 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     };
 
     const handlePress = () => {
-        if (mediaType === 'image') {
+        if (mediaType === 'image' || mediaType === 'video' || mediaType === 'all') {
             pickImage();
         } else {
             pickDocument();

@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.entity;
 
 import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.BadgeTier;
+import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
 import com.connectJPA.LinguaVietnameseApp.enums.CriteriaType;
 import jakarta.persistence.*;
 import lombok.*;
@@ -33,12 +34,16 @@ public class Badge extends BaseEntity {
     @Column(name = "coins")
     private int coins;
 
+    private BadgeType badgeType;
+
     @Column(name = "image_url")
     private String imageUrl;
 
     @Column(name = "criteria_type", nullable = false)
     @Enumerated(EnumType.STRING)
     private CriteriaType criteriaType;
+
+    private Integer criteriaValue;
 
     @Column(name = "criteria_threshold", nullable = false)
     private int criteriaThreshold;

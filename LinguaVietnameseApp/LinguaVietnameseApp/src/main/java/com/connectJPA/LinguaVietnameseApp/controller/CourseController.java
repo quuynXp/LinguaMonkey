@@ -1,4 +1,3 @@
-
 package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
@@ -48,6 +47,22 @@ public class CourseController {
         Page<CourseResponse> courses = courseService.getAllCourses(title, languageCode, type, isAdminCreated, pageable);
         
         return AppApiResponse.<Page<CourseResponse>>builder()
+                .code(200)
+                .message(messageSource.getMessage("course.list.success", null, locale))
+                .result(courses)
+                .build();
+    }
+
+    // --- NEW: Top Selling Courses Endpoint ---
+    @Operation(summary = "Get top selling courses", description = "Lấy danh sách khóa học có nhiều lượt mua nhất")
+    @GetMapping("/top-selling")
+    public AppApiResponse<List<CourseResponse>> getTopSellingCourses(
+            @RequestParam(defaultValue = "10") int limit,
+            Locale locale) {
+        
+        List<CourseResponse> courses = courseService.getTopSellingCourses(limit);
+        
+        return AppApiResponse.<List<CourseResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("course.list.success", null, locale))
                 .result(courses)

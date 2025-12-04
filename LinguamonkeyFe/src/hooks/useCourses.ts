@@ -33,6 +33,7 @@ export const courseKeys = {
   version: (id: string) => [...courseKeys.versions(), id] as const,
   courseVersions: (courseId: string) => [...courseKeys.all, "versions_list", courseId] as const,
   recommended: (userId: string) => [...courseKeys.all, "recommended", userId] as const,
+  topSelling: (limit: number) => [...courseKeys.all, "topSelling", limit] as const,
   levels: () => [...courseKeys.all, "levels"] as const,
   categories: () => [...courseKeys.all, "categories"] as const,
   enrollments: (params: any) => [...courseKeys.all, "enrollments", params] as const,
@@ -41,7 +42,7 @@ export const courseKeys = {
   reviews: (params: any) => [...courseKeys.all, "reviews", params] as const,
   creatorStats: (creatorId: string) => [...courseKeys.all, "creatorStats", creatorId] as const,
   courseStats: (courseId: string) => [...courseKeys.all, "courseStats", courseId] as const,
-  specialOffers: (params: any) => [...courseKeys.all, "specialOffers", params] as const, // New Key
+  specialOffers: (params: any) => [...courseKeys.all, "specialOffers", params] as const,
 };
 
 export const useCourses = () => {
@@ -78,7 +79,19 @@ export const useCourses = () => {
     });
   };
 
-  // --- New Hook for Special Offers ---
+  const useTopSellingCourses = (limit: number = 10) => {
+    return useQuery({
+      queryKey: courseKeys.topSelling(limit),
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<CourseResponse[]>>(
+          `/api/v1/courses/top-selling?limit=${limit}`
+        );
+        return data.result || [];
+      },
+      staleTime: 10 * 60 * 1000,
+    });
+  };
+
   const useSpecialOffers = (params?: {
     keyword?: string;
     languageCode?: string;
@@ -722,7 +735,8 @@ export const useCourses = () => {
 
   return {
     useAllCourses,
-    useSpecialOffers, // Export new hook
+    useTopSellingCourses,
+    useSpecialOffers,
     useCourse,
     useCourseVersions,
     useGetVersion,

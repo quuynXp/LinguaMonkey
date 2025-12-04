@@ -16,18 +16,15 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute, useFocusEffect } from "@react-navigation/native";
 import { useCourses } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
+import FileUploader from "../../components/common/FileUploader";
 
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { DifficultyLevel, VersionStatus } from "../../types/enums";
-import type { CourseLessonResponse } from "../../types/dto";
 
-// Tạm thời định nghĩa kiểu dữ liệu cho lessons nhận được từ API/State.
-// Đã loại bỏ 'duration' vì nó gây ra lỗi TypeScript.
 interface LocalLessonType {
   lessonId: string;
   title: string;
-  // duration: string; // Đã loại bỏ
   orderIndex: number;
 }
 
@@ -45,6 +42,7 @@ const EditCourseScreen = () => {
   const [description, setDescription] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.A1);
+  const [isUploadingThumb, setIsUploadingThumb] = useState(false);
 
   // Local state for lessons to handle immediate UI reordering
   const [localLessons, setLocalLessons] = useState<LocalLessonType[]>([]);
@@ -61,7 +59,7 @@ const EditCourseScreen = () => {
   } = useCourses();
 
   // Fetch Data
-  const { data: courseData, refetch: refetchCourse } = useCourse(initialCourseId);
+  const { data: courseData } = useCourse(initialCourseId);
   const { data: versionsData, refetch: refetchVersions } = useCourseVersions(initialCourseId);
 
   // Determine Working Version (Draft > Public)
@@ -90,16 +88,13 @@ const EditCourseScreen = () => {
       setPrice(workingVersion.price?.toString() || "0");
       setDifficulty(workingVersion.difficultyLevel || DifficultyLevel.A1);
 
-      // Load lessons into local state for manipulation
       if (workingVersion.lessons) {
-        // Sửa lỗi TypeScript: Ép kiểu sang LocalLessonType[] đã được sửa đổi
         const sorted = (workingVersion.lessons as LocalLessonType[]).sort((a, b) => a.orderIndex - b.orderIndex);
         setLocalLessons(sorted);
       }
     }
   }, [workingVersion]);
 
-  // Refetch when screen focuses (e.g. coming back from CreateLessonScreen)
   useFocusEffect(
     useCallback(() => {
       if (initialCourseId) {
@@ -119,7 +114,6 @@ const EditCourseScreen = () => {
   // --- Handlers ---
 
   const handlePreview = () => {
-    // Only allow preview if we have a courseId
     if (initialCourseId) {
       navigation.navigate("CourseDetailsScreen", { courseId: initialCourseId });
     }
@@ -127,21 +121,18 @@ const EditCourseScreen = () => {
 
   const handleCreateLesson = () => {
     if (!workingVersion) return;
-    // Navigate to Create Lesson Screen
     navigation.navigate("CreateLessonScreen", {
       courseId: initialCourseId,
       versionId: workingVersion.versionId
     });
   };
 
-  // Reordering Logic (Move Up/Down)
   const moveLesson = (index: number, direction: 'up' | 'down') => {
     const newLessons = [...localLessons];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
 
     if (targetIndex < 0 || targetIndex >= newLessons.length) return;
 
-    // Swap
     const temp = newLessons[index];
     newLessons[index] = newLessons[targetIndex];
     newLessons[targetIndex] = temp;
@@ -168,6 +159,8 @@ const EditCourseScreen = () => {
     );
   };
 
+  const formatDriveUrl = (id: string) => `https://drive.google.com/uc?export=download&id=${id}`;
+
   const handleSave = () => {
     if (!title) {
       Alert.alert(t("error"), t("course.titleRequired"));
@@ -175,7 +168,6 @@ const EditCourseScreen = () => {
     }
 
     if (isCreateMode) {
-      // Create New Course
       createCourseMutate({
         title,
         price: parseFloat(price) || 0,
@@ -188,11 +180,9 @@ const EditCourseScreen = () => {
         onError: () => Alert.alert(t("error"), t("course.createFailed"))
       });
     } else {
-      // Update Existing Course
       if (!workingVersion) return;
 
       if (!isDraft) {
-        // If current version is PUBLIC, prompt to create new Draft
         Alert.alert(
           t("course.liveVersion"),
           t("course.createDraftPrompt"),
@@ -209,14 +199,12 @@ const EditCourseScreen = () => {
         return;
       }
 
-      // 1. Update Details (Title)
       updateDetailsMutate({
         id: initialCourseId,
         req: { title }
       });
 
-      // 2. Update Version (Content & Order)
-      const lessonIds = localLessons.map(l => l.lessonId); // Extract ordered IDs
+      const lessonIds = localLessons.map(l => l.lessonId);
 
       updateVersionMutate({
         versionId: workingVersion.versionId,
@@ -225,7 +213,7 @@ const EditCourseScreen = () => {
           thumbnailUrl,
           price: parseFloat(price) || 0,
           difficultyLevel: difficulty,
-          lessonIds: lessonIds // Send ordered list
+          lessonIds: lessonIds
         }
       }, {
         onSuccess: () => {
@@ -260,7 +248,6 @@ const EditCourseScreen = () => {
     </View>
   );
 
-  // Sử dụng LocalLessonType đã sửa đổi
   const renderLessonItem = ({ item, index }: { item: LocalLessonType, index: number }) => (
     <View style={styles.lessonCard}>
       <View style={styles.lessonOrder}>
@@ -268,11 +255,8 @@ const EditCourseScreen = () => {
       </View>
       <View style={styles.lessonInfo}>
         <Text style={styles.lessonTitle} numberOfLines={1}>{item.title}</Text>
-        {/* Loại bỏ Text hiển thị duration */}
-        {/* <Text style={styles.lessonDuration}>{item.duration}</Text> */}
       </View>
 
-      {/* Reorder & Actions */}
       <View style={styles.lessonActions}>
         <TouchableOpacity
           onPress={() => moveLesson(index, 'up')}
@@ -301,7 +285,6 @@ const EditCourseScreen = () => {
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1 }}>
         <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 50 }}>
 
-          {/* Basic Info Section */}
           <View style={styles.section}>
             <Text style={styles.label}>{t("course.title")}</Text>
             <TextInput
@@ -324,7 +307,6 @@ const EditCourseScreen = () => {
               </View>
               <View style={styles.column}>
                 <Text style={styles.label}>{t("course.difficulty")}</Text>
-                {/* Simple input for now, could be a Picker */}
                 <TextInput
                   style={styles.input}
                   value={difficulty}
@@ -343,18 +325,35 @@ const EditCourseScreen = () => {
             />
 
             <Text style={styles.label}>{t("course.thumbnailUrl")}</Text>
-            <TextInput
-              style={styles.input}
-              value={thumbnailUrl}
-              onChangeText={setThumbnailUrl}
-              placeholder="https://..."
-            />
+            <View style={styles.uploadContainer}>
+              <FileUploader
+                mediaType="image"
+                style={styles.uploadButton}
+                onUploadStart={() => setIsUploadingThumb(true)}
+                onUploadSuccess={(id) => setThumbnailUrl(formatDriveUrl(id))}
+                onUploadEnd={() => setIsUploadingThumb(false)}
+              >
+                {isUploadingThumb ? <ActivityIndicator color="#4ECDC4" /> : (
+                  <View style={{ alignItems: 'center', flexDirection: 'row' }}>
+                    <Icon name="cloud-upload" size={20} color="#4F46E5" />
+                    <Text style={{ marginLeft: 8, color: '#4F46E5', fontWeight: '600' }}>
+                      Upload Image
+                    </Text>
+                  </View>
+                )}
+              </FileUploader>
+              <TextInput
+                style={[styles.input, { flex: 1, marginLeft: 10 }]}
+                value={thumbnailUrl}
+                onChangeText={setThumbnailUrl}
+                placeholder="https://..."
+              />
+            </View>
             {thumbnailUrl ? (
               <Image source={{ uri: thumbnailUrl }} style={styles.previewImage} />
             ) : null}
           </View>
 
-          {/* Lessons Section - Only visible if course exists (not create mode) */}
           {!isCreateMode && (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -475,6 +474,18 @@ const styles = createScaledSheet({
   column: {
     flex: 1,
   },
+  uploadContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  uploadButton: {
+    backgroundColor: '#EEF2FF',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#C7D2FE',
+  },
   previewImage: {
     width: "100%",
     height: 160,
@@ -482,8 +493,6 @@ const styles = createScaledSheet({
     marginTop: 8,
     backgroundColor: "#E5E7EB",
   },
-
-  // Lesson List Styles
   addLessonBtn: {
     flexDirection: "row",
     alignItems: "center",
@@ -529,10 +538,6 @@ const styles = createScaledSheet({
     fontSize: 14,
     fontWeight: "600",
     color: "#374151",
-  },
-  lessonDuration: {
-    fontSize: 12,
-    color: "#6B7280",
   },
   lessonActions: {
     flexDirection: "row",

@@ -3,6 +3,8 @@ package com.connectJPA.LinguaVietnameseApp.service;
 import com.connectJPA.LinguaVietnameseApp.dto.request.BadgeRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeProgressResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeResponse;
+import com.connectJPA.LinguaVietnameseApp.enums.BadgeType;
+
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
@@ -25,4 +27,10 @@ public interface BadgeService {
     void claimBadge(UUID userId, UUID badgeId);
 
     List<BadgeResponse> getBadgesForUser(UUID userId);
+
+    void updateBadgeProgress(UUID userId, BadgeType type, int increment);
+
+    void assignStarterBadges(UUID userId);
+
+    void assignBadgeToUser(UUID userId, UUID badgeId);
 }

@@ -31,7 +31,6 @@ export const LessonInputArea = ({
 }: LessonInputAreaProps) => {
     const [textInput, setTextInput] = useState("");
 
-    // Reset input when question changes
     useEffect(() => {
         setTextInput("");
     }, [question.lessonQuestionId]);
@@ -46,50 +45,68 @@ export const LessonInputArea = ({
         </TouchableOpacity>
     );
 
-    // --- 1. MULTIPLE CHOICE ---
-    if (question.questionType === QuestionType.MULTIPLE_CHOICE || question.questionType === QuestionType.FILL_IN_THE_BLANK) {
+    const renderOptionList = (options: { key: string; value: string }[]) => (
+        <View style={styles.container}>
+            <View style={styles.optionsContainer}>
+                {options.map((opt) => {
+                    let btnStyle = styles.optionBtn;
+                    if (isAnswered) {
+                        if (opt.key === question.correctOption)
+                            btnStyle = styles.optionBtnCorrect as any;
+                        else if (selectedAnswer === opt.key)
+                            btnStyle = styles.optionBtnWrong as any;
+                    } else if (selectedAnswer === opt.key) {
+                        btnStyle = styles.optionBtnSelected as any;
+                    }
+
+                    return (
+                        <TouchableOpacity
+                            key={opt.key}
+                            style={btnStyle}
+                            onPress={() => onAnswer(opt.key)}
+                            disabled={isAnswered || isLoading}
+                        >
+                            <View style={styles.optionKeyBadge}>
+                                <Text style={styles.optionKeyText}>{opt.key}</Text>
+                            </View>
+                            <Text style={styles.optionText}>{opt.value}</Text>
+                        </TouchableOpacity>
+                    );
+                })}
+            </View>
+            {!isAnswered && renderSkipButton()}
+        </View>
+    );
+
+    // --- LOGIC SWITCH BASED ON QUESTION TYPE ---
+
+    // 1. TRUE / FALSE (Display T, F, NG)
+    if (question.questionType === QuestionType.TRUE_FALSE) {
+        const tfOptions = [
+            { key: 'TRUE', value: 'True' },
+            { key: 'FALSE', value: 'False' },
+            { key: 'NOT GIVEN', value: 'Not Given' }
+        ];
+        return renderOptionList(tfOptions);
+    }
+
+    // 2. MULTIPLE CHOICE / MATCHING / ORDERING / FILL BLANK (Standard 4 Options)
+    if (
+        question.questionType === QuestionType.MULTIPLE_CHOICE ||
+        question.questionType === QuestionType.FILL_IN_THE_BLANK ||
+        question.questionType === QuestionType.MATCHING ||
+        question.questionType === QuestionType.ORDERING
+    ) {
         const options = [
             { key: 'A', value: question.optionA },
             { key: 'B', value: question.optionB },
             { key: 'C', value: question.optionC },
             { key: 'D', value: question.optionD },
         ].filter(opt => opt.value);
-
-        return (
-            <View style={styles.container}>
-                <View style={styles.optionsContainer}>
-                    {options.map((opt) => {
-                        let btnStyle = styles.optionBtn;
-                        if (isAnswered) {
-                            if (opt.key === question.correctOption)
-                                btnStyle = styles.optionBtnCorrect as any;
-                            else if (selectedAnswer === opt.key)
-                                btnStyle = styles.optionBtnWrong as any;
-                        } else if (selectedAnswer === opt.key) {
-                            btnStyle = styles.optionBtnSelected as any;
-                        }
-
-                        return (
-                            <TouchableOpacity
-                                key={opt.key}
-                                style={btnStyle}
-                                onPress={() => onAnswer(opt.key)}
-                                disabled={isAnswered || isLoading}
-                            >
-                                <View style={styles.optionKeyBadge}>
-                                    <Text style={styles.optionKeyText}>{opt.key}</Text>
-                                </View>
-                                <Text style={styles.optionText}>{opt.value}</Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
-                {!isAnswered && renderSkipButton()}
-            </View>
-        );
+        return renderOptionList(options);
     }
 
-    // --- 2. SPEAKING ---
+    // 3. SPEAKING (Mic)
     if (question.questionType === QuestionType.SPEAKING) {
         return (
             <View style={styles.container}>
@@ -120,7 +137,7 @@ export const LessonInputArea = ({
         );
     }
 
-    // --- 3. WRITING ---
+    // 4. WRITING / ESSAY (Text Area)
     if (question.questionType === QuestionType.WRITING || question.questionType === QuestionType.ESSAY) {
         return (
             <View style={styles.container}>
@@ -148,7 +165,7 @@ export const LessonInputArea = ({
         );
     }
 
-    return null;
+    return <Text>Unsupported Question Type</Text>;
 };
 
 const styles = StyleSheet.create({

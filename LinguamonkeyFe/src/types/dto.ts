@@ -289,9 +289,10 @@ export interface CreateFlashcardRequest {
 }
 
 export interface CreateGroupCallRequest {
-    roomId: string;
+    roomId?: string;
     callerId: string;
     participantIds: string[];
+    videoCallType: Enums.VideoCallType
 }
 
 export interface CreateReviewRequest {
@@ -846,6 +847,7 @@ export interface VideoCallParticipantRequest {
 
 export interface VideoCallRequest {
     callerId: string;
+    status: Enums.VideoCallStatus
 }
 
 export interface VideoProgressRequest {
@@ -1061,6 +1063,7 @@ export interface CourseResponse {
     creatorNickname?: string;
     creatorCountry?: Enums.Country;
     creatorVip?: boolean;
+    totalStudents?: number;
     isAdminCreated?: boolean;
     creatorLevel?: number;
     creatorName?: string;

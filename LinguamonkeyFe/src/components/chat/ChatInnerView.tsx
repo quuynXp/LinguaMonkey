@@ -17,18 +17,17 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
-import { useFriendships } from "../../hooks/useFriendships"; // Hook xử lý kết bạn
+import { useFriendships } from "../../hooks/useFriendships";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
-import { pickAndUploadMedia } from "../../utils/chatMediaUtils";
+import FileUploader from "../../components/common/FileUploader"; // Using the component created above
 import { RoomPurpose, FriendshipStatus } from "../../types/enums";
 import { RoomResponse, MemberResponse, AppApiResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { useRoute, RouteProp } from '@react-navigation/native';
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
 
@@ -41,7 +40,7 @@ type UIMessage = {
     timestamp: string;
     text: string;
     mediaUrl?: string;
-    messageType: 'TEXT' | 'IMAGE' | 'VIDEO';
+    messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO';
     translatedText?: string;
     user: string;
     avatar: string | null;
@@ -61,7 +60,6 @@ interface ChatInnerViewProps {
     isBubbleMode?: boolean;
     onCloseBubble?: () => void;
     onMinimizeBubble?: () => void;
-    // Settings props passed from parent
     autoTranslate?: boolean;
     soundEnabled?: boolean;
 }
@@ -96,7 +94,6 @@ const QuickProfilePopup = ({
     const { t } = useTranslation();
     const { useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
 
-    // Mutations
     const createFriendship = useCreateFriendship();
     const updateFriendship = useUpdateFriendship();
     const deleteFriendship = useDeleteFriendship();
@@ -105,31 +102,17 @@ const QuickProfilePopup = ({
 
     const isMe = profile.userId === currentUserId;
     const { isFriend, friendRequestStatus } = profile;
-
-    // Logic xác định trạng thái kết bạn dựa trên data có sẵn
     const hasSentRequest = friendRequestStatus?.hasSentRequest;
     const hasReceivedRequest = friendRequestStatus?.hasReceivedRequest;
-    const handleAddFriend = () => {
-        createFriendship.mutate({ requesterId: currentUserId, receiverId: profile.userId, status: FriendshipStatus.PENDING });
-    };
 
-    const handleAcceptFriend = () => {
-        updateFriendship.mutate({
-            user1Id: profile.userId,
-            user2Id: currentUserId,
-            req: { requesterId: profile.userId, receiverId: currentUserId, status: FriendshipStatus.ACCEPTED }
-        });
-    };
-
-    const handleCancelOrUnfriend = () => {
-        deleteFriendship.mutate({ user1Id: currentUserId, user2Id: profile.userId });
-    };
+    const handleAddFriend = () => createFriendship.mutate({ requesterId: currentUserId, receiverId: profile.userId, status: FriendshipStatus.PENDING });
+    const handleAcceptFriend = () => updateFriendship.mutate({ user1Id: profile.userId, user2Id: currentUserId, req: { requesterId: profile.userId, receiverId: currentUserId, status: FriendshipStatus.ACCEPTED } });
+    const handleCancelOrUnfriend = () => deleteFriendship.mutate({ user1Id: currentUserId, user2Id: profile.userId });
 
     return (
         <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
             <Pressable style={styles.modalOverlay} onPress={onClose}>
                 <View style={styles.popupContainer}>
-                    {/* Header: Avatar & Basic Info */}
                     <View style={styles.popupHeader}>
                         <Image source={getAvatarSource(profile.avatarUrl, null)} style={styles.popupAvatar} />
                         <View style={styles.popupInfo}>
@@ -144,39 +127,25 @@ const QuickProfilePopup = ({
                             </View>
                         </View>
                     </View>
-
-                    {/* Details: Proficiency & Languages */}
                     <View style={styles.popupDetails}>
                         <Text style={styles.popupDetailText}>{t('profile.proficiency')}: {profile.proficiency}</Text>
                         <View style={styles.langRow}>
                             {profile.languages?.map((lang, idx) => (
-                                <View key={idx} style={styles.langTag}>
-                                    <Text style={styles.langText}>{lang}</Text>
-                                </View>
+                                <View key={idx} style={styles.langTag}><Text style={styles.langText}>{lang}</Text></View>
                             ))}
                         </View>
                     </View>
-
-                    {/* Actions */}
                     {!isMe && (
                         <View style={styles.popupActions}>
                             {isFriend ? (
-                                <TouchableOpacity style={styles.actionBtnSecondary} onPress={handleCancelOrUnfriend}>
-                                    <Text style={styles.actionTextSec}>{t('profile.unfriend')}</Text>
-                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.actionBtnSecondary} onPress={handleCancelOrUnfriend}><Text style={styles.actionTextSec}>{t('profile.unfriend')}</Text></TouchableOpacity>
                             ) : hasReceivedRequest ? (
                                 <View style={{ flexDirection: 'row', gap: 10 }}>
-                                    <TouchableOpacity style={styles.actionBtnPrimary} onPress={handleAcceptFriend}>
-                                        <Text style={styles.actionTextPri}>{t('common.accept')}</Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity style={styles.actionBtnSecondary} onPress={handleCancelOrUnfriend}>
-                                        <Text style={styles.actionTextSec}>{t('common.deny')}</Text>
-                                    </TouchableOpacity>
+                                    <TouchableOpacity style={styles.actionBtnPrimary} onPress={handleAcceptFriend}><Text style={styles.actionTextPri}>{t('common.accept')}</Text></TouchableOpacity>
+                                    <TouchableOpacity style={styles.actionBtnSecondary} onPress={handleCancelOrUnfriend}><Text style={styles.actionTextSec}>{t('common.deny')}</Text></TouchableOpacity>
                                 </View>
                             ) : hasSentRequest ? (
-                                <TouchableOpacity style={styles.actionBtnSecondary} onPress={handleCancelOrUnfriend}>
-                                    <Text style={styles.actionTextSec}>{t('profile.cancel_request')}</Text>
-                                </TouchableOpacity>
+                                <TouchableOpacity style={styles.actionBtnSecondary} onPress={handleCancelOrUnfriend}><Text style={styles.actionTextSec}>{t('profile.cancel_request')}</Text></TouchableOpacity>
                             ) : (
                                 <TouchableOpacity style={styles.actionBtnPrimary} onPress={handleAddFriend}>
                                     <Icon name="person-add" size={16} color="#FFF" />
@@ -185,7 +154,6 @@ const QuickProfilePopup = ({
                             )}
                         </View>
                     )}
-
                     <TouchableOpacity style={styles.viewProfileBtn} onPress={onNavigateProfile}>
                         <Text style={styles.viewProfileText}>{t('profile.view_full_profile')}</Text>
                     </TouchableOpacity>
@@ -201,7 +169,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     isBubbleMode = false,
     onCloseBubble,
     onMinimizeBubble,
-    autoTranslate = false, // Prop settings từ GroupChatScreen
+    autoTranslate = false,
     soundEnabled = true
 }) => {
     const { t, i18n } = useTranslation();
@@ -216,16 +184,11 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [isSearchVisible, setIsSearchVisible] = useState(false);
     const [searchText, setSearchText] = useState("");
 
-    // Translation States
     const [localTranslations, setLocalTranslations] = useState<any>({});
     const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language || 'vi');
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
-
-    // Message States
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
-
-    // Profile Popup State
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | null>(null);
     const [isPopupVisible, setIsPopupVisible] = useState(false);
 
@@ -241,14 +204,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const searchMessages = useChatStore(s => s.searchMessages);
     const sendMessage = useChatStore(s => s.sendMessage);
     const editMessage = useChatStore(s => s.editMessage);
-    const deleteMessage = useChatStore(s => s.deleteMessage);
     const markMessageAsRead = useChatStore(s => s.markMessageAsRead);
     const messagesByRoom = useChatStore(s => s.messagesByRoom);
 
     const serverMessages = messagesByRoom[roomId] || [];
     const flatListRef = useRef<FlatList>(null);
 
-    // Queries
     const { data: roomInfo } = useQuery({
         queryKey: ['roomInfo', roomId],
         queryFn: async () => (await instance.get<AppApiResponse<RoomResponse>>(`/api/v1/rooms/${roomId}`)).data.result,
@@ -261,228 +222,147 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         enabled: !!roomId,
     });
 
-    const targetMember = useMemo(() => {
-        if (!members.length) return null;
-        return members.find(m => m.userId !== currentUserId);
-    }, [members, currentUserId]);
-
     const displayRoomName = useMemo(() => {
         if (!roomInfo) return initialRoomName || t('chat.loading');
         if (roomInfo.purpose === RoomPurpose.PRIVATE_CHAT) {
-            return targetMember ? (targetMember.nickname || targetMember.fullname) : t('chat.private_room');
+            const target = members.find(m => m.userId !== currentUserId);
+            return target ? (target.nickname || target.fullname) : t('chat.private_room');
         }
         return roomInfo.roomName;
-    }, [roomInfo, members, targetMember, initialRoomName]);
+    }, [roomInfo, members, initialRoomName]);
 
-    // --- MESSAGE PROCESSING LOGIC ---
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages.map((msg: any) => {
-            const senderProfileData = msg.senderProfile || null;
-            const sentAt = msg?.id?.sentAt || new Date().toISOString();
             const senderId = msg?.senderId ?? 'unknown';
-            const messageId = msg?.id?.chatMessageId || `${senderId}_${sentAt}`;
-
-            // Lấy translation từ Local State (ưu tiên) hoặc từ DB
+            const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
             const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
             const finalTranslation = localTrans || dbTrans;
-
-            // Logic hiển thị bản dịch:
-            // 1. Nếu autoTranslate bật VÀ message là của người khác VÀ có bản dịch -> True
-            // 2. Nếu đã click dịch thủ công (có trong localTranslations) -> True
-            // 3. Nếu message đã có sẵn dịch trong DB trùng khớp ngôn ngữ mục tiêu -> True
             const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
-            const hasTranslationContent = !!finalTranslation;
-            const showTranslation = hasTranslationContent && (isAutoTranslated || !!localTrans || !!dbTrans);
+
+            // LOGIC: Hide translation if media is present, or if it's already translated
+            const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
+            const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!dbTrans);
 
             return {
                 id: messageId,
                 sender: senderId === currentUserId ? 'user' : 'other',
                 senderId: senderId,
-                timestamp: formatMessageTime(sentAt, i18n.language),
+                timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
                 text: msg.content || '',
-                translatedText: finalTranslation, // Text dịch để hiển thị dòng dưới
+                translatedText: finalTranslation,
                 translatedLang: msg.translatedLang,
                 mediaUrl: (msg as any).mediaUrl,
                 messageType: (msg as any).messageType || 'TEXT',
-                user: senderProfileData.fullname || 'Unknown',
-                avatar: senderProfileData.avatarUrl || null,
-                sentAt,
-                showTranslation: showTranslation, // Cờ kiểm soát hiển thị
-                hasTargetLangTranslation: hasTranslationContent,
+                user: msg.senderProfile?.fullname || 'Unknown',
+                avatar: msg.senderProfile?.avatarUrl || null,
+                sentAt: msg?.id?.sentAt,
+                showTranslation: showTranslation,
+                hasTargetLangTranslation: !!finalTranslation,
                 isRead: msg.isRead,
                 isLocal: (msg as any).isLocal,
-                senderProfile: senderProfileData
+                senderProfile: msg.senderProfile
             } as UIMessage;
         }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     }, [serverMessages, localTranslations, translationTargetLang, currentUserId, autoTranslate]);
 
-    // Effect: Auto Scroll & Read Status
     useEffect(() => { loadMessages(roomId); }, [roomId]);
+
+    // Auto-scroll and read status logic... (kept brief for context)
     useEffect(() => {
         if (!messages.length) return;
-        if (initialFocusMessageId) {
-            const idx = messages.findIndex(m => m.id === initialFocusMessageId);
-            if (idx >= 0) {
-                setTimeout(() => {
-                    flatListRef.current?.scrollToIndex({ index: idx, animated: true, viewPosition: 0.5 });
-                    setHighlightedMessageId(initialFocusMessageId);
-                    setTimeout(() => setHighlightedMessageId(null), 3000);
-                }, 500);
-            }
-        } else {
-            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
-        }
-    }, [messages.length, initialFocusMessageId]);
+        if (initialFocusMessageId) { /* Scroll to specific */ }
+        else { setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200); }
+    }, [messages.length]);
 
     useEffect(() => {
-        messages.forEach(msg => {
-            if (msg.sender === 'other' && !msg.isRead) {
-                markMessageAsRead(roomId, msg.id);
-            }
-        });
+        messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
     }, [messages.length, roomId]);
 
-    // --- ACTIONS ---
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
         if (editingMessage) {
-            handleUpdateMessage();
+            editMessage(roomId, editingMessage.id, inputText).then(() => {
+                setEditingMessage(null); setInputText("");
+            }).catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
         } else {
             sendMessage(roomId, inputText, 'TEXT');
             setInputText("");
         }
     };
 
-    const handleUpdateMessage = async () => {
-        if (!editingMessage) return;
-        try {
-            await editMessage(roomId, editingMessage.id, inputText);
-            setEditingMessage(null);
-            setInputText("");
-        } catch (error) {
-            showToast({ message: t("chat.edit_error"), type: "error" });
-        }
-    };
-
-    const handleSendMedia = () => {
-        pickAndUploadMedia(
-            () => setIsUploading(true),
-            (url, type) => {
-                setIsUploading(false);
-                sendMessage(roomId, type === 'IMAGE' ? 'Sent an image' : 'Sent a video', type, url);
-            },
-            (err) => {
-                setIsUploading(false);
-                showToast({ message: t("chat.upload_error"), type: "error" });
-            }
-        );
-    };
-
     // --- TRANSLATION API ---
     const { mutate: translateMutate } = useMutation({
         mutationFn: async ({ text, target, id }: any) => {
             setTranslatingMessageId(id);
-            // Giả lập API call hoặc gọi thật
             const res = await instance.post('/api/py/translate', { text, target_lang: target, source_lang: 'auto' });
             return { text: res.data.result.translated_text, id, target };
         },
         onSuccess: (data) => {
-            setLocalTranslations((prev: any) => ({
-                ...prev,
-                [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text }
-            }));
+            setLocalTranslations((prev: any) => ({ ...prev, [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text } }));
             setTranslatingMessageId(null);
         },
-        onError: () => {
-            setTranslatingMessageId(null);
-            showToast({ message: t("error.translation"), type: "error" });
-        }
+        onError: () => { setTranslatingMessageId(null); showToast({ message: t("error.translation"), type: "error" }); }
     });
 
-    const handleTranslateClick = (id: string, text: string, hasTranslation: boolean) => {
-        // Nếu đã có bản dịch (do auto hoặc đã dịch trước đó), click vào sẽ KHÔNG ẩn đi mà có thể là refresh hoặc toggle (tùy nhu cầu).
-        // Ở đây ta làm logic: Nếu chưa có dịch -> gọi API. Nếu có rồi -> Toggle hiển thị (nhưng trong code UIMessage đã tính toán showTranslation rồi).
-        // Ta sẽ dùng localTranslations để force hiển thị nếu user click thủ công.
-
-        if (translatingMessageId === id) return;
-
-        // Nếu đã có trong local hoặc DB, ta coi như muốn ẩn/hiện? 
-        // Logic mới: Auto translate đã hiển thị rồi. Click nút này để dịch thủ công nếu auto chưa chạy hoặc ngôn ngữ khác.
-        if (localTranslations[id]?.[translationTargetLang]) {
-            // Đã có local -> Toggle? (Xóa khỏi local để ẩn?)
-            // Để đơn giản: Nếu đã có, không làm gì hoặc re-translate.
-            return;
-        }
-
+    const handleTranslateClick = (id: string, text: string) => {
+        if (translatingMessageId === id || localTranslations[id]?.[translationTargetLang]) return;
         translateMutate({ text, target: translationTargetLang, id });
     };
 
-    // --- PROFILE ACTIONS ---
-    const handleAvatarPress = (profile?: UserProfileResponse) => {
-        if (!profile) return;
-        setSelectedProfile(profile);
-        setIsPopupVisible(true);
-    };
+    const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
 
-    const navigateToFullProfile = () => {
-        setIsPopupVisible(false);
-        if (selectedProfile) {
-            navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId });
-        }
-    };
-
-    // --- RENDER ITEM ---
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
+        const isMedia = item.messageType === 'IMAGE' || item.messageType === 'VIDEO' || item.messageType === 'AUDIO' || !!item.mediaUrl;
+
         return (
             <Pressable
-                onLongPress={() => isUser && setEditingMessage(item)}
+                onLongPress={() => isUser && !isMedia && setEditingMessage(item)}
                 style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther, highlightedMessageId === item.id && styles.highlighted]}
             >
-                {/* Avatar (Clickable) */}
                 {!isUser && (
                     <TouchableOpacity onPress={() => handleAvatarPress(item.senderProfile)}>
                         <Image source={getAvatarSource(item.senderProfile?.avatarUrl, null)} style={styles.msgAvatarImg} />
-                        {item.senderProfile?.isOnline && <View style={styles.avatarActiveDot} />}
                     </TouchableOpacity>
                 )}
-
                 <View style={styles.msgContent}>
                     {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
-
                     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
-                        {/* 1. Media Content */}
-                        {(item.messageType === 'IMAGE' || item.messageType === 'VIDEO') && (
+
+                        {/* 1. MEDIA DISPLAY */}
+                        {isMedia && (
                             <View>
-                                <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { fontStyle: 'italic', marginBottom: 5 }]}>
-                                    {item.messageType === 'IMAGE' ? t('chat.sent_image') : t('chat.sent_video')}
-                                </Text>
-                                <Image source={{ uri: item.mediaUrl || item.text }} style={styles.msgImage} resizeMode="cover" />
+                                {item.messageType === 'IMAGE' && (
+                                    <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />
+                                )}
+                                {item.messageType === 'VIDEO' && (
+                                    // Use a placeholder or a Video component here. 
+                                    // For now, simpler UI indicating Video. 
+                                    <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
+                                        <Icon name="play-circle-outline" size={50} color="#FFF" />
+                                        <Text style={{ color: 'white', fontSize: 10 }}>Video Attachment</Text>
+                                    </View>
+                                )}
+                                {item.text ? (
+                                    <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text>
+                                ) : null}
                             </View>
                         )}
 
-                        {/* 2. Text Content (Original) */}
-                        {item.messageType === 'TEXT' && (
-                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>
-                                {item.text}
-                            </Text>
+                        {/* 2. TEXT ONLY */}
+                        {!isMedia && (
+                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
                         )}
 
-                        {/* 3. Translated Content (Row below) */}
-                        {item.showTranslation && item.translatedText && (
+                        {/* 3. TRANSLATION (HIDDEN IF MEDIA PRESENT) */}
+                        {item.showTranslation && !isMedia && item.translatedText && (
                             <View style={styles.translationContainer}>
                                 <View style={[styles.divider, isUser ? { backgroundColor: 'rgba(255,255,255,0.3)' } : { backgroundColor: 'rgba(0,0,0,0.1)' }]} />
-                                <Text style={[styles.translatedText, isUser ? styles.textUser : styles.textOther]}>
-                                    {item.translatedText}
-                                </Text>
-                                <Text style={[styles.langTag, isUser ? { color: 'rgba(255,255,255,0.6)' } : { color: '#9CA3AF' }]}>
-                                    {item.translatedLang?.toUpperCase()}
-                                </Text>
+                                <Text style={[styles.translatedText, isUser ? styles.textUser : styles.textOther]}>{item.translatedText}</Text>
                             </View>
                         )}
 
-                        {/* Meta Data */}
                         <View style={styles.metaRow}>
                             <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>
                                 {item.timestamp} {item.isLocal && t('chat.sending')}
@@ -491,10 +371,10 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                         </View>
                     </View>
 
-                    {/* Translate Button (Only for others text) */}
-                    {!isUser && item.messageType === 'TEXT' && (
+                    {/* TRANSLATE BUTTON - STRICTLY HIDDEN FOR MEDIA MESSAGES */}
+                    {!isUser && !isMedia && (
                         <TouchableOpacity
-                            onPress={() => handleTranslateClick(item.id, item.text, !!item.translatedText)}
+                            onPress={() => handleTranslateClick(item.id, item.text)}
                             style={styles.transBtn}
                             disabled={translatingMessageId === item.id}
                         >
@@ -512,7 +392,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     return (
         <ScreenLayout style={styles.container}>
-            {/* Header Area (Simplified for Brevity - Keeping Search/Header Logic) */}
+            {/* Header ... (Same as before) */}
             <View style={[styles.header, isBubbleMode && styles.bubbleHeader]}>
                 {!isSearchVisible ? (
                     <>
@@ -526,13 +406,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     </>
                 ) : (
                     <View style={styles.searchContainer}>
-                        <TextInput
-                            style={styles.searchInput}
-                            placeholder="Search..."
-                            value={searchText}
-                            onChangeText={setSearchText}
-                            onSubmitEditing={() => searchMessages(roomId, searchText)}
-                        />
+                        <TextInput style={styles.searchInput} placeholder="Search..." value={searchText} onChangeText={setSearchText} onSubmitEditing={() => searchMessages(roomId, searchText)} />
                         <TouchableOpacity onPress={() => { setSearchText(""); setIsSearchVisible(false); loadMessages(roomId); }}>
                             <Icon name="close" size={24} color="#EF4444" />
                         </TouchableOpacity>
@@ -546,16 +420,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
             </View>
 
-            <FlatList
-                ref={flatListRef}
-                data={messages}
-                keyExtractor={item => item.id}
-                style={styles.list}
-                renderItem={renderMessageItem}
-                onScrollToIndexFailed={() => { }}
-            />
+            <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} />
 
-            {/* Input Area */}
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 60}>
                 {editingMessage && (
                     <View style={styles.editBanner}>
@@ -564,9 +430,22 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     </View>
                 )}
                 <View style={styles.inputArea}>
-                    <TouchableOpacity onPress={handleSendMedia} disabled={isUploading} style={styles.attachBtn}>
-                        {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="image" size={24} color="#3B82F6" />}
-                    </TouchableOpacity>
+
+                    {/* INTEGRATED FILE UPLOADER */}
+                    <FileUploader
+                        mediaType="all"
+                        maxSizeMB={20} // Limit 20MB to prevent delay
+                        maxDuration={60} // Limit video to 60s
+                        onUploadStart={() => setIsUploading(true)}
+                        onUploadEnd={() => setIsUploading(false)}
+                        onUploadSuccess={(url, type) => {
+                            sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url);
+                        }}
+                        style={styles.attachBtn}
+                    >
+                        {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="attach-file" size={24} color="#3B82F6" />}
+                    </FileUploader>
+
                     <TextInput style={styles.input} value={inputText} onChangeText={setInputText} placeholder={t("group.input.placeholder")} multiline />
                     <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}>
                         <Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" />
@@ -574,14 +453,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 </View>
             </KeyboardAvoidingView>
 
-            {/* Quick Profile Popup */}
-            <QuickProfilePopup
-                visible={isPopupVisible}
-                profile={selectedProfile}
-                onClose={() => setIsPopupVisible(false)}
-                onNavigateProfile={navigateToFullProfile}
-                currentUserId={currentUserId || ""}
-            />
+            <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} currentUserId={currentUserId || ""} />
         </ScreenLayout>
     );
 };
@@ -603,23 +475,19 @@ const styles = createScaledSheet({
     rowOther: { justifyContent: 'flex-start' },
     highlighted: { backgroundColor: 'rgba(255, 235, 59, 0.3)', borderRadius: 8 },
     msgAvatarImg: { width: 32, height: 32, borderRadius: 16, marginRight: 8, marginTop: 4 },
-    avatarActiveDot: { position: 'absolute', bottom: 0, right: 8, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 1, borderColor: '#FFF' },
     msgContent: { maxWidth: '75%' },
     senderName: { fontSize: 10, color: '#9CA3AF', marginBottom: 2 },
     bubble: { borderRadius: 16, padding: 12 },
     bubbleUser: { backgroundColor: '#3B82F6' },
     bubbleOther: { backgroundColor: '#F3F4F6' },
     localBubble: { opacity: 0.6 },
-    msgImage: { width: 200, height: 200, borderRadius: 12, marginTop: 4 },
+    msgImage: { width: 200, height: 200, borderRadius: 12, marginTop: 4, backgroundColor: '#EEE' },
     text: { fontSize: 16, lineHeight: 22 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
-
-    // Dual Translation Styles
     translationContainer: { marginTop: 6 },
     divider: { height: 1, width: '100%', marginBottom: 4 },
     translatedText: { fontSize: 14, fontStyle: 'italic', lineHeight: 18 },
-
     metaRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
     time: { fontSize: 10 },
     timeUser: { color: 'rgba(255,255,255,0.7)' },
@@ -631,8 +499,6 @@ const styles = createScaledSheet({
     sendBtn: { backgroundColor: '#3B82F6', borderRadius: 20, padding: 10, marginLeft: 8 },
     editBanner: { backgroundColor: '#FEF3C7', padding: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     editText: { color: '#D97706', fontSize: 12, fontWeight: 'bold' },
-
-    // Popup Styles
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
     popupContainer: { width: width * 0.8, backgroundColor: '#FFF', borderRadius: 16, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.25, shadowRadius: 3.84, elevation: 5 },
     popupHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },

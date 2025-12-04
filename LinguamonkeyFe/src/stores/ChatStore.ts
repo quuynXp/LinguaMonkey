@@ -18,6 +18,15 @@ type AiMessage = {
   roomId: string;
 };
 
+// Type for incoming video call request
+export type IncomingCall = {
+  roomId: string;
+  callerId: string;
+  videoCallId: string;
+  videoCallType: string;
+  roomName?: string;
+};
+
 interface UseChatState {
   stompConnected: boolean;
   aiWsConnected: boolean;
@@ -40,6 +49,9 @@ interface UseChatState {
   currentAppScreen: string | null;
   appIsActive: boolean;
   currentViewedRoomId: string | null;
+
+  // NEW: Incoming Call State
+  incomingCallRequest: IncomingCall | null;
 
   initStompClient: () => void;
   subscribeToRoom: (roomId: string) => void;
@@ -68,6 +80,10 @@ interface UseChatState {
   setCurrentAppScreen: (screen: string | null) => void;
   setAppIsActive: (isActive: boolean) => void;
   setCurrentViewedRoomId: (roomId: string | null) => void;
+
+  // NEW: Call Actions
+  acceptIncomingCall: () => void;
+  rejectIncomingCall: () => void;
 }
 
 // Helper: Normalize messages
@@ -168,6 +184,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   currentAppScreen: null,
   appIsActive: true,
   currentViewedRoomId: null,
+  incomingCallRequest: null,
 
   setCurrentAppScreen: (screen) => set({ currentAppScreen: screen }),
   setAppIsActive: (isActive) => set({ appIsActive: isActive }),
@@ -185,6 +202,16 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         try {
           stompService.subscribe(dest, (rawMsg: any) => {
             const roomId = extractRoomIdFromTopic(dest);
+            // Handle Video Call Signals inside Room Topic
+            if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
+              const state = get();
+              // Do not interrupt if in LessonScreen
+              if (state.currentAppScreen !== 'LessonScreen' && rawMsg.callerId !== useUserStore.getState().user?.userId) {
+                set({ incomingCallRequest: rawMsg });
+              }
+              return;
+            }
+
             if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
             set((state) => ({
               messagesByRoom: {
@@ -199,12 +226,24 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
       try {
         stompService.subscribe('/user/queue/notifications', async (rawMsg: any) => {
-          // Basic notification logic embedded directly to avoid circular dependency issues
           try {
+            // Handle Video Call Signals via User Queue (Global)
+            if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
+              const state = get();
+              const currentUserId = useUserStore.getState().user?.userId;
+              // Prevent self-notification and interruption in LessonScreen
+              if (state.currentAppScreen !== 'LessonScreen' && rawMsg.callerId !== currentUserId) {
+                set({ incomingCallRequest: rawMsg });
+                await playInAppSound();
+              }
+              return;
+            }
+
             const roomId = rawMsg?.roomId || rawMsg?.room_id;
             const senderId = rawMsg?.senderId || rawMsg?.sender_id;
             const currentUserId = useUserStore.getState().user?.userId;
             const state = get();
+
             if (roomId && senderId !== currentUserId) {
               if (state.currentViewedRoomId !== roomId && !(state.isBubbleOpen && state.activeBubbleRoomId === roomId)) {
                 if (state.appIsActive) {
@@ -236,6 +275,15 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const dest = `/topic/room/${roomId}`;
     if (stompService.isConnected) {
       stompService.subscribe(dest, (rawMsg: any) => {
+        // Handle Video Call Signals
+        if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
+          const state = get();
+          if (state.currentAppScreen !== 'LessonScreen' && rawMsg.callerId !== useUserStore.getState().user?.userId) {
+            set({ incomingCallRequest: rawMsg });
+          }
+          return;
+        }
+
         if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
         set((state) => ({
           messagesByRoom: {
@@ -256,6 +304,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     else set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== dest) }));
   },
 
+  // ... (Rest of AI Client and Message Loading Logic kept identical) ...
   // --- OPTIMIZED AI CLIENT ---
   initAiClient: () => {
     if (!pythonAiWsService.isConnected) {
@@ -263,32 +312,23 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         const state = get();
 
         if (msg.type === 'chat_response_chunk') {
-          // Accumulate content in buffer
           streamBuffer += (msg.content || '');
-
           const now = Date.now();
-          // Throttle updates
           if (now - lastStreamUpdate > STREAM_THROTTLE_MS) {
             const currentHistory = [...get().aiChatHistory];
             const lastMsgIndex = currentHistory.length - 1;
 
             if (lastMsgIndex >= 0 && currentHistory[lastMsgIndex].role === 'assistant' && currentHistory[lastMsgIndex].isStreaming) {
-              // Update existing message
-              // We append the buffer to the message content and clear buffer
               currentHistory[lastMsgIndex] = {
                 ...currentHistory[lastMsgIndex],
                 content: currentHistory[lastMsgIndex].content + streamBuffer
               };
-              streamBuffer = ""; // Reset buffer
+              streamBuffer = "";
               lastStreamUpdate = now;
               set({ aiChatHistory: currentHistory });
             } else {
-              // Should trigger new message creation if not found (handled below usually)
-              // But usually 'chat_response_chunk' comes after an initial setup or we create it here
-              // Only if buffer has content and we haven't set up the message yet
             }
           } else {
-            // If throttled, ensure we have a timeout to flush eventually
             if (streamTimeout) clearTimeout(streamTimeout);
             streamTimeout = setTimeout(() => {
               const currentHistory = [...get().aiChatHistory];
@@ -305,8 +345,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
             }, STREAM_THROTTLE_MS + 10) as any as number;
           }
 
-          // Case: New Streaming Message (Handling start)
-          // Ensure we have a placeholder if the last message isn't a streaming assistant message
           const lastMsg = state.aiChatHistory[state.aiChatHistory.length - 1];
           if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.isStreaming) {
             set({
@@ -316,11 +354,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
               ],
               isAiInitialMessageSent: true,
             });
-            // Buffer will be picked up by next throttle or timeout
           }
 
         } else if (msg.type === 'chat_response_complete') {
-          // Flush remaining buffer
           if (streamBuffer.length > 0) {
             const currentHistory = [...get().aiChatHistory];
             const lastMsgIndex = currentHistory.length - 1;
@@ -499,4 +535,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   openBubble: (roomId) => set({ activeBubbleRoomId: roomId, isBubbleOpen: true }),
   closeBubble: () => set({ activeBubbleRoomId: null, isBubbleOpen: false }),
   minimizeBubble: () => set({ isBubbleOpen: false }),
+
+  // Call Actions
+  acceptIncomingCall: () => set({ incomingCallRequest: null }),
+  rejectIncomingCall: () => set({ incomingCallRequest: null }),
 }));

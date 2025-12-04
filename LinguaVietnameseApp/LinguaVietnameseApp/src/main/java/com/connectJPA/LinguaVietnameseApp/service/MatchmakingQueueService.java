@@ -33,12 +33,12 @@ public class MatchmakingQueueService {
 
     // Scoring Weights
     private static final int SCORE_LANGUAGE_EXCHANGE = 50; // Critical priority
-    private static final int SCORE_INTERESTS = 10;
-    private static final int SCORE_PROFICIENCY = 5;
-    private static final int SCORE_DEMOGRAPHICS = 5;
+    private static final int SCORE_INTERESTS = 15;
+    private static final int SCORE_PROFICIENCY = 15;
+    private static final int SCORE_DEMOGRAPHICS = 15;
 
     // Thresholds
-    private static final int INITIAL_THRESHOLD = 60; // Starts high (needs language match + strictness)
+    private static final int INITIAL_THRESHOLD = 30; // Starts high (needs language match + strictness)
     private static final int MIN_THRESHOLD = 5;      // Eventually matches anyone
     private static final int REDUCTION_INTERVAL_SECONDS = 15;
     private static final int REDUCTION_STEP = 10;

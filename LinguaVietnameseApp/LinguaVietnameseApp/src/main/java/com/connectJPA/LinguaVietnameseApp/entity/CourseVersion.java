@@ -5,7 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.VersionStatus;
 import jakarta.persistence.*;
-import lombok.Data;
+import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.Where;
@@ -19,16 +19,21 @@ import java.util.UUID;
 @Table(name = "course_versions")
 @SQLDelete(sql = "UPDATE course_versions SET is_deleted = true, deleted_at = CURRENT_TIMESTAMP WHERE version_id = ?")
 @Where(clause = "is_deleted = false")
-@Data
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+@ToString(exclude = {"lessons"}) // Đã xóa 'course' khỏi exclude vì field đó không còn
 public class CourseVersion {
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "version_id")
     private UUID versionId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "course_id", nullable = false)
-    private Course course;
+    @Column(name = "course_id", nullable = false)
+    private UUID courseId;
 
     @Column(name = "version_number", nullable = false)
     private Integer versionNumber;

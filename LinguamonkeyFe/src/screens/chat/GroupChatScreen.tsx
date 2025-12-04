@@ -8,12 +8,14 @@ import ChatInnerView from "../../components/chat/ChatInnerView";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
-import { useAppStore } from "../../stores/appStore"; // Import AppStore
+import { useAppStore } from "../../stores/appStore";
 import { useRooms } from "../../hooks/useRoom";
-import { MemberResponse, AppApiResponse, UserSettings } from "../../types/dto";
-import { RoomType } from "../../types/enums";
+import { useVideoCalls } from "../../hooks/useVideos"; // Import useVideoCalls
+import { MemberResponse, AppApiResponse, UserSettings, CreateGroupCallRequest } from "../../types/dto";
+import { RoomType, VideoCallType } from "../../types/enums";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
+import IncomingCallModal from "../../components/modals/IncomingCallModal"; // Import the modal
 
 type ChatRoomParams = {
     ChatRoom: {
@@ -30,7 +32,7 @@ const GroupChatScreen = () => {
     const { user } = useUserStore();
     const { showToast } = useToast();
 
-    // App Store cho Settings
+    // App Store for Settings
     const { chatSettings, setChatSettings } = useAppStore();
 
     const {
@@ -40,19 +42,20 @@ const GroupChatScreen = () => {
     } = useChatStore();
 
     const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom, useUpdateMemberNickname } = useRooms();
+    const { useCreateGroupCall } = useVideoCalls(); // Hook for creating calls
 
     const { data: members } = useRoomMembers(roomId);
     const { data: roomInfo } = useRoom(roomId);
     const { mutate: kickMember } = useRemoveRoomMembers();
     const { mutate: leaveRoom } = useLeaveRoom();
     const { mutate: updateNickname } = useUpdateMemberNickname();
+    const { mutate: createGroupCall, isPending: isCalling } = useCreateGroupCall();
 
     const [showSettings, setShowSettings] = useState(false);
     const [showEditNickname, setShowEditNickname] = useState(false);
     const [newNickname, setNewNickname] = useState('');
 
     // --- SYNC SETTINGS LOGIC ---
-    // Hàm gọi API update setting
     const syncSettingToBackend = async (newSettings: Partial<UserSettings>) => {
         if (!user?.userId) return;
         try {
@@ -63,15 +66,11 @@ const GroupChatScreen = () => {
         }
     };
 
-    // Handler toggle Auto Translate
     const toggleAutoTranslate = (value: boolean) => {
-        // 1. Update UI ngay lập tức (AppStore)
         setChatSettings({ autoTranslate: value });
-        // 2. Gọi API update BE
         syncSettingToBackend({ autoTranslate: value });
     };
 
-    // Handler toggle Sound
     const toggleSound = (value: boolean) => {
         setChatSettings({ soundNotifications: value });
         syncSettingToBackend({ soundEnabled: value });
@@ -115,6 +114,32 @@ const GroupChatScreen = () => {
     useEffect(() => {
         if (activeBubbleRoomId === roomId) closeBubble();
     }, [roomId, activeBubbleRoomId, closeBubble]);
+
+    // --- VIDEO CALL HANDLER ---
+    const handleStartVideoCall = () => {
+        if (!user?.userId || !members) return;
+
+        const participantIds = members.map(m => m.userId);
+
+        const payload: CreateGroupCallRequest = {
+            callerId: user.userId,
+            participantIds: participantIds,
+            videoCallType: VideoCallType.GROUP
+        };
+
+        createGroupCall(payload, {
+            onSuccess: (response) => {
+                // Immediately navigate the caller to Jitsi
+                navigation.navigate('JitsiCallScreen', {
+                    roomId: response.roomId
+                });
+            },
+            onError: (error) => {
+                console.error("Failed to start call", error);
+                showToast({ type: "error", message: t("error.start_call_failed") });
+            }
+        });
+    };
 
     // ... (Giữ nguyên logic Kick, Leave, Rename) ...
     const handleKickUser = (memberId: string, memberName: string) => {
@@ -167,6 +192,9 @@ const GroupChatScreen = () => {
 
     return (
         <ScreenLayout>
+            {/* Global Incoming Call Modal - Placed here or in App Layout */}
+            <IncomingCallModal />
+
             {/* HEADER */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
@@ -186,19 +214,25 @@ const GroupChatScreen = () => {
                         </Text>
                     </View>
                 </View>
+
+                {/* NEW: Video Call Button */}
+                <TouchableOpacity onPress={handleStartVideoCall} style={{ padding: 8 }} disabled={isCalling}>
+                    <Icon name="videocam" size={24} color={isCalling ? "#9CA3AF" : "#4F46E5"} />
+                </TouchableOpacity>
+
                 <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
                     <Icon name="settings" size={24} color="#4F46E5" />
                 </TouchableOpacity>
             </View>
 
-            {/* CHAT VIEW - Truyền Setting thật xuống */}
+            {/* CHAT VIEW */}
             <View style={{ flex: 1 }}>
                 <ChatInnerView
                     roomId={roomId}
                     initialRoomName={displayRoomName}
                     isBubbleMode={false}
-                    autoTranslate={chatSettings.autoTranslate} // Sử dụng giá trị từ AppStore
-                    soundEnabled={chatSettings.soundNotifications} // Sử dụng giá trị từ AppStore
+                    autoTranslate={chatSettings.autoTranslate}
+                    soundEnabled={chatSettings.soundNotifications}
                 />
             </View>
 
@@ -212,7 +246,7 @@ const GroupChatScreen = () => {
                         </TouchableOpacity>
                     </View>
 
-                    {/* NEW: PREFERENCES SECTION */}
+                    {/* PREFERENCES SECTION */}
                     <View style={styles.sectionContainer}>
                         <Text style={styles.sectionTitle}>{t('settings.preferences')}</Text>
 
@@ -257,7 +291,7 @@ const GroupChatScreen = () => {
                             data={members}
                             renderItem={renderMemberItem}
                             keyExtractor={item => item.userId}
-                            scrollEnabled={false} // Để FlatList cuộn theo View cha nếu cần
+                            scrollEnabled={false}
                         />
                     </View>
 
@@ -290,7 +324,6 @@ const GroupChatScreen = () => {
 };
 
 const styles = StyleSheet.create({
-    // ... (Giữ các style cũ)
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, paddingVertical: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#EEE' },
     headerContent: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 10 },
     headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
@@ -301,12 +334,11 @@ const styles = StyleSheet.create({
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
 
-    // NEW: Setting Styles
     sectionContainer: { marginTop: 16, backgroundColor: '#FFF', paddingVertical: 8 },
     sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280', paddingHorizontal: 16, marginBottom: 8, textTransform: 'uppercase' },
     settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
     settingLabel: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
-    settingDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 2, marginLeft: 28 }, // Indent to align with text
+    settingDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 2, marginLeft: 28 },
 
     memberItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
     memberAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB' },
@@ -317,7 +349,6 @@ const styles = StyleSheet.create({
     leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', padding: 12, borderRadius: 8 },
     leaveBtnText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8 },
 
-    // Dialog Styles
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     dialog: { backgroundColor: '#FFF', borderRadius: 12, padding: 20, width: '100%', maxWidth: 320 },
     dialogTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#1F2937' },

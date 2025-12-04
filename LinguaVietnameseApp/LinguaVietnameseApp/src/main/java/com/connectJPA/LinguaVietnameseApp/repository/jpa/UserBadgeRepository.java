@@ -1,11 +1,13 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.BadgeResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Badge;
 import com.connectJPA.LinguaVietnameseApp.entity.UserBadge;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserBadgeId;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.util.Streamable;
 
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -24,4 +26,6 @@ public interface UserBadgeRepository extends JpaRepository<UserBadge, UserBadgeI
     Optional<UserBadge> findFirstByIdUserIdAndIsDeletedFalseOrderByCreatedAtDesc(UUID userId);
 
     List<UserBadge> findByUser_UserIdAndCreatedAtBetween(UUID userId, OffsetDateTime startOdt, OffsetDateTime endOdt);
+
+    Optional<UserBadge> findByIdUserIdAndIsDeletedFalse(UUID userId);
 }

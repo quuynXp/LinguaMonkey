@@ -17,22 +17,22 @@ public interface CourseVersionRepository extends JpaRepository<CourseVersion, UU
 
     Optional<CourseVersion> findByVersionIdAndStatus(UUID versionId, VersionStatus status);
 
-    Optional<CourseVersion> findTopByCourse_CourseIdAndStatusOrderByVersionNumberDesc(UUID courseId, VersionStatus status);
+    Optional<CourseVersion> findTopByCourseIdAndStatusOrderByVersionNumberDesc(UUID courseId, VersionStatus status);
 
-    Optional<CourseVersion> findTopByCourse_CourseIdAndIsDeletedFalseOrderByVersionNumberDesc(UUID courseId);
+    Optional<CourseVersion> findTopByCourseIdAndIsDeletedFalseOrderByVersionNumberDesc(UUID courseId);
 
-    List<CourseVersion> findByCourse_CourseIdAndStatusAndIsDeletedFalse(UUID courseId, VersionStatus status);
+    List<CourseVersion> findByCourseIdAndStatusAndIsDeletedFalse(UUID courseId, VersionStatus status);
 
-    List<CourseVersion> findByCourse_CourseIdAndIsDeletedFalse(UUID courseId);
+    List<CourseVersion> findByCourseIdAndIsDeletedFalse(UUID courseId);
 
-    @Query("SELECT cv FROM CourseVersion cv WHERE cv.course.courseId = :courseId " +
+    @Query("SELECT cv FROM CourseVersion cv WHERE cv.courseId = :courseId " +
             "AND cv.status = 'PUBLIC' " +
             "ORDER BY cv.versionNumber DESC")
     Optional<CourseVersion> findLatestPublicVersionByCourseId(@Param("courseId") UUID courseId);
 
     List<CourseVersion> findByStatusAndPublishedAtBeforeAndIsDeletedFalse(String status, OffsetDateTime now);
 
-    boolean existsByCourse_CourseIdAndStatus(UUID courseId, VersionStatus status);
+    boolean existsByCourseIdAndStatus(UUID courseId, VersionStatus status);
 
     @Query("SELECT cv FROM CourseVersion cv WHERE cv.status = 'DRAFT' AND (cv.isIntegrityValid IS NULL OR cv.isContentValid IS NULL)")
     List<CourseVersion> findDraftsPendingValidation();

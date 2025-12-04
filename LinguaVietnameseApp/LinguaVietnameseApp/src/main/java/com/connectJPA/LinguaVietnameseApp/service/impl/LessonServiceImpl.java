@@ -18,6 +18,8 @@ import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.LessonMapper;
 import com.connectJPA.LinguaVietnameseApp.mapper.QuizQuestionMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
+import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
+import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.LessonService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -54,16 +56,15 @@ public class LessonServiceImpl implements LessonService {
     private final LessonMapper lessonMapper;
     private final UserLearningActivityRepository userLearningActivityRepository;
     private final CourseLessonRepository courseLessonRepository;
-    private final UserRoleRepository userRoleRepository;
-    private final RoleRepository roleRepository;
+    private final CourseVersionLessonRepository courseVersionLessonRepository;
+    private final CourseVersionEnrollmentRepository CourseVersionEnrollmentRepository;
     private final UserGoalRepository userGoalRepository;
     private final LessonProgressWrongItemRepository lessonProgressWrongItemRepository;
     private final GrpcClientService grpcClientService;
     private final QuizQuestionMapper quizQuestionMapper;
-    private final CourseVersionLessonRepository courseVersionLessonRepository;
-    private final CourseVersionEnrollmentRepository CourseVersionEnrollmentRepository;
-
-    // --- CÁC HÀM KHÁC GIỮ NGUYÊN ---
+    
+    private final DailyChallengeService dailyChallengeService;
+    private final BadgeService badgeService;
 
     @Override
     public Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters) {
@@ -106,8 +107,6 @@ public class LessonServiceImpl implements LessonService {
                 if (subCategoryId != null) {
                     predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
                 }
-                
-                // --- FIXED LOGIC: SEARCH BY VERSION ID ---
                 if (versionId != null) {
                     Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
                     predicates.add(cb.equal(cvlJoin.get("id").get("versionId"), versionId));
@@ -117,7 +116,6 @@ public class LessonServiceImpl implements LessonService {
                     Join<CourseVersion, Course> cJoin = cvJoin.join("course");
                     predicates.add(cb.equal(cJoin.get("courseId"), courseId));
                 }
-
                 if (seriesId != null) {
                     predicates.add(cb.equal(root.get("lessonSeriesId"), seriesId));
                 }
@@ -155,7 +153,7 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public LessonResponse createLesson(LessonRequest request) {
         try {
-            User user = userRepository.findById(request.getCreatorId())
+            userRepository.findById(request.getCreatorId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
             Lesson lesson = lessonMapper.toEntity(request);
@@ -205,7 +203,7 @@ public class LessonServiceImpl implements LessonService {
             m.put("mediaUrl", q.getMediaUrl());
             m.put("weight", q.getWeight());
             m.put("orderIndex", q.getOrderIndex());
-            m.put("transcript", q.getTranscript()); // Cần gửi transcript xuống FE cho bài Speaking
+            m.put("transcript", q.getTranscript());
             return m;
         }).collect(Collectors.toList());
 
@@ -229,7 +227,7 @@ public class LessonServiceImpl implements LessonService {
     public Map<String, Object> submitTest(UUID lessonId, UUID userId, Map<String, Object> payload) {
         Map<String, Object> answers = (Map<String, Object>) payload.get("answers");
         Integer attemptNumber = payload.get("attemptNumber") != null ? (Integer) payload.get("attemptNumber") : 1;
-        String token = (String) payload.get("token"); // Token được gửi từ Controller/Interceptor
+        String token = (String) payload.get("token");
         if (token == null) throw new AppException(ErrorCode.UNAUTHENTICATED);
 
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
@@ -249,7 +247,6 @@ public class LessonServiceImpl implements LessonService {
             byte[] audioBytes = null;
             byte[] imageBytes = null;
             
-            // Xử lý câu trả lời từ Map
             if (rawAns instanceof Map) {
                 Map<String, Object> ansMap = (Map<String, Object>) rawAns;
                 userAnswerText = (String) ansMap.get("text_answer");
@@ -259,30 +256,26 @@ public class LessonServiceImpl implements LessonService {
                 if (audioBase64 != null) audioBytes = Base64.getDecoder().decode(audioBase64);
                 if (imageBase64 != null) imageBytes = Base64.getDecoder().decode(imageBase64);
             } else if (rawAns != null) {
-                // Đây là trường hợp câu hỏi quiz đơn giản (dạng String)
                 userAnswerText = rawAns.toString();
             }
 
             int scoreGiven = 0;
             boolean correct = false;
             
-            // 1. CHẮM ĐIỂM BẰNG LOGIC CỨNG (Quiz, Fill-in-the-blank, Ordering)
             if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || q.getQuestionType() == QuestionType.ORDERING) {
                 correct = checkDeterministicAnswer(q, userAnswerText);
             }
-            // 2. CHẮM ĐIỂM BẰNG AI (Speaking, Writing)
             else if (q.getQuestionType() == QuestionType.SPEAKING) {
                 scoreGiven = checkSpeakingAnswer(q, token, audioBytes);
-                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70); // 70% là pass
+                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70);
             }
             else if (q.getQuestionType() == QuestionType.WRITING || q.getQuestionType() == QuestionType.ESSAY) {
                 scoreGiven = checkWritingAnswer(q, token, userAnswerText, imageBytes);
-                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70); // 70% là pass
+                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70);
             }
 
-            // TÍNH ĐIỂM CUỐI CÙNG VÀ LƯU WRONG ITEMS
             if (correct) {
-                if (scoreGiven == 0) { // Nếu là Quiz, scoreGiven sẽ = 0, gán lại theo weight
+                if (scoreGiven == 0) {
                     scoreGiven = q.getWeight() == null ? 1 : q.getWeight();
                 }
                 totalScore += scoreGiven;
@@ -314,7 +307,6 @@ public class LessonServiceImpl implements LessonService {
             lp.setScore(percent);
             lp.setMaxScore(totalMax);
             try {
-                // Lưu câu trả lời dưới dạng JSON, cần đảm bảo cấu trúc Map<String, Object> là hợp lệ
                 lp.setAnswersJson(new ObjectMapper().writeValueAsString(answers));
             } catch (Exception ex) {
                 lp.setAnswersJson("{}");
@@ -322,21 +314,31 @@ public class LessonServiceImpl implements LessonService {
         }
         
         lp.setAttemptNumber(attemptNumber);
-        
         if (lp.getCompletedAt() == null) {
             lp.setCompletedAt(OffsetDateTime.now());
         }
         
-        // Cần review nếu có câu hỏi mở VÀ điểm chưa hoàn hảo (Logic AI có thể đã chấm, nên cần cẩn thận)
         boolean needsReview = questions.stream().anyMatch(q -> 
             (q.getQuestionType() == QuestionType.SPEAKING || q.getQuestionType() == QuestionType.WRITING) 
-            && (percent < 100) // Giữ lại cờ review nếu điểm chưa tuyệt đối
+            && (percent < 100)
         );
         lp.setNeedsReview(needsReview);
         
         lessonProgressRepository.save(lp);
-
         updateCourseProgressIfApplicable(userId, lessonId);
+
+        // --- TRIGGER UPDATES ---
+        if (percent >= 80) { // Pass Threshold
+            dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
+            badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
+            
+            // Map generic skill type
+            ChallengeType skillChallenge = mapSkillToChallengeType(lesson.getSkillTypes());
+            if (skillChallenge != null) {
+                dailyChallengeService.updateChallengeProgress(userId, skillChallenge, 1);
+            }
+        }
+        dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LEARNING_TIME, lesson.getDurationSeconds() / 60);
 
         int progressPercent = computeProgressVsUserGoal(userId, lesson, percent);
         Map<String, Object> result = new HashMap<>();
@@ -348,21 +350,27 @@ public class LessonServiceImpl implements LessonService {
         result.put("progressPercent", progressPercent);
         return result;
     }
-
-    // --- HELPER METHODS FOR GRADING ---
+    
+    private ChallengeType mapSkillToChallengeType(SkillType skill) {
+        if (skill == null) return null;
+        switch (skill) {
+            case SPEAKING: return ChallengeType.SPEAKING_PRACTICE;
+            case LISTENING: return ChallengeType.LISTENING_PRACTICE;
+            case READING: return ChallengeType.READING_COMPREHENSION;
+            case WRITING: return ChallengeType.VOCABULARY_REVIEW; 
+            default: return null;
+        }
+    }
 
     private boolean checkDeterministicAnswer(LessonQuestion q, String userAnswerText) {
         if (userAnswerText == null || q.getCorrectOption() == null) return false;
-        
         String correctAnswer = q.getCorrectOption().trim().toLowerCase();
         String got = userAnswerText.trim().toLowerCase();
 
         if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || q.getQuestionType() == QuestionType.ORDERING) {
             return got.equalsIgnoreCase(correctAnswer);
         } 
-        
         if (q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK) {
-            // Hỗ trợ nhiều đáp án cách nhau bởi ||
             List<String> validOptions = Arrays.stream(correctAnswer.split("\\|\\|")).map(String::trim).collect(Collectors.toList());
             return validOptions.contains(got);
         }
@@ -371,46 +379,25 @@ public class LessonServiceImpl implements LessonService {
 
     private int checkSpeakingAnswer(LessonQuestion q, String token, byte[] audioBytes) {
         if (audioBytes == null || q.getTranscript() == null) return 0;
-        
         try {
-            // Gọi gRPC CheckPronunciation
             PronunciationResponseBody response = grpcClientService.callCheckPronunciationAsync(
-                token, 
-                audioBytes, 
-                q.getLanguageCode(), 
-                q.getTranscript() // Transcript là Reference Text
-            ).get();
-            
-            // Trả về điểm (0-100)
+                token, audioBytes, q.getLanguageCode(), q.getTranscript()).get();
             return (int) response.getScore();
         } catch (Exception e) {
-            log.error("AI Speaking Check failed for question {}: {}", q.getLessonQuestionId(), e.getMessage());
-            return 0; // Trả về 0 nếu lỗi
+            return 0;
         }
     }
 
     private int checkWritingAnswer(LessonQuestion q, String token, String userText, byte[] imageBytes) {
         if (userText == null || q.getQuestion() == null) return 0;
-        
         try {
-            // Gọi gRPC CheckWritingWithImage
             WritingResponseBody response = grpcClientService.callCheckWritingWithImageAsync(
-                token, 
-                userText, 
-                q.getQuestion(), // Question là Prompt/Đề bài
-                imageBytes
-            ).get();
-            
-            // Trả về điểm (0-100)
+                token, userText, q.getQuestion(), imageBytes).get();
             return (int) response.getScore();
         } catch (Exception e) {
-            log.error("AI Writing Check failed for question {}: {}", q.getLessonQuestionId(), e.getMessage());
-            return 0; // Trả về 0 nếu lỗi
+            return 0;
         }
     }
-
-
-    // --- CÁC HÀM KHÁC GIỮ NGUYÊN ---
 
     @Override
     @Transactional
@@ -419,10 +406,7 @@ public class LessonServiceImpl implements LessonService {
             Lesson lesson = lessonRepository.findById(lessonId)
                     .filter(l -> !l.isDeleted())
                     .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            User user = userRepository.findById(userId)
-                    .filter(u -> !u.isDeleted())
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-
+            
             LessonProgress progress = LessonProgress.builder()
                     .id(new LessonProgressId(lessonId, userId))
                     .score(score != null ? score : 0)
@@ -438,6 +422,11 @@ public class LessonServiceImpl implements LessonService {
             userLearningActivityRepository.save(activity);
 
             userService.updateExp(userId, lesson.getExpReward());
+            
+            // --- TRIGGER UPDATES ---
+            dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
+            badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
+
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
@@ -448,10 +437,6 @@ public class LessonServiceImpl implements LessonService {
     @Override
     public Page<LessonResponse> getLessonsBySkillType(SkillType skillType, Pageable pageable) {
         try {
-            if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
-                throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            }
-
             Specification<Lesson> spec = (root, query, cb) -> {
                 query.distinct(true);
                 Join<Lesson, LessonQuestion> questionJoin = root.join("lessonQuestions");
@@ -461,8 +446,6 @@ public class LessonServiceImpl implements LessonService {
                 );
             };
             return lessonRepository.findAll(spec, pageable).map(this::toLessonResponse);
-        } catch (AppException e) {
-            throw e;
         } catch (Exception e) {
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
@@ -471,10 +454,6 @@ public class LessonServiceImpl implements LessonService {
     @Override
     public Page<LessonResponse> getLessonsByCertificateOrTopic(UUID categoryId, UUID subCategoryId, Pageable pageable) {
         try {
-            if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
-                throw new AppException(ErrorCode.INVALID_PAGEABLE);
-            }
-
             if (categoryId != null && !lessonCategoryRepository.existsById(categoryId)) {
                 throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
             }
@@ -505,11 +484,8 @@ public class LessonServiceImpl implements LessonService {
     private LessonResponse toLessonResponse(Lesson lesson) {
         try {
             SkillType skillType = lesson.getSkillTypes();
-            
             List<String> videoUrls = videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId())
-                    .stream()
-                    .map(Video::getVideoUrl)
-                    .collect(Collectors.toList());
+                    .stream().map(Video::getVideoUrl).collect(Collectors.toList());
 
             LessonResponse response = lessonMapper.toResponse(lesson);
             response.setSkillTypes(skillType != null ? skillType : SkillType.READING);
@@ -526,8 +502,7 @@ public class LessonServiceImpl implements LessonService {
 
         UserGoal g = gOpt.get();
         if (g.getTargetScore() > 0) {
-            int p = Math.min(100, Math.round(percentScore * 100.0f / g.getTargetScore()));
-            return p;
+            return Math.min(100, Math.round(percentScore * 100.0f / g.getTargetScore()));
         } else if (g.getTargetProficiency() != null) {
             Map<ProficiencyLevel, Integer> map = Map.of(
                     ProficiencyLevel.A1, 1, ProficiencyLevel.A2, 2, ProficiencyLevel.B1, 3,
@@ -552,9 +527,7 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public Lesson saveLessonForVersion(Lesson lesson, UUID versionId, Integer lessonIndex) {
         try {
-            if (lesson.getLessonName() == null) {
-                lesson.setLessonName("Untitled Lesson");
-            }
+            if (lesson.getLessonName() == null) lesson.setLessonName("Untitled Lesson");
             lesson.setDeleted(false);
             Lesson savedLesson = lessonRepository.save(lesson);
 
@@ -566,52 +539,31 @@ public class LessonServiceImpl implements LessonService {
             courseVersionLessonRepository.save(courseVersionLesson);
             return savedLesson;
         } catch (Exception e) {
-            log.error("Error saving lesson for version: {}", e.getMessage());
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 
     @Override
     public QuizResponse generateTeamQuiz(String token, String topic) {
-        log.info("Generating team quiz with topic: {}", topic);
         try {
             QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
-                    token,
-                    null,
-                    30,
-                    "team",
-                    topic
-            ).get();
+                    token, null, 30, "team", topic).get();
             return quizQuestionMapper.toResponse(grpcResponse);
         } catch (InterruptedException | ExecutionException e) {
-            log.error("Failed to generate team quiz: {}", e.getMessage());
-            if (e.getCause() instanceof AppException appEx) {
-                throw appEx;
-            }
+            if (e.getCause() instanceof AppException appEx) throw appEx;
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
 
     @Override
     public QuizResponse generateSoloQuiz(String token, UUID userId) {
-        if (userId == null) {
-            throw new AppException(ErrorCode.INVALID_KEY);
-        }
-        log.info("Generating solo quiz for user: {}", userId);
+        if (userId == null) throw new AppException(ErrorCode.INVALID_KEY);
         try {
             QuizGenerationResponse grpcResponse = grpcClientService.generateLanguageQuiz(
-                    token,
-                    userId.toString(),
-                    15,
-                    "solo",
-                    null
-            ).get();
+                    token, userId.toString(), 15, "solo", null).get();
             return quizQuestionMapper.toResponse(grpcResponse);
         } catch (InterruptedException | ExecutionException e) {
-            log.error("Failed to generate solo quiz for user {}: {}", userId, e.getMessage());
-            if (e.getCause() instanceof AppException appEx) {
-                throw appEx;
-            }
+            if (e.getCause() instanceof AppException appEx) throw appEx;
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
         }
     }
@@ -620,18 +572,8 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public LessonResponse updateLesson(UUID id, LessonRequest request) {
         try {
-            Lesson lesson = lessonRepository.findById(id)
-                    .filter(l -> !l.isDeleted())
+            Lesson lesson = lessonRepository.findById(id).filter(l -> !l.isDeleted())
                     .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            if (request.getLessonName() == null || request.getLessonName().isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            if (request.getLessonCategoryId() != null && !lessonCategoryRepository.existsById(request.getLessonCategoryId())) {
-                throw new AppException(ErrorCode.LESSON_CATEGORY_NOT_FOUND);
-            }
-            if (request.getLessonSubCategoryId() != null && !lessonSubCategoryRepository.existsById(request.getLessonSubCategoryId())) {
-                throw new AppException(ErrorCode.LESSON_SUB_CATEGORY_NOT_FOUND);
-            }
             lessonMapper.updateEntityFromRequest(request, lesson);
             lesson.setUpdatedAt(OffsetDateTime.now());
             lesson = lessonRepository.save(lesson);
@@ -647,8 +589,7 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public void deleteLesson(UUID id) {
         try {
-            Lesson lesson = lessonRepository.findById(id)
-                    .filter(l -> !l.isDeleted())
+            Lesson lesson = lessonRepository.findById(id).filter(l -> !l.isDeleted())
                     .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
             lesson.setDeleted(true);
             lesson.setDeletedAt(OffsetDateTime.now());
@@ -663,20 +604,16 @@ public class LessonServiceImpl implements LessonService {
     @Override
     public List<LessonHierarchicalResponse> getLessonsTreeBySkill(SkillType skillType, String languageCode) {
         List<LessonCategory> categories = lessonCategoryRepository.findDistinctCategoriesByLessonSkillAndLanguage(skillType, languageCode);
-        
         return categories.stream().map(cat -> {
             List<LessonSubCategory> subCats = lessonSubCategoryRepository.findByLessonCategoryIdAndLanguageCodeAndIsDeletedFalse(cat.getLessonCategoryId(), languageCode, Pageable.unpaged()).getContent();
-            
             List<LessonHierarchicalResponse.SubCategoryDto> subCatDtos = subCats.stream().map(sub -> {
                 List<Lesson> lessons = lessonRepository.findByLessonSubCategoryIdAndSkillTypesAndIsDeletedFalseOrderByOrderIndex(sub.getLessonSubCategoryId(), skillType);
-                
                 return LessonHierarchicalResponse.SubCategoryDto.builder()
                         .subCategoryId(sub.getLessonSubCategoryId())
                         .subCategoryName(sub.getLessonSubCategoryName())
                         .lessons(lessons.stream().map(this::toLessonResponse).collect(Collectors.toList()))
                         .build();
             }).collect(Collectors.toList());
-
             return LessonHierarchicalResponse.builder()
                     .categoryId(cat.getLessonCategoryId())
                     .categoryName(cat.getLessonCategoryName())
@@ -686,32 +623,20 @@ public class LessonServiceImpl implements LessonService {
         }).collect(Collectors.toList());
     }
 
-    // --- HELPER FUNCTION: UPDATE COURSE PROGRESS ---
     private void updateCourseProgressIfApplicable(UUID userId, UUID lessonId) {
         List<CourseVersionEnrollment> enrollments = CourseVersionEnrollmentRepository.findActiveEnrollmentsByUserIdAndLessonId(userId, lessonId);
-        
         for (CourseVersionEnrollment enrollment : enrollments) {
             UUID versionId = enrollment.getCourseVersion().getVersionId();
-            
             long totalLessons = CourseVersionEnrollmentRepository.countLessonsInVersion(versionId);
-            
             if (totalLessons > 0) {
                 long completedLessons = CourseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, versionId);
-                
-                double progressPercent = ((double) completedLessons / totalLessons) * 100.0;
-                
-                progressPercent = Math.round(progressPercent * 100.0) / 100.0;
-                
+                double progressPercent = Math.round(((double) completedLessons / totalLessons) * 10000.0) / 100.0;
                 enrollment.setProgress(progressPercent);
-                
                 if (progressPercent >= 100.0 && enrollment.getCompletedAt() == null) {
                     enrollment.setStatus(CourseVersionEnrollmentStatus.COMPLETED);
                     enrollment.setCompletedAt(OffsetDateTime.now());
-                    
                 }
-                
                 CourseVersionEnrollmentRepository.save(enrollment);
-                log.info("Updated progress for user {} in course version {}: {}%", userId, versionId, progressPercent);
             }
         }
     }

@@ -18,7 +18,7 @@ public interface CourseVersionReviewRepository extends JpaRepository<CourseVersi
 
     long countByParentReviewIdAndIsDeletedFalse(UUID parentReviewId);
     
-    Page<CourseVersionReview> findAllByCourseIdAndUserIdAndRatingAndIsDeletedFalse(UUID courseId, UUID userId, BigDecimal rating, Pageable pageable);
+    Page<CourseVersionReview> findAllByCourseVersion_CourseIdAndUserIdAndRatingAndIsDeletedFalse(UUID courseId, UUID userId, BigDecimal rating, Pageable pageable);
     
     Optional<CourseVersionReview> findByCourseIdAndUserIdAndIsDeletedFalse(UUID courseId, UUID userId);
 

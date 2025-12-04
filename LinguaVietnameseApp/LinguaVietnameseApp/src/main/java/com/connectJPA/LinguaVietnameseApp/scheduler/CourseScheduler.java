@@ -33,12 +33,12 @@ public class CourseScheduler {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final GrpcClientService grpcClientService;
+    private final CourseRepository courseRepository; // Inject thêm
 
     private static final String TIME_ZONE = "UTC";
-    // System user UUID for AI reviews
     private static final UUID SYSTEM_USER_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
-    @Value("${app.system.token}") // Token for internal gRPC calls
+    @Value("${app.system.token}")
     private String systemToken;
 
     @Scheduled(cron = "0 0 9,15,21 * * ?", zone = TIME_ZONE)
@@ -46,10 +46,8 @@ public class CourseScheduler {
     public void runCourseValidationJob() {
         log.info("=== Starting Scheduled Course Validation Job ===");
         
-        // 1. & 2. Validate Drafts (Integrity & Content)
         validatePendingDrafts();
 
-        // 3. System AI Review for Public versions that haven't been reviewed
         performSystemReviews();
         
         log.info("=== Completed Scheduled Course Validation Job ===");
@@ -62,41 +60,33 @@ public class CourseScheduler {
         for (CourseVersion draft : pendingDrafts) {
             StringBuilder warningLog = new StringBuilder();
             
-            // Check 1: Integrity (No deletion of old lessons)
             boolean integrityPassed = checkVersionIntegrity(draft, warningLog);
             
-            // Check 2: Content Quality (Fake lesson detection)
             boolean contentPassed = checkContentQuality(draft, warningLog);
 
-            // Update Flags
             draft.setIsIntegrityValid(integrityPassed);
             draft.setIsContentValid(contentPassed);
             draft.setValidationWarnings(warningLog.toString());
             
-            // Optimization flags for dashboard
             updateOptimizationFlags(draft);
 
             courseVersionRepository.save(draft);
 
-            // Notify if failed
             if (!integrityPassed || !contentPassed) {
                 notifyCreator(draft, "COURSE_VALIDATION_FAILED", draft.getVersionNumber().toString());
-            } else {
-                // If passed, maybe notify ready for publication? 
-                // For now, silent success, user sees it on dashboard.
             }
         }
     }
 
     private boolean checkVersionIntegrity(CourseVersion draft, StringBuilder warnings) {
-        // If it's the first version, integrity is always true
         if (draft.getVersionNumber() == 1) {
             return true;
         }
 
-        Optional<CourseVersion> previousPublicOpt = courseVersionRepository.findLatestPublicVersionByCourseId(draft.getCourse().getCourseId());
+        // Fix: getCourseId() instead of getCourse().getCourseId()
+        Optional<CourseVersion> previousPublicOpt = courseVersionRepository.findLatestPublicVersionByCourseId(draft.getCourseId());
         if (previousPublicOpt.isEmpty()) {
-            return true; // No previous public version to compare against
+            return true;
         }
 
         CourseVersion oldVersion = previousPublicOpt.get();
@@ -123,11 +113,8 @@ public class CourseScheduler {
             return false;
         }
 
-        // Check for significant changes (User added > 50% content) - Just a log/flag, not a failure
         long addedCount = newLessonIds.size() - oldCVLs.size();
         if (oldCVLs.size() > 0 && ((double) addedCount / oldCVLs.size() > 0.5)) {
-             // We don't fail validation, but we can flag it for manual review if needed.
-             // For this logic, we just note it.
              log.info("Version {} has >50% new content compared to previous.", draft.getVersionId());
         }
 
@@ -142,17 +129,11 @@ public class CourseScheduler {
             Lesson lesson = cvl.getLesson();
             String lessonName = lesson.getLessonName();
 
-            // Rule: If duration < 60s, verify it has questions (Is it a quiz?) or media.
-            // If it's a video lesson, check video duration.
-            
             boolean isContentTooShort = false;
             
-            // Check Duration Field
             if (lesson.getDurationSeconds() == null || lesson.getDurationSeconds() < 60) {
-                 // Check if it has associated questions
                  boolean hasQuestions = lesson.getLessonQuestions() != null && !lesson.getLessonQuestions().isEmpty();
                  
-                 // Check if it has a video file attached
                  boolean hasVideo = !videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId()).isEmpty();
 
                  if (!hasQuestions && !hasVideo) {
@@ -169,41 +150,36 @@ public class CourseScheduler {
     }
 
     private void updateOptimizationFlags(CourseVersion version) {
-        // Flag 1: 10 Lessons minimum? (Example logic)
         long lessonCount = cvlRepository.countByCourseVersion_VersionId(version.getVersionId());
-        // You can add a field 'hasMinimumLessons' to entity if needed, or just calculate on fly.
-        
-        // Flag 2: VIP? (Available on User entity, checked at runtime)
-        
-        // Flag 3: Significant difference? (Already checked in integrity)
     }
 
     private void performSystemReviews() {
-        // Find public versions that don't have a system review yet
         List<CourseVersion> unreviewedVersions = courseVersionRepository.findPublicVersionsPendingSystemReview();
         
         for (CourseVersion version : unreviewedVersions) {
             try {
-                // Prepare data for AI
+                // Fix: Fetch Course manually
+                Course course = courseRepository.findById(version.getCourseId()).orElse(null);
+                if (course == null) continue;
+
                 List<CourseVersionLesson> cvls = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(version.getVersionId());
                 List<Lesson> lessons = cvls.stream().map(CourseVersionLesson::getLesson).collect(Collectors.toList());
                 
-                String courseTitle = version.getCourse().getTitle();
-                String courseDesc = version.getCourse().getLatestPublicVersion().getDescription();
+                String courseTitle = course.getTitle();
+                
+                // Fix: description is now in Version, not Course
+                String courseDesc = version.getDescription();
 
-                // Call Python AI asynchronously
                 CompletableFuture<CourseEvaluationResponse> future = grpcClientService.callEvaluateCourseVersionAsync(
                         systemToken, courseTitle, courseDesc, lessons
                 );
                 
-                // Block here since we are in a scheduled job and need to save result transactionally
-                // Alternatively, handle async, but blocking is safer for data consistency in jobs
                 CourseEvaluationResponse aiResponse = future.join();
 
-                // Create System Review
                 CourseVersionReview review = new CourseVersionReview();
-                review.setCourseId(version.getCourse().getCourseId());
-                review.setUserId(SYSTEM_USER_UUID); // Virtual System User
+                // Fix: getCourseId()
+                review.setCourseId(version.getCourseId());
+                review.setUserId(SYSTEM_USER_UUID);
                 review.setRating(BigDecimal.valueOf(aiResponse.getRating()));
                 review.setComment(aiResponse.getReviewComment());
                 review.setReviewedAt(OffsetDateTime.now());
@@ -211,24 +187,25 @@ public class CourseScheduler {
                 
                 courseVersionReviewRepository.save(review);
 
-                // Update Version Flag
                 version.setIsSystemReviewed(true);
                 version.setSystemRating(aiResponse.getRating());
                 courseVersionRepository.save(version);
 
-                // Notify User
                 notifyCreator(version, "COURSE_SYSTEM_REVIEW_DONE", String.valueOf(aiResponse.getRating()));
 
             } catch (Exception e) {
                 log.error("Failed to perform system review for version {}", version.getVersionId(), e);
-                // Continue to next version, don't crash whole job
             }
         }
     }
 
     private void notifyCreator(CourseVersion version, String notificationKey, String arg) {
         try {
-            UUID creatorId = version.getCourse().getCreatorId();
+            // Fix: Fetch Course to get creatorId
+            Course course = courseRepository.findById(version.getCourseId()).orElse(null);
+            if (course == null) return;
+
+            UUID creatorId = course.getCreatorId();
             User creator = userRepository.findById(creatorId).orElse(null);
             
             if (creator != null) {

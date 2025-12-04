@@ -48,4 +48,5 @@ public interface CourseService {
     Page<Course> searchCourses(String keyword, int page, int size, Map<String, Object> filters);
 
     CreatorDashboardResponse getCourseDashboardStats(UUID courseId);
+    List<CourseResponse> getTopSellingCourses(int limit);
 }
