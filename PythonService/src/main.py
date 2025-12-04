@@ -3,6 +3,7 @@ import json
 import logging
 import jwt
 import asyncio
+import os
 from datetime import datetime
 from collections import defaultdict
 from typing import Dict, List
@@ -27,7 +28,7 @@ from src.core.user_profile_service import get_user_profile
 from src.api.translation import translate_text
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
 from src.api.speech_to_text import speech_to_text
-from src.api.tts_generator import generate_tts  # Updated import
+from src.api.tts_generator import generate_tts
 from src.core.java_persistence_client import send_chat_to_java_via_grpc
 from src.core.translator import get_translator
 from src.worker.tasks import warm_up_redis_task, populate_lexicon_from_community_task
@@ -202,7 +203,6 @@ async def chat(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# New Endpoint to expose the cached TTS
 @protected_router.post("/tts")
 async def text_to_speech_endpoint(
     text: str,
@@ -312,7 +312,6 @@ async def live_subtitles(
                 chunk = base64.b64decode(msg["audio_chunk"])
                 audio_buffers[buffer_key].append(chunk)
                 full_audio = b"".join(audio_buffers[buffer_key]) 
-                # Chú ý: Speech-to-Text không cache được, nhưng Translator bên dưới dùng Redis Cache
                 stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, full_audio, spokenLang)
                 if stt_text and len(stt_text.strip()) > 1:
                     translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
@@ -347,4 +346,5 @@ app.include_router(protected_router, tags=["Protected API"])
 app.include_router(internal_router, tags=["Internal API"])
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8001)
+    port = int(os.environ.get("PORT", 8001))
+    uvicorn.run(app, host="0.0.0.0", port=port)
