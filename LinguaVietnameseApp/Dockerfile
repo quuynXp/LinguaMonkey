@@ -2,19 +2,16 @@ FROM eclipse-temurin:21-jdk AS builder
 
 WORKDIR /app
 
-# Copy toàn bộ thư mục LinguaVietnameseApp
-COPY ./LinguaVietnameseApp/LinguaVietnameseApp ./
+# Copy the contents of the LinguaVietnameseApp folder from the root context to /app
+COPY ./LinguaVietnameseApp .
 
-# Debug: Kiểm tra file có được copy chưa
-RUN ls -la .mvn/wrapper/ || echo "KHONG CO FILE .mvn/wrapper/"
-
-# Sửa line endings và cấp quyền
+# Fix line endings for the maven wrapper and grant execution permissions
 RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
 
-# Tải dependencies
+# Download dependencies (Cached if pom.xml doesn't change)
 RUN ./mvnw dependency:go-offline
 
-# Build
+# Build the application
 RUN ./mvnw clean package -DskipTests
 
 # Stage 2: Runtime
@@ -22,8 +19,13 @@ FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
+# Copy the built jar from the builder stage
 COPY --from=builder /app/target/*.jar app.jar
 
-EXPOSE 8080
+# Ensure the config directory exists for Google keys if needed
+RUN mkdir -p /app/config
 
-ENTRYPOINT ["java", "-jar", "/app/app.jar"]
+EXPOSE 8080
+EXPOSE 9090
+
+ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]

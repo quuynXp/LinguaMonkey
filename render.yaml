@@ -1,4 +1,3 @@
-# FULL FILES ONLY
 services:
   # === 1. BACKEND (JAVA) ===
   - type: web
@@ -16,24 +15,20 @@ services:
         value: prod
       - key: PORT
         value: 8080
-      - key: GRPC_PORT
-        value: 50051
+      # Removed incorrect GRPC_PORT: 50051 here to avoid confusion
 
       # --- CẤU HÌNH G-SERVICES (BASE64 SECRETS) ---
-      # Firebase/Google Credentials Key
       - key: FIREBASE_CREDENTIALS_BASE64
         value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTEwMDkiLAogICJwcml2YXRlX2tleV9pZCI6ICI1YjlhNDZiZjFmNGMyNmY5Y2FkNzg4Zjc0YzM0NjQ5ODFiMmYxMTAzIiwKICAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklW..."
       - key: GOOGLE_CREDENTIALS_FILE_URL
-        value: /app/config/service-account-key.json # Đường dẫn ảo/backup
-
-      # Google Drive Service Account Key
+        value: /app/config/service-account-key.json
       - key: GDRIVE_KEY_BASE64
         value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTQ3NjYwNyIsCiAgInByaXZhdGVfa2V5X2lkIjogIjBhNDAyZmE2OGQyNThlMTA1YjNhYjBhZGNjNDg0NDcxZmRkNTdlNmQiLAogICJwcml2YXRlX2tleSI6ICItLS0tLUJFR0lOIFBSSVZBVEUgS0V..."
       - key: GOOGLE_SERVICE_ACCOUNT_FILE_URL
-        value: /app/config/gdrive-key.json # Đường dẫn ảo/backup
+        value: /app/config/gdrive-key.json
       # --- END G-SERVICES ---
 
-      # Database Linking (Dùng cho DB_URL)
+      # Database Linking
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
@@ -46,8 +41,6 @@ services:
         fromDatabase:
           name: shared-postgres
           property: database
-
-      # Cấu hình Spring Boot DataSource
       - key: DB_URL
         value: "jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
       - key: DB_USERNAME
@@ -85,7 +78,7 @@ services:
       - key: PYTHON_GRPC_PORT
         value: 50051
 
-      # --- CÁC BIẾN MÔI TRƯỜNG TỪ LOCAL DEV (Payment keys) ---
+      # Payments & Other Configs
       - key: VNPAY_TMNCODE
         value: 9HFGRBLQ
       - key: VNPAY_HASHSECRET
@@ -96,9 +89,6 @@ services:
         value: sk_test_51Rt1GiK4J6AVC7wy9H8RKaRG3qY6N9TnhcIHkVd7eDxcVM3xyeh9ZdynEfEdcQBe4ozHS0cfEaqvOM6JZXkHUPV2003YUKEFYK
       - key: STRIPE_WEBHOOK_SECRET
         value: whsec_u0PCrs1tLmoYcjPCraF1e0gfD7BaYQDH
-      # --- END PAYMENT KEYS ---
-
-      # Các biến cấu hình khác giữ nguyên
       - key: JWT_SIGNER_KEY
         value: OtKDnKZOdVMFihrc7TPBadUSUyR4MlycBb/Jbr58wBnfLMmUPbWyQNJN08S0kJhE
       - key: JWT_KEY_ID
@@ -200,15 +190,13 @@ services:
       - key: REDIS_PASSWORD
         value: "redisPass123"
 
-      # Cấu hình gRPC Python Server (Nhận cuộc gọi)
+      # gRPC Config
       - key: GRPC_PORT
         value: 50051
-
-      # Cấu hình gRPC Client Python (Gọi sang Java)
       - key: JAVA_GRPC_ADDRESS
         value: linguavietnameseapp:9090
 
-      # Các biến môi trường khác
+      # Other
       - key: KAFKA_BOOTSTRAP_SERVERS
         value: your-prod-kafka-broker-1:9092,your-prod-kafka-broker-2:9092
       - key: ELASTICSEARCH_HOST

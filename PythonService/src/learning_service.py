@@ -542,7 +542,10 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
 
     @authenticated_grpc_method
     async def RefundDecision(self, request, context, claims) -> learning_pb2.RefundDecisionResponse:
-        logging.info(f"Processing Refund Decision for Transaction: {request.transaction_id}")
+        caller_role = claims.get("role", "USER")
+        caller_sub = claims.get("sub", "")
+
+        logging.info(f"RefundDecision called by: {caller_sub} (Role: {caller_role})")
         
         decision, label, confidence, explanations, error = await decide_refund(
             request.transaction_id,

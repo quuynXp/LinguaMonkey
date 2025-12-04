@@ -1,6 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.scheduler;
 
-import com.connectJPA.LinguaVietnameseApp.dto.response.RefundDecisionResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Transaction;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionType;
@@ -10,8 +9,10 @@ import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.TransactionService;
 import com.connectJPA.LinguaVietnameseApp.service.WalletService;
+
+import learning.RefundDecisionResponse;
+
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
-import com.connectJPA.LinguaVietnameseApp.config.JwtService; 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -45,11 +46,11 @@ public class RefundScheduler {
 
         if (pendingRefunds.isEmpty()) return;
 
-        // Generate a system token for internal gRPC calls
-        String systemToken = authenticationService.generateToken(); 
+        String systemToken = authenticationService.generateSystemToken(); 
 
         for (Transaction refundTx : pendingRefunds) {
             try {
+                // Truyền systemToken vào hàm gọi gRPC
                 processSingleRefund(refundTx, systemToken);
             } catch (Exception e) {
                 log.error("Failed to process refund tx: {}", refundTx.getTransactionId(), e);
@@ -65,9 +66,9 @@ public class RefundScheduler {
         CompletableFuture<RefundDecisionResponse> future = grpcClientService.callRefundDecisionAsync(
             token,
             refundTx.getTransactionId().toString(),
-            refundTx.getUser().getUserId().toString(),
-            courseId,
-            refundTx.getDescription() // The reason text
+            refundTx.getUser().getUserId().toString(), // User ID của người mua (để AI phân tích context)
+            "N/A", 
+            refundTx.getDescription()
         );
 
         future.thenAccept(response -> {

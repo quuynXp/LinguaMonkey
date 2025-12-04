@@ -54,4 +54,7 @@ public interface AuthenticationService {
 
     @Transactional
     Map<String, Object> checkResetMethods(String identifier);
+
+
+    String generateSystemToken();
 }

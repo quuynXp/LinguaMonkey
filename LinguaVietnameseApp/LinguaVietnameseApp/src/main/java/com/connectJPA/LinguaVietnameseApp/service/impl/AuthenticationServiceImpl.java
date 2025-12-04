@@ -20,6 +20,9 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.SignatureAlgorithm;
 import jakarta.mail.MessagingException;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
@@ -110,6 +113,27 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         } catch (Exception e) {
             log.error("Failed to load public key", e);
             throw new AppException(ErrorCode.TOKEN_SIGNATURE_INVALID);
+        }
+    }
+
+   @Override
+    public String generateSystemToken() {
+        try {
+            Map<String, Object> claims = new HashMap<>();
+            claims.put("role", "SYSTEM_ADMIN"); // Đánh dấu đây là System
+            claims.put("type", "SERVICE_TOKEN");
+            
+            return Jwts.builder()
+                    .setClaims(claims)
+                    .setSubject("SYSTEM_SCHEDULER") // Subject là tên service, không phải userId UUID
+                    .setIssuer("LinguaMonkey.com")
+                    .setIssuedAt(new Date(System.currentTimeMillis()))
+                    .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 5)) // 5 phút hết hạn
+                    .signWith(getPrivateKey(), SignatureAlgorithm.RS256)
+                    .compact();
+        } catch (Exception e) {
+            log.error("Failed to generate system token", e);
+            throw new AppException(ErrorCode.TOKEN_GENERATION_FAILED);
         }
     }
 

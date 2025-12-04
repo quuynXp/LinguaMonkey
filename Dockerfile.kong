@@ -1,9 +1,9 @@
 FROM kong:3.4
 
-# Copy file cấu hình declarative vào container
+# Copy the declarative config file into the image
 COPY kong.yml /etc/kong/kong.yml
 
-# Chuyển quyền sở hữu cho user kong (tránh lỗi permission denied)
+# Switch to root to ensure permissions if needed (optional, Kong usually runs as kong user)
 USER root
-RUN chown kong:kong /etc/kong/kong.yml
+RUN chmod 644 /etc/kong/kong.yml
 USER kong
