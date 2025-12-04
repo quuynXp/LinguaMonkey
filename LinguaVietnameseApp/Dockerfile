@@ -1,28 +1,30 @@
-FROM eclipse-temurin:21-jdk AS builder
+# === STAGE 1: BUILD (Dùng Maven Image chuẩn) ===
+FROM maven:3.9-eclipse-temurin-21 AS builder
 
 WORKDIR /app
 
-# Copy the contents of the LinguaVietnameseApp folder from the root context to /app
-COPY ./LinguaVietnameseApp .
+# 1. Copy pom.xml trước để cache dependencies
+# Lưu ý: Context là Root, nên đường dẫn là ./LinguaVietnameseApp/pom.xml
+COPY ./LinguaVietnameseApp/pom.xml .
 
-# Fix line endings for the maven wrapper and grant execution permissions
-RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
+# 2. Tải dependencies (sẽ được cache nếu pom.xml không đổi)
+RUN mvn dependency:go-offline
 
-# Download dependencies (Cached if pom.xml doesn't change)
-RUN ./mvnw dependency:go-offline
+# 3. Copy source code
+COPY ./LinguaVietnameseApp/src ./src
 
-# Build the application
-RUN ./mvnw clean package -DskipTests
+# 4. Build application (Bỏ qua test để build nhanh hơn trên prod)
+RUN mvn clean package -DskipTests
 
-# Stage 2: Runtime
+# === STAGE 2: RUNTIME ===
 FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
-# Copy the built jar from the builder stage
+# Copy file jar từ stage builder
 COPY --from=builder /app/target/*.jar app.jar
 
-# Ensure the config directory exists for Google keys if needed
+# Tạo thư mục config để tránh lỗi thiếu thư mục khi mount key Google
 RUN mkdir -p /app/config
 
 EXPOSE 8080
