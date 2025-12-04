@@ -1,138 +1,184 @@
-version: '3.8'
-
-networks:
-  lingua-net:
-    driver: bridge
-
-volumes:
-  app_data:
-  redis_data:
+_format_version: "3.0"
+_transform: true
 
 services:
-  # === DATABASES ===
-  app-database:
-    image: postgres:17
-    container_name: app-database
-    environment:
-      POSTGRES_USER: linguauser
-      POSTGRES_DB: linguaviet_db
-      POSTGRES_PASSWORD: linguapass
-      TZ: "Asia/Ho_Chi_Minh"
-    volumes:
-      - app_data:/var/lib/postgresql/data
-      - ./db:/docker-entrypoint-initdb.d
-    ports:
-      - "5433:5432"
-    networks:
-      - lingua-net
-    restart: always
+  # ==============================================================================
+  # 1. PUBLIC JAVA SERVICE
+  # ==============================================================================
+  - name: public-java-service
+    # FIX: Port updated to 10000
+    url: http://linguavietnameseapp:10000
+    routes:
+      - name: public-routes
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+        paths:
+          - /api/v1/auth
+          - /api/v1/users/check-email
+          - /api/swagger
+          - /swagger-ui/
+          - /v3/api-docs/
+          - /api/v1/badges
+          - /api/v1/basic-lessons
+          - /api/v1/certificates
+          - /api/v1/character3ds
+          - /api/v1/courses
+          - /api/v1/course-version-discounts
+          - /api/v1/course-version-reviews
+          - /api/v1/events
+          - /api/v1/grammar
+          - /api/v1/interests
+          - /api/v1/languages
+          - /api/v1/leaderboards
+          - /api/v1/leaderboard-entries
+          - /api/v1/lesson-categories
+          - /api/v1/lessons
+          - /api/v1/lesson-questions
+          - /api/v1/lesson-reviews
+          - /api/v1/lesson-series
+          - /api/v1/lesson-sub-categories
+          - /api/v1/roadmaps
+          - /api/v1/search
+          - /api/v1/skill-lessons
+          - /api/v1/videos
+    plugins:
+      - name: rate-limiting
+        config:
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: redisPass123
+          limit_by: consumer
+          second: 10
+          minute: 200
 
-  # === CACHE ===
-  redis:
-    image: redis:6-alpine
-    container_name: redis
-    command: ["redis-server", "--requirepass", "redisPass123"]
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - lingua-net
-    restart: always
+  # ==============================================================================
+  # 2. PROTECTED JAVA SERVICE (API CHUNG)
+  # ==============================================================================
+  - name: java-service
+    # FIX: Port updated to 10000
+    url: http://linguavietnameseapp:10000
+    connect_timeout: 60000
+    write_timeout: 60000
+    read_timeout: 60000
+    routes:
+      - name: java-api-protected
+        strip_path: false
+        methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
+        paths:
+          - /api/v1/chat
+          - /api/v1/couples
+          - /api/v1/course-version-enrollments
+          - /api/v1/course-lessons
+          - /api/v1/daily-challenges
+          - /api/v1/files/
+          - /api/v1/files/user/
+          - /api/v1/flashcards
+          - /api/v1/friendships
+          - /api/v1/group-answers
+          - /api/v1/group-sessions
+          - /api/v1/lesson-order-in-series
+          - /api/v1/lesson-progress
+          - /api/v1/lesson-progress-wrong-items
+          - /api/v1/matchmaking
+          - /api/v1/media
+          - /api/v1/memorizations
+          - /api/v1/notifications
+          - /api/v1/permissions
+          - /api/v1/roles
+          - /api/v1/rooms
+          - /api/v1/statistics
+          - /api/v1/tests
+          - /api/v1/transactions
+          - /api/v1/users/
+          - /api/v1/users
+          - /api/v1/user-goals
+          - /api/v1/user-learning-activities
+          - /api/v1/video-calls
+          - /api/v1/wallets
+          - /api/v1/wallets/
+    plugins:
+      - name: rate-limiting
+        config:
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: redisPass123
+          limit_by: consumer
+          second: 20
+          minute: 500
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 200
 
-  # === BACKEND SERVICES ===
-  linguavietnameseapp:
-    build:
-      context: . 
-      dockerfile: ./LinguaVietnameseApp/Dockerfile
-    container_name: linguavietnameseapp
-    depends_on:
-      - app-database
-      - redis
-    env_file:
-      - ./LinguaVietnameseApp/.env
-    environment:
-      - TZ=Asia/Ho_Chi_Minh
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://app-database:5432/linguaviet_db
-      - SPRING_REDIS_HOST=redis
-      # Connects to Python via internal container port 8001 (HTTP)
-      - PYTHON_SERVICE_URL=http://pythonservice:8001
-    volumes:
-      - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro
-    networks:
-      - lingua-net
-    restart: always
+  # ==============================================================================
+  # 2.1. JAVA UPLOAD SERVICE (RIÊNG CHO UPLOAD FILE)
+  # ==============================================================================
+  - name: java-upload-service
+    # FIX: Port updated to 10000
+    url: http://linguavietnameseapp:10000
+    connect_timeout: 60000
+    write_timeout: 300000
+    read_timeout: 300000
+    routes:
+      - name: java-upload-route
+        strip_path: false
+        methods: [POST, OPTIONS]
+        paths:
+          - /api/v1/files/upload-temp
+    plugins:
+      - name: request-size-limiting
+        config:
+          allowed_payload_size: 200
 
-  pythonservice:
-    build: 
-      context: .
-      dockerfile: ./PythonService/Dockerfile
-    container_name: pythonservice
-    depends_on:
-      - app-database
-      - redis
-    env_file:
-      - ./PythonService/.env
-    environment:
-      - TZ=Asia/Ho_Chi_Minh
-      - DB_HOST=app-database
-      - REDIS_HOST=redis
-      - JAVA_SERVICE_URL=http://linguavietnameseapp:8080
-    volumes:
-      - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/app/public_key.pem:ro
-    # 50052 mapped to 8001 allows debugging FastAPI from host if needed
-    ports:
-      - "50052:8001"
-      - "50051:50051" # Expose gRPC just in case
-    networks:
-      - lingua-net
-    restart: always
+  # ==============================================================================
+  # 2.2. JAVA WEBSOCKET SERVICE
+  # ==============================================================================
+  - name: java-websocket-service
+    # FIX: Port updated to 10000
+    url: http://linguavietnameseapp:10000
+    connect_timeout: 60000
+    write_timeout: 300000
+    read_timeout: 300000
+    routes:
+      - name: java-websocket-route
+        strip_path: false
+        methods: [GET, POST, OPTIONS]
+        paths:
+          - /ws/
+        protocols: [http, https]
 
-  # === KONG GATEWAY (DB-less) ===
-  kong:
-    image: kong:3.4
-    container_name: kong
-    depends_on:
-      - linguavietnameseapp
-      - pythonservice
-      - redis
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: "/etc/kong/kong.yml"
-      KONG_PROXY_ACCESS_LOG: /dev/stdout
-      KONG_ADMIN_ACCESS_LOG: /dev/stdout
-      KONG_PROXY_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_ERROR_LOG: /dev/stderr
-      KONG_ADMIN_LISTEN: 0.0.0.0:8003
-      KONG_PLUGINS: bundled,rate-limiting,cors,request-transformer,proxy-cache
-    ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "8002:8002"
-    volumes:
-      - ./kong.yml:/etc/kong/kong.yml:ro
-    networks:
-      - lingua-net
-    restart: always
+  # ==============================================================================
+  # 3. PYTHON SERVICE
+  # ==============================================================================
+  - name: python-service
+    # Render dynamic ports might vary, but since you hardcoded 8001 in python main.py check, 
+    # make sure PythonService/main.py uses the PORT env var as suggested previously.
+    # If Python uses PORT=10000 (default), change this to 10000. 
+    # For now, assuming you set PORT: 8001 in render.yaml for Python or code handles it.
+    url: http://pythonservice:8001
+    connect_timeout: 60000
+    write_timeout: 300000
+    read_timeout: 300000
+    routes:
+      - name: python-api
+        strip_path: true
+        methods: [POST, OPTIONS]
+        paths:
+          - /api/py/
+      - name: python-ws
+        strip_path: true
+        protocols: [http, https]
+        methods: [GET, OPTIONS]
+        paths:
+          - /ws/py/
 
-  # === AUTO BACKUP ===
-  db-backup:
-    image: prodrigestivill/postgres-backup-local
-    container_name: db-backup
-    restart: always
-    user: postgres:postgres
-    volumes:
-      - ./backups:/backups
-    depends_on:
-      - app-database
-    environment:
-      - POSTGRES_HOST=app-database
-      - POSTGRES_DB=linguaviet_db
-      - POSTGRES_USER=linguauser
-      - POSTGRES_PASSWORD=linguapass
-      - SCHEDULE=@daily
-      - BACKUP_KEEP_DAYS=7
-      - BACKUP_DIR=/backups
-      - TZ=Asia/Ho_Chi_Minh
-    networks:
-      - lingua-net
+plugins:
+  - name: cors
+    config:
+      origins: ["*"]
+      methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
+      headers: ["*"]
+      exposed_headers: ["*"]
+      credentials: false
+      max_age: 3600
