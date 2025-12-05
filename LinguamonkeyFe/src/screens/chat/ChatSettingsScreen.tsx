@@ -16,7 +16,7 @@ import { useUserStore } from '../../stores/UserStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { privateClient } from '../../api/axiosClient';
-import { showToast } from './ToastService';
+import { showToast } from '../../components/Toast';
 
 interface SettingItem {
   id: string;

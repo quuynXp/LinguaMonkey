@@ -10,7 +10,6 @@ import {
   LearningActivityEventRequest,
   ActivityCompletionResponse,
   UserDailyChallengeResponse,
-  // Thêm ChartDataPoint nếu cần
 } from "../types/dto";
 import { useUserStore } from "../stores/UserStore";
 import { useToast } from "../utils/useToast";
@@ -47,24 +46,26 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 
 const BASE = "/api/v1/user-learning-activities";
 
-// FIX TS2740: Định nghĩa đầy đủ các trường trong StatsResponse
+// UPDATE: Thêm dailyActivity và điền đầy đủ giá trị mặc định cho stats
 const DEFAULT_STUDY_HISTORY: StudyHistoryResponse = {
   sessions: [],
+  // Map này quan trọng để tránh crash Heatmap khi chưa có dữ liệu
+  dailyActivity: {},
   stats: {
     totalSessions: 0,
     totalTimeSeconds: 0,
     totalExperience: 0,
-    totalCoins: 0, // Thiếu
-    lessonsCompleted: 0, // Thiếu
-    averageAccuracy: 0, // Thiếu
+    totalCoins: 0,
+    lessonsCompleted: 0,
+    averageAccuracy: 0,
     averageScore: 0,
-    timeGrowthPercent: 0, // Thiếu
-    accuracyGrowthPercent: 0, // Thiếu
-    coinsGrowthPercent: 0, // Thiếu
-    weakestSkill: "NONE", // Thiếu
-    improvementSuggestion: "", // Thiếu
-    timeChartData: [], // Thiếu
-    accuracyChartData: [], // Thiếu
+    timeGrowthPercent: 0,
+    accuracyGrowthPercent: 0,
+    coinsGrowthPercent: 0,
+    weakestSkill: "NONE",
+    improvementSuggestion: "",
+    timeChartData: [],
+    accuracyChartData: [],
   },
 };
 
@@ -123,6 +124,7 @@ export const useGetStudyHistory = (
         `${BASE}/history`,
         { params: { userId, period } }
       );
+      // Fallback về DEFAULT nếu API trả về null để tránh crash
       return data.result || DEFAULT_STUDY_HISTORY;
     },
     enabled: !!userId,
@@ -131,7 +133,7 @@ export const useGetStudyHistory = (
 };
 
 // ==========================================
-// === 2. HEARTBEAT (New) ===
+// === 2. HEARTBEAT (Tracking Online Time) ===
 // ==========================================
 
 export const useHeartbeat = (enabled: boolean = true) => {
@@ -158,7 +160,7 @@ export const useHeartbeat = (enabled: boolean = true) => {
     // Set interval for every 60 seconds
     const intervalId = setInterval(sendHeartbeat, 60000);
 
-    // Handle App State (don't ping background)
+    // Handle App State (don't ping background, ping immediately on resume)
     const subscription = AppState.addEventListener("change", (nextAppState: AppStateStatus) => {
       if (appState.current.match(/inactive|background/) && nextAppState === "active") {
         sendHeartbeat(); // Trigger immediately when coming back

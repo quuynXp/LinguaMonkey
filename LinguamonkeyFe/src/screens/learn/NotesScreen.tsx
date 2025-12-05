@@ -12,16 +12,19 @@ import {
   View,
   ActivityIndicator,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  Switch
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useMemorizations } from "../../hooks/useMemorizations";
-import { MemorizationResponse, MemorizationRequest } from "../../types/dto";
+import { useReminders } from "../../hooks/useReminders";
+import { MemorizationResponse, MemorizationRequest, UserReminderRequest } from "../../types/dto";
 import * as Enums from "../../types/enums";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
+import { TimeHelper } from "../../utils/timeHelper";
 
 const NotesScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -34,8 +37,14 @@ const NotesScreen = ({ navigation }: any) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
+  // Reminder State
+  const [isReminderEnabled, setIsReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState(""); // Input Format HH:mm
+  const [reminderRepeat, setReminderRepeat] = useState<Enums.RepeatType>(Enums.RepeatType.DAILY);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Hooks
   const {
     useUserMemorizations,
     useCreateMemorization,
@@ -43,11 +52,13 @@ const NotesScreen = ({ navigation }: any) => {
     useToggleFavorite,
   } = useMemorizations();
 
-  // Search Param hook integration
+  const { useCreateReminder } = useReminders();
+  const { mutate: createReminder, isPending: isCreatingReminder } = useCreateReminder();
+
   const searchParams = useMemo(() => {
     const params: any = { page: 0, size: 20 };
     if (selectedContentType !== "all") params.content_type = selectedContentType;
-    if (searchQuery.length > 2) params.keyword = searchQuery; // Assuming backend supports keyword
+    if (searchQuery.length > 2) params.keyword = searchQuery;
     return params;
   }, [selectedContentType, searchQuery]);
 
@@ -57,8 +68,8 @@ const NotesScreen = ({ navigation }: any) => {
     refetch: refetchMemorizations,
   } = useUserMemorizations(searchParams);
 
-  const { mutate: createMemorization, isPending: isCreating } = useCreateMemorization();
-  const { mutate: deleteMemorization, isPending: isDeleting } = useDeleteMemorization();
+  const { mutate: createMemorization, isPending: isCreatingNote } = useCreateMemorization();
+  const { mutate: deleteMemorization } = useDeleteMemorization();
   const { mutate: toggleFavorite } = useToggleFavorite();
 
   const notesList = useMemo(() => {
@@ -66,7 +77,6 @@ const NotesScreen = ({ navigation }: any) => {
     if (showFavoritesOnly) {
       list = list.filter(item => item.isFavorite);
     }
-    // Client-side filtering fallback if backend keyword search isn't instant
     if (searchQuery && !searchParams.keyword) {
       list = list.filter(n => n.noteText?.toLowerCase().includes(searchQuery.toLowerCase()));
     }
@@ -84,37 +94,80 @@ const NotesScreen = ({ navigation }: any) => {
   const mapNoteTypeToContentType = (type: string): Enums.ContentType => {
     switch (type) {
       case "word": return Enums.ContentType.VOCABULARY;
-      case "phrase": return Enums.ContentType.VOCABULARY; // Or specific enum if available
       case "grammar": return Enums.ContentType.FORMULA;
       default: return Enums.ContentType.NOTE;
     }
   };
 
-  const contentTypes = [
-    { key: "all", label: t("notes.all") ?? "All" },
-    { key: "VOCABULARY", label: t("notes.vocab") ?? "Vocab" },
-    { key: "FORMULA", label: t("notes.grammar") ?? "Grammar" },
-    { key: "NOTE", label: t("notes.general") ?? "Notes" },
-  ];
-
   const handleAddNote = () => {
     if (!newNote.trim()) return;
-    const payload: MemorizationRequest = {
+
+    // Note Payload
+    const notePayload: MemorizationRequest = {
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: null, // Custom note
+      contentId: null,
       noteText: newNote.trim(),
       isFavorite: false,
-      userId: user?.userId || "", // Ensure userId is passed
+      userId: user?.userId || "",
     };
 
-    createMemorization(payload, {
-      onSuccess: () => {
-        setNewNote("");
-        setShowAddModal(false);
-        refetchMemorizations();
+    createMemorization(notePayload, {
+      onSuccess: (createdNote) => {
+        // If Reminder is enabled, chain the creation
+        if (isReminderEnabled && reminderTime) {
+          handleCreateReminder(createdNote.memorizationId, createdNote.noteText);
+        } else {
+          finishAddProcess();
+        }
       },
       onError: () => Alert.alert("Error", t("common.error"))
     });
+  };
+
+  const handleCreateReminder = (targetId: string, noteTitle: string) => {
+    // 1. Create a dummy date with the user's input time to use the Helper
+    const [hours, minutes] = reminderTime.split(':').map(Number);
+    if (isNaN(hours) || isNaN(minutes)) {
+      Alert.alert("Invalid Time", "Please use HH:mm format");
+      finishAddProcess();
+      return;
+    }
+
+    const now = new Date();
+    now.setHours(hours, minutes, 0, 0);
+
+    // 2. Convert to Vietnam Time string for Backend
+    const vnTimeString = TimeHelper.convertToVietnamTime(now);
+
+    const reminderPayload: UserReminderRequest = {
+      title: t("notes.reminderTitle") + ": " + noteTitle.substring(0, 20) + "...",
+      message: t("notes.reminderBody") + ": " + noteTitle,
+      time: vnTimeString,
+      date: TimeHelper.formatDateForApi(new Date()), // Starts today
+      repeatType: reminderRepeat,
+      targetType: Enums.TargetType.NOTE, // Assuming Enum exists, else custom
+      targetId: targetId,
+      enabled: true
+    };
+
+    createReminder(reminderPayload, {
+      onSuccess: () => {
+        Alert.alert(t("common.success"), t("notes.reminderSetSuccess"));
+        finishAddProcess();
+      },
+      onError: () => {
+        Alert.alert(t("common.warning"), t("notes.noteSavedReminderFailed"));
+        finishAddProcess();
+      }
+    });
+  };
+
+  const finishAddProcess = () => {
+    setNewNote("");
+    setReminderTime("");
+    setIsReminderEnabled(false);
+    setShowAddModal(false);
+    refetchMemorizations();
   };
 
   const handleDelete = (id: string) => {
@@ -135,9 +188,7 @@ const NotesScreen = ({ navigation }: any) => {
         </View>
         <Text style={styles.noteDate}>{new Date(item.createdAt).toLocaleDateString()}</Text>
       </View>
-
       <Text style={styles.noteText}>{item.noteText}</Text>
-
       <View style={styles.noteFooter}>
         <TouchableOpacity
           onPress={() => toggleFavorite({ id: item.memorizationId, currentReq: item as any })}
@@ -145,17 +196,7 @@ const NotesScreen = ({ navigation }: any) => {
         >
           <Icon name={item.isFavorite ? "star" : "star-border"} size={20} color={item.isFavorite ? "#F59E0B" : "#9CA3AF"} />
         </TouchableOpacity>
-
-        {/* Mock Reminder Button - triggers logic backend implies */}
-        <TouchableOpacity
-          style={styles.iconBtn}
-          onPress={() => Alert.alert("Reminder", t("notes.reminderSet"))}
-        >
-          <Icon name="alarm" size={20} color="#6B7280" />
-        </TouchableOpacity>
-
         <View style={{ flex: 1 }} />
-
         <TouchableOpacity onPress={() => handleDelete(item.memorizationId)} style={styles.iconBtn}>
           <Icon name="delete-outline" size={20} color="#EF4444" />
         </TouchableOpacity>
@@ -165,7 +206,6 @@ const NotesScreen = ({ navigation }: any) => {
 
   return (
     <ScreenLayout style={styles.container}>
-      {/* Notion-style Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Icon name="arrow-back" size={24} color="#37352F" />
@@ -176,7 +216,6 @@ const NotesScreen = ({ navigation }: any) => {
         </TouchableOpacity>
       </View>
 
-      {/* Search & Filter */}
       <View style={styles.searchSection}>
         <View style={styles.searchBar}>
           <Icon name="search" size={20} color="#9CA3AF" />
@@ -188,22 +227,8 @@ const NotesScreen = ({ navigation }: any) => {
             placeholderTextColor="#9CA3AF"
           />
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
-          {contentTypes.map(type => (
-            <TouchableOpacity
-              key={type.key}
-              style={[styles.filterChip, selectedContentType === type.key && styles.activeFilterChip]}
-              onPress={() => setSelectedContentType(type.key)}
-            >
-              <Text style={[styles.filterText, selectedContentType === type.key && styles.activeFilterText]}>
-                {type.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       </View>
 
-      {/* Content */}
       <Animated.View style={[styles.contentContainer, { opacity: fadeAnim }]}>
         {memorizationsLoading ? (
           <ActivityIndicator style={{ marginTop: 40 }} color="#37352F" />
@@ -223,12 +248,11 @@ const NotesScreen = ({ navigation }: any) => {
         )}
       </Animated.View>
 
-      {/* Floating Action Button */}
       <TouchableOpacity style={styles.fab} onPress={() => setShowAddModal(true)}>
         <Icon name="add" size={28} color="#FFF" />
       </TouchableOpacity>
 
-      {/* Add Modal */}
+      {/* Add Note Modal */}
       <Modal visible={showAddModal} animationType="slide" transparent>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -262,12 +286,63 @@ const NotesScreen = ({ navigation }: any) => {
               autoFocus
             />
 
+            {/* Reminder Section */}
+            <View style={styles.reminderSection}>
+              <View style={styles.reminderHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Icon name="alarm" size={20} color="#37352F" style={{ marginRight: 8 }} />
+                  <Text style={styles.reminderLabel}>{t("notes.enableReminder") ?? "Set Reminder"}</Text>
+                </View>
+                <Switch
+                  value={isReminderEnabled}
+                  onValueChange={setIsReminderEnabled}
+                  trackColor={{ false: "#E5E7EB", true: "#37352F" }}
+                />
+              </View>
+
+              {isReminderEnabled && (
+                <View style={styles.reminderControls}>
+                  <View style={styles.timeInputContainer}>
+                    <Text style={styles.labelSmall}>{t("notes.time") ?? "Time (HH:MM)"}</Text>
+                    <TextInput
+                      style={styles.timeInput}
+                      value={reminderTime}
+                      onChangeText={setReminderTime}
+                      placeholder="10:00"
+                      keyboardType="numbers-and-punctuation"
+                      maxLength={5}
+                    />
+                  </View>
+                  <View style={styles.repeatContainer}>
+                    <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Repeat"}</Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+                      <TouchableOpacity
+                        onPress={() => setReminderRepeat(Enums.RepeatType.DAILY)}
+                        style={[styles.repeatChip, reminderRepeat === Enums.RepeatType.DAILY && styles.activeChip]}
+                      >
+                        <Text style={[styles.chipText, reminderRepeat === Enums.RepeatType.DAILY && styles.activeChipText]}>Daily</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setReminderRepeat(Enums.RepeatType.ONCE)}
+                        style={[styles.repeatChip, reminderRepeat === Enums.RepeatType.ONCE && styles.activeChip]}
+                      >
+                        <Text style={[styles.chipText, reminderRepeat === Enums.RepeatType.ONCE && styles.activeChipText]}>Once</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
+              )}
+            </View>
+
             <TouchableOpacity
-              style={[styles.saveButton, (!newNote.trim() || isCreating) && styles.disabledBtn]}
+              style={[styles.saveButton, (!newNote.trim() || isCreatingNote || isCreatingReminder) && styles.disabledBtn]}
               onPress={handleAddNote}
-              disabled={!newNote.trim() || isCreating}
+              disabled={!newNote.trim() || isCreatingNote || isCreatingReminder}
             >
-              {isCreating ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveButtonText}>{t("common.save")}</Text>}
+              {(isCreatingNote || isCreatingReminder) ?
+                <ActivityIndicator color="#FFF" /> :
+                <Text style={styles.saveButtonText}>{t("common.save")}</Text>
+              }
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -277,217 +352,54 @@ const NotesScreen = ({ navigation }: any) => {
 };
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    backgroundColor: "#FFFFFF", // Notion white
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F1F1',
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#37352F',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
-  },
-  searchSection: {
-    padding: 16,
-    backgroundColor: '#FFFFFF',
-  },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F7F7F5',
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    height: 40,
-    marginBottom: 12,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#37352F',
-  },
-  filterScroll: {
-    flexDirection: 'row',
-  },
-  filterChip: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#E1E1E1',
-    marginRight: 8,
-    backgroundColor: '#FFFFFF',
-  },
-  activeFilterChip: {
-    backgroundColor: '#37352F',
-    borderColor: '#37352F',
-  },
-  filterText: {
-    fontSize: 12,
-    color: '#37352F',
-  },
-  activeFilterText: {
-    color: '#FFFFFF',
-  },
-  contentContainer: {
-    flex: 1,
-    backgroundColor: '#FBFBFA', // Slight off-white for content area
-  },
-  listContent: {
-    padding: 16,
-    paddingBottom: 80,
-  },
-  noteCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#E9E9E9',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.02,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  noteHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  noteTypeTag: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 4,
-    padding: 4,
-  },
-  noteTypeTagText: {
-    fontSize: 12,
-  },
-  noteDate: {
-    fontSize: 12,
-    color: '#9CA3AF',
-  },
-  noteText: {
-    fontSize: 15,
-    color: '#37352F',
-    lineHeight: 22,
-    marginBottom: 12,
-  },
-  noteFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#F7F7F7',
-    paddingTop: 8,
-    gap: 16,
-  },
-  iconBtn: {
-    padding: 4,
-  },
-  fab: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#37352F', // Notion black
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 5,
-  },
-  emptyState: {
-    alignItems: 'center',
-    marginTop: 60,
-  },
-  emptyText: {
-    color: '#9CA3AF',
-    marginTop: 12,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    justifyContent: 'flex-end',
-  },
-  modalContent: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    padding: 20,
-    minHeight: 300,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#37352F',
-  },
-  typeSelector: {
-    flexDirection: 'row',
-    marginBottom: 16,
-    gap: 10,
-  },
-  typeBtn: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
-    backgroundColor: '#F7F7F5',
-  },
-  activeTypeBtn: {
-    backgroundColor: '#E6F3FF',
-  },
-  typeBtnText: {
-    fontSize: 13,
-    color: '#37352F',
-  },
-  activeTypeBtnText: {
-    color: '#0077D6',
-    fontWeight: '600',
-  },
-  modalInput: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: '#37352F',
-    minHeight: 120,
-    textAlignVertical: 'top',
-    marginBottom: 20,
-  },
-  saveButton: {
-    backgroundColor: '#37352F',
-    borderRadius: 8,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  disabledBtn: {
-    backgroundColor: '#A0A0A0',
-  },
-  saveButtonText: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-    fontSize: 16,
-  }
+  container: { flex: 1, backgroundColor: "#FFFFFF" },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F1F1F1' },
+  backButton: { padding: 4 },
+  headerTitle: { fontSize: 18, fontWeight: '600', color: '#37352F' },
+  searchSection: { padding: 16, backgroundColor: '#FFFFFF' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F7F7F5', borderRadius: 8, paddingHorizontal: 10, height: 40 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: '#37352F' },
+  contentContainer: { flex: 1, backgroundColor: '#FBFBFA' },
+  listContent: { padding: 16, paddingBottom: 80 },
+  noteCard: { backgroundColor: '#FFFFFF', borderRadius: 8, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#E9E9E9', shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 },
+  noteHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  noteTypeTag: { backgroundColor: '#F0F0F0', borderRadius: 4, padding: 4 },
+  noteTypeTagText: { fontSize: 12 },
+  noteDate: { fontSize: 12, color: '#9CA3AF' },
+  noteText: { fontSize: 15, color: '#37352F', lineHeight: 22, marginBottom: 12 },
+  noteFooter: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: '#F7F7F7', paddingTop: 8, gap: 16 },
+  iconBtn: { padding: 4 },
+  fab: { position: 'absolute', bottom: 24, right: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: '#37352F', justifyContent: 'center', alignItems: 'center', shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 6, elevation: 5 },
+  emptyState: { alignItems: 'center', marginTop: 60 },
+  emptyText: { color: '#9CA3AF', marginTop: 12 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#37352F' },
+  typeSelector: { flexDirection: 'row', marginBottom: 16, gap: 10 },
+  typeBtn: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 6, backgroundColor: '#F7F7F5' },
+  activeTypeBtn: { backgroundColor: '#E6F3FF' },
+  typeBtnText: { fontSize: 13, color: '#37352F' },
+  activeTypeBtnText: { color: '#0077D6', fontWeight: '600' },
+  modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 100, textAlignVertical: 'top', marginBottom: 10 },
+
+  // Reminder Styles
+  reminderSection: { backgroundColor: '#F7F7F5', padding: 12, borderRadius: 8, marginBottom: 20 },
+  reminderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  reminderLabel: { fontSize: 15, fontWeight: '500', color: '#37352F' },
+  reminderControls: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E1E1E1', paddingTop: 12 },
+  timeInputContainer: { marginBottom: 10 },
+  timeInput: { backgroundColor: '#FFF', borderRadius: 4, padding: 8, borderWidth: 1, borderColor: '#E1E1E1', marginTop: 4 },
+  labelSmall: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
+  repeatContainer: {},
+  repeatChip: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFF' },
+  activeChip: { backgroundColor: '#37352F', borderColor: '#37352F' },
+  chipText: { fontSize: 12, color: '#37352F' },
+  activeChipText: { color: '#FFF' },
+
+  saveButton: { backgroundColor: '#37352F', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
+  disabledBtn: { backgroundColor: '#A0A0A0' },
+  saveButtonText: { color: '#FFFFFF', fontWeight: '600', fontSize: 16 }
 });
 
 export default NotesScreen;

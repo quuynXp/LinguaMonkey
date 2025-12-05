@@ -449,7 +449,8 @@ export enum TargetType {
     EVENT = "EVENT",
     ROADMAP = "ROADMAP",
     FLASHCARD = "FLASHCARD",
-    COUPLE = "COUPLE"
+    COUPLE = "COUPLE",
+    NOTE = "NOTE"
 }
 
 export enum TestStatus {

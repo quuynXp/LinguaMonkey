@@ -19,7 +19,6 @@ import { useUsers } from "../../hooks/useUsers";
 import { useFriendships } from "../../hooks/useFriendships";
 import { useGetStudyHistory } from "../../hooks/useUserActivity";
 import { useCourses } from "../../hooks/useCourses";
-// Removed useRooms since we use ChatStore for chat creation logic
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useToast } from "../../utils/useToast";
@@ -120,36 +119,58 @@ const ActivityHeatmap = ({ historyData }: { historyData: any }) => {
 
   const chartData = useMemo(() => {
     if (!historyData) return [];
+
     const today = new Date();
+    // Calculate start date: Go back 16 weeks, then find the Sunday of that week
     const numWeeks = 16;
     const startDate = new Date(today);
     startDate.setDate(today.getDate() - (numWeeks * 7));
-    const dayOfWeek = startDate.getDay();
-    startDate.setDate(startDate.getDate() - dayOfWeek);
+    const dayOfWeek = startDate.getDay(); // 0 is Sunday
+    startDate.setDate(startDate.getDate() - dayOfWeek); // Align to Sunday
 
     const weeks = [];
     let currentWeek = [];
+
+    // Generate dates until we reach today (or end of this week)
     const itrDate = new Date(startDate);
     const endDate = new Date(today);
-    endDate.setDate(today.getDate() + (6 - today.getDay()));
+    endDate.setDate(today.getDate() + (6 - today.getDay())); // Fill until end of current week
 
     while (itrDate <= endDate) {
       const dateStr = itrDate.toISOString().split('T')[0];
+
+      // Data Mapping Logic - Updated to use dailyActivity map from backend (Redis merged data)
       let count = 0;
-      if (historyData.sessions && Array.isArray(historyData.sessions)) {
-        const sessions = historyData.sessions.filter((s: any) => s.date?.startsWith(dateStr));
-        count = sessions.reduce((acc: number, curr: any) => acc + (Math.floor((curr.duration || 0) / 60)), 0);
-      } else if (historyData[dateStr]) {
+
+      // 1. Check if backend provided the pre-calculated heatmap map (Best accuracy - includes Heartbeat)
+      if (historyData.dailyActivity && typeof historyData.dailyActivity === 'object') {
+        count = historyData.dailyActivity[dateStr] || 0;
+      }
+      // 2. Fallback to direct map structure (Legacy support)
+      else if (historyData[dateStr] && typeof historyData[dateStr] === 'number') {
         count = historyData[dateStr];
       }
+      // 3. Fallback to parsing sessions array (Lowest accuracy, misses generic online time)
+      else if (historyData.sessions && Array.isArray(historyData.sessions)) {
+        const sessions = historyData.sessions.filter((s: any) => {
+          if (!s.date) return false;
+          return s.date.startsWith(dateStr);
+        });
+        count = sessions.reduce((acc: number, curr: any) => acc + (Math.floor((curr.duration || 0) / 60)), 0);
+      }
+
       currentWeek.push({ date: dateStr, count });
+
       if (currentWeek.length === 7) {
         weeks.push(currentWeek);
         currentWeek = [];
       }
+
       itrDate.setDate(itrDate.getDate() + 1);
     }
+
     if (currentWeek.length > 0) weeks.push(currentWeek);
+
     return weeks;
   }, [historyData]);
 

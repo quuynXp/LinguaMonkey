@@ -269,12 +269,13 @@ export interface UserReminderResponse {
 export interface UserReminderRequest {
     title?: string;
     message?: string;
-    reminderTime: string;
     reminderDate?: string;
     repeatType?: Enums.RepeatType;
     targetType: Enums.TargetType;
     targetId?: string;
     enabled?: boolean;
+    time?: string;
+    date?: string;
 }
 
 export interface CreateFlashcardRequest {
@@ -1933,9 +1934,8 @@ export interface StudySessionResponse {
 export interface StudyHistoryResponse {
     sessions: StudySessionResponse[];
     stats?: StatsResponse;
-    totalTime?: number;
+    dailyActivity: { [key: string]: number }; 
 }
-
 export interface SubmitExerciseResponse {
     score: number;
     total: number;

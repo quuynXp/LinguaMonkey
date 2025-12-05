@@ -64,16 +64,23 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     while (itrDate <= endDate) {
       const dateStr = itrDate.toISOString().split('T')[0];
 
-      // Data Mapping Logic
       let count = 0;
-      if (historyData.sessions && Array.isArray(historyData.sessions)) {
+
+      // 1. Check if backend provided the pre-calculated heatmap map (Best accuracy)
+      if (historyData.dailyActivity && typeof historyData.dailyActivity === 'object') {
+        count = historyData.dailyActivity[dateStr] || 0;
+      }
+      // 2. Fallback to direct map structure (Legacy support)
+      else if (historyData[dateStr] && typeof historyData[dateStr] === 'number') {
+        count = historyData[dateStr];
+      }
+      // 3. Fallback to parsing sessions array (Lowest accuracy, misses generic online time)
+      else if (historyData.sessions && Array.isArray(historyData.sessions)) {
         const sessions = historyData.sessions.filter((s: any) => {
           if (!s.date) return false;
           return s.date.startsWith(dateStr);
         });
         count = sessions.reduce((acc: number, curr: any) => acc + (Math.floor((curr.duration || 0) / 60)), 0);
-      } else if (historyData[dateStr]) {
-        count = historyData[dateStr];
       }
 
       currentWeek.push({ date: dateStr, count });
@@ -150,7 +157,12 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
   );
 };
 
+// ... (Rest of ProfileScreen.tsx remains unchanged: BadgeProgressSection, CombinedFriendsSection, etc.)
+// Re-exporting the rest of the file content as provided in context for completeness is assumed not needed unless requested.
+// The primary fix is in ActivityHeatmap logic above.
+
 const BadgeProgressSection = ({ userId }: { userId: string }) => {
+  // ... (same as original)
   const { t } = useTranslation();
   const { data: badgeProgress, isLoading } = useBadgeProgress(userId);
 
@@ -205,7 +217,10 @@ const BadgeProgressSection = ({ userId }: { userId: string }) => {
   );
 };
 
+// ... (Continuing with the rest of ProfileScreen components)
+
 const InfoRow = ({ icon, label, value, copyable = false }: { icon: string; label: string; value?: string | null | number | boolean; copyable?: boolean }) => {
+  // ... (same as original)
   if (value === undefined || value === null || value === '') return null;
   const handleCopy = () => {
     if (copyable && typeof value === 'string') {
@@ -450,6 +465,7 @@ const ProfileScreen: React.FC = () => {
   const handleUploadEnd = useCallback(() => setUploading(false), []);
 
   const renderSingleHeader = () => {
+    // ... (Same as original)
     const singleAvatarSource = getAvatarSource(user?.avatarUrl, user?.gender);
     const vip = user?.vip || userStore.vip;
     const show3D = character3d && character3d.modelUrl && character3d.modelUrl.length > 0;

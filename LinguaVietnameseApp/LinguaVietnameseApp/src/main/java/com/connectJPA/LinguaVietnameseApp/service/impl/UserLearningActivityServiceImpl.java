@@ -80,7 +80,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             }
         }
 
-        // 1. Log Activity to DB
         UserLearningActivityResponse activityLog = logUserActivity(
                 request.getUserId(),
                 request.getActivityType(),
@@ -91,43 +90,41 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 skillType
         );
 
-        // 2. Update User Coins/Exp & STREAK LOGIC
         User user = userRepository.findById(request.getUserId()).orElse(null);
         if (user != null) {
             user.setExp(user.getExp() + expReward);
             user.setCoins(user.getCoins() + expReward);
             user.setLastActiveAt(OffsetDateTime.now());
 
-            // --- STREAK INCREMENT LOGIC ---
             LocalDate today = LocalDate.now(VN_ZONE);
             Long minGoal = user.getMinLearningDurationMinutes() != 0 ? (long) user.getMinLearningDurationMinutes() : 15L;
             
-            // Calculate total including the activity just saved
             Long totalDurationToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(user.getUserId(), today);
             if (totalDurationToday == null) totalDurationToday = 0L;
+            
+            // Check Redis for more accurate online time
+            String redisKey = ONLINE_TIME_KEY + user.getUserId() + ":" + today.toString();
+            Object redisVal = redisTemplate.opsForValue().get(redisKey);
+            long onlineMinutes = redisVal != null ? Long.parseLong(redisVal.toString()) : 0L;
+            
+            // Use maximum of recorded lesson time OR online heartbeat time
+            long effectiveMinutes = Math.max(totalDurationToday, onlineMinutes);
 
-            if (totalDurationToday >= minGoal) {
-                // FIXED: lastStreakCheckDate is LocalDate, no need for timezone conversion
+            if (effectiveMinutes >= minGoal) {
                 LocalDate lastCheck = user.getLastStreakCheckDate();
-
                 if (lastCheck == null || !lastCheck.equals(today)) {
                     user.setStreak(user.getStreak() + 1);
-                    // FIXED: Set LocalDate (today) instead of OffsetDateTime
                     user.setLastStreakCheckDate(today);
                     log.info("Streak incremented for user {}. New Streak: {}", user.getUserId(), user.getStreak());
                 }
             }
-            // ------------------------------
-
             userRepository.save(user);
         }
         
-        // 3. Invalidate cache
         redisTemplate.delete(HISTORY_CACHE_KEY + request.getUserId() + ":week");
         redisTemplate.delete(HISTORY_CACHE_KEY + request.getUserId() + ":month");
         redisTemplate.delete(HISTORY_CACHE_KEY + request.getUserId() + ":year");
         
-        // 4. Update Challenges
         DailyChallengeUpdateResponse challengeUpdate = null;
         UUID userId = request.getUserId();
 
@@ -204,8 +201,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         userLearningActivityRepository.softDeleteById(id);
     }
 
-    // --- MAIN STATS LOGIC ---
-
     @Override
     public StudyHistoryResponse getAggregatedStudyHistory(UUID userId, String period) {
         LocalDate endDate = LocalDate.now();
@@ -235,39 +230,39 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         OffsetDateTime endOdt = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime prevStartOdt = prevStartDate.atStartOfDay().atOffset(ZoneOffset.UTC);
 
-        // 1. Fetch Data
+        // 1. Fetch DB Data (Specific Activities)
         List<UserLearningActivity> activities = userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, startOdt, endOdt);
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
-        // 2. Current Metrics
+        // 2. Metrics Calculation
         long currentTotalTime = activities.stream().mapToLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0).sum();
         int currentLessons = (int) activities.stream().filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETED).count();
-        // Calculate Weighted Accuracy
+        
         double totalScore = activities.stream().mapToDouble(a -> a.getScore() != null ? a.getScore() : 0).sum();
         double totalMaxScore = activities.stream().mapToDouble(a -> a.getMaxScore() != null ? a.getMaxScore() : 0).sum();
         double currentAccuracy = totalMaxScore > 0 ? (totalScore / totalMaxScore) * 100.0 : 0.0;
 
-        // 3. Previous Metrics (For Comparison)
         long prevTotalTime = userLearningActivityRepository.sumDurationByUserIdAndDateRange(userId, prevStartOdt, startOdt);
         double prevAccuracy = userLearningActivityRepository.calculateAverageAccuracy(userId, prevStartOdt, startOdt);
         
         double timeGrowth = prevTotalTime == 0 ? (currentTotalTime > 0 ? 100.0 : 0.0) : ((double)(currentTotalTime - prevTotalTime) / prevTotalTime) * 100;
         double accuracyGrowth = prevAccuracy == 0 ? (currentAccuracy > 0 ? 100.0 : 0.0) : ((currentAccuracy - prevAccuracy) / prevAccuracy) * 100;
 
-        // 4. Find Weakest Skill
         List<Object[]> weakSkills = userLearningActivityRepository.findWeakestSkills(userId, startOdt, endOdt);
         String weakestSkill = weakSkills.isEmpty() ? "NONE" : weakSkills.get(0)[0].toString();
 
-        // 5. Build Charts
+        // 3. Build Detailed Charts & Heatmap Data using Redis (Heartbeat) + DB
         List<StatsResponse.ChartDataPoint> timeChart = new ArrayList<>();
         List<StatsResponse.ChartDataPoint> accuracyChart = new ArrayList<>();
+        Map<String, Integer> dailyHeatmap = new HashMap<>(); // NEW: Merged Map
         
-        Map<LocalDate, Long> dailyTime = new HashMap<>();
+        Map<LocalDate, Long> dbDailyTime = new HashMap<>();
         Map<LocalDate, List<Double>> dailyAccuracy = new HashMap<>();
 
+        // Aggregate DB data first
         for (UserLearningActivity a : activities) {
             LocalDate d = a.getCreatedAt().toLocalDate();
-            dailyTime.merge(d, a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L, Long::sum);
+            dbDailyTime.merge(d, a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L, Long::sum);
             if (a.getMaxScore() != null && a.getMaxScore() > 0) {
                 dailyAccuracy.computeIfAbsent(d, k -> new ArrayList<>()).add((double)a.getScore()/a.getMaxScore() * 100);
             }
@@ -277,15 +272,30 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         DateTimeFormatter labelFormatter = period.equals("year") ? DateTimeFormatter.ofPattern("MM/yy") : DateTimeFormatter.ofPattern("dd/MM");
         
         while (!temp.isAfter(endDate)) {
+            String dateStr = temp.toString();
+            String redisKey = ONLINE_TIME_KEY + userId + ":" + dateStr;
+            
+            // Get Redis Heartbeat Data
+            Object redisValObj = redisTemplate.opsForValue().get(redisKey);
+            long redisMinutes = redisValObj != null ? Long.parseLong(redisValObj.toString()) : 0L;
+            
+            // Get DB Lesson Data (converted to minutes)
+            long dbSeconds = dbDailyTime.getOrDefault(temp, 0L);
+            long dbMinutes = dbSeconds / 60;
+
+            // Merge: Use the greater of the two. Redis tracks general presence, DB tracks focused learning.
+            long finalMinutes = Math.max(redisMinutes, dbMinutes);
+            dailyHeatmap.put(dateStr, (int) finalMinutes);
+
+            // Chart Data construction
             String label = temp.format(labelFormatter);
-            long timeVal = dailyTime.getOrDefault(temp, 0L);
             List<Double> accList = dailyAccuracy.getOrDefault(temp, Collections.emptyList());
             double accVal = accList.isEmpty() ? 0.0 : accList.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
 
-            timeChart.add(new StatsResponse.ChartDataPoint(label, (double)timeVal / 60.0, temp.toString()));
+            timeChart.add(new StatsResponse.ChartDataPoint(label, (double)finalMinutes, temp.toString()));
             accuracyChart.add(new StatsResponse.ChartDataPoint(label, accVal, temp.toString()));
             
-            temp = period.equals("year") ? temp.plusMonths(1) : temp.plusDays(1);
+            temp = temp.plusDays(1);
         }
 
         StatsResponse stats = StatsResponse.builder()
@@ -312,11 +322,10 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         return StudyHistoryResponse.builder()
                 .sessions(sessionList)
                 .stats(stats)
+                .dailyActivity(dailyHeatmap) // NEW FIELD
                 .build();
     }
 
-    // --- REAL AI LOGIC (TRIGGERED BY SCHEDULER) ---
-    
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void generateDailyAnalysisForUser(UUID userId) {
@@ -326,7 +335,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         OffsetDateTime now = OffsetDateTime.now();
         OffsetDateTime yesterday = now.minusDays(1);
         
-        // 1. Get Real Data from yesterday/today
         List<UserLearningActivity> recentActivities = userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, yesterday, now);
         
         if (recentActivities.isEmpty()) return;
@@ -351,7 +359,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         int minutes = totalSeconds / 60;
         String weakAreasStr = weakSpots.isEmpty() ? "None" : String.join(", ", weakSpots);
         
-        // 2. Construct Real Prompt for AI
         String prompt = String.format(
             "Analyze this language learner's daily progress and give a short, encouraging 1-sentence tip. " +
             "Data: Learned %d minutes today. Accuracy: %.1f%%. Struggled with: %s. " +
@@ -361,7 +368,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             user.getProficiency() != null ? user.getProficiency().toString() : "Beginner"
         );
         
-        // 3. Call gRPC -> Python -> Gemini
         try {
             grpcClientService.callChatWithAIAsync(null, userId.toString(), prompt, new ArrayList<>())
                 .thenAccept(suggestion -> {
