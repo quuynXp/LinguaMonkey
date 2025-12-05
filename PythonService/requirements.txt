@@ -12,8 +12,8 @@ sentencepiece
 torch==2.6.0
 torchvision==0.21.0
 torchaudio==2.6.0
-langdetect
 svgwrite
+langdetect==1.0.9
 # --- Other libs ---
 soundfile==0.12.1
 language-tool-python==2.8

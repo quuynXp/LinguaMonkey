@@ -33,7 +33,8 @@ public class CourseScheduler {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final GrpcClientService grpcClientService;
-    private final CourseRepository courseRepository; // Inject thêm
+    private final CourseRepository courseRepository;
+    private final CourseVersionEnrollmentRepository courseVersionEnrollmentRepository;
 
     private static final String TIME_ZONE = "UTC";
     private static final UUID SYSTEM_USER_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
@@ -45,12 +46,46 @@ public class CourseScheduler {
     @Transactional
     public void runCourseValidationJob() {
         log.info("=== Starting Scheduled Course Validation Job ===");
-        
         validatePendingDrafts();
-
         performSystemReviews();
-        
         log.info("=== Completed Scheduled Course Validation Job ===");
+    }
+
+    // Runs at 20:00 VN Time (13:00 UTC) every 3 days
+    @Scheduled(cron = "0 0 13 */3 * ?", zone = TIME_ZONE)
+    @Transactional
+    public void remindInactiveCourseStudents() {
+        log.info("Starting Inactive Course Student Reminder...");
+        OffsetDateTime threshold = OffsetDateTime.now().minusDays(3);
+        
+        List<CourseVersionEnrollment> stalledEnrollments = courseVersionEnrollmentRepository.findStalledEnrollments(threshold);
+
+        for (CourseVersionEnrollment enrollment : stalledEnrollments) {
+            User user = enrollment.getUser();
+            if (user == null || user.isDeleted() || !user.getUserSettings().isCourseReminders()) continue;
+
+            if (enrollment.getProgress() >= 100) continue;
+
+            try {
+                String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
+                String courseTitle = enrollment.getCourseVersion().getCourse().getTitle();
+                
+                String[] message = NotificationI18nUtil.getLocalizedMessage("COURSE_INACTIVITY_REMINDER", langCode);
+                
+                NotificationRequest request = NotificationRequest.builder()
+                        .userId(user.getUserId())
+                        .title(message[0])
+                        .content(String.format(message[1], courseTitle))
+                        .type("COURSE_REMINDER")
+                        .payload(String.format("{\"screen\":\"CourseStack\", \"stackScreen\":\"CourseDetail\", \"courseId\":\"%s\"}", enrollment.getCourseVersion().getCourseId()))
+                        .build();
+
+                notificationService.createPushNotification(request);
+
+            } catch (Exception e) {
+                log.error("Error sending course reminder to user {}", user.getUserId(), e);
+            }
+        }
     }
 
     private void validatePendingDrafts() {
@@ -59,9 +94,7 @@ public class CourseScheduler {
 
         for (CourseVersion draft : pendingDrafts) {
             StringBuilder warningLog = new StringBuilder();
-            
             boolean integrityPassed = checkVersionIntegrity(draft, warningLog);
-            
             boolean contentPassed = checkContentQuality(draft, warningLog);
 
             draft.setIsIntegrityValid(integrityPassed);
@@ -69,7 +102,6 @@ public class CourseScheduler {
             draft.setValidationWarnings(warningLog.toString());
             
             updateOptimizationFlags(draft);
-
             courseVersionRepository.save(draft);
 
             if (!integrityPassed || !contentPassed) {
@@ -79,23 +111,16 @@ public class CourseScheduler {
     }
 
     private boolean checkVersionIntegrity(CourseVersion draft, StringBuilder warnings) {
-        if (draft.getVersionNumber() == 1) {
-            return true;
-        }
+        if (draft.getVersionNumber() == 1) return true;
 
-        // Fix: getCourseId() instead of getCourse().getCourseId()
         Optional<CourseVersion> previousPublicOpt = courseVersionRepository.findLatestPublicVersionByCourseId(draft.getCourseId());
-        if (previousPublicOpt.isEmpty()) {
-            return true;
-        }
+        if (previousPublicOpt.isEmpty()) return true;
 
         CourseVersion oldVersion = previousPublicOpt.get();
         List<CourseVersionLesson> oldCVLs = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(oldVersion.getVersionId());
         List<CourseVersionLesson> newCVLs = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(draft.getVersionId());
 
-        Set<UUID> newLessonIds = newCVLs.stream()
-                .map(cvl -> cvl.getLesson().getLessonId())
-                .collect(Collectors.toSet());
+        Set<UUID> newLessonIds = newCVLs.stream().map(cvl -> cvl.getLesson().getLessonId()).collect(Collectors.toSet());
 
         boolean missingOldLessons = false;
         List<String> missingNames = new ArrayList<>();
@@ -108,16 +133,9 @@ public class CourseScheduler {
         }
 
         if (missingOldLessons) {
-            warnings.append("Integrity Violation: Cannot delete previously published lessons: ")
-                    .append(String.join(", ", missingNames)).append("; ");
+            warnings.append("Integrity Violation: Cannot delete published lessons: ").append(String.join(", ", missingNames)).append("; ");
             return false;
         }
-
-        long addedCount = newLessonIds.size() - oldCVLs.size();
-        if (oldCVLs.size() > 0 && ((double) addedCount / oldCVLs.size() > 0.5)) {
-             log.info("Version {} has >50% new content compared to previous.", draft.getVersionId());
-        }
-
         return true;
     }
 
@@ -127,30 +145,21 @@ public class CourseScheduler {
 
         for (CourseVersionLesson cvl : cvls) {
             Lesson lesson = cvl.getLesson();
-            String lessonName = lesson.getLessonName();
-
-            boolean isContentTooShort = false;
-            
             if (lesson.getDurationSeconds() == null || lesson.getDurationSeconds() < 60) {
                  boolean hasQuestions = lesson.getLessonQuestions() != null && !lesson.getLessonQuestions().isEmpty();
-                 
                  boolean hasVideo = !videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId()).isEmpty();
 
                  if (!hasQuestions && !hasVideo) {
-                     isContentTooShort = true;
+                     warnings.append(String.format("Lesson '%s' is too short (Duration < 1m, no content). ", lesson.getLessonName()));
+                     isValid = false;
                  }
-            }
-
-            if (isContentTooShort) {
-                warnings.append(String.format("Lesson '%s' is suspicious (Duration < 1m, no questions, no video). ", lessonName));
-                isValid = false;
             }
         }
         return isValid;
     }
 
     private void updateOptimizationFlags(CourseVersion version) {
-        long lessonCount = cvlRepository.countByCourseVersion_VersionId(version.getVersionId());
+        // optimization logic stub
     }
 
     private void performSystemReviews() {
@@ -158,26 +167,19 @@ public class CourseScheduler {
         
         for (CourseVersion version : unreviewedVersions) {
             try {
-                // Fix: Fetch Course manually
                 Course course = courseRepository.findById(version.getCourseId()).orElse(null);
                 if (course == null) continue;
 
                 List<CourseVersionLesson> cvls = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(version.getVersionId());
                 List<Lesson> lessons = cvls.stream().map(CourseVersionLesson::getLesson).collect(Collectors.toList());
                 
-                String courseTitle = course.getTitle();
-                
-                // Fix: description is now in Version, not Course
-                String courseDesc = version.getDescription();
-
                 CompletableFuture<CourseEvaluationResponse> future = grpcClientService.callEvaluateCourseVersionAsync(
-                        systemToken, courseTitle, courseDesc, lessons
+                        systemToken, course.getTitle(), version.getDescription(), lessons
                 );
                 
                 CourseEvaluationResponse aiResponse = future.join();
 
                 CourseVersionReview review = new CourseVersionReview();
-                // Fix: getCourseId()
                 review.setCourseId(version.getCourseId());
                 review.setUserId(SYSTEM_USER_UUID);
                 review.setRating(BigDecimal.valueOf(aiResponse.getRating()));
@@ -201,7 +203,6 @@ public class CourseScheduler {
 
     private void notifyCreator(CourseVersion version, String notificationKey, String arg) {
         try {
-            // Fix: Fetch Course to get creatorId
             Course course = courseRepository.findById(version.getCourseId()).orElse(null);
             if (course == null) return;
 
@@ -213,9 +214,7 @@ public class CourseScheduler {
                 String[] message = NotificationI18nUtil.getLocalizedMessage(notificationKey, langCode);
                 
                 String content = message[1];
-                if (arg != null) {
-                    content = String.format(message[1], arg);
-                }
+                if (arg != null) content = String.format(message[1], arg);
 
                 NotificationRequest request = NotificationRequest.builder()
                         .userId(creatorId)

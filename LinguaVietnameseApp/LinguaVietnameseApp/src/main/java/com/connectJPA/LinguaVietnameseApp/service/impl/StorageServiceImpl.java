@@ -44,23 +44,27 @@ public class StorageServiceImpl implements StorageService {
             throw new RuntimeException("File too large. Max size is 50MB to ensure chat performance.");
         }
         try {
-            return uploadBytes(file.getBytes(), file.getOriginalFilename(), file.getContentType());
+            // OPTIMIZED: Use InputStream directly instead of loading bytes into memory
+            return uploadStream(file.getInputStream(), file.getOriginalFilename(), file.getContentType());
         } catch (IOException e) {
             log.error("Google Drive upload failed", e);
             throw new RuntimeException("Failed to upload file to Google Drive", e);
         }
     }
 
+    // Deprecated for large files, kept for backward compatibility if needed
     public String uploadBytes(byte[] data, String fileName, String contentType) {
+        return uploadStream(new ByteArrayInputStream(data), fileName, contentType);
+    }
+
+    @Override
+    public String uploadStream(InputStream inputStream, String fileName, String contentType) {
         try {
             File fileMetadata = new File();
             fileMetadata.setName(fileName);
             fileMetadata.setParents(Collections.singletonList(folderId));
 
-            InputStreamContent mediaContent = new InputStreamContent(
-                    contentType,
-                    new ByteArrayInputStream(data)
-            );
+            InputStreamContent mediaContent = new InputStreamContent(contentType, inputStream);
 
             // Upload file
             File uploadedFile = driveService.files().create(fileMetadata, mediaContent)
@@ -80,24 +84,17 @@ public class StorageServiceImpl implements StorageService {
             }
 
             log.info("Uploaded {} to Drive (OAuth2). ID: {}", fileName, fileId);
-            return getFileUrl(fileId); // Return full URL so frontend can use directly
+            return getFileUrl(fileId); 
         } catch (IOException e) {
-            log.error("Google Drive byte upload failed", e);
-            throw new RuntimeException("Failed to upload bytes to Google Drive: " + e.getMessage(), e);
+            log.error("Google Drive stream upload failed", e);
+            throw new RuntimeException("Failed to upload stream to Google Drive: " + e.getMessage(), e);
         }
-    }
-
-    @Override
-    public String uploadStream(InputStream inputStream, String objectName, String contentType) {
-        throw new UnsupportedOperationException("Upload stream not implemented for Drive");
     }
 
     @Transactional
     @Override
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
-        // For Chat, usually tempPath (FileID) is sufficient
         try {
-            // Extract File ID if tempPath is a full URL, otherwise assume it's ID
             String fileId = tempPath;
             if (tempPath.contains("id=")) {
                 fileId = tempPath.substring(tempPath.indexOf("id=") + 3);

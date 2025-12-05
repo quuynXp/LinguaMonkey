@@ -7,12 +7,12 @@ import { useTransactionsApi } from "../../hooks/useTransaction"
 import { useWallet } from "../../hooks/useWallet"
 import { useCourses } from "../../hooks/useCourses"
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter"
-
 import { useTranslation } from "react-i18next"
 import * as Enums from "../../types/enums"
 import { PaymentRequest, TransactionRequest } from "../../types/dto"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { createScaledSheet } from "../../utils/scaledStyles"
+import PaymentMethodSelector from "../../components/payment/PaymentMethodSelector"
 
 interface CourseVersion {
   versionId: string;
@@ -46,7 +46,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
   const createPaymentUrl = useTransactionsApi().useCreatePayment();
   const createTransaction = useTransactionsApi().useCreateTransaction();
   const { convert, isLoading: loadingRates } = useCurrencyConverter();
-
   const { mutate: validateDiscount, isPending: isValidatingCoupon } = useCourses().useValidateDiscount();
 
   const COINS_PER_USD = 1000;
@@ -57,7 +56,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
     : 0;
 
   const priceAfterCoupon = Math.max(0, originalPrice - discountAmount);
-
   const availableCoins = user?.coins || 0;
 
   const maxCoinsUsable = useMemo(() => {
@@ -66,34 +64,23 @@ const PaymentScreen = ({ navigation, route }: any) => {
   }, [availableCoins, priceAfterCoupon]);
 
   useEffect(() => {
-    if (useCoins) {
-      setCoinsToUse(maxCoinsUsable);
-    } else {
-      setCoinsToUse(0);
-    }
-  }, [useCoins, priceAfterCoupon, maxCoinsUsable]);
+    setCoinsToUse(useCoins ? maxCoinsUsable : 0);
+  }, [useCoins, maxCoinsUsable]);
 
   const coinDiscountAmount = useCoins ? (coinsToUse / COINS_PER_USD) : 0;
-
   const finalAmount = Math.max(0, priceAfterCoupon - coinDiscountAmount);
-
   const userCurrency = user?.country === Enums.Country.VIETNAM ? 'VND' : 'USD';
 
   const displayFinalPrice = convert(finalAmount, userCurrency);
   const displayOriginalPrice = convert(originalPrice, userCurrency);
-
   const isBalanceSufficient = (walletData?.balance || 0) >= displayFinalPrice;
 
   const handleApplyCoupon = () => {
     Keyboard.dismiss();
     if (!couponCode.trim()) return;
-
     validateDiscount({ code: couponCode, versionId: course.latestPublicVersion.versionId }, {
       onSuccess: (data) => {
-        setAppliedDiscount({
-          code: data.code,
-          percent: data.discountPercentage
-        });
+        setAppliedDiscount({ code: data.code, percent: data.discountPercentage });
         Alert.alert(t("success"), t("payment.couponApplied", { percent: data.discountPercentage }));
       },
       onError: () => {
@@ -103,35 +90,10 @@ const PaymentScreen = ({ navigation, route }: any) => {
     });
   };
 
-  const handleRemoveCoupon = () => {
-    setAppliedDiscount(null);
-    setCouponCode("");
-  };
-
-  const increaseCoins = () => {
-    if (coinsToUse + 100 <= maxCoinsUsable) {
-      setCoinsToUse(prev => prev + 100);
-    } else {
-      setCoinsToUse(maxCoinsUsable);
-    }
-  };
-
-  const decreaseCoins = () => {
-    if (coinsToUse - 100 >= 0) {
-      setCoinsToUse(prev => prev - 100);
-    } else {
-      setCoinsToUse(0);
-    }
-  };
-
   const handlePayment = () => {
     if (!user?.userId) return;
-
     if (selectedMethod === "wallet") {
-      if (!isBalanceSufficient) {
-        Alert.alert(t('common.error'), t('payment.insufficientBalance'));
-        return;
-      }
+      if (!isBalanceSufficient) return Alert.alert(t('common.error'), t('payment.insufficientBalance'));
       processWalletPayment();
     } else {
       processGatewayPayment();
@@ -140,7 +102,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
 
   const processWalletPayment = () => {
     const cleanAmount = Number(displayFinalPrice.toFixed(2));
-
     const payload: TransactionRequest = {
       userId: user!.userId,
       amount: cleanAmount,
@@ -151,7 +112,6 @@ const PaymentScreen = ({ navigation, route }: any) => {
       description: `Payment for course: ${course.title} ${appliedDiscount ? `(Code: ${appliedDiscount.code})` : ''}`,
       coins: useCoins ? coinsToUse : 0,
       receiverId: course.creatorId,
-      // CRITICAL: Send versionId so backend can create enrollment
       courseVersionId: course.latestPublicVersion.versionId
     };
 
@@ -166,8 +126,7 @@ const PaymentScreen = ({ navigation, route }: any) => {
 
   const processGatewayPayment = () => {
     const cleanAmount = Number(displayFinalPrice.toFixed(2));
-
-    const payload: PaymentRequest & { coins?: number; type?: string } = {
+    const payload: PaymentRequest & { coins?: number } = {
       userId: user!.userId,
       amount: cleanAmount,
       provider: gatewayProvider,
@@ -176,14 +135,15 @@ const PaymentScreen = ({ navigation, route }: any) => {
       returnUrl: "linguamonkey://payment/success",
       description: `Buy ${course.title}`,
       coins: useCoins ? coinsToUse : 0
-      // Note: PaymentRequest for gateway usually handles enrollment via webhook or returnUrl callback
-      // Ensure backend createPaymentUrl or handleWebhook logic also considers courseVersionId if needed later.
     };
 
     createPaymentUrl.mutate(payload, {
       onSuccess: async (url) => {
         if (url) {
           const result = await WebBrowser.openBrowserAsync(url);
+          if (result.type === 'dismiss' || result.type === 'cancel') {
+            // Optional: Check transaction status manually if user closed browser
+          }
         }
       },
       onError: () => Alert.alert(t('common.error'), t('payment.gatewayError'))
@@ -216,12 +176,13 @@ const PaymentScreen = ({ navigation, route }: any) => {
         <View style={styles.placeholder} />
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.card}>
           <Text style={styles.courseTitle}>{course.title}</Text>
           <Text style={styles.instructor}>by {course.instructor}</Text>
           <View style={styles.divider} />
 
+          {/* Coupon Section */}
           <View style={styles.couponContainer}>
             <View style={styles.inputWrapper}>
               <Icon name="local-offer" size={20} color="#6B7280" style={styles.inputIcon} />
@@ -235,7 +196,7 @@ const PaymentScreen = ({ navigation, route }: any) => {
               />
             </View>
             {appliedDiscount ? (
-              <TouchableOpacity style={styles.removeBtn} onPress={handleRemoveCoupon}>
+              <TouchableOpacity style={styles.removeBtn} onPress={() => { setAppliedDiscount(null); setCouponCode(""); }}>
                 <Icon name="close" size={20} color="#EF4444" />
               </TouchableOpacity>
             ) : (
@@ -249,13 +210,7 @@ const PaymentScreen = ({ navigation, route }: any) => {
             )}
           </View>
 
-          {appliedDiscount && (
-            <View style={styles.discountRow}>
-              <Text style={styles.discountLabel}>{t("payment.discountApplied")}:</Text>
-              <Text style={styles.discountValue}>-{appliedDiscount.percent}% ({appliedDiscount.code})</Text>
-            </View>
-          )}
-
+          {/* Coin Switch */}
           <View style={styles.coinSection}>
             <View style={styles.coinHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -270,77 +225,29 @@ const PaymentScreen = ({ navigation, route }: any) => {
                 disabled={availableCoins <= 0}
               />
             </View>
-
             {useCoins && (
-              <View style={styles.coinControls}>
-                <TouchableOpacity onPress={decreaseCoins} style={styles.coinBtn}>
-                  <Icon name="remove" size={20} color="#6B7280" />
-                </TouchableOpacity>
-                <Text style={styles.coinValue}>{coinsToUse}</Text>
-                <TouchableOpacity onPress={increaseCoins} style={styles.coinBtn}>
-                  <Icon name="add" size={20} color="#6B7280" />
-                </TouchableOpacity>
-                <Text style={styles.discountText}>
-                  - ${(coinsToUse / COINS_PER_USD).toFixed(2)}
-                </Text>
-              </View>
+              <Text style={styles.discountText}>- ${(coinsToUse / COINS_PER_USD).toFixed(2)}</Text>
             )}
           </View>
 
           <View style={styles.divider} />
-
           <View style={styles.priceRow}>
             <Text style={styles.label}>{t('payment.total')}</Text>
             {renderPriceDisplay()}
           </View>
         </View>
 
-        <Text style={styles.sectionTitle}>{t('payment.selectMethod')}</Text>
-
-        <TouchableOpacity
-          style={[styles.methodCard, selectedMethod === 'wallet' && styles.selectedMethod]}
-          onPress={() => setSelectedMethod('wallet')}
-        >
-          <View style={styles.methodHeader}>
-            <Icon name="account-balance-wallet" size={24} color="#4F46E5" />
-            <Text style={styles.methodTitle}>{t('payment.myWallet')}</Text>
-            {selectedMethod === 'wallet' && <Icon name="check-circle" size={20} color="#4F46E5" />}
-          </View>
-          <Text style={styles.balanceText}>
-            {t('payment.available')}: {loadingBalance ? '...' : walletData?.balance.toLocaleString()} {userCurrency}
-          </Text>
-          {!isBalanceSufficient && (
-            <Text style={styles.errorText}>{t('payment.insufficientWarning')}</Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.methodCard, selectedMethod === 'gateway' && styles.selectedMethod]}
-          onPress={() => setSelectedMethod('gateway')}
-        >
-          <View style={styles.methodHeader}>
-            <Icon name="public" size={24} color="#10B981" />
-            <Text style={styles.methodTitle}>{t('payment.externalGateway')}</Text>
-            {selectedMethod === 'gateway' && <Icon name="check-circle" size={20} color="#10B981" />}
-          </View>
-
-          {selectedMethod === 'gateway' && (
-            <View style={styles.gatewayOptions}>
-              <TouchableOpacity
-                style={[styles.chip, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChip]}
-                onPress={() => setGatewayProvider(Enums.TransactionProvider.VNPAY)}
-              >
-                <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.VNPAY && styles.selectedChipText]}>VNPAY</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.chip, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChip]}
-                onPress={() => setGatewayProvider(Enums.TransactionProvider.STRIPE)}
-              >
-                <Text style={[styles.chipText, gatewayProvider === Enums.TransactionProvider.STRIPE && styles.selectedChipText]}>Stripe (Visa/Master)</Text>
-              </TouchableOpacity>
-            </View>
-          )}
-        </TouchableOpacity>
+        {/* Reusable Payment Selector */}
+        <PaymentMethodSelector
+          selectedMethod={selectedMethod}
+          selectedProvider={gatewayProvider}
+          onMethodChange={setSelectedMethod}
+          onProviderChange={setGatewayProvider}
+          walletBalance={walletData?.balance}
+          currency={userCurrency}
+          showWalletOption={true}
+          insufficientBalance={!isBalanceSufficient}
+        />
 
       </ScrollView>
 
@@ -369,12 +276,10 @@ const styles = createScaledSheet({
   headerTitle: { fontSize: 18, fontWeight: "600", color: "#1F2937" },
   placeholder: { width: 24 },
   content: { flex: 1, padding: 20 },
-
   card: { backgroundColor: "#FFF", padding: 20, borderRadius: 12, marginBottom: 24, elevation: 2 },
   courseTitle: { fontSize: 18, fontWeight: "700", color: "#1F2937", marginBottom: 4 },
   instructor: { fontSize: 14, color: "#6B7280" },
   divider: { height: 1, backgroundColor: "#E5E7EB", marginVertical: 12 },
-
   couponContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   inputWrapper: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 10, marginRight: 8 },
   inputIcon: { marginRight: 8 },
@@ -383,37 +288,14 @@ const styles = createScaledSheet({
   disabledBtn: { backgroundColor: '#A5B4FC' },
   applyText: { color: '#FFF', fontWeight: '600', fontSize: 12 },
   removeBtn: { padding: 10, backgroundColor: '#FEF2F2', borderRadius: 8 },
-  discountRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
-  discountLabel: { color: '#059669', fontSize: 14 },
-  discountValue: { color: '#059669', fontWeight: 'bold', fontSize: 14 },
-
   coinSection: { marginTop: 12, padding: 12, backgroundColor: '#F9FAFB', borderRadius: 8, borderWidth: 1, borderColor: '#F3F4F6' },
   coinHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   coinLabel: { marginLeft: 8, fontSize: 14, fontWeight: '600', color: '#4B5563' },
-  coinControls: { flexDirection: 'row', alignItems: 'center', marginTop: 12, justifyContent: 'space-between' },
-  coinBtn: { padding: 4, backgroundColor: '#E5E7EB', borderRadius: 8 },
-  coinValue: { fontSize: 16, fontWeight: 'bold', color: '#1F2937', width: 60, textAlign: 'center' },
-  discountText: { fontSize: 14, fontWeight: '600', color: '#059669' },
-
+  discountText: { fontSize: 14, fontWeight: '600', color: '#059669', textAlign: 'right', marginTop: 8 },
   priceRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   label: { fontSize: 16, color: "#4B5563" },
   originalPrice: { fontSize: 14, color: '#9CA3AF', textDecorationLine: 'line-through', marginBottom: 2 },
   totalValue: { fontSize: 20, fontWeight: "700", color: "#4F46E5" },
-
-  sectionTitle: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 12 },
-  methodCard: { backgroundColor: "#FFF", padding: 16, borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", marginBottom: 12 },
-  selectedMethod: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },
-  methodHeader: { flexDirection: "row", alignItems: "center", gap: 12 },
-  methodTitle: { fontSize: 16, fontWeight: "500", flex: 1, color: "#1F2937" },
-  balanceText: { marginLeft: 36, marginTop: 4, fontSize: 14, color: "#6B7280" },
-  errorText: { marginLeft: 36, marginTop: 4, fontSize: 12, color: "#EF4444" },
-
-  gatewayOptions: { flexDirection: "row", gap: 10, marginTop: 12, marginLeft: 36 },
-  chip: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20, backgroundColor: "#F3F4F6" },
-  selectedChip: { backgroundColor: "#4F46E5" },
-  chipText: { fontSize: 12, color: "#4B5563" },
-  selectedChipText: { color: "#FFF" },
-
   footer: { padding: 20, backgroundColor: "#FFF", borderTopWidth: 1, borderTopColor: "#E5E7EB" },
   payButton: { backgroundColor: "#4F46E5", padding: 16, borderRadius: 12, alignItems: "center" },
   disabledButton: { backgroundColor: "#9CA3AF" },

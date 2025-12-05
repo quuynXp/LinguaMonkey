@@ -14,6 +14,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.exception.SystemException;
+import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.ChatMessageMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
@@ -22,6 +23,8 @@ import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
 import com.google.gson.Gson;
+
+import learning.TranslateResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -38,6 +41,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @Service
 @RequiredArgsConstructor
@@ -52,6 +56,7 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     private final MessageTranslationRepository messageTranslationRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
+    private final GrpcClientService grpcClientService;
     private final UserService userService;
     private final Gson gson = new Gson();
 
@@ -88,13 +93,73 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         }
 
         ChatMessage message = chatMessageMapper.toEntity(request);
-        
         if (message.getId() == null) {
             message.setId(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()));
         }
-
         message.setRoomId(roomId);
         message.setSenderId(request.getSenderId());
+
+        // === LOGIC DỊCH THÔNG MINH (EAGER TRANSLATION) ===
+        // Chỉ dịch tin nhắn TEXT
+        if (request.getContent() != null && !request.getContent().isEmpty() 
+            && (request.getMessageType() == null || request.getMessageType().name().equals("TEXT"))) {
+            
+            String targetLang = "en"; // Default fallback
+            boolean shouldTranslate = false;
+
+            // 1. Xác định ngôn ngữ mục tiêu dựa trên người nhận
+            if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
+                UUID receiverId = request.getReceiverId(); 
+                if (receiverId == null) {
+                     // Fallback tìm member còn lại
+                     receiverId = roomMemberRepository.findOtherMemberId(roomId, request.getSenderId());
+                }
+                
+                if (receiverId != null) {
+                    User receiver = userRepository.findById(receiverId).orElse(null);
+                    // Lấy ngôn ngữ mẹ đẻ của người nhận làm ngôn ngữ đích
+                    if (receiver != null && receiver.getNativeLanguageCode() != null) {
+                        targetLang = receiver.getNativeLanguageCode();
+                        shouldTranslate = true;
+                    }
+                }
+            } else {
+                // Với Group Chat, có thể mặc định dịch sang tiếng Anh hoặc Việt
+                targetLang = "vi"; 
+                // shouldTranslate = true; // Uncomment để bật dịch cho Group
+            }
+
+            if (shouldTranslate) {
+                try {
+                    // Gọi Python để Detect & Translate
+                    // Truyền "auto" để Python tự detect source language
+                    CompletableFuture<TranslateResponse> future = grpcClientService.callTranslateAsync(
+                        null, // Internal call, no token needed if handled by interceptor logic or trusted network
+                        request.getContent(), 
+                        "auto", 
+                        targetLang
+                    );
+                    
+                    TranslateResponse aiResponse = future.join(); // Sync wait (gRPC fast enough)
+                    
+                    String detectedSource = aiResponse.getSourceLanguageDetected();
+                    String translatedText = aiResponse.getTranslatedText();
+                    
+                    // 2. Logic kiểm tra: Chỉ lưu nếu ngôn ngữ gốc KHÁC ngôn ngữ đích
+                    if (detectedSource != null && !detectedSource.equalsIgnoreCase(targetLang)) {
+                        message.setTranslatedText(translatedText);
+                        message.setTranslatedLang(targetLang);
+                    } else {
+                        // Cùng ngôn ngữ -> Không cần lưu bản dịch
+                        message.setTranslatedText(null); 
+                        message.setTranslatedLang(null);
+                    }
+                    
+                } catch (Exception e) {
+                    log.error("Auto-translation failed, saving original only: {}", e.getMessage());
+                }
+            }
+        }
         
         ChatMessage savedMessage = chatMessageRepository.save(message);
 

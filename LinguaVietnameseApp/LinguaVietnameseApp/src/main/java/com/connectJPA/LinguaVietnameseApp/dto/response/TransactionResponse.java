@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.Transaction;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionProvider;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.TransactionType;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
 import com.google.auto.value.AutoValue.Builder;
@@ -31,6 +32,7 @@ public class TransactionResponse {
     private BigDecimal amount;
     private TransactionStatus status;
     private TransactionProvider provider;
+    private TransactionType type;
     private String description;
     private boolean isDeleted;
     private OffsetDateTime createdAt;

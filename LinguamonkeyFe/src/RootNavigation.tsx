@@ -26,20 +26,39 @@ const RootNavigation = () => {
   const accessToken = useTokenStore((state) => state.accessToken);
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
   const { setUser, setLocalNativeLanguage } = useUserStore();
-  const { setAppIsActive, setCurrentAppScreen } = useChatStore();
+  const { setAppIsActive, setCurrentAppScreen, initStompClient, disconnectStompClient } = useChatStore();
 
   const [initialMainRoute, setInitialMainRoute] = useState<keyof MainStackParamList>("TabApp");
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
   const appState = useRef(AppState.currentState);
 
+  // --- GLOBAL STOMP CONNECTION MANAGEMENT ---
   useEffect(() => {
+    // 1. Connect if we have a token on mount
+    if (accessToken) {
+      initStompClient();
+    }
+
+    // 2. Manage connection based on Foreground/Background
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       appState.current = nextAppState;
       const isActive = nextAppState === "active";
       setAppIsActive(isActive);
+
+      if (accessToken) {
+        if (isActive) {
+          console.log("[Root] App foreground, reconnecting socket...");
+          initStompClient();
+        } else {
+          // Optional: Disconnect on background to save battery
+          // console.log("[Root] App background, disconnecting socket...");
+          // disconnectStompClient(); 
+        }
+      }
     });
+
     return () => { subscription.remove(); };
-  }, [setAppIsActive]);
+  }, [accessToken, initStompClient, disconnectStompClient, setAppIsActive]);
 
   const linking = useMemo(() => ({
     prefixes: [Linking.createURL("/"), "monkeylingua://", "https://monkeylingua.vercel.app"],
@@ -67,8 +86,9 @@ const RootNavigation = () => {
     return () => { if (cleanup) cleanup(); };
   }, []);
 
+  const HEALTH_CHECK_ENDPOINT = "/health";
+
   const waitForConnectivity = async () => {
-    // eslint-disable-next-line no-constant-condition
     while (true) {
       const netState = await NetInfo.fetch();
       if (!netState.isConnected) {
@@ -76,15 +96,11 @@ const RootNavigation = () => {
         await new Promise((resolve) => setTimeout(resolve, 2000));
         continue;
       }
-
       try {
-        // Ping Kong/Server root or a lightweight endpoint
-        await instance.get("/", { timeout: 3000 });
+        await instance.get(HEALTH_CHECK_ENDPOINT, { timeout: 3000 });
         setServerErrorMsg(null);
         break;
       } catch (error: any) {
-        // If we get a response (even 404, 401, 500), the server is alive/reachable.
-        // If we get no response (Network Error, Timeout), the server/gateway is down.
         if (error.response) {
           setServerErrorMsg(null);
           break;
@@ -127,8 +143,7 @@ const RootNavigation = () => {
               notificationService.registerTokenToBackend();
               setInitialMainRoute("TabApp");
             } catch (userErr) {
-              console.error("Fetch user failed, might need re-login or server hiccup after check", userErr);
-              // Optional: Decide if we want to force logout or retry here
+              console.error("Fetch user failed", userErr);
             }
           }
         }
@@ -160,9 +175,7 @@ const RootNavigation = () => {
         }}
       >
         {accessToken ? <MainStack initialRouteName={initialMainRoute} /> : <AuthStack initialParams={initialAuthParams} />}
-
         {accessToken && <ChatBubble />}
-
       </NavigationContainer>
     </View>
   );

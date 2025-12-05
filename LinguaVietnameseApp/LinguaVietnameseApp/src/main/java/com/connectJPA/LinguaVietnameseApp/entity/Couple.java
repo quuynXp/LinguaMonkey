@@ -37,16 +37,21 @@ public class Couple extends BaseEntity {
     private LocalDate startDate;   // ngày quen nhau
 
     @Column(name = "anniversary")
-    private LocalDate anniversary; // ngày kỷ niệm (có thể khác ngày quen)
+    private LocalDate anniversary; // ngày kỷ niệm
 
     private OffsetDateTime exploringStart;
     private OffsetDateTime exploringExpiresAt;
-    private OffsetDateTime  coupleStartDate;
+    private OffsetDateTime coupleStartDate;
+    
+    @Builder.Default
     private int couple_score = 0;
 
+    @Column(name = "last_interaction_at")
+    private OffsetDateTime lastInteractionAt; // FIELD BỊ THIẾU
+
     @Column(name = "shared_avatar_url")
-    private String sharedAvatarUrl; // ảnh chung (URL Cloudinary/Firebase)
+    private String sharedAvatarUrl; 
 
     @Column(name = "note", columnDefinition = "TEXT")
-    private String note; // ghi chú riêng (ví dụ "gặp nhau ở Hà Nội")
+    private String note; 
 }

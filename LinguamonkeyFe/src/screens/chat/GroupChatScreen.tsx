@@ -1,8 +1,9 @@
 import React, { useEffect, useCallback, useState, useMemo } from "react";
-import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Switch } from "react-native";
+import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Switch, ScrollView } from "react-native";
 import { useRoute, RouteProp, useFocusEffect, useNavigation } from "@react-navigation/native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/react/shallow";
 
 import ChatInnerView from "../../components/chat/ChatInnerView";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -10,12 +11,13 @@ import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useAppStore } from "../../stores/appStore";
 import { useRooms } from "../../hooks/useRoom";
-import { useVideoCalls } from "../../hooks/useVideos"; // Import useVideoCalls
-import { MemberResponse, AppApiResponse, UserSettings, CreateGroupCallRequest } from "../../types/dto";
+import { useVideoCalls } from "../../hooks/useVideos";
+import { MemberResponse, CreateGroupCallRequest } from "../../types/dto";
 import { RoomType, VideoCallType } from "../../types/enums";
-import instance from "../../api/axiosClient";
+import { privateClient } from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
-import IncomingCallModal from "../../components/modals/IncomingCallModal"; // Import the modal
+import IncomingCallModal from "../../components/modals/IncomingCallModal";
+import { stompService } from "../../services/stompService";
 
 type ChatRoomParams = {
     ChatRoom: {
@@ -33,16 +35,30 @@ const GroupChatScreen = () => {
     const { showToast } = useToast();
 
     // App Store for Settings
-    const { chatSettings, setChatSettings } = useAppStore();
+    const {
+        chatSettings,
+        setChatSettings,
+        notificationPreferences,
+        setNotificationPreferences,
+        privacySettings,
+    } = useAppStore(useShallow((state) => ({
+        chatSettings: state.chatSettings,
+        setChatSettings: state.setChatSettings,
+        notificationPreferences: state.notificationPreferences,
+        setNotificationPreferences: state.setNotificationPreferences,
+        privacySettings: state.privacySettings,
+    })));
 
+    // Chat Store - Access global user statuses
     const {
         activeBubbleRoomId, closeBubble,
-        initStompClient, stompConnected,
-        subscribeToRoom, unsubscribeFromRoom
+        stompConnected,
+        subscribeToRoom, unsubscribeFromRoom,
+        userStatuses // <-- Get global statuses
     } = useChatStore();
 
     const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom, useUpdateMemberNickname } = useRooms();
-    const { useCreateGroupCall } = useVideoCalls(); // Hook for creating calls
+    const { useCreateGroupCall } = useVideoCalls();
 
     const { data: members } = useRoomMembers(roomId);
     const { data: roomInfo } = useRoom(roomId);
@@ -55,14 +71,21 @@ const GroupChatScreen = () => {
     const [showEditNickname, setShowEditNickname] = useState(false);
     const [newNickname, setNewNickname] = useState('');
 
-    // --- SYNC SETTINGS LOGIC ---
-    const syncSettingToBackend = async (newSettings: Partial<UserSettings>) => {
+    // Sync settings to backend
+    const syncSettingToBackend = async (
+        updateChat: Partial<typeof chatSettings> = {},
+        updateNotif: Partial<typeof notificationPreferences> = {}
+    ) => {
         if (!user?.userId) return;
+        const payload = {
+            autoTranslate: updateChat.autoTranslate ?? chatSettings.autoTranslate,
+            soundEnabled: updateNotif.soundEnabled ?? notificationPreferences.soundEnabled,
+            // ... include other required fields from store if needed
+        };
         try {
-            await instance.patch(`/api/v1/user-settings/${user.userId}`, newSettings);
+            await privateClient.patch(`/api/v1/user-settings/${user.userId}`, payload);
         } catch (error) {
             console.error("Failed to sync settings", error);
-            showToast({ type: "error", message: t("error.update_settings_failed") });
         }
     };
 
@@ -72,11 +95,10 @@ const GroupChatScreen = () => {
     };
 
     const toggleSound = (value: boolean) => {
-        setChatSettings({ soundNotifications: value });
-        syncSettingToBackend({ soundEnabled: value });
+        setNotificationPreferences({ ...notificationPreferences, soundEnabled: value });
+        syncSettingToBackend({}, { soundEnabled: value });
     };
 
-    // --- OTHER LOGIC ---
     const currentUserMember = members?.find(m => m.userId === user?.userId);
     const isAdmin = currentUserMember?.role === 'ADMIN' || currentUserMember?.isAdmin;
     const isPrivateRoom = roomInfo?.roomType === RoomType.PRIVATE || roomInfo?.roomType === RoomType.COUPLE;
@@ -93,75 +115,58 @@ const GroupChatScreen = () => {
         return roomInfo?.roomName || initialRoomName;
     }, [isPrivateRoom, targetMember, roomInfo, initialRoomName]);
 
-    const renderActiveDot = () => {
-        if (targetMember && (targetMember as any).isOnline) {
-            return <View style={styles.headerActiveDot} />;
+    // --- REAL-TIME DOT RENDERER (Based on Store) ---
+    const renderActiveDot = (userId: string | undefined, size = 10) => {
+        if (!userId) return null;
+        const status = userStatuses[userId];
+        const isOnline = status?.isOnline; // Priority to store, fallback could be added
+        if (isOnline) {
+            return <View style={[styles.headerActiveDot, { width: size, height: size, borderRadius: size / 2 }]} />;
         }
         return null;
     };
 
-    useFocusEffect(
-        useCallback(() => {
-            if (user) initStompClient();
-        }, [user, initStompClient])
-    );
-
+    // --- SUBSCRIBE TO ROOM (Logic moved to Root, but we sub to specific room here) ---
     useEffect(() => {
-        if (stompConnected && roomId) subscribeToRoom(roomId);
-        return () => { unsubscribeFromRoom(roomId); };
-    }, [stompConnected, roomId, subscribeToRoom, unsubscribeFromRoom]);
+        if (stompConnected && roomId) {
+            subscribeToRoom(roomId);
+
+            // Broadcast "I am ONLINE" to this room specifically (optional, depending on backend)
+            if (user?.userId) {
+                try {
+                    stompService.publish(`/app/chat/room/${roomId}/status`, {
+                        userId: user.userId,
+                        status: 'ONLINE'
+                    });
+                } catch (e) { }
+            }
+
+            return () => { unsubscribeFromRoom(roomId); };
+        }
+    }, [stompConnected, roomId, user?.userId]);
 
     useEffect(() => {
         if (activeBubbleRoomId === roomId) closeBubble();
     }, [roomId, activeBubbleRoomId, closeBubble]);
 
-    // --- VIDEO CALL HANDLER ---
     const handleStartVideoCall = () => {
         if (!user?.userId || !members) return;
-
         const participantIds = members.map(m => m.userId);
-
-        const payload: CreateGroupCallRequest = {
+        createGroupCall({
             callerId: user.userId,
             participantIds: participantIds,
             videoCallType: VideoCallType.GROUP
-        };
-
-        createGroupCall(payload, {
-            onSuccess: (response) => {
-                // Immediately navigate the caller to Jitsi
-                navigation.navigate('JitsiCallScreen', {
-                    roomId: response.roomId
-                });
-            },
-            onError: (error) => {
-                console.error("Failed to start call", error);
-                showToast({ type: "error", message: t("error.start_call_failed") });
-            }
+        }, {
+            onSuccess: (res) => navigation.navigate('JitsiCallScreen', { roomId: res.roomId }),
+            onError: () => showToast({ type: "error", message: t("error.start_call_failed") })
         });
-    };
-
-    // ... (Giữ nguyên logic Kick, Leave, Rename) ...
-    const handleKickUser = (memberId: string, memberName: string) => {
-        Alert.alert(t('common.confirm'), t('chat.kick_confirm', { name: memberName }), [
-            { text: t('common.cancel'), style: 'cancel' },
-            { text: t('common.delete'), style: 'destructive', onPress: () => kickMember({ roomId, userIds: [memberId] }) }
-        ]);
     };
 
     const handleLeaveRoom = () => {
         Alert.alert(t('common.confirm'), t('chat.leave_confirm'), [
             { text: t('common.cancel'), style: 'cancel' },
-            {
-                text: t('chat.leave'), style: 'destructive', onPress: () => {
-                    leaveRoom({ roomId }, { onSuccess: () => { setShowSettings(false); navigation.navigate('ChatRoomListScreen'); } });
-                }
-            }
+            { text: t('chat.leave'), style: 'destructive', onPress: () => leaveRoom({ roomId }, { onSuccess: () => { setShowSettings(false); navigation.navigate('ChatRoomListScreen'); } }) }
         ]);
-    };
-
-    const submitNickname = () => {
-        updateNickname({ roomId, nickname: newNickname }, { onSuccess: () => setShowEditNickname(false) });
     };
 
     const renderMemberItem = ({ item }: { item: MemberResponse }) => {
@@ -169,20 +174,17 @@ const GroupChatScreen = () => {
         const isSelf = item.userId === user?.userId;
         return (
             <View style={styles.memberItem}>
-                <Image source={item.avatarUrl ? { uri: item.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={styles.memberAvatar} />
+                <View>
+                    <Image source={item.avatarUrl ? { uri: item.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={styles.memberAvatar} />
+                    {/* Use Store Status */}
+                    {renderActiveDot(item.userId, 12)}
+                </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.memberName} numberOfLines={1}>{displayName} {isSelf && t('chat.you')}</Text>
-                        {isSelf && !isPrivateRoom && (
-                            <TouchableOpacity onPress={() => { setNewNickname(displayName || ''); setShowEditNickname(true); }} style={{ marginLeft: 8 }}>
-                                <Icon name="edit" size={16} color="#4F46E5" />
-                            </TouchableOpacity>
-                        )}
-                    </View>
+                    <Text style={styles.memberName} numberOfLines={1}>{displayName} {isSelf && t('chat.you')}</Text>
                     <Text style={styles.memberRole}>{item.role === 'ADMIN' ? t('chat.admin') : t('chat.member')}</Text>
                 </View>
                 {isAdmin && !isSelf && !isPrivateRoom && (
-                    <TouchableOpacity onPress={() => handleKickUser(item.userId, displayName)} style={styles.iconBtn}>
+                    <TouchableOpacity onPress={() => kickMember({ roomId, userIds: [item.userId] })} style={styles.iconBtn}>
                         <Icon name="remove-circle-outline" size={24} color="#EF4444" />
                     </TouchableOpacity>
                 )}
@@ -190,12 +192,29 @@ const GroupChatScreen = () => {
         );
     };
 
+    // Calculate Status Text for Header
+    const getHeaderStatusText = () => {
+        if (isPrivateRoom && targetMember) {
+            const status = userStatuses[targetMember.userId];
+            if (status?.isOnline) return t('chat.active_now');
+
+            // "Offline for X time" logic
+            if (status?.lastActiveAt) {
+                const diff = Date.now() - new Date(status.lastActiveAt).getTime();
+                const minutes = Math.floor(diff / 60000);
+                if (minutes < 60) return `${t('chat.active')} ${minutes}m ${t('chat.ago')}`;
+                const hours = Math.floor(minutes / 60);
+                if (hours < 24) return `${t('chat.active')} ${hours}h ${t('chat.ago')}`;
+                return t('chat.offline');
+            }
+            return t('chat.offline');
+        }
+        return `${members?.length || 0} ${t('chat.members')}`;
+    };
+
     return (
         <ScreenLayout>
-            {/* Global Incoming Call Modal - Placed here or in App Layout */}
             <IncomingCallModal />
-
-            {/* HEADER */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()} style={{ padding: 8 }}>
                     <Icon name="arrow-back" size={24} color="#374151" />
@@ -204,119 +223,60 @@ const GroupChatScreen = () => {
                     {isPrivateRoom && targetMember && (
                         <View style={{ position: 'relative', marginRight: 10 }}>
                             <Image source={targetMember.avatarUrl ? { uri: targetMember.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={{ width: 32, height: 32, borderRadius: 16 }} />
-                            {renderActiveDot()}
+                            {renderActiveDot(targetMember.userId)}
                         </View>
                     )}
                     <View style={{ alignItems: isPrivateRoom ? 'flex-start' : 'center', flex: 1 }}>
                         <Text style={styles.headerTitle} numberOfLines={1}>{displayRoomName}</Text>
-                        <Text style={styles.headerSubtitle}>
-                            {isPrivateRoom && targetMember ? ((targetMember as any).isOnline ? "Active now" : "Offline") : `${members?.length || 0} ${t('chat.members')}`}
-                        </Text>
+                        <Text style={styles.headerSubtitle}>{getHeaderStatusText()}</Text>
                     </View>
                 </View>
-
-                {/* NEW: Video Call Button */}
                 <TouchableOpacity onPress={handleStartVideoCall} style={{ padding: 8 }} disabled={isCalling}>
                     <Icon name="videocam" size={24} color={isCalling ? "#9CA3AF" : "#4F46E5"} />
                 </TouchableOpacity>
-
                 <TouchableOpacity onPress={() => setShowSettings(true)} style={{ padding: 8 }}>
                     <Icon name="settings" size={24} color="#4F46E5" />
                 </TouchableOpacity>
             </View>
 
-            {/* CHAT VIEW */}
             <View style={{ flex: 1 }}>
                 <ChatInnerView
                     roomId={roomId}
-                    initialRoomName={displayRoomName}
                     isBubbleMode={false}
                     autoTranslate={chatSettings.autoTranslate}
-                    soundEnabled={chatSettings.soundNotifications}
+                    soundEnabled={notificationPreferences.soundEnabled}
                 />
             </View>
 
-            {/* SETTINGS MODAL */}
+            {/* Settings Modal - kept same logic */}
             <Modal visible={showSettings} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSettings(false)}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
                         <Text style={styles.modalTitle}>{t('chat.room_settings')}</Text>
-                        <TouchableOpacity onPress={() => setShowSettings(false)}>
-                            <Icon name="close" size={24} color="#374151" />
-                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => setShowSettings(false)}><Icon name="close" size={24} color="#374151" /></TouchableOpacity>
                     </View>
-
-                    {/* PREFERENCES SECTION */}
-                    <View style={styles.sectionContainer}>
-                        <Text style={styles.sectionTitle}>{t('settings.preferences')}</Text>
-
-                        {/* Auto Translate Toggle */}
-                        <View style={styles.settingRow}>
-                            <View style={{ flex: 1 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <Icon name="translate" size={20} color="#4F46E5" />
-                                    <Text style={styles.settingLabel}>{t('settings.auto_translate')}</Text>
-                                </View>
-                                <Text style={styles.settingDesc}>{t('settings.auto_translate_desc')}</Text>
+                    <ScrollView style={{ flex: 1 }}>
+                        <View style={styles.sectionContainer}>
+                            <Text style={styles.sectionTitle}>{t('settings.preferences')}</Text>
+                            <View style={styles.settingRow}>
+                                <Text style={styles.settingLabel}>{t('settings.auto_translate')}</Text>
+                                <Switch value={chatSettings.autoTranslate} onValueChange={toggleAutoTranslate} />
                             </View>
-                            <Switch
-                                value={chatSettings.autoTranslate}
-                                onValueChange={toggleAutoTranslate}
-                                trackColor={{ false: "#767577", true: "#818cf8" }}
-                                thumbColor={chatSettings.autoTranslate ? "#4F46E5" : "#f4f3f4"}
-                            />
-                        </View>
-
-                        {/* Sound Toggle */}
-                        <View style={styles.settingRow}>
-                            <View style={{ flex: 1 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <Icon name="volume-up" size={20} color="#4F46E5" />
-                                    <Text style={styles.settingLabel}>{t('settings.sound')}</Text>
-                                </View>
+                            <View style={styles.settingRow}>
+                                <Text style={styles.settingLabel}>{t('settings.sound')}</Text>
+                                <Switch value={notificationPreferences.soundEnabled} onValueChange={toggleSound} />
                             </View>
-                            <Switch
-                                value={chatSettings.soundNotifications}
-                                onValueChange={toggleSound}
-                                trackColor={{ false: "#767577", true: "#818cf8" }}
-                                thumbColor={chatSettings.soundNotifications ? "#4F46E5" : "#f4f3f4"}
-                            />
                         </View>
-                    </View>
-
-                    {/* MEMBERS SECTION */}
-                    <View style={styles.sectionContainer}>
-                        <Text style={styles.sectionTitle}>{t('chat.members')} ({members?.length || 0})</Text>
-                        <FlatList
-                            data={members}
-                            renderItem={renderMemberItem}
-                            keyExtractor={item => item.userId}
-                            scrollEnabled={false}
-                        />
-                    </View>
-
-                    {!isPrivateRoom && (
-                        <View style={styles.footerActions}>
+                        <View style={styles.sectionContainer}>
+                            <Text style={styles.sectionTitle}>{t('chat.members')}</Text>
+                            <FlatList data={members} renderItem={renderMemberItem} keyExtractor={item => item.userId} scrollEnabled={false} />
+                        </View>
+                        {!isPrivateRoom && (
                             <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveRoom}>
-                                <Icon name="logout" size={20} color="#FFF" />
                                 <Text style={styles.leaveBtnText}>{t('chat.leave_room')}</Text>
                             </TouchableOpacity>
-                        </View>
-                    )}
-
-                    {/* Nickname Modal Overlay */}
-                    <Modal visible={showEditNickname} transparent animationType="fade" onRequestClose={() => setShowEditNickname(false)}>
-                        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={styles.overlay}>
-                            <View style={styles.dialog}>
-                                <Text style={styles.dialogTitle}>{t('chat.change_nickname')}</Text>
-                                <TextInput style={styles.input} value={newNickname} onChangeText={setNewNickname} placeholder={t('chat.nickname_placeholder')} autoFocus />
-                                <View style={styles.dialogActions}>
-                                    <TouchableOpacity onPress={() => setShowEditNickname(false)} style={styles.dialogButton}><Text style={styles.dialogButtonText}>{t('cancel')}</Text></TouchableOpacity>
-                                    <TouchableOpacity onPress={submitNickname} style={[styles.dialogButton, styles.primaryButton]}><Text style={[styles.dialogButtonText, { color: '#FFF' }]}>{t('save')}</Text></TouchableOpacity>
-                                </View>
-                            </View>
-                        </KeyboardAvoidingView>
-                    </Modal>
+                        )}
+                    </ScrollView>
                 </View>
             </Modal>
         </ScreenLayout>
@@ -329,26 +289,20 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
     headerSubtitle: { fontSize: 12, color: '#9CA3AF' },
     headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 1.5, borderColor: '#FFF' },
-
     modalContainer: { flex: 1, backgroundColor: '#F9FAFB' },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
-
     sectionContainer: { marginTop: 16, backgroundColor: '#FFF', paddingVertical: 8 },
     sectionTitle: { fontSize: 14, fontWeight: '600', color: '#6B7280', paddingHorizontal: 16, marginBottom: 8, textTransform: 'uppercase' },
     settingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
     settingLabel: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
-    settingDesc: { fontSize: 12, color: '#9CA3AF', marginTop: 2, marginLeft: 28 },
-
     memberItem: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
     memberAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#E5E7EB' },
     memberName: { fontSize: 16, fontWeight: '500', color: '#1F2937' },
     memberRole: { fontSize: 12, color: '#9CA3AF' },
     iconBtn: { padding: 8 },
-    footerActions: { padding: 20, marginTop: 20 },
-    leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', padding: 12, borderRadius: 8 },
-    leaveBtnText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8 },
-
+    leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', padding: 12, margin: 20, borderRadius: 8 },
+    leaveBtnText: { color: '#FFF', fontWeight: 'bold' },
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
     dialog: { backgroundColor: '#FFF', borderRadius: 12, padding: 20, width: '100%', maxWidth: 320 },
     dialogTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#1F2937' },

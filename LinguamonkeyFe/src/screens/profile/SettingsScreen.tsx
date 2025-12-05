@@ -11,12 +11,12 @@ import { useNavigation } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useShallow } from 'zustand/react/shallow';
-import { useAppStore, NotificationPreferences } from '../../stores/appStore';
+import { useAppStore, NotificationPreferences, PrivacySettings } from '../../stores/appStore';
 import { useUserStore } from '../../stores/UserStore';
 import { useTokenStore } from '../../stores/tokenStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
-import { gotoTab, resetToAuth } from '../../utils/navigationRef';
+import { resetToAuth } from '../../utils/navigationRef';
 import { privateClient } from '../../api/axiosClient';
 
 const SettingsScreen: React.FC = () => {
@@ -26,16 +26,20 @@ const SettingsScreen: React.FC = () => {
   const {
     notificationPreferences,
     privacySettings,
+    chatSettings,
     setNotificationPreferences,
     setPrivacySettings,
+    setChatSettings,
     toggleNotification,
     togglePrivacy,
   } = useAppStore(
     useShallow((state) => ({
       notificationPreferences: state.notificationPreferences,
       privacySettings: state.privacySettings,
+      chatSettings: state.chatSettings,
       setNotificationPreferences: state.setNotificationPreferences,
       setPrivacySettings: state.setPrivacySettings,
+      setChatSettings: state.setChatSettings,
       toggleNotification: state.toggleNotification,
       togglePrivacy: state.togglePrivacy,
     }))
@@ -49,19 +53,27 @@ const SettingsScreen: React.FC = () => {
       try {
         const res = await privateClient.get(`/api/v1/user-settings/${user.userId}`);
         if (res.data.code === 200 && res.data.result) {
-          const remoteSettings = res.data.result;
+          const remote = res.data.result;
+
           setNotificationPreferences({
-            ...notificationPreferences!,
-            studyReminders: remoteSettings.studyReminders,
-            streakReminders: remoteSettings.streakReminders,
-            soundEnabled: remoteSettings.soundEnabled,
-            vibrationEnabled: remoteSettings.vibrationEnabled,
+            studyReminders: remote.studyReminders,
+            streakReminders: remote.streakReminders,
+            dailyChallengeReminders: remote.dailyChallengeReminders,
+            courseReminders: remote.courseReminders,
+            coupleReminders: remote.coupleReminders,
+            vipReminders: remote.vipReminders,
+            soundEnabled: remote.soundEnabled,
+            vibrationEnabled: remote.vibrationEnabled,
           });
+
           setPrivacySettings({
-            ...privacySettings,
-            profileVisibility: remoteSettings.profileVisibility,
-            progressSharing: remoteSettings.progressSharing,
-            searchPrivacy: remoteSettings.searchPrivacy, // Added
+            profileVisibility: remote.profileVisibility,
+            progressSharing: remote.progressSharing,
+            searchPrivacy: remote.searchPrivacy,
+          });
+
+          setChatSettings({
+            autoTranslate: remote.autoTranslate
           });
         }
       } catch (error) {
@@ -71,17 +83,34 @@ const SettingsScreen: React.FC = () => {
     fetchSettings();
   }, [user?.userId]);
 
-  const syncSettingToBackend = async (key: string, value: boolean) => {
+  // Helper to send ALL settings to backend because Java primitive booleans default to false if missing
+  const syncToBackend = async (
+    updatedNotif?: NotificationPreferences,
+    updatedPrivacy?: PrivacySettings,
+    updatedChat?: any
+  ) => {
     if (!user?.userId) return;
+
+    const notif = updatedNotif || notificationPreferences;
+    const privacy = updatedPrivacy || privacySettings;
+    const chat = updatedChat || chatSettings;
+
     const payload = {
-      studyReminders: notificationPreferences?.studyReminders,
-      streakReminders: notificationPreferences?.streakReminders,
-      soundEnabled: notificationPreferences?.soundEnabled,
-      vibrationEnabled: notificationPreferences?.vibrationEnabled,
-      profileVisibility: privacySettings.profileVisibility,
-      progressSharing: privacySettings.progressSharing,
-      searchPrivacy: privacySettings.searchPrivacy,
-      [key]: value
+      // Notifications
+      studyReminders: notif.studyReminders,
+      streakReminders: notif.streakReminders,
+      dailyChallengeReminders: notif.dailyChallengeReminders,
+      courseReminders: notif.courseReminders,
+      coupleReminders: notif.coupleReminders,
+      vipReminders: notif.vipReminders,
+      soundEnabled: notif.soundEnabled,
+      vibrationEnabled: notif.vibrationEnabled,
+      // Privacy
+      profileVisibility: privacy.profileVisibility,
+      progressSharing: privacy.progressSharing,
+      searchPrivacy: privacy.searchPrivacy,
+      // Chat
+      autoTranslate: chat.autoTranslate,
     };
 
     try {
@@ -93,15 +122,19 @@ const SettingsScreen: React.FC = () => {
   };
 
   const handleToggleNotification = (field: keyof NotificationPreferences) => {
-    const newValue = !notificationPreferences![field];
+    const newValue = !notificationPreferences[field];
     toggleNotification(field, newValue);
-    syncSettingToBackend(field, newValue);
+    // Construct new state for sync
+    const newPrefs = { ...notificationPreferences, [field]: newValue };
+    syncToBackend(newPrefs, undefined, undefined);
   };
 
-  const handleTogglePrivacy = (field: keyof typeof privacySettings) => {
+  const handleTogglePrivacy = (field: keyof PrivacySettings) => {
     const newValue = !privacySettings[field];
     togglePrivacy(field, newValue);
-    syncSettingToBackend(field, newValue);
+    // Construct new state for sync
+    const newPrivacy = { ...privacySettings, [field]: newValue };
+    syncToBackend(undefined, newPrivacy, undefined);
   };
 
   const handleLogout = () => {
@@ -120,41 +153,71 @@ const SettingsScreen: React.FC = () => {
     ]);
   };
 
-  const renderToggleItem = (label: string, value: boolean | undefined, onToggle: () => void, icon: string, color: string) => (
+  const renderToggleItem = (label: string, value: boolean, onToggle: () => void, icon: string, color: string) => (
     <View style={styles.toggleRow}>
       <View style={[styles.iconContainer, { backgroundColor: `${color}1A` }]}>
         <Icon name={icon as any} size={20} color={color} />
       </View>
       <Text style={styles.toggleLabel}>{label}</Text>
-      <Switch trackColor={{ false: '#E5E7EB', true: '#4F46E5' }} thumbColor={'#FFFFFF'} ios_backgroundColor="#E5E7EB" onValueChange={onToggle} value={value ?? false} />
+      <Switch
+        trackColor={{ false: '#E5E7EB', true: '#4F46E5' }}
+        thumbColor={'#FFFFFF'}
+        ios_backgroundColor="#E5E7EB"
+        onValueChange={onToggle}
+        value={value}
+      />
     </View>
   );
 
   return (
     <ScreenLayout>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}><Icon name="arrow-back" size={24} color="#1F2937" /></TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+          <Icon name="arrow-back" size={24} color="#1F2937" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>{t('settings.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
+
+        {/* System Settings (Sound/Vibration) */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>{t('settings.notifications')}</Text>
+          <Text style={styles.sectionHeader}>{t('settings.system')}</Text>
           <View style={styles.card}>
-            {renderToggleItem(t('settings.studyReminders'), notificationPreferences?.studyReminders, () => handleToggleNotification('studyReminders'), 'alarm', '#F59E0B')}
+            {renderToggleItem(t('settings.sound'), notificationPreferences.soundEnabled, () => handleToggleNotification('soundEnabled'), 'volume-up', '#8B5CF6')}
             <View style={styles.separator} />
-            {renderToggleItem(t('settings.streakReminders'), notificationPreferences?.streakReminders, () => handleToggleNotification('streakReminders'), 'whatshot', '#EF4444')}
+            {renderToggleItem(t('settings.vibration'), notificationPreferences.vibrationEnabled, () => handleToggleNotification('vibrationEnabled'), 'vibration', '#EC4899')}
           </View>
         </View>
 
+        {/* Reminders Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionHeader}>{t('settings.reminders')}</Text>
+          <View style={styles.card}>
+            {renderToggleItem(t('settings.studyReminders'), notificationPreferences.studyReminders, () => handleToggleNotification('studyReminders'), 'alarm', '#F59E0B')}
+            <View style={styles.separator} />
+            {renderToggleItem(t('settings.streakReminders'), notificationPreferences.streakReminders, () => handleToggleNotification('streakReminders'), 'whatshot', '#EF4444')}
+            <View style={styles.separator} />
+            {renderToggleItem(t('settings.dailyChallenge'), notificationPreferences.dailyChallengeReminders, () => handleToggleNotification('dailyChallengeReminders'), 'emoji-events', '#FBBF24')}
+            <View style={styles.separator} />
+            {renderToggleItem(t('settings.courses'), notificationPreferences.courseReminders, () => handleToggleNotification('courseReminders'), 'school', '#3B82F6')}
+            <View style={styles.separator} />
+            {renderToggleItem(t('settings.couples'), notificationPreferences.coupleReminders, () => handleToggleNotification('coupleReminders'), 'favorite', '#EC4899')}
+            <View style={styles.separator} />
+            {renderToggleItem(t('settings.vip'), notificationPreferences.vipReminders, () => handleToggleNotification('vipReminders'), 'diamond', '#10B981')}
+          </View>
+        </View>
+
+        {/* Privacy Section */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>{t('settings.privacy')}</Text>
           <View style={styles.card}>
-            {renderToggleItem(t('settings.profileVisibility'), privacySettings?.profileVisibility, () => handleTogglePrivacy('profileVisibility'), 'visibility', '#3B82F6')}
+            {renderToggleItem(t('settings.profileVisibility'), privacySettings.profileVisibility, () => handleTogglePrivacy('profileVisibility'), 'visibility', '#3B82F6')}
             <View style={styles.separator} />
-            {/* NEW TOGGLE */}
-            {renderToggleItem(t('settings.searchPrivacy'), privacySettings?.searchPrivacy, () => handleTogglePrivacy('searchPrivacy'), 'person-search', '#10B981')}
+            {renderToggleItem(t('settings.progressSharing'), privacySettings.progressSharing, () => handleTogglePrivacy('progressSharing'), 'share', '#6366F1')}
+            <View style={styles.separator} />
+            {renderToggleItem(t('settings.searchPrivacy'), privacySettings.searchPrivacy, () => handleTogglePrivacy('searchPrivacy'), 'person-search', '#10B981')}
           </View>
         </View>
 

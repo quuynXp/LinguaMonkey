@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -39,16 +40,26 @@ public class DailyChallengeScheduler {
 
     private static final String TIME_ZONE = "UTC";
 
-    @Scheduled(cron = "0 0 0 * * MON", zone = TIME_ZONE)
+    // 00:00 Monday VN time = 17:00 Sunday UTC
+    @Scheduled(cron = "0 0 17 * * SUN", zone = TIME_ZONE)
     @Transactional
     public void assignWeeklyChallengesJob() {
-        log.info("Starting WEEKLY challenge assignment job...");
+        log.info("Starting WEEKLY challenge assignment job (VN Time Sync)...");
         assignChallenges(ChallengePeriod.WEEKLY, 2);
         log.info("Weekly challenges assigned.");
     }
 
+    // 00:00 VN time = 17:00 Previous Day UTC
+    @Scheduled(cron = "0 0 17 * * ?", zone = TIME_ZONE)
+    @Transactional
+    public void assignDailyChallengesJob() {
+        log.info("Starting DAILY challenge assignment job (VN Time Sync)...");
+        assignChallenges(ChallengePeriod.DAILY, 3);
+        log.info("Daily challenges assigned successfully.");
+    }
+
     private void assignChallenges(ChallengePeriod period, int limit) {
-        List<User> activeUsers = userRepository.findAll();
+        List<User> activeUsers = userRepository.findAllByIsDeletedFalse();
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
 
         for (User user : activeUsers) {
@@ -81,50 +92,10 @@ public class DailyChallengeScheduler {
         }
     }
 
-    @Scheduled(cron = "0 0 0 * * ?", zone = TIME_ZONE)
-    @Transactional
-    public void assignDailyChallengesJob() {
-        log.info("Starting daily challenge assignment job...");
-        
-        List<User> activeUsers = userRepository.findAll(); 
-
-        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-
-        for (User user : activeUsers) {
-            String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
-            
-            List<DailyChallenge> challenges = dailyChallengeRepository
-                    .findRandomChallengesByLangAndPeriod(langCode, ChallengePeriod.DAILY.name(), 3);
-
-            for (DailyChallenge challenge : challenges) {
-                UserDailyChallengeId id = UserDailyChallengeId.builder()
-                        .userId(user.getUserId())
-                        .challengeId(challenge.getId())
-                        .assignedDate(now)
-                        .stack(1)
-                        .build();
-
-                UserDailyChallenge userChallenge = UserDailyChallenge.builder()
-                        .id(id)
-                        .user(user)
-                        .challenge(challenge)
-                        .progress(0)
-                        .status(ChallengeStatus.IN_PROGRESS)
-                        .expReward(challenge.getBaseExp())
-                        .rewardCoins(challenge.getRewardCoins())
-                        .assignedAt(now)
-                        .build();
-
-                userDailyChallengeRepository.save(userChallenge);
-            }
-        }
-        log.info("Daily challenges assigned successfully.");
-    }
-
-    @Scheduled(cron = "0 0/5 * * * ?", zone = TIME_ZONE)
+    @Scheduled(cron = "0 0/30 * * * ?", zone = TIME_ZONE)
     @Transactional
     public void suggestDailyChallenges() {
-        log.info("[DailyChallengeScheduler] Checking candidates for challenges...");
+        log.info("[DailyChallengeScheduler] Checking candidates for suggestions...");
 
         List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
         if (userIdsWithToken.isEmpty()) return;
@@ -132,13 +103,13 @@ public class DailyChallengeScheduler {
         List<User> activeUsers = userRepository.findAllById(userIdsWithToken);
 
         for (User user : activeUsers) {
-            if (user.isDeleted()) continue;
+            if (user.isDeleted() || !user.getUserSettings().isDailyChallengeReminders()) continue;
+
             try {
-                var stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
+                Map<String, Object> stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
                 Boolean canAssignMore = (Boolean) stats.get("canAssignMore");
 
                 if (Boolean.TRUE.equals(canAssignMore)) {
-                    log.info(">>> User {} is eligible. Sending suggestion...", user.getUserId());
                     String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
                     String[] message = NotificationI18nUtil.getLocalizedMessage("DAILY_CHALLENGE_SUGGESTION", langCode);
 
@@ -158,27 +129,19 @@ public class DailyChallengeScheduler {
         }
     }
 
-    @Scheduled(cron = "0 0 0 * * ?", zone = TIME_ZONE)
-    @Transactional
-    public void resetDailyChallengesForNewDay() {
-        log.info("Daily Challenge Reset Scheduler started");
-        try {
-            log.info("Daily Challenges reset completed for new day");
-        } catch (Exception e) {
-            log.error("Error resetting daily challenges: {}", e.getMessage());
-        }
-    }
-
-    @Scheduled(cron = "0 0 22 * * ?", zone = TIME_ZONE)
+    // 21:00 VN Time = 14:00 UTC
+    @Scheduled(cron = "0 0 14 * * ?", zone = TIME_ZONE)
     @Transactional
     public void remindIncompleteChallenge() {
-        log.info("Incomplete Challenge Reminder Scheduler started");
+        log.info("Incomplete Challenge Reminder Scheduler started (VN Evening)");
 
         List<User> users = userRepository.findAllByIsDeletedFalse();
 
         for (User user : users) {
+            if (!user.getUserSettings().isDailyChallengeReminders()) continue;
+
             try {
-                var stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
+                Map<String, Object> stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
                 Long totalChallenges = (Long) stats.get("totalChallenges");
                 Long completedChallenges = (Long) stats.get("completedChallenges");
 
@@ -199,11 +162,9 @@ public class DailyChallengeScheduler {
                     notificationService.createPushNotification(reminder);
                 }
             } catch (Exception e) {
-                log.error("Error sending reminder to user {}: {}",
-                        user.getUserId(), e.getMessage());
+                log.error("Error sending reminder to user {}: {}", user.getUserId(), e.getMessage());
             }
         }
-
         log.info("Incomplete Challenge Reminder Scheduler completed");
     }
 }

@@ -1,18 +1,21 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef } from 'react';
 import {
-  Alert,
   Animated,
   ScrollView,
   Switch,
   Text,
   TouchableOpacity,
   View,
+  Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
+import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../../stores/appStore';
+import { useUserStore } from '../../stores/UserStore';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
+import { privateClient } from '../../api/axiosClient';
 
 interface SettingItem {
   id: string;
@@ -27,8 +30,20 @@ interface SettingItem {
 
 const ChatSettingsScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const { chatSettings, setChatSettings, resetChatSettings } = useAppStore();
 
+  const {
+    chatSettings,
+    setChatSettings,
+    notificationPreferences,
+    privacySettings
+  } = useAppStore(useShallow((state) => ({
+    chatSettings: state.chatSettings,
+    setChatSettings: state.setChatSettings,
+    notificationPreferences: state.notificationPreferences,
+    privacySettings: state.privacySettings
+  })));
+
+  const { user } = useUserStore();
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   React.useEffect(() => {
@@ -39,21 +54,41 @@ const ChatSettingsScreen = ({ navigation }) => {
     }).start();
   }, []);
 
-  const updateSetting = (key: string, value: boolean) => {
-    setChatSettings({ [key]: value });
+  const syncToBackend = async (newAutoTranslate: boolean) => {
+    if (!user?.userId) return;
+
+    // Must send ALL settings to avoid overwriting with defaults
+    const payload = {
+      // Chat
+      autoTranslate: newAutoTranslate,
+      // Notifications
+      studyReminders: notificationPreferences.studyReminders,
+      streakReminders: notificationPreferences.streakReminders,
+      dailyChallengeReminders: notificationPreferences.dailyChallengeReminders,
+      courseReminders: notificationPreferences.courseReminders,
+      coupleReminders: notificationPreferences.coupleReminders,
+      vipReminders: notificationPreferences.vipReminders,
+      soundEnabled: notificationPreferences.soundEnabled,
+      vibrationEnabled: notificationPreferences.vibrationEnabled,
+      // Privacy
+      profileVisibility: privacySettings.profileVisibility,
+      progressSharing: privacySettings.progressSharing,
+      searchPrivacy: privacySettings.searchPrivacy,
+    };
+
+    try {
+      await privateClient.patch(`/api/v1/user-settings/${user.userId}`, payload);
+    } catch (error) {
+      console.error("Failed to sync chat setting", error);
+    }
   };
 
-  const clearTranslationHistory = () => {
-    Alert.alert(
-      t('chat.clearHistoryConfirmTitle'),
-      t('chat.clearHistoryConfirmMessage'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('common.delete'), style: 'destructive', onPress: () => { } },
-      ]
-    );
+  const updateSetting = (value: boolean) => {
+    setChatSettings({ autoTranslate: value });
+    syncToBackend(value);
   };
 
+  // Only settings present in UserSettings.java
   const translationSettings: SettingItem[] = [
     {
       id: 'auto-translate',
@@ -62,130 +97,27 @@ const ChatSettingsScreen = ({ navigation }) => {
       icon: 'translate',
       type: 'toggle',
       value: chatSettings.autoTranslate,
-      onToggle: (value) => updateSetting('autoTranslate', value),
-    },
-    {
-      id: 'show-original',
-      title: t('chat.showOriginal'),
-      description: t('chat.showOriginalDesc'),
-      icon: 'visibility',
-      type: 'toggle',
-      value: chatSettings.showOriginalButton,
-      onToggle: (value) => updateSetting('showOriginalButton', value),
-    },
-    {
-      id: 'translate-vietnamese',
-      title: t('chat.translateVietnamese'),
-      description: t('chat.translateVietnameseDesc'),
-      icon: 'language',
-      type: 'toggle',
-      value: chatSettings.translateToVietnamese,
-      onToggle: (value) => updateSetting('translateToVietnamese', value),
-    },
-    {
-      id: 'save-history',
-      title: t('chat.saveHistory'),
-      description: t('chat.saveHistoryDesc'),
-      icon: 'history',
-      type: 'toggle',
-      value: chatSettings.saveTranslationHistory,
-      onToggle: (value) => updateSetting('saveTranslationHistory', value),
-    },
-    {
-      id: 'offline-translation',
-      title: t('chat.offlineTranslation'),
-      description: t('chat.offlineTranslationDesc'),
-      icon: 'cloud-off',
-      type: 'toggle',
-      value: chatSettings.offlineTranslation,
-      onToggle: (value) => updateSetting('offlineTranslation', value),
+      onToggle: (value) => updateSetting(value),
     },
   ];
 
-  const chatSettingsItems: SettingItem[] = [
-    {
-      id: 'sound-notifications',
-      title: t('chat.soundNotifications'),
-      description: t('chat.soundNotificationsDesc'),
-      icon: 'volume-up',
-      type: 'toggle',
-      value: chatSettings.soundNotifications,
-      onToggle: (value) => updateSetting('soundNotifications', value),
-    },
-    {
-      id: 'vibration',
-      title: t('chat.vibrationNotifications'),
-      description: t('chat.vibrationNotificationsDesc'),
-      icon: 'vibration',
-      type: 'toggle',
-      value: chatSettings.vibrationNotifications,
-      onToggle: (value) => updateSetting('vibrationNotifications', value),
-    },
-    {
-      id: 'typing-indicator',
-      title: t('chat.typingIndicator'),
-      description: t('chat.typingIndicatorDesc'),
-      icon: 'edit',
-      type: 'toggle',
-      value: chatSettings.showTypingIndicator,
-      onToggle: (value) => updateSetting('showTypingIndicator', value),
-    },
-    {
-      id: 'auto-correct',
-      title: t('chat Godot::TimedAnimation'),
-      description: t('chat.autoCorrectDesc'),
-      icon: 'spellcheck',
-      type: 'toggle',
-      value: chatSettings.autoCorrect,
-      onToggle: (value) => updateSetting('autoCorrect', value),
-    },
-    {
-      id: 'word-suggestions',
-      title: t('chat.wordSuggestions'),
-      description: t('chat.wordSuggestionsDesc'),
-      icon: 'lightbulb',
-      type: 'toggle',
-      value: chatSettings.wordSuggestions,
-      onToggle: (value) => updateSetting('wordSuggestions', value),
-    },
-  ];
-
-  const actionSettings: SettingItem[] = [
-    {
-      id: 'clear-history',
-      title: t('chat.clearHistory'),
-      description: t('chat.clearHistoryDesc'),
-      icon: 'delete-sweep',
-      type: 'action',
-      onPress: clearTranslationHistory,
-    },
-    {
-      id: 'reset-settings',
-      title: t('chat.resetSettings'),
-      description: t('chat.resetSettingsDesc'),
-      icon: 'restore',
-      type: 'action',
-      onPress: resetChatSettings,
-    },
-  ];
-
-  const renderSettingItem = (item: SettingItem, isDangerous = false) => (
+  const renderSettingItem = (item: SettingItem) => (
     <TouchableOpacity
       key={item.id}
       style={styles.settingItem}
       onPress={item.onPress}
       disabled={item.type === 'toggle'}
     >
-      <View style={[styles.settingIcon, isDangerous && styles.dangerousIcon]}>
+      <View style={styles.settingIcon}>
         <Icon
           name={item.icon}
           size={20}
-          color={isDangerous ? '#EF4444' : '#4F46E5'}
+          color={'#4F46E5'}
         />
       </View>
 
       <View style={styles.settingContent}>
-        <Text style={[styles.settingTitle, isDangerous && styles.dangerousText]}>
+        <Text style={styles.settingTitle}>
           {item.title}
         </Text>
         <Text style={styles.settingDescription}>{item.description}</Text>
@@ -202,16 +134,6 @@ const ChatSettingsScreen = ({ navigation }) => {
         <Icon name="chevron-right" size={20} color="#9CA3AF" />
       )}
     </TouchableOpacity>
-  );
-
-  const renderSection = (title: string, subtitle: string, items: SettingItem[], isDangerous = false) => (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      <Text style={styles.sectionSubtitle}>{subtitle}</Text>
-      <View style={styles.sectionContent}>
-        {items.map(item => renderSettingItem(item, isDangerous))}
-      </View>
-    </View>
   );
 
   return (
@@ -237,47 +159,10 @@ const ChatSettingsScreen = ({ navigation }) => {
             </Text>
           </View>
 
-          {renderSection(
-            t('chat.translationSection'),
-            t('chat.translationSubtitle'),
-            translationSettings
-          )}
-
-          {renderSection(
-            t('chat.chatSection'),
-            t('chat.chatSubtitle'),
-            chatSettingsItems
-          )}
-
-          {renderSection(
-            t('chat.actionSection'),
-            t('chat.actionSubtitle'),
-            actionSettings,
-            true
-          )}
-
-          {/* Translation Languages */}
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>{t('chat.supportedLanguages')}</Text>
-            <Text style={styles.sectionSubtitle}>
-              {t('chat.supportedLanguagesDesc')}
-            </Text>
-            <View style={styles.languageGrid}>
-              {[
-                { code: 'vi', name: t('call.languages.vi'), flag: '🇻🇳' },
-                { code: 'en', name: t('call.languages.en'), flag: '🇺🇸' },
-                { code: 'zh', name: t('call.languages.zh'), flag: '🇨🇳' },
-                { code: 'ja', name: t('call.languages.ja'), flag: '🇯🇵' },
-                { code: 'ko', name: t('call.languages.ko'), flag: '🇰🇷' },
-                { code: 'fr', name: t('call.languages.fr'), flag: '🇫🇷' },
-                { code: 'es', name: t('call.languages.es'), flag: '🇪🇸' },
-                { code: 'de', name: t('call.languages.de'), flag: '🇩🇪' },
-              ].map((lang) => (
-                <View key={lang.code} style={styles.languageItem}>
-                  <Text style={styles.languageFlag}>{lang.flag}</Text>
-                  <Text style={styles.languageName}>{lang.name}</Text>
-                </View>
-              ))}
+            <Text style={styles.sectionTitle}>{t('chat.translationSection')}</Text>
+            <View style={styles.sectionContent}>
+              {translationSettings.map(item => renderSettingItem(item))}
             </View>
           </View>
 
@@ -292,18 +177,6 @@ const ChatSettingsScreen = ({ navigation }) => {
                 <Icon name="check-circle" size={16} color="#10B981" />
                 <Text style={styles.tipText}>
                   {t('chat.tip1')}
-                </Text>
-              </View>
-              <View style={styles.tipItem}>
-                <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.tipText}>
-                  {t('chat.tip2')}
-                </Text>
-              </View>
-              <View style={styles.tipItem}>
-                <Icon name="check-circle" size={16} color="#10B981" />
-                <Text style={styles.tipText}>
-                  {t('chat.tip3')}
                 </Text>
               </View>
             </View>
@@ -377,11 +250,6 @@ const styles = createScaledSheet({
     color: '#1F2937',
     marginBottom: 4,
   },
-  sectionSubtitle: {
-    fontSize: 14,
-    color: '#6B7280',
-    marginBottom: 12,
-  },
   sectionContent: {
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
@@ -407,9 +275,6 @@ const styles = createScaledSheet({
     justifyContent: 'center',
     marginRight: 12,
   },
-  dangerousIcon: {
-    backgroundColor: '#FEF2F2',
-  },
   settingContent: {
     flex: 1,
   },
@@ -422,39 +287,6 @@ const styles = createScaledSheet({
     fontSize: 14,
     color: '#6B7280',
     marginTop: 2,
-  },
-  dangerousText: {
-    color: '#EF4444',
-  },
-  languageGrid: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 16,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  languageItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#F9FAFB',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    gap: 6,
-  },
-  languageFlag: {
-    fontSize: 16,
-  },
-  languageName: {
-    fontSize: 12,
-    color: '#374151',
-    fontWeight: '500',
   },
   tipsSection: {
     backgroundColor: '#FFFBEB',

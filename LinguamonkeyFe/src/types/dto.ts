@@ -2,6 +2,7 @@ import { Language } from './entity';
 // src/types/dto.ts
 import * as Enums from './enums';
 import * as Entities from './entity';
+import { QuestionType, SkillType } from './enums';
 
 // --- Generic DTOs ---
 export interface AppApiResponse<T> {
@@ -455,21 +456,25 @@ export interface LessonProgressWrongItemRequest {
 export interface LessonQuestionRequest {
     lessonId: string;
     question: string;
-    optionA: string;
-    optionB: string;
-    optionC: string;
-    optionD: string;
-    questionType: Enums.QuestionType;
+    questionType: QuestionType;
+    skillType: SkillType;
     languageCode: string;
-    optionsJson: string;
-    skillType: Enums.SkillType;
-    mediaUrl: string;
-    transcript: string;
-    weight: number;
+    optionsJson?: string; // JSON stringify of {A, B, C, D}
+    optionA?: string;
+    optionB?: string;
+    optionC?: string;
+    optionD?: string;
+
     correctOption: string;
+
+    // New Fields
+    transcript?: string;
+    mediaUrl?: string;
+    explainAnswer?: string;
+
+    weight: number;
     orderIndex: number;
-    explainAnswer: string;
-    isDeleted: boolean;
+    isDeleted?: boolean;
 }
 
 export interface LessonRequest {
@@ -487,6 +492,7 @@ export interface LessonRequest {
     transcript?: string;
     lessonSeriesId?: string;
     lessonCategoryId?: string;
+    mediaUrls?: string[];
     lessonSubCategoryId?: string;
     difficultyLevel?: Enums.DifficultyLevel;
     thumbnailUrl?: string;
@@ -563,6 +569,7 @@ export interface PaymentRequest {
     provider: Enums.TransactionProvider;
     returnUrl: string;
     currency: string;
+    type: Enums.TransactionType
     description: string;
 }
 
@@ -1155,7 +1162,9 @@ export interface DatingInviteSummary {
     senderAvatar: string;
     status: Enums.DatingInviteStatus;
     sentAt: string;
-    expiresAt: string;
+    expiresAt?: string;
+    viewerIsSender: boolean;
+    secondsToExpire: number;
 }
 
 export interface EventResponse {
@@ -1383,23 +1392,23 @@ export interface LessonQuestionResponse {
     lessonQuestionId: string;
     lessonId: string;
     question: string;
-    optionA: string;
-    optionB: string;
-    optionC: string;
-    optionD: string;
+    questionType: QuestionType;
+    skillType: SkillType;
+    languageCode: string;
+    optionsJson?: string;
+    optionA?: string;
+    optionB?: string;
+    optionC?: string;
+    optionD?: string;
     correctOption: string;
-    mediaUrl: string;
+    transcript?: string;
+    mediaUrl?: string;
+    explainAnswer?: string;
     weight: number;
+    orderIndex: number;
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
-    questionType: Enums.QuestionType;
-    languageCode: string;
-    optionsJson: string;
-    skillType: Enums.SkillType;
-    orderIndex: number;
-    explainAnswer: string;
-    transcript: string;
 }
 
 export interface LessonResponse {
@@ -1525,6 +1534,8 @@ export interface MemorySummaryResponse {
     title: string;
     description: string;
     joinedAt: string;
+    thumbnailUrl: string;
+    date: string;
 }
 
 export interface MessageReactionResponse {
@@ -2017,6 +2028,8 @@ export interface TransactionResponse {
     isDeleted: boolean;
     createdAt: string;
     updatedAt: string;
+    type: Enums.TransactionType
+    currency: string;
     deletedAt: string;
 }
 
@@ -2136,28 +2149,39 @@ export interface UserDailyChallengeResponse {
     screenRoute?: string;
     completed: boolean;
 }
-
 export interface UserProfileResponse {
     userId: string;
     fullname?: string;
     nickname?: string;
     avatarUrl?: string;
     flag?: string;
-    gender: string;
+    gender?: string; // Sửa thành optional ? để an toàn
     country?: Enums.Country;
+
     vip?: boolean;
+    vipDaysRemaining?: number;
+
     isOnline?: boolean;
-    lastActiveText?: string; // "5m", "2h", "100d"
+    lastActiveText?: string;
     lastActiveAt?: string;
+
     ageRange?: Enums.AgeRange;
     proficiency?: Enums.ProficiencyLevel;
     learningPace?: Enums.LearningPace;
     allowStrangerChat?: boolean;
+
     level: number;
     exp: number;
+    expToNextLevel?: number;
+    progress?: number;
     bio?: string;
     languages?: string[];
     streak?: number;
+
+    // --- Relations ---
+    coupleInfo?: CoupleProfileDetailedResponse; // Dùng interface chi tiết mới
+    coupleProfile?: CoupleProfileSummary; // Giữ lại để backward compat nếu cần
+    friendshipDurationDays?: number;
 
     character3d?: Character3dResponse;
     stats?: UserStatsResponse;
@@ -2179,12 +2203,33 @@ export interface UserProfileResponse {
     teacherCourses?: CourseSummaryResponse[];
 
     leaderboardRanks?: Record<string, number>;
-    coupleProfile?: CoupleProfileSummary;
-    mutualMemories?: MemorySummaryResponse[];
+
+    mutualMemories?: MemorySummaryResponse[]; // Fix lỗi thiếu field này ở UI
     datingInviteSummary?: DatingInviteSummary;
 
     exploringExpiresInHuman?: string;
-    exploringExpiringSoon: boolean;
+    exploringExpiringSoon?: boolean;
+
+    // Các field ID khác
+    certificationIds?: string[];
+    interestIds?: string[];
+    goalIds?: string[];
+    badgeId?: string;
+    authProvider?: string;
+}
+
+export interface CoupleProfileDetailedResponse {
+    coupleId: string;
+    status: 'COUPLE' | 'IN_LOVE' | 'EXPLORING' | 'EXPIRED' | string;
+
+    partnerId: string;
+    partnerName: string;
+    partnerNickname?: string;
+    partnerAvatar?: string;
+
+    startDate?: string;
+    daysInLove: number;
+    sharedAvatarUrl?: string;
 }
 
 export interface UserResponse {

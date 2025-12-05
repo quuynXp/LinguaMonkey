@@ -19,8 +19,6 @@ interface ScreenLayoutProps {
     enableSwipeBack?: boolean;
 }
 
-const SWIPE_AREA_WIDTH = 70;
-
 const ScreenLayout: React.FC<ScreenLayoutProps> = ({
     children,
     style,
@@ -35,17 +33,14 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
 }) => {
     const insets = useSafeAreaInsets();
 
-    // Logic vùng an toàn cho nội dung chính
     const safeInsets = unsafe
         ? { top: 0, bottom: 0, left: 0, right: 0 }
         : insets;
 
     const headerPaddingTop = headerComponent && !unsafe ? safeInsets.top : 0;
-    // Cập nhật logic: Nếu có bottomComponent HOẶC cần spacer VÀ không phải unsafe,
-    // thì sử dụng insets.bottom thực tế để đệm
     const bottomPaddingBottom = bottomComponent && !unsafe ? insets.bottom : 0;
     const headerSpacerHeight = !headerComponent && !unsafe ? safeInsets.top : 0;
-    const bottomSpacerHeight = !bottomComponent && !unsafe ? insets.bottom : 0; // Sử dụng insets.bottom
+    const bottomSpacerHeight = !bottomComponent && !unsafe ? insets.bottom : 0;
 
     const handleNavigateTab = () => {
         if (swipeToTab) {
@@ -75,6 +70,9 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
             }
         });
 
+    // Kết hợp gesture: Race để ưu tiên cái nào xảy ra trước
+    const composedGestures = Gesture.Race(swipeLeftGesture, swipeRightGesture);
+
     return (
         <View style={[styles.container, { backgroundColor }]}>
             <StatusBar
@@ -97,35 +95,24 @@ const ScreenLayout: React.FC<ScreenLayoutProps> = ({
             )}
 
             <View style={[styles.contentWrapper, style]}>
-
-                {enableSwipeBack && (
-                    <GestureDetector gesture={swipeRightGesture}>
-                        <View style={[styles.gestureAreaLeft, { left: 0 }]} />
-                    </GestureDetector>
-                )}
-
-                <View style={styles.content}>
-                    {children}
-                </View>
-
-                {swipeToTab && (
-                    <GestureDetector gesture={swipeLeftGesture}>
-                        <View style={[styles.gestureAreaRight, { right: 0 }]} />
-                    </GestureDetector>
-                )}
+                <GestureDetector gesture={composedGestures}>
+                    <View style={styles.content}>
+                        {children}
+                    </View>
+                </GestureDetector>
             </View>
 
             {bottomComponent ? (
                 <View
                     style={[
                         styles.bottomWrapper,
-                        { paddingBottom: bottomPaddingBottom, backgroundColor: backgroundColor } // Dùng bottomPaddingBottom đã được tính toán
+                        { paddingBottom: bottomPaddingBottom, backgroundColor: backgroundColor }
                     ]}
                 >
                     {bottomComponent}
                 </View>
             ) : (
-                <View style={{ height: bottomSpacerHeight, backgroundColor: backgroundColor }} /> // Dùng bottomSpacerHeight đã được tính toán
+                <View style={{ height: bottomSpacerHeight, backgroundColor: backgroundColor }} />
             )}
         </View>
     );
@@ -154,20 +141,6 @@ const styles = createScaledSheet({
         zIndex: 10,
         width: '100%',
     },
-    gestureAreaLeft: {
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        width: SWIPE_AREA_WIDTH,
-        zIndex: 5,
-    },
-    gestureAreaRight: {
-        position: 'absolute',
-        top: 0,
-        bottom: 0,
-        width: SWIPE_AREA_WIDTH,
-        zIndex: 5,
-    }
 });
 
 export default ScreenLayout;

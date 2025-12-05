@@ -8,11 +8,12 @@ import * as Google from 'expo-auth-session/providers/google';
 import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 import { isValidEmail } from '../../utils/validation';
-import { goBack, gotoTab } from '../../utils/navigationRef';
+import { goBack } from '../../utils/navigationRef';
 import PhoneInput from 'react-native-phone-number-input';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import * as AuthSession from 'expo-auth-session';
+import { useAppStore } from '../../stores/appStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -21,28 +22,24 @@ const GOOGLE_CLIENT_ID_IOS = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS;
 const GOOGLE_CLIENT_ID_WEB = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
 const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
 
-const redirectUri = AuthSession.getDefaultReturnUrl();
-console.log("Redirect URI CẦN PHẢI THÊM VÀO FACEBOOK DEVELOPER LÀ:", redirectUri);
+// redirectUri không cần thiết cho Google/Facebook trong Expo khi dùng useAuthRequest
+// const redirectUri = AuthSession.getDefaultReturnUrl();
 
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
+  const { loginInput, setLoginInput, resetAuthInputs } = useAppStore();
 
-  const [loginMethod, setLoginMethod] = useState('email');
-  const [useOtpForEmail, setUseOtpForEmail] = useState(false);
-
-  const [phoneNumber, setPhoneNumber] = useState('');
   const [formattedValue, setFormattedValue] = useState('');
   const [validPhone, setValidPhone] = useState(false);
   const phoneInputRef = useRef(null);
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-
   const [isLoading, setIsLoading] = useState(false);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
+  // Setup Google Auth Request
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     androidClientId: GOOGLE_CLIENT_ID_ANDROID,
     iosClientId: GOOGLE_CLIENT_ID_IOS,
@@ -52,7 +49,7 @@ const LoginScreen = ({ navigation }) => {
 
   const [fbRequest, fbResponse, fbPromptAsync] = Facebook.useAuthRequest({
     clientId: FACEBOOK_CLIENT_ID,
-    scopes: ['public_profile'],
+    scopes: ['public_profile', 'email'], // Thêm 'email' để lấy thông tin email
   });
 
   useEffect(() => {
@@ -62,17 +59,26 @@ const LoginScreen = ({ navigation }) => {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
+  // Xử lý Google Login
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { id_token } = googleResponse.params;
+      // Dùng id_token để xác thực với backend
       if (id_token) handleSocialLogin(authService.handleGoogleLogin(id_token));
+    } else if (googleResponse?.type === 'error') {
+      // Xử lý lỗi nếu có, ví dụ: người dùng hủy
+      safeShowError(t("googleLoginCancelledOrFailed"));
     }
   }, [googleResponse]);
 
+  // Xử lý Facebook Login
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { access_token } = fbResponse.params;
+      // Dùng access_token để xác thực với backend
       if (access_token) handleSocialLogin(authService.handleFacebookLogin(access_token));
+    } else if (fbResponse?.type === 'error') {
+      safeShowError(t("facebookLoginCancelledOrFailed"));
     }
   }, [fbResponse]);
 
@@ -88,27 +94,37 @@ const LoginScreen = ({ navigation }) => {
     setIsLoading(true);
     promise
       .then((result) => {
-        if (result) showSuccess(t("loginSuccess"));
-        else showError(t("loginFailed"));
+        if (result) {
+          showSuccess(t("loginSuccess"));
+          resetAuthInputs();
+          // Sau khi đăng nhập thành công, bạn có thể navigate đến màn hình chính
+          // Ví dụ: navigation.replace('MainApp');
+        } else {
+          showError(t("loginFailed"));
+        }
       })
       .catch((err) => safeShowError(err))
       .finally(() => setIsLoading(false));
   };
 
   const handleEmailPasswordLogin = async () => {
-    if (!isValidEmail(email)) {
+    if (!isValidEmail(loginInput.email)) {
       showError(t("invalidEmail"));
       return;
     }
-    if (!password) {
+    if (!loginInput.password) {
       showError(t("fillAllFields"));
       return;
     }
     setIsLoading(true);
     try {
-      const result = await authService.loginWithEmail(email, password);
-      if (result) showSuccess(t("loginSuccess"));
-      else showError(t("loginFailed"));
+      const result = await authService.loginWithEmail(loginInput.email, loginInput.password);
+      if (result) {
+        showSuccess(t("loginSuccess"));
+        resetAuthInputs();
+      } else {
+        showError(t("loginFailed"));
+      }
     } catch (err) {
       safeShowError(err);
     } finally {
@@ -134,13 +150,13 @@ const LoginScreen = ({ navigation }) => {
   };
 
   const onSubmit = () => {
-    if (loginMethod === 'email') {
-      if (useOtpForEmail) {
-        if (!isValidEmail(email)) {
+    if (loginInput.loginMethod === 'email') {
+      if (loginInput.useOtpForEmail) {
+        if (!isValidEmail(loginInput.email)) {
           showError(t("invalidEmail"));
           return;
         }
-        handleRequestOtp(email.trim());
+        handleRequestOtp(loginInput.email.trim());
       } else {
         handleEmailPasswordLogin();
       }
@@ -160,21 +176,21 @@ const LoginScreen = ({ navigation }) => {
         <TextInput
           style={styles.textInput}
           placeholder={t('emailAddress')}
-          value={email}
-          onChangeText={setEmail}
+          value={loginInput.email}
+          onChangeText={(text) => setLoginInput({ email: text })}
           keyboardType="email-address"
           autoCapitalize="none"
           autoComplete="email"
         />
       </View>
-      {!useOtpForEmail && (
+      {!loginInput.useOtpForEmail && (
         <View style={styles.inputContainer}>
           <Icon name="lock" size={20} color="#6B7280" style={styles.inputIcon} />
           <TextInput
             style={styles.textInput}
             placeholder={t('password')}
-            value={password}
-            onChangeText={setPassword}
+            value={loginInput.password}
+            onChangeText={(text) => setLoginInput({ password: text })}
             secureTextEntry={!showPassword}
             autoComplete="password"
           />
@@ -184,12 +200,12 @@ const LoginScreen = ({ navigation }) => {
         </View>
       )}
       <View style={styles.helpersContainer}>
-        <TouchableOpacity onPress={() => setUseOtpForEmail(!useOtpForEmail)}>
+        <TouchableOpacity onPress={() => setLoginInput({ useOtpForEmail: !loginInput.useOtpForEmail })}>
           <Text style={styles.helperLink}>
-            {useOtpForEmail ? t('usePasswordInstead') : t('useOtpInstead')}
+            {loginInput.useOtpForEmail ? t('usePasswordInstead') : t('useOtpInstead')}
           </Text>
         </TouchableOpacity>
-        {!useOtpForEmail && (
+        {!loginInput.useOtpForEmail && (
           <TouchableOpacity onPress={() => navigation.navigate("ForgotPassword")}>
             <Text style={styles.forgotPasswordText}>{t('forgotPassword')}</Text>
           </TouchableOpacity>
@@ -205,7 +221,7 @@ const LoginScreen = ({ navigation }) => {
         ) : (
           <>
             <Text style={styles.loginButtonText}>
-              {useOtpForEmail ? t('sendOtp') : t('signIn')}
+              {loginInput.useOtpForEmail ? t('sendOtp') : t('signIn')}
             </Text>
             <Icon name="arrow-forward" size={20} color="#FFFFFF" />
           </>
@@ -218,10 +234,10 @@ const LoginScreen = ({ navigation }) => {
     <>
       <PhoneInput
         ref={phoneInputRef}
-        defaultValue={phoneNumber}
+        defaultValue={loginInput.phoneNumber}
         defaultCode="VN"
         layout="first"
-        onChangeText={setPhoneNumber}
+        onChangeText={(text) => setLoginInput({ phoneNumber: text })}
         onChangeFormattedText={(text) => {
           setFormattedValue(text);
           const checkValid = phoneInputRef.current?.isValidNumber(text);
@@ -263,22 +279,23 @@ const LoginScreen = ({ navigation }) => {
         <Text style={styles.subtitle}>{t('signInContinue')}</Text>
         <View style={styles.toggleContainer}>
           <TouchableOpacity
-            style={[styles.toggleButton, loginMethod === 'email' && styles.toggleButtonActive]}
-            onPress={() => { setLoginMethod('email'); setUseOtpForEmail(false); }}
+            style={[styles.toggleButton, loginInput.loginMethod === 'email' && styles.toggleButtonActive]}
+            onPress={() => setLoginInput({ loginMethod: 'email', useOtpForEmail: false })}
           >
-            <Text style={[styles.toggleButtonText, loginMethod === 'email' && styles.toggleButtonTextActive]}>{t('email')}</Text>
+            <Text style={[styles.toggleButtonText, loginInput.loginMethod === 'email' && styles.toggleButtonTextActive]}>{t('email')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleButton, loginMethod === 'phone' && styles.toggleButtonActive]}
-            onPress={() => setLoginMethod('phone')}
+            style={[styles.toggleButton, loginInput.loginMethod === 'phone' && styles.toggleButtonActive]}
+            onPress={() => setLoginInput({ loginMethod: 'phone' })}
           >
-            <Text style={[styles.toggleButtonText, loginMethod === 'phone' && styles.toggleButtonTextActive]}>{t('phoneNumber')}</Text>
+            <Text style={[styles.toggleButtonText, loginInput.loginMethod === 'phone' && styles.toggleButtonTextActive]}>{t('phoneNumber')}</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.formContainer}>
-          {loginMethod === 'email' ? renderEmailForm() : renderPhoneForm()}
+          {loginInput.loginMethod === 'email' ? renderEmailForm() : renderPhoneForm()}
         </View>
-        {loginMethod === 'email' && !useOtpForEmail && (
+        {/* Chỉ hiển thị đăng nhập xã hội khi đang ở tab Email và không dùng OTP */}
+        {loginInput.loginMethod === 'email' && !loginInput.useOtpForEmail && (
           <>
             <View style={styles.dividerContainer}>
               <View style={styles.dividerLine} />
@@ -286,17 +303,17 @@ const LoginScreen = ({ navigation }) => {
               <View style={styles.dividerLine} />
             </View>
             <TouchableOpacity
-              style={[styles.socialButton, isLoading && styles.loginButtonDisabled]}
+              style={[styles.socialButton, (isLoading || !googleRequest) && styles.loginButtonDisabled]}
               onPress={() => !isLoading && googlePromptAsync()}
-              disabled={isLoading || !googleRequest}
+              disabled={isLoading || !googleRequest} // Vô hiệu hóa nút nếu đang tải hoặc request chưa sẵn sàng
             >
               <Image source={require('../../assets/icons/google-icon.png')} style={{ width: 20, height: 20 }} />
               <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[styles.socialButton, isLoading && styles.loginButtonDisabled]}
+              style={[styles.socialButton, (isLoading || !fbRequest) && styles.loginButtonDisabled]}
               onPress={() => !isLoading && fbPromptAsync()}
-              disabled={isLoading || !fbRequest}
+              disabled={isLoading || !fbRequest} // Vô hiệu hóa nút nếu đang tải hoặc request chưa sẵn sàng
             >
               <Icon name="facebook" size={20} color="#1877F2" />
               <Text style={styles.socialButtonText}>{t('loginWithFacebook')}</Text>

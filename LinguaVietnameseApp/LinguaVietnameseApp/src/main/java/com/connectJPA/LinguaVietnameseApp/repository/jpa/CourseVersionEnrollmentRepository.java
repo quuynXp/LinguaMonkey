@@ -24,6 +24,15 @@ public interface CourseVersionEnrollmentRepository extends JpaRepository<CourseV
         @Param("userId") UUID userId, 
         Pageable pageable);
 
+        @Query("SELECT ce FROM CourseVersionEnrollment ce " +
+           "JOIN FETCH ce.user u " + 
+           "JOIN FETCH ce.courseVersion cv " +
+           "JOIN FETCH cv.course c " +
+           "WHERE ce.progress < 100 " +
+           "AND ce.updatedAt < :threshold " +
+           "AND ce.isDeleted = false")
+    List<CourseVersionEnrollment> findStalledEnrollments(@Param("threshold") OffsetDateTime threshold);
+
     @Query("SELECT ce FROM CourseVersionEnrollment ce JOIN FETCH ce.courseVersion cv JOIN FETCH cv.course c " +
            "WHERE ce.userId = :userId AND ce.isDeleted = false")
     Page<CourseVersionEnrollment> findByUserId(@Param("userId") UUID userId, Pageable pageable);

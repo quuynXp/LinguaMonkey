@@ -3,28 +3,16 @@ import { StyleSheet, Platform, View, Text, ViewStyle, TextStyle, Image, ImageSty
 import Toast, { BaseToastProps, ToastShowParams } from 'react-native-toast-message';
 
 interface ShowToastParams {
-  title?: string;
   message?: string;
   type?: 'success' | 'error' | 'info' | 'warning';
 }
 
 const APP_LOGO_SOURCE = require('../assets/icons/icon_96.png');
 
-// Hàm này không còn được sử dụng vì đã bỏ dòng title
-// const getTitleByType = (type: string) => {
-//   switch (type) {
-//     case 'success': return 'Thành công';
-//     case 'error': return 'Lỗi';
-//     case 'warning': return 'Cảnh báo';
-//     case 'info': default: return 'Thông báo';
-//   }
-// };
-
 export const showToast = ({ message, type = 'info' }: ShowToastParams) => {
-  // text1 chỉ còn là message, bỏ title
   Toast.show({
     type: type,
-    text1: message, // Chỉ dùng message
+    text1: message,
     position: 'top',
     visibilityTime: 4000,
     autoHide: true,
@@ -32,38 +20,48 @@ export const showToast = ({ message, type = 'info' }: ShowToastParams) => {
   } as ToastShowParams);
 };
 
+const getColorByType = (type: string) => {
+  switch (type) {
+    case 'success': return '#28a745';
+    case 'error': return '#dc3545';
+    case 'warning': return '#ffc107';
+    case 'info': default: return '#007bff';
+  }
+};
+
 const styles = StyleSheet.create({
   container: {
     height: 'auto',
-    paddingVertical: 5,
-    paddingHorizontal: 7,
+    paddingVertical: 12,
+    paddingHorizontal: 15,
     borderRadius: 10,
     width: '95%',
     alignSelf: 'center',
     backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
+    borderLeftWidth: 5,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 3,
+        shadowOpacity: 0.15,
+        shadowRadius: 5,
       },
       android: {
-        elevation: 4,
+        elevation: 6,
       },
     }),
   } as ViewStyle,
   appLogo: {
-    width: 32, // Tăng kích thước icon
-    height: 32, // Tăng kích thước icon
-    marginRight: 12, // Điều chỉnh margin cho cân đối
+    width: 24,
+    height: 24,
+    marginRight: 12,
     resizeMode: 'contain',
   } as ImageStyle,
   text1: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#1F2937',
     flexShrink: 1,
   } as TextStyle,
@@ -74,8 +72,10 @@ interface CustomToastProps extends BaseToastProps {
 }
 
 const CustomBaseToast = ({ ...props }: CustomToastProps) => {
+  const borderColor = getColorByType(props.type);
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { borderLeftColor: borderColor }]}>
       <Image source={APP_LOGO_SOURCE} style={styles.appLogo} />
       <Text style={styles.text1} numberOfLines={3}>
         {props.text1}

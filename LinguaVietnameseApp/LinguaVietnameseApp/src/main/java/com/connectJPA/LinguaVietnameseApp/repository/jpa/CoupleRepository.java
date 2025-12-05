@@ -21,17 +21,19 @@ public interface CoupleRepository extends JpaRepository<Couple, UUID> {
     @Query("SELECT c FROM Couple c WHERE (c.user1.userId = :userId OR c.user2.userId = :userId) AND c.isDeleted = false")
     Optional<Couple> findByUserId(@Param("userId") UUID userId);
 
+    @Query("SELECT c FROM Couple c WHERE c.status IN ('COUPLE', 'IN_LOVE') AND c.isDeleted = false")
+    List<Couple> findAllActiveCouples();
+
     Page<Couple> findAllByUser1_UserIdAndStatusAndIsDeletedFalse(UUID userId, String status, Pageable pageable);
 
     @Query("select c from Couple c where c.status = :status and c.exploringExpiresAt < :now")
     List<Couple> findExploringExpired(@Param("status") CoupleStatus status, @Param("now") OffsetDateTime now);
 
     @Modifying
-    @Query("UPDATE Couple c SET c.status = 'expired' WHERE c.status = 'exploring' AND c.exploringExpiresAt < :now")
+    @Query("UPDATE Couple c SET c.status = 'EXPIRED' WHERE c.status = 'EXPLORING' AND c.exploringExpiresAt < :now")
     int expireExploringCouples(@Param("now") OffsetDateTime now);
 
     Page<Couple> findAllByUser1_UserIdOrUser2_UserIdAndStatusAndIsDeletedFalse(UUID userId1, UUID userId2, String status, Pageable pageable);
-    Page<Couple> findAllByUser1_UserIdAndStatusAndIsDeletedFalse(UUID user1Id, CoupleStatus statusEnum,
-            Pageable pageable);
+    
+    Page<Couple> findAllByUser1_UserIdAndStatusAndIsDeletedFalse(UUID user1Id, CoupleStatus statusEnum, Pageable pageable);
 }
-

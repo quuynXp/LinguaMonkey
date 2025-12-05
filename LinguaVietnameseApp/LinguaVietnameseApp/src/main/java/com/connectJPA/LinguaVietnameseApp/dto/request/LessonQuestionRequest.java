@@ -1,33 +1,46 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
-import jakarta.validation.constraints.Size;
+import com.connectJPA.LinguaVietnameseApp.enums.QuestionType;
+import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
-import lombok.*;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.util.UUID;
 
-@Getter
-@Builder
-@NoArgsConstructor
+@Data
 @AllArgsConstructor
+@NoArgsConstructor
+@Builder
 public class LessonQuestionRequest {
+    @NotNull(message = "Lesson ID cannot be null")
     private UUID lessonId;
+
     private String question;
+    
+    private QuestionType questionType;
+    private SkillType skillType;
+    private String languageCode;
 
-    @Size(max = 255, message = "Option A must not exceed 255 characters")
+    // FE gửi JSON string của options (A, B, C, D) vào đây
+    private String optionsJson;
+
+    // Vẫn giữ các field rời để tương thích ngược hoặc tiện mapping
     private String optionA;
-
-    @Size(max = 255, message = "Option B must not exceed 255 characters")
     private String optionB;
-
-    @Size(max = 255, message = "Option C must not exceed 255 characters")
     private String optionC;
-
-    @Size(max = 255, message = "Option D must not exceed 255 characters")
     private String optionD;
 
-    @Size(max = 255, message = "Correct option must not exceed 255 characters")
     private String correctOption;
-
-    private boolean isDeleted = false;
+    
+    // Trường quan trọng cho tính năng mới
+    private String transcript;
+    private String mediaUrl;       
+    private String explainAnswer;
+    
+    private Integer weight;
+    private Integer orderIndex;
+    private boolean isDeleted;
 }

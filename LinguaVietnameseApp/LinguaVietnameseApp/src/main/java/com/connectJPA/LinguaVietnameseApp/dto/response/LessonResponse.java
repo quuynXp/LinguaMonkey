@@ -34,6 +34,7 @@ public class LessonResponse {
     private String description;
     private Integer orderIndex;
     private boolean isFree;
+    private List<String> mediaUrls;
     private DifficultyLevel difficultyLevel;
     private String thumbnailUrl;
     private Integer durationSeconds;

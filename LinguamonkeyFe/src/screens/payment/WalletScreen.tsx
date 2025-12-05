@@ -1,62 +1,53 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, RefreshControl, FlatList, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ActivityIndicator, RefreshControl, FlatList } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useUserStore } from '../../stores/UserStore';
 import { useWallet } from '../../hooks/useWallet';
+import { useTransactionsApi } from '../../hooks/useTransaction'; // Sử dụng đúng hook từ prompt đầu tiên
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
-// import { TransactionResponse } from '../../types/dto'; // Bỏ import này để tránh xung đột
-import { PageResponse } from '../../types/dto';
+import { TransactionResponse } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
+import * as Enums from '../../types/enums';
 
-// Tái định nghĩa TransactionResponse cục bộ, đảm bảo có trường 'type'
-// (Bắt buộc phải làm vì màn hình đang sử dụng 'type', nhưng DTO gốc không có)
-interface LocalTransactionResponse {
-  transactionId: string;
-  userId: string;
-  amount: number;
-  status: string; // Tạm dùng string thay vì Enums.TransactionStatus
-  provider: string; // Tạm dùng string thay vì Enums.TransactionProvider
-  description: string;
-  isDeleted: boolean;
-  createdAt: string;
-  updatedAt: string;
-  deletedAt: string;
-  // THÊM TRƯỜNG BỊ THIẾU
-  type: string;
-}
-
-
-// Kích thước trang mặc định từ hook là 10
 const PAGE_SIZE = 10;
 
-const WalletScreen = ({ navigation }) => {
+const WalletScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
   const formatCurrency = useCurrencyConverter().convert;
-  const [page, setPage] = useState(0);
 
-  // Lấy số dư ví
+  const [page, setPage] = useState(0);
+  const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
+
+  // 1. Lấy số dư ví
   const {
     data: walletData,
     isLoading: loadingBalance,
     refetch: refetchWallet
   } = useWallet().useWalletBalance(user?.userId);
 
-  // Lấy lịch sử giao dịch (Sử dụng useQuery đơn giản)
+  // 2. Lấy lịch sử giao dịch (Sử dụng useTransactionsByUser từ useTransactionsApi)
   const {
     data: historyQueryResult,
     isLoading: loadingHistory,
     refetch: refetchHistory,
     isRefetching,
-  } = useWallet().useTransactionHistory(user?.userId, page, PAGE_SIZE);
+  } = useTransactionsApi().useTransactionsByUser(user?.userId, page, PAGE_SIZE);
 
-  // Lấy danh sách giao dịch từ kết quả query (PageResponse<TransactionResponse>)
-  // ÉP KIỂU AN TOÀN CHO DỮ LIỆU ĐẾN TỪ HOOK
-  const transactions: LocalTransactionResponse[] = (historyQueryResult?.data || []) as LocalTransactionResponse[];
-  const pagination = historyQueryResult?.pagination;
-  const hasNextPage = pagination?.hasNext;
+  // Xử lý dữ liệu phân trang: Reset list khi refresh, nối list khi load more
+  useEffect(() => {
+    if (historyQueryResult?.data) {
+      if (page === 0) {
+        setTransactions(historyQueryResult.data);
+      } else {
+        setTransactions(prev => [...prev, ...historyQueryResult.data]);
+      }
+    }
+  }, [historyQueryResult, page]);
+
+  const hasNextPage = historyQueryResult?.pagination?.hasNext ?? false;
 
   const onRefresh = async () => {
     setPage(0);
@@ -66,101 +57,21 @@ const WalletScreen = ({ navigation }) => {
     ]);
   };
 
-  const handleNextPage = () => {
-    if (hasNextPage && !loadingHistory) {
+  const handleLoadMore = () => {
+    if (hasNextPage && !loadingHistory && !isRefetching) {
       setPage(prev => prev + 1);
     }
   };
 
-  const renderTransactionItem = ({ item }: { item: LocalTransactionResponse }) => {
-    const transaction = item; // Đã ép kiểu ở scope trên
+  // --- Render Components ---
 
-    // Đã sửa lỗi TypeScript: item.type
-    const isIncome = ['DEPOSIT', 'REFUND', 'TRANSFER_RECEIVE'].includes(transaction.type);
-    const statusColor =
-      transaction.status === 'SUCCESS' ? '#10B981' :
-        transaction.status === 'PENDING' ? '#F59E0B' :
-          '#EF4444';
-
-    return (
-      <TouchableOpacity
-        style={styles.txnCard}
-        onPress={() => navigation.navigate('TransactionDetailsScreen', { transactionId: transaction.transactionId })}
-      >
-        <View style={styles.txnLeft}>
-          <View style={[styles.txnIcon, { backgroundColor: isIncome ? '#D1FAE5' : '#FEE2E2' }]}>
-            <Icon
-              name={isIncome ? 'add-circle' : 'remove-circle'}
-              size={24}
-              color={isIncome ? '#10B981' : '#EF4444'}
-            />
-          </View>
-          <View style={styles.txnInfo}>
-            {/* Đã sửa lỗi TypeScript: item.type */}
-            <Text style={styles.txnType}>{t(`transaction.type.${transaction.type}`)}</Text>
-            <Text style={styles.txnDate}>
-              {new Date(transaction.createdAt).toLocaleDateString('vi-VN')}
-            </Text>
-          </View>
-        </View>
-        <View style={styles.txnRight}>
-          <Text style={[styles.txnAmount, { color: isIncome ? '#10B981' : '#EF4444' }]}>
-            {isIncome ? '+' : '-'}{formatCurrency(transaction.amount, 'USD')}
-          </Text>
-          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-            <Text style={styles.statusText}>
-              {t(`transaction.status.${transaction.status}`)}
-            </Text>
-          </View>
-        </View>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderFooter = () => {
-    if (loadingHistory && !isRefetching) {
-      return (
-        <View style={styles.loadingFooter}>
-          <ActivityIndicator size="small" color="#4F46E5" />
-        </View>
-      );
-    }
-    // Hiển thị nút Tải thêm nếu còn trang và không đang tải
-    if (hasNextPage && !loadingHistory && transactions.length > 0) {
-      return (
-        <TouchableOpacity style={styles.loadMoreButton} onPress={handleNextPage}>
-          <Text style={styles.loadMoreText}>{t('common.loadMore')}</Text>
-        </TouchableOpacity>
-      );
-    }
-    return null;
-  };
-
-  if (loadingBalance) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-        <Text style={styles.loadingText}>{t('wallet.loading')}</Text>
-      </View>
-    );
-  }
-
-  return (
-    <ScreenLayout style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-back" size={24} color="#374151" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('wallet.title')}</Text>
-        <View style={styles.placeholder} />
-      </View>
-
+  const renderHeader = () => (
+    <View style={styles.headerContainer}>
       {/* Balance Card */}
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>{t('wallet.availableBalance')}</Text>
         <Text style={styles.balanceAmount}>
-          {formatCurrency(walletData?.balance || 0, 'USD')}
+          {loadingBalance ? '...' : formatCurrency(walletData?.balance || 0, 'USD')}
         </Text>
 
         <View style={styles.actionRow}>
@@ -190,43 +101,121 @@ const WalletScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Transaction History */}
-      <View style={[styles.section, { flex: 1 }]}>
+      {/* Section Title */}
+      <View style={styles.listHeader}>
         <Text style={styles.sectionTitle}>{t('wallet.transactionHistory')}</Text>
-
-        {transactions.length === 0 && loadingHistory && page === 0 ? (
-          <ActivityIndicator size="small" color="#4F46E5" style={{ marginTop: 20 }} />
-        ) : transactions.length === 0 && !loadingHistory ? (
-          <View style={styles.emptyState}>
-            <Icon name="receipt" size={48} color="#D1D5DB" />
-            <Text style={styles.emptyText}>{t('wallet.noTransactions')}</Text>
-          </View>
-        ) : (
-          <FlatList
-            data={transactions}
-            keyExtractor={(item) => item.transactionId}
-            renderItem={renderTransactionItem}
-            contentContainerStyle={styles.historyList}
-            ListFooterComponent={renderFooter}
-            refreshControl={
-              <RefreshControl
-                refreshing={loadingHistory && page === 0}
-                onRefresh={onRefresh}
-                tintColor="#4F46E5"
-              />
-            }
-          />
-        )}
       </View>
+    </View>
+  );
+
+  const renderTransactionItem = ({ item }: { item: TransactionResponse }) => {
+    const isIncome = [
+      Enums.TransactionType.DEPOSIT,
+      Enums.TransactionType.REFUND,
+      // Logic backend cho transfer receive chưa rõ ràng trong DTO, giả định check receiverId === userId
+      // Nhưng ở đây dùng Type để style đơn giản
+    ].includes(item.type) || (item.type === Enums.TransactionType.TRANSFER && item.receiver?.userId === user?.userId);
+
+    const isExpense = !isIncome; // Transfer sent, Payment, Withdraw
+
+    const statusColor =
+      item.status === Enums.TransactionStatus.SUCCESS ? '#10B981' :
+        item.status === Enums.TransactionStatus.PENDING ? '#F59E0B' : '#EF4444';
+
+    return (
+      <TouchableOpacity
+        style={styles.txnCard}
+        onPress={() => navigation.navigate('TransactionDetailsScreen', { transactionId: item.transactionId })}
+      >
+        <View style={styles.txnLeft}>
+          <View style={[styles.txnIcon, { backgroundColor: isIncome ? '#D1FAE5' : '#FEE2E2' }]}>
+            <Icon
+              name={isIncome ? 'arrow-downward' : 'arrow-upward'}
+              size={24}
+              color={isIncome ? '#10B981' : '#EF4444'}
+            />
+          </View>
+          <View style={styles.txnInfo}>
+            <Text style={styles.txnType} numberOfLines={1}>{t(`transaction.type.${item.type}`) || item.type}</Text>
+            <Text style={styles.txnDate}>
+              {new Date(item.createdAt).toLocaleDateString('vi-VN')} • {new Date(item.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.txnRight}>
+          <Text style={[styles.txnAmount, { color: isIncome ? '#10B981' : '#EF4444' }]}>
+            {isIncome ? '+' : '-'}{formatCurrency(item.amount, item.currency || 'USD')}
+          </Text>
+          <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+            <Text style={styles.statusText}>
+              {t(`transaction.status.${item.status}`) || item.status}
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderFooter = () => {
+    if (loadingHistory || isRefetching) {
+      return (
+        <View style={styles.loadingFooter}>
+          <ActivityIndicator size="small" color="#4F46E5" />
+        </View>
+      );
+    }
+    return <View style={{ height: 20 }} />;
+  };
+
+  const renderEmpty = () => {
+    if (loadingHistory && page === 0) return null; // Đang load lần đầu
+    return (
+      <View style={styles.emptyState}>
+        <Icon name="receipt" size={48} color="#D1D5DB" />
+        <Text style={styles.emptyText}>{t('wallet.noTransactions')}</Text>
+      </View>
+    );
+  }
+
+  return (
+    <ScreenLayout style={styles.container}>
+      {/* Top Bar - Fixed */}
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Icon name="arrow-back" size={24} color="#374151" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>{t('wallet.title')}</Text>
+        <View style={styles.placeholder} />
+      </View>
+
+      {/* Main List - Includes Balance Card as Header */}
+      <FlatList
+        data={transactions}
+        keyExtractor={(item) => item.transactionId}
+        renderItem={renderTransactionItem}
+        ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        ListEmptyComponent={renderEmpty}
+        contentContainerStyle={styles.listContent}
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        refreshControl={
+          <RefreshControl
+            refreshing={page === 0 && loadingHistory}
+            onRefresh={onRefresh}
+            tintColor="#4F46E5"
+          />
+        }
+      />
     </ScreenLayout>
   );
 };
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
-  loadingText: { marginTop: 10, fontSize: 16, color: '#4F46E5' },
-  header: {
+
+  // Top Bar
+  topBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -239,41 +228,39 @@ const styles = createScaledSheet({
   },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
   placeholder: { width: 24 },
-  balanceCard: { backgroundColor: '#4F46E5', marginHorizontal: 16, marginBottom: 16, padding: 24, borderRadius: 16, elevation: 4 },
+
+  // List Config
+  listContent: { paddingBottom: 20 },
+  headerContainer: { paddingBottom: 8 },
+
+  // Balance Card
+  balanceCard: { backgroundColor: '#4F46E5', margin: 16, padding: 24, borderRadius: 16, elevation: 4, shadowColor: "#4F46E5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
   balanceLabel: { color: '#E0E7FF', fontSize: 14, marginBottom: 8 },
   balanceAmount: { color: '#FFFFFF', fontSize: 32, fontWeight: 'bold', marginBottom: 24 },
   actionRow: { flexDirection: 'row', gap: 12 },
   actionBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
   actionText: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 4 },
-  section: { paddingHorizontal: 16, paddingBottom: 16, paddingTop: 8 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 12 },
-  historyList: { paddingBottom: 20 },
-  txnCard: { backgroundColor: '#fff', borderRadius: 12, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+
+  // History Section
+  listHeader: { paddingHorizontal: 16, marginTop: 8, marginBottom: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
+
+  // Transaction Card
+  txnCard: { backgroundColor: '#fff', marginHorizontal: 16, borderRadius: 12, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
   txnLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  txnIcon: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  txnInfo: { flex: 1 },
-  txnType: { fontSize: 14, fontWeight: '600', color: '#1F2937' },
-  txnDate: { fontSize: 12, color: '#6B7280', marginTop: 4 },
+  txnIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  txnInfo: { flex: 1, paddingRight: 8 },
+  txnType: { fontSize: 14, fontWeight: '600', color: '#1F2937', marginBottom: 2 },
+  txnDate: { fontSize: 12, color: '#9CA3AF' },
   txnRight: { alignItems: 'flex-end' },
-  txnAmount: { fontSize: 16, fontWeight: 'bold', marginBottom: 6 },
-  statusBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4, minWidth: 60, alignItems: 'center' },
-  statusText: { color: '#fff', fontSize: 11, fontWeight: '600' },
-  emptyState: { alignItems: 'center', paddingVertical: 32 },
+  txnAmount: { fontSize: 15, fontWeight: 'bold', marginBottom: 6 },
+  statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, minWidth: 50, alignItems: 'center' },
+  statusText: { color: '#fff', fontSize: 10, fontWeight: '700' },
+
+  // Utils
+  emptyState: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { fontSize: 14, color: '#6B7280', marginTop: 12 },
-  loadingFooter: { paddingVertical: 10 },
-  loadMoreButton: {
-    backgroundColor: '#E0E7FF',
-    padding: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 10,
-    marginBottom: 10,
-  },
-  loadMoreText: {
-    color: '#4F46E5',
-    fontWeight: '600',
-    fontSize: 14,
-  },
+  loadingFooter: { paddingVertical: 20, alignItems: 'center' },
 });
 
 export default WalletScreen;

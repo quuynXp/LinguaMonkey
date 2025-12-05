@@ -25,7 +25,7 @@ public class GrammarRule extends BaseEntity {
 
     @ToString.Exclude
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "lesson_id", nullable = false) // FK trỏ về grammar_lessons
+    @JoinColumn(name = "lesson_id", nullable = false, referencedColumnName = "lesson_id") // <--- THÊM referencedColumnName
     private GrammarLesson grammarLesson;
 
     @Column(name = "title")

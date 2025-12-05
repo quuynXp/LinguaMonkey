@@ -1,17 +1,32 @@
 _format_version: "3.0"
 _transform: true
 
+consumers:
+  - username: mobile-app-consumer
+    jwt_secrets:
+      - key: "lingua-jwt-key"
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1LNS9rOO1cg//uC3GXvu
+          r6HIw9HsDRsU6r+yyV/RjioHLLwasQByDTJhMZfvRJkMmZWKLxam+v8p9tyDLBRa
+          /jm+LHrl37ZgRo3EnQeJvJRNWLr0Uahuqez8OLRXAKdydgZWf0B4fJxgN+RsSXP7
+          vWNm6idJ0h32M7Obnd8iJDP0+MXdgy2pVd8PUAVFcmS/+7VLcWj1V0gDoMbHscN1
+          kswUB8rykRF0m+v5l1jx4ldSX1eKeYoQdznRMjViUTkKuYf5vhTsApgbows5pzs4
+          6NxKcxxm2kHLDpa4TKexdSJX9ckDkFAA4Z5ohAwcDvMcwyn0BHJaxIjGtRRwQP+H
+          OQIDAQAB
+          -----END PUBLIC KEY-----
+
 services:
-  # ==============================================================================
-  # 1. PUBLIC JAVA SERVICE
-  # ==============================================================================
   - name: public-java-service
-    url: http://linguavietnameseapp:8080
+    # FIX: Đổi 8080 -> 10000
+    url: http://linguavietnameseapp:10000
     routes:
       - name: public-routes
         strip_path: false
         methods: [GET, POST, OPTIONS]
         paths:
+          - /health
           - /api/v1/auth
           - /api/v1/users/check-email
           - /api/swagger
@@ -40,6 +55,11 @@ services:
           - /api/v1/search
           - /api/v1/skill-lessons
           - /api/v1/videos
+      - name: health-check-route
+        strip_path: true
+        methods: [GET]
+        paths:
+          - /api/v1/health
     plugins:
       - name: rate-limiting
         config:
@@ -47,15 +67,13 @@ services:
           redis_host: redis
           redis_port: 6379
           redis_password: redisPass123
-          limit_by: consumer
+          limit_by: ip
           second: 10
           minute: 200
 
-  # ==============================================================================
-  # 2. PROTECTED JAVA SERVICE (API CHUNG)
-  # ==============================================================================
   - name: java-service
-    url: http://linguavietnameseapp:8080
+    # FIX: Đổi 8080 -> 10000
+    url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 60000
     read_timeout: 60000
@@ -90,12 +108,17 @@ services:
           - /api/v1/transactions
           - /api/v1/users/
           - /api/v1/users
+          - /api/v1/user-settings # ADDED THIS LINE
           - /api/v1/user-goals
           - /api/v1/user-learning-activities
           - /api/v1/video-calls
           - /api/v1/wallets
           - /api/v1/wallets/
     plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+          key_claim_name: kid
       - name: rate-limiting
         config:
           policy: redis
@@ -109,11 +132,9 @@ services:
         config:
           allowed_payload_size: 200
 
-  # ==============================================================================
-  # 2.1. JAVA UPLOAD SERVICE (RIÊNG CHO UPLOAD FILE)
-  # ==============================================================================
   - name: java-upload-service
-    url: http://linguavietnameseapp:8080
+    # FIX: Đổi 8080 -> 10000
+    url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 300000
     read_timeout: 300000
@@ -124,15 +145,17 @@ services:
         paths:
           - /api/v1/files/upload-temp
     plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+          key_claim_name: kid
       - name: request-size-limiting
         config:
           allowed_payload_size: 200
 
-  # ==============================================================================
-  # 2.2. JAVA WEBSOCKET SERVICE (Đã Tối Ưu Hóa)
-  # ==============================================================================
   - name: java-websocket-service
-    url: http://linguavietnameseapp:8080
+    # FIX: Đổi 8080 -> 10000
+    url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 300000
     read_timeout: 300000
@@ -142,14 +165,8 @@ services:
         methods: [GET, POST, OPTIONS]
         paths:
           - /ws/
-        # SỬA LỖI: Chỉ dùng http/https. Kong tự handle Upgrade header cho WS.
         protocols: [http, https]
-        # SỬA LỖI: Đã xóa phần headers: host gây lỗi.
-        # Kong sẽ tự động chuyển tiếp Host header đúng tới linguavietnameseapp:8080
 
-  # ==============================================================================
-  # 3. PYTHON SERVICE
-  # ==============================================================================
   - name: python-service
     url: http://pythonservice:8001
     connect_timeout: 60000
@@ -163,11 +180,24 @@ services:
           - /api/py/
       - name: python-ws
         strip_path: true
-        # SỬA LỖI: Chỉ dùng http/https cho Python WS
         protocols: [http, https]
         methods: [GET, OPTIONS]
         paths:
           - /ws/py/
+    plugins:
+      - name: jwt
+        config:
+          claims_to_verify: [exp]
+          key_claim_name: kid
+      - name: rate-limiting
+        config:
+          policy: redis
+          redis_host: redis
+          redis_port: 6379
+          redis_password: redisPass123
+          limit_by: consumer
+          second: 10
+          minute: 100
 
 plugins:
   - name: cors

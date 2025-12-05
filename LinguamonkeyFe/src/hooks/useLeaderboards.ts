@@ -135,10 +135,12 @@ export const useLeaderboards = () => {
         const { data } = await instance.get<AppApiResponse<PageResponse<LeaderboardEntryResponse>>>(
           `/api/v1/leaderboard-entries?${qp.toString()}`
         );
+        // FIX: Ensure correct mapping here too if needed, but critical for Infinite
+        const res = data.result;
         return {
-          data: data.result?.content || [],
+          data: res?.content || [],
           pagination: {
-            isLast: data.result?.isLast
+            isLast: res?.isLast ?? (res as any)?.last ?? true
           }
         };
       },
@@ -164,10 +166,15 @@ export const useLeaderboards = () => {
           `/api/v1/leaderboard-entries?${qp.toString()}`
         );
 
+        const result = data.result;
+        // FIX: Handle both 'isLast' and 'last' from Spring Page
+        const isLast = result?.isLast ?? (result as any)?.last ?? true;
+        const pageNumber = result?.pageNumber ?? (result as any)?.number ?? pageParam;
+
         return {
-          content: data.result?.content || [],
-          isLast: data.result?.isLast ?? true,
-          pageNumber: data.result?.pageNumber ?? pageParam
+          content: result?.content || [],
+          isLast: isLast,
+          pageNumber: pageNumber
         };
       },
       getNextPageParam: (lastPage) => {

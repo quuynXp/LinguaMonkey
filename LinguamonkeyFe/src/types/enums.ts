@@ -150,7 +150,8 @@ export enum DifficultyLevel {
     B1 = "B1",
     B2 = "B2",
     C1 = "C1",
-    C2 = "C2"
+    C2 = "C2",
+    BEGINNER = "BEGINNER"
 }
 
 export enum EventType {
@@ -283,16 +284,18 @@ export enum ProficiencyLevel {
 }
 
 export enum QuestionType {
-    ESSAY = "ESSAY",
-    FILL_BLANK = "FILL_BLANK",
-    ORDERING = "ORDERING",
-    MATCHING = "MATCHING",
-    SPEAKING = "SPEAKING",
-    WRITING = "WRITING",
-    MULTIPLE_CHOICE = "MULTIPLE_CHOICE",
-    FILL_IN_THE_BLANK = "FILL_IN_THE_BLANK",
-    TRUE_FALSE = "TRUE_FALSE",
-    SHORT_ANSWER = "SHORT_ANSWER"
+    MULTIPLE_CHOICE = 'MULTIPLE_CHOICE',
+    FILL_IN_THE_BLANK = 'FILL_IN_THE_BLANK',
+    ORDERING = 'ORDERING',
+    SPEAKING = 'SPEAKING',
+    LISTENING = 'LISTENING',
+    WRITING = 'WRITING',
+    ESSAY = 'ESSAY',
+    VIDEO = 'VIDEO',
+    AUDIO = 'AUDIO',
+    READING = 'READING',
+    TRUE_FALSE = 'TRUE_FALSE',
+    MATCHING = 'MATCHING'
 }
 
 export enum RepeatType {

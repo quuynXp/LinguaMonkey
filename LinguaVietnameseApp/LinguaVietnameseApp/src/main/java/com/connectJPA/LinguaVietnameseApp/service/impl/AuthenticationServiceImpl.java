@@ -66,6 +66,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     String googleClientId;
     @Value("${jwt.key-id}")
     private String jwtKeyId;
+
     final Map<String, String> verifyEmailCodes = new HashMap<>();
     final Map<String, String> resetPasswordCodes = new HashMap<>();
     final Map<String, String> otpLoginCodes = new HashMap<>();
@@ -83,6 +84,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     final RoleRepository roleRepository;
     final RestTemplate restTemplate;
     final UserAuthAccountRepository userAuthAccountRepository;
+    
     private RSAPrivateKey getPrivateKey() throws Exception {
         try {
             byte[] keyBytes = privateKeyResource.getInputStream().readAllBytes();
@@ -124,11 +126,12 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             claims.put("type", "SERVICE_TOKEN");
             
             return Jwts.builder()
+                    .setHeaderParam("kid", jwtKeyId)
                     .setClaims(claims)
-                    .setSubject("SYSTEM_SCHEDULER") // Subject là tên service, không phải userId UUID
+                    .setSubject("SYSTEM_SCHEDULER")
                     .setIssuer("LinguaMonkey.com")
                     .setIssuedAt(new Date(System.currentTimeMillis()))
-                    .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 5)) // 5 phút hết hạn
+                    .setExpiration(new Date(System.currentTimeMillis() + 1000 * 60 * 5))
                     .signWith(getPrivateKey(), SignatureAlgorithm.RS256)
                     .compact();
         } catch (Exception e) {

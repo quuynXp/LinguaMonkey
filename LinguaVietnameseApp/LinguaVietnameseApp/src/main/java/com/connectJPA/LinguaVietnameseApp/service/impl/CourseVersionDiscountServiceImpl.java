@@ -28,7 +28,7 @@ public class CourseVersionDiscountServiceImpl implements CourseVersionDiscountSe
 
     @Override
     public Page<CourseVersionDiscountResponse> getAllCourseVersionDiscounts(UUID versionId, Integer discountPercentage, Pageable pageable) {
-        return courseVersionDiscountRepository.findAllByVersionIdAndDiscountPercentageAndIsDeletedFalse(versionId, discountPercentage, pageable)
+        return courseVersionDiscountRepository.findAllByCourseVersion_VersionIdAndDiscountPercentageAndIsDeletedFalse(versionId, discountPercentage, pageable)
                 .map(courseVersionDiscountMapper::toResponse);
     }
 
@@ -82,7 +82,7 @@ public class CourseVersionDiscountServiceImpl implements CourseVersionDiscountSe
 
     @Override
     public CourseVersionDiscountResponse validateDiscountCode(String code, UUID versionId) {
-        CourseVersionDiscount discount = courseVersionDiscountRepository.findByCodeAndVersionIdAndIsDeletedFalse(code, versionId)
+        CourseVersionDiscount discount = courseVersionDiscountRepository.findByCodeAndCourseVersion_VersionIdAndIsDeletedFalse(code, versionId)
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_DISCOUNT_NOT_FOUND));
 
         OffsetDateTime now = OffsetDateTime.now();

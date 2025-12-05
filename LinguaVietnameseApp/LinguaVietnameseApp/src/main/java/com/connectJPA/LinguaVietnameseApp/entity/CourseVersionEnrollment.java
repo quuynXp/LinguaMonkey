@@ -5,6 +5,7 @@ import com.connectJPA.LinguaVietnameseApp.entity.base.BaseEntity;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseVersionEnrollmentStatus;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -29,6 +30,7 @@ public class CourseVersionEnrollment extends BaseEntity {
     private CourseVersion courseVersion;
 
     @Column(name = "progress", nullable = false)
+    @Builder.Default
     private Double progress = 0.0;
 
     @Convert(converter = CourseVersionEnrollmentStatusConverter.class)
@@ -36,6 +38,10 @@ public class CourseVersionEnrollment extends BaseEntity {
 
     @Column(name = "user_id", nullable = false)
     private UUID userId;
+
+    @ManyToOne(fetch = FetchType.EAGER) 
+    @JoinColumn(name = "user_id", insertable = false, updatable = false)
+    private User user;
 
     @Column(name = "enrolled_at", nullable = false)
     private OffsetDateTime enrolledAt;

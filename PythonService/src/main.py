@@ -98,16 +98,25 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
+# VERIFY TOKEN STATELESSLY USING PUBLIC KEY
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
+        token = credentials.credentials
         if not PUBLIC_KEY:
-             return jwt.decode(credentials.credentials, options={"verify_signature": False})
+             return jwt.decode(token, options={"verify_signature": False})
+        
+        # Verify using RS256 and Public Key
         return jwt.decode(
-            credentials.credentials, PUBLIC_KEY, algorithms=["RS256"],
-            issuer="LinguaMonkey.com", options={"verify_exp": True}
+            token, 
+            PUBLIC_KEY, 
+            algorithms=["RS256"],
+            issuer="LinguaMonkey.com", 
+            options={"verify_exp": True}
         )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
     except Exception as e:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+        raise HTTPException(status_code=401, detail=str(e))
 
 async def get_websocket_user(websocket: WebSocket, token: str) -> str:
     try:
@@ -125,6 +134,8 @@ async def get_websocket_user(websocket: WebSocket, token: str) -> str:
         logger.warning(f"WebSocket Auth failed: {e}")
         await websocket.close(code=1008, reason="Invalid Token")
         raise WebSocketDisconnect()
+
+# [GIỮ NGUYÊN TOÀN BỘ LOGIC ROUTER BÊN DƯỚI]
 
 @internal_router.post("/invalidate-cache") 
 async def invalidate_user_cache(

@@ -33,9 +33,10 @@
         <encoding>UTF-8</encoding>
         <grpc.version>1.68.0</grpc.version>
         <protobuf.version>3.25.3</protobuf.version>
-        <google.api.client.version>2.4.0</google.api.client.version>
-        <google.auth.version>1.24.0</google.auth.version>
-        <google-cloud-bom.version>26.29.0</google-cloud-bom.version>
+        <!-- Adjusted versions to fix NoSuchMethodError -->
+        <google.api.client.version>2.2.0</google.api.client.version>
+        <google.auth.version>1.23.0</google.auth.version>
+        <google-cloud-bom.version>26.32.0</google-cloud-bom.version>
     </properties>
 
     <dependencyManagement>
@@ -77,18 +78,21 @@
             <version>2.15.0.RELEASE</version>
         </dependency>
         
+        <!-- Google Drive API -->
         <dependency>
             <groupId>com.google.apis</groupId>
             <artifactId>google-api-services-drive</artifactId>
-            <version>v3-rev20230815-2.0.0</version>
+            <version>v3-rev20230822-2.0.0</version>
         </dependency>
 
+        <!-- Google API Client -->
         <dependency>
             <groupId>com.google.api-client</groupId>
             <artifactId>google-api-client</artifactId>
-            <version>2.4.0</version>
+            <version>${google.api.client.version}</version>
         </dependency>
 
+        <!-- Force specific Auth Library version to fix getUniverseDomain error -->
         <dependency>
             <groupId>com.google.auth</groupId>
             <artifactId>google-auth-library-oauth2-http</artifactId>

@@ -39,6 +39,7 @@ import java.time.LocalDateTime;
 import java.time.OffsetDateTime;
 import java.time.Period;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -78,6 +79,7 @@ public class UserServiceImpl implements UserService {
     private final StorageService storageService;
     private final WalletRepository walletRepository;
     private final UserFcmTokenRepository userFcmTokenRepository;
+    private final UserSettingsRepository userSettingsRepository;
     @PersistenceContext
     private EntityManager entityManager;
     private final UserLanguageRepository userLanguageRepository;
@@ -85,12 +87,14 @@ public class UserServiceImpl implements UserService {
     private final UserAuthAccountRepository userAuthAccountRepository;
     private final LessonProgressRepository lessonProgressRepository;
     private final LessonRepository lessonRepository;
+    
+    // Injected Repositories for detailed logic
+    private final CoupleRepository coupleRepository;
+    private final FriendshipRepository friendshipRepository;
 
     // INJECT DailyChallengeService (Lazy to avoid circular dependency)
     @Lazy
     private final DailyChallengeService dailyChallengeService;
-
-
 
     @Override
     public long countOnlineUsers() {
@@ -330,6 +334,12 @@ public class UserServiceImpl implements UserService {
             
             user = userRepository.saveAndFlush(user);
 
+            UserSettings userSettings = UserSettings.builder()
+                    .user(user)
+                    .userId(user.getUserId())
+                    .build();
+            userSettingsRepository.saveAndFlush(userSettings);
+            
             if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
                 authenticationService.createAuthAccountLink(user, AuthProvider.EMAIL, user.getEmail());
             }
@@ -337,7 +347,6 @@ public class UserServiceImpl implements UserService {
             Wallet newWallet = Wallet.builder().user(user).balance(BigDecimal.ZERO).build();
             walletRepository.save(newWallet);
             
-            // --- AUTO ASSIGN CHALLENGES ---
             if (dailyChallengeService != null) {
                 dailyChallengeService.assignAllChallengesToNewUser(user.getUserId());
             }
@@ -375,11 +384,14 @@ public class UserServiceImpl implements UserService {
                         .collect(Collectors.toList());
                 if (!userGoals.isEmpty()) userGoalRepository.saveAllAndFlush(userGoals);
             }
-
-            return mapUserToResponseWithAllDetails(savedUser);
+            
+            User userWithSettings = userRepository.findByUserIdAndIsDeletedFalse(user.getUserId())
+                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+            return mapUserToResponseWithAllDetails(userWithSettings);
         } catch (AppException ae) {
             throw ae;
         } catch (Exception e) {
+            log.error("Error creating user: {}", e.getMessage(), e);
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -601,7 +613,8 @@ public class UserServiceImpl implements UserService {
                 .languages(languages)            
                 .exp(target.getExp())
                 .bio(target.getBio())
-                .ageRange(target.getAgeRange())      
+                .gender(target.getGender())
+                .ageRange(target.getAgeRange())       
                 .proficiency(target.getProficiency())
                 .learningPace(target.getLearningPace())
                 .lastActiveAt(target.getLastActiveAt())
@@ -643,6 +656,7 @@ public class UserServiceImpl implements UserService {
         boolean canSendFriendRequest = true;
         boolean canUnfriend = false;
         boolean canBlock = false;
+        
         if (viewerId != null) {
             try {
                 isFriend = friendshipService.isFriends(viewerId, targetId);
@@ -650,6 +664,21 @@ public class UserServiceImpl implements UserService {
                 canUnfriend = isFriend;
                 canBlock = true;
                 canSendFriendRequest = !isFriend && (friendReqStatus == null || !"SENT".equals(friendReqStatus.getStatus()));
+                
+                if (isFriend) {
+                    Optional<Friendship> friendshipOpt = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(viewerId, targetId)
+                            .or(() -> friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(targetId, viewerId));
+                    
+                    if (friendshipOpt.isPresent()) {
+                        Friendship f = friendshipOpt.get();
+                        OffsetDateTime startDate = f.getUpdatedAt(); // Usually Accepted At
+                        if (startDate == null) startDate = f.getCreatedAt();
+                        
+                        long days = ChronoUnit.DAYS.between(startDate.toLocalDate(), LocalDate.now());
+                        respB.friendshipDurationDays(days);
+                    }
+                }
+
             } catch (Exception e) {
                 log.debug("friendship check failed: {}", e.getMessage());
             }
@@ -692,30 +721,52 @@ public class UserServiceImpl implements UserService {
             log.debug("leaderboard rank fetch failed: {}", e.getMessage());
         }
         respB.leaderboardRanks(leaderboardRanks);
+        
+        // --- NEW LOGIC: Detailed Couple Info ---
         try {
-            CoupleProfileSummary cps = null;
-            if (coupleService != null) {
-                cps = coupleService.getCoupleProfileSummaryByUser(targetId, viewerId);
-            }
-            respB.coupleProfile(cps);
-            boolean exploringExpiringSoon = false;
-            String exploringExpiresInHuman = null;
-            if (cps != null && cps.getStatus() != null && cps.getStatus().name().equals("EXPLORING") && cps.getCoupleId() != null) {
-                Couple couple = coupleService.findById(cps.getCoupleId());
-                if (couple != null && couple.getExploringExpiresAt() != null) {
-                    Duration rem = Duration.between(OffsetDateTime.now(), couple.getExploringExpiresAt());
+            Optional<Couple> coupleOpt = coupleRepository.findByUserId(targetId);
+            if (coupleOpt.isPresent()) {
+                Couple c = coupleOpt.get();
+                User partner = c.getUser1().getUserId().equals(targetId) ? c.getUser2() : c.getUser1();
+                
+                long daysInLove = 0;
+                if (c.getStartDate() != null) {
+                    daysInLove = ChronoUnit.DAYS.between(c.getStartDate(), LocalDate.now());
+                } else if (c.getCoupleStartDate() != null) {
+                    daysInLove = ChronoUnit.DAYS.between(c.getCoupleStartDate().toLocalDate(), LocalDate.now());
+                }
+
+                CoupleProfileDetailedResponse coupleDetailed = CoupleProfileDetailedResponse.builder()
+                        .coupleId(c.getId())
+                        .status(c.getStatus().name())
+                        .partnerId(partner.getUserId())
+                        .partnerName(partner.getFullname())
+                        .partnerNickname(partner.getNickname())
+                        .partnerAvatar(partner.getAvatarUrl())
+                        .startDate(c.getStartDate())
+                        .daysInLove(Math.max(0, daysInLove))
+                        .sharedAvatarUrl(c.getSharedAvatarUrl())
+                        .build();
+
+                respB.coupleInfo(coupleDetailed);
+                
+                // Logic expiration for Exploring couple
+                if (c.getStatus() == CoupleStatus.EXPLORING && c.getExploringExpiresAt() != null) {
+                    Duration rem = Duration.between(OffsetDateTime.now(), c.getExploringExpiresAt());
                     long seconds = Math.max(0, rem.getSeconds());
                     long days = seconds / (24*3600);
                     long hours = (seconds % (24*3600)) / 3600;
-                    exploringExpiresInHuman = days + " ngày " + hours + " giờ";
-                    exploringExpiringSoon = seconds > 0 && seconds <= (2 * 24 * 3600);
+                    String exploringExpiresInHuman = days + " ngày " + hours + " giờ";
+                    boolean exploringExpiringSoon = seconds > 0 && seconds <= (2 * 24 * 3600);
+                    
+                    respB.exploringExpiresInHuman(exploringExpiresInHuman);
+                    respB.exploringExpiringSoon(exploringExpiringSoon);
                 }
             }
-            respB.exploringExpiringSoon(exploringExpiringSoon);
-            respB.exploringExpiresInHuman(exploringExpiresInHuman);
         } catch (Exception e) {
             log.debug("couple info fetch failed: {}", e.getMessage());
         }
+
         try {
             DatingInviteSummary inviteSummary = null;
             if (viewerId != null && datingInviteRepository != null) {

@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import jakarta.validation.constraints.*;
 import lombok.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -27,6 +28,8 @@ public class LessonRequest {
     private UUID courseId;
 
     private UUID lessonSeriesId;
+
+    private List<String> mediaUrls;
 
     private UUID lessonCategoryId;
 

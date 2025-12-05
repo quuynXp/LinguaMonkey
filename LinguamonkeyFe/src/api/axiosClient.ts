@@ -46,7 +46,6 @@ const DEV_LOG_ENABLED = typeof (global as any).__DEV__ !== 'undefined' && (globa
 const logRequest = (config: CustomAxiosRequestConfig) => {
     if (!DEV_LOG_ENABLED) return;
     const { method, url, headers } = config;
-    // Không log data của FormData để tránh crash console
     const isFormData = config.data instanceof FormData;
     console.log(`🚀 [REQ] ${method?.toUpperCase()} ${url} ${isFormData ? '(FormData)' : ''}`, { headers });
 };
@@ -102,11 +101,10 @@ privateClient.interceptors.request.use(
 
 export const mediaClient = axios.create({
     baseURL: API_BASE_URL,
-    timeout: 300000, // 5 phút
+    timeout: 300000,
     headers: {
         'Accept': 'application/json',
     },
-    // QUAN TRỌNG: Ngăn Axios tự động serialize FormData thành JSON hoặc String
     transformRequest: (data) => {
         return data;
     },
@@ -122,7 +120,6 @@ mediaClient.interceptors.request.use(
             config.headers['Authorization'] = `Bearer ${accessToken}`;
         }
 
-        // Quan trọng cho FormData upload: Xóa Content-Type để engine tự đặt boundary
         if (config.data instanceof FormData) {
             delete config.headers['Content-Type'];
         }
@@ -138,24 +135,35 @@ const handleErrorResponse = (error: AxiosError) => {
     const data = error.response?.data as AppApiResponseError | undefined;
 
     if (!httpStatus) {
-        console.error("🔥 Network Error Details:", error.message);
-
         if (error.message !== 'canceled') {
+            const isTimeout = error.code === 'ECONNABORTED' || error.message.includes('timeout');
+            const message = isTimeout
+                ? i18n.t('error.timeout_message')
+                : i18n.t('error.connection_message');
+
             showToast({
-                title: i18n.t('error.connection_message'),
+                message: message,
                 type: 'error',
             });
         }
         return;
     }
 
-    if (httpStatus === 401 || httpStatus === 403) return;
+    if (httpStatus >= 500) {
+        return;
+    }
+
+    if (httpStatus === 401 || httpStatus === 403 || httpStatus === 429) return;
 
     if (data?.message) {
         showToast({
-            title: i18n.t('error.info_title'),
-            type: 'error',
             message: data.message,
+            type: 'error',
+        });
+    } else if (httpStatus >= 400 && httpStatus < 500) {
+        showToast({
+            message: i18n.t('error.default_client_message'),
+            type: 'error',
         });
     }
 };
@@ -249,6 +257,7 @@ const setupInterceptors = (client: any) => {
     );
 };
 
+setupInterceptors(publicClient);
 setupInterceptors(privateClient);
 setupInterceptors(mediaClient);
 

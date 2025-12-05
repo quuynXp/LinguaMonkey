@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Enums from '../types/enums';
 import * as Entities from '../types/entity';
 
 export interface CallPreferences {
@@ -10,51 +9,47 @@ export interface CallPreferences {
   nativeLanguage: string;
   learningLanguage: string;
   ageRange: string;
-  // callDuration: string;
 }
 
+// Matches UserSettings.java fields related to Chat
 export interface ChatSettings {
   autoTranslate: boolean;
-  showOriginalButton: boolean;
-  translateToVietnamese: boolean;
-  soundNotifications: boolean;
-  vibrationNotifications: boolean;
-  showTypingIndicator: boolean;
-  autoCorrect: boolean;
-  wordSuggestions: boolean;
-  saveTranslationHistory: boolean;
-  offlineTranslation: boolean;
 }
 
+// Matches UserSettings.java fields related to Notifications/System
 export interface NotificationPreferences {
   studyReminders: boolean;
   streakReminders: boolean;
-  messageNotifications: boolean;
-  coupleNotifications: boolean;
-  groupInvitations: boolean;
-  achievementNotifications: boolean;
-  soundEnabled: boolean;
-  vibrationEnabled: boolean;
-  reminderFrequency: 'daily' | 'weekdays' | 'custom';
-  customDays: number[];
-  studyTime: string;
-  quietHours: {
-    enabled: boolean;
-    start: string;
-    end: string;
-  };
+  dailyChallengeReminders: boolean; // Added
+  courseReminders: boolean;         // Added
+  coupleReminders: boolean;         // Added
+  vipReminders: boolean;            // Added
+  soundEnabled: boolean;            // Global setting
+  vibrationEnabled: boolean;        // Global setting
 }
 
+// Matches UserSettings.java fields related to Privacy
 export interface PrivacySettings {
   profileVisibility: boolean;
   progressSharing: boolean;
-  dataCollection: boolean;
-  personalization: boolean;
-  analytics: boolean;
-  crashReports: boolean;
-  locationTracking: boolean;
-  contactSync: boolean;
   searchPrivacy: boolean;
+}
+
+export interface LoginInputState {
+  email: string;
+  password: string;
+  phoneNumber: string;
+  loginMethod: 'email' | 'phone';
+  useOtpForEmail: boolean;
+}
+
+export interface RegisterInputState {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  acceptTerms: boolean;
 }
 
 interface AppState {
@@ -73,8 +68,13 @@ interface AppState {
   theme: 'light' | 'dark';
   callPreferences: CallPreferences;
   chatSettings: ChatSettings;
-  notificationPreferences: NotificationPreferences | null;
+  notificationPreferences: NotificationPreferences;
   privacySettings: PrivacySettings;
+
+  // Auth Inputs
+  loginInput: LoginInputState;
+  registerInput: RegisterInputState;
+  forgotPasswordInput: string;
 
   // Actions
   setSelectedGrammarTopic: (topic: Entities.GrammarTopic | null) => void;
@@ -86,14 +86,23 @@ interface AppState {
   setSelectedNoteTopic: (topicId: string) => void;
   setCallPreferences: (preferences: CallPreferences) => void;
   setChatSettings: (settings: Partial<ChatSettings>) => void;
+
+  // Updated actions for new structure
   setNotificationPreferences: (preferences: NotificationPreferences) => void;
-  updateNotificationPreferences: (prefs: Partial<NotificationPreferences>) => void;
   toggleNotification: (field: keyof NotificationPreferences, value?: boolean) => void;
-  togglePrivacy: (field: keyof PrivacySettings, value?: boolean) => void;
+
   setPrivacySettings: (settings: Partial<PrivacySettings>) => void;
+  togglePrivacy: (field: keyof PrivacySettings, value?: boolean) => void;
+
   resetChatSettings: () => void;
   resetPrivacySettings: () => void;
   logout: () => void;
+
+  // Auth Input Actions
+  setLoginInput: (input: Partial<LoginInputState>) => void;
+  setRegisterInput: (input: Partial<RegisterInputState>) => void;
+  setForgotPasswordInput: (input: string) => void;
+  resetAuthInputs: () => void;
 }
 
 export const useAppStore = create<AppState>()(
@@ -107,51 +116,54 @@ export const useAppStore = create<AppState>()(
       languages: ['en', 'vi'],
       theme: 'light',
       selectedNoteTopic: 'all',
+
       callPreferences: {
         interests: [],
         gender: 'any',
         nativeLanguage: 'en',
         learningLanguage: 'vi',
         ageRange: '18-30',
-        callDuration: '15',
       },
+
       chatSettings: {
-        autoTranslate: true,
-        showOriginalButton: true,
-        translateToVietnamese: true,
-        soundNotifications: true,
-        vibrationNotifications: false,
-        showTypingIndicator: true,
-        autoCorrect: true,
-        wordSuggestions: true,
-        saveTranslationHistory: true,
-        offlineTranslation: false,
+        autoTranslate: false,
       },
+
       notificationPreferences: {
-        studyReminders: false,
-        streakReminders: false,
-        messageNotifications: false,
-        coupleNotifications: false,
-        groupInvitations: false,
-        achievementNotifications: false,
+        studyReminders: true,
+        streakReminders: true,
+        dailyChallengeReminders: true,
+        courseReminders: true,
+        coupleReminders: true,
+        vipReminders: true,
         soundEnabled: true,
         vibrationEnabled: true,
-        reminderFrequency: 'daily',
-        customDays: [],
-        studyTime: '20:00',
-        quietHours: { enabled: false, start: '22:00', end: '07:00' },
       },
+
       privacySettings: {
         profileVisibility: true,
         progressSharing: false,
-        dataCollection: true,
-        personalization: true,
-        analytics: true,
-        crashReports: true,
-        locationTracking: false,
-        contactSync: false,
-        searchPrivacy: false,
+        searchPrivacy: true,
       },
+
+      loginInput: {
+        email: '',
+        password: '',
+        phoneNumber: '',
+        loginMethod: 'email',
+        useOtpForEmail: false,
+      },
+
+      registerInput: {
+        firstName: '',
+        lastName: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        acceptTerms: false,
+      },
+
+      forgotPasswordInput: '',
 
       setSelectedGrammarTopic: (topic) => set({ selectedGrammarTopic: topic }),
       setSupportLanguage: (langs) => set({ supportLanguage: langs }),
@@ -161,19 +173,14 @@ export const useAppStore = create<AppState>()(
       setTheme: (theme) => set({ theme }),
       setSelectedNoteTopic: (topicId) => set({ selectedNoteTopic: topicId }),
       setCallPreferences: (prefs) => set({ callPreferences: prefs }),
+
       setChatSettings: (settings) =>
         set((state) => ({ chatSettings: { ...state.chatSettings, ...settings } })),
 
       setNotificationPreferences: (prefs) => set({ notificationPreferences: prefs }),
-      updateNotificationPreferences: (prefs) =>
-        set((state) => ({
-          notificationPreferences: state.notificationPreferences
-            ? { ...state.notificationPreferences, ...prefs }
-            : prefs as NotificationPreferences,
-        })),
+
       toggleNotification: (field, value) =>
         set((state) => {
-          if (!state.notificationPreferences) return {};
           const current = state.notificationPreferences[field];
           return {
             notificationPreferences: {
@@ -187,6 +194,7 @@ export const useAppStore = create<AppState>()(
         set((state) => ({
           privacySettings: { ...state.privacySettings, ...settings },
         })),
+
       togglePrivacy: (field, value) =>
         set((state) => {
           const current = state.privacySettings[field];
@@ -201,36 +209,47 @@ export const useAppStore = create<AppState>()(
       resetChatSettings: () =>
         set({
           chatSettings: {
-            autoTranslate: true,
-            showOriginalButton: true,
-            translateToVietnamese: true,
-            soundNotifications: true,
-            vibrationNotifications: false,
-            showTypingIndicator: true,
-            autoCorrect: true,
-            wordSuggestions: true,
-            saveTranslationHistory: true,
-            offlineTranslation: false,
+            autoTranslate: false,
           },
         }),
+
       resetPrivacySettings: () =>
         set({
           privacySettings: {
             profileVisibility: true,
             progressSharing: false,
-            dataCollection: true,
-            personalization: true,
-            analytics: true,
-            crashReports: true,
-            locationTracking: false,
-            contactSync: false,
-            searchPrivacy: false,
+            searchPrivacy: true,
           },
         }),
 
+      setLoginInput: (input) => set((state) => ({ loginInput: { ...state.loginInput, ...input } })),
+      setRegisterInput: (input) => set((state) => ({ registerInput: { ...state.registerInput, ...input } })),
+      setForgotPasswordInput: (input) => set({ forgotPasswordInput: input }),
+
+      resetAuthInputs: () => set({
+        loginInput: { email: '', password: '', phoneNumber: '', loginMethod: 'email', useOtpForEmail: false },
+        registerInput: { firstName: '', lastName: '', email: '', password: '', confirmPassword: '', acceptTerms: false },
+        forgotPasswordInput: ''
+      }),
+
       logout: () =>
         set({
-          notificationPreferences: null,
+          chatSettings: { autoTranslate: false },
+          notificationPreferences: {
+            studyReminders: true,
+            streakReminders: true,
+            dailyChallengeReminders: true,
+            courseReminders: true,
+            coupleReminders: true,
+            vipReminders: true,
+            soundEnabled: true,
+            vibrationEnabled: true,
+          },
+          privacySettings: {
+            profileVisibility: true,
+            progressSharing: false,
+            searchPrivacy: true,
+          },
           selectedGrammarTopic: null,
           selectedVideo: null,
           selectedNoteTopic: 'all',
@@ -249,6 +268,9 @@ export const useAppStore = create<AppState>()(
         notificationPreferences: state.notificationPreferences,
         privacySettings: state.privacySettings,
         selectedNoteTopic: state.selectedNoteTopic,
+        loginInput: { ...state.loginInput, password: '' },
+        registerInput: { ...state.registerInput, password: '', confirmPassword: '' },
+        forgotPasswordInput: state.forgotPasswordInput,
       }),
     },
   ),

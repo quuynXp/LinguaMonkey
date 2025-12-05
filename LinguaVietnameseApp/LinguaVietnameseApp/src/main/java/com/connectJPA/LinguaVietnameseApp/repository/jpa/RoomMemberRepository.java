@@ -1,3 +1,5 @@
+// LinguaVietnameseApp/LinguaVietnameseApp/src/main/java/com/connectJPA/LinguaVietnameseApp/repository/jpa/RoomMemberRepository.java
+
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
 import com.connectJPA.LinguaVietnameseApp.entity.RoomMember;
@@ -32,5 +34,8 @@ public interface RoomMemberRepository extends JpaRepository<RoomMember, RoomMemb
     long countByIdUserIdAndIsDeletedFalse(UUID userId);
 
     List<RoomMember> findAllByIdRoomIdAndIsDeletedFalse(UUID roomId);
-}
 
+
+    @Query("SELECT rm.id.userId FROM RoomMember rm WHERE rm.id.roomId = :roomId AND rm.id.userId != :senderId AND rm.isDeleted = false")
+    UUID findOtherMemberId(@Param("roomId") UUID roomId, @Param("senderId") UUID senderId);
+}

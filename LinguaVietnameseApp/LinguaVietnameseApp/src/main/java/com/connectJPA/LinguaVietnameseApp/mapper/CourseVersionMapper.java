@@ -14,8 +14,7 @@ import java.util.stream.Collectors;
 @Mapper(componentModel = "spring")
 public interface CourseVersionMapper {
 
-    // Sửa source: vì CourseVersion giờ chứa trực tiếp courseId
-    @Mapping(target = "courseId", source = "courseId")
+    @Mapping(target = "courseId", source = "course.courseId")
     @Mapping(target = "lessons", expression = "java(mapLessons(entity.getLessons()))")
     CourseVersionResponse toResponse(CourseVersion entity);
 

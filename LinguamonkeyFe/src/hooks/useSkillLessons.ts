@@ -130,12 +130,18 @@ export const useSkillLessons = () => {
                 duration
             }: {
                 lessonQuestionId: string;
-                selectedOption: string;
+                selectedOption: string | object; // Update type to accept complex answers
                 duration: number
             }) => {
                 const formData = new FormData();
                 formData.append("lessonQuestionId", lessonQuestionId);
-                formData.append("selectedOption", selectedOption);
+
+                // Ensure complex objects (Ordering/Matching) are strings before sending
+                const finalOption = typeof selectedOption === 'string'
+                    ? selectedOption
+                    : JSON.stringify(selectedOption);
+
+                formData.append("selectedOption", finalOption);
                 formData.append("duration", String(duration));
 
                 const { data } = await instance.post<AppApiResponse<string>>(

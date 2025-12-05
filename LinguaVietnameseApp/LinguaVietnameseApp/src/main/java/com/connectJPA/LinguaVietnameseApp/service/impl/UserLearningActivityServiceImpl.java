@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -45,6 +46,7 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
 
     private static final String HISTORY_CACHE_KEY = "user:history:";
     private static final String ONLINE_TIME_KEY = "user:online_minutes:";
+    private static final ZoneId VN_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
     @Override
     public Page<UserLearningActivityResponse> getAllUserLearningActivities(UUID userId, Pageable pageable) {
@@ -89,13 +91,34 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 skillType
         );
 
-        // 2. Update User Coins/Exp
+        // 2. Update User Coins/Exp & STREAK LOGIC
         User user = userRepository.findById(request.getUserId()).orElse(null);
         if (user != null) {
             user.setExp(user.getExp() + expReward);
-            // Assuming 1 exp = 1 coin for now, or use specific logic
             user.setCoins(user.getCoins() + expReward);
             user.setLastActiveAt(OffsetDateTime.now());
+
+            // --- STREAK INCREMENT LOGIC ---
+            LocalDate today = LocalDate.now(VN_ZONE);
+            Long minGoal = user.getMinLearningDurationMinutes() != 0 ? (long) user.getMinLearningDurationMinutes() : 15L;
+            
+            // Calculate total including the activity just saved
+            Long totalDurationToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(user.getUserId(), today);
+            if (totalDurationToday == null) totalDurationToday = 0L;
+
+            if (totalDurationToday >= minGoal) {
+                // FIXED: lastStreakCheckDate is LocalDate, no need for timezone conversion
+                LocalDate lastCheck = user.getLastStreakCheckDate();
+
+                if (lastCheck == null || !lastCheck.equals(today)) {
+                    user.setStreak(user.getStreak() + 1);
+                    // FIXED: Set LocalDate (today) instead of OffsetDateTime
+                    user.setLastStreakCheckDate(today);
+                    log.info("Streak incremented for user {}. New Streak: {}", user.getUserId(), user.getStreak());
+                }
+            }
+            // ------------------------------
+
             userRepository.save(user);
         }
         
@@ -143,7 +166,7 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         activity.setDurationInSeconds(durationInSeconds != null ? durationInSeconds : 0); 
         activity.setDetails(details); 
         activity.setCreatedAt(OffsetDateTime.now());
-
+        
         activity = userLearningActivityRepository.save(activity);
         return userLearningActivityMapper.toUserLearningActivityResponse(activity);
     }
@@ -274,14 +297,13 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
                 .averageScore(currentAccuracy) 
                 .timeGrowthPercent(timeGrowth)
                 .accuracyGrowthPercent(accuracyGrowth)
-                .coinsGrowthPercent(0.0) // Placeholder logic for coin growth
+                .coinsGrowthPercent(0.0) 
                 .weakestSkill(weakestSkill)
                 .improvementSuggestion(user.getLatestImprovementSuggestion())
                 .timeChartData(timeChart)
                 .accuracyChartData(accuracyChart)
                 .build();
 
-        // Compatibility for old "sessions" list UI
         List<StudySessionResponse> sessionList = activities.stream()
                 .sorted(Comparator.comparing(UserLearningActivity::getCreatedAt).reversed())
                 .map(userLearningActivityMapper::toStudySessionResponse)
@@ -319,7 +341,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             if (a.getMaxScore() != null && a.getMaxScore() > 0) {
                 totalScore += a.getScore();
                 totalMax += a.getMaxScore();
-                // If accuracy < 60% on this task, mark the skill as weak
                 if ((double)a.getScore()/a.getMaxScore() < 0.6) {
                     weakSpots.add(a.getActivityType().toString());
                 }
@@ -336,17 +357,15 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             "Data: Learned %d minutes today. Accuracy: %.1f%%. Struggled with: %s. " +
             "Language: %s. Proficiency: %s.",
             minutes, accuracy, weakAreasStr, 
-            user.getNativeLanguageCode() != null ? "Vietnamese" : "English", // Or target language logic
+            user.getNativeLanguageCode() != null ? "Vietnamese" : "English", 
             user.getProficiency() != null ? user.getProficiency().toString() : "Beginner"
         );
         
-        // 3. Call gRPC -> Python -> Gemini (REAL CALL)
+        // 3. Call gRPC -> Python -> Gemini
         try {
-            // Using empty history list for a single-turn instruction
             grpcClientService.callChatWithAIAsync(null, userId.toString(), prompt, new ArrayList<>())
                 .thenAccept(suggestion -> {
                     if (suggestion != null && !suggestion.isEmpty()) {
-                        // 4. Save result to DB
                         user.setLatestImprovementSuggestion(suggestion);
                         user.setLastSuggestionGeneratedAt(OffsetDateTime.now());
                         userRepository.save(user);
@@ -357,7 +376,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         }
     }
 
-   // --- LOGIC MỚI CHO HEARTBEAT ---
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void recordHeartbeat(UUID userId) {
@@ -367,21 +385,15 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             return;
         }
 
-        // 1. Cập nhật thời gian hoạt động cuối cùng trong DB
         user.setLastActiveAt(OffsetDateTime.now());
         userRepository.save(user);
 
-        // 2. Ghi nhận thời gian hoạt động trong Redis (cộng thêm 1 phút)
         String todayStr = LocalDate.now().toString();
         String key = ONLINE_TIME_KEY + userId + ":" + todayStr;
         
-        // Tăng giá trị (mặc định là 0 nếu chưa có) thêm 1
         redisTemplate.opsForValue().increment(key, 1);
-        
-        // Set thời gian hết hạn (ví dụ: 30 ngày)
         redisTemplate.expire(key, 30, TimeUnit.DAYS);
 
-        // Log info
         log.debug("Heartbeat recorded for user: {} minute count key: {}", userId, key);
     }
 }

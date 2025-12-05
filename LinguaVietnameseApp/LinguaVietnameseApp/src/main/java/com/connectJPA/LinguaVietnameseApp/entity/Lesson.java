@@ -40,6 +40,13 @@ public class Lesson extends BaseEntity {
     @Column(name = "exp_reward", nullable = false)
     private int expReward;
 
+    // --- NEW FIELD: Supports "Just Media" lessons (1 or many videos/docs) ---
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "lesson_media", joinColumns = @JoinColumn(name = "lesson_id"))
+    @Column(name = "media_url")
+    @Builder.Default
+    private List<String> mediaUrls = new ArrayList<>();
+    
     @JsonIgnore
     @OneToMany(mappedBy = "lesson", fetch = FetchType.LAZY)
     private List<CourseVersionLesson> courseVersions;

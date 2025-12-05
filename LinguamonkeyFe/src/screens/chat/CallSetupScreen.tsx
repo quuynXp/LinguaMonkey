@@ -4,6 +4,7 @@ import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
 import { useAppStore, CallPreferences } from "../../stores/appStore"
 import { useUserStore } from "../../stores/UserStore"
+import { useChatStore } from "../../stores/ChatStore" // Import ChatStore
 import { useUsers } from "../../hooks/useUsers"
 import { useVideoCalls, MatchResponseData } from "../../hooks/useVideos"
 import ScreenLayout from "../../components/layout/ScreenLayout"
@@ -41,10 +42,12 @@ const CallSetupScreen = ({ navigation }) => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const { callPreferences: savedPreferences, setCallPreferences, supportLanguage: rawSupportedLangs = [] } = useAppStore()
+  // Use Global Online Count from Store
+  const totalOnlineUsers = useChatStore(s => s.totalOnlineUsers)
+
   const supportedLanguages = rawSupportedLangs as unknown as LanguageResponse[]
 
-  const { useInterests, useCountOnlineUsers } = useUsers()
-  const { data: realOnlineCount } = useCountOnlineUsers()
+  const { useInterests } = useUsers()
 
   const { useFindCallPartner, useCancelFindMatch } = useVideoCalls()
   const { mutate: findMatch } = useFindCallPartner()
@@ -147,7 +150,7 @@ const CallSetupScreen = ({ navigation }) => {
     setSearchStatusMessage(t("call.matchFound"))
     setTimeout(() => {
       setIsSearching(false)
-      navigation.navigate("VideoCallScreen", {
+      navigation.navigate("JitsiCallScreen", {
         roomId: room.roomId,
         roomName: room.roomName,
         isCaller: false,
@@ -301,7 +304,8 @@ const CallSetupScreen = ({ navigation }) => {
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>
-                {realOnlineCount !== undefined ? realOnlineCount : 1}
+                {/* Use Real-time Data from Store */}
+                {totalOnlineUsers > 0 ? totalOnlineUsers.toLocaleString() : 1}
               </Text>
               <Text style={styles.statLabel}>{t("call.onlineUsers")}</Text>
             </View>

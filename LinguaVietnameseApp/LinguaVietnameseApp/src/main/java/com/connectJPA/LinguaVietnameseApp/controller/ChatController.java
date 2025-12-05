@@ -24,17 +24,20 @@ import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.ChatMessageService;
 import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
+import lombok.Builder;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
-import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
+import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
@@ -61,6 +64,28 @@ public class ChatController {
     private final AuthenticationService authenticationService;
     private final NotificationService notificationService;
     private final UserRepository userRepository;
+    private final RedisTemplate<String, Object> redisTemplate;
+
+    // --- Inner Class for Status Request ---
+    @Data
+    @Builder
+    public static class UserStatusRequest {
+        private UUID userId;
+        private String status; // ONLINE or OFFLINE
+    }
+
+    // Thêm vào ChatController
+    @GetMapping("/status/{userId}")
+    public ResponseEntity<AppApiResponse<Boolean>> getUserOnlineStatus(@PathVariable UUID userId, Locale locale) {
+        String redisKey = "user:online:" + userId.toString();
+        Boolean isOnline = redisTemplate.hasKey(redisKey);
+        
+        return ResponseEntity.ok(AppApiResponse.<Boolean>builder()
+                .code(200)
+                .result(isOnline != null && isOnline)
+                .message("Success")
+                .build());
+    }
 
     @Operation(summary = "Get chat messages by room ID", description = "Get paginated messages for a room")
     @GetMapping("/room/{roomId}/messages")
@@ -194,6 +219,7 @@ public class ChatController {
                     .toList();
 
             try {
+                // NOTE: Assumes 'learning.TranslateResponse' is defined and accessible
                 String aiResponseText = grpcClientService.callChatWithAIAsync(
                         token,
                         senderId.toString(),
@@ -225,6 +251,7 @@ public class ChatController {
                 String targetLang = "vi";
                 CompletableFuture.runAsync(() -> {
                     try {
+                        // NOTE: Assumes 'learning.TranslateResponse' is defined and accessible
                         learning.TranslateResponse tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
 
                         if (!tr.getError().isEmpty()) {
@@ -289,6 +316,20 @@ public class ChatController {
             messagingTemplate.convertAndSendToUser(
                     request.getUserId().toString(), "/queue/typing", request);
         }
+    }
+    
+    // --- NEW: Real-time Status Handler ---
+    @MessageMapping("/chat/room/{roomId}/status")
+    public void handleUserStatus(
+            @DestinationVariable UUID roomId,
+            @Payload UserStatusRequest request,
+            Principal principal) {
+        
+        // Ensure the sender is who they say they are (security)
+        request.setUserId(UUID.fromString(principal.getName()));
+        
+        // Broadcast to everyone in the room
+        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/status", request);
     }
 
     private String extractToken (String authorization, SimpMessageHeaderAccessor headerAccessor){

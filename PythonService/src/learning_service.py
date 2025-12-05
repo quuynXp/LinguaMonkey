@@ -400,8 +400,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         
     @authenticated_grpc_method
     async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
-        # Uses Hybrid LPM + Gemini + DB Write-through
-        translated_text, error = await self.translator.translate(
+        translated_text, detected_lang = await self.translator.translate(
             request.text, 
             request.source_language, 
             request.target_language
@@ -409,9 +408,9 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         
         return learning_pb2.TranslateResponse(
             translated_text=translated_text,
-            source_language_detected=request.source_language,
-            confidence=1.0 if not error else 0.5,
-            error=error or ""
+            source_language_detected=detected_lang, # Return actual detected lang
+            confidence=1.0 if translated_text else 0.0,
+            error=""
         )
 
     @authenticated_grpc_method

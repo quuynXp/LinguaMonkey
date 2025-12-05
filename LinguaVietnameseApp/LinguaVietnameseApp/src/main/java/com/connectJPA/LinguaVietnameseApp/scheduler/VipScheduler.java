@@ -26,9 +26,10 @@ public class VipScheduler {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
 
-    @Scheduled(cron = "0 0 9 * * *", zone = "UTC")
-    @Scheduled(cron = "0 0 15 * * *", zone = "UTC")
-    @Scheduled(cron = "0 0 20 * * *", zone = "UTC")
+    // 09:00 VN = 02:00 UTC
+    // 15:00 VN = 08:00 UTC
+    // 20:00 VN = 13:00 UTC
+    @Scheduled(cron = "0 0 2,8,13 * * *", zone = "UTC")
     @Transactional
     public void checkAndNotifyExpiringVip() {
         log.info("Starting VIP expiration check...");
@@ -40,6 +41,8 @@ public class VipScheduler {
         List<User> expiringUsers = userRepository.findByVipExpirationDateBetween(startOfTomorrow, endOfTomorrow);
 
         for (User user : expiringUsers) {
+            if (user.isDeleted() || !user.getUserSettings().isVipReminders()) continue;
+
             try {
                 if (user.getVipExpirationDate().isBefore(endOfTomorrow.plusDays(1))) {
                     sendVipExpirationReminder(user);
@@ -63,7 +66,6 @@ public class VipScheduler {
                 .build();
 
         notificationService.createPushNotification(notification);
-        
         log.info("Sent VIP expiration reminder to user {}", user.getUserId());
     }
 }

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { View, Text, TouchableOpacity, Animated, TextInput, Alert, ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform } from "react-native";
+import { View, Text, TouchableOpacity, Animated, TextInput, Alert, ScrollView, ActivityIndicator } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { authService } from '../../services/authService';
@@ -9,6 +9,7 @@ import * as Facebook from 'expo-auth-session/providers/facebook';
 import * as WebBrowser from 'expo-web-browser';
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useAppStore } from '../../stores/appStore';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -19,12 +20,12 @@ const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
 
 const RegisterScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const [formData, setFormData] = useState({ firstName: "", lastName: "", email: "", password: "", confirmPassword: "" });
+  const { registerInput, setRegisterInput, resetAuthInputs } = useAppStore();
+
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSocialLoading, setIsSocialLoading] = useState(false);
-  const [acceptTerms, setAcceptTerms] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -65,6 +66,7 @@ const RegisterScreen = ({ navigation }) => {
           .then((result) => {
             if (result) {
               showSuccess(t("registerSuccess"));
+              resetAuthInputs();
             }
           })
           .catch((err) => safeShowError(err))
@@ -82,6 +84,7 @@ const RegisterScreen = ({ navigation }) => {
           .then((result) => {
             if (result) {
               showSuccess(t("registerSuccess"));
+              resetAuthInputs();
             }
           })
           .catch((err) => safeShowError(err))
@@ -91,23 +94,23 @@ const RegisterScreen = ({ navigation }) => {
   }, [fbResponse]);
 
   const validateForm = () => {
-    if (!formData.firstName.trim() || !formData.lastName.trim()) {
+    if (!registerInput.firstName.trim() || !registerInput.lastName.trim()) {
       Alert.alert(t('error'), t('enterName'));
       return false;
     }
-    if (!formData.email.trim() || !formData.email.includes("@")) {
+    if (!registerInput.email.trim() || !registerInput.email.includes("@")) {
       Alert.alert(t('error'), t('validEmail'));
       return false;
     }
-    if (formData.password.length < 6) {
+    if (registerInput.password.length < 6) {
       Alert.alert(t('error'), t('passwordLength'));
       return false;
     }
-    if (formData.password !== formData.confirmPassword) {
+    if (registerInput.password !== registerInput.confirmPassword) {
       Alert.alert(t('error'), t('passwordMismatch'));
       return false;
     }
-    if (!acceptTerms) {
+    if (!registerInput.acceptTerms) {
       Alert.alert(t('error'), t('acceptTerms'));
       return false;
     }
@@ -118,8 +121,9 @@ const RegisterScreen = ({ navigation }) => {
     if (!validateForm()) return;
     setIsLoading(true);
     try {
-      await authService.registerWithEmail(formData.firstName, formData.lastName, formData.email, formData.password);
+      await authService.registerWithEmail(registerInput.firstName, registerInput.lastName, registerInput.email, registerInput.password);
       showSuccess(t("registerSuccess"));
+      resetAuthInputs();
     } catch (error: any) {
       safeShowError(error);
     } finally {
@@ -133,11 +137,9 @@ const RegisterScreen = ({ navigation }) => {
     else if (provider === 'Facebook') fbRequest ? fbPromptAsync() : showError("Facebook not ready");
   };
 
-  // Khuyến nghị bao bọc nội dung trong ScrollView để đảm bảo cuộn được khi bàn phím hiện lên
   const Content = (
     <Animated.View
       style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}
-      // Đặt pointerEvents="box-none" cho container Animated để tránh chặn touch events
       pointerEvents="box-none"
     >
       <View style={styles.header}>
@@ -152,41 +154,75 @@ const RegisterScreen = ({ navigation }) => {
         <View style={styles.nameRow}>
           <View style={[styles.inputContainer, styles.halfWidth]}>
             <Icon name="person" size={20} color="#6B7280" style={styles.inputIcon} />
-            <TextInput style={styles.textInput} placeholder={t('firstName')} value={formData.firstName} onChangeText={(text) => setFormData({ ...formData, firstName: text })} />
+            <TextInput
+              style={styles.textInput}
+              placeholder={t('firstName')}
+              value={registerInput.firstName}
+              onChangeText={(text) => setRegisterInput({ firstName: text })}
+            />
           </View>
           <View style={[styles.inputContainer, styles.halfWidth]}>
             <Icon name="person-outline" size={20} color="#6B7280" style={styles.inputIcon} />
-            <TextInput style={styles.textInput} placeholder={t('lastName')} value={formData.lastName} onChangeText={(text) => setFormData({ ...formData, lastName: text })} />
+            <TextInput
+              style={styles.textInput}
+              placeholder={t('lastName')}
+              value={registerInput.lastName}
+              onChangeText={(text) => setRegisterInput({ lastName: text })}
+            />
           </View>
         </View>
         <View style={styles.inputContainer}>
           <Icon name="email" size={20} color="#6B7280" style={styles.inputIcon} />
-          <TextInput style={styles.textInput} placeholder={t('emailAddress')} value={formData.email} onChangeText={(text) => setFormData({ ...formData, email: text })} keyboardType="email-address" autoCapitalize="none" />
+          <TextInput
+            style={styles.textInput}
+            placeholder={t('emailAddress')}
+            value={registerInput.email}
+            onChangeText={(text) => setRegisterInput({ email: text })}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
         </View>
         <View style={styles.inputContainer}>
           <Icon name="lock" size={20} color="#6B7280" style={styles.inputIcon} />
-          <TextInput style={styles.textInput} placeholder={t('password')} value={formData.password} onChangeText={(text) => setFormData({ ...formData, password: text })} secureTextEntry={!showPassword} />
-          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}><Icon name={showPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" /></TouchableOpacity>
+          <TextInput
+            style={styles.textInput}
+            placeholder={t('password')}
+            value={registerInput.password}
+            onChangeText={(text) => setRegisterInput({ password: text })}
+            secureTextEntry={!showPassword}
+          />
+          <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+            <Icon name={showPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" />
+          </TouchableOpacity>
         </View>
         <View style={styles.inputContainer}>
           <Icon name="lock-outline" size={20} color="#6B7280" style={styles.inputIcon} />
-          <TextInput style={styles.textInput} placeholder={t('confirmPassword')} value={formData.confirmPassword} onChangeText={(text) => setFormData({ ...formData, confirmPassword: text })} secureTextEntry={!showConfirmPassword} />
-          <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}><Icon name={showConfirmPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" /></TouchableOpacity>
+          <TextInput
+            style={styles.textInput}
+            placeholder={t('confirmPassword')}
+            value={registerInput.confirmPassword}
+            onChangeText={(text) => setRegisterInput({ confirmPassword: text })}
+            secureTextEntry={!showConfirmPassword}
+          />
+          <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon}>
+            <Icon name={showConfirmPassword ? "visibility" : "visibility-off"} size={20} color="#6B7280" />
+          </TouchableOpacity>
         </View>
 
-        {/* VÙNG ĐÃ SỬA: Đặt pointerEvents="none" cho các phần tử con không tương tác */}
-        <TouchableOpacity style={styles.termsContainer} onPress={() => setAcceptTerms(!acceptTerms)}>
-          {/* Checkbox VIEW: Đặt pointerEvents="none" */}
-          <View style={[styles.checkbox, acceptTerms && styles.checkboxChecked]} pointerEvents="none">
-            {acceptTerms && <Icon name="check" size={16} color="#FFFFFF" />}
+        <TouchableOpacity style={styles.termsContainer} onPress={() => setRegisterInput({ acceptTerms: !registerInput.acceptTerms })}>
+          <View style={[styles.checkbox, registerInput.acceptTerms && styles.checkboxChecked]} pointerEvents="none">
+            {registerInput.acceptTerms && <Icon name="check" size={16} color="#FFFFFF" />}
           </View>
-          {/* Text: Đặt pointerEvents="none" */}
           <Text style={styles.termsText} pointerEvents="none">
             {t('agreeTo')} <Text style={styles.linkText}>{t('termsOfService')}</Text> {t('and')} <Text style={styles.linkText}>{t('privacyPolicy')}</Text>
           </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.registerButton, (isLoading || isSocialLoading) && styles.buttonDisabled]} onPress={handleRegister} disabled={isLoading || isSocialLoading}>
+        <TouchableOpacity
+          style={[styles.registerButton, (isLoading || isSocialLoading) && styles.buttonDisabled]}
+          onPress={handleRegister}
+          disabled={isLoading || isSocialLoading}
+        >
           {isLoading ? <ActivityIndicator size="small" color="#FFFFFF" /> : <><Text style={styles.registerButtonText}>{t('createAccount')}</Text><Icon name="arrow-forward" size={20} color="#FFFFFF" /></>}
         </TouchableOpacity>
       </View>

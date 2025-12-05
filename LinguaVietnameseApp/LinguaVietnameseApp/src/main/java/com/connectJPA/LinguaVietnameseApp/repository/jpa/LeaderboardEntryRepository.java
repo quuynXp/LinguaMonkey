@@ -30,7 +30,7 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
     @Query(value = "SELECT le FROM LeaderboardEntry le JOIN FETCH le.user u " +
             "WHERE le.id.leaderboardId = :leaderboardId " +
             "AND le.isDeleted = false AND u.isDeleted = false " +
-            "ORDER BY u.level DESC, le.score DESC, le.updatedAt ASC",
+            "ORDER BY u.level DESC, u.exp DESC, le.updatedAt ASC",
             countQuery = "SELECT COUNT(le) FROM LeaderboardEntry le JOIN le.user u " +
                     "WHERE le.id.leaderboardId = :leaderboardId " +
                     "AND le.isDeleted = false AND u.isDeleted = false")
@@ -39,7 +39,7 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             Pageable pageable);
 
     @Query(value = "SELECT rank FROM (" +
-            " SELECT le.user_id, RANK() OVER (PARTITION BY le.leaderboard_id ORDER BY u.level DESC, le.score DESC) as rank" +
+            " SELECT le.user_id, RANK() OVER (PARTITION BY le.leaderboard_id ORDER BY u.level DESC, u.exp DESC) as rank" +
             " FROM leaderboard_entries le " +
             " JOIN users u ON le.user_id = u.user_id " +
             " WHERE le.leaderboard_id = :leaderboardId AND le.is_deleted = false AND u.is_deleted = false" +
@@ -48,12 +48,12 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             @Param("leaderboardId") UUID leaderboardId,
             @Param("userId") UUID userId);
 
-            @Query(value = "SELECT COUNT(le) + 1 FROM LeaderboardEntry le " +
-           "WHERE le.leaderboard.leaderboardId = :leaderboardId " +
-           "AND le.isDeleted = false " +
-           "AND le.score > :score")
+    @Query(value = "SELECT COUNT(le) + 1 FROM LeaderboardEntry le " +
+            "WHERE le.leaderboard.leaderboardId = :leaderboardId " +
+            "AND le.isDeleted = false " +
+            "AND le.score > :score")
     Integer calculateRankByScore(@Param("leaderboardId") UUID leaderboardId, @Param("score") double score);
-    
+
     @Transactional
     @Modifying
     @Query("UPDATE LeaderboardEntry le " +
@@ -69,13 +69,13 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             "JOIN le.user u ON le.id.userId = u.userId " +
             "WHERE le.id.leaderboardId = :leaderboardId " +
             "AND le.isDeleted = false AND u.isDeleted = false " +
-            "ORDER BY u.level DESC, le.score DESC, le.updatedAt ASC")
+            "ORDER BY u.level DESC, u.exp DESC, le.updatedAt ASC")
     List<LeaderboardEntry> findTopLeadersByLeaderboardId(
             @Param("leaderboardId") UUID leaderboardId,
             Pageable pageable);
 
     @Query(value = "SELECT rank FROM (" +
-            " SELECT le.user_id, RANK() OVER (ORDER BY u.level DESC, le.score DESC) as rank " +
+            " SELECT le.user_id, RANK() OVER (ORDER BY u.level DESC, u.exp DESC) as rank " +
             " FROM leaderboard_entries le " +
             " JOIN users u ON le.user_id = u.user_id " +
             " WHERE le.leaderboard_id = :leaderboardId " +
@@ -93,28 +93,6 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             @Param("date") LocalDate date,
             @Param("pageable") Pageable pageable
     );
-
-//     @Query(value = """
-//             SELECT rank FROM (
-//                 SELECT le.user_id, RANK() OVER (ORDER BY u.level DESC, le.score DESC) as rank
-//                 FROM leaderboard_entries le
-//                 JOIN users u ON le.user_id = u.user_id
-//                 WHERE le.leaderboard_id = (
-//                     SELECT leaderboard_id
-//                     FROM leaderboards
-//                     WHERE tab = :tab
-//                     AND is_deleted = false
-//                     ORDER BY created_at DESC
-//                     LIMIT 1
-//                 )
-//                 AND le.is_deleted = false
-//                 AND u.is_deleted = false
-//             ) t WHERE user_id = :userId
-//             """, nativeQuery = true)
-//     Integer findRankByUserAndTab(
-//             @Param("userId") UUID userId,
-//             @Param("tab") String tab
-//     );
 
     @Query("SELECT le FROM LeaderboardEntry le " +
             "WHERE le.id.leaderboardId = :leaderboardId " +
@@ -137,16 +115,14 @@ public interface LeaderboardEntryRepository extends JpaRepository<LeaderboardEnt
             "JOIN FETCH le.user u " +
             "WHERE le.leaderboardEntryId.leaderboardId = :leaderboardId " +
             "AND le.isDeleted = false AND u.isDeleted = false " +
-            "ORDER BY u.level DESC, le.score DESC, le.updatedAt ASC")
+            "ORDER BY u.level DESC, u.exp DESC, le.updatedAt ASC")
     List<LeaderboardEntry> findTop3ByLeaderboardIdOrderByUserLevelDesc(
             @Param("leaderboardId") UUID leaderboardId,
             Pageable pageable);
 
-
-            // Rank based on User Level/Exp (for Global tab)
     @Query("SELECT COUNT(le) + 1 FROM LeaderboardEntry le JOIN le.user u " +
-           "WHERE le.leaderboard.leaderboardId = :leaderboardId AND le.isDeleted = false " +
-           "AND (u.level > :level OR (u.level = :level AND u.exp > :exp))")
+            "WHERE le.leaderboard.leaderboardId = :leaderboardId AND le.isDeleted = false " +
+            "AND (u.level > :level OR (u.level = :level AND u.exp > :exp))")
     Integer calculateRankByLevelAndExp(@Param("leaderboardId") UUID leaderboardId, @Param("level") int level, @Param("exp") long exp);
 
     @Query("SELECT r FROM (SELECT le.id.userId AS uid, ROW_NUMBER() OVER (ORDER BY le.score DESC) AS r " +

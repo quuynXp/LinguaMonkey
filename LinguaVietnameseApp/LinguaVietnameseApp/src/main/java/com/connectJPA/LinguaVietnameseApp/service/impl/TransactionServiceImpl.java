@@ -53,7 +53,7 @@ public class TransactionServiceImpl implements TransactionService {
     private final CurrencyService currencyService;
     private final CourseVersionRepository courseVersionRepository;
     private final CourseVersionEnrollmentRepository enrollmentRepository;
-    private final NotificationService notificationService; // Inject NotificationService
+    private final NotificationService notificationService;
 
     @Value("${stripe.api-key}")
     private String stripeApiKey;
@@ -94,21 +94,17 @@ public class TransactionServiceImpl implements TransactionService {
     @Transactional(readOnly = true)
     public Page<RefundRequestResponse> getPendingRefundRequests(Pageable pageable) {
         return transactionRepository.findByTypeAndStatus(TransactionType.REFUND, TransactionStatus.PENDING, pageable)
-                .map(tx -> {
-                    String courseName = "Unknown Course";
-                    
-                    return RefundRequestResponse.builder()
+                .map(tx -> RefundRequestResponse.builder()
                             .refundTransactionId(tx.getTransactionId())
                             .originalTransactionId(tx.getOriginalTransaction().getTransactionId())
                             .requesterName(tx.getUser().getFullname())
                             .requesterEmail(tx.getUser().getEmail())
-                            .courseName(tx.getOriginalTransaction().getDescription()) // Fallback
+                            .courseName(tx.getOriginalTransaction().getDescription())
                             .amount(tx.getAmount())
                             .reason(tx.getDescription())
                             .status(tx.getStatus())
                             .requestDate(tx.getCreatedAt())
-                            .build();
-                });
+                            .build());
     }
 
    @Override
@@ -117,7 +113,6 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction refundTx = getRefundTx(request.getRefundTransactionId());
         Transaction originalTx = refundTx.getOriginalTransaction();
         
-        // Debit Seller / Credit Buyer
         walletService.debit(refundTx.getSender().getUserId(), refundTx.getAmount());
         walletService.credit(refundTx.getReceiver().getUserId(), refundTx.getAmount());
         
@@ -143,7 +138,7 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction refundTx = getRefundTx(refundTxId);
         
         refundTx.setStatus(TransactionStatus.REJECTED);
-        refundTx.getOriginalTransaction().setStatus(TransactionStatus.SUCCESS); // Revert
+        refundTx.getOriginalTransaction().setStatus(TransactionStatus.SUCCESS);
         
         transactionRepository.save(refundTx);
 
@@ -196,7 +191,6 @@ public class TransactionServiceImpl implements TransactionService {
         BigDecimal basePrice;
         String descLower = description.toLowerCase();
         
-        // Improve detection logic logic or rely on explicit type later, but for price validation keep description check or separate DTO
         if (descLower.contains("monthly")) {
             basePrice = vipPriceMonthly;
         } else if (descLower.contains("yearly")) {
@@ -204,7 +198,7 @@ public class TransactionServiceImpl implements TransactionService {
         } else if (descLower.contains("trial")) {
             basePrice = vipPriceTrial;
         } else {
-            return requestedAmount; // Not a VIP standard price check, return as is
+            return requestedAmount;
         }
 
         int coins = (coinsToUse != null) ? coinsToUse : 0;
@@ -228,7 +222,6 @@ public class TransactionServiceImpl implements TransactionService {
             expectedAmount = BigDecimal.ZERO;
         }
 
-        // Allow small tolerance for floating point calc
         if (requestedAmount.subtract(expectedAmount).abs().compareTo(new BigDecimal("0.05")) > 0) {
             log.error("Price Mismatch! Expected: {}, Received: {}", expectedAmount, requestedAmount);
             throw new AppException(ErrorCode.INVALID_AMOUNT);
@@ -247,7 +240,6 @@ public class TransactionServiceImpl implements TransactionService {
     public String createPaymentUrl(PaymentRequest request, String clientIp) {
         User user = getUser(request.getUserId());
 
-        // Validate logic reused
         BigDecimal finalAmount = validateAndProcessVipPurchase(
             user, 
             request.getAmount(), 
@@ -265,7 +257,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .amount(finalAmount)
                 .currency(request.getCurrency() != null ? request.getCurrency() : "USD")
                 .provider(request.getProvider())
-                .type(request.getType() != null ? request.getType() : TransactionType.PAYMENT) // Support UPGRADE_VIP
+                .type(request.getType() != null ? request.getType() : TransactionType.PAYMENT)
                 .description(request.getDescription())
                 .status(TransactionStatus.PENDING)
                 .build();
@@ -314,25 +306,26 @@ public class TransactionServiceImpl implements TransactionService {
         String vnp_OrderInfo = (transaction.getDescription() != null) ? transaction.getDescription() : "Payment";
         String vnp_TxnRef = transaction.getTransactionId().toString();
         String vnp_IpAddr = (clientIp != null) ? clientIp : "127.0.0.1";
-        String vnp_TmnCode = this.vnpTmnCode;
-
+        
+        // Convert to VND if necessary
         BigDecimal amountVND = amount;
         if (!"VND".equalsIgnoreCase(currency)) {
             BigDecimal rate = currencyService.getUsdToVndRate();
             amountVND = amount.multiply(rate);
         }
         
+        // VNPAY Amount is multiplied by 100
         long amountVal = amountVND.multiply(BigDecimal.valueOf(100)).longValue();
 
         Map<String, String> vnp_Params = new HashMap<>();
         vnp_Params.put("vnp_Version", vnp_Version);
         vnp_Params.put("vnp_Command", vnp_Command);
-        vnp_Params.put("vnp_TmnCode", vnp_TmnCode);
+        vnp_Params.put("vnp_TmnCode", vnpTmnCode);
         vnp_Params.put("vnp_Amount", String.valueOf(amountVal));
         vnp_Params.put("vnp_CurrCode", "VND");
         vnp_Params.put("vnp_TxnRef", vnp_TxnRef);
         vnp_Params.put("vnp_OrderInfo", vnp_OrderInfo);
-        vnp_Params.put("vnp_OrderType", "other");
+        vnp_Params.put("vnp_OrderType", "other"); // Required parameter
         vnp_Params.put("vnp_Locale", "vn");
         vnp_Params.put("vnp_ReturnUrl", returnUrl);
         vnp_Params.put("vnp_IpAddr", vnp_IpAddr);
@@ -346,6 +339,7 @@ public class TransactionServiceImpl implements TransactionService {
         String vnp_ExpireDate = formatter.format(cld.getTime());
         vnp_Params.put("vnp_ExpireDate", vnp_ExpireDate);
 
+        // Sorting is crucial for VNPAY Checksum
         List<String> fieldNames = new ArrayList<>(vnp_Params.keySet());
         Collections.sort(fieldNames);
         StringBuilder hashData = new StringBuilder();
@@ -355,9 +349,12 @@ public class TransactionServiceImpl implements TransactionService {
             String fieldName = itr.next();
             String fieldValue = vnp_Params.get(fieldName);
             if ((fieldValue != null) && (fieldValue.length() > 0)) {
+                // Build hash data
                 hashData.append(fieldName);
                 hashData.append('=');
                 hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
+                
+                // Build query url
                 query.append(URLEncoder.encode(fieldName, StandardCharsets.US_ASCII));
                 query.append('=');
                 query.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
@@ -367,6 +364,7 @@ public class TransactionServiceImpl implements TransactionService {
                 }
             }
         }
+        
         String queryUrl = query.toString();
         String vnp_SecureHash = hmacSHA512(vnpHashSecret, hashData.toString());
         queryUrl += "&vnp_SecureHash=" + vnp_SecureHash;
@@ -441,7 +439,6 @@ public class TransactionServiceImpl implements TransactionService {
             if (transaction.getType() == TransactionType.DEPOSIT) {
                 walletService.credit(userId, amount);
             } else if (transaction.getType() == TransactionType.UPGRADE_VIP || transaction.getType() == TransactionType.PAYMENT) {
-                // Check VIP via Type OR Description (fallback)
                 boolean isVip = transaction.getType() == TransactionType.UPGRADE_VIP;
                 String descLower = transaction.getDescription() != null ? transaction.getDescription().toLowerCase() : "";
                 
@@ -531,12 +528,12 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction refundTx = Transaction.builder()
             .user(requester)
             .wallet(original.getWallet())
-            .sender(original.getReceiver()) // Seller pays
-            .receiver(original.getSender()) // Buyer receives
+            .sender(original.getReceiver())
+            .receiver(original.getSender())
             .amount(original.getAmount())
             .currency(original.getCurrency())
             .type(TransactionType.REFUND)
-            .status(TransactionStatus.PENDING) // Start as PENDING for Scheduler
+            .status(TransactionStatus.PENDING)
             .provider(TransactionProvider.INTERNAL)
             .originalTransaction(original)
             .description(request.getReason())
@@ -575,12 +572,9 @@ public class TransactionServiceImpl implements TransactionService {
             transaction.setCurrency("USD");
         }
         
-        // P2P Logic vs System Logic
         if (request.getType() == TransactionType.UPGRADE_VIP) {
-            // No receiver, money goes to system
             transaction.setReceiver(null);
         } else if (request.getReceiverId() != null) {
-            // P2P or Course Purchase
             User receiver = userRepository.findByUserIdAndIsDeletedFalse(request.getReceiverId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
             transaction.setReceiver(receiver);
@@ -588,22 +582,17 @@ public class TransactionServiceImpl implements TransactionService {
         
         transaction = transactionRepository.save(transaction);
         
-        // 1. Debit Buyer
         walletService.debit(user.getUserId(), finalAmount);
 
-        // 2. Credit Seller (Only if receiver exists)
         if (transaction.getReceiver() != null) {
              walletService.credit(transaction.getReceiver().getUserId(), finalAmount);
         }
 
         if (transaction.getStatus() == TransactionStatus.SUCCESS) {
-             
-             // Course Enrollment
              if (request.getCourseVersionId() != null) {
                  createEnrollment(user, request.getCourseVersionId());
              }
 
-             // VIP Logic via Type or Description
              if (request.getType() == TransactionType.UPGRADE_VIP) {
                  String descLower = request.getDescription() != null ? request.getDescription().toLowerCase() : "";
                  activateVipForUser(user.getUserId(), descLower);
@@ -651,7 +640,6 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction refundTx = transactionRepository.findById(refundTxId)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
         
-        // Allow PENDING or PENDING_REVIEW to be processed
         if (refundTx.getType() != TransactionType.REFUND || 
            (refundTx.getStatus() != TransactionStatus.PENDING && refundTx.getStatus() != TransactionStatus.PENDING_REVIEW)) {
             throw new AppException(ErrorCode.TRANSACTION_NOT_REFUNDABLE);

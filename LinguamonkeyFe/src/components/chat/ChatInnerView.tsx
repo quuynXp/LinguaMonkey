@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
     ActivityIndicator,
-    Alert,
     FlatList,
     KeyboardAvoidingView,
     Platform,
@@ -18,12 +17,12 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
-import { useChatStore } from "../../stores/ChatStore";
+import { useChatStore, getMessageDisplayData } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useFriendships } from "../../hooks/useFriendships";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
-import FileUploader from "../../components/common/FileUploader"; // Using the component created above
+import FileUploader from "../../components/common/FileUploader";
 import { RoomPurpose, FriendshipStatus } from "../../types/enums";
 import { RoomResponse, MemberResponse, AppApiResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -39,8 +38,9 @@ type UIMessage = {
     sender: 'user' | 'other';
     timestamp: string;
     text: string;
+    content?: string;
     mediaUrl?: string;
-    messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO';
+    messageType: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
     translatedText?: string;
     user: string;
     avatar: string | null;
@@ -52,6 +52,8 @@ type UIMessage = {
     isLocal?: boolean;
     senderProfile?: UserProfileResponse;
     showTranslation?: boolean;
+    roomId?: string;
+    isDeleted?: boolean;
 };
 
 interface ChatInnerViewProps {
@@ -83,17 +85,18 @@ const QuickProfilePopup = ({
     profile,
     onClose,
     onNavigateProfile,
-    currentUserId
+    currentUserId,
+    statusInfo // Add status info
 }: {
     visible: boolean;
     profile: UserProfileResponse | null;
     onClose: () => void;
     onNavigateProfile: () => void;
     currentUserId: string;
+    statusInfo?: { isOnline: boolean; lastActiveAt?: string }
 }) => {
     const { t } = useTranslation();
     const { useCreateFriendship, useUpdateFriendship, useDeleteFriendship } = useFriendships();
-
     const createFriendship = useCreateFriendship();
     const updateFriendship = useUpdateFriendship();
     const deleteFriendship = useDeleteFriendship();
@@ -109,18 +112,35 @@ const QuickProfilePopup = ({
     const handleAcceptFriend = () => updateFriendship.mutate({ user1Id: profile.userId, user2Id: currentUserId, req: { requesterId: profile.userId, receiverId: currentUserId, status: FriendshipStatus.ACCEPTED } });
     const handleCancelOrUnfriend = () => deleteFriendship.mutate({ user1Id: currentUserId, user2Id: profile.userId });
 
+    // Format Active Status text
+    let statusText = "";
+    if (statusInfo?.isOnline) statusText = "Active now";
+    else if (statusInfo?.lastActiveAt) {
+        const diff = Date.now() - new Date(statusInfo.lastActiveAt).getTime();
+        const mins = Math.floor(diff / 60000);
+        if (mins < 60) statusText = `Active ${mins}m ago`;
+        else {
+            const hours = Math.floor(mins / 60);
+            statusText = `Active ${hours}h ago`;
+        }
+    }
+
     return (
         <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
             <Pressable style={styles.modalOverlay} onPress={onClose}>
                 <View style={styles.popupContainer}>
                     <View style={styles.popupHeader}>
-                        <Image source={getAvatarSource(profile.avatarUrl, null)} style={styles.popupAvatar} />
+                        <View>
+                            <Image source={getAvatarSource(profile.avatarUrl, null)} style={styles.popupAvatar} />
+                            {statusInfo?.isOnline && <View style={[styles.activeDot, { right: 15, bottom: 5 }]} />}
+                        </View>
                         <View style={styles.popupInfo}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <Text style={styles.popupName}>{profile.fullname}</Text>
                                 <Text style={{ marginLeft: 5 }}>{getCountryFlag(profile.country)}</Text>
                             </View>
                             <Text style={styles.popupNickname}>@{profile.nickname}</Text>
+                            {statusText !== "" && <Text style={{ fontSize: 10, color: '#10B981' }}>{statusText}</Text>}
                             <View style={styles.popupStatsRow}>
                                 <Text style={styles.popupStat}>Lv.{profile.level}</Text>
                                 <Text style={styles.popupStat}>🔥 {profile.streak}</Text>
@@ -178,15 +198,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const { user } = useUserStore();
     const currentUserId = user?.userId;
     const setCurrentViewedRoomId = useChatStore(s => s.setCurrentViewedRoomId);
+    // Access global user statuses
+    const userStatuses = useChatStore(s => s.userStatuses);
 
     const [inputText, setInputText] = useState("");
     const [isUploading, setIsUploading] = useState(false);
-    const [isSearchVisible, setIsSearchVisible] = useState(false);
-    const [searchText, setSearchText] = useState("");
 
+    // Translation State
     const [localTranslations, setLocalTranslations] = useState<any>({});
+    const [messagesToggleState, setMessagesToggleState] = useState<any>({});
     const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language || 'vi');
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
+
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | null>(null);
@@ -201,7 +224,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     }, [roomId, isBubbleMode]);
 
     const loadMessages = useChatStore(s => s.loadMessages);
-    const searchMessages = useChatStore(s => s.searchMessages);
     const sendMessage = useChatStore(s => s.sendMessage);
     const editMessage = useChatStore(s => s.editMessage);
     const markMessageAsRead = useChatStore(s => s.markMessageAsRead);
@@ -209,27 +231,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const serverMessages = messagesByRoom[roomId] || [];
     const flatListRef = useRef<FlatList>(null);
-
-    const { data: roomInfo } = useQuery({
-        queryKey: ['roomInfo', roomId],
-        queryFn: async () => (await instance.get<AppApiResponse<RoomResponse>>(`/api/v1/rooms/${roomId}`)).data.result,
-        enabled: !!roomId,
-    });
-
-    const { data: members = [] } = useQuery({
-        queryKey: ['roomMembers', roomId],
-        queryFn: async () => (await instance.get<AppApiResponse<MemberResponse[]>>(`/api/v1/rooms/${roomId}/members`)).data.result,
-        enabled: !!roomId,
-    });
-
-    const displayRoomName = useMemo(() => {
-        if (!roomInfo) return initialRoomName || t('chat.loading');
-        if (roomInfo.purpose === RoomPurpose.PRIVATE_CHAT) {
-            const target = members.find(m => m.userId !== currentUserId);
-            return target ? (target.nickname || target.fullname) : t('chat.private_room');
-        }
-        return roomInfo.roomName;
-    }, [roomInfo, members, initialRoomName]);
 
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages.map((msg: any) => {
@@ -239,8 +240,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
             const finalTranslation = localTrans || dbTrans;
             const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
-
-            // LOGIC: Hide translation if media is present, or if it's already translated
             const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
             const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!dbTrans);
 
@@ -250,6 +249,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 senderId: senderId,
                 timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
                 text: msg.content || '',
+                content: msg.content || '',
                 translatedText: finalTranslation,
                 translatedLang: msg.translatedLang,
                 mediaUrl: (msg as any).mediaUrl,
@@ -261,20 +261,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 hasTargetLangTranslation: !!finalTranslation,
                 isRead: msg.isRead,
                 isLocal: (msg as any).isLocal,
-                senderProfile: msg.senderProfile
+                senderProfile: msg.senderProfile,
+                roomId: roomId,
+                isDeleted: msg.isDeleted
             } as UIMessage;
         }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
     }, [serverMessages, localTranslations, translationTargetLang, currentUserId, autoTranslate]);
 
     useEffect(() => { loadMessages(roomId); }, [roomId]);
-
-    // Auto-scroll and read status logic... (kept brief for context)
     useEffect(() => {
         if (!messages.length) return;
-        if (initialFocusMessageId) { /* Scroll to specific */ }
-        else { setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200); }
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
     }, [messages.length]);
-
     useEffect(() => {
         messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
     }, [messages.length, roomId]);
@@ -282,16 +280,13 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
         if (editingMessage) {
-            editMessage(roomId, editingMessage.id, inputText).then(() => {
-                setEditingMessage(null); setInputText("");
-            }).catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
+            editMessage(roomId, editingMessage.id, inputText).then(() => { setEditingMessage(null); setInputText(""); }).catch(() => showToast({ message: t("chat.edit_error"), type: "error" }));
         } else {
             sendMessage(roomId, inputText, 'TEXT');
             setInputText("");
         }
     };
 
-    // --- TRANSLATION API ---
     const { mutate: translateMutate } = useMutation({
         mutationFn: async ({ text, target, id }: any) => {
             setTranslatingMessageId(id);
@@ -300,89 +295,72 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         },
         onSuccess: (data) => {
             setLocalTranslations((prev: any) => ({ ...prev, [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text } }));
+            setMessagesToggleState((prev: any) => ({ ...prev, [data.id]: data.target }));
             setTranslatingMessageId(null);
         },
         onError: () => { setTranslatingMessageId(null); showToast({ message: t("error.translation"), type: "error" }); }
     });
 
     const handleTranslateClick = (id: string, text: string) => {
-        if (translatingMessageId === id || localTranslations[id]?.[translationTargetLang]) return;
-        translateMutate({ text, target: translationTargetLang, id });
+        const currentView = messagesToggleState[id];
+        if (currentView && currentView !== 'original') { setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' })); }
+        else {
+            if (localTranslations[id]?.[translationTargetLang]) { setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang })); }
+            else { translateMutate({ text, target: translationTargetLang, id }); }
+        }
     };
 
     const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
 
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
-        const isMedia = item.messageType === 'IMAGE' || item.messageType === 'VIDEO' || item.messageType === 'AUDIO' || !!item.mediaUrl;
+        const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
+        const displayData = getMessageDisplayData(item);
+        const currentView = messagesToggleState[item.id];
+        let displayText = item.text;
+        let isTranslatedView = false;
+
+        if (currentView && currentView !== 'original') {
+            const localTrans = localTranslations[item.id]?.[currentView];
+            displayText = localTrans || (item.translatedLang === currentView ? item.translatedText : item.text);
+            isTranslatedView = true;
+        } else if (displayData.isTranslated) {
+            displayText = displayData.text;
+            isTranslatedView = true;
+        }
+
+        // Get status for this user
+        const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
         return (
-            <Pressable
-                onLongPress={() => isUser && !isMedia && setEditingMessage(item)}
-                style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther, highlightedMessageId === item.id && styles.highlighted]}
-            >
+            <Pressable onLongPress={() => isUser && !isMedia && setEditingMessage(item)} style={[styles.msgRow, isUser ? styles.rowUser : styles.rowOther, highlightedMessageId === item.id && styles.highlighted]}>
                 {!isUser && (
                     <TouchableOpacity onPress={() => handleAvatarPress(item.senderProfile)}>
-                        <Image source={getAvatarSource(item.senderProfile?.avatarUrl, null)} style={styles.msgAvatarImg} />
+                        <View>
+                            <Image source={getAvatarSource(item.senderProfile?.avatarUrl, null)} style={styles.msgAvatarImg} />
+                            {status?.isOnline && <View style={[styles.activeDot, { right: 8, bottom: 0, borderWidth: 1 }]} />}
+                        </View>
                     </TouchableOpacity>
                 )}
                 <View style={styles.msgContent}>
                     {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
                     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
-
-                        {/* 1. MEDIA DISPLAY */}
-                        {isMedia && (
+                        {isMedia ? (
                             <View>
-                                {item.messageType === 'IMAGE' && (
-                                    <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />
-                                )}
-                                {item.messageType === 'VIDEO' && (
-                                    // Use a placeholder or a Video component here. 
-                                    // For now, simpler UI indicating Video. 
-                                    <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}>
-                                        <Icon name="play-circle-outline" size={50} color="#FFF" />
-                                        <Text style={{ color: 'white', fontSize: 10 }}>Video Attachment</Text>
-                                    </View>
-                                )}
-                                {item.text ? (
-                                    <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text>
-                                ) : null}
+                                {item.messageType === 'IMAGE' && <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />}
+                                {item.messageType === 'VIDEO' && <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
+                                {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
                             </View>
-                        )}
-
-                        {/* 2. TEXT ONLY */}
-                        {!isMedia && (
-                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
-                        )}
-
-                        {/* 3. TRANSLATION (HIDDEN IF MEDIA PRESENT) */}
-                        {item.showTranslation && !isMedia && item.translatedText && (
-                            <View style={styles.translationContainer}>
-                                <View style={[styles.divider, isUser ? { backgroundColor: 'rgba(255,255,255,0.3)' } : { backgroundColor: 'rgba(0,0,0,0.1)' }]} />
-                                <Text style={[styles.translatedText, isUser ? styles.textUser : styles.textOther]}>{item.translatedText}</Text>
-                            </View>
-                        )}
-
+                        ) : (<Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{displayText}</Text>)}
+                        {isTranslatedView && <Text style={styles.transTag}>{currentView || displayData.lang || translationTargetLang}</Text>}
                         <View style={styles.metaRow}>
-                            <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>
-                                {item.timestamp} {item.isLocal && t('chat.sending')}
-                            </Text>
+                            <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
                             {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
                         </View>
                     </View>
-
-                    {/* TRANSLATE BUTTON - STRICTLY HIDDEN FOR MEDIA MESSAGES */}
                     {!isUser && !isMedia && (
-                        <TouchableOpacity
-                            onPress={() => handleTranslateClick(item.id, item.text)}
-                            style={styles.transBtn}
-                            disabled={translatingMessageId === item.id}
-                        >
-                            {translatingMessageId === item.id ? (
-                                <ActivityIndicator size="small" color="#6B7280" />
-                            ) : (
-                                <Icon name="translate" size={16} color={item.showTranslation ? "#3B82F6" : "#9CA3AF"} />
-                            )}
+                        <TouchableOpacity onPress={() => handleTranslateClick(item.id, item.text)} style={styles.transBtn} disabled={translatingMessageId === item.id}>
+                            {translatingMessageId === item.id ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name={isTranslatedView ? "undo" : "translate"} size={16} color={isTranslatedView ? "#3B82F6" : "#9CA3AF"} />}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -392,37 +370,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     return (
         <ScreenLayout style={styles.container}>
-            {/* Header ... (Same as before) */}
-            <View style={[styles.header, isBubbleMode && styles.bubbleHeader]}>
-                {!isSearchVisible ? (
-                    <>
-                        <View style={styles.headerInfo}>
-                            <Text style={styles.roomName} numberOfLines={1}>{displayRoomName}</Text>
-                            <Text style={styles.status}>{members.length} {t('group.members')}</Text>
-                        </View>
-                        <TouchableOpacity onPress={() => setIsSearchVisible(true)} style={{ marginLeft: 10 }}>
-                            <Icon name="search" size={24} color="#6B7280" />
-                        </TouchableOpacity>
-                    </>
-                ) : (
-                    <View style={styles.searchContainer}>
-                        <TextInput style={styles.searchInput} placeholder="Search..." value={searchText} onChangeText={setSearchText} onSubmitEditing={() => searchMessages(roomId, searchText)} />
-                        <TouchableOpacity onPress={() => { setSearchText(""); setIsSearchVisible(false); loadMessages(roomId); }}>
-                            <Icon name="close" size={24} color="#EF4444" />
-                        </TouchableOpacity>
-                    </View>
-                )}
-                {isBubbleMode && (
-                    <View style={styles.bubbleControls}>
-                        <TouchableOpacity onPress={onMinimizeBubble} style={styles.controlBtn}><Icon name="remove" size={24} color="#6B7280" /></TouchableOpacity>
-                        <TouchableOpacity onPress={onCloseBubble} style={styles.controlBtn}><Icon name="close" size={24} color="#6B7280" /></TouchableOpacity>
-                    </View>
-                )}
-            </View>
-
             <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} />
-
-            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 60}>
+            <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 90}>
                 {editingMessage && (
                     <View style={styles.editBanner}>
                         <Text style={styles.editText}>{t("chat.editing_message")}</Text>
@@ -430,45 +379,22 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     </View>
                 )}
                 <View style={styles.inputArea}>
-
-                    {/* INTEGRATED FILE UPLOADER */}
-                    <FileUploader
-                        mediaType="all"
-                        maxSizeMB={20} // Limit 20MB to prevent delay
-                        maxDuration={60} // Limit video to 60s
-                        onUploadStart={() => setIsUploading(true)}
-                        onUploadEnd={() => setIsUploading(false)}
-                        onUploadSuccess={(url, type) => {
-                            sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url);
-                        }}
-                        style={styles.attachBtn}
-                    >
-                        {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="attach-file" size={24} color="#3B82F6" />}
-                    </FileUploader>
-
+                    <View style={{ zIndex: 10 }}>
+                        <FileUploader mediaType="all" maxSizeMB={20} maxDuration={60} onUploadStart={() => setIsUploading(true)} onUploadEnd={() => setIsUploading(false)} onUploadSuccess={(url, type) => { sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url); }} style={styles.attachBtn}>
+                            {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="attach-file" size={24} color="#3B82F6" />}
+                        </FileUploader>
+                    </View>
                     <TextInput style={styles.input} value={inputText} onChangeText={setInputText} placeholder={t("group.input.placeholder")} multiline />
-                    <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}>
-                        <Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" />
-                    </TouchableOpacity>
+                    <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}><Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" /></TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
-
-            <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} currentUserId={currentUserId || ""} />
+            <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} currentUserId={currentUserId || ""} statusInfo={selectedProfile ? userStatuses[selectedProfile.userId] : undefined} />
         </ScreenLayout>
     );
 };
 
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#FFF' },
-    header: { padding: 16, borderBottomWidth: 1, borderColor: '#EEE', flexDirection: 'row', alignItems: 'center' },
-    bubbleHeader: { backgroundColor: '#F9FAFB', paddingTop: 10, paddingBottom: 10 },
-    headerInfo: { flex: 1 },
-    roomName: { fontWeight: 'bold', fontSize: 16, color: '#1F2937' },
-    status: { fontSize: 12, color: '#9CA3AF' },
-    searchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 20, paddingHorizontal: 10, height: 40 },
-    searchInput: { flex: 1, height: 40, color: '#333' },
-    bubbleControls: { flexDirection: 'row', marginLeft: 8 },
-    controlBtn: { padding: 4 },
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },
@@ -485,17 +411,15 @@ const styles = createScaledSheet({
     text: { fontSize: 16, lineHeight: 22 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
-    translationContainer: { marginTop: 6 },
-    divider: { height: 1, width: '100%', marginBottom: 4 },
-    translatedText: { fontSize: 14, fontStyle: 'italic', lineHeight: 18 },
+    transTag: { fontSize: 10, color: '#9CA3AF', fontStyle: 'italic', marginTop: 2, textAlign: 'right' },
     metaRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
     time: { fontSize: 10 },
     timeUser: { color: 'rgba(255,255,255,0.7)' },
     timeOther: { color: '#9CA3AF' },
     transBtn: { marginTop: 4, padding: 4, alignSelf: 'flex-start' },
-    inputArea: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderColor: '#EEE', alignItems: 'flex-end' },
-    input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100 },
-    attachBtn: { padding: 10, marginRight: 8 },
+    inputArea: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderColor: '#EEE', alignItems: 'flex-end', backgroundColor: '#FFF' },
+    input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100, marginLeft: 5 },
+    attachBtn: { padding: 10 },
     sendBtn: { backgroundColor: '#3B82F6', borderRadius: 20, padding: 10, marginLeft: 8 },
     editBanner: { backgroundColor: '#FEF3C7', padding: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     editText: { color: '#D97706', fontSize: 12, fontWeight: 'bold' },
@@ -519,7 +443,8 @@ const styles = createScaledSheet({
     actionTextPri: { color: '#FFF', fontWeight: '600' },
     actionTextSec: { color: '#FFF', fontWeight: '600' },
     viewProfileBtn: { padding: 10, alignItems: 'center', borderTopWidth: 1, borderColor: '#EEE' },
-    viewProfileText: { color: '#6B7280', fontSize: 14 }
+    viewProfileText: { color: '#6B7280', fontSize: 14 },
+    activeDot: { position: 'absolute', width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderColor: '#FFF' }
 });
 
 export default ChatInnerView;

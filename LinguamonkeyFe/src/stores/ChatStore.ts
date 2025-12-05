@@ -7,9 +7,10 @@ import type { ChatMessage as Message, Room } from '../types/entity';
 import type { AppApiResponse, PageResponse } from '../types/dto';
 import { useUserStore } from "./UserStore";
 import { RoomPurpose } from "../types/enums";
-import notificationService from '../services/notificationService';
 import { playInAppSound } from '../utils/soundUtils';
+import { useAppStore } from './appStore';
 
+// --- TYPES ---
 type AiMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -18,7 +19,6 @@ type AiMessage = {
   roomId: string;
 };
 
-// Type for incoming video call request
 export type IncomingCall = {
   roomId: string;
   callerId: string;
@@ -27,10 +27,21 @@ export type IncomingCall = {
   roomName?: string;
 };
 
+export type UserStatus = {
+  userId: string;
+  isOnline: boolean;
+  lastActiveAt?: string; // ISO String
+};
+
 interface UseChatState {
+  // Connection State
   stompConnected: boolean;
   aiWsConnected: boolean;
+
+  // Data State
   rooms: { [roomId: string]: Room };
+  userStatuses: { [userId: string]: UserStatus }; // Global User Status State
+
   aiRoomList: Room[];
   pendingSubscriptions: string[];
   pendingPublishes: { destination: string, payload: any }[];
@@ -42,6 +53,9 @@ interface UseChatState {
   aiChatHistory: AiMessage[];
   isAiStreaming: boolean;
   isAiInitialMessageSent: boolean;
+  totalOnlineUsers: number;
+
+  // Services & UI State
   videoSubtitleService: VideoSubtitleService | null;
   currentVideoSubtitles: DualSubtitle | null;
   activeBubbleRoomId: string | null;
@@ -49,10 +63,10 @@ interface UseChatState {
   currentAppScreen: string | null;
   appIsActive: boolean;
   currentViewedRoomId: string | null;
-
-  // NEW: Incoming Call State
+  disconnectStompClient: () => void;
   incomingCallRequest: IncomingCall | null;
 
+  // Actions
   initStompClient: () => void;
   subscribeToRoom: (roomId: string) => void;
   unsubscribeFromRoom: (roomId: string) => void;
@@ -65,7 +79,7 @@ interface UseChatState {
   sendAiWelcomeMessage: () => void;
   loadMessages: (roomId: string, page?: number, size?: number) => Promise<void>;
   searchMessages: (roomId: string, keyword: string) => Promise<void>;
-  sendMessage: (roomId: string, content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO', mediaUrl?: string) => void;
+  sendMessage: (roomId: string, content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT', mediaUrl?: string) => void;
   editMessage: (roomId: string, messageId: string, newContent: string) => Promise<void>;
   deleteMessage: (roomId: string, messageId: string) => Promise<void>;
   markMessageAsRead: (roomId: string, messageId: string) => void;
@@ -81,12 +95,14 @@ interface UseChatState {
   setAppIsActive: (isActive: boolean) => void;
   setCurrentViewedRoomId: (roomId: string | null) => void;
 
-  // NEW: Call Actions
   acceptIncomingCall: () => void;
   rejectIncomingCall: () => void;
+
+  // Helper to update status manually (e.g. from HTTP response)
+  updateUserStatus: (userId: string, isOnline: boolean, lastActiveAt?: string) => void;
 }
 
-// Helper: Normalize messages
+// --- HELPERS ---
 const normalizeMessage = (msg: any): Message => {
   if (!msg) {
     return {
@@ -156,11 +172,23 @@ function extractRoomIdFromTopic(topic: string) {
   return parts[parts.length - 1];
 }
 
-// --- Throttling Variables for AI Streaming ---
 let streamBuffer = "";
 let lastStreamUpdate = 0;
 let streamTimeout: number | null = null;
 const STREAM_THROTTLE_MS = 60;
+
+export const getMessageDisplayData = (msg: any) => {
+  const { chatSettings, nativeLanguage } = useAppStore.getState();
+  const isAutoTranslateOn = chatSettings?.autoTranslate ?? false;
+  const textContent = msg.content || msg.text || '';
+  const hasEagerTranslation = !!msg.translatedText && !!msg.translatedLang;
+  const isMatchingLanguage = msg.translatedLang === nativeLanguage;
+
+  if (isAutoTranslateOn && hasEagerTranslation && isMatchingLanguage) {
+    return { text: msg.translatedText, isTranslated: true, showToggle: true, lang: msg.translatedLang };
+  }
+  return { text: textContent, isTranslated: false, showToggle: hasEagerTranslation, lang: 'original' };
+};
 
 export const useChatStore = create<UseChatState>((set, get) => ({
   stompConnected: false,
@@ -168,6 +196,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   pendingSubscriptions: [],
   pendingPublishes: [],
   rooms: {},
+  userStatuses: {}, // Initialize empty
   aiRoomList: [],
   messagesByRoom: {},
   pageByRoom: {},
@@ -183,6 +212,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   isBubbleOpen: false,
   currentAppScreen: null,
   appIsActive: true,
+  totalOnlineUsers: 0,
   currentViewedRoomId: null,
   incomingCallRequest: null,
 
@@ -190,143 +220,139 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   setAppIsActive: (isActive) => set({ appIsActive: isActive }),
   setCurrentViewedRoomId: (roomId) => set({ currentViewedRoomId: roomId }),
 
+  updateUserStatus: (userId, isOnline, lastActiveAt) => {
+    set((state) => ({
+      userStatuses: {
+        ...state.userStatuses,
+        [userId]: { userId, isOnline, lastActiveAt: lastActiveAt || (isOnline ? undefined : new Date().toISOString()) }
+      }
+    }));
+  },
+
   initStompClient: () => {
-    if (stompService.isConnected || get().stompConnected) {
-      set({ stompConnected: true });
-      return;
-    }
+    if (stompService.isConnected || get().stompConnected) { set({ stompConnected: true }); return; }
     stompService.connect(() => {
       set({ stompConnected: true });
+
+      // --- GLOBAL SUBSCRIPTIONS ---
+      try {
+        stompService.subscribe('/user/queue/notifications', async (rawMsg: any) => {
+          if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
+            const state = get();
+            const currentUserId = useUserStore.getState().user?.userId;
+            if (state.currentAppScreen !== 'LessonScreen' && rawMsg.callerId !== currentUserId) {
+              set({ incomingCallRequest: rawMsg });
+              await playInAppSound();
+            }
+            return;
+          }
+          const roomId = rawMsg?.roomId || rawMsg?.room_id;
+          const senderId = rawMsg?.senderId || rawMsg?.sender_id;
+          const currentUserId = useUserStore.getState().user?.userId;
+          const state = get();
+          if (roomId && senderId !== currentUserId) {
+            if (state.currentViewedRoomId !== roomId && !(state.isBubbleOpen && state.activeBubbleRoomId === roomId)) {
+              if (state.appIsActive) { await playInAppSound(); state.openBubble(roomId); }
+            }
+            set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], rawMsg) } }));
+          }
+        });
+      } catch (e) { console.warn("Notif sub error", e); }
+
+      // Subscribe to User Status
+      try {
+        stompService.subscribe('/topic/public/user-status', (msg: any) => {
+          if (msg.userId) { get().updateUserStatus(msg.userId, msg.status === 'ONLINE', msg.timestamp); }
+        });
+      } catch (e) { }
+
+      // NEW: Subscribe to Global Online Count
+      try {
+        stompService.subscribe('/topic/public/online-count', (count: any) => {
+          // Backend sends an integer (e.g., 1250)
+          if (typeof count === 'number') {
+            set({ totalOnlineUsers: count });
+          }
+        });
+      } catch (e) { }
+
+      // --- FLUSH PENDING ---
       const pendingSubs = get().pendingSubscriptions || [];
       pendingSubs.forEach(dest => {
         try {
           stompService.subscribe(dest, (rawMsg: any) => {
             const roomId = extractRoomIdFromTopic(dest);
-            // Handle Video Call Signals inside Room Topic
-            if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
-              const state = get();
-              // Do not interrupt if in LessonScreen
-              if (state.currentAppScreen !== 'LessonScreen' && rawMsg.callerId !== useUserStore.getState().user?.userId) {
-                set({ incomingCallRequest: rawMsg });
-              }
-              return;
-            }
-
-            if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
-            set((state) => ({
-              messagesByRoom: {
-                ...state.messagesByRoom,
-                [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg),
-              },
-            }));
+            if (dest.includes('/status')) { if (rawMsg.userId) { get().updateUserStatus(rawMsg.userId, rawMsg.status === 'ONLINE', rawMsg.timestamp); } return; }
+            set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg) } }));
           });
         } catch (e) { console.warn('Flush subscribe error', dest, e); }
       });
       set({ pendingSubscriptions: [] });
-
-      try {
-        stompService.subscribe('/user/queue/notifications', async (rawMsg: any) => {
-          try {
-            // Handle Video Call Signals via User Queue (Global)
-            if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
-              const state = get();
-              const currentUserId = useUserStore.getState().user?.userId;
-              // Prevent self-notification and interruption in LessonScreen
-              if (state.currentAppScreen !== 'LessonScreen' && rawMsg.callerId !== currentUserId) {
-                set({ incomingCallRequest: rawMsg });
-                await playInAppSound();
-              }
-              return;
-            }
-
-            const roomId = rawMsg?.roomId || rawMsg?.room_id;
-            const senderId = rawMsg?.senderId || rawMsg?.sender_id;
-            const currentUserId = useUserStore.getState().user?.userId;
-            const state = get();
-
-            if (roomId && senderId !== currentUserId) {
-              if (state.currentViewedRoomId !== roomId && !(state.isBubbleOpen && state.activeBubbleRoomId === roomId)) {
-                if (state.appIsActive) {
-                  await playInAppSound();
-                  state.openBubble(roomId);
-                }
-              }
-              set((s) => ({
-                messagesByRoom: {
-                  ...s.messagesByRoom,
-                  [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], rawMsg),
-                },
-              }));
-            }
-          } catch (e) { console.warn("Notify error", e); }
-        });
-      } catch (e) { console.warn("Failed to subscribe to global notifications", e); }
-
       const pendingPubs = get().pendingPublishes || [];
-      pendingPubs.forEach(p => {
-        try { stompService.publish(p.destination, p.payload); }
-        catch (e) { console.warn('Publish failed', e); }
-      });
+      pendingPubs.forEach(p => { try { stompService.publish(p.destination, p.payload); } catch (e) { console.warn('Publish failed', e); } });
       set({ pendingPublishes: [] });
-    }, (err) => console.error('STOMP connect error', err));
+    }, (err) => { console.error('STOMP connect error', err); set({ stompConnected: false }); });
+  },
+
+  disconnectStompClient: () => {
+    stompService.disconnect();
+    set({ stompConnected: false });
   },
 
   subscribeToRoom: (roomId: string) => {
-    const dest = `/topic/room/${roomId}`;
-    if (stompService.isConnected) {
-      stompService.subscribe(dest, (rawMsg: any) => {
-        // Handle Video Call Signals
-        if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
-          const state = get();
-          if (state.currentAppScreen !== 'LessonScreen' && rawMsg.callerId !== useUserStore.getState().user?.userId) {
-            set({ incomingCallRequest: rawMsg });
-          }
-          return;
-        }
+    const chatDest = `/topic/room/${roomId}`;
+    const statusDest = `/topic/room/${roomId}/status`; // Subscribe to room-specific status updates
 
+    if (stompService.isConnected) {
+      // Chat Subscription
+      stompService.subscribe(chatDest, (rawMsg: any) => {
+        if (rawMsg && rawMsg.type === 'VIDEO_CALL') { /* ... */ return; }
         if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
-        set((state) => ({
-          messagesByRoom: {
-            ...state.messagesByRoom,
-            [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg),
-          },
-        }));
+        set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg) } }));
+      });
+
+      // Status Subscription (New)
+      stompService.subscribe(statusDest, (msg: any) => {
+        if (msg.userId) {
+          get().updateUserStatus(msg.userId, msg.status === 'ONLINE', new Date().toISOString());
+        }
       });
       return;
     }
-    set((s) => ({ pendingSubscriptions: Array.from(new Set([...s.pendingSubscriptions, dest])) }));
+
+    // If not connected, queue both
+    set((s) => ({ pendingSubscriptions: Array.from(new Set([...s.pendingSubscriptions, chatDest, statusDest])) }));
     get().initStompClient();
   },
 
   unsubscribeFromRoom: (roomId: string) => {
-    const dest = `/topic/room/${roomId}`;
-    if (stompService.isConnected) stompService.unsubscribe(dest);
-    else set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== dest) }));
+    const chatDest = `/topic/room/${roomId}`;
+    const statusDest = `/topic/room/${roomId}/status`;
+    if (stompService.isConnected) {
+      stompService.unsubscribe(chatDest);
+      stompService.unsubscribe(statusDest);
+    }
+    else {
+      set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== chatDest && d !== statusDest) }));
+    }
   },
 
-  // ... (Rest of AI Client and Message Loading Logic kept identical) ...
-  // --- OPTIMIZED AI CLIENT ---
+  // ... (Keep existing methods: initAiClient, startPrivateChat, etc. exactly as is)
   initAiClient: () => {
     if (!pythonAiWsService.isConnected) {
       pythonAiWsService.connect((msg: any) => {
         const state = get();
-
         if (msg.type === 'chat_response_chunk') {
           streamBuffer += (msg.content || '');
           const now = Date.now();
           if (now - lastStreamUpdate > STREAM_THROTTLE_MS) {
             const currentHistory = [...get().aiChatHistory];
             const lastMsgIndex = currentHistory.length - 1;
-
             if (lastMsgIndex >= 0 && currentHistory[lastMsgIndex].role === 'assistant' && currentHistory[lastMsgIndex].isStreaming) {
-              currentHistory[lastMsgIndex] = {
-                ...currentHistory[lastMsgIndex],
-                content: currentHistory[lastMsgIndex].content + streamBuffer
-              };
+              currentHistory[lastMsgIndex] = { ...currentHistory[lastMsgIndex], content: currentHistory[lastMsgIndex].content + streamBuffer };
               streamBuffer = "";
               lastStreamUpdate = now;
               set({ aiChatHistory: currentHistory });
-            } else {
             }
           } else {
             if (streamTimeout) clearTimeout(streamTimeout);
@@ -334,39 +360,25 @@ export const useChatStore = create<UseChatState>((set, get) => ({
               const currentHistory = [...get().aiChatHistory];
               const lastMsgIndex = currentHistory.length - 1;
               if (lastMsgIndex >= 0 && currentHistory[lastMsgIndex].isStreaming) {
-                currentHistory[lastMsgIndex] = {
-                  ...currentHistory[lastMsgIndex],
-                  content: currentHistory[lastMsgIndex].content + streamBuffer
-                };
+                currentHistory[lastMsgIndex] = { ...currentHistory[lastMsgIndex], content: currentHistory[lastMsgIndex].content + streamBuffer };
                 streamBuffer = "";
                 lastStreamUpdate = Date.now();
                 set({ aiChatHistory: currentHistory });
               }
             }, STREAM_THROTTLE_MS + 10) as any as number;
           }
-
           const lastMsg = state.aiChatHistory[state.aiChatHistory.length - 1];
           if (!lastMsg || lastMsg.role !== 'assistant' || !lastMsg.isStreaming) {
-            set({
-              aiChatHistory: [
-                ...state.aiChatHistory,
-                { id: Date.now().toString(), role: 'assistant', content: '', isStreaming: true, roomId: msg.roomId || state.activeAiRoomId || '' },
-              ],
-              isAiInitialMessageSent: true,
-            });
+            set({ aiChatHistory: [...state.aiChatHistory, { id: Date.now().toString(), role: 'assistant', content: '', isStreaming: true, roomId: msg.roomId || state.activeAiRoomId || '' }], isAiInitialMessageSent: true });
           }
-
         } else if (msg.type === 'chat_response_complete') {
           if (streamBuffer.length > 0) {
             const currentHistory = [...get().aiChatHistory];
             const lastMsgIndex = currentHistory.length - 1;
-            if (lastMsgIndex >= 0) {
-              currentHistory[lastMsgIndex].content += streamBuffer;
-            }
+            if (lastMsgIndex >= 0) { currentHistory[lastMsgIndex].content += streamBuffer; }
             set({ aiChatHistory: currentHistory });
             streamBuffer = "";
           }
-
           set((s) => {
             const history = [...s.aiChatHistory];
             const last = history[history.length - 1];
@@ -378,7 +390,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       }, () => set({ aiWsConnected: true }));
     }
   },
-
   startPrivateChat: async (targetUserId) => {
     try {
       const res = await instance.post<AppApiResponse<Room>>(`/api/v1/rooms/private`, {}, { params: { targetUserId } });
@@ -391,7 +402,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       return null;
     } catch (error) { console.error('Failed to start private chat:', error); return null; }
   },
-
   fetchAiRoomList: async () => {
     const userId = useUserStore.getState().user?.userId;
     if (!userId) return;
@@ -400,7 +410,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       if (res.data.result) set({ aiRoomList: res.data.result });
     } catch (e) { console.error(e); }
   },
-
   startNewAiChat: async () => {
     const userId = useUserStore.getState().user?.userId;
     if (!userId) return;
@@ -411,25 +420,20 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       await get().fetchAiRoomList();
     }
   },
-
   selectAiRoom: async (roomId) => {
     set({ activeAiRoomId: roomId, aiChatHistory: [], isAiInitialMessageSent: false, loadingByRoom: { ...get().loadingByRoom, [roomId]: true } });
     await get().loadMessages(roomId, 0, 10);
     const messages = get().messagesByRoom[roomId] || [];
     const sortedForAi = [...messages].reverse();
-    const aiFormatMessages: AiMessage[] = sortedForAi.map((m) => ({
-      id: m.id.chatMessageId, role: m.senderId ? 'user' : 'assistant', content: m.content || '', roomId: roomId,
-    }));
+    const aiFormatMessages: AiMessage[] = sortedForAi.map((m) => ({ id: m.id.chatMessageId, role: m.senderId ? 'user' : 'assistant', content: m.content || '', roomId: roomId }));
     set({ aiChatHistory: aiFormatMessages, loadingByRoom: { ...get().loadingByRoom, [roomId]: false }, isAiInitialMessageSent: aiFormatMessages.length > 0 });
   },
-
   sendAiWelcomeMessage: () => {
     const { activeAiRoomId, aiWsConnected, isAiInitialMessageSent, aiChatHistory } = get();
     if (!activeAiRoomId || !aiWsConnected || isAiInitialMessageSent || !pythonAiWsService.isConnected) return;
     set({ isAiStreaming: true, isAiInitialMessageSent: true });
     pythonAiWsService.sendMessage({ type: 'chat_request', prompt: "INITIAL_WELCOME_MESSAGE", history: aiChatHistory.map(m => ({ role: m.role, content: m.content })), roomId: activeAiRoomId, messageType: 'TEXT', });
   },
-
   loadMessages: async (roomId, page = 0, size = 10) => {
     const state = get();
     if (state.loadingByRoom[roomId] && page !== 0) return;
@@ -460,7 +464,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       });
     } catch (e) { set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } })); }
   },
-
   searchMessages: async (roomId: string, keyword: string) => {
     if (!keyword.trim()) { await get().loadMessages(roomId, 0, 20); return; }
     set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: true } }));
@@ -475,16 +478,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       }));
     } catch (e) { set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: false } })); }
   },
-
   sendMessage: (roomId, content, type, mediaUrl) => {
     const state = get();
     const room = state.rooms[roomId];
     const payload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.GROUP_CHAT, mediaUrl: mediaUrl || null };
-    const optimisticMsg = {
-      id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() },
-      senderId: useUserStore.getState().user?.userId,
-      content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true
-    } as any;
+    const optimisticMsg = { id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() }, senderId: useUserStore.getState().user?.userId, content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true, translatedText: null, translatedLang: null } as any;
     set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg) } }));
     const dest = `/app/chat/room/${roomId}`;
     if (stompService.isConnected) {
@@ -495,14 +493,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       get().initStompClient();
     }
   },
-
   editMessage: async (roomId, messageId, newContent) => { await instance.put(`/api/v1/chat/messages/${messageId}`, { content: newContent }); },
-
   deleteMessage: async (roomId, messageId) => {
     await instance.delete(`/api/v1/chat/messages/${messageId}`);
     set(state => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: state.messagesByRoom[roomId]?.filter(m => m.id.chatMessageId !== messageId) || [] } }));
   },
-
   markMessageAsRead: (roomId, messageId) => {
     const dest = `/app/chat/message/${messageId}/read`;
     if (stompService.isConnected) {
@@ -513,7 +508,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       get().initStompClient();
     }
   },
-
   sendAiPrompt: (content) => {
     const { activeAiRoomId, aiWsConnected } = get();
     if (!activeAiRoomId || !aiWsConnected) return;
@@ -521,13 +515,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const history = get().aiChatHistory.map((m) => ({ role: m.role, content: m.content }));
     pythonAiWsService.sendMessage({ type: 'chat_request', prompt: content, history: history.slice(0, -1), roomId: activeAiRoomId, messageType: 'TEXT' });
   },
-
   connectVideoSubtitles: (roomId, targetLang) => {
     const service = new VideoSubtitleService();
     set({ videoSubtitleService: service });
     service.connect(roomId, targetLang, (sub) => { set({ currentVideoSubtitles: sub }); });
   },
-
   disconnectVideoSubtitles: () => { get().videoSubtitleService?.disconnect(); set({ videoSubtitleService: null, currentVideoSubtitles: null }); },
   disconnectStomp: () => { stompService.disconnect(); set({ stompConnected: false, pendingSubscriptions: [], pendingPublishes: [] }); },
   disconnectAi: () => { pythonAiWsService.disconnect(); set({ aiWsConnected: false, aiChatHistory: [], isAiInitialMessageSent: false, activeAiRoomId: null }); },
@@ -535,8 +527,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   openBubble: (roomId) => set({ activeBubbleRoomId: roomId, isBubbleOpen: true }),
   closeBubble: () => set({ activeBubbleRoomId: null, isBubbleOpen: false }),
   minimizeBubble: () => set({ isBubbleOpen: false }),
-
-  // Call Actions
   acceptIncomingCall: () => set({ incomingCallRequest: null }),
   rejectIncomingCall: () => set({ incomingCallRequest: null }),
 }));

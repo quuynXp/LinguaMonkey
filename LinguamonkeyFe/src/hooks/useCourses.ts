@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import instance from "../api/axiosClient";
 import {
   AppApiResponse,
@@ -27,6 +27,7 @@ export const courseKeys = {
   all: ["courses"] as const,
   lists: () => [...courseKeys.all, "list"] as const,
   list: (params: any) => [...courseKeys.lists(), params] as const,
+  infinite: (params: any) => [...courseKeys.all, "infinite", params] as const, // Added key for infinite
   details: () => [...courseKeys.all, "detail"] as const,
   detail: (id: string) => [...courseKeys.details(), id] as const,
   versions: () => [...courseKeys.all, "version"] as const,
@@ -76,6 +77,42 @@ export const useCourses = () => {
         return mapPageResponse(data.result, page, size);
       },
       staleTime: 5 * 60 * 1000,
+    });
+  };
+
+  // --- NEW: Infinite Query for Load More functionality ---
+  const useInfiniteCourses = (params?: {
+    size?: number;
+    title?: string;
+    languageCode?: string;
+    type?: CourseType;
+    categoryCode?: string;
+    isAdminCreated?: boolean;
+  }) => {
+    const { size = 10, title, languageCode, type, categoryCode, isAdminCreated } = params || {};
+    return useInfiniteQuery({
+      queryKey: courseKeys.infinite({ size, title, languageCode, type, categoryCode, isAdminCreated }),
+      queryFn: async ({ pageParam = 0 }) => {
+        const qp = new URLSearchParams();
+        qp.append("page", pageParam.toString());
+        qp.append("size", size.toString());
+        if (title) qp.append("title", title);
+        if (languageCode) qp.append("languageCode", languageCode);
+        if (type) qp.append("type", type);
+        if (categoryCode) qp.append("categoryCode", categoryCode);
+        if (isAdminCreated !== undefined) qp.append("isAdminCreated", String(isAdminCreated));
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<CourseResponse>>>(
+          `/api/v1/courses?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, pageParam, size);
+      },
+      getNextPageParam: (lastPage) => {
+        // Correct logic: if lastPage.pagination.isLast is true, return undefined to stop.
+        if (lastPage.pagination.isLast) return undefined;
+        return lastPage.pagination.pageNumber + 1;
+      },
+      initialPageParam: 0,
     });
   };
 
@@ -735,6 +772,7 @@ export const useCourses = () => {
 
   return {
     useAllCourses,
+    useInfiniteCourses, // Added
     useTopSellingCourses,
     useSpecialOffers,
     useCourse,
@@ -786,16 +824,41 @@ export const useCourses = () => {
   };
 };
 
-const mapPageResponse = <T>(result: any, page: number, size: number) => ({
-  data: (result?.content as T[]) || [],
-  pagination: {
-    pageNumber: result?.pageNumber ?? page,
-    pageSize: result?.pageSize ?? size,
-    totalElements: result?.totalElements ?? 0,
-    totalPages: result?.totalPages ?? 0,
-    isLast: result?.isLast ?? true,
-    isFirst: result?.isFirst ?? true,
-    hasNext: result?.hasNext ?? false,
-    hasPrevious: result?.hasPrevious ?? false,
-  },
-});
+// FIXED: Robust mapping handling Spring Page defaults (last, number) vs DTO (isLast, pageNumber)
+const mapPageResponse = <T>(result: any, page: number, size: number) => {
+  if (!result) {
+    return {
+      data: [] as T[],
+      pagination: {
+        pageNumber: page,
+        pageSize: size,
+        totalElements: 0,
+        totalPages: 0,
+        isLast: true,
+        isFirst: true,
+        hasNext: false,
+        hasPrevious: false,
+      }
+    };
+  }
+
+  // Handle both "isLast" (DTO) and "last" (Spring default)
+  const isLast = result.isLast ?? result.last ?? true;
+  const isFirst = result.isFirst ?? result.first ?? true;
+  const pageNumber = result.pageNumber ?? result.number ?? page;
+  const pageSize = result.pageSize ?? result.size ?? size;
+
+  return {
+    data: (result.content as T[]) || [],
+    pagination: {
+      pageNumber,
+      pageSize,
+      totalElements: result.totalElements ?? 0,
+      totalPages: result.totalPages ?? 0,
+      isLast,
+      isFirst,
+      hasNext: result.hasNext ?? !isLast,
+      hasPrevious: result.hasPrevious ?? !isFirst,
+    },
+  };
+};

@@ -35,6 +35,9 @@ export const lessonKeys = {
     solo: (userId: string) => [...lessonKeys.all, "quiz", "solo", userId] as const,
     team: (roomId: string) => [...lessonKeys.all, "quiz", "team", roomId] as const,
   },
+  test: {
+    start: (lessonId: string, userId: string) => [...lessonKeys.all, "test", "start", lessonId, userId] as const,
+  },
   progress: {
     all: ["lessonProgress"] as const,
     list: (params: any) => [...lessonKeys.progress.all, params] as const,
@@ -156,31 +159,31 @@ export const useLessons = () => {
   };
 
   const useSubmitTest = () => {
-        interface SubmitTestPayload {
-            lessonId: string; 
-            userId: string;
-            body: { 
-                answers: Record<string, any>;
-                attemptNumber: number;
-            };
-        }
+    interface SubmitTestPayload {
+      lessonId: string;
+      userId: string;
+      body: {
+        answers: Record<string, any>;
+        attemptNumber: number;
+      };
+    }
 
-        return useMutation<any, unknown, SubmitTestPayload>({
-            mutationFn: async ({ lessonId, userId, body }) => {
-                const qp = userId ? `?userId=${userId}` : "";
-                const { data } = await instance.post<AppApiResponse<any>>(
-                    `/api/v1/lessons/${lessonId}/submit-test${qp}`,
-                    body
-                );
-                return data.result;
-            },
-            onSuccess: (_, variables) => {
-                queryClient.invalidateQueries({ queryKey: lessonKeys.progress.all });
-                queryClient.invalidateQueries({ queryKey: lessonKeys.wrongItems.all });
-                queryClient.invalidateQueries({ queryKey: ['courses', 'enrollments'] });
-            }
-        });
-    };
+    return useMutation<any, unknown, SubmitTestPayload>({
+      mutationFn: async ({ lessonId, userId, body }) => {
+        const qp = userId ? `?userId=${userId}` : "";
+        const { data } = await instance.post<AppApiResponse<any>>(
+          `/api/v1/lessons/${lessonId}/submit-test${qp}`,
+          body
+        );
+        return data.result;
+      },
+      onSuccess: (_, variables) => {
+        queryClient.invalidateQueries({ queryKey: lessonKeys.progress.all });
+        queryClient.invalidateQueries({ queryKey: lessonKeys.wrongItems.all });
+        queryClient.invalidateQueries({ queryKey: ['courses', 'enrollments'] });
+      }
+    });
+  };
 
   const useUpdateLesson = () => {
     return useMutation({
@@ -446,29 +449,39 @@ export const useLessons = () => {
     });
   };
 
-  const useStartTest = () => {
-        return useMutation<any, unknown, { lessonId: string; userId: string }>({
-            mutationFn: async ({ lessonId, userId }) => {
-                const { data } = await instance.post<AppApiResponse<any>>(
-                    `/api/v1/lessons/${lessonId}/start-test?userId=${userId}`
-                );
-                return data.result;
-            },
-        });
-    };
+  // === NEW: Query version of Start Test for LessonScreen ===
+  const useLessonTest = (lessonId: string, userId: string, enabled: boolean) => {
+    return useQuery({
+      queryKey: lessonKeys.test.start(lessonId, userId),
+      queryFn: async () => {
+        // start-test is usually a POST because it initializes an attempt
+        const { data } = await instance.post<AppApiResponse<{
+          lessonId: string;
+          questions: LessonQuestionResponse[];
+          durationSeconds: number;
+          allowedRetakeCount: number;
+          attemptNumber: number;
+        }>>(
+          `/api/v1/lessons/${lessonId}/start-test?userId=${userId}`
+        );
+        return data.result!;
+      },
+      enabled: enabled && !!lessonId && !!userId,
+      staleTime: 0, // Always fetch fresh to get correct attempt number
+      gcTime: 0, // Do not cache test sessions
+    });
+  };
 
-  // const useSubmitTest = () => {
-  //   return useMutation({
-  //     mutationFn: async ({ lessonId, userId, body }: { lessonId: string; userId?: string; body: { answers: Record<string, any> } }) => {
-  //       const qp = userId ? `?userId=${userId}` : "";
-  //       const { data } = await instance.post<AppApiResponse<any>>(
-  //         `/api/v1/lessons/${lessonId}/submit-test${qp}`,
-  //         body
-  //       );
-  //       return data.result;
-  //     },
-  //   });
-  // };
+  const useStartTest = () => {
+    return useMutation<any, unknown, { lessonId: string; userId: string }>({
+      mutationFn: async ({ lessonId, userId }) => {
+        const { data } = await instance.post<AppApiResponse<any>>(
+          `/api/v1/lessons/${lessonId}/start-test?userId=${userId}`
+        );
+        return data.result;
+      },
+    });
+  };
 
   const useCompleteLesson = () => {
     return useMutation({
@@ -526,7 +539,7 @@ export const useLessons = () => {
     useGenerateTeamQuiz,
     useFindOrCreateQuizRoom,
     useStartTest,
-    // useSubmitTest,
+    useLessonTest, // Export the new hook
     useCompleteLesson,
   };
 };

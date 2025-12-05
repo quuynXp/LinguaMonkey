@@ -24,7 +24,7 @@ import java.util.UUID;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@ToString(exclude = {"lessons"}) // Đã xóa 'course' khỏi exclude vì field đó không còn
+@ToString(exclude = {"lessons", "course"})
 public class CourseVersion {
 
     @Id
@@ -34,6 +34,10 @@ public class CourseVersion {
 
     @Column(name = "course_id", nullable = false)
     private UUID courseId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "course_id", insertable = false, updatable = false)
+    private Course course;
 
     @Column(name = "version_number", nullable = false)
     private Integer versionNumber;

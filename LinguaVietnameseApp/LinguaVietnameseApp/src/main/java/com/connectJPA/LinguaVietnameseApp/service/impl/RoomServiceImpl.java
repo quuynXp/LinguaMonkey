@@ -212,9 +212,21 @@ public class RoomServiceImpl implements RoomService {
     @Override
     @Transactional
     public RoomResponse findOrCreatePrivateRoom(UUID userId1, UUID userId2) {
+        if (userId1.equals(userId2)) {
+            // Prevent creating private room with self if not desired
+            throw new AppException(ErrorCode.INVALID_KEY);
+        }
+
         Optional<Room> existingRoom = roomRepository.findPrivateRoomBetweenUsers(userId1, userId2);
         if (existingRoom.isPresent()) {
-            return roomMapper.toResponse(existingRoom.get());
+            Room room = existingRoom.get();
+            
+            // LOGIC REVIVAL: Ensure both users are ACTIVE members. 
+            // If one user deleted the chat (soft delete), restore them.
+            restoreMemberIfDeleted(room, userId1);
+            restoreMemberIfDeleted(room, userId2);
+            
+            return roomMapper.toResponse(room);
         }
 
         // Create new Private Room
@@ -256,6 +268,33 @@ public class RoomServiceImpl implements RoomService {
                 .build());
 
         return roomMapper.toResponse(room);
+    }
+    
+    // Helper to check and restore soft-deleted members in 1-1 chat
+    private void restoreMemberIfDeleted(Room room, UUID userId) {
+        Optional<RoomMember> memberOpt = roomMemberRepository.findById(new RoomMemberId(room.getRoomId(), userId));
+        if (memberOpt.isPresent()) {
+            RoomMember member = memberOpt.get();
+            if (Boolean.TRUE.equals(member.isDeleted())) {
+                member.setDeleted(false);
+                member.setDeletedAt(null);
+                member.setJoinedAt(OffsetDateTime.now()); // Update join time to bring to top if sorted by join
+                roomMemberRepository.save(member);
+                log.info("Restored soft-deleted member {} in room {}", userId, room.getRoomId());
+            }
+        } else {
+             // Edge case: Member record physically missing but room exists? Re-add them.
+             User user = userRepository.findById(userId).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+             RoomMember newMember = RoomMember.builder()
+                .id(new RoomMemberId(room.getRoomId(), userId))
+                .room(room)
+                .user(user)
+                .role(RoomRole.MEMBER)
+                .isAdmin(false)
+                .joinedAt(OffsetDateTime.now())
+                .build();
+             roomMemberRepository.save(newMember);
+        }
     }
 
     @Override
@@ -600,46 +639,6 @@ public class RoomServiceImpl implements RoomService {
             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
-
-    // @Override
-    // @Transactional(readOnly = true)
-    // public List<MemberResponse> getRoomMembers(UUID roomId) {
-    //     try {
-    //         if (!roomRepository.existsById(roomId)) {
-    //             throw new AppException(ErrorCode.ROOM_NOT_FOUND);
-    //         }
-
-    //         List<RoomMember> members = roomMemberRepository.findAllById_RoomIdAndIsDeletedFalse(roomId);
-
-    //         return members.stream()
-    //                 .map(member -> {
-    //                     User user = member.getUser();
-    //                     if (user == null || user.isDeleted()) {
-    //                         log.warn("RoomMember with id {} references a null or deleted user {}", member.getId(), member.getId().getUserId());
-    //                         return null;
-    //                     }
-
-    //                     return MemberResponse.builder()
-    //                             .userId(user.getUserId())
-    //                             .nickname(user.getNickname())
-    //                             .fullname(user.getFullname())
-    //                             .avatarUrl(user.getAvatarUrl())
-    //                             .role(String.valueOf(member.getRole()))
-    //                             .isOnline(user.isOnline())
-    //                             .build();
-    //                 })
-    //                 .filter(Objects::nonNull)
-    //                 .collect(Collectors.toList());
-
-    //     } catch (AppException e) {
-    //         log.warn("Error fetching room members for room {}: {}", roomId, e.getMessage());
-    //         throw e;
-    //     } catch (Exception e) {
-    //         log.error("Error while fetching members for room ID {}: {}", roomId, e.getMessage());
-    //         throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-    //     }
-    // }
-
 
     @Override
     @Transactional

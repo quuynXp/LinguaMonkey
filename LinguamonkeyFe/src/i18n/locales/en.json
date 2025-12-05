@@ -83,6 +83,7 @@
     "failed": "Login failed"
   },
   "error": {
+    "server_unavailable": "Server unavailable",
     "generic_internal": "Loading error",
     "general": "Error",
     "title": "Error",

@@ -13,6 +13,7 @@ services:
         strip_path: false
         methods: [GET, POST, OPTIONS]
         paths:
+          - /health
           - /api/v1/auth
           - /api/v1/users/check-email
           - /api/swagger
@@ -41,6 +42,12 @@ services:
           - /api/v1/search
           - /api/v1/skill-lessons
           - /api/v1/videos
+          
+      - name: health-check-route
+        strip_path: true
+        methods: [GET]
+        paths:
+          - /api/v1/health
     plugins:
       - name: rate-limiting
         config:

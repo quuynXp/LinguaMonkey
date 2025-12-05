@@ -7,10 +7,11 @@ import { showError } from "../../utils/toastHelper";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { gotoTab } from "../../utils/navigationRef";
 import { createScaledSheet } from "../../utils/scaledStyles";
+import { useAppStore } from '../../stores/appStore';
 
 const ForgotPasswordScreen = ({ navigation }) => {
   const { t } = useTranslation();
-  const [identifier, setIdentifier] = useState("");
+  const { forgotPasswordInput, setForgotPasswordInput } = useAppStore();
   const [isLoading, setIsLoading] = useState(false);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -24,15 +25,15 @@ const ForgotPasswordScreen = ({ navigation }) => {
   }, []);
 
   const handleFindAccount = async () => {
-    if (!identifier || identifier.length < 3) {
+    if (!forgotPasswordInput || forgotPasswordInput.length < 3) {
       showError(t('invalidIdentifier'));
       return;
     }
 
     setIsLoading(true);
     try {
-      const methods = await authService.checkResetMethods(identifier);
-      gotoTab("Profile", "ResetPasswordScreen", { identifier: identifier, methods: methods });
+      const methods = await authService.checkResetMethods(forgotPasswordInput);
+      gotoTab("Profile", "ResetPasswordScreen", { identifier: forgotPasswordInput, methods: methods });
     } catch (error: any) {
       showError(error.message || t('accountNotFound'));
     } finally {
@@ -59,8 +60,8 @@ const ForgotPasswordScreen = ({ navigation }) => {
             <TextInput
               style={styles.textInput}
               placeholder={t('emailOrPhone')}
-              value={identifier}
-              onChangeText={setIdentifier}
+              value={forgotPasswordInput}
+              onChangeText={setForgotPasswordInput}
               autoCapitalize="none"
             />
           </View>
