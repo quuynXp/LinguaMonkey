@@ -15,8 +15,8 @@ import {
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { useMutation } from "@tanstack/react-query";
+import { gotoTab } from "../../utils/navigationRef";
 import { useChatStore, getMessageDisplayData } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useFriendships } from "../../hooks/useFriendships";
@@ -24,7 +24,7 @@ import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
 import FileUploader from "../../components/common/FileUploader";
 import { RoomPurpose, FriendshipStatus } from "../../types/enums";
-import { RoomResponse, MemberResponse, AppApiResponse, UserProfileResponse } from "../../types/dto";
+import { UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCountryFlag } from "../../utils/flagUtils";
@@ -32,7 +32,6 @@ import { getAvatarSource } from "../../utils/avatarUtils";
 
 const { width } = Dimensions.get('window');
 
-// --- TYPES ---
 type UIMessage = {
     id: string;
     sender: 'user' | 'other';
@@ -64,14 +63,9 @@ interface ChatInnerViewProps {
     onMinimizeBubble?: () => void;
     autoTranslate?: boolean;
     soundEnabled?: boolean;
+    initialFocusMessageId?: string | null;
 }
 
-type ChatInnerViewRouteParams = {
-    roomId: string;
-    initialFocusMessageId?: string | null;
-};
-
-// --- HELPER FUNCTIONS ---
 const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en') => {
     const date = new Date(sentAt);
     if (isNaN(date.getTime())) return '...';
@@ -79,14 +73,13 @@ const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en'
     return date.toLocaleTimeString(locale, timeOptions);
 };
 
-// --- SUB-COMPONENT: QUICK PROFILE POPUP ---
 const QuickProfilePopup = ({
     visible,
     profile,
     onClose,
     onNavigateProfile,
     currentUserId,
-    statusInfo // Add status info
+    statusInfo
 }: {
     visible: boolean;
     profile: UserProfileResponse | null;
@@ -112,7 +105,6 @@ const QuickProfilePopup = ({
     const handleAcceptFriend = () => updateFriendship.mutate({ user1Id: profile.userId, user2Id: currentUserId, req: { requesterId: profile.userId, receiverId: currentUserId, status: FriendshipStatus.ACCEPTED } });
     const handleCancelOrUnfriend = () => deleteFriendship.mutate({ user1Id: currentUserId, user2Id: profile.userId });
 
-    // Format Active Status text
     let statusText = "";
     if (statusInfo?.isOnline) statusText = "Active now";
     else if (statusInfo?.lastActiveAt) {
@@ -190,21 +182,20 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     onCloseBubble,
     onMinimizeBubble,
     autoTranslate = false,
-    soundEnabled = true
+    soundEnabled = true,
+    initialFocusMessageId = null
 }) => {
     const { t, i18n } = useTranslation();
     const { showToast } = useToast();
-    const navigation = useNavigation<any>();
+
     const { user } = useUserStore();
     const currentUserId = user?.userId;
     const setCurrentViewedRoomId = useChatStore(s => s.setCurrentViewedRoomId);
-    // Access global user statuses
     const userStatuses = useChatStore(s => s.userStatuses);
 
     const [inputText, setInputText] = useState("");
     const [isUploading, setIsUploading] = useState(false);
 
-    // Translation State
     const [localTranslations, setLocalTranslations] = useState<any>({});
     const [messagesToggleState, setMessagesToggleState] = useState<any>({});
     const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language || 'vi');
@@ -214,9 +205,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | null>(null);
     const [isPopupVisible, setIsPopupVisible] = useState(false);
-
-    const route = useRoute<RouteProp<Record<string, ChatInnerViewRouteParams>, string>>();
-    const initialFocusMessageId = (route?.params as any)?.initialFocusMessageId ?? null;
 
     useEffect(() => {
         if (!isBubbleMode) setCurrentViewedRoomId(roomId);
@@ -236,10 +224,12 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         return serverMessages.map((msg: any) => {
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
+
             const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
             const finalTranslation = localTrans || dbTrans;
             const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
+
             const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
             const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!dbTrans);
 
@@ -265,7 +255,11 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 roomId: roomId,
                 isDeleted: msg.isDeleted
             } as UIMessage;
-        }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+        }).sort((a, b) => {
+            const timeA = new Date(a.sentAt).getTime();
+            const timeB = new Date(b.sentAt).getTime();
+            return timeA - timeB;
+        });
     }, [serverMessages, localTranslations, translationTargetLang, currentUserId, autoTranslate]);
 
     useEffect(() => { loadMessages(roomId); }, [roomId]);
@@ -273,6 +267,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         if (!messages.length) return;
         setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
     }, [messages.length]);
+
     useEffect(() => {
         messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
     }, [messages.length, roomId]);
@@ -312,6 +307,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
 
+    const handleNavigateProfile = () => {
+        setIsPopupVisible(false);
+        if (selectedProfile) {
+            gotoTab(
+                "Profile",
+                "UserProfileViewScreen",
+                { userId: selectedProfile.userId }
+            );
+        }
+    };
+
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
@@ -329,7 +335,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             isTranslatedView = true;
         }
 
-        // Get status for this user
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
         return (
@@ -380,7 +385,18 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
                 <View style={styles.inputArea}>
                     <View style={{ zIndex: 10 }}>
-                        <FileUploader mediaType="all" maxSizeMB={20} maxDuration={60} onUploadStart={() => setIsUploading(true)} onUploadEnd={() => setIsUploading(false)} onUploadSuccess={(url, type) => { sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url); }} style={styles.attachBtn}>
+                        <FileUploader
+                            mediaType="all"
+                            maxSizeMB={100}
+                            maxDuration={300}
+                            onUploadStart={() => setIsUploading(true)}
+                            onUploadEnd={() => setIsUploading(false)}
+                            onUploadSuccess={(result, type) => {
+                                const url = result?.fileUrl || result;
+                                sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url);
+                            }}
+                            style={styles.attachBtn}
+                        >
                             {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="attach-file" size={24} color="#3B82F6" />}
                         </FileUploader>
                     </View>
@@ -388,7 +404,14 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}><Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" /></TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
-            <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} currentUserId={currentUserId || ""} statusInfo={selectedProfile ? userStatuses[selectedProfile.userId] : undefined} />
+            <QuickProfilePopup
+                visible={isPopupVisible}
+                profile={selectedProfile}
+                onClose={() => setIsPopupVisible(false)}
+                onNavigateProfile={handleNavigateProfile}
+                currentUserId={currentUserId || ""}
+                statusInfo={selectedProfile ? userStatuses[selectedProfile.userId] : undefined}
+            />
         </ScreenLayout>
     );
 };

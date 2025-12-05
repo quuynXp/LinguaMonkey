@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react"
 import { Alert, Animated, ScrollView, Text, TextInput, TouchableOpacity, View, FlatList, Image } from "react-native"
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { Character3D, Language, Interest, Country, LearningPace, CreateUserPayload, languageToCountry } from "../../types/api"
-import instance from "../../api/axiosClient"
+// FIXED: Import privateClient (default export)
+import privateClient from "../../api/axiosClient"
 import CountryFlag from "react-native-country-flag"
 import { useTranslation } from "react-i18next"
 import { gotoTab } from "../../utils/navigationRef";
@@ -14,10 +15,6 @@ import { useTokenStore } from "../../stores/tokenStore";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
-
-type SetupInitScreenProps = {
-  navigation: NativeStackNavigationProp<any>
-}
 
 const countryToDefaultLanguage: Record<string, string> = {
   US: "en",
@@ -36,10 +33,13 @@ const countryToDefaultLanguage: Record<string, string> = {
 
 const SUPPORTED_LEARNING_LANGUAGES = ['vi', 'en', 'zh']
 
+type SetupInitScreenProps = {
+  navigation: NativeStackNavigationProp<any>
+}
+
 const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const { t } = useTranslation()
   const [currentStep, setCurrentStep] = useState(1)
-  // const [selectedCharacter, setSelectedCharacter] = useState<Character3D | null>(null)
   const [accountName, setAccountName] = useState("")
   const [email, setEmail] = useState("")
   const [phoneNumber, setPhoneNumber] = useState("");
@@ -52,7 +52,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const [learningGoalsSelected, setLearningGoalsSelected] = useState<string[]>([])
   const [learningPace, setLearningPace] = useState("")
 
-  // const [characters, setCharacters] = useState<Character3D[]>([])
   const [languages, setLanguages] = useState<Language[]>([])
   const [interests, setInterests] = useState<Interest[]>([])
 
@@ -100,14 +99,9 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     { id: "accelerated", name: "Accelerated", description: "45+ min/day • Intensive learning", icon: "rocket-launch", color: "#EF4444" },
   ]
 
-  const randomSuffix = (len = 6) =>
-    Math.random().toString(36).slice(2, 2 + len);
-
   const interestsWithDesc = interests.map((interest) => ({
     ...interest,
-    description:
-      interest.description ||
-      `Explore ${(interest.interestName ?? "interest").toLowerCase()} to enhance your learning experience.`,
+    description: interest.description || `Explore ${(interest.interestName ?? "interest").toLowerCase()} to enhance your learning experience.`,
     id: interest.interestId,
   }))
 
@@ -115,39 +109,24 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     if (!c) return undefined;
     const normalized = c.trim().toUpperCase();
     const map: Record<string, string> = {
-      "UNITED STATES": "UNITED_STATES",
-      "US": "UNITED_STATES",
-      "VN": "VIETNAM",
-      "VIETNAM": "VIETNAM",
-      "JP": "JAPAN",
-      "JAPAN": "JAPAN",
-      "CN": "CHINA",
-      "CHINA": "CHINA",
-      "FR": "FRANCE",
-      "FRANCE": "FRANCE",
-      "DE": "GERMANY",
-      "GERMANY": "GERMANY",
-      "IT": "ITALY",
-      "ITALY": "ITALY",
-      "ES": "SPAIN",
-      "SPAIN": "SPAIN",
-      "KR": "SOUTH_KOREA",
-      "SOUTH KOREA": "SOUTH_KOREA",
-      "IN": "INDIA",
-      "INDIA": "INDIA",
-      "TOGA": "TONGA",
-      "TONGA": "TONGA"
+      "UNITED STATES": "UNITED_STATES", "US": "UNITED_STATES",
+      "VN": "VIETNAM", "VIETNAM": "VIETNAM",
+      "JP": "JAPAN", "JAPAN": "JAPAN",
+      "CN": "CHINA", "CHINA": "CHINA",
+      "FR": "FRANCE", "FRANCE": "FRANCE",
+      "DE": "GERMANY", "GERMANY": "GERMANY",
+      "IT": "ITALY", "ITALY": "ITALY",
+      "ES": "SPAIN", "SPAIN": "SPAIN",
+      "KR": "SOUTH_KOREA", "SOUTH KOREA": "SOUTH_KOREA",
+      "IN": "INDIA", "INDIA": "INDIA",
+      "TOGA": "TONGA", "TONGA": "TONGA"
     };
     return map[normalized] ?? undefined;
   };
 
   const AGE_ENUM_MAP: Record<string, string> = {
-    "13-17": "AGE_13_17",
-    "18-24": "AGE_18_24",
-    "25-34": "AGE_25_34",
-    "35-44": "AGE_35_44",
-    "45-54": "AGE_45_54",
-    "55+": "AGE_55_PLUS",
+    "13-17": "AGE_13_17", "18-24": "AGE_18_24", "25-34": "AGE_25_34",
+    "35-44": "AGE_35_44", "45-54": "AGE_45_54", "55+": "AGE_55_PLUS",
   };
 
   const mapAgeRangeToEnum = (display: string | undefined) => {
@@ -159,41 +138,20 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     const prefillData = () => {
       const user = useUserStore.getState().user;
       if (user) {
-        if (user.fullname) {
-          setAccountName(user.fullname);
-        }
-        if (user.email) {
-          setEmail(user.email);
-        }
-        if (user.phone)
-          setPhoneNumber(user.phone)
+        if (user.fullname) setAccountName(user.fullname);
+        if (user.email) setEmail(user.email);
+        if (user.phone) setPhoneNumber(user.phone)
       }
     };
     prefillData();
+    fetchLanguages();
+    fetchInterests();
   }, []);
 
-  // useEffect(() => {
-  //   fetchLanguages()
-  //   fetchCharacters()
-  //   fetchInterests()
-  // }, [])
-
   useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start()
-
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 400,
-      useNativeDriver: true,
-    }).start()
+    Animated.timing(fadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start()
+    Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start()
   }, [])
-
-  // useEffect(() => {
-  // }, [characters])
 
   useEffect(() => {
     if (interests.length && selectedInterests.length === 0) {
@@ -220,31 +178,15 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         setTargetLanguages(prev => prev.filter(c => c !== languageCode))
       }
     }
-
-    // if (interests.length > 0) setSelectedInterests([interests[0].interestId])
     if (learningGoals.length > 0) setLearningGoalsSelected(["conversation"])
     setLearningPace("slow")
     setAgeRange("18-24")
   }, [])
 
-  // const fetchCharacters = async () => {
-  //   try {
-  //     const response = await instance.get('/api/v1/character3ds');
-  //     const charactersArray = response.data.result?.content;
-
-  //     if (Array.isArray(charactersArray)) {
-  //       setCharacters(charactersArray);
-  //     } else {
-  //       setCharacters([]);
-  //     }
-  //   } catch (error) {
-  //     Alert.alert(t("error.title"), t("error.loadCharacters"));
-  //   }
-  // };
-
   const fetchLanguages = async () => {
     try {
-      const response = await instance.get('/api/v1/languages')
+      // FIXED: Use privateClient
+      const response = await privateClient.get('/api/v1/languages')
       const languageArray = response.data.result?.content
       if (Array.isArray(languageArray)) {
         const normalized = languageArray.map((lang: any) => ({
@@ -257,23 +199,20 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         setLanguages([])
       }
     } catch (error) {
-      Alert.alert(t("error.title"), t("error.loadLanguages"))
     }
   }
 
   const fetchInterests = async () => {
     try {
-      const response = await instance.get('/api/v1/interests')
+      // FIXED: Use privateClient
+      const response = await privateClient.get('/api/v1/interests')
       const data = response.data.result || []
       setInterests(data)
     } catch (error) {
-      Alert.alert(t("error.title"), t("error.loadInterests"))
     }
   }
 
-  // Steps are now 1, 2, 3 (Basic Info, Interests/Goals, Certs/Pace). Step 4 (Summary) is now Step 3 and finishes.
   const handleNext = async () => {
-    // Step 1: Basic Info validation
     if (currentStep === 1) {
       if (!accountName.trim()) {
         Alert.alert(t("error.title"), t("error.nameRequired") || "Name is required.")
@@ -288,22 +227,19 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     if (currentStep < 3) {
       setCurrentStep(currentStep + 1)
     } else if (currentStep === 3) {
-      // Final step (formerly step 4)
       await createTempAccountAndSetup()
     }
   }
 
   const handleSkip = async () => {
-    // Skipping is allowed from Step 2 onwards.
     if (currentStep >= 2) {
-      // Must ensure required fields from step 1 are filled
       if (!email.trim() || !email.includes('@') || !accountName.trim()) {
-        Alert.alert(t("error.title"), t("error.requiredFieldsMissing") || "Please complete the required fields in Step 1 (Name, Email) before finishing/skipping.");
+        Alert.alert(t("error.title"), t("error.requiredFieldsMissing") || "Please complete required fields.");
         return;
       }
       await createTempAccountAndSetup(true);
     } else {
-      Alert.alert(t("error.title"), t("setup.skipNotAllowed") || "Skipping is only allowed from step 2 onwards to finish setup.");
+      Alert.alert(t("error.title"), t("setup.skipNotAllowed") || "Skipping not allowed.");
     }
   };
 
@@ -320,10 +256,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         nickname: accountName || undefined,
         phone: phoneNumber || undefined,
       }
-
-      // if (selectedCharacter?.character3dId) {
-      //   payload.character3dId = selectedCharacter.character3dId
-      // }
 
       const mappedCountry = mapCountryToEnum(country ?? undefined)
       if (mappedCountry) payload.country = mappedCountry as Country
@@ -355,19 +287,21 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       console.log("Create user payload ->", JSON.stringify(payload, null, 2))
 
       const existingUser = useUserStore.getState().user;
-
       let response;
 
+      // 1. UPDATE/CREATE USER
       if (existingUser?.userId) {
         console.log(`Updating existing user ${existingUser.userId}...`);
-        response = await instance.put(`/api/v1/users/${existingUser.userId}`, payload);
+        // FIXED: Use privateClient
+        response = await privateClient.put(`/api/v1/users/${existingUser.userId}`, payload);
         console.log("Account updated, response:", response.data);
         useUserStore.getState().setUser(response.data.result);
       } else {
         console.log("Quick Start: Checking if email is available...");
         let emailCheckResponse;
         try {
-          emailCheckResponse = await instance.get('/api/v1/users/check-email', {
+          // FIXED: Use privateClient
+          emailCheckResponse = await privateClient.get('/api/v1/users/check-email', {
             params: { email: payload.email }
           });
         } catch (checkError: any) {
@@ -387,7 +321,8 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         }
 
         console.log("Email is available. Creating new user...");
-        response = await instance.post('/api/v1/users', payload);
+        // FIXED: Use privateClient
+        response = await privateClient.post('/api/v1/users', payload);
         console.log("Account created, response:", response.data);
 
         const result = response.data.result;
@@ -398,17 +333,24 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         }
       }
 
+      // 2. FINISH SETUP (Critical Step)
+      console.log("Calling finishSetup...");
+      // Hàm này trong Store cũng cần được sửa để throw error nếu lỗi
       await useUserStore.getState().finishSetup();
-      // SỬA ĐIỂM ĐIỀU HƯỚNG: Bỏ qua ProficiencyTestScreen, chuyển thẳng về Home
+      console.log("finishSetup completed successfully.");
+
+      // 3. NAVIGATE
       gotoTab("TabApp");
 
     } catch (error: any) {
       console.error("createTempAccountAndSetup error:", error.response?.data || error.message);
+      // privateClient interceptor có thể đã show toast, nhưng ở đây alert thêm để user biết setup fail
       const errorMessage = error.response?.data?.message || t("error.setupAccount");
       Alert.alert(t("error.title"), errorMessage);
     }
   }
 
+  // ... (Phần UI render giữ nguyên)
   const handleBack = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1)
@@ -419,7 +361,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const toggleArraySelection = (array: string[], item: string, setter: (arr: string[]) => void) => {
     const newArray = array.includes(item) ? array.filter(i => i !== item) : [...array, item]
-    console.log(`Toggling ${item}, new state:`, newArray)
     setter(newArray)
   }
 
@@ -428,12 +369,10 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
   const toggleTargetLanguage = (langCodeRaw: string) => {
     const langCode = normalizeLangCode(langCodeRaw)
     if (!langCode) return
-
     if (nativeLanguage && langCode === nativeLanguage) {
       Alert.alert(t("error.title"), t("setup.cannotSelectNativeAsTarget") || "Cannot select native language as learning target")
       return
     }
-
     if (targetLanguages.includes(langCode)) {
       setTargetLanguages(prev => prev.filter(c => c !== langCode))
     } else {
@@ -484,24 +423,16 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const renderStepIndicator = () => (
     <View style={styles.stepIndicator}>
-      {/* Cập nhật số bước thành 3 (Basic Info, Interests/Goals, Certs/Pace) */}
       {[1, 2, 3].map((step) => (
         <View key={`step-${step}`} style={styles.stepContainer}>
           <View style={[styles.stepCircle, currentStep >= step && styles.stepCircleActive]}>
             <Text style={[styles.stepText, currentStep >= step && styles.stepTextActive]}>{step}</Text>
           </View>
-          {/* Bỏ điều kiện step < 5, dùng step < 3 vì có 3 bước */}
           {step < 3 && <View style={[styles.stepLine, currentStep > step && styles.stepLineActive]} />}
         </View>
       ))}
     </View>
   )
-
-  // const renderCharacterSelection = () => (
-  //   <View style={styles.stepContent}>
-  //     ...
-  //   </View>
-  // )
 
   const renderBasicInfo = () => (
     <View style={styles.stepContent}>
@@ -532,9 +463,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
           containerStyle={styles.phoneInputContainer}
           textContainerStyle={styles.phoneInputTextContainer}
         />
-        <Text style={styles.inputHint}>
-          {t("auth.phoneHint")}
-        </Text>
+        <Text style={styles.inputHint}>{t("auth.phoneHint")}</Text>
       </View>
 
       <View style={styles.inputContainer}>
@@ -620,9 +549,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
                   onPress={() => toggleTargetLanguage(lang.languageCode)}
                 >
                   {iso ? <CountryFlag isoCode={iso} size={22} style={{ marginRight: 8 }} /> : <View style={{ width: 22, height: 22, marginRight: 8 }} />}
-                  <Text
-                    style={[styles.languageText, targetLanguages.includes(lang.languageCode) && styles.languageTextSelected]}
-                  >
+                  <Text style={[styles.languageText, targetLanguages.includes(lang.languageCode) && styles.languageTextSelected]}>
                     {lang.languageName}
                   </Text>
                 </TouchableOpacity>
@@ -675,11 +602,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
             onPress={() => toggleLearningGoal(goal.id)}
           >
             <View style={styles.goalIcon}>
-              <Icon
-                name={goal.icon}
-                size={24}
-                color={learningGoalsSelected.includes(goal.id) ? "#4F46E5" : "#6B7280"}
-              />
+              <Icon name={goal.icon} size={24} color={learningGoalsSelected.includes(goal.id) ? "#4F46E5" : "#6B7280"} />
             </View>
             <View style={styles.goalInfo}>
               <Text style={[styles.goalName, learningGoalsSelected.includes(goal.id) && styles.selectedGoalName]}>
@@ -703,10 +626,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
       <View style={styles.certificationsList}>
         {getFilteredCertifications().map((cert, i) => (
           <TouchableOpacity key={`cert-${cert.id}-${i}`}
-            style={[
-              styles.certificationCard,
-              certificationsSelected.includes(cert.id) && styles.selectedCertificationCard,
-            ]}
+            style={[styles.certificationCard, certificationsSelected.includes(cert.id) && styles.selectedCertificationCard]}
             onPress={() => toggleCertification(cert.id)}
           >
             <View style={styles.certificationInfo}>
@@ -736,14 +656,7 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
     </View>
   )
 
-  // const renderSummary = () => (
-  //   <View style={styles.stepContent}>
-  //     ...
-  //   </View>
-  // )
-
   const renderSkipButton = () => {
-    // Cho phép bỏ qua từ bước 2
     if (currentStep >= 2 && currentStep <= 3) {
       return (
         <TouchableOpacity onPress={handleSkip}>
@@ -756,30 +669,16 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 
   const renderCurrentStepContent = () => {
     switch (currentStep) {
-      // case 1: return renderCharacterSelection(); // Bỏ qua Character Selection
-      case 1:
-        return renderBasicInfo()
-      case 2:
-        return renderInterestsAndGoals()
-      case 3:
-        return renderCertificationsAndPace()
-      // case 4: return renderSummary(); // Bỏ qua Summary (hoặc gộp vào 3)
-      default:
-        return renderBasicInfo()
+      case 1: return renderBasicInfo()
+      case 2: return renderInterestsAndGoals()
+      case 3: return renderCertificationsAndPace()
+      default: return renderBasicInfo()
     }
   }
 
   return (
     <ScreenLayout style={styles.container}>
-      <Animated.View
-        style={[
-          styles.content,
-          {
-            opacity: fadeAnim,
-            transform: [{ translateY: slideAnim }],
-          },
-        ]}
-      >
+      <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
         <View style={styles.header}>
           <TouchableOpacity onPress={handleBack}>
             <Icon name="arrow-back" size={24} color="#374151" />
@@ -797,7 +696,6 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
         <View style={styles.navigationButtons}>
           <TouchableOpacity style={styles.nextButton} onPress={handleNext}>
             <Text style={styles.nextButtonText}>
-              {/* Cập nhật text ở bước cuối cùng */}
               {currentStep === 3 ? t("setup.startLearning") || "Start Learning" : t("setup.continue") || "Continue"}
             </Text>
             <Icon name="arrow-forward" size={20} color="#FFFFFF" />
@@ -809,485 +707,80 @@ const SetupInitScreen = ({ navigation }: SetupInitScreenProps) => {
 }
 
 const styles = createScaledSheet({
-  container: {
-    flex: 1,
-    backgroundColor: "#F8FAFC",
-  },
-  content: {
-    flex: 1,
-  },
-  inputHint: {
-    fontSize: 12,
-    color: "#6B7280",
-    marginTop: 4,
-    paddingLeft: 8,
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingBottom: 20,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  skipButtonText: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#4F46E5",
-  },
-  stepIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-    marginBottom: 32,
-  },
-  stepContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: "#E5E7EB",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  stepCircleActive: {
-    backgroundColor: "#4F46E5",
-  },
-  stepText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#9CA3AF",
-  },
-  stepTextActive: {
-    color: "#FFFFFF",
-  },
-  stepLine: {
-    width: 30,
-    height: 2,
-    backgroundColor: "#E5E7EB",
-    marginHorizontal: 8,
-  },
-  stepLineActive: {
-    backgroundColor: "#4F46E5",
-  },
-  scrollContent: {
-    flex: 1,
-  },
-  stepContent: {
-    paddingHorizontal: 24,
-  },
-  stepTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#1F2937",
-    textAlign: "center",
-    marginBottom: 8,
-  },
-  stepSubtitle: {
-    fontSize: 16,
-    color: "#6B7280",
-    textAlign: "center",
-    marginBottom: 32,
-    lineHeight: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 16,
-    marginTop: 24,
-  },
-  charactersGrid: {
-    paddingHorizontal: 16,
-  },
-  charactersRow: {
-    justifyContent: "space-between",
-    marginBottom: 16,
-  },
-  characterCard: {
-    flex: 1,
-    margin: 8,
-    backgroundColor: "#fff",
-    borderRadius: 12,
-    padding: 12,
-    alignItems: "center",
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-  },
-  characterCardSelected: {
-    borderColor: "#10B981",
-    backgroundColor: "#F0FDF4",
-  },
-  characterImage: {
-    height: 150,
-    width: '100%',
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  characterName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  characterPersonality: {
-    fontSize: 12,
-    color: "#6B7280",
-  },
-  selectedIndicator: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-  },
-  inputContainer: {
-    marginBottom: 18,
-  },
-  nativeContainer: {
-    marginTop: 6,
-  },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 8,
-  },
-  textInput: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-  },
-  languageScroll: {
-    flexDirection: "row",
-    paddingVertical: 4,
-  },
-  languageChip: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 20,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-  },
-  languageChipSelected: {
-    backgroundColor: "#4F46E5",
-    borderColor: "#4F46E5",
-  },
-  languageText: {
-    fontSize: 13,
-    color: "#374151",
-  },
-  languageTextSelected: {
-    color: "#FFFFFF",
-  },
-  certificationsList: {
-    width: "100%",
-    gap: 12,
-  },
-  certificationCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-  },
-  selectedCertificationCard: {
-    borderColor: "#4F46E5",
-    backgroundColor: "#EEF2FF",
-  },
-  certificationInfo: {
-    flex: 1,
-  },
-  certificationName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  certificationDescription: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  ageGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  ageCard: {
-    width: "30%",
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 6,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-    backgroundColor: "#FFFFFF",
-    marginBottom: 10,
-  },
-  selectedAgeCard: {
-    backgroundColor: "#4F46E5",
-    borderColor: "#4F46E5",
-  },
-  ageInner: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  ageText: {
-    fontSize: 13,
-    color: "#374151",
-    fontWeight: "500",
-  },
-  selectedAgeText: {
-    color: "#FFFFFF",
-  },
-  interestsGrid: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "space-between",
-  },
-  interestCard: {
-    width: "48%",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    alignItems: "center",
-    marginBottom: 12,
-    borderWidth: 2,
-    position: "relative",
-  },
-  interestCardSelected: {
-    color: "#000000",
-    backgroundColor: "#e8e6d6",
-  },
-  interestText: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#374151",
-    marginTop: 8,
-    textAlign: "center",
-  },
-  interestTextSelected: {
-    color: "#FFFFFF",
-  },
-  interestDescription: {
-    fontSize: 12,
-    color: "#6B7280",
-    textAlign: "center",
-    marginTop: 4,
-  },
-  interestSelectedIndicator: {
-    position: "absolute",
-    top: 8,
-    right: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  goalsList: {
-    width: "100%",
-    gap: 12,
-  },
-  goalCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-  },
-  selectedGoalCard: {
-    borderColor: "#4F46E5",
-    backgroundColor: "#EEF2FF",
-  },
-  goalIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: "#F3F4F6",
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 16,
-  },
-  goalInfo: {
-    flex: 1,
-  },
-  goalName: {
-    fontSize: 16,
-    fontWeight: "600",
-    color: "#1F2937",
-  },
-  selectedGoalName: {
-    color: "#4F46E5",
-  },
-  goalDescription: {
-    fontSize: 14,
-    color: "#6B7280",
-  },
-  paceContainer: {
-    width: "100%",
-    gap: 16,
-  },
-  paceCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 2,
-    borderColor: "#E5E7EB",
-    alignItems: "center",
-  },
-  selectedPaceCard: {
-    borderColor: "#4F46E5",
-    backgroundColor: "#EEF2FF",
-  },
-  paceIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 16,
-  },
-  paceName: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#1F2937",
-    marginBottom: 8,
-  },
-  paceDescription: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-  },
-  summaryCard: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 12,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  summaryRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    marginBottom: 16,
-  },
-  summaryLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#6B7280",
-    width: 100,
-  },
-  summaryText: {
-    fontSize: 14,
-    color: "#1F2937",
-    flex: 1,
-  },
-  summaryLanguages: {
-    flex: 1,
-  },
-  summaryLanguage: {
-    fontSize: 14,
-    color: "#1F2937",
-    marginBottom: 4,
-  },
-  summaryInterests: {
-    flex: 1,
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  summaryInterest: {
-    fontSize: 12,
-    color: "#4F46E5",
-    backgroundColor: "#EEF2FF",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    marginRight: 6,
-    marginBottom: 4,
-  },
-  nextStepInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#EEF2FF",
-    borderRadius: 12,
-    padding: 16,
-  },
-  nextStepText: {
-    fontSize: 14,
-    color: "#4F46E5",
-    marginLeft: 12,
-    flex: 1,
-    lineHeight: 20,
-  },
-  navigationButtons: {
-    paddingHorizontal: 24,
-    paddingVertical: 20,
-  },
-  nextButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "#4F46E5",
-    borderRadius: 12,
-    paddingVertical: 16,
-    gap: 8,
-  },
-  phoneInputContainer: {
-    width: "100%",
-    height: 50,
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#D1D5DB",
-  },
-  phoneInputTextContainer: {
-    backgroundColor: "#FFFFFF",
-    borderRadius: 8,
-    paddingVertical: 0,
-  },
-  nextButtonText: {
-    fontSize: 16,
-    color: "#FFFFFF",
-    fontWeight: "600",
-  },
-  modelPlaceholder: {
-    height: 150,
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F3F4F6',
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  modelErrorText: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    marginTop: 8,
-  },
+  container: { flex: 1, backgroundColor: "#F8FAFC" },
+  content: { flex: 1 },
+  inputHint: { fontSize: 12, color: "#6B7280", marginTop: 4, paddingLeft: 8 },
+  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingHorizontal: 24, paddingBottom: 20 },
+  headerTitle: { fontSize: 18, fontWeight: "600", color: "#1F2937" },
+  skipButtonText: { fontSize: 16, fontWeight: "600", color: "#4F46E5" },
+  stepIndicator: { flexDirection: "row", alignItems: "center", justifyContent: "center", paddingHorizontal: 24, marginBottom: 32 },
+  stepContainer: { flexDirection: "row", alignItems: "center" },
+  stepCircle: { width: 32, height: 32, borderRadius: 16, backgroundColor: "#E5E7EB", alignItems: "center", justifyContent: "center" },
+  stepCircleActive: { backgroundColor: "#4F46E5" },
+  stepText: { fontSize: 14, fontWeight: "600", color: "#9CA3AF" },
+  stepTextActive: { color: "#FFFFFF" },
+  stepLine: { width: 30, height: 2, backgroundColor: "#E5E7EB", marginHorizontal: 8 },
+  stepLineActive: { backgroundColor: "#4F46E5" },
+  scrollContent: { flex: 1 },
+  stepContent: { paddingHorizontal: 24 },
+  stepTitle: { fontSize: 24, fontWeight: "bold", color: "#1F2937", textAlign: "center", marginBottom: 8 },
+  stepSubtitle: { fontSize: 16, color: "#6B7280", textAlign: "center", marginBottom: 32, lineHeight: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: "600", color: "#374151", marginBottom: 16, marginTop: 24 },
+  charactersGrid: { paddingHorizontal: 16 },
+  charactersRow: { justifyContent: "space-between", marginBottom: 16 },
+  characterCard: { flex: 1, margin: 8, backgroundColor: "#fff", borderRadius: 12, padding: 12, alignItems: "center", borderWidth: 2, borderColor: "#E5E7EB" },
+  characterCardSelected: { borderColor: "#10B981", backgroundColor: "#F0FDF4" },
+  characterImage: { height: 150, width: '100%', borderRadius: 8, marginBottom: 8 },
+  characterName: { fontSize: 16, fontWeight: "600", color: "#1F2937", marginBottom: 4 },
+  characterPersonality: { fontSize: 12, color: "#6B7280" },
+  selectedIndicator: { position: "absolute", top: 8, right: 8 },
+  inputContainer: { marginBottom: 18 },
+  nativeContainer: { marginTop: 6 },
+  inputLabel: { fontSize: 16, fontWeight: "600", color: "#374151", marginBottom: 8 },
+  textInput: { backgroundColor: "#FFFFFF", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 12, fontSize: 16, borderWidth: 1, borderColor: "#D1D5DB" },
+  languageScroll: { flexDirection: "row", paddingVertical: 4 },
+  languageChip: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 6, marginRight: 8, borderWidth: 1, borderColor: "#D1D5DB" },
+  languageChipSelected: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
+  languageText: { fontSize: 13, color: "#374151" },
+  languageTextSelected: { color: "#FFFFFF" },
+  certificationsList: { width: "100%", gap: 12 },
+  certificationCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 12, padding: 16, borderWidth: 2, borderColor: "#E5E7EB" },
+  selectedCertificationCard: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },
+  certificationInfo: { flex: 1 },
+  certificationName: { fontSize: 16, fontWeight: "600", color: "#1F2937", marginBottom: 4 },
+  certificationDescription: { fontSize: 14, color: "#6B7280" },
+  ageGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  ageCard: { width: "30%", alignItems: "center", justifyContent: "center", paddingVertical: 6, paddingHorizontal: 8, borderRadius: 8, borderWidth: 1, borderColor: "#D1D5DB", backgroundColor: "#FFFFFF", marginBottom: 10 },
+  selectedAgeCard: { backgroundColor: "#4F46E5", borderColor: "#4F46E5" },
+  ageInner: { flexDirection: "row", alignItems: "center" },
+  ageText: { fontSize: 13, color: "#374151", fontWeight: "500" },
+  selectedAgeText: { color: "#FFFFFF" },
+  interestsGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between" },
+  interestCard: { width: "48%", backgroundColor: "#FFFFFF", borderRadius: 12, padding: 16, alignItems: "center", marginBottom: 12, borderWidth: 2, position: "relative" },
+  interestCardSelected: { color: "#000000", backgroundColor: "#e8e6d6" },
+  interestText: { fontSize: 14, fontWeight: "500", color: "#374151", marginTop: 8, textAlign: "center" },
+  interestTextSelected: { color: "#FFFFFF" },
+  interestDescription: { fontSize: 12, color: "#6B7280", textAlign: "center", marginTop: 4 },
+  interestSelectedIndicator: { position: "absolute", top: 8, right: 8, backgroundColor: "rgba(255, 255, 255, 0.2)", borderRadius: 10, width: 20, height: 20, alignItems: "center", justifyContent: "center" },
+  goalsList: { width: "100%", gap: 12 },
+  goalCard: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFFFFF", borderRadius: 12, padding: 16, borderWidth: 2, borderColor: "#E5E7EB" },
+  selectedGoalCard: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },
+  goalIcon: { width: 48, height: 48, borderRadius: 24, backgroundColor: "#F3F4F6", alignItems: "center", justifyContent: "center", marginRight: 16 },
+  goalInfo: { flex: 1 },
+  goalName: { fontSize: 16, fontWeight: "600", color: "#1F2937" },
+  selectedGoalName: { color: "#4F46E5" },
+  goalDescription: { fontSize: 14, color: "#6B7280" },
+  paceContainer: { width: "100%", gap: 16 },
+  paceCard: { backgroundColor: "#FFFFFF", borderRadius: 16, padding: 20, borderWidth: 2, borderColor: "#E5E7EB", alignItems: "center" },
+  selectedPaceCard: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },
+  paceIcon: { width: 80, height: 80, borderRadius: 40, alignItems: "center", justifyContent: "center", marginBottom: 16 },
+  paceName: { fontSize: 18, fontWeight: "bold", color: "#1F2937", marginBottom: 8 },
+  paceDescription: { fontSize: 14, color: "#6B7280", textAlign: "center" },
+  navigationButtons: { paddingHorizontal: 24, paddingVertical: 20 },
+  nextButton: { flexDirection: "row", alignItems: "center", justifyContent: "center", backgroundColor: "#4F46E5", borderRadius: 12, paddingVertical: 16, gap: 8 },
+  phoneInputContainer: { width: "100%", height: 50, backgroundColor: "#FFFFFF", borderRadius: 8, borderWidth: 1, borderColor: "#D1D5DB" },
+  phoneInputTextContainer: { backgroundColor: "#FFFFFF", borderRadius: 8, paddingVertical: 0 },
+  nextButtonText: { fontSize: 16, color: "#FFFFFF", fontWeight: "600" },
 })
 
-export default SetupInitScreen
+export default SetupInitScreen;

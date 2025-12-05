@@ -1,5 +1,3 @@
-// /d:/LinguaApp/LinguamonkeyFe/src/screens/chat/ChatAIScreen.tsx
-
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   ActivityIndicator,
@@ -24,7 +22,6 @@ import instance from "../../api/axiosClient";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { Room, ChatMessage } from "../../types/entity";
 
-// Random greetings for empty state
 const GREETINGS = [
   "Hello! How can I help you practice today?",
   "Xin chào! Bạn muốn học gì hôm nay?",
@@ -46,7 +43,7 @@ const MessageItem = React.memo(({
   toggleState: string | 'original',
   isTranslating: boolean
 }) => {
-  const isUser = !!message.senderId; // If senderId exists, it's user. If null (AI), it's system.
+  const isUser = !!message.senderId;
   const displayedText = (toggleState !== 'original' && translationData)
     ? translationData
     : message.content;
@@ -107,7 +104,6 @@ const ChatAIScreen = () => {
   const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
   const [randomGreeting, setRandomGreeting] = useState("");
 
-  // Store Selectors
   const activeAiRoomId = useChatStore(s => s.activeAiRoomId);
   const aiRoomList = useChatStore(s => s.aiRoomList);
   const loadingByRoom = useChatStore(s => s.loadingByRoom);
@@ -115,38 +111,39 @@ const ChatAIScreen = () => {
   const pageByRoom = useChatStore(s => s.pageByRoom);
   const messagesByRoom = useChatStore(s => s.messagesByRoom);
 
-  // ACTIONS
   const startNewAiChat = useChatStore(s => s.startNewAiChat);
   const selectAiRoom = useChatStore(s => s.selectAiRoom);
   const fetchAiRoomList = useChatStore(s => s.fetchAiRoomList);
   const loadMessages = useChatStore(s => s.loadMessages);
   const sendMessage = useChatStore(s => s.sendMessage);
-  const disconnectAi = useChatStore(s => s.disconnectAi); // Clean up active room id
+  const disconnectAi = useChatStore(s => s.disconnectAi);
 
   const isLoading = activeAiRoomId ? loadingByRoom[activeAiRoomId] : false;
   const messages = activeAiRoomId ? messagesByRoom[activeAiRoomId] || [] : [];
-
-  // Use messagesByRoom directly. Since it's typically sorted DESC by sentAt for UI (reversed list),
-  // and FlatList inverted={true}, we might need to adjust based on store implementation.
-  // Assuming store keeps them [Newest ... Oldest].
   const displayMessages = useMemo(() => messages, [messages]);
 
   useEffect(() => {
-    // Pick random greeting on mount
     setRandomGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
-  }, []);
+
+    return () => {
+      disconnectAi();
+    };
+  }, [disconnectAi]);
 
   useEffect(() => {
     const initializeData = async () => {
+      if (!user?.userId) return;
+
       await fetchAiRoomList();
-      if (!activeAiRoomId) {
+
+      const currentStoreState = useChatStore.getState();
+      if (!currentStoreState.activeAiRoomId) {
         await startNewAiChat();
       }
     };
-    if (user?.userId) initializeData();
-    return () => { disconnectAi(); };
-  }, [user?.userId, fetchAiRoomList, startNewAiChat, activeAiRoomId, disconnectAi]);
 
+    initializeData();
+  }, [user?.userId, fetchAiRoomList, startNewAiChat]);
 
   const handleLoadMore = () => {
     if (activeAiRoomId && !isLoading && hasMoreByRoom[activeAiRoomId]) {
@@ -159,8 +156,6 @@ const ChatAIScreen = () => {
     if (!inputText.trim() || !activeAiRoomId) return;
     const textToSend = inputText.trim();
     setInputText("");
-
-    // Send via standard STOMP flow. The backend handles AI logic.
     sendMessage(activeAiRoomId, textToSend, 'TEXT');
   };
 
@@ -235,7 +230,6 @@ const ChatAIScreen = () => {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         <View style={styles.container}>
-          {/* Custom Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
@@ -262,7 +256,6 @@ const ChatAIScreen = () => {
             </View>
           </View>
 
-          {/* Chat List */}
           <FlatList
             data={displayMessages}
             renderItem={renderMessageItem}
@@ -287,7 +280,6 @@ const ChatAIScreen = () => {
             ) : null}
           />
 
-          {/* Input Area */}
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -308,7 +300,6 @@ const ChatAIScreen = () => {
           </View>
         </View>
 
-        {/* History Modal */}
         <Modal
           visible={isHistoryVisible}
           animationType="slide"
@@ -328,10 +319,6 @@ const ChatAIScreen = () => {
                 style={styles.newChatButton}
                 onPress={async () => {
                   setIsHistoryVisible(false);
-                  // Force new session explicitly if user clicks "New Chat"
-                  // Backend creates new room if user requests specifically, or we can just rely on logic
-                  // For "New Chat" button, we might need a specific API Param or just navigate to a fresh state.
-                  // Since `startNewAiChat` in store calls `ai-chat-room?newSession=true`, it will create a fresh room.
                   await startNewAiChat();
                 }}
               >
@@ -432,7 +419,6 @@ const styles = createScaledSheet({
   sendButton: { backgroundColor: "#3B82F6", borderRadius: 24, padding: 10 },
   sendButtonDisabled: { backgroundColor: "#D1D5DB" },
 
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "70%", padding: 16 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },

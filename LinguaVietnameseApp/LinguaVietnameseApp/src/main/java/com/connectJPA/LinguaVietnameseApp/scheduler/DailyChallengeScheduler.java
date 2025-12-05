@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.DailyChallenge;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
 import com.connectJPA.LinguaVietnameseApp.entity.UserDailyChallenge;
+import com.connectJPA.LinguaVietnameseApp.entity.UserSettings;
 import com.connectJPA.LinguaVietnameseApp.entity.id.UserDailyChallengeId;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengePeriod;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeStatus;
@@ -103,7 +104,10 @@ public class DailyChallengeScheduler {
         List<User> activeUsers = userRepository.findAllById(userIdsWithToken);
 
         for (User user : activeUsers) {
-            if (user.isDeleted() || !user.getUserSettings().isDailyChallengeReminders()) continue;
+            if (user.isDeleted()) continue;
+
+            UserSettings settings = user.getUserSettings();
+            if (settings == null || !settings.isDailyChallengeReminders()) continue;
 
             try {
                 Map<String, Object> stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());
@@ -138,7 +142,8 @@ public class DailyChallengeScheduler {
         List<User> users = userRepository.findAllByIsDeletedFalse();
 
         for (User user : users) {
-            if (!user.getUserSettings().isDailyChallengeReminders()) continue;
+            UserSettings settings = user.getUserSettings();
+            if (settings == null || !settings.isDailyChallengeReminders()) continue;
 
             try {
                 Map<String, Object> stats = dailyChallengeService.getDailyChallengeStats(user.getUserId());

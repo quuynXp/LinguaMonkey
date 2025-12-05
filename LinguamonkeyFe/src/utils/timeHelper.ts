@@ -10,11 +10,11 @@ function getSystemLocaleAndTimeZone() {
 
 export const TimeHelper = {
   /**
-   * Converts a local Date object to a 'HH:mm' string representing Vietnam Time (UTC+7).
-   * Example: User is in Japan (UTC+9) and selects 10:00 AM.
-   * Result sent to BE: "08:00" (which is 10:00 AM Japan time in VN time).
+   * Converts a local Date object to a 'HH:mm' string, adjusted to Vietnam Time (UTC+7).
+   * This output is used for the Reminder time payload sent to the API.
+   * Example: User is in Japan (UTC+9) and selects 10:00 AM. The time component of the Date is adjusted for VN time zone before formatting.
    */
-  convertToVietnamTime: (localDate: Date): string => {
+  formatTimeHHMM: (localDate: Date): string => {
     // Get current local time in milliseconds
     const localTime = localDate.getTime();
 
@@ -27,7 +27,7 @@ export const TimeHelper = {
     // Vietnam is UTC+7 (7 hours * 60 min * 60 sec * 1000 ms)
     const vietNamOffset = 7 * 60 * 60 * 1000;
 
-    // Create new Date object for Vietnam Time
+    // Create new Date object for Vietnam Time (This date object now holds the time in VN's timezone)
     const vnDate = new Date(utcTime + vietNamOffset);
 
     // Format to HH:mm
@@ -49,7 +49,7 @@ export const TimeHelper = {
 };
 
 export function formatDateTime(date?: Date | string | number, locale?: string, timeZone?: string) {
-  const dateObj = date ? new Date(date) : new Date() // Nếu không truyền thì lấy luôn time hiện tại
+  const dateObj = date ? new Date(date) : new Date()
   const { locale: sysLocale, timeZone: sysTimeZone } = getSystemLocaleAndTimeZone()
 
   return new Intl.DateTimeFormat(locale || sysLocale, {
@@ -70,7 +70,7 @@ export function getGreetingTime(date?: Date | string | number, locale?: string, 
   const hour = new Intl.DateTimeFormat(locale || sysLocale, {
     hour: "numeric",
     timeZone: timeZone || sysTimeZone,
-    hour12: false,         // 👈 luôn 0–23h
+    hour12: false,
   })
     .formatToParts(dateObj)
     .find((part) => part.type === "hour")?.value

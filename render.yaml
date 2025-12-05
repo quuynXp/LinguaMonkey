@@ -11,19 +11,14 @@ services:
     dockerContext: .
     dockerfilePath: ./LinguaVietnameseApp/Dockerfile
     envVars:
-      # --- CẤU HÌNH CƠ BẢN & PORT (Render bắt buộc port 10000) ---
       - key: TZ
         value: Asia/Ho_Chi_Minh
       - key: SPRING_PROFILES_ACTIVE
         value: prod
-      - key: SERVER_PORT # Spring Boot sẽ lắng nghe ở port này
+      - key: SERVER_PORT
         value: 10000
-      - key: PORT # Render health check port
+      - key: PORT
         value: 10000
-
-      # --- ĐỒNG BỘ VỚI DOCKER-COMPOSE: DATABASE ---
-      # Docker Compose dùng: SPRING_DATASOURCE_URL
-      # Ta ghép chuỗi từ các biến môi trường database của Render
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
@@ -44,12 +39,8 @@ services:
         fromDatabase:
           name: shared-postgres
           property: password
-      # Biến quan trọng nhất để khớp docker-compose:
       - key: SPRING_DATASOURCE_URL
         value: "jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}"
-
-      # --- ĐỒNG BỘ VỚI DOCKER-COMPOSE: REDIS ---
-      # Docker Compose dùng: SPRING_REDIS_HOST=redis
       - key: REDIS_HOST_INTERNAL
         fromService:
           type: redis
@@ -64,24 +55,18 @@ services:
           property: port
       - key: REDIS_PASSWORD
         value: "redisPass123"
-
-      # --- ĐỒNG BỘ VỚI DOCKER-COMPOSE: KẾT NỐI PYTHON ---
-      # Docker Compose: PYTHON_SERVICE_URL=http://pythonservice:8001
-      # Render: Phải dùng port 10000 vì pythonservice trên Render chạy port 10000
       - key: PYTHON_SERVICE_URL
         value: http://pythonservice:10000
-
-      # --- CẤU HÌNH G-SERVICES & KHÁC (GIỮ NGUYÊN) ---
       - key: FIREBASE_CREDENTIALS_BASE64
-        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTEwMDkiLAogICJwcml2YXRlX2tleV9pZCI6ICI1YjlhNDZiZjFmNGMyNmY5Y2FkNzg4Zjc0YzM0NjQ5ODFiMmYxMTAzIiwKICAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklW..."
+        value: |
+          ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTEwMDkiLAogICJwcml2YXRlX2tleV9pZCI6ICI1YjlhNDZiZjFmNGMyNmY5Y2FkNzg4Zjc0YzM0NjQ5ODFiMmYxMTAzIiwKICAicHJpdmF0ZV9rZXkiOiAiLS0tLS1CRUdJTiBQUklW...
+      - key: GDRIVE_KEY_BASE64
+        value: |
+          ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTQ3NjYwNyIsCiAgInByaXZhdGVfa2V5X2lkIjogIjBhNDAyZmE2OGQyNThlMTA1YjNhYjBhZGNjNDg0NDcxZmRkNTdlNmQiLAogICJwcml2YXRlX2tleSI6ICItLS0tLUJFR0lOIFBSSVZBVEUgS0V...
       - key: GOOGLE_CREDENTIALS_FILE_URL
         value: /app/config/service-account-key.json
-      - key: GDRIVE_KEY_BASE64
-        value: "ewogICJ0eXBlIjogInNlcnZpY2VfYWNjb3VudCIsCiAgInByb2plY3RfaWQiOiAibW9ua2V5bGluZ3VhLTQ3NjYwNyIsCiAgInByaXZhdGVfa2V5X2lkIjogIjBhNDAyZmE2OGQyNThlMTA1YjNhYjBhZGNjNDg0NDcxZmRkNTdlNmQiLAogICJwcml2YXRlX2tleSI6ICItLS0tLUJFR0lOIFBSSVZBVEUgS0V..."
       - key: GOOGLE_SERVICE_ACCOUNT_FILE_URL
         value: /app/config/gdrive-key.json
-
-      # gRPC Config (Java lắng nghe 9090 nhưng internal container, public vẫn là 10000)
       - key: GRPC_SERVER_PORT
         value: 9090
       - key: GRPC_SERVER_ADDRESS
@@ -90,8 +75,6 @@ services:
         value: pythonservice
       - key: PYTHON_GRPC_PORT
         value: 50051
-
-      # Các key khác (VNPAY, STRIPE...) giữ nguyên như cũ
       - key: VNPAY_TMNCODE
         value: 9HFGRBLQ
       - key: VNPAY_HASHSECRET
@@ -136,12 +119,6 @@ services:
         value: ACbff92c92cf22146853ca99a75ff70082
       - key: TWILIO_FROM_PHONE_NUMBER
         value: +84373730397
-      - key: KAFKA_BOOTSTRAP_SERVERS
-        value: your-prod-kafka-broker-1:9092,your-prod-kafka-broker-2:9092
-      - key: ELASTICSEARCH_HOST
-        value: your-prod-elasticsearch-host
-      - key: ELASTICSEARCH_PORT
-        value: "9200"
       - key: SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE
         value: 200MB
       - key: SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE
@@ -166,11 +143,9 @@ services:
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
-      - key: PORT # Render inject, code python sẽ dùng cái này
+      # Đảm bảo biến PORT là 10000, Render sẽ tự động bind port này
+      - key: PORT
         value: 10000
-
-      # --- ĐỒNG BỘ VỚI DOCKER-COMPOSE ---
-      # Docker Compose: DB_HOST=app-database, REDIS_HOST=redis
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres
@@ -191,7 +166,6 @@ services:
         fromDatabase:
           name: shared-postgres
           property: password
-
       - key: REDIS_HOST
         fromService:
           type: redis
@@ -204,25 +178,12 @@ services:
           property: port
       - key: REDIS_PASSWORD
         value: "redisPass123"
-
-      # Docker Compose: JAVA_SERVICE_URL=http://linguavietnameseapp:8080
-      # Render: Đổi port 8080 thành 10000
       - key: JAVA_SERVICE_URL
         value: http://linguavietnameseapp:10000
-
-      # gRPC (Không đổi vì đây là config nội bộ)
       - key: GRPC_PORT
         value: 50051
       - key: JAVA_GRPC_ADDRESS
         value: linguavietnameseapp:9090
-
-      # Other vars
-      - key: KAFKA_BOOTSTRAP_SERVERS
-        value: your-prod-kafka-broker-1:9092,your-prod-kafka-broker-2:9092
-      - key: ELASTICSEARCH_HOST
-        value: your-prod-elasticsearch-host
-      - key: ELASTICSEARCH_PORT
-        value: "9200"
 
     numInstances: 1
 
@@ -248,20 +209,12 @@ services:
         value: 0.0.0.0:8000
       - key: KONG_ADMIN_LISTEN
         value: 0.0.0.0:8003
-      - key: KONG_PROXY_ACCESS_LOG
-        value: /dev/stdout
-      - key: KONG_ADMIN_ACCESS_LOG
-        value: /dev/stdout
-      - key: KONG_PROXY_ERROR_LOG
-        value: /dev/stderr
-      - key: KONG_ADMIN_ERROR_LOG
-        value: /dev/stderr
       - key: KONG_PLUGINS
         value: bundled,rate-limiting,cors,request-transformer,proxy-cache
     numInstances: 1
 
   # ==========================================
-  # 4. REDIS & POSTGRES
+  # 4. RESOURCES
   # ==========================================
   - type: redis
     name: redis

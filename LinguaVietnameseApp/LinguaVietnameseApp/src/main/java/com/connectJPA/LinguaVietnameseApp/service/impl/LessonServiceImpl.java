@@ -107,15 +107,19 @@ public class LessonServiceImpl implements LessonService {
                 if (subCategoryId != null) {
                     predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
                 }
+                
+                // CRITICAL: Filter specifically by Version to handle "lessons in courseversionlesson"
                 if (versionId != null) {
                     Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
                     predicates.add(cb.equal(cvlJoin.get("id").get("versionId"), versionId));
                 } else if (courseId != null) {
+                    // Fallback to all lessons in course if no specific version requested
                     Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
                     Join<CourseVersionLesson, CourseVersion> cvJoin = cvlJoin.join("courseVersion");
                     Join<CourseVersion, Course> cJoin = cvJoin.join("course");
                     predicates.add(cb.equal(cJoin.get("courseId"), courseId));
                 }
+                
                 if (seriesId != null) {
                     predicates.add(cb.equal(root.get("lessonSeriesId"), seriesId));
                 }
@@ -189,20 +193,20 @@ public class LessonServiceImpl implements LessonService {
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
+        // Ensure questions are strictly for this lesson ID (which comes from CourseVersionLesson in frontend)
         List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
+        
         if (Boolean.TRUE.equals(lesson.getShuffleQuestions())) {
             Collections.shuffle(questions);
         }
 
         List<Map<String, Object>> qDtos = questions.stream().map(q -> {
             Map<String, Object> m = new HashMap<>();
-            // Fix: Use correct key expected by Frontend DTO (LessonQuestionResponse)
             m.put("lessonQuestionId", q.getLessonQuestionId()); 
             m.put("lessonId", q.getLesson().getLessonId());
             m.put("question", q.getQuestion());
             m.put("questionType", q.getQuestionType());
             
-            // Fix: Map individual options for frontend components
             m.put("optionA", q.getOptionA());
             m.put("optionB", q.getOptionB());
             m.put("optionC", q.getOptionC());
@@ -213,7 +217,7 @@ public class LessonServiceImpl implements LessonService {
             m.put("weight", q.getWeight());
             m.put("orderIndex", q.getOrderIndex());
             m.put("transcript", q.getTranscript());
-            m.put("explanation", q.getExplainAnswer());
+            m.put("explainAnswer", q.getExplainAnswer()); // Mapped correctly
             m.put("skillType", q.getSkillType());
             m.put("languageCode", q.getLanguageCode());
             m.put("optionsJson", q.getOptionsJson());
@@ -241,7 +245,6 @@ public class LessonServiceImpl implements LessonService {
         Map<String, Object> answers = (Map<String, Object>) payload.get("answers");
         Integer attemptNumber = payload.get("attemptNumber") != null ? (Integer) payload.get("attemptNumber") : 1;
         String token = (String) payload.get("token");
-        // Token might be null in local calls, verify if strictly needed or if authenticated context handles it.
 
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
@@ -256,10 +259,12 @@ public class LessonServiceImpl implements LessonService {
         for (LessonQuestion q : questions) {
             String qid = q.getLessonQuestionId().toString();
             Object rawAns = answers.get(qid);
+            
             String userAnswerText = null;
             byte[] audioBytes = null;
             byte[] imageBytes = null;
             
+            // ROBUST PARSING LOGIC HERE
             if (rawAns instanceof Map) {
                 Map<String, Object> ansMap = (Map<String, Object>) rawAns;
                 userAnswerText = (String) ansMap.get("text_answer");
@@ -269,17 +274,23 @@ public class LessonServiceImpl implements LessonService {
                 if (audioBase64 != null) audioBytes = Base64.getDecoder().decode(audioBase64);
                 if (imageBase64 != null) imageBytes = Base64.getDecoder().decode(imageBase64);
             } else if (rawAns != null) {
+                // If Frontend sends just "A", this handles it.
                 userAnswerText = rawAns.toString();
             }
 
             int scoreGiven = 0;
             boolean correct = false;
             
-            if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || q.getQuestionType() == QuestionType.ORDERING) {
+            if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || 
+                q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || 
+                q.getQuestionType() == QuestionType.ORDERING ||
+                q.getQuestionType() == QuestionType.TRUE_FALSE ||
+                q.getQuestionType() == QuestionType.MATCHING) { // Added Matching & T/F handling
+                
                 correct = checkDeterministicAnswer(q, userAnswerText);
+                log.info("Checking Q: {} | User: {} | Correct: {} | Result: {}", qid, userAnswerText, q.getCorrectOption(), correct);
             }
             else if (q.getQuestionType() == QuestionType.SPEAKING) {
-                // Usually handled by streaming API separately, but if submitted here:
                 scoreGiven = checkSpeakingAnswer(q, token, audioBytes);
                 correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70);
             }
@@ -311,7 +322,7 @@ public class LessonServiceImpl implements LessonService {
             lessonProgressWrongItemRepository.saveAll(wrongItems);
         }
 
-        float percent = totalMax == 0 ? 0f : (totalScore * 100f / totalMax);
+        float percent = totalMax == 0 ? 0f : ((float)totalScore / totalMax) * 100f;
 
         LessonProgressId pid = new LessonProgressId(lessonId, userId);
         LessonProgress lp = lessonProgressRepository.findById(pid)
@@ -341,12 +352,10 @@ public class LessonServiceImpl implements LessonService {
         lessonProgressRepository.save(lp);
         updateCourseProgressIfApplicable(userId, lessonId);
 
-        // --- TRIGGER UPDATES ---
-        if (percent >= 80) { // Pass Threshold
+        if (percent >= 80) { 
             dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
             badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
             
-            // Map generic skill type
             ChallengeType skillChallenge = mapSkillToChallengeType(lesson.getSkillTypes());
             if (skillChallenge != null) {
                 dailyChallengeService.updateChallengeProgress(userId, skillChallenge, 1);
@@ -437,7 +446,6 @@ public class LessonServiceImpl implements LessonService {
 
             userService.updateExp(userId, lesson.getExpReward());
             
-            // --- TRIGGER UPDATES ---
             dailyChallengeService.updateChallengeProgress(userId, ChallengeType.LESSON_COMPLETED, 1);
             badgeService.updateBadgeProgress(userId, BadgeType.LESSON_COUNT, 1);
 

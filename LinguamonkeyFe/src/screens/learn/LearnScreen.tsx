@@ -379,7 +379,7 @@ const LearnScreen = ({ navigation }: any) => {
   };
 
   const openCreatorDashboardList = () => {
-    navigation.navigate("CourseStack", "CreatorDashboardScreen");
+    gotoTab("CourseStack", "CreatorDashboardScreen");
   };
 
   const handleMyCoursePress = (enrollment: CourseVersionEnrollmentResponse) => {

@@ -40,7 +40,6 @@ public class FirebaseConfig {
 
         GoogleCredentials credentials = loadCredentials();
 
-        // Explicitly set the scope to ensure token refresh capabilities
         if (credentials.createScopedRequired()) {
             credentials = credentials.createScoped(Collections.singletonList(FIREBASE_MESSAGING_SCOPE));
         }
@@ -55,18 +54,24 @@ public class FirebaseConfig {
     }
 
     private GoogleCredentials loadCredentials() throws IOException {
-        // Priority 1: Base64 or Raw JSON Env Var
+        // Priority 1: Base64 or Raw JSON Env Var (Fix for Render/Docker issues)
         if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
             try {
                 String cleanParams = credentialsBase64.trim();
 
-                // Case A: User pasted Raw JSON directly (starts with '{')
-                if (cleanParams.startsWith("{")) {
-                    log.info("Detected Raw JSON in FIREBASE_CREDENTIALS_BASE64. Loading directly.");
+                // FIX 1: Remove surrounding quotes if user/env accidentally added them (common in Docker envs)
+                if (cleanParams.startsWith("\"") && cleanParams.endsWith("\"")) {
+                    cleanParams = cleanParams.substring(1, cleanParams.length() - 1);
+                }
+
+                // FIX 2: More robust JSON detection. Even if it doesn't start directly with {, try parsing as JSON if it looks like it.
+                // Raw JSON service account files usually contain "type": "service_account"
+                if (cleanParams.startsWith("{") || cleanParams.contains("\"type\"")) {
+                    log.info("Detected Raw JSON in FIREBASE_CREDENTIALS_BASE64.");
                     return GoogleCredentials.fromStream(new ByteArrayInputStream(cleanParams.getBytes(StandardCharsets.UTF_8)));
                 }
 
-                // Case B: User pasted Data URI (starts with 'data:') - Strip prefix
+                // FIX 3: Clean up Data URI prefix if present
                 if (cleanParams.startsWith("data:")) {
                     int commaIndex = cleanParams.indexOf(",");
                     if (commaIndex != -1) {
@@ -74,20 +79,28 @@ public class FirebaseConfig {
                     }
                 }
 
-                // Case C: Standard Base64 - Cleanup whitespace/newlines
-                cleanParams = cleanParams.replaceAll("\\s", "");
+                // FIX 4: Decode Base64 safely
+                // Remove whitespace/newlines which might break the decoder
+                String finalBase64 = cleanParams.replaceAll("\\s", "");
                 
-                byte[] decodedBytes = Base64.getDecoder().decode(cleanParams);
-                log.info("Successfully decoded FIREBASE_CREDENTIALS_BASE64.");
-                return GoogleCredentials.fromStream(new ByteArrayInputStream(decodedBytes));
+                try {
+                    byte[] decodedBytes = Base64.getDecoder().decode(finalBase64);
+                    log.info("Successfully decoded FIREBASE_CREDENTIALS_BASE64.");
+                    return GoogleCredentials.fromStream(new ByteArrayInputStream(decodedBytes));
+                } catch (IllegalArgumentException base64Ex) {
+                    // Fallback log to help debug "Illegal base64 character 2e" (dot) errors
+                    log.error("Failed to decode FIREBASE_CREDENTIALS_BASE64. It is not valid JSON and not valid Base64. Content snippet: {}", 
+                            finalBase64.length() > 10 ? finalBase64.substring(0, 10) + "..." : finalBase64);
+                    throw base64Ex;
+                }
 
-            } catch (IllegalArgumentException e) {
-                log.error("Failed to decode FIREBASE_CREDENTIALS_BASE64. Ensure it is a valid Base64 string or Raw JSON. Error: {}", e.getMessage());
-                throw new IOException("Invalid Base64 in FIREBASE_CREDENTIALS_BASE64. Check for hidden characters or incorrect format.", e);
+            } catch (Exception e) {
+                log.error("Error processing FIREBASE_CREDENTIALS_BASE64: {}. Falling back to file path.", e.getMessage());
+                // Do not throw immediately, try file path as fallback
             }
         }
 
-        // Priority 2: File Path
+        // Priority 2: File Path (Local development or Volume mount)
         if (credentialsPath != null && !credentialsPath.isBlank()) {
             String cleanPath = credentialsPath.replace("file:", "");
             try (InputStream serviceAccount = new FileInputStream(cleanPath)) {

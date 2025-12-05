@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { LessonQuestionResponse } from "../../types/dto";
 import { getLessonImage } from "../../utils/courseUtils";
 import { QuestionType } from "../../types/enums";
+import { getDirectMediaUrl } from "../../utils/mediaUtils"; // IMPORT THIS
 
 const MediaNotFound = ({ type }: { type: string }) => (
     <View style={styles.notFoundContainer}>
@@ -17,10 +18,18 @@ const MediaNotFound = ({ type }: { type: string }) => (
 export const UniversalQuestionView = ({ question }: { question: LessonQuestionResponse }) => {
     const { t } = useTranslation();
     const [imgError, setImgError] = useState(false);
-    const mediaUrl = question.mediaUrl;
 
-    // Determine media type based on extension or context (simplification for this logic)
-    const isVideoOrAudio = mediaUrl && (mediaUrl.endsWith('.mp4') || mediaUrl.endsWith('.mp3') || mediaUrl.startsWith('http'));
+    // CONVERT TO DIRECT LINK HERE
+    const mediaUrl = getDirectMediaUrl(question.mediaUrl);
+
+    // Determine media type based on extension or context
+    // Check if it's a drive view link (now converted) or standard mp4/mp3
+    const isVideoOrAudio = mediaUrl && (
+        mediaUrl.endsWith('.mp4') ||
+        mediaUrl.endsWith('.mp3') ||
+        mediaUrl.includes('export=view') // Google drive ID check
+    ) && (question.questionType === QuestionType.VIDEO || question.questionType === QuestionType.AUDIO);
+
     const isImage = mediaUrl && !isVideoOrAudio;
 
     const player = useVideoPlayer(isVideoOrAudio ? mediaUrl : "", (player) => {
@@ -33,12 +42,13 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
         if (!mediaUrl) return null;
 
         if (isVideoOrAudio) {
-            // Simple Audio/Video Player wrapper
+            // For simple implementation, wrapping Expo Video
             return (
                 <View style={styles.mediaContainer}>
+                    <VideoView player={player} style={{ width: 300, height: 200 }} contentFit="contain" />
                     <TouchableOpacity style={styles.audioButton} onPress={() => player.replay()}>
-                        <Icon name="volume-up" size={32} color="#FFF" />
-                        <Text style={styles.audioButtonText}>{t("quiz.playMedia") || "Phát Multimedia"}</Text>
+                        <Icon name="replay" size={24} color="#FFF" />
+                        <Text style={styles.audioButtonText}>Replay</Text>
                     </TouchableOpacity>
                 </View>
             );
@@ -48,7 +58,7 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
             if (imgError) return <MediaNotFound type="Image" />;
             return (
                 <Image
-                    source={getLessonImage(mediaUrl)}
+                    source={{ uri: mediaUrl }}
                     style={styles.contextImage}
                     resizeMode="contain"
                     onError={() => setImgError(true)}
@@ -59,7 +69,6 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
     };
 
     const renderTranscript = () => {
-        // For Speaking, the transcript IS the content to read
         if (question.questionType === QuestionType.SPEAKING) {
             return (
                 <View style={styles.speakingBox}>
@@ -69,7 +78,6 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
             );
         }
 
-        // For others, transcript is supporting text (reading passage, etc.)
         if (question.transcript) {
             return (
                 <View style={styles.readingPassageBox}>
@@ -84,18 +92,11 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
 
     return (
         <View style={styles.container}>
-            {/* 1. MEDIA (Highest Priority) */}
             {renderMedia()}
-
-            {/* 2. TRANSCRIPT / CONTEXT */}
             {renderTranscript()}
-
-            {/* 3. QUESTION TEXT (If not Speaking, as speaking usually embeds text in transcript box) */}
             {question.questionType !== QuestionType.SPEAKING && (
                 <Text style={styles.questionText}>{question.question}</Text>
             )}
-
-            {/* Speaking specific instruction */}
             {question.questionType === QuestionType.SPEAKING && (
                 <Text style={styles.questionText}>{t("quiz.readAloud") || "Đọc to câu trên"}</Text>
             )}
@@ -104,98 +105,16 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
 };
 
 const styles = StyleSheet.create({
-    container: {
-        marginBottom: 20,
-        alignItems: 'center',
-        width: '100%',
-    },
-    questionText: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: '#1F2937',
-        textAlign: 'center',
-        marginTop: 16,
-        lineHeight: 26,
-    },
-    mediaContainer: {
-        width: '100%',
-        alignItems: 'center',
-        marginBottom: 16
-    },
-    notFoundContainer: {
-        width: '100%',
-        height: 150,
-        backgroundColor: '#FEE2E2',
-        borderRadius: 12,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: 12,
-        borderWidth: 1,
-        borderColor: '#EF4444',
-        borderStyle: 'dashed'
-    },
-    notFoundText: {
-        marginTop: 8,
-        color: '#B91C1C',
-        fontWeight: '600'
-    },
-    audioButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: '#4F46E5',
-        paddingVertical: 12,
-        paddingHorizontal: 24,
-        borderRadius: 30,
-        elevation: 3,
-        shadowColor: '#4F46E5',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 4,
-    },
-    audioButtonText: {
-        color: '#FFF',
-        fontWeight: '700',
-        fontSize: 16,
-        marginLeft: 8
-    },
-    contextImage: {
-        width: '100%',
-        height: 200,
-        borderRadius: 12,
-        backgroundColor: '#F9FAFB',
-        marginBottom: 12,
-    },
-    readingPassageBox: {
-        backgroundColor: '#FFF7ED',
-        padding: 16,
-        borderRadius: 8,
-        marginBottom: 12,
-        width: '100%',
-        borderLeftWidth: 4,
-        borderLeftColor: '#F97316'
-    },
-    readingPassageText: {
-        fontSize: 15,
-        color: '#431407',
-        lineHeight: 24,
-    },
-    speakingBox: {
-        alignItems: 'center',
-        padding: 24,
-        backgroundColor: '#ECFDF5',
-        borderRadius: 16,
-        width: '100%',
-        borderWidth: 1,
-        borderColor: '#10B981',
-        borderStyle: 'dashed',
-        marginTop: 12
-    },
-    transcriptText: {
-        fontSize: 22,
-        fontWeight: '700',
-        color: '#065F46',
-        marginTop: 12,
-        textAlign: 'center',
-        lineHeight: 32
-    },
+    container: { marginBottom: 20, alignItems: 'center', width: '100%' },
+    questionText: { fontSize: 18, fontWeight: '600', color: '#1F2937', textAlign: 'center', marginTop: 16, lineHeight: 26 },
+    mediaContainer: { width: '100%', alignItems: 'center', marginBottom: 16 },
+    notFoundContainer: { width: '100%', height: 150, backgroundColor: '#FEE2E2', borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 1, borderColor: '#EF4444', borderStyle: 'dashed' },
+    notFoundText: { marginTop: 8, color: '#B91C1C', fontWeight: '600' },
+    audioButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#4F46E5', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 30, marginTop: 8 },
+    audioButtonText: { color: '#FFF', fontWeight: '700', fontSize: 14, marginLeft: 8 },
+    contextImage: { width: '100%', height: 200, borderRadius: 12, backgroundColor: '#F9FAFB', marginBottom: 12 },
+    readingPassageBox: { backgroundColor: '#FFF7ED', padding: 16, borderRadius: 8, marginBottom: 12, width: '100%', borderLeftWidth: 4, borderLeftColor: '#F97316' },
+    readingPassageText: { fontSize: 15, color: '#431407', lineHeight: 24 },
+    speakingBox: { alignItems: 'center', padding: 24, backgroundColor: '#ECFDF5', borderRadius: 16, width: '100%', borderWidth: 1, borderColor: '#10B981', borderStyle: 'dashed', marginTop: 12 },
+    transcriptText: { fontSize: 22, fontWeight: '700', color: '#065F46', marginTop: 12, textAlign: 'center', lineHeight: 32 },
 });

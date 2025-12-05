@@ -30,7 +30,8 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     style,
     children,
     allowEditing = false,
-    maxSizeMB = 10,
+    // UPDATED: Default size limit increased to 50MB
+    maxSizeMB = 50,
     maxDuration = 60,
 }) => {
     const { t } = useTranslation();

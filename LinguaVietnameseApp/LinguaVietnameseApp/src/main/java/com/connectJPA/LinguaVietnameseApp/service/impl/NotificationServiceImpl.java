@@ -156,64 +156,63 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     private void sendFcmToUser(NotificationRequest request) {
-        List<UserFcmToken> tokens = userFcmTokenRepository.findByUserIdAndIsDeletedFalse(request.getUserId());
+        try {
+            List<UserFcmToken> tokens = userFcmTokenRepository.findByUserIdAndIsDeletedFalse(request.getUserId());
 
-        if (tokens.isEmpty()) {
-            return;
-        }
-
-        boolean isSoundEnabled = userSettingsRepository.findById(request.getUserId())
-                .map(UserSettings::isSoundEnabled)
-                .orElse(true);
-
-        String soundValue = isSoundEnabled ? "default" : null;
-
-        AndroidConfig androidConfig = AndroidConfig.builder()
-                .setPriority(AndroidConfig.Priority.HIGH) // Bắt buộc để đánh thức app khi bị kill
-                .setTtl(3600 * 1000) // Time to live 1 giờ
-                .setNotification(AndroidNotification.builder()
-                        .setSound(soundValue)
-                        .setChannelId("default_channel_id")
-                        .setClickAction("FLUTTER_NOTIFICATION_CLICK")
-                        .build())
-                .build();
-        
-        ApnsConfig apnsConfig = ApnsConfig.builder()
-                .setAps(Aps.builder()
-                        .setSound(soundValue)
-                        .setContentAvailable(true)
-                        .build())
-                .build();
-
-        for (UserFcmToken token : tokens) {
-            try {
-                Message.Builder messageBuilder = Message.builder()
-                        .setToken(token.getFcmToken())
-                        .setNotification(com.google.firebase.messaging.Notification.builder()
-                                .setTitle(request.getTitle())
-                                .setBody(request.getContent())
-                                .build())
-                        .setAndroidConfig(androidConfig)
-                        .setApnsConfig(apnsConfig);
-
-                if (request.getPayload() != null && !request.getPayload().isEmpty()) {
-                    Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
-                    messageBuilder.putAllData(dataPayload);
-                }
-
-                firebaseMessaging.send(messageBuilder.build());
-                log.info("Successfully sent push notification to user {} with token ending in {}", request.getUserId(), token.getFcmToken().substring(token.getFcmToken().length() - 5));
-
-            } catch (FirebaseMessagingException e) {
-                log.error("FirebaseMessagingException sending to user {} token {}. Code: {}. Cause: {}", 
-                    request.getUserId(), 
-                    token.getFcmToken().substring(token.getFcmToken().length() - 5),
-                    e.getErrorCode(),
-                    e.getCause() != null ? e.getCause().getMessage() : "N/A",
-                    e); 
-            } catch (Exception e) {
-                log.error("General Exception sending push to user {}: {}", request.getUserId(), e.getMessage(), e);
+            if (tokens.isEmpty()) {
+                return;
             }
+
+            boolean isSoundEnabled = userSettingsRepository.findById(request.getUserId())
+                    .map(UserSettings::isSoundEnabled)
+                    .orElse(true);
+
+            String soundValue = isSoundEnabled ? "default" : null;
+
+            AndroidConfig androidConfig = AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .setTtl(3600 * 1000) 
+                    .setNotification(AndroidNotification.builder()
+                            .setSound(soundValue)
+                            .setChannelId("default_channel_id")
+                            .setClickAction("FLUTTER_NOTIFICATION_CLICK")
+                            .build())
+                    .build();
+            
+            ApnsConfig apnsConfig = ApnsConfig.builder()
+                    .setAps(Aps.builder()
+                            .setSound(soundValue)
+                            .setContentAvailable(true)
+                            .build())
+                    .build();
+
+            for (UserFcmToken token : tokens) {
+                try {
+                    Message.Builder messageBuilder = Message.builder()
+                            .setToken(token.getFcmToken())
+                            .setNotification(com.google.firebase.messaging.Notification.builder()
+                                    .setTitle(request.getTitle())
+                                    .setBody(request.getContent())
+                                    .build())
+                            .setAndroidConfig(androidConfig)
+                            .setApnsConfig(apnsConfig);
+
+                    if (request.getPayload() != null && !request.getPayload().isEmpty()) {
+                        Map<String, String> dataPayload = gson.fromJson(request.getPayload(), Map.class);
+                        messageBuilder.putAllData(dataPayload);
+                    }
+
+                    firebaseMessaging.send(messageBuilder.build());
+                    log.info("Sent push notification to user {}", request.getUserId());
+
+                } catch (FirebaseMessagingException e) {
+                    log.warn("FCM Error for token ending in ...{}: {}", 
+                        token.getFcmToken().substring(Math.max(0, token.getFcmToken().length() - 5)), e.getMessage());
+                }
+            }
+        } catch (Exception e) {
+            // Catch all to ensure one notification failure doesn't crash the calling thread
+            log.error("General error in sendFcmToUser: {}", e.getMessage());
         }
     }
 
@@ -264,8 +263,6 @@ public class NotificationServiceImpl implements NotificationService {
         }
     }
 
-    // --- NEW METHODS FOR NOTIFICATION CENTER ---
-
     @Override
     public long countUnreadNotifications(UUID userId) {
         return notificationRepository.countByUserIdAndReadFalseAndIsDeletedFalse(userId);
@@ -282,8 +279,6 @@ public class NotificationServiceImpl implements NotificationService {
     public void deleteAllNotifications(UUID userId) {
         notificationRepository.deleteAllByUserId(userId);
     }
-
-    // --- EMAIL LOGIC PRESERVED BELOW ---
 
     @Override
     @Transactional

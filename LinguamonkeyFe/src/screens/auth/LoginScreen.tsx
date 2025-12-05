@@ -1,6 +1,6 @@
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Animated, Image, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Animated, Image, Platform, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useTranslation } from 'react-i18next';
 import { showError, showSuccess } from "../../utils/toastHelper";
 import { authService } from '../../services/authService';
@@ -18,12 +18,8 @@ import { useAppStore } from '../../stores/appStore';
 WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID;
-const GOOGLE_CLIENT_ID_IOS = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_IOS;
 const GOOGLE_CLIENT_ID_WEB = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
 const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
-
-// redirectUri không cần thiết cho Google/Facebook trong Expo khi dùng useAuthRequest
-// const redirectUri = AuthSession.getDefaultReturnUrl();
 
 const LoginScreen = ({ navigation }) => {
   const { t } = useTranslation();
@@ -39,17 +35,17 @@ const LoginScreen = ({ navigation }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
 
-  // Setup Google Auth Request
-  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
+  const googleAuthConfig = {
     androidClientId: GOOGLE_CLIENT_ID_ANDROID,
-    iosClientId: GOOGLE_CLIENT_ID_IOS,
     webClientId: GOOGLE_CLIENT_ID_WEB,
     scopes: ['profile', 'email'],
-  });
+  };
+
+  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest(googleAuthConfig);
 
   const [fbRequest, fbResponse, fbPromptAsync] = Facebook.useAuthRequest({
     clientId: FACEBOOK_CLIENT_ID,
-    scopes: ['public_profile', 'email'], // Thêm 'email' để lấy thông tin email
+    scopes: ['public_profile', 'email'],
   });
 
   useEffect(() => {
@@ -59,23 +55,18 @@ const LoginScreen = ({ navigation }) => {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
-  // Xử lý Google Login
   useEffect(() => {
     if (googleResponse?.type === 'success') {
       const { id_token } = googleResponse.params;
-      // Dùng id_token để xác thực với backend
       if (id_token) handleSocialLogin(authService.handleGoogleLogin(id_token));
     } else if (googleResponse?.type === 'error') {
-      // Xử lý lỗi nếu có, ví dụ: người dùng hủy
       safeShowError(t("googleLoginCancelledOrFailed"));
     }
   }, [googleResponse]);
 
-  // Xử lý Facebook Login
   useEffect(() => {
     if (fbResponse?.type === 'success') {
       const { access_token } = fbResponse.params;
-      // Dùng access_token để xác thực với backend
       if (access_token) handleSocialLogin(authService.handleFacebookLogin(access_token));
     } else if (fbResponse?.type === 'error') {
       safeShowError(t("facebookLoginCancelledOrFailed"));
@@ -97,8 +88,6 @@ const LoginScreen = ({ navigation }) => {
         if (result) {
           showSuccess(t("loginSuccess"));
           resetAuthInputs();
-          // Sau khi đăng nhập thành công, bạn có thể navigate đến màn hình chính
-          // Ví dụ: navigation.replace('MainApp');
         } else {
           showError(t("loginFailed"));
         }
@@ -294,7 +283,6 @@ const LoginScreen = ({ navigation }) => {
         <View style={styles.formContainer}>
           {loginInput.loginMethod === 'email' ? renderEmailForm() : renderPhoneForm()}
         </View>
-        {/* Chỉ hiển thị đăng nhập xã hội khi đang ở tab Email và không dùng OTP */}
         {loginInput.loginMethod === 'email' && !loginInput.useOtpForEmail && (
           <>
             <View style={styles.dividerContainer}>
@@ -302,18 +290,20 @@ const LoginScreen = ({ navigation }) => {
               <Text style={styles.dividerText}>{t('orContinueWith')}</Text>
               <View style={styles.dividerLine} />
             </View>
+            {Platform.OS !== 'ios' && (
+              <TouchableOpacity
+                style={[styles.socialButton, (isLoading || !googleRequest) && styles.loginButtonDisabled]}
+                onPress={() => !isLoading && googlePromptAsync()}
+                disabled={isLoading || !googleRequest}
+              >
+                <Image source={require('../../assets/icons/google-icon.png')} style={{ width: 20, height: 20 }} />
+                <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
-              style={[styles.socialButton, (isLoading || !googleRequest) && styles.loginButtonDisabled]}
-              onPress={() => !isLoading && googlePromptAsync()}
-              disabled={isLoading || !googleRequest} // Vô hiệu hóa nút nếu đang tải hoặc request chưa sẵn sàng
-            >
-              <Image source={require('../../assets/icons/google-icon.png')} style={{ width: 20, height: 20 }} />
-              <Text style={styles.socialButtonText}>{t('loginWithGoogle')}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.socialButton, (isLoading || !fbRequest) && styles.loginButtonDisabled]}
+              style={[styles.socialButton, (isLoading || !fbRequest) && styles.loginButtonDisabled, Platform.OS === 'ios' && { marginTop: Platform.OS !== 'ios' ? 16 : 0 }]}
               onPress={() => !isLoading && fbPromptAsync()}
-              disabled={isLoading || !fbRequest} // Vô hiệu hóa nút nếu đang tải hoặc request chưa sẵn sàng
+              disabled={isLoading || !fbRequest}
             >
               <Icon name="facebook" size={20} color="#1877F2" />
               <Text style={styles.socialButtonText}>{t('loginWithFacebook')}</Text>

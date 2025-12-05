@@ -257,6 +257,12 @@ public class VideoCallServiceImpl implements VideoCallService {
             VideoCallStatus previousStatus = videoCall.getStatus();
             videoCallMapper.updateEntityFromRequest(request, videoCall);
             
+            // Logic mới: Khi WebRTC kết nối thành công (ONGOING), reset lại Start Time 
+            // để tính thời gian gọi thực tế (bỏ qua thời gian chờ INITIATED)
+            if (request.getStatus() == VideoCallStatus.ONGOING && previousStatus == VideoCallStatus.INITIATED) {
+                videoCall.setStartTime(OffsetDateTime.now());
+            }
+
             // Handle End Call Logic
             if (request.getStatus() == VideoCallStatus.ENDED && previousStatus != VideoCallStatus.ENDED) {
                 videoCall.setEndTime(OffsetDateTime.now());
@@ -295,8 +301,8 @@ public class VideoCallServiceImpl implements VideoCallService {
         }
     }
 
-    @Override
     @Transactional
+    @Override
     public void deleteVideoCall(UUID id) {
         try {
             if (id == null) {

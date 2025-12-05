@@ -1,3 +1,5 @@
+// components/chat/ChatBubble.tsx
+
 import React, { useEffect, useRef, useMemo, useState } from "react";
 import {
     View,
@@ -8,12 +10,11 @@ import {
     Animated,
     Dimensions,
     StyleSheet,
-    ActivityIndicator,
     KeyboardAvoidingView,
     Platform
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useNavigation } from "@react-navigation/native";
+// ❌ ĐÃ XÓA import useNavigation
 import { useTranslation } from "react-i18next";
 import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
@@ -21,12 +22,14 @@ import { useRooms } from "../../hooks/useRoom";
 import ChatInnerView from "./ChatInnerView";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { RoomPurpose } from "../../types/enums";
+// 🎯 DÙNG gotoTab TỪ REF
+import { gotoTab } from "../../utils/navigationRef";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 const BUBBLE_SIZE = 60;
 
 const ChatBubble = () => {
-    const navigation = useNavigation<any>();
+    // ❌ KHÔNG DÙNG useNavigation Ở ĐÂY
     const { t } = useTranslation();
 
     // Stores
@@ -35,13 +38,12 @@ const ChatBubble = () => {
         activeBubbleRoomId,
         isBubbleOpen,
         closeBubble,
-        minimizeBubble,
-        userStatuses // <-- Lấy Global Status từ Store
+        userStatuses
     } = useChatStore();
 
     // Hooks
     const { useRoomMembers, useRoom } = useRooms();
-    const { data: members, isLoading: loadingMembers } = useRoomMembers(activeBubbleRoomId || "");
+    const { data: members } = useRoomMembers(activeBubbleRoomId || "");
     const { data: roomInfo } = useRoom(activeBubbleRoomId || "");
 
     // Animations
@@ -51,13 +53,11 @@ const ChatBubble = () => {
     // --- LOGIC: Xác định đối phương và trạng thái Online ---
     const targetMember = useMemo(() => {
         if (!members || !user?.userId) return null;
-        // Tìm người không phải là mình
         return members.find(m => m.userId !== user.userId);
     }, [members, user?.userId]);
 
     const isTargetOnline = useMemo(() => {
         if (!targetMember) return false;
-        // Kiểm tra trong Global Store xem userId này có đang online không
         return userStatuses[targetMember.userId]?.isOnline ?? false;
     }, [userStatuses, targetMember]);
 
@@ -86,7 +86,6 @@ const ChatBubble = () => {
             onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
             onPanResponderRelease: (_, gestureState) => {
                 pan.flattenOffset();
-                // Snap to edge logic can be added here
             },
         })
     ).current;
@@ -109,10 +108,12 @@ const ChatBubble = () => {
     const handleOpenFullChat = () => {
         if (activeBubbleRoomId) {
             closeBubble();
-            navigation.navigate("ChatStack", {
-                screen: "GroupChatScreen",
-                params: { roomId: activeBubbleRoomId, roomName: displayTitle }
-            });
+            // 🎯 DÙNG gotoTab: Tab cha "Chat", screen con "GroupChatScreen"
+            gotoTab(
+                "Chat", // Tên Tab Navigator
+                "GroupChatScreen", // Tên Screen trong ChatStack
+                { roomId: activeBubbleRoomId, roomName: displayTitle }
+            );
         }
     };
 
@@ -137,7 +138,6 @@ const ChatBubble = () => {
                         }
                         style={styles.bubbleImage}
                     />
-                    {/* Green Dot for Minimized Bubble */}
                     {isTargetOnline && <View style={styles.onlineDotBubble} />}
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.closeBadge} onPress={handleClose}>
@@ -162,7 +162,6 @@ const ChatBubble = () => {
                             <Icon name="open-in-new" size={16} color="#6B7280" style={{ marginLeft: 5 }} />
                         </TouchableOpacity>
 
-                        {/* Status Text under Name */}
                         {roomInfo?.purpose === RoomPurpose.PRIVATE_CHAT && (
                             <View style={styles.statusRow}>
                                 {isTargetOnline && <View style={styles.onlineDotHeader} />}
@@ -189,7 +188,7 @@ const ChatBubble = () => {
                         roomId={activeBubbleRoomId}
                         isBubbleMode={true}
                         initialRoomName={displayTitle}
-                    // Các props khác nếu cần
+                        initialFocusMessageId={null} // 🎯 QUAN TRỌNG: Truyền null vì bubble không cần focus lịch sử
                     />
                 </View>
             </KeyboardAvoidingView>

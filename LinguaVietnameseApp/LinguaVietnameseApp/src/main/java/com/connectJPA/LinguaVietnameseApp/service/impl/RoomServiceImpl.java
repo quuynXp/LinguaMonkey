@@ -697,4 +697,5 @@ public class RoomServiceImpl implements RoomService {
         response.setMemberCount((int) roomRepository.countMembersByRoomId(roomToJoin.getRoomId()));
         return response;
     }
+
 }

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -29,7 +29,6 @@ import {
   CourseVersionEnrollmentResponse,
   CourseVersionReviewResponse,
   CourseResponse,
-  LessonSummaryResponse
 } from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
 
@@ -43,7 +42,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { convert } = useCurrencyConverter();
 
   const [purchaseModalVisible, setPurchaseModalVisible] = useState(false);
-  const [displayLessons, setDisplayLessons] = useState<LessonSummaryResponse[]>([]);
 
   const {
     useCourse,
@@ -52,6 +50,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     useReviews,
     useDiscounts,
     useCreateReview,
+    useLessonsByVersion, // FIX: Use specific hook for version lessons
   } = useCourses();
 
   const { useCourseRoom } = useRooms();
@@ -62,6 +61,19 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const version = course?.latestPublicVersion;
   const versionId = version?.versionId;
+
+  // FIX: Fetch lessons specifically for this version to ensure correct ID and order
+  const { data: lessonsData, isLoading: lessonsLoading } = useLessonsByVersion({
+    versionId: versionId,
+    page: 0,
+    size: 100 // Fetch sufficient lessons to display list properly
+  });
+
+  const displayLessons = useMemo(() => {
+    if (!lessonsData?.data) return [];
+    // Ensure sorting by orderIndex logic from CourseVersionLesson
+    return [...lessonsData.data].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+  }, [lessonsData]);
 
   const { data: discountsData } = useDiscounts({ versionId: versionId, size: 1 });
   const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
@@ -95,15 +107,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const isEnrolled = !!activeEnrollment;
 
   const hasAccess = isEnrolled || isCreator || isFreeCourse;
-
-  useEffect(() => {
-    if (version?.lessons) {
-      const sortedLessons = [...version.lessons].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-      setDisplayLessons(sortedLessons);
-    } else {
-      setDisplayLessons([]);
-    }
-  }, [version]);
 
   const reviews = (reviewsData?.data as any[]) || [];
   const displayThumbnail = version?.thumbnailUrl;
@@ -139,6 +142,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       handleFreeEnroll();
     }
 
+    // Pass the exact lesson object from the version query
     gotoTab("CourseStack", "LessonScreen", { lesson: lesson });
   };
 
@@ -386,7 +390,9 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeader}>{t("course.curriculum")}</Text>
           <View style={styles.lessonGroup}>
-            {displayLessons.length > 0 ? (
+            {lessonsLoading ? (
+              <ActivityIndicator size="small" color="#4F46E5" style={{ marginVertical: 20 }} />
+            ) : displayLessons.length > 0 ? (
               displayLessons.map((l, i) => {
                 const isUnlocked = hasAccess || l.isFree;
                 const isLocked = !isUnlocked;

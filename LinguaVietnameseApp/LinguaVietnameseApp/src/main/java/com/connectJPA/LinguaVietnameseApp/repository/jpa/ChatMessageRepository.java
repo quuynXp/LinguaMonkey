@@ -43,6 +43,10 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, ChatMe
     @Query("SELECT COUNT(cm) FROM ChatMessage cm WHERE cm.senderId = :userId AND cm.messageType = com.connectJPA.LinguaVietnameseApp.enums.MessageType.TRANSLATION AND cm.isDeleted = false")
     long countTranslationsForUser(@Param("userId") UUID userId);
 
+    @Modifying
+@Query("UPDATE ChatMessage m SET m.translatedText = :text, m.translatedLang = :lang WHERE m.id.chatMessageId = :id")
+void updateTranslation(@Param("id") UUID id, @Param("text") String text, @Param("lang") String lang);
+
     /**
      * THÊM: Phương thức tìm kiếm tin nhắn thay thế Elasticsearch.
      * Sử dụng LIKE cho nội dung và lọc tùy chọn theo RoomId.

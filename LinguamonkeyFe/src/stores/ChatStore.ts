@@ -20,14 +20,19 @@ export type IncomingCall = {
 export type UserStatus = {
   userId: string;
   isOnline: boolean;
-  lastActiveAt?: string; // ISO String
+  lastActiveAt?: string;
+};
+
+// DTO cho sự kiện translation trả về từ server
+type TranslationEvent = {
+  messageId: string;
+  targetLang: string;
+  translatedText: string;
 };
 
 interface UseChatState {
-  // Connection State
   stompConnected: boolean;
 
-  // Data State
   rooms: { [roomId: string]: Room };
   userStatuses: { [userId: string]: UserStatus };
 
@@ -41,7 +46,6 @@ interface UseChatState {
   loadingByRoom: { [roomId: string]: boolean };
   totalOnlineUsers: number;
 
-  // Services & UI State
   videoSubtitleService: VideoSubtitleService | null;
   currentVideoSubtitles: DualSubtitle | null;
   activeBubbleRoomId: string | null;
@@ -51,7 +55,6 @@ interface UseChatState {
   currentViewedRoomId: string | null;
   incomingCallRequest: IncomingCall | null;
 
-  // Actions
   initStompClient: () => void;
   disconnectStompClient: () => void;
   subscribeToRoom: (roomId: string) => void;
@@ -72,7 +75,7 @@ interface UseChatState {
   connectVideoSubtitles: (roomId: string, targetLang: string) => void;
   disconnectVideoSubtitles: () => void;
   disconnectStomp: () => void;
-  disconnectAi: () => void; // Resets active AI room
+  disconnectAi: () => void;
   disconnectAll: () => void;
   openBubble: (roomId: string) => void;
   closeBubble: () => void;
@@ -85,9 +88,22 @@ interface UseChatState {
   rejectIncomingCall: () => void;
 
   updateUserStatus: (userId: string, isOnline: boolean, lastActiveAt?: string) => void;
+  // Helper internal để update translation
+  updateMessageTranslation: (roomId: string, event: TranslationEvent) => void;
 }
 
-// --- HELPERS ---
+// Helper: Xử lý date format từ server
+const parseDate = (dateInput: any): number => {
+  if (!dateInput) return Date.now();
+  if (Array.isArray(dateInput)) {
+    const [y, M, d, h, m, s, ns] = dateInput;
+    const date = new Date(y, M - 1, d, h || 0, m || 0, s || 0);
+    if (ns) date.setMilliseconds(Math.floor(ns / 1000000));
+    return date.getTime();
+  }
+  return new Date(dateInput).getTime();
+};
+
 const normalizeMessage = (msg: any): Message => {
   if (!msg) {
     return {
@@ -99,33 +115,25 @@ const normalizeMessage = (msg: any): Message => {
     translatedLang: source.translatedLang || source.translated_lang || null,
   });
 
-  if (msg?.id?.chatMessageId) {
-    return { ...msg, ...mapTranslationFields(msg) } as Message;
+  let sentAt = new Date().toISOString();
+  if (msg?.id?.sentAt) {
+    sentAt = new Date(parseDate(msg.id.sentAt)).toISOString();
+  } else if (msg?.sentAt) {
+    sentAt = new Date(parseDate(msg.sentAt)).toISOString();
   }
-  if (msg?.chatMessageId) {
-    return {
-      ...msg,
-      id: { chatMessageId: msg.chatMessageId, sentAt: msg.sentAt || new Date().toISOString() },
-      senderId: msg.senderId,
-      content: msg.content,
-      ...mapTranslationFields(msg)
-    } as Message;
-  }
-  return {
-    ...msg,
-    id: { chatMessageId: 'unknown-' + Math.random(), sentAt: new Date().toISOString() }
-  } as Message;
-};
 
-const parseDate = (dateInput: any): number => {
-  if (!dateInput) return Date.now();
-  if (Array.isArray(dateInput)) {
-    const [y, M, d, h, m, s, ns] = dateInput;
-    const date = new Date(y, M - 1, d, h || 0, m || 0, s || 0);
-    if (ns) date.setMilliseconds(Math.floor(ns / 1000000));
-    return date.getTime();
-  }
-  return new Date(dateInput).getTime();
+  let chatMessageId = 'unknown-' + Math.random();
+  if (msg?.id?.chatMessageId) chatMessageId = msg.id.chatMessageId;
+  else if (msg?.chatMessageId) chatMessageId = msg.chatMessageId;
+
+  const baseMsg = {
+    ...msg,
+    id: { chatMessageId, sentAt },
+    senderId: msg.senderId || msg?.id?.senderId,
+    ...mapTranslationFields(msg)
+  };
+
+  return baseMsg as Message;
 };
 
 function upsertMessage(list: Message[], rawMsg: any): Message[] {
@@ -157,16 +165,22 @@ function upsertMessage(list: Message[], rawMsg: any): Message[] {
 
 function extractRoomIdFromTopic(topic: string) {
   const parts = topic.split('/');
+  // topic format: /topic/room/{roomId} or /topic/room/{roomId}/translations
+  // Nếu là translations, roomId nằm ở index - 2
+  if (topic.endsWith('/translations')) {
+    return parts[parts.length - 2];
+  }
   return parts[parts.length - 1];
 }
 
-// KHÔI PHỤC HÀM NÀY
 export const getMessageDisplayData = (msg: any) => {
   const { chatSettings, nativeLanguage } = useAppStore.getState();
   const isAutoTranslateOn = chatSettings?.autoTranslate ?? false;
   const textContent = msg.content || msg.text || '';
   const hasEagerTranslation = !!msg.translatedText && !!msg.translatedLang;
-  const isMatchingLanguage = msg.translatedLang === nativeLanguage;
+
+  // Logic hiển thị: Nếu autoTranslate bật + có bản dịch + ngôn ngữ dịch khớp ngôn ngữ máy -> hiển thị bản dịch
+  const isMatchingLanguage = !msg.translatedLang || msg.translatedLang === nativeLanguage || msg.translatedLang === 'vi'; // Fallback to 'vi' if needed
 
   if (isAutoTranslateOn && hasEagerTranslation && isMatchingLanguage) {
     return { text: msg.translatedText, isTranslated: true, showToggle: true, lang: msg.translatedLang };
@@ -209,12 +223,33 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     }));
   },
 
+  updateMessageTranslation: (roomId, event) => {
+    set(state => {
+      const currentMessages = state.messagesByRoom[roomId] || [];
+      const updatedMessages = currentMessages.map(msg => {
+        if (msg.id.chatMessageId === event.messageId) {
+          return {
+            ...msg,
+            translatedText: event.translatedText,
+            translatedLang: event.targetLang
+          };
+        }
+        return msg;
+      });
+      return {
+        messagesByRoom: {
+          ...state.messagesByRoom,
+          [roomId]: updatedMessages
+        }
+      };
+    });
+  },
+
   initStompClient: () => {
     if (stompService.isConnected || get().stompConnected) { set({ stompConnected: true }); return; }
     stompService.connect(() => {
       set({ stompConnected: true });
 
-      // --- GLOBAL SUBSCRIPTIONS ---
       try {
         stompService.subscribe('/user/queue/notifications', async (rawMsg: any) => {
           if (rawMsg && rawMsg.type === 'VIDEO_CALL') {
@@ -239,7 +274,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         });
       } catch (e) { console.warn("Notif sub error", e); }
 
-      // Subscribe to Private Messages (Including AI responses for AI rooms)
       try {
         stompService.subscribe('/user/queue/messages', (rawMsg: any) => {
           const roomId = rawMsg?.roomId || rawMsg?.room_id;
@@ -249,7 +283,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         });
       } catch (e) { console.warn("Queue message sub error", e); }
 
-      // Subscribe to User Status
       try {
         stompService.subscribe('/topic/public/user-status', (msg: any) => {
           if (msg.userId) { get().updateUserStatus(msg.userId, msg.status === 'ONLINE', msg.timestamp); }
@@ -264,13 +297,20 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         });
       } catch (e) { }
 
-      // --- FLUSH PENDING ---
       const pendingSubs = get().pendingSubscriptions || [];
       pendingSubs.forEach(dest => {
         try {
           stompService.subscribe(dest, (rawMsg: any) => {
             const roomId = extractRoomIdFromTopic(dest);
-            if (dest.includes('/status')) { if (rawMsg.userId) { get().updateUserStatus(rawMsg.userId, rawMsg.status === 'ONLINE', rawMsg.timestamp); } return; }
+            if (dest.includes('/status')) {
+              if (rawMsg.userId) { get().updateUserStatus(rawMsg.userId, rawMsg.status === 'ONLINE', rawMsg.timestamp); }
+              return;
+            }
+            // [FIX] Handle Translation Event in pending flush
+            if (dest.includes('/translations')) {
+              get().updateMessageTranslation(roomId, rawMsg);
+              return;
+            }
             set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg) } }));
           });
         } catch (e) { console.warn('Flush subscribe error', dest, e); }
@@ -290,35 +330,47 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   subscribeToRoom: (roomId: string) => {
     const chatDest = `/topic/room/${roomId}`;
     const statusDest = `/topic/room/${roomId}/status`;
+    // [FIX] Subscribe to translation topic
+    const transDest = `/topic/room/${roomId}/translations`;
 
     if (stompService.isConnected) {
+      // Chat Messages
       stompService.subscribe(chatDest, (rawMsg: any) => {
         if (rawMsg && rawMsg.type === 'VIDEO_CALL') { return; }
         if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
         set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg) } }));
       });
 
+      // User Status
       stompService.subscribe(statusDest, (msg: any) => {
         if (msg.userId) {
           get().updateUserStatus(msg.userId, msg.status === 'ONLINE', new Date().toISOString());
         }
       });
+
+      // [FIX] Handle Translation Events
+      stompService.subscribe(transDest, (evt: TranslationEvent) => {
+        get().updateMessageTranslation(roomId, evt);
+      });
       return;
     }
 
-    set((s) => ({ pendingSubscriptions: Array.from(new Set([...s.pendingSubscriptions, chatDest, statusDest])) }));
+    set((s) => ({ pendingSubscriptions: Array.from(new Set([...s.pendingSubscriptions, chatDest, statusDest, transDest])) }));
     get().initStompClient();
   },
 
   unsubscribeFromRoom: (roomId: string) => {
     const chatDest = `/topic/room/${roomId}`;
     const statusDest = `/topic/room/${roomId}/status`;
+    const transDest = `/topic/room/${roomId}/translations`;
+
     if (stompService.isConnected) {
       stompService.unsubscribe(chatDest);
       stompService.unsubscribe(statusDest);
+      stompService.unsubscribe(transDest);
     }
     else {
-      set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== chatDest && d !== statusDest) }));
+      set((s) => ({ pendingSubscriptions: s.pendingSubscriptions.filter(d => d !== chatDest && d !== statusDest && d !== transDest) }));
     }
   },
 
@@ -340,7 +392,13 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     if (!userId) return;
     try {
       const res = await instance.get<AppApiResponse<Room[]>>(`/api/v1/rooms/ai-history`, { params: { userId } });
-      if (res.data.result) set({ aiRoomList: res.data.result });
+      if (res.data.result) {
+        const newRoomsMap = res.data.result.reduce((acc, room) => ({ ...acc, [room.roomId]: room }), {});
+        set((state) => ({
+          aiRoomList: res.data.result || [],
+          rooms: { ...state.rooms, ...newRoomsMap }
+        }));
+      }
     } catch (e) { console.error(e); }
   },
 
@@ -350,6 +408,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const res = await instance.get<AppApiResponse<Room>>(`/api/v1/rooms/ai-chat-room`, { params: { userId } });
     const room = res.data.result;
     if (room?.roomId) {
+      set((state) => ({ rooms: { ...state.rooms, [room.roomId]: room } }));
       await get().selectAiRoom(room.roomId);
       await get().fetchAiRoomList();
     }
@@ -357,7 +416,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   selectAiRoom: async (roomId) => {
     set({ activeAiRoomId: roomId, loadingByRoom: { ...get().loadingByRoom, [roomId]: true } });
-    get().subscribeToRoom(roomId); // Ensure we get updates
+    get().subscribeToRoom(roomId);
     await get().loadMessages(roomId, 0, 10);
   },
 
@@ -409,8 +468,19 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   sendMessage: (roomId, content, type, mediaUrl) => {
     const state = get();
+    const { chatSettings } = useAppStore.getState(); // Get settings
     const room = state.rooms[roomId];
-    const payload = { content, roomId, messageType: type, purpose: room?.purpose || RoomPurpose.AI_CHAT, mediaUrl: mediaUrl || null };
+
+    // [FIX] Add isRoomAutoTranslate to payload
+    const payload = {
+      content,
+      roomId,
+      messageType: type,
+      purpose: room?.purpose || RoomPurpose.AI_CHAT,
+      mediaUrl: mediaUrl || null,
+      isRoomAutoTranslate: chatSettings?.autoTranslate || false // <-- QUAN TRỌNG
+    };
+
     const optimisticMsg = { id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() }, senderId: useUserStore.getState().user?.userId, content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true, translatedText: null, translatedLang: null } as any;
 
     set((s) => ({ messagesByRoom: { ...s.messagesByRoom, [roomId]: upsertMessage(s.messagesByRoom[roomId] || [], optimisticMsg) } }));

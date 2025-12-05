@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
@@ -126,4 +127,6 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     Optional<Room> findByCreatorIdAndPurposeAndRoomTypeAndIsDeletedFalse(UUID userId, RoomPurpose purpose, RoomType roomType);
 
     Optional<Room> findByCourseIdAndIsDeletedFalse(UUID courseId);
+
+    Room findRoomByRoomId(UUID roomId);
 }

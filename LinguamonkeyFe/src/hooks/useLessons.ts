@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from "@tanstack/react-query";
 import instance from "../api/axiosClient";
 import { useUserStore } from "../stores/UserStore";
 import {
@@ -24,6 +24,7 @@ export const lessonKeys = {
   all: ["lessons"] as const,
   lists: () => [...lessonKeys.all, "list"] as const,
   list: (params: any) => [...lessonKeys.lists(), params] as const,
+  infinite: (params: any) => [...lessonKeys.all, "infinite", params] as const, // Added for infinite scroll
   details: () => [...lessonKeys.all, "detail"] as const,
   detail: (id: string) => [...lessonKeys.details(), id] as const,
   questions: {
@@ -93,6 +94,47 @@ export const useLessons = () => {
     });
   };
 
+  // --- NEW: Infinite Query for Lessons (Standardized) ---
+  const useInfiniteLessons = (params?: {
+    lessonName?: string;
+    languageCode?: string;
+    minExpReward?: number;
+    categoryId?: string;
+    subCategoryId?: string;
+    courseId?: string;
+    seriesId?: string;
+    skillType?: SkillType;
+    size?: number;
+  }) => {
+    const size = params?.size || 10;
+    return useInfiniteQuery({
+      queryKey: lessonKeys.infinite(params),
+      queryFn: async ({ pageParam = 0 }) => {
+        const qp = new URLSearchParams();
+        if (params?.lessonName) qp.append("lessonName", params.lessonName);
+        if (params?.languageCode) qp.append("languageCode", params.languageCode);
+        if (params?.minExpReward) qp.append("minExpReward", String(params.minExpReward));
+        if (params?.categoryId) qp.append("categoryId", params.categoryId);
+        if (params?.subCategoryId) qp.append("subCategoryId", params.subCategoryId);
+        if (params?.courseId) qp.append("courseId", params.courseId);
+        if (params?.seriesId) qp.append("seriesId", params.seriesId);
+        if (params?.skillType) qp.append("skillType", params.skillType);
+        qp.append("page", String(pageParam));
+        qp.append("size", String(size));
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<LessonResponse>>>(
+          `/api/v1/lessons?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, pageParam, size);
+      },
+      getNextPageParam: (lastPage) => {
+        if (lastPage.pagination.isLast) return undefined;
+        return lastPage.pagination.pageNumber + 1;
+      },
+      initialPageParam: 0,
+    });
+  };
+
   const useLesson = (id: string | null) => {
     return useQuery({
       queryKey: lessonKeys.detail(id!),
@@ -127,7 +169,10 @@ export const useLessons = () => {
         const { data } = await instance.post<AppApiResponse<LessonResponse>>("/api/v1/lessons", req);
         return data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: lessonKeys.lists() }),
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: lessonKeys.lists() });
+        queryClient.invalidateQueries({ queryKey: lessonKeys.all });
+      },
     });
   };
 
@@ -449,12 +494,10 @@ export const useLessons = () => {
     });
   };
 
-  // === NEW: Query version of Start Test for LessonScreen ===
   const useLessonTest = (lessonId: string, userId: string, enabled: boolean) => {
     return useQuery({
       queryKey: lessonKeys.test.start(lessonId, userId),
       queryFn: async () => {
-        // start-test is usually a POST because it initializes an attempt
         const { data } = await instance.post<AppApiResponse<{
           lessonId: string;
           questions: LessonQuestionResponse[];
@@ -467,8 +510,8 @@ export const useLessons = () => {
         return data.result!;
       },
       enabled: enabled && !!lessonId && !!userId,
-      staleTime: 0, // Always fetch fresh to get correct attempt number
-      gcTime: 0, // Do not cache test sessions
+      staleTime: 0,
+      gcTime: 0,
     });
   };
 
@@ -496,7 +539,7 @@ export const useLessons = () => {
       },
       onSuccess: (_, { lessonId }) => {
         queryClient.invalidateQueries({ queryKey: lessonKeys.detail(lessonId) });
-        queryClient.invalidateQueries({ queryKey: lessonKeys.progress.all }); // Refresh progress too
+        queryClient.invalidateQueries({ queryKey: lessonKeys.progress.all });
       }
     });
   };
@@ -504,6 +547,7 @@ export const useLessons = () => {
   return {
     // Lessons
     useAllLessons,
+    useInfiniteLessons, // Export new hook
     useLesson,
     useCreatorLessons,
     useCreateLesson,
@@ -539,21 +583,46 @@ export const useLessons = () => {
     useGenerateTeamQuiz,
     useFindOrCreateQuizRoom,
     useStartTest,
-    useLessonTest, // Export the new hook
+    useLessonTest,
     useCompleteLesson,
   };
 };
 
-const mapPageResponse = <T>(result: any, page: number, size: number) => ({
-  data: (result?.content as T[]) || [],
-  pagination: {
-    pageNumber: result?.pageNumber ?? page,
-    pageSize: result?.pageSize ?? size,
-    totalElements: result?.totalElements ?? 0,
-    totalPages: result?.totalPages ?? 0,
-    isLast: result?.isLast ?? true,
-    isFirst: result?.isFirst ?? true,
-    hasNext: result?.hasNext ?? false,
-    hasPrevious: result?.hasPrevious ?? false,
-  },
-});
+// FIXED: Robust mapping handling Spring Page defaults (last, number) vs DTO (isLast, pageNumber)
+const mapPageResponse = <T>(result: any, page: number, size: number) => {
+  if (!result) {
+    return {
+      data: [] as T[],
+      pagination: {
+        pageNumber: page,
+        pageSize: size,
+        totalElements: 0,
+        totalPages: 0,
+        isLast: true,
+        isFirst: true,
+        hasNext: false,
+        hasPrevious: false,
+      }
+    };
+  }
+
+  // Handle both "isLast" (DTO) and "last" (Spring default)
+  const isLast = result.isLast ?? result.last ?? true;
+  const isFirst = result.isFirst ?? result.first ?? true;
+  const pageNumber = result.pageNumber ?? result.number ?? page;
+  const pageSize = result.pageSize ?? result.size ?? size;
+
+  return {
+    data: (result.content as T[]) || [],
+    pagination: {
+      pageNumber,
+      pageSize,
+      totalElements: result.totalElements ?? 0,
+      totalPages: result.totalPages ?? 0,
+      isLast,
+      isFirst,
+      hasNext: result.hasNext ?? !isLast,
+      hasPrevious: result.hasPrevious ?? !isFirst,
+    },
+  };
+};

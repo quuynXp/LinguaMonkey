@@ -16,12 +16,14 @@ import { QuestionType } from "../../types/enums";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { UniversalQuestionView } from "../../components/learn/SkillComponents";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 
 // Helper: Extract media URL from description
 const extractMediaFromDesc = (desc?: string) => {
   if (!desc) return null;
   const match = desc.match(/\[Media\]:\s*(\S+)/);
-  return match ? match[1] : null;
+  const rawUrl = match ? match[1] : null;
+  return getDirectMediaUrl(rawUrl || "");
 };
 
 // --- JUST MEDIA COMPONENT ---
@@ -33,8 +35,9 @@ const JustMediaView = ({
   onFinish: () => void;
 }) => {
   const mediaUrl = extractMediaFromDesc(lesson.description) ||
-    lesson.videoUrls?.[0] ||
-    lesson.thumbnailUrl;
+    getDirectMediaUrl(lesson.videoUrls?.[0]) ||
+    getDirectMediaUrl(lesson.thumbnailUrl);
+
   const cleanDesc = lesson.description?.replace(/\[Media\]:\s*\S+/, '').trim();
 
   const fakeQuestion: Partial<LessonQuestionResponse> = {
@@ -80,7 +83,6 @@ const LessonScreen = ({ navigation, route }: any) => {
   const userStore = useUserStore();
   const userId = userStore.user?.userId;
 
-  // Use the new useLessonTest instead of useAllQuestions
   const { useLessonTest, useUpdateProgress, useSubmitTest } = useLessons();
   const { useStreamPronunciation, useCheckWriting, useSubmitQuiz } = useSkillLessons();
 
@@ -108,8 +110,7 @@ const LessonScreen = ({ navigation, route }: any) => {
   const checkWritingMutation = useCheckWriting();
   const submitQuizMutation = useSubmitQuiz();
 
-  // Load questions via startTest API (This ensures we get the correct attempt number and shuffled list)
-  const { data: testData, isLoading, isError } = useLessonTest(lesson.lessonId, userId!, !isJustMedia && !!userId);
+  const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !isJustMedia && !!userId);
 
   useEffect(() => {
     if (testData?.attemptNumber) {
@@ -143,10 +144,23 @@ const LessonScreen = ({ navigation, route }: any) => {
     ]);
   };
 
-  // --- VALIDATION LOGIC ---
+  // --- VALIDATION LOGIC (FIXED) ---
   const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean => {
-    const correct = question.correctOption?.trim().toLowerCase();
-    const selected = typeof answer === 'string' ? answer.trim().toLowerCase() : JSON.stringify(answer).toLowerCase();
+    if (!question.correctOption) return false;
+
+    const correct = question.correctOption.trim().toLowerCase();
+
+    // Normalize selected answer
+    let selected = '';
+    if (typeof answer === 'string') {
+      selected = answer.trim().toLowerCase();
+    } else if (typeof answer === 'object') {
+      // For matching/ordering, we need careful stringify
+      selected = JSON.stringify(answer).toLowerCase();
+    }
+
+    console.log(`[Validation] Q: ${question.lessonQuestionId} | Type: ${question.questionType}`);
+    console.log(`[Validation] Correct (DB): ${correct} | Selected (User): ${selected}`);
 
     switch (question.questionType) {
       case QuestionType.MULTIPLE_CHOICE:
@@ -154,18 +168,24 @@ const LessonScreen = ({ navigation, route }: any) => {
         return correct === selected;
 
       case QuestionType.FILL_IN_THE_BLANK:
-        const alternatives = correct?.split('||').map(s => s.trim().toLowerCase()) || [];
+        const alternatives = correct.split('||').map(s => s.trim().toLowerCase());
         return alternatives.some(alt => alt === selected);
 
       case QuestionType.ORDERING:
-        return correct?.replace(/\s/g, '') === selected.replace(/\s/g, '');
+        // Remove spaces to compare sequence content
+        return correct.replace(/\s/g, '') === selected.replace(/\s/g, '');
 
       case QuestionType.MATCHING:
         try {
-          const correctMap = JSON.parse(question.correctOption || '{}');
-          const selectedMap = typeof answer === 'object' ? answer : JSON.parse(answer);
-          return JSON.stringify(correctMap) === JSON.stringify(selectedMap);
-        } catch {
+          // Compare objects loosely by converting to entries, sorting, then stringifying
+          // This handles {"A":"1", "B":"2"} vs {"B":"2", "A":"1"}
+          const correctObj = JSON.parse(question.correctOption);
+          const selectedObj = typeof answer === 'object' ? answer : JSON.parse(answer);
+
+          const normalizeObj = (obj: any) => JSON.stringify(Object.entries(obj).sort());
+          return normalizeObj(correctObj) === normalizeObj(selectedObj);
+        } catch (e) {
+          console.error("Matching validation error", e);
           return false;
         }
 
@@ -181,7 +201,7 @@ const LessonScreen = ({ navigation, route }: any) => {
     setIsAnswered(true);
     setSelectedAnswer(answerValue);
 
-    // Track locally
+    // Track locally - Ensure we store the Raw Value, not stringified yet if simple type
     setUserAnswers(prev => ({
       ...prev,
       [currentQuestion.lessonQuestionId]: answerValue
@@ -243,11 +263,10 @@ const LessonScreen = ({ navigation, route }: any) => {
     if (!userId) return;
 
     const totalQuestions = questions.length;
-    // Calculate final score purely client side for display, but server handles real scoring via submitTest
     const score = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 100;
 
-    // Use submitTest mutation to save all answers and finalize
     try {
+      // Ensure userAnswers matches Backend expectation (Map<String, Object>)
       await submitTestMutation.mutateAsync({
         lessonId: lesson.lessonId,
         userId: userId,

@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 import com.connectJPA.LinguaVietnameseApp.dto.request.CallPreferencesRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
+import com.connectJPA.LinguaVietnameseApp.repository.jpa.RoomRepository;
 import com.connectJPA.LinguaVietnameseApp.service.MatchmakingQueueService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -21,6 +22,7 @@ public class MatchmakingController {
 
     private final MatchmakingQueueService queueService;
     private final RoomService roomService;
+    private final RoomRepository roomRepository;
 
     @Operation(summary = "Find a call partner", description = "Adds user to queue and tries to find a best match.")
     @PostMapping("/find-call")
@@ -30,30 +32,41 @@ public class MatchmakingController {
         String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
         UUID currentUserId = UUID.fromString(currentUserIdStr);
 
+        // 1. Check if I was already matched by someone else while I was waiting
+        MatchmakingQueueService.MatchResult pendingMatch = queueService.checkPendingMatch(currentUserId);
+        if (pendingMatch != null) {
+            // Reconstruct Room Response from stored data or fetch fresh
+            RoomResponse room = roomService.getRoomById(pendingMatch.getRoomId()); // Assuming roomName stores the unique ID string
+            return buildMatchedResponse(room, pendingMatch.getScore());
+        }
+
+        // 2. Add self to queue
         queueService.addToQueue(currentUserId, request);
 
+        // 3. Try to find a partner
         MatchmakingQueueService.MatchResult matchResult = queueService.findMatch(currentUserId);
-
-        Map<String, Object> responseData = new HashMap<>();
 
         if (matchResult != null) {
             UUID partnerId = matchResult.getPartnerId();
             RoomResponse room = roomService.findOrCreatePrivateRoom(currentUserId, partnerId);
 
-            // Remove both from queue atomically in real usage (here conceptually)
+            // 4. Notify myself (Immediate return)
             queueService.removeFromQueue(currentUserId);
-            queueService.removeFromQueue(partnerId);
+            
+            // 5. Notify partner (Save to pendingMatches so they find it on next poll)
+            // Storing room info in the result for the partner
+            MatchmakingQueueService.MatchResult partnerResult = new MatchmakingQueueService.MatchResult(
+                currentUserId, 
+                matchResult.getScore(), 
+                room.getRoomId(), 
+                room.getRoomId().toString() // Fixed: Convert UUID to String for roomName
+            );
+            queueService.notifyPartner(partnerId, partnerResult);
 
-            responseData.put("status", "MATCHED");
-            responseData.put("room", room);
-            responseData.put("score", matchResult.getScore());
-
-            return AppApiResponse.<Map<String, Object>>builder()
-                    .code(200)
-                    .message("Match found successfully!")
-                    .result(responseData)
-                    .build();
+            return buildMatchedResponse(room, matchResult.getScore());
         } else {
+            // No match found yet
+            Map<String, Object> responseData = new HashMap<>();
             responseData.put("status", "WAITING");
             responseData.put("queueSize", queueService.getQueueSize());
             responseData.put("secondsWaited", queueService.getSecondsWaited(currentUserId));
@@ -67,6 +80,19 @@ public class MatchmakingController {
         }
     }
     
+    private AppApiResponse<Map<String, Object>> buildMatchedResponse(RoomResponse room, int score) {
+        Map<String, Object> responseData = new HashMap<>();
+        responseData.put("status", "MATCHED");
+        responseData.put("room", room);
+        responseData.put("score", score);
+
+        return AppApiResponse.<Map<String, Object>>builder()
+                .code(200)
+                .message("Match found successfully!")
+                .result(responseData)
+                .build();
+    }
+
     @PostMapping("/cancel")
     public AppApiResponse<Void> cancelSearch() {
         String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();

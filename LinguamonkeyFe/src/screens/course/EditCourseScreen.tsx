@@ -35,7 +35,6 @@ const EditCourseScreen = () => {
   const { t } = useTranslation();
   const user = useUserStore((state) => state.user);
 
-  // --- State ---
   const [isCreateMode, setIsCreateMode] = useState(!initialCourseId);
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("0");
@@ -44,10 +43,8 @@ const EditCourseScreen = () => {
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.A1);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
 
-  // Local state for lessons to handle immediate UI reordering
   const [localLessons, setLocalLessons] = useState<LocalLessonType[]>([]);
 
-  // --- Hooks ---
   const {
     useCourse,
     useCourseVersions,
@@ -55,14 +52,12 @@ const EditCourseScreen = () => {
     useUpdateCourseDetails,
     useUpdateCourseVersion,
     useCreateDraftVersion,
-    usePublishVersion
+    useLessonsByVersion
   } = useCourses();
 
-  // Fetch Data
   const { data: courseData } = useCourse(initialCourseId);
   const { data: versionsData, refetch: refetchVersions } = useCourseVersions(initialCourseId);
 
-  // Determine Working Version (Draft > Public)
   const workingVersion = useMemo(() => {
     if (!versionsData || versionsData.length === 0) return null;
     return versionsData.find(v => v.status === VersionStatus.DRAFT) || versionsData.find(v => v.status === VersionStatus.PUBLIC);
@@ -70,9 +65,12 @@ const EditCourseScreen = () => {
 
   const isDraft = workingVersion?.status === VersionStatus.DRAFT;
 
-  // --- Effects ---
+  const { data: lessonsData, isLoading: lessonsLoading } = useLessonsByVersion({
+    versionId: workingVersion?.versionId,
+    page: 0,
+    size: 100
+  });
 
-  // 1. Load Course Data
   useEffect(() => {
     if (courseData) {
       setTitle(courseData.title);
@@ -80,20 +78,28 @@ const EditCourseScreen = () => {
     }
   }, [courseData]);
 
-  // 2. Load Version Data
   useEffect(() => {
     if (workingVersion) {
       setDescription(workingVersion.description || "");
       setThumbnailUrl(workingVersion.thumbnailUrl || "");
       setPrice(workingVersion.price?.toString() || "0");
       setDifficulty(workingVersion.difficultyLevel || DifficultyLevel.A1);
-
-      if (workingVersion.lessons) {
-        const sorted = (workingVersion.lessons as LocalLessonType[]).sort((a, b) => a.orderIndex - b.orderIndex);
-        setLocalLessons(sorted);
-      }
     }
   }, [workingVersion]);
+
+  useEffect(() => {
+    if (lessonsData?.data) {
+      const sortedLessons = [...lessonsData.data].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+
+      const mappedLessons: LocalLessonType[] = sortedLessons.map(l => ({
+        lessonId: l.lessonId,
+        title: l.lessonName || l.title || "Untitled",
+        orderIndex: l.orderIndex || 0
+      }));
+
+      setLocalLessons(mappedLessons);
+    }
+  }, [lessonsData]);
 
   useFocusEffect(
     useCallback(() => {
@@ -103,15 +109,12 @@ const EditCourseScreen = () => {
     }, [initialCourseId, refetchVersions])
   );
 
-  // --- Mutations ---
   const { mutate: createCourseMutate, isPending: isCreating } = useCreateCourse();
   const { mutate: updateDetailsMutate, isPending: isUpdatingDetails } = useUpdateCourseDetails();
   const { mutate: updateVersionMutate, isPending: isUpdatingVersion } = useUpdateCourseVersion();
   const { mutate: createDraftMutate, isPending: isCreatingDraft } = useCreateDraftVersion();
 
   const isSaving = isCreating || isUpdatingDetails || isUpdatingVersion || isCreatingDraft;
-
-  // --- Handlers ---
 
   const handlePreview = () => {
     if (initialCourseId) {
@@ -233,8 +236,6 @@ const EditCourseScreen = () => {
       });
     }
   };
-
-  // --- Render Components ---
 
   const renderHeader = () => (
     <View style={styles.header}>
@@ -381,7 +382,11 @@ const EditCourseScreen = () => {
                 )}
               </View>
 
-              {localLessons.length === 0 ? (
+              {lessonsLoading ? (
+                <View style={{ padding: 20, alignItems: 'center' }}>
+                  <ActivityIndicator size="small" color="#4F46E5" />
+                </View>
+              ) : localLessons.length === 0 ? (
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyText}>{t("course.noLessons")}</Text>
                 </View>

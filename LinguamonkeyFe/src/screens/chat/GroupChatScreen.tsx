@@ -1,6 +1,8 @@
+// screens/chat/GroupChatScreen.tsx
+
 import React, { useEffect, useCallback, useState, useMemo } from "react";
 import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Switch, ScrollView } from "react-native";
-import { useRoute, RouteProp, useFocusEffect, useNavigation } from "@react-navigation/native";
+import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
 import { useShallow } from "zustand/react/shallow";
@@ -12,25 +14,31 @@ import { useUserStore } from "../../stores/UserStore";
 import { useAppStore } from "../../stores/appStore";
 import { useRooms } from "../../hooks/useRoom";
 import { useVideoCalls } from "../../hooks/useVideos";
-import { MemberResponse, CreateGroupCallRequest } from "../../types/dto";
+import { MemberResponse } from "../../types/dto";
 import { RoomType, VideoCallType } from "../../types/enums";
 import { privateClient } from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
 import IncomingCallModal from "../../components/modals/IncomingCallModal";
 import { stompService } from "../../services/stompService";
 
+// 🎯 CẬP NHẬT TYPE PARAMS
 type ChatRoomParams = {
     ChatRoom: {
         roomId: string;
         roomName: string;
+        initialFocusMessageId?: string; // <-- THÊM DÒNG NÀY
     };
 };
 
 const GroupChatScreen = () => {
+    // Component này là SCREEN, nên dùng useRoute ở đây LÀ ĐÚNG
     const route = useRoute<RouteProp<ChatRoomParams, 'ChatRoom'>>();
     const navigation = useNavigation<any>();
     const { t } = useTranslation();
-    const { roomId, roomName: initialRoomName } = route.params;
+
+    // 🎯 LẤY PARAMS TỪ ROUTE
+    const { roomId, roomName: initialRoomName, initialFocusMessageId } = route.params;
+
     const { user } = useUserStore();
     const { showToast } = useToast();
 
@@ -40,21 +48,18 @@ const GroupChatScreen = () => {
         setChatSettings,
         notificationPreferences,
         setNotificationPreferences,
-        privacySettings,
     } = useAppStore(useShallow((state) => ({
         chatSettings: state.chatSettings,
         setChatSettings: state.setChatSettings,
         notificationPreferences: state.notificationPreferences,
         setNotificationPreferences: state.setNotificationPreferences,
-        privacySettings: state.privacySettings,
     })));
 
-    // Chat Store - Access global user statuses
     const {
         activeBubbleRoomId, closeBubble,
         stompConnected,
         subscribeToRoom, unsubscribeFromRoom,
-        userStatuses // <-- Get global statuses
+        userStatuses
     } = useChatStore();
 
     const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom, useUpdateMemberNickname } = useRooms();
@@ -64,12 +69,9 @@ const GroupChatScreen = () => {
     const { data: roomInfo } = useRoom(roomId);
     const { mutate: kickMember } = useRemoveRoomMembers();
     const { mutate: leaveRoom } = useLeaveRoom();
-    const { mutate: updateNickname } = useUpdateMemberNickname();
     const { mutate: createGroupCall, isPending: isCalling } = useCreateGroupCall();
 
     const [showSettings, setShowSettings] = useState(false);
-    const [showEditNickname, setShowEditNickname] = useState(false);
-    const [newNickname, setNewNickname] = useState('');
 
     // Sync settings to backend
     const syncSettingToBackend = async (
@@ -80,7 +82,6 @@ const GroupChatScreen = () => {
         const payload = {
             autoTranslate: updateChat.autoTranslate ?? chatSettings.autoTranslate,
             soundEnabled: updateNotif.soundEnabled ?? notificationPreferences.soundEnabled,
-            // ... include other required fields from store if needed
         };
         try {
             await privateClient.patch(`/api/v1/user-settings/${user.userId}`, payload);
@@ -115,23 +116,18 @@ const GroupChatScreen = () => {
         return roomInfo?.roomName || initialRoomName;
     }, [isPrivateRoom, targetMember, roomInfo, initialRoomName]);
 
-    // --- REAL-TIME DOT RENDERER (Based on Store) ---
     const renderActiveDot = (userId: string | undefined, size = 10) => {
         if (!userId) return null;
         const status = userStatuses[userId];
-        const isOnline = status?.isOnline; // Priority to store, fallback could be added
-        if (isOnline) {
+        if (status?.isOnline) {
             return <View style={[styles.headerActiveDot, { width: size, height: size, borderRadius: size / 2 }]} />;
         }
         return null;
     };
 
-    // --- SUBSCRIBE TO ROOM (Logic moved to Root, but we sub to specific room here) ---
     useEffect(() => {
         if (stompConnected && roomId) {
             subscribeToRoom(roomId);
-
-            // Broadcast "I am ONLINE" to this room specifically (optional, depending on backend)
             if (user?.userId) {
                 try {
                     stompService.publish(`/app/chat/room/${roomId}/status`, {
@@ -140,7 +136,6 @@ const GroupChatScreen = () => {
                     });
                 } catch (e) { }
             }
-
             return () => { unsubscribeFromRoom(roomId); };
         }
     }, [stompConnected, roomId, user?.userId]);
@@ -176,7 +171,6 @@ const GroupChatScreen = () => {
             <View style={styles.memberItem}>
                 <View>
                     <Image source={item.avatarUrl ? { uri: item.avatarUrl } : require('../../assets/images/ImagePlacehoderCourse.png')} style={styles.memberAvatar} />
-                    {/* Use Store Status */}
                     {renderActiveDot(item.userId, 12)}
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
@@ -192,13 +186,10 @@ const GroupChatScreen = () => {
         );
     };
 
-    // Calculate Status Text for Header
     const getHeaderStatusText = () => {
         if (isPrivateRoom && targetMember) {
             const status = userStatuses[targetMember.userId];
             if (status?.isOnline) return t('chat.active_now');
-
-            // "Offline for X time" logic
             if (status?.lastActiveAt) {
                 const diff = Date.now() - new Date(status.lastActiveAt).getTime();
                 const minutes = Math.floor(diff / 60000);
@@ -240,15 +231,16 @@ const GroupChatScreen = () => {
             </View>
 
             <View style={{ flex: 1 }}>
+                {/* 🎯 TRUYỀN PARAMS VÀO PROP */}
                 <ChatInnerView
                     roomId={roomId}
                     isBubbleMode={false}
                     autoTranslate={chatSettings.autoTranslate}
                     soundEnabled={notificationPreferences.soundEnabled}
+                    initialFocusMessageId={initialFocusMessageId}
                 />
             </View>
 
-            {/* Settings Modal - kept same logic */}
             <Modal visible={showSettings} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowSettings(false)}>
                 <View style={styles.modalContainer}>
                     <View style={styles.modalHeader}>
@@ -303,14 +295,6 @@ const styles = StyleSheet.create({
     iconBtn: { padding: 8 },
     leaveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#EF4444', padding: 12, margin: 20, borderRadius: 8 },
     leaveBtnText: { color: '#FFF', fontWeight: 'bold' },
-    overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
-    dialog: { backgroundColor: '#FFF', borderRadius: 12, padding: 20, width: '100%', maxWidth: 320 },
-    dialogTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#1F2937' },
-    input: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 10, fontSize: 16, marginBottom: 20, color: '#1F2937' },
-    dialogActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12 },
-    dialogButton: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
-    primaryButton: { backgroundColor: '#4F46E5' },
-    dialogButtonText: { fontSize: 14, fontWeight: '600', color: '#6B7280' }
 });
 
 export default GroupChatScreen;

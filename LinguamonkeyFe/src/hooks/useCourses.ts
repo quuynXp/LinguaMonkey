@@ -27,7 +27,7 @@ export const courseKeys = {
   all: ["courses"] as const,
   lists: () => [...courseKeys.all, "list"] as const,
   list: (params: any) => [...courseKeys.lists(), params] as const,
-  infinite: (params: any) => [...courseKeys.all, "infinite", params] as const, // Added key for infinite
+  infinite: (params: any) => [...courseKeys.all, "infinite", params] as const,
   details: () => [...courseKeys.all, "detail"] as const,
   detail: (id: string) => [...courseKeys.details(), id] as const,
   versions: () => [...courseKeys.all, "version"] as const,
@@ -80,7 +80,6 @@ export const useCourses = () => {
     });
   };
 
-  // --- NEW: Infinite Query for Load More functionality ---
   const useInfiniteCourses = (params?: {
     size?: number;
     title?: string;
@@ -108,7 +107,6 @@ export const useCourses = () => {
         return mapPageResponse(data.result, pageParam, size);
       },
       getNextPageParam: (lastPage) => {
-        // Correct logic: if lastPage.pagination.isLast is true, return undefined to stop.
         if (lastPage.pagination.isLast) return undefined;
         return lastPage.pagination.pageNumber + 1;
       },
@@ -772,7 +770,7 @@ export const useCourses = () => {
 
   return {
     useAllCourses,
-    useInfiniteCourses, // Added
+    useInfiniteCourses,
     useTopSellingCourses,
     useSpecialOffers,
     useCourse,

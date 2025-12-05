@@ -33,18 +33,19 @@ public class StorageServiceImpl implements StorageService {
     @Value("${google.drive.folderId}")
     private String folderId;
 
-    // Hard limit 50MB for upload to prevent latency issues
-    private static final long MAX_FILE_SIZE = 50 * 1024 * 1024;
-    private static final String DOWNLOAD_URL_TEMPLATE = "https://drive.google.com/uc?export=download&id=%s";
+    // UPDATED: Limit to 100MB
+    private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
+    
+    // UPDATED: Using /file/d/ID/view format for better media access
+    private static final String VIEW_URL_TEMPLATE = "https://drive.google.com/file/d/%s/view?usp=sharing";
 
     @Transactional
     @Override
     public String uploadTemp(MultipartFile file) {
         if (file.getSize() > MAX_FILE_SIZE) {
-            throw new RuntimeException("File too large. Max size is 50MB to ensure chat performance.");
+            throw new RuntimeException("File too large. Max size is 100MB.");
         }
         try {
-            // OPTIMIZED: Use InputStream directly instead of loading bytes into memory
             return uploadStream(file.getInputStream(), file.getOriginalFilename(), file.getContentType());
         } catch (IOException e) {
             log.error("Google Drive upload failed", e);
@@ -52,7 +53,6 @@ public class StorageServiceImpl implements StorageService {
         }
     }
 
-    // Deprecated for large files, kept for backward compatibility if needed
     public String uploadBytes(byte[] data, String fileName, String contentType) {
         return uploadStream(new ByteArrayInputStream(data), fileName, contentType);
     }
@@ -68,7 +68,7 @@ public class StorageServiceImpl implements StorageService {
 
             // Upload file
             File uploadedFile = driveService.files().create(fileMetadata, mediaContent)
-                    .setFields("id, webContentLink, webViewLink")
+                    .setFields("id, webViewLink")
                     .execute();
 
             String fileId = uploadedFile.getId();
@@ -84,6 +84,8 @@ public class StorageServiceImpl implements StorageService {
             }
 
             log.info("Uploaded {} to Drive (OAuth2). ID: {}", fileName, fileId);
+            
+            // Return the constructed URL
             return getFileUrl(fileId); 
         } catch (IOException e) {
             log.error("Google Drive stream upload failed", e);
@@ -96,15 +98,40 @@ public class StorageServiceImpl implements StorageService {
     public UserMedia commit(String tempPath, String newPath, UUID userId, MediaType mediaType) {
         try {
             String fileId = tempPath;
-            if (tempPath.contains("id=")) {
-                fileId = tempPath.substring(tempPath.indexOf("id=") + 3);
+            
+            // FIX: Robustly extract fileId from the URL string (tempPath)
+            if (tempPath.contains("/file/d/")) {
+                int startIndex = tempPath.indexOf("/file/d/") + 8; // Start after /file/d/
+                
+                int endId = -1;
+                int endView = tempPath.indexOf("/view", startIndex);
+                int endParam = tempPath.indexOf("?", startIndex);
+
+                // Prioritize the delimiter that appears first after the ID
+                if (endView != -1 && (endParam == -1 || endView < endParam)) {
+                    endId = endView;
+                } else if (endParam != -1) {
+                    endId = endParam;
+                }
+                
+                if (endId == -1) endId = tempPath.length();
+                
+                fileId = tempPath.substring(startIndex, endId); 
+            } 
+            // Handle old download URL format (uc?export=download&id=ID)
+            else if (tempPath.contains("id=")) {
+                int startId = tempPath.indexOf("id=") + 3;
+                int endId = tempPath.indexOf("&", startId);
+                if (endId == -1) endId = tempPath.length();
+                fileId = tempPath.substring(startId, endId);
             }
 
+            // Now fileId should be clean, use it to fetch metadata
             File driveFile = driveService.files().get(fileId).setFields("name").execute();
             String fileName = driveFile.getName();
 
             UserMedia media = UserMedia.builder()
-                    .filePath(fileId)
+                    .filePath(fileId) // Store the clean Drive ID as filePath
                     .fileName(fileName)
                     .userId(userId)
                     .mediaType(mediaType)
@@ -112,8 +139,9 @@ public class StorageServiceImpl implements StorageService {
                     .build();
 
             UserMedia savedMedia = mediaRepo.save(media);
-            savedMedia.setFileUrl(getFileUrl(fileId));
-
+            
+            savedMedia.setFileUrl(getFileUrl(fileId)); 
+            
             return savedMedia;
         } catch (IOException e) {
             log.error("Commit Drive file failed", e);
@@ -134,7 +162,7 @@ public class StorageServiceImpl implements StorageService {
 
     @Override
     public String getFileUrl(String objectName) {
-        return String.format(DOWNLOAD_URL_TEMPLATE, objectName);
+        return String.format(VIEW_URL_TEMPLATE, objectName);
     }
 
     @Override

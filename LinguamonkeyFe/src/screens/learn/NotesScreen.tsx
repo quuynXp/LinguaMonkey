@@ -102,7 +102,6 @@ const NotesScreen = ({ navigation }: any) => {
   const handleAddNote = () => {
     if (!newNote.trim()) return;
 
-    // Note Payload
     const notePayload: MemorizationRequest = {
       contentType: mapNoteTypeToContentType(selectedNoteType),
       contentId: null,
@@ -113,7 +112,6 @@ const NotesScreen = ({ navigation }: any) => {
 
     createMemorization(notePayload, {
       onSuccess: (createdNote) => {
-        // If Reminder is enabled, chain the creation
         if (isReminderEnabled && reminderTime) {
           handleCreateReminder(createdNote.memorizationId, createdNote.noteText);
         } else {
@@ -125,7 +123,6 @@ const NotesScreen = ({ navigation }: any) => {
   };
 
   const handleCreateReminder = (targetId: string, noteTitle: string) => {
-    // 1. Create a dummy date with the user's input time to use the Helper
     const [hours, minutes] = reminderTime.split(':').map(Number);
     if (isNaN(hours) || isNaN(minutes)) {
       Alert.alert("Invalid Time", "Please use HH:mm format");
@@ -136,16 +133,15 @@ const NotesScreen = ({ navigation }: any) => {
     const now = new Date();
     now.setHours(hours, minutes, 0, 0);
 
-    // 2. Convert to Vietnam Time string for Backend
-    const vnTimeString = TimeHelper.convertToVietnamTime(now);
+    const timeStringHHMM = TimeHelper.formatTimeHHMM(now);
 
     const reminderPayload: UserReminderRequest = {
       title: t("notes.reminderTitle") + ": " + noteTitle.substring(0, 20) + "...",
       message: t("notes.reminderBody") + ": " + noteTitle,
-      time: vnTimeString,
-      date: TimeHelper.formatDateForApi(new Date()), // Starts today
+      time: timeStringHHMM,
+      date: TimeHelper.formatDateForApi(new Date()),
       repeatType: reminderRepeat,
-      targetType: Enums.TargetType.NOTE, // Assuming Enum exists, else custom
+      targetType: Enums.TargetType.NOTE,
       targetId: targetId,
       enabled: true
     };

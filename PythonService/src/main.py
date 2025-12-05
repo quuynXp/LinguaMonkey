@@ -25,9 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.user_profile_service import get_user_profile
 
-# --- REMOVED OLD IMPORT ---
-# from src.api.translation import translate_text 
-# --- ADDED NEW IMPORT ---
 from src.core.translator import get_translator
 
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
@@ -246,7 +243,7 @@ async def text_to_speech_endpoint(
         "audio_base64": base64.b64encode(audio_bytes).decode('utf-8')
     }
 
-# --- WEBSOCKETS (Giữ nguyên) ---
+# --- WEBSOCKETS ---
 @app.websocket("/voice")
 async def voice_stream(websocket: WebSocket, token: str = Query(...)):
     await get_websocket_user(websocket, token)
@@ -343,23 +340,25 @@ async def live_subtitles(
             data = await websocket.receive_text()
             msg = json.loads(data)
             
-            # 1. Xử lý Audio Stream
-            if "audio_chunk" in msg and msg["audio_chunk"]:
+            # --- SIGNALING FOR WEBRTC ---
+            # Xử lý tin nhắn signaling (Offer, Answer, ICE Candidates)
+            if msg.get("type") == "webrtc_signal":
+                # Broadcast lại cho tất cả user trong room (client tự filter senderId)
+                await manager.broadcast_json(msg, roomId)
+            
+            # --- AUDIO STREAM & SUBTITLES ---
+            elif "audio_chunk" in msg and msg["audio_chunk"]:
                 chunk = base64.b64decode(msg["audio_chunk"])
                 audio_buffers[buffer_key].append(chunk)
                 
-                # Bảo vệ tràn bộ nhớ: Nếu buffer quá lớn mà chưa clear, reset bớt
                 if len(audio_buffers[buffer_key]) > MAX_BUFFER_CHUNKS:
-                    audio_buffers[buffer_key] = audio_buffers[buffer_key][-20:] # Giữ lại 20 chunk cuối
+                    audio_buffers[buffer_key] = audio_buffers[buffer_key][-20:]
 
                 full_audio = b"".join(audio_buffers[buffer_key]) 
                 
-                # Speech To Text
                 stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, full_audio, spokenLang)
                 
-                # Nếu nhận diện được câu có nghĩa (> 1 ký tự)
                 if stt_text and len(stt_text.strip()) > 1:
-                    # Translate bằng Lexicon/Gemini
                     translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
                     
                     await manager.broadcast_json({

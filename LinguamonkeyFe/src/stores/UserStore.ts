@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import type { UserResponse, Character3dResponse } from '../types/dto';
-import { privateClient, mediaClient } from '../api/axiosClient';
+import {privateClient, mediaClient } from '../api/axiosClient';
 
 interface DailyGoal {
   completedLessons: number;
@@ -111,7 +111,6 @@ const defaultUserState: any = {
   vipDaysRemaining: 0,
 };
 
-// Use `number | null` which is the correct type for timer IDs in React Native.
 let heartbeatInterval: number | null = null;
 
 export const useUserStore = create<UserState>()(
@@ -191,6 +190,7 @@ export const useUserStore = create<UserState>()(
         if (!user?.userId) return;
 
         try {
+          // FIXED: Use privateClient
           await privateClient.patch(`/api/v1/users/${user.userId}/native-language`, null, {
             params: { nativeLanguageCode: languageId },
           });
@@ -201,6 +201,7 @@ export const useUserStore = create<UserState>()(
 
       saveProfileToServer: async (userId, payload) => {
         try {
+          // FIXED: Use privateClient
           const res = await privateClient.put<any>(`/api/v1/users/${userId}`, payload);
           if (res?.data?.result) {
             get().setUser(res.data.result);
@@ -216,6 +217,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return null;
         try {
+          // FIXED: Use privateClient
           const res = await privateClient.get<any>(`/api/v1/users/${user.userId}/character3d`);
           if (res.data.code === 200 && res.data.result) {
             return res.data.result;
@@ -250,6 +252,7 @@ export const useUserStore = create<UserState>()(
 
       deleteTempFile: async (path: string) => {
         try {
+          // FIXED: Use privateClient
           await privateClient.delete('/api/v1/files/temp', { params: { path } });
         } catch (error) {
           console.error('Delete temp file failed:', error);
@@ -261,6 +264,7 @@ export const useUserStore = create<UserState>()(
         if (!user || !user.userId) throw new Error('User not authenticated');
 
         try {
+          // FIXED: Use privateClient
           const res = await privateClient.patch<any>(`/api/v1/users/${user.userId}/avatar`, null, {
             params: { tempPath },
           });
@@ -278,16 +282,22 @@ export const useUserStore = create<UserState>()(
 
       finishSetup: async () => {
         const { user } = get();
-        if (!user?.userId) return;
-        try {
-          const res = await privateClient.patch(`/api/v1/users/${user.userId}/setup-status`, null, {
-            params: { isFinished: true },
-          });
-          if (res.data.code === 200) {
-            get().setUser(res.data.result);
-          }
-        } catch (e) {
-          console.error("Failed to update setup status", e);
+        if (!user?.userId) {
+          console.warn("finishSetup: User ID not found in store");
+          throw new Error("User ID missing");
+        }
+
+        // REMOVE TRY/CATCH: Let the error bubble up to SetupInitScreen
+        // FIXED: Use privateClient
+        const res = await privateClient.patch(`/api/v1/users/${user.userId}/setup-status`, null, {
+          params: { isFinished: true },
+        });
+
+        if (res.data.code === 200) {
+          console.log("finishSetup: Success, updating store.");
+          get().setUser(res.data.result);
+        } else {
+          throw new Error("Backend returned error: " + res.data.message);
         }
       },
 
@@ -295,6 +305,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
+          // FIXED: Use privateClient
           const res = await privateClient.patch(`/api/v1/users/${user.userId}/placement-test-status`, null, {
             params: { isDone: true },
           });
@@ -310,6 +321,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
+          // FIXED: Use privateClient
           const res = await privateClient.patch(`/api/v1/users/${user.userId}/daily-welcome`);
           if (res.data.code === 200) {
             get().setUser(res.data.result);
@@ -321,6 +333,7 @@ export const useUserStore = create<UserState>()(
 
       updateStreakAndDailyGoal: async (id: string) => {
         try {
+          // FIXED: Use privateClient
           const res = await privateClient.patch<any>(`/api/v1/users/${id}/streak`);
           if (res.data && res.data.code === 200 && res.data.result) {
             const updatedUser = res.data.result;
@@ -346,6 +359,7 @@ export const useUserStore = create<UserState>()(
             description: 'VIP 14-Day Trial Activation',
             returnUrl: 'yourapp://vip-result'
           };
+          // FIXED: Use privateClient
           const res = await privateClient.post('/api/v1/transactions/payment-url', payload);
           if (res.data && res.data.result) {
             return res.data.result;
@@ -361,6 +375,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
+          // FIXED: Use privateClient
           const res = await privateClient.get<any>(`/api/v1/users/${user.userId}`);
           if (res.data && res.data.code === 200 && res.data.result) {
             get().setUser(res.data.result);
@@ -374,6 +389,7 @@ export const useUserStore = create<UserState>()(
         const { user } = get();
         if (!user?.userId) return;
         try {
+          // FIXED: Use privateClient
           await privateClient.patch(`/api/v1/users/${user.userId}/last-active`);
         } catch (e) {
         }
@@ -384,7 +400,6 @@ export const useUserStore = create<UserState>()(
 
         get().sendHeartbeat();
 
-        // setInterval returns a number in React Native, which is now correctly typed.
         heartbeatInterval = setInterval(() => {
           if (AppState.currentState === 'active') {
             get().sendHeartbeat();
