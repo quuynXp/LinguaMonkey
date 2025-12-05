@@ -42,8 +42,6 @@ const LANGUAGES = [
   { code: 'auto', name: 'Auto Detect' },
   { code: 'en', name: 'English' },
   { code: 'vi', name: 'Vietnamese' },
-  { code: 'ja', name: 'Japanese' },
-  { code: 'ko', name: 'Korean' },
   { code: 'zh', name: 'Chinese' },
 ];
 
@@ -59,7 +57,6 @@ const JitsiCallScreen = () => {
   const navigation = useNavigation();
   const { roomId, videoCallId } = route.params;
 
-  // Lấy user từ UserStore để lấy userId làm callerId
   const { user } = useUserStore();
   const accessToken = useTokenStore.getState().accessToken;
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
@@ -201,10 +198,18 @@ const JitsiCallScreen = () => {
   useEffect(() => {
     if (!roomId || !accessToken) return;
 
-    const wsBase = getWsUrl(API_BASE_URL);
-    const wsUrl = `${wsBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
+    let cleanBase = API_BASE_URL.replace('http://', '').replace('https://', '');
+    if (cleanBase.endsWith('/')) cleanBase = cleanBase.slice(0, -1);
+
+    const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
+    const wsUrl = `${protocol}${cleanBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
 
     console.log("Connecting Subtitle WS:", wsUrl);
+
+    if (ws.current) {
+      ws.current.close();
+    }
+
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
@@ -247,10 +252,10 @@ const JitsiCallScreen = () => {
 
     return () => {
       LiveAudioStream.stop();
-      if (ws.current?.readyState === WebSocket.OPEN) {
+      if (ws.current) {
         ws.current.close();
+        ws.current = null;
       }
-      ws.current = null;
     };
   }, [roomId, nativeLang, spokenLang, accessToken]);
 

@@ -25,12 +25,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.user_profile_service import get_user_profile
 
-from src.api.translation import translate_text
+# --- REMOVED OLD IMPORT ---
+# from src.api.translation import translate_text 
+# --- ADDED NEW IMPORT ---
+from src.core.translator import get_translator
+
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
 from src.api.speech_to_text import speech_to_text
 from src.api.tts_generator import generate_tts
 from src.core.java_persistence_client import send_chat_to_java_via_grpc
-from src.core.translator import get_translator
 from src.worker.tasks import warm_up_redis_task, populate_lexicon_from_community_task
 from src.scripts.seed_lexicon import seed_data
 
@@ -59,7 +62,7 @@ class CacheInvalidationRequest(BaseModel):
 
 class TranslationRequest(BaseModel):
     text: str
-    source_lang: str
+    source_lang: str = "auto" # Default to auto
     target_lang: str
 
 class ChatRequest(BaseModel):
@@ -105,7 +108,6 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         if not PUBLIC_KEY:
              return jwt.decode(token, options={"verify_signature": False})
         
-        # Verify using RS256 and Public Key
         return jwt.decode(
             token, 
             PUBLIC_KEY, 
@@ -135,8 +137,7 @@ async def get_websocket_user(websocket: WebSocket, token: str) -> str:
         await websocket.close(code=1008, reason="Invalid Token")
         raise WebSocketDisconnect()
 
-# [GIỮ NGUYÊN TOÀN BỘ LOGIC ROUTER BÊN DƯỚI]
-
+# --- INTERNAL ROUTERS ---
 @internal_router.post("/invalidate-cache") 
 async def invalidate_user_cache(
     request: CacheInvalidationRequest,
@@ -171,6 +172,7 @@ async def run_seed_database():
 
 @internal_router.get("/check-redis/{lang}/{text}")
 async def check_redis_key(lang: str, text: str, redis: Redis = Depends(get_redis_client)):
+    # Helper to debug keys
     key = f"lex:{lang}:{text.strip().lower()}"
     value = await redis.get(key)
     return {
@@ -179,23 +181,39 @@ async def check_redis_key(lang: str, text: str, redis: Redis = Depends(get_redis
         "value": json.loads(value) if value else None
     }
 
+# --- PROTECTED ROUTERS ---
+
 @protected_router.post("/translate")
 async def translate(
     request: TranslationRequest, 
-    user: dict = Depends(verify_token)
+    user: dict = Depends(verify_token),
+    redis: Redis = Depends(get_redis_client) # Inject Redis
 ):
+    """
+    Sử dụng HybridTranslator để tận dụng Cache Redis trước khi gọi Google/Gemini
+    """
     try:
-        translated_text, error = await asyncio.to_thread(
-            translate_text, request.text, request.source_lang, request.target_lang
+        # Lấy instance Translator (Singleton logic inside)
+        translator = get_translator(redis)
+        
+        # Gọi translate thông qua HybridTranslator
+        # source_lang_hint giúp bypass detect language nếu client đã gửi lên
+        translated_text, detected_lang = await translator.translate(
+            text=request.text, 
+            source_lang_hint=request.source_lang, 
+            target_lang=request.target_lang
         )
-        if error: logger.error(f"Translation API error: {error}")
+        
         return {
             "code": 200,
-            "result": { "translated_text": translated_text },
-            "error": error
+            "result": { 
+                "translated_text": translated_text,
+                "source_lang_detected": detected_lang
+            },
+            "error": ""
         }
     except Exception as e:
-        logger.error(f"Translate endpoint exception: {e}")
+        logger.error(f"Translate endpoint exception: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @protected_router.post("/chat-ai")
@@ -228,6 +246,7 @@ async def text_to_speech_endpoint(
         "audio_base64": base64.b64encode(audio_bytes).decode('utf-8')
     }
 
+# --- WEBSOCKETS (Giữ nguyên) ---
 @app.websocket("/voice")
 async def voice_stream(websocket: WebSocket, token: str = Query(...)):
     await get_websocket_user(websocket, token)
@@ -312,46 +331,68 @@ async def live_subtitles(
     user_id = await get_websocket_user(websocket, token)
     await manager.connect(websocket, roomId)
     redis = await get_redis_client()
-    translator = get_translator(redis)
+    translator = get_translator(redis) # Sử dụng HybridTranslator
+    
     buffer_key = f"{roomId}_{user_id}"
+    
+    # Giới hạn buffer size để tránh tràn RAM (ví dụ: tối đa 50 chunks chưa xử lý)
+    MAX_BUFFER_CHUNKS = 50 
+
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
-            original_text = ""
+            
+            # 1. Xử lý Audio Stream
             if "audio_chunk" in msg and msg["audio_chunk"]:
                 chunk = base64.b64decode(msg["audio_chunk"])
                 audio_buffers[buffer_key].append(chunk)
+                
+                # Bảo vệ tràn bộ nhớ: Nếu buffer quá lớn mà chưa clear, reset bớt
+                if len(audio_buffers[buffer_key]) > MAX_BUFFER_CHUNKS:
+                    audio_buffers[buffer_key] = audio_buffers[buffer_key][-20:] # Giữ lại 20 chunk cuối
+
                 full_audio = b"".join(audio_buffers[buffer_key]) 
+                
+                # Speech To Text
                 stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, full_audio, spokenLang)
+                
+                # Nếu nhận diện được câu có nghĩa (> 1 ký tự)
                 if stt_text and len(stt_text.strip()) > 1:
+                    # Translate bằng Lexicon/Gemini
                     translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
+                    
                     await manager.broadcast_json({
                         "type": "subtitle",
+                        "senderId": user_id,
                         "original": stt_text,
                         "originalLang": detected_lang,
                         "translated": translated_text,
                         "translatedLang": nativeLang
                     }, roomId)
+                    
+                    audio_buffers[buffer_key] = [] 
+
             elif "text" in msg:
                 original_text = msg["text"]
-            
-            if original_text:
-                translated, err = await translator.translate(original_text, spokenLang, nativeLang)
-                await manager.broadcast({
-                    "type": "subtitle",
-                    "senderId": user_id,
-                    "original": original_text,
-                    "originalLang": spokenLang,
-                    "translated": translated,
-                    "translatedLang": nativeLang,
-                    "timestamp": datetime.now().isoformat()
-                }, roomId)
+                if original_text:
+                    translated, err = await translator.translate(original_text, spokenLang, nativeLang)
+                    await manager.broadcast({
+                        "type": "subtitle",
+                        "senderId": user_id,
+                        "original": original_text,
+                        "originalLang": spokenLang,
+                        "translated": translated,
+                        "translatedLang": nativeLang,
+                        "timestamp": datetime.now().isoformat()
+                    }, roomId)
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomId)
         if buffer_key in audio_buffers: del audio_buffers[buffer_key]
     except Exception as e:
-        logger.error(f"Live Subtitles WS Error: {e}")
+        logger.error(f"Live Subtitles WS Error: {e}", exc_info=True)
+        manager.disconnect(websocket, roomId)
 
 app.include_router(protected_router, tags=["Protected API"])
 app.include_router(internal_router, tags=["Internal API"])

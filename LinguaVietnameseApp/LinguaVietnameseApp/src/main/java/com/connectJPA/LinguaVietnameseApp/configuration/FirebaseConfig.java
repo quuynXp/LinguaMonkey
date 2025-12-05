@@ -14,6 +14,7 @@ import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
@@ -39,7 +40,7 @@ public class FirebaseConfig {
 
         GoogleCredentials credentials = loadCredentials();
 
-        // FIX: Explicitly set the scope to ensure token refresh capabilities
+        // Explicitly set the scope to ensure token refresh capabilities
         if (credentials.createScopedRequired()) {
             credentials = credentials.createScoped(Collections.singletonList(FIREBASE_MESSAGING_SCOPE));
         }
@@ -54,17 +55,39 @@ public class FirebaseConfig {
     }
 
     private GoogleCredentials loadCredentials() throws IOException {
+        // Priority 1: Base64 or Raw JSON Env Var
         if (credentialsBase64 != null && !credentialsBase64.isBlank()) {
             try {
-                byte[] decodedBytes = Base64.getDecoder().decode(credentialsBase64.trim().replaceAll("\\s", ""));
-                log.info("Loaded Firebase credentials from BASE64 string.");
+                String cleanParams = credentialsBase64.trim();
+
+                // Case A: User pasted Raw JSON directly (starts with '{')
+                if (cleanParams.startsWith("{")) {
+                    log.info("Detected Raw JSON in FIREBASE_CREDENTIALS_BASE64. Loading directly.");
+                    return GoogleCredentials.fromStream(new ByteArrayInputStream(cleanParams.getBytes(StandardCharsets.UTF_8)));
+                }
+
+                // Case B: User pasted Data URI (starts with 'data:') - Strip prefix
+                if (cleanParams.startsWith("data:")) {
+                    int commaIndex = cleanParams.indexOf(",");
+                    if (commaIndex != -1) {
+                        cleanParams = cleanParams.substring(commaIndex + 1);
+                    }
+                }
+
+                // Case C: Standard Base64 - Cleanup whitespace/newlines
+                cleanParams = cleanParams.replaceAll("\\s", "");
+                
+                byte[] decodedBytes = Base64.getDecoder().decode(cleanParams);
+                log.info("Successfully decoded FIREBASE_CREDENTIALS_BASE64.");
                 return GoogleCredentials.fromStream(new ByteArrayInputStream(decodedBytes));
-            } catch (Exception e) {
-                log.error("Failed to decode FIREBASE_CREDENTIALS_BASE64 and create credentials stream.", e);
-                throw new IOException("Failed to initialize GoogleCredentials from FIREBASE_CREDENTIALS_BASE64: " + e.getMessage(), e);
+
+            } catch (IllegalArgumentException e) {
+                log.error("Failed to decode FIREBASE_CREDENTIALS_BASE64. Ensure it is a valid Base64 string or Raw JSON. Error: {}", e.getMessage());
+                throw new IOException("Invalid Base64 in FIREBASE_CREDENTIALS_BASE64. Check for hidden characters or incorrect format.", e);
             }
         }
 
+        // Priority 2: File Path
         if (credentialsPath != null && !credentialsPath.isBlank()) {
             String cleanPath = credentialsPath.replace("file:", "");
             try (InputStream serviceAccount = new FileInputStream(cleanPath)) {

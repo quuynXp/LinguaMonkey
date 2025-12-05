@@ -40,6 +40,7 @@ public class GrpcClientService {
 
     private ManagedChannel createChannelWithToken(String token) {
         log.debug("Creating gRPC channel to: {}", grpcTarget);
+        // Remove protocol prefix if present
         String target = grpcTarget.replace("static://", "").replace("http://", "");
         return ManagedChannelBuilder.forTarget(target)
                 .usePlaintext()
@@ -47,7 +48,42 @@ public class GrpcClientService {
                 .build();
     }
 
-    // --- SEED DATA GENERATION ---
+    // --- TRANSLATE (Optimized for Chat) ---
+    public CompletableFuture<TranslateResponse> callTranslateAsync(String token, String text, String sourceLang, String targetLang) {
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        TranslateRequest request = TranslateRequest.newBuilder()
+                .setText(text == null ? "" : text)
+                .setSourceLanguage(sourceLang == null ? "auto" : sourceLang)
+                .setTargetLanguage(targetLang == null ? "vi" : targetLang)
+                .build();
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                // Calls Python (which uses Redis + Gemini)
+                TranslateResponse response = stub.translate(request).get();
+                
+                if (response == null || !response.getError().isEmpty()) {
+                    log.warn("Translation partial error from Python: {}", response != null ? response.getError() : "null response");
+                }
+                return response;
+            } catch (Exception e) {
+                log.error("gRPC Translate Failed: {}", e.getMessage());
+                // Fallback: return original text to avoid breaking chat flow
+                return TranslateResponse.newBuilder()
+                        .setTranslatedText(text) 
+                        .setSourceLanguageDetected(sourceLang != null ? sourceLang : "unknown")
+                        .setError("Service unavailable")
+                        .build();
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
+    // --- OTHER METHODS (Standardized) ---
+
     public CompletableFuture<SeedDataResponse> callGenerateSeedDataAsync(
             String token, 
             String rawQuestion, 
@@ -81,29 +117,27 @@ public class GrpcClientService {
     }
 
     public CompletableFuture<GenerateImageResponse> callGenerateImageAsync(String token, String userId, String prompt, String language) {
-    ManagedChannel channel = createChannelWithToken(token);
-    LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
 
-    GenerateImageRequest request = GenerateImageRequest.newBuilder()
-            .setUserId(userId)
-            .setPrompt(prompt)
-            .setLanguage(language)
-            .build();
+        GenerateImageRequest request = GenerateImageRequest.newBuilder()
+                .setUserId(userId)
+                .setPrompt(prompt)
+                .setLanguage(language)
+                .build();
 
-    return CompletableFuture.supplyAsync(() -> {
-        try {
-            GenerateImageResponse response = stub.generateImage(request).get();
-            if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            return response;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        } finally {
-            channel.shutdown();
-        }
-    });
-}
-
-    // --- EXISTING METHODS ---
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                GenerateImageResponse response = stub.generateImage(request).get();
+                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+                return response;
+            } catch (Exception e) {
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
 
     public CompletableFuture<CourseEvaluationResponse> callEvaluateCourseVersionAsync(
             String token, 
@@ -140,37 +174,6 @@ public class GrpcClientService {
                         .build();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
-            }
-        });
-    }
-
-    public CompletableFuture<TranslateResponse> callTranslateAsync(String token, String text, String sourceLang, String targetLang) {
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
-        TranslateRequest request = TranslateRequest.newBuilder()
-                .setText(text == null ? "" : text)
-                .setSourceLanguage(sourceLang == null ? "auto" : sourceLang)
-                .setTargetLanguage(targetLang == null ? "vi" : targetLang)
-                .build();
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                // Python returns translation. Python also saved it to Lexicon DB/Redis.
-                TranslateResponse response = stub.translate(request).get();
-                if (response == null || !response.getError().isEmpty()) {
-                    log.warn("Translation partial error: {}", response.getError());
-                }
-                return response;
-            } catch (Exception e) {
-                log.error("gRPC Translate Failed: {}", e.getMessage());
-                // Return fallback structure to prevent app crash
-                return TranslateResponse.newBuilder()
-                        .setTranslatedText(text) // Fallback to original
-                        .setError("Service unavailable")
-                        .build();
             } finally {
                 channel.shutdown();
             }

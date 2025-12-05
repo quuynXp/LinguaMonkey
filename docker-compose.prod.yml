@@ -99,6 +99,7 @@ services:
           - /api/v1/transactions
           - /api/v1/users/
           - /api/v1/users
+          - /api/v1/user-settings
           - /api/v1/user-goals
           - /api/v1/user-learning-activities
           - /api/v1/video-calls

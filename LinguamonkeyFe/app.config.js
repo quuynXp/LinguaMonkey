@@ -14,7 +14,7 @@ export default ({ config }) => {
       name: "MonkeyLingua",
       assets: ["./assets/fonts/"],
       slug: "MonkeyLingua",
-      jsEngine: "jsc",
+      jsEngine: "hermes",
       platforms: ["ios", "android", "web"],
       version: "1.0.0",
       orientation: "portrait",
@@ -32,7 +32,6 @@ export default ({ config }) => {
       },
       android: {
         usesCleartextTraffic: true,
-
         config: {
           facebook: {
             appId: "1230650165201263",
@@ -74,7 +73,7 @@ export default ({ config }) => {
       web: {
         build: {
           babel: true,
-          jsEngine: "jsc",
+          jsEngine: "jsc", // Web vẫn có thể dùng JSC hoặc mặc định browser
           newArchEnabled: false,
         },
         bundler: "metro",

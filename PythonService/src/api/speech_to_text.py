@@ -7,6 +7,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MODEL_NAME = "openai/whisper-tiny"
+# Detect device - important for Torch
 device = "cuda" if torch.cuda.is_available() else "cpu"
 transcriber = None
 
@@ -29,6 +30,7 @@ def speech_to_text(audio_bytes: bytes, language_code: str = "auto") -> tuple[str
         return "", "en", ""
 
     try:
+        # Uses numpy, soundfile is implicit backend for transformers
         audio_array = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
         
         gen_kwargs = {}
