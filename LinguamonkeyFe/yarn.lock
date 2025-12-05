@@ -8400,6 +8400,11 @@ minizlib@^3.1.0:
   dependencies:
     minipass "^7.1.2"
 
+missing-asset-registry-path@^0.0.0:
+  version "0.0.0"
+  resolved "https://registry.yarnpkg.com/missing-asset-registry-path/-/missing-asset-registry-path-0.0.0.tgz#c5ab580c8e0636c6ea42c068b536f08d4fa99341"
+  integrity sha512-pEgHmznqJZDwsyGcrd8xIH1f1cHHYkWygQ18MxuPi4xw2SbP5wBTHMHQXKdkSquDUwPF5tt4IPwG/Pt3stbq0A==
+
 mkdirp@^1.0.4:
   version "1.0.4"
   resolved "https://registry.yarnpkg.com/mkdirp/-/mkdirp-1.0.4.tgz#3eb5ed62622756d79a5f0e2a221dfebad75c2f7e"

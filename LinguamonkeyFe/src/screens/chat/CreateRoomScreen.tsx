@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   View,
   ActivityIndicator,
+  FlatList,
+  Image,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
@@ -19,22 +21,38 @@ import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUserStore } from '../../stores/UserStore';
 import { useRooms } from '../../hooks/useRoom';
+import { useUsers } from '../../hooks/useUsers';
 import { RoomPurpose, RoomType } from '../../types/enums';
-import { RoomRequest } from '../../types/dto';
+import { RoomRequest, UserProfileResponse } from '../../types/dto';
+import { getAvatarSource } from '../../utils/avatarUtils';
 
 const CreateRoomScreen = () => {
   const { t } = useTranslation();
   const navigation = useNavigation<any>();
   const { user } = useUserStore();
 
-  const { useCreateRoom } = useRooms();
+  const { useCreateRoom, useAddRoomMembers } = useRooms();
+  const { useSearchPublicUsers } = useUsers();
+
   const { mutate: createRoom, isPending: isCreating } = useCreateRoom();
+  const { mutate: addMembers, isPending: isAddingMembers } = useAddRoomMembers();
 
   const [roomName, setRoomName] = useState('');
-  const [roomPurpose, setRoomPurpose] = useState<RoomPurpose>(RoomPurpose.QUIZ_TEAM);
+  const [description, setDescription] = useState('');
+  const [roomPurpose, setRoomPurpose] = useState<RoomPurpose>(RoomPurpose.GROUP_CHAT);
   const [maxMembers, setMaxMembers] = useState('20');
   const [isPrivate, setIsPrivate] = useState(false);
   const [roomPassword, setRoomPassword] = useState('');
+
+  // Member Selection State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
+
+  const { data: searchResults, isLoading: isSearching } = useSearchPublicUsers({
+    keyword: searchQuery,
+    page: 0,
+    size: 20
+  });
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -54,11 +72,26 @@ const CreateRoomScreen = () => {
     ]).start();
   }, [fadeAnim, slideAnim]);
 
+  const toggleUserSelection = (userId: string) => {
+    const newSelection = new Set(selectedUsers);
+    if (newSelection.has(userId)) {
+      newSelection.delete(userId);
+    } else {
+      newSelection.add(userId);
+    }
+    setSelectedUsers(newSelection);
+  };
+
   const handleCreateRoom = () => {
-    if (isCreating) return;
+    if (isCreating || isAddingMembers) return;
 
     if (!roomName.trim()) {
       Alert.alert(t('common.error'), t('createRoom.errors.nameRequired'));
+      return;
+    }
+
+    if (!description.trim()) {
+      Alert.alert(t('common.error'), t('createRoom.errors.descriptionRequired'));
       return;
     }
 
@@ -70,16 +103,47 @@ const CreateRoomScreen = () => {
     const roomPayload: RoomRequest = {
       roomName: roomName.trim(),
       creatorId: user.userId,
-      description: `Room created by ${user.nickname || user.fullname}`, // Default description
+      description: description.trim(),
       maxMembers: parseInt(maxMembers) || 20,
       purpose: roomPurpose,
       roomType: isPrivate ? RoomType.PRIVATE : RoomType.PUBLIC,
+      password: isPrivate ? roomPassword : "",
+      roomCode: "", // Backend generated
       isDeleted: false,
     };
 
     createRoom(roomPayload, {
       onSuccess: (newRoom) => {
-        navigation.replace('ChatRoom', { roomId: newRoom.roomId });
+        if (selectedUsers.size > 0) {
+          const memberRequests = Array.from(selectedUsers).map(userId => ({
+            userId,
+            roomId: newRoom.roomId,
+            role: 'MEMBER',
+            isDeleted: false
+          }));
+
+          addMembers({ roomId: newRoom.roomId, memberRequests }, {
+            onSuccess: () => {
+              navigation.replace('GroupChatScreen', {
+                roomId: newRoom.roomId,
+                roomName: newRoom.roomName
+              });
+            },
+            onError: (err) => {
+              console.error("Failed to add members", err);
+              Alert.alert(t('common.warning'), t('createRoom.membersAddFailed'));
+              navigation.replace('GroupChatScreen', {
+                roomId: newRoom.roomId,
+                roomName: newRoom.roomName
+              });
+            }
+          });
+        } else {
+          navigation.replace('GroupChatScreen', {
+            roomId: newRoom.roomId,
+            roomName: newRoom.roomName
+          });
+        }
       },
       onError: (error) => {
         console.error(error);
@@ -87,6 +151,32 @@ const CreateRoomScreen = () => {
       }
     });
   };
+
+  const renderUserItem = ({ item }: { item: UserProfileResponse }) => {
+    if (item.userId === user?.userId) return null;
+    const isSelected = selectedUsers.has(item.userId);
+
+    return (
+      <TouchableOpacity
+        style={[styles.userItem, isSelected && styles.userItemSelected]}
+        onPress={() => toggleUserSelection(item.userId)}
+      >
+        <Image
+          source={getAvatarSource(item.avatarUrl, null)}
+          style={styles.userAvatar}
+        />
+        <View style={styles.userInfo}>
+          <Text style={styles.userName}>{item.fullname}</Text>
+          <Text style={styles.userNickname}>@{item.nickname}</Text>
+        </View>
+        <View style={[styles.checkbox, isSelected && styles.userItemSelectedCheckbox]}>
+          {isSelected && <Icon name="check" size={16} color="#FFF" />}
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
+  const isLoading = isCreating || isAddingMembers;
 
   return (
     <ScreenLayout>
@@ -124,9 +214,28 @@ const CreateRoomScreen = () => {
                 placeholder={t('createRoom.roomNamePlaceholder')}
                 placeholderTextColor="#9CA3AF"
                 maxLength={50}
-                editable={!isCreating}
+                editable={!isLoading}
               />
               <Text style={styles.characterCount}>{roomName.length}/50</Text>
+            </View>
+
+            {/* Description */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('createRoom.descriptionLabel')} *
+              </Text>
+              <TextInput
+                style={[styles.textInput, styles.textArea]}
+                value={description}
+                onChangeText={setDescription}
+                placeholder={t('createRoom.descriptionPlaceholder')}
+                placeholderTextColor="#9CA3AF"
+                multiline
+                numberOfLines={3}
+                maxLength={255}
+                editable={!isLoading}
+              />
+              <Text style={styles.characterCount}>{description.length}/255</Text>
             </View>
 
             {/* Room Purpose */}
@@ -141,7 +250,7 @@ const CreateRoomScreen = () => {
                     roomPurpose === RoomPurpose.QUIZ_TEAM && styles.selectedPurpose,
                   ]}
                   onPress={() => setRoomPurpose(RoomPurpose.QUIZ_TEAM)}
-                  disabled={isCreating}
+                  disabled={isLoading}
                 >
                   <Icon
                     name="school"
@@ -163,7 +272,7 @@ const CreateRoomScreen = () => {
                     roomPurpose === RoomPurpose.GROUP_CHAT && styles.selectedPurpose,
                   ]}
                   onPress={() => setRoomPurpose(RoomPurpose.GROUP_CHAT)}
-                  disabled={isCreating}
+                  disabled={isLoading}
                 >
                   <Icon
                     name="group"
@@ -195,7 +304,7 @@ const CreateRoomScreen = () => {
                 placeholderTextColor="#9CA3AF"
                 keyboardType="numeric"
                 maxLength={2}
-                editable={!isCreating}
+                editable={!isLoading}
               />
             </View>
 
@@ -207,7 +316,7 @@ const CreateRoomScreen = () => {
               <TouchableOpacity
                 style={styles.privacyToggle}
                 onPress={() => setIsPrivate(!isPrivate)}
-                disabled={isCreating}
+                disabled={isLoading}
               >
                 <View style={styles.privacyInfo}>
                   <Icon
@@ -241,31 +350,41 @@ const CreateRoomScreen = () => {
                   placeholderTextColor="#9CA3AF"
                   secureTextEntry
                   maxLength={20}
-                  editable={!isCreating}
+                  editable={!isLoading}
                 />
               )}
             </View>
 
-            {/* Rules Section */}
-            <View style={styles.rulesSection}>
-              <Text style={styles.rulesTitle}>{t('createRoom.rulesTitle')}</Text>
-              <View style={styles.rulesList}>
-                <View style={styles.ruleItem}>
-                  <Icon name="check-circle" size={16} color="#10B981" />
-                  <Text style={styles.ruleText}>{t('createRoom.rule1')}</Text>
-                </View>
-                <View style={styles.ruleItem}>
-                  <Icon name="check-circle" size={16} color="#10B981" />
-                  <Text style={styles.ruleText}>{t('createRoom.rule2')}</Text>
-                </View>
-                <View style={styles.ruleItem}>
-                  <Icon name="check-circle" size={16} color="#10B981" />
-                  <Text style={styles.ruleText}>{t('createRoom.rule3')}</Text>
-                </View>
-                <View style={styles.ruleItem}>
-                  <Icon name="check-circle" size={16} color="#10B981" />
-                  <Text style={styles.ruleText}>{t('createRoom.rule4')}</Text>
-                </View>
+            {/* Add Members Section */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>
+                {t('createRoom.addMembersLabel')} ({selectedUsers.size})
+              </Text>
+              <View style={styles.searchContainer}>
+                <Icon name="search" size={20} color="#9CA3AF" />
+                <TextInput
+                  style={styles.searchInput}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  placeholder={t('createRoom.searchUsersPlaceholder')}
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+
+              <View style={styles.userListContainer}>
+                {isSearching ? (
+                  <ActivityIndicator size="small" color="#4F46E5" style={{ padding: 20 }} />
+                ) : (
+                  <FlatList<UserProfileResponse>
+                    data={(searchResults?.data as UserProfileResponse[]) || []} // Fixed: Type assertion
+                    keyExtractor={item => item.userId}
+                    renderItem={renderUserItem}
+                    scrollEnabled={false}
+                    ListEmptyComponent={
+                      <Text style={styles.emptyText}>{t('common.noResults')}</Text>
+                    }
+                  />
+                )}
               </View>
             </View>
 
@@ -273,13 +392,13 @@ const CreateRoomScreen = () => {
             <TouchableOpacity
               style={[
                 styles.createButton,
-                (!roomName.trim() || isCreating) &&
+                (!roomName.trim() || !description.trim() || isLoading) &&
                 styles.createButtonDisabled,
               ]}
               onPress={handleCreateRoom}
-              disabled={!roomName.trim() || isCreating}
+              disabled={!roomName.trim() || !description.trim() || isLoading}
             >
-              {isCreating ? (
+              {isLoading ? (
                 <ActivityIndicator size="small" color="#FFFFFF" />
               ) : (
                 <>
@@ -325,6 +444,7 @@ const styles = createScaledSheet({
   },
   form: {
     padding: 20,
+    paddingBottom: 40,
   },
   inputGroup: {
     marginBottom: 24,
@@ -344,6 +464,10 @@ const styles = createScaledSheet({
     fontSize: 16,
     color: '#1F2937',
     backgroundColor: '#FFFFFF',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
   },
   passwordInput: {
     marginTop: 12,
@@ -429,31 +553,6 @@ const styles = createScaledSheet({
   toggleThumbActive: {
     alignSelf: 'flex-end',
   },
-  rulesSection: {
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-  rulesTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#374151',
-    marginBottom: 12,
-  },
-  rulesList: {
-    gap: 8,
-  },
-  ruleItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  ruleText: {
-    fontSize: 14,
-    color: '#6B7280',
-    flex: 1,
-  },
   createButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -467,6 +566,7 @@ const styles = createScaledSheet({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    marginTop: 10,
   },
   createButtonDisabled: {
     backgroundColor: '#D1D5DB',
@@ -476,6 +576,79 @@ const styles = createScaledSheet({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+  },
+  searchInput: {
+    flex: 1,
+    paddingVertical: 10,
+    marginLeft: 8,
+    fontSize: 16,
+    color: '#1F2937',
+  },
+  userListContainer: {
+    marginTop: 12,
+    maxHeight: 250,
+    backgroundColor: '#FFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    overflow: 'hidden'
+  },
+  userItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  userItemSelected: {
+    backgroundColor: '#EEF2FF',
+  },
+  userAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#E5E7EB',
+  },
+  userInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  userName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  userNickname: {
+    fontSize: 12,
+    color: '#6B7280',
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: '#4F46E5',
+    backgroundColor: '#4F46E5',
+    alignItems: 'center',
+    justifyContent: 'center',
+    opacity: 0.2 // Default unchecked state
+  },
+  userItemSelectedCheckbox: {
+    opacity: 1
+  },
+  emptyText: {
+    textAlign: 'center',
+    padding: 20,
+    color: '#6B7280',
+  }
 });
 
 export default CreateRoomScreen;

@@ -7,7 +7,9 @@ interface ShowToastParams {
   type?: 'success' | 'error' | 'info' | 'warning';
 }
 
-const APP_LOGO_SOURCE = require('../assets/icons/icon_96.png');
+// const APP_LOGO_SOURCE = require('../assets/icons/icon_96.png');
+
+// const APP_LOGO_SOURCE = require('../assets/icons/icon.png');
 
 export const showToast = ({ message, type = 'info' }: ShowToastParams) => {
   Toast.show({
@@ -76,7 +78,7 @@ const CustomBaseToast = ({ ...props }: CustomToastProps) => {
 
   return (
     <View style={[styles.container, { borderLeftColor: borderColor }]}>
-      <Image source={APP_LOGO_SOURCE} style={styles.appLogo} />
+      {/* <Image source={APP_LOGO_SOURCE} style={styles.appLogo} /> */}
       <Text style={styles.text1} numberOfLines={3}>
         {props.text1}
       </Text>

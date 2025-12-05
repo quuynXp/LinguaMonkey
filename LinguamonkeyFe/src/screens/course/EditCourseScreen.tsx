@@ -127,6 +127,15 @@ const EditCourseScreen = () => {
     });
   };
 
+  const handleEditLesson = (lessonId: string) => {
+    if (!workingVersion) return;
+    navigation.navigate("CreateLessonScreen", {
+      courseId: initialCourseId,
+      versionId: workingVersion.versionId,
+      lessonId: lessonId
+    });
+  };
+
   const moveLesson = (index: number, direction: 'up' | 'down') => {
     const newLessons = [...localLessons];
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
@@ -253,9 +262,12 @@ const EditCourseScreen = () => {
       <View style={styles.lessonOrder}>
         <Text style={styles.lessonOrderText}>{index + 1}</Text>
       </View>
-      <View style={styles.lessonInfo}>
+      <TouchableOpacity
+        style={styles.lessonInfo}
+        onPress={() => handleEditLesson(item.lessonId)}
+      >
         <Text style={styles.lessonTitle} numberOfLines={1}>{item.title}</Text>
-      </View>
+      </TouchableOpacity>
 
       <View style={styles.lessonActions}>
         <TouchableOpacity

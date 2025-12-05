@@ -42,6 +42,7 @@ import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -66,15 +67,13 @@ public class ChatController {
     private final UserRepository userRepository;
     private final RedisTemplate<String, Object> redisTemplate;
 
-    // --- Inner Class for Status Request ---
     @Data
     @Builder
     public static class UserStatusRequest {
         private UUID userId;
-        private String status; // ONLINE or OFFLINE
+        private String status;
     }
 
-    // Thêm vào ChatController
     @GetMapping("/status/{userId}")
     public ResponseEntity<AppApiResponse<Boolean>> getUserOnlineStatus(@PathVariable UUID userId, Locale locale) {
         String redisKey = "user:online:" + userId.toString();
@@ -136,8 +135,6 @@ public class ChatController {
             @RequestBody ChatMessageRequest request,
             Locale locale) {
         ChatMessageResponse updatedMessage = chatMessageService.editChatMessage(id, request.getContent());
-        
-        // Notify socket clients about the update
         messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
         
         return AppApiResponse.<ChatMessageResponse>builder()
@@ -157,35 +154,22 @@ public class ChatController {
         String token = extractToken(authorization, headerAccessor);
 
         UUID senderId = UUID.fromString(principal.getName());
-        messageRequest = ChatMessageRequest.builder()
-                .roomId(roomId)
-                .senderId(senderId)
-                .content(messageRequest.getContent())
-                .mediaUrl(messageRequest.getMediaUrl())
-                .messageType(messageRequest.getMessageType())
-                .purpose(messageRequest.getPurpose())
-                .receiverId(messageRequest.getReceiverId())
-                .isRead(messageRequest.isRead())
-                .isDeleted(messageRequest.isDeleted())
-                .build();
+        messageRequest.setSenderId(senderId);
+        messageRequest.setRoomId(roomId);
 
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
+        // 1. Save User Message
         ChatMessageResponse message = chatMessageService.saveMessage(roomId, messageRequest);
 
-        UUID messageId = message.getChatMessageId();
-
-        if (message.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
-            messagingTemplate.convertAndSendToUser(
-                    message.getSenderId().toString(), "/queue/messages", message);
-            messagingTemplate.convertAndSendToUser(
-                    message.getReceiverId().toString(), "/queue/messages", message);
-
+        // 2. Broadcast User Message
+        if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
+            messagingTemplate.convertAndSendToUser(message.getSenderId().toString(), "/queue/messages", message);
+            messagingTemplate.convertAndSendToUser(message.getReceiverId().toString(), "/queue/messages", message);
             sendPushNotification(senderId, message.getReceiverId(), room, message.getContent());
-        } else if (message.getPurpose() == RoomPurpose.GROUP_CHAT) {
+        } else if (room.getPurpose() == RoomPurpose.GROUP_CHAT) {
             messagingTemplate.convertAndSend("/topic/room/" + roomId, message);
-
             List<RoomMember> members = roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(roomId);
             for (RoomMember member : members) {
                 UUID memberId = member.getId().getUserId();
@@ -193,85 +177,79 @@ public class ChatController {
                     sendPushNotification(senderId, memberId, room, message.getContent());
                 }
             }
-        } else if (message.getPurpose() == RoomPurpose.AI_CHAT) {
-            messagingTemplate.convertAndSendToUser(
-                    message.getSenderId().toString(), "/queue/messages", message);
+        } else if (room.getPurpose() == RoomPurpose.AI_CHAT) {
+            // For AI Chat: Send user message back to user via private queue (so they see it confirmed)
+            messagingTemplate.convertAndSendToUser(senderId.toString(), "/queue/messages", message);
 
-            Pageable pageable = PageRequest.of(0, 10);
-            Page<ChatMessageResponse> historyPage = chatMessageService.getMessagesByRoom(roomId, pageable);
-            List<ChatMessageResponse> history = historyPage.getContent().stream()
-                    .map(msg -> new ChatMessageResponse(
-                            msg.getChatMessageId(),
-                            msg.getRoomId(),
-                            msg.getSenderId(),
-                            msg.getReceiverId(),
-                            msg.getContent(),
-                            msg.getMediaUrl(),
-                            msg.getMessageType(),
-                            msg.getPurpose(),
-                            msg.isRead(),
-                            msg.getTranslatedLang(),
-                            msg.getTranslatedText(),
-                            msg.isDeleted(),
-                            msg.getSentAt(),
-                            msg.getUpdatedAt(),
-                            msg.getDeletedAt()))
-                    .toList();
+            // 3. AI Logic Processing
+            CompletableFuture.runAsync(() -> {
+                try {
+                    // Fetch recent history for context
+                    Pageable pageable = PageRequest.of(0, 10);
+                    Page<ChatMessageResponse> historyPage = chatMessageService.getMessagesByRoom(roomId, pageable);
+                    
+                    // Convert to list and reverse so it's chronological for the AI
+                    List<ChatMessageResponse> history = historyPage.getContent().stream().collect(Collectors.toList());
+                    Collections.reverse(history);
 
-            try {
-                // NOTE: Assumes 'learning.TranslateResponse' is defined and accessible
-                String aiResponseText = grpcClientService.callChatWithAIAsync(
-                        token,
-                        senderId.toString(),
-                        message.getContent(),
-                        history.stream()
-                                .map(msg -> new ChatMessageBody(msg.getSenderId().equals(senderId) ? "user" : "assistant", msg.getContent()))
-                                .collect(Collectors.toList())
-                ).get();
+                    List<ChatMessageBody> chatHistory = history.stream()
+                            .map(msg -> new ChatMessageBody(
+                                msg.getSenderId().equals(senderId) ? "user" : "assistant",
+                                msg.getContent()))
+                            .collect(Collectors.toList());
 
-                ChatMessageRequest aiMessageRequest = ChatMessageRequest.builder()
-                        .roomId(roomId)
-                        .senderId(null)
-                        .content(aiResponseText)
-                        .messageType(messageRequest.getMessageType())
-                        .purpose(RoomPurpose.AI_CHAT)
-                        .receiverId(senderId)
-                        .isRead(false)
-                        .isDeleted(false)
-                        .build();
+                    // Call Python gRPC
+                    // Note: Using token for context, or handling it within grpcClientService
+                    String aiResponseText = grpcClientService.callChatWithAIAsync(
+                            token,
+                            senderId.toString(),
+                            message.getContent(),
+                            chatHistory
+                    ).get();
 
-                ChatMessageResponse aiResponse = chatMessageService.saveMessage(roomId, aiMessageRequest);
-                messagingTemplate.convertAndSendToUser(
-                        senderId.toString(), "/queue/messages", aiResponse);
-            } catch (Exception e) {
-                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            }
+                    // 4. Save AI Response
+                    ChatMessageRequest aiMessageRequest = ChatMessageRequest.builder()
+                            .roomId(roomId)
+                            .senderId(null) // System/AI sender
+                            .content(aiResponseText)
+                            .messageType(messageRequest.getMessageType()) // Use same type or TEXT
+                            .purpose(RoomPurpose.AI_CHAT)
+                            .receiverId(senderId)
+                            .isRead(false)
+                            .isDeleted(false)
+                            .build();
 
-            if (messageRequest.isRoomAutoTranslate()) {
-                String targetLang = "vi";
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        // NOTE: Assumes 'learning.TranslateResponse' is defined and accessible
-                        learning.TranslateResponse tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
+                    ChatMessageResponse aiResponse = chatMessageService.saveMessage(roomId, aiMessageRequest);
 
-                        if (!tr.getError().isEmpty()) {
-                            log.warn("Translate returned error: {}", tr.getError());
-                            return;
-                        }
+                    // 5. Broadcast AI Response to User via WebSocket
+                    messagingTemplate.convertAndSendToUser(senderId.toString(), "/queue/messages", aiResponse);
 
-                        ChatMessageResponse translatedResp = chatMessageService.saveTranslation(messageId, targetLang, tr.getTranslatedText());
+                } catch (Exception e) {
+                    log.error("AI Chat processing failed for room {}: {}", roomId, e.getMessage());
+                    // Optionally send an error message to the user
+                }
+            });
+        }
 
-                        TranslationEvent evt = new TranslationEvent();
-                        evt.setMessageId(messageId);
-                        evt.setTargetLang(targetLang);
-                        evt.setTranslatedText(tr.getTranslatedText());
+        // Auto Translate Logic (for non-AI rooms mostly, or if configured)
+        if (messageRequest.isRoomAutoTranslate() && room.getPurpose() != RoomPurpose.AI_CHAT) {
+            String targetLang = "vi"; // Example default
+            CompletableFuture.runAsync(() -> {
+                try {
+                    learning.TranslateResponse tr = grpcClientService.callTranslateAsync(token, message.getContent(), "", targetLang).get();
+                    if (!tr.getError().isEmpty()) return;
 
-                        messagingTemplate.convertAndSend("/topic/room/" + roomId + "/translations", evt);
-                    } catch (Exception e) {
-                        log.error("Translation async failed for message {}: {}", messageId, e.getMessage());
-                    }
-                }, Executors.newCachedThreadPool());
-            }
+                    chatMessageService.saveTranslation(message.getChatMessageId(), targetLang, tr.getTranslatedText());
+                    TranslationEvent evt = new TranslationEvent();
+                    evt.setMessageId(message.getChatMessageId());
+                    evt.setTargetLang(targetLang);
+                    evt.setTranslatedText(tr.getTranslatedText());
+
+                    messagingTemplate.convertAndSend("/topic/room/" + roomId + "/translations", evt);
+                } catch (Exception e) {
+                    log.error("Translation async failed: {}", e.getMessage());
+                }
+            }, Executors.newCachedThreadPool());
         }
     }
 
@@ -289,7 +267,6 @@ public class ChatController {
             @DestinationVariable UUID messageId,
             Principal principal){
         ChatMessageResponse updatedMessage = chatMessageService.markAsRead(messageId, UUID.fromString(principal.getName()));
-        // Broadcast the update so the sender sees the read status change
         messagingTemplate.convertAndSend("/topic/room/" + updatedMessage.getRoomId(), updatedMessage);
     }
 
@@ -302,6 +279,7 @@ public class ChatController {
         chatMessageService.handleTypingStatus(roomId, request);
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
+        
         if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
             roomMemberRepository.findAllByIdRoomIdAndIsDeletedFalse(roomId).stream()
                     .map(RoomMember::getId)
@@ -313,22 +291,16 @@ public class ChatController {
         } else if (room.getPurpose() == RoomPurpose.GROUP_CHAT) {
             messagingTemplate.convertAndSend("/topic/room/" + roomId + "/typing", request);
         } else if (room.getPurpose() == RoomPurpose.AI_CHAT) {
-            messagingTemplate.convertAndSendToUser(
-                    request.getUserId().toString(), "/queue/typing", request);
+             messagingTemplate.convertAndSendToUser(request.getUserId().toString(), "/queue/typing", request);
         }
     }
     
-    // --- NEW: Real-time Status Handler ---
     @MessageMapping("/chat/room/{roomId}/status")
     public void handleUserStatus(
             @DestinationVariable UUID roomId,
             @Payload UserStatusRequest request,
             Principal principal) {
-        
-        // Ensure the sender is who they say they are (security)
         request.setUserId(UUID.fromString(principal.getName()));
-        
-        // Broadcast to everyone in the room
         messagingTemplate.convertAndSend("/topic/room/" + roomId + "/status", request);
     }
 

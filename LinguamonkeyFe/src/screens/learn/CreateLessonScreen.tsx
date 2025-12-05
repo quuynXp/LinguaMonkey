@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     View,
     Text,
@@ -9,8 +9,6 @@ import {
     Alert,
     ActivityIndicator,
     Modal,
-    Switch,
-    FlatList,
     KeyboardAvoidingView,
     Platform,
 } from 'react-native';
@@ -18,17 +16,17 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLessons } from '../../hooks/useLessons';
 import { useUserStore } from '../../stores/UserStore';
-import { LessonRequest, LessonQuestionRequest, } from '../../types/dto';
+import { LessonRequest, LessonQuestionRequest, LessonQuestionResponse } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import FileUploader from '../../components/common/FileUploader';
-import { DifficultyLevel, LessonType, ProficiencyLevel, QuestionType, SkillType } from '../../types/enums';
+import { DifficultyLevel, LessonType, QuestionType, SkillType } from '../../types/enums';
 
 // --- TYPES & INTERFACES ---
 
 interface LocalQuestionState {
     id: string;
     question: string;
-    questionType: QuestionType; // Updated Enum
+    questionType: QuestionType;
 
     // Dynamic Data Holders
     options: { A: string; B: string; C: string; D: string }; // For Multiple Choice
@@ -43,31 +41,43 @@ interface LocalQuestionState {
     mediaUrl: string;
 }
 
-// FIX: Define the expected route parameters
 type RootStackParamList = {
-    CreateLesson: { courseId: string };
+    CreateLesson: { courseId: string; versionId: string; lessonId?: string };
 };
 
 type CreateLessonRouteProp = RouteProp<RootStackParamList, 'CreateLesson'>;
 
 const CreateLessonScreen = () => {
     const navigation = useNavigation();
-    // FIX: Use the defined type for useRoute
     const route = useRoute<CreateLessonRouteProp>();
-    const { courseId } = route.params || {};
+    const { courseId, lessonId } = route.params || {};
 
     const user = useUserStore(state => state.user);
-    const { useCreateLesson, useCreateQuestion } = useLessons();
+    const {
+        useCreateLesson,
+        useUpdateLesson,
+        useCreateQuestion,
+        useUpdateQuestion,
+        useLesson,
+        useAllQuestions
+    } = useLessons();
+
     const createLessonMutation = useCreateLesson();
+    const updateLessonMutation = useUpdateLesson();
     const createQuestionMutation = useCreateQuestion();
+    const updateQuestionMutation = useUpdateQuestion();
+
+    const isEditMode = !!lessonId;
+
+    // --- FETCH DATA FOR EDIT MODE ---
+    const { data: lessonData } = useLesson(lessonId || null);
+    const { data: questionsData } = useAllQuestions(lessonId ? { lessonId, size: 100 } : {});
 
     // --- LESSON STATE ---
     const [lessonName, setLessonName] = useState('');
     const [description, setDescription] = useState('');
     const [lessonType, setLessonType] = useState<LessonType>(LessonType.VOCABULARY);
     const [thumbnailUrl, setThumbnailUrl] = useState('');
-
-    // ARRAY MEDIA URLs (Logic mới)
     const [mediaUrls, setMediaUrls] = useState<string[]>([]);
 
     // --- QUESTIONS STATE ---
@@ -92,8 +102,70 @@ const CreateLessonScreen = () => {
     const [currentQ, setCurrentQ] = useState<LocalQuestionState>(defaultQ);
     const [isEditingIndex, setIsEditingIndex] = useState<number | null>(null);
 
-    // Helper: Is this a "Just Media" lesson?
     const isMediaLesson = [LessonType.VIDEO, LessonType.AUDIO, LessonType.DOCUMENT].includes(lessonType);
+
+    // --- EFFECTS ---
+
+    // Populate data when in edit mode
+    useEffect(() => {
+        if (isEditMode && lessonData) {
+            setLessonName(lessonData.title);
+            setDescription(lessonData.description || '');
+            setLessonType(lessonData.lessonType || LessonType.VOCABULARY);
+            setThumbnailUrl(lessonData.thumbnailUrl || '');
+            // FIX: DTO LessonResponse uses videoUrls, but UI uses mediaUrls
+            setMediaUrls(lessonData.videoUrls || []);
+        }
+    }, [isEditMode, lessonData]);
+
+    useEffect(() => {
+        if (isEditMode && questionsData?.data) {
+            // FIX: Explicitly type 'q' as LessonQuestionResponse to avoid 'unknown' error
+            const mappedQuestions: LocalQuestionState[] = questionsData.data.map((q: LessonQuestionResponse) => {
+                let options = { A: q.optionA || '', B: q.optionB || '', C: q.optionC || '', D: q.optionD || '' };
+                let pairs = [{ key: '', value: '' }];
+                let orderItems = ['', ''];
+                let correctOption = q.correctOption || '';
+
+                try {
+                    if (q.optionsJson) {
+                        const parsed = JSON.parse(q.optionsJson);
+                        if (q.questionType === QuestionType.MATCHING) {
+                            pairs = Array.isArray(parsed) ? parsed : pairs;
+                        } else if (q.questionType === QuestionType.ORDERING) {
+                            // For ordering, correctOption is usually the pipe separated correct order "Item1|Item2"
+                            // parsed is the shuffled list usually.
+                            if (correctOption.includes("|")) {
+                                orderItems = correctOption.split("|");
+                            }
+                        } else {
+                            // MC
+                            options = { ...options, ...parsed };
+                        }
+                    }
+                } catch (e) {
+                    console.log("Error parsing optionsJson", e);
+                }
+
+                return {
+                    id: q.lessonQuestionId, // Mapping correct ID field from DTO
+                    question: q.question,
+                    questionType: q.questionType,
+                    options,
+                    pairs,
+                    orderItems,
+                    correctOption,
+                    transcript: q.transcript || '',
+                    explainAnswer: q.explainAnswer || '',
+                    weight: q.weight?.toString() || '1',
+                    mediaUrl: q.mediaUrl || ''
+                };
+            });
+            // Sort by orderIndex if needed, though backend usually handles it
+            setQuestions(mappedQuestions);
+        }
+    }, [isEditMode, questionsData]);
+
 
     // --- LOGIC HANDLERS ---
 
@@ -110,16 +182,13 @@ const CreateLessonScreen = () => {
     const handleSaveQuestion = () => {
         if (!currentQ.question) return Alert.alert("Error", "Enter a question prompt.");
 
-        // Validation based on type
         if (currentQ.questionType === QuestionType.MATCHING && currentQ.pairs.some(p => !p.key || !p.value)) {
             return Alert.alert("Error", "Fill all matching pairs.");
         }
 
-        // Auto-generate correctOption for specific types to match BE expectation
         let finalQ = { ...currentQ };
 
         if (currentQ.questionType === QuestionType.TRUE_FALSE) {
-            // Ensure correctOption is 'A' (True) or 'B' (False) or similar convention
             if (!['True', 'False'].includes(finalQ.correctOption)) finalQ.correctOption = 'True';
         }
 
@@ -128,20 +197,21 @@ const CreateLessonScreen = () => {
             updated[isEditingIndex] = finalQ;
             setQuestions(updated);
         } else {
-            setQuestions([...questions, { ...finalQ, id: Date.now().toString() }]);
+            setQuestions([...questions, { ...finalQ, id: Date.now().toString() }]); // Temp ID for new
         }
         setModalVisible(false);
         setCurrentQ(defaultQ);
     };
 
-    const handleCreateLesson = async () => {
+    const handleSave = async () => {
         if (!lessonName) return Alert.alert("Error", "Lesson Name required");
         if (isMediaLesson && mediaUrls.length === 0) return Alert.alert("Error", `Upload at least one ${lessonType} file.`);
-        if (!courseId) return Alert.alert("Error", "Course ID is missing. Cannot create lesson.");
+        if (!courseId) return Alert.alert("Error", "Course ID is missing.");
 
         setIsSubmitting(true);
         try {
-            // 1. Create Lesson
+            let targetLessonId = lessonId;
+
             const lessonPayload: LessonRequest = {
                 lessonName,
                 title: lessonName,
@@ -149,8 +219,8 @@ const CreateLessonScreen = () => {
                 description,
                 thumbnailUrl,
                 lessonType,
-                mediaUrls: mediaUrls, // SEND ARRAY
-                skillType: 'READING', // Default, logic can enhance
+                mediaUrls: mediaUrls, // Request DTO accepts mediaUrls
+                skillType: 'READING',
                 languageCode: 'vi',
                 expReward: isMediaLesson ? 10 : 10 + (questions.length * 2),
                 orderIndex: 0,
@@ -163,51 +233,71 @@ const CreateLessonScreen = () => {
                 courseId: courseId
             };
 
-            const newLesson = await createLessonMutation.mutateAsync(lessonPayload);
-
-            // 2. Create Questions (If any)
-            for (let i = 0; i < questions.length; i++) {
-                const q = questions[i];
-                let optionsJson = "";
-
-                // Serialize Data based on Type
-                if (q.questionType === QuestionType.MATCHING) {
-                    optionsJson = JSON.stringify(q.pairs);
-                } else if (q.questionType === QuestionType.ORDERING) {
-                    // Logic: correctOption stores "Item1|Item2|Item3" in correct order
-                    // optionsJson stores shuffled list
-                    const correctStr = q.orderItems.join("|");
-                    q.correctOption = correctStr;
-                    optionsJson = JSON.stringify([...q.orderItems].sort(() => Math.random() - 0.5));
-                } else {
-                    optionsJson = JSON.stringify(q.options);
-                }
-
-                const qPayload: LessonQuestionRequest = {
-                    lessonId: newLesson.lessonId,
-                    question: q.question,
-                    questionType: q.questionType,
-                    skillType: SkillType.READING, // Or infer from Q type
-                    languageCode: 'vi',
-                    optionsJson: optionsJson,
-                    optionA: q.options.A,
-                    optionB: q.options.B,
-                    optionC: q.options.C,
-                    optionD: q.options.D,
-                    correctOption: q.correctOption,
-                    transcript: q.transcript,
-                    mediaUrl: q.mediaUrl,
-                    explainAnswer: q.explainAnswer,
-                    weight: parseInt(q.weight) || 1,
-                    orderIndex: i
-                };
-                await createQuestionMutation.mutateAsync(qPayload);
+            if (isEditMode && lessonId) {
+                // UPDATE
+                await updateLessonMutation.mutateAsync({ id: lessonId, req: lessonPayload });
+            } else {
+                // CREATE
+                const newLesson = await createLessonMutation.mutateAsync(lessonPayload);
+                targetLessonId = newLesson.lessonId;
             }
 
-            Alert.alert("Success", "Lesson created!", [{ text: "OK", onPress: () => navigation.goBack() }]);
+            // Handle Questions (Create or Update)
+            if (targetLessonId) {
+                for (let i = 0; i < questions.length; i++) {
+                    const q = questions[i];
+                    let optionsJson = "";
+
+                    if (q.questionType === QuestionType.MATCHING) {
+                        optionsJson = JSON.stringify(q.pairs);
+                    } else if (q.questionType === QuestionType.ORDERING) {
+                        const correctStr = q.orderItems.join("|");
+                        q.correctOption = correctStr;
+                        optionsJson = JSON.stringify([...q.orderItems].sort(() => Math.random() - 0.5));
+                    } else {
+                        optionsJson = JSON.stringify(q.options);
+                    }
+
+                    const qPayload: LessonQuestionRequest = {
+                        lessonId: targetLessonId,
+                        question: q.question,
+                        questionType: q.questionType,
+                        skillType: SkillType.READING,
+                        languageCode: 'vi',
+                        optionsJson: optionsJson,
+                        optionA: q.options.A,
+                        optionB: q.options.B,
+                        optionC: q.options.C,
+                        optionD: q.options.D,
+                        correctOption: q.correctOption,
+                        transcript: q.transcript,
+                        mediaUrl: q.mediaUrl,
+                        explainAnswer: q.explainAnswer,
+                        weight: parseInt(q.weight) || 1,
+                        orderIndex: i
+                    };
+
+                    // Check if ID is a real UUID (length > 20) or temp timestamp
+                    if (q.id && q.id.length > 20) {
+                        // Update existing
+                        await updateQuestionMutation.mutateAsync({ id: q.id, req: qPayload });
+                    } else {
+                        // Create new
+                        await createQuestionMutation.mutateAsync(qPayload);
+                    }
+                }
+            }
+
+            Alert.alert("Success", isEditMode ? "Lesson updated!" : "Lesson created!", [
+                {
+                    text: "OK",
+                    onPress: () => navigation.goBack()
+                }
+            ]);
+
         } catch (e) {
             console.error(e);
-            Alert.alert("Error", "Failed to create lesson");
+            Alert.alert("Error", "Failed to save lesson");
         } finally {
             setIsSubmitting(false);
         }
@@ -346,7 +436,7 @@ const CreateLessonScreen = () => {
                     </View>
                 );
 
-            default: // WRITING, ESSAY
+            default:
                 return null;
         }
     };
@@ -354,7 +444,13 @@ const CreateLessonScreen = () => {
     return (
         <ScreenLayout style={styles.container}>
             <ScrollView contentContainerStyle={styles.content}>
-                <Text style={styles.header}>Create Lesson</Text>
+                <View style={styles.headerRow}>
+                    <TouchableOpacity onPress={() => navigation.goBack()}>
+                        <Ionicons name="arrow-back" size={24} color="#333" />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>{isEditMode ? "Edit Lesson" : "Create Lesson"}</Text>
+                    <View style={{ width: 24 }} />
+                </View>
 
                 {/* 1. CONFIG */}
                 <View style={styles.section}>
@@ -375,11 +471,10 @@ const CreateLessonScreen = () => {
                     </ScrollView>
                 </View>
 
-                {/* 2. MEDIA UPLOAD (Dynamic based on Type) */}
+                {/* 2. MEDIA UPLOAD */}
                 <View style={styles.section}>
                     <Text style={styles.label}>Lesson Media {isMediaLesson ? "(Required)" : "(Optional Intro)"}</Text>
 
-                    {/* Media List */}
                     {mediaUrls.map((url, idx) => (
                         <View key={idx} style={styles.mediaItem}>
                             <Text numberOfLines={1} style={{ flex: 1 }}>{url.slice(-30)}</Text>
@@ -399,7 +494,7 @@ const CreateLessonScreen = () => {
                     </FileUploader>
                 </View>
 
-                {/* 3. QUESTIONS (Optional for Media Lessons) */}
+                {/* 3. QUESTIONS */}
                 <View style={styles.section}>
                     <View style={styles.rowBetween}>
                         <Text style={styles.sectionTitle}>Questions ({questions.length})</Text>
@@ -409,7 +504,11 @@ const CreateLessonScreen = () => {
                     </View>
 
                     {questions.map((q, i) => (
-                        <View key={q.id} style={styles.questionCard}>
+                        <TouchableOpacity
+                            key={q.id || i}
+                            style={styles.questionCard}
+                            onPress={() => { setCurrentQ(q); setModalVisible(true); setIsEditingIndex(i); }}
+                        >
                             <Text style={{ fontWeight: 'bold' }}>{q.questionType}</Text>
                             <Text numberOfLines={1}>{q.question}</Text>
                             <TouchableOpacity style={{ position: 'absolute', right: 10, top: 10 }} onPress={() => {
@@ -417,16 +516,16 @@ const CreateLessonScreen = () => {
                             }}>
                                 <Ionicons name="close" size={20} color="#999" />
                             </TouchableOpacity>
-                        </View>
+                        </TouchableOpacity>
                     ))}
                 </View>
 
                 <TouchableOpacity
                     style={[styles.saveBtn, isSubmitting && { opacity: 0.7 }]}
-                    onPress={handleCreateLesson}
+                    onPress={handleSave}
                     disabled={isSubmitting}
                 >
-                    {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>Create Lesson</Text>}
+                    {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>{isEditMode ? "Update Lesson" : "Create Lesson"}</Text>}
                 </TouchableOpacity>
 
                 <View style={{ height: 50 }} />
@@ -491,6 +590,8 @@ const CreateLessonScreen = () => {
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: '#F8F9FA' },
     content: { padding: 20 },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+    headerTitle: { fontSize: 20, fontWeight: 'bold' },
     header: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
     section: { marginBottom: 20, backgroundColor: '#FFF', padding: 15, borderRadius: 10 },
     label: { fontSize: 13, color: '#666', marginBottom: 5, fontWeight: '600' },

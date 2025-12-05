@@ -14,7 +14,7 @@ export default ({ config }) => {
       name: "MonkeyLingua",
       assets: ["./assets/fonts/"],
       slug: "MonkeyLingua",
-      jsEngine: "hermes",
+      jsEngine: "jsc",
       platforms: ["ios", "android", "web"],
       version: "1.0.0",
       orientation: "portrait",

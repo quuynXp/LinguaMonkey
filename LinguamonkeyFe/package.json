@@ -90,6 +90,7 @@
     "i18next": "^25.3.3",
     "jwt-decode": "^4.0.0",
     "metro-react-native-babel-transformer": "^0.77.0",
+    "missing-asset-registry-path": "^0.0.0",
     "postinstall-postinstall": "^2.1.0",
     "react": "19.1.0",
     "react-async-hook": "^4.0.0",

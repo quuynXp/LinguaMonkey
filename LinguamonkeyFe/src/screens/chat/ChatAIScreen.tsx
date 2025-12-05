@@ -22,16 +22,17 @@ import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import instance from "../../api/axiosClient";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { Room } from "../../types/entity";
+import { Room, ChatMessage } from "../../types/entity";
 
-type AiMessage = {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  isStreaming?: boolean;
-};
+// Random greetings for empty state
+const GREETINGS = [
+  "Hello! How can I help you practice today?",
+  "Xin chào! Bạn muốn học gì hôm nay?",
+  "Ready to improve your language skills?",
+  "I'm listening! What's on your mind?",
+  "Hãy bắt đầu trò chuyện để luyện tập nào!",
+];
 
-// --- OPTIMIZED MESSAGE ITEM COMPONENT ---
 const MessageItem = React.memo(({
   message,
   onToggleTranslation,
@@ -39,13 +40,13 @@ const MessageItem = React.memo(({
   toggleState,
   isTranslating
 }: {
-  message: AiMessage,
+  message: ChatMessage,
   onToggleTranslation: (id: string, text: string) => void,
   translationData: string | undefined,
   toggleState: string | 'original',
   isTranslating: boolean
 }) => {
-  const isUser = message.role === 'user';
+  const isUser = !!message.senderId; // If senderId exists, it's user. If null (AI), it's system.
   const displayedText = (toggleState !== 'original' && translationData)
     ? translationData
     : message.content;
@@ -54,14 +55,13 @@ const MessageItem = React.memo(({
     <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.aiMessageContainer]}>
       <View style={styles.messageRow}>
         <TouchableOpacity
-          onPress={() => !isUser && onToggleTranslation(message.id, message.content)}
+          onPress={() => !isUser && onToggleTranslation(message.id.chatMessageId, message.content)}
           style={{ maxWidth: "80%" }}
           disabled={isUser}
         >
           <View style={[styles.messageBubble, isUser ? styles.userMessage : styles.aiMessage]}>
             <Text style={[styles.messageText, isUser ? styles.userMessageText : styles.aiMessageText]}>
               {displayedText}
-              {message.isStreaming && <Text style={{ color: '#9CA3AF' }}> •</Text>}
             </Text>
           </View>
         </TouchableOpacity>
@@ -69,7 +69,7 @@ const MessageItem = React.memo(({
         {!isUser && (
           <TouchableOpacity
             style={styles.translateButtonIcon}
-            onPress={() => onToggleTranslation(message.id, message.content)}
+            onPress={() => onToggleTranslation(message.id.chatMessageId, message.content)}
             disabled={isTranslating}
           >
             {isTranslating ? (
@@ -83,17 +83,14 @@ const MessageItem = React.memo(({
     </View>
   );
 }, (prev, next) => {
-  // Custom comparison to prevent re-renders of non-changing items
   return (
     prev.message.content === next.message.content &&
-    prev.message.isStreaming === next.message.isStreaming &&
     prev.translationData === next.translationData &&
     prev.toggleState === next.toggleState &&
     prev.isTranslating === next.isTranslating
   );
 });
 
-// THÊM displayName VÀO ĐÂY ĐỂ KHẮC PHỤC LỖI react/display-name
 MessageItem.displayName = 'MessageItem';
 
 const ChatAIScreen = () => {
@@ -108,35 +105,38 @@ const ChatAIScreen = () => {
   const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
   const [isHistoryVisible, setIsHistoryVisible] = useState(false);
   const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
+  const [randomGreeting, setRandomGreeting] = useState("");
 
   // Store Selectors
   const activeAiRoomId = useChatStore(s => s.activeAiRoomId);
-  const aiHistory = useChatStore(s => s.aiChatHistory);
-  const aiRooms = useChatStore(s => s.aiRoomList);
-  const isAiStreaming = useChatStore(s => s.isAiStreaming);
+  const aiRoomList = useChatStore(s => s.aiRoomList);
   const loadingByRoom = useChatStore(s => s.loadingByRoom);
   const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
   const pageByRoom = useChatStore(s => s.pageByRoom);
-  const isAiInitialMessageSent = useChatStore(s => s.isAiInitialMessageSent);
-  const aiWsConnected = useChatStore(s => s.aiWsConnected);
+  const messagesByRoom = useChatStore(s => s.messagesByRoom);
 
   // ACTIONS
-  const initAiClient = useChatStore(s => s.initAiClient);
-  const disconnectAi = useChatStore(s => s.disconnectAi);
   const startNewAiChat = useChatStore(s => s.startNewAiChat);
   const selectAiRoom = useChatStore(s => s.selectAiRoom);
   const fetchAiRoomList = useChatStore(s => s.fetchAiRoomList);
   const loadMessages = useChatStore(s => s.loadMessages);
-  const sendAiPrompt = useChatStore(s => s.sendAiPrompt);
-  const sendAiWelcomeMessage = useChatStore(s => s.sendAiWelcomeMessage);
+  const sendMessage = useChatStore(s => s.sendMessage);
+  const disconnectAi = useChatStore(s => s.disconnectAi); // Clean up active room id
 
   const isLoading = activeAiRoomId ? loadingByRoom[activeAiRoomId] : false;
+  const messages = activeAiRoomId ? messagesByRoom[activeAiRoomId] || [] : [];
 
-  // Memoize the reversed list to avoid recalculation on every render
-  const displayMessages = useMemo(() => [...aiHistory].reverse(), [aiHistory]);
+  // Use messagesByRoom directly. Since it's typically sorted DESC by sentAt for UI (reversed list),
+  // and FlatList inverted={true}, we might need to adjust based on store implementation.
+  // Assuming store keeps them [Newest ... Oldest].
+  const displayMessages = useMemo(() => messages, [messages]);
 
   useEffect(() => {
-    initAiClient();
+    // Pick random greeting on mount
+    setRandomGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
+  }, []);
+
+  useEffect(() => {
     const initializeData = async () => {
       await fetchAiRoomList();
       if (!activeAiRoomId) {
@@ -145,15 +145,8 @@ const ChatAIScreen = () => {
     };
     if (user?.userId) initializeData();
     return () => { disconnectAi(); };
-  }, [user?.userId, initAiClient, disconnectAi]);
+  }, [user?.userId, fetchAiRoomList, startNewAiChat, activeAiRoomId, disconnectAi]);
 
-  useEffect(() => {
-    if (activeAiRoomId && aiWsConnected && !isLoading && !isAiStreaming) {
-      if (aiHistory.length === 0 && !isAiInitialMessageSent) {
-        sendAiWelcomeMessage();
-      }
-    }
-  }, [activeAiRoomId, isLoading, aiHistory.length, isAiStreaming, aiWsConnected, sendAiWelcomeMessage]);
 
   const handleLoadMore = () => {
     if (activeAiRoomId && !isLoading && hasMoreByRoom[activeAiRoomId]) {
@@ -163,10 +156,12 @@ const ChatAIScreen = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !activeAiRoomId) return;
     const textToSend = inputText.trim();
     setInputText("");
-    await sendAiPrompt(textToSend);
+
+    // Send via standard STOMP flow. The backend handles AI logic.
+    sendMessage(activeAiRoomId, textToSend, 'TEXT');
   };
 
   const { mutate: translateMutate } = useMutation({
@@ -192,7 +187,6 @@ const ChatAIScreen = () => {
     },
   });
 
-  // Callbacks
   const handleToggleTranslation = useCallback((messageId: string, messageText: string) => {
     const currentView = messagesToggleState[messageId] || 'original';
     if (currentView !== 'original') {
@@ -216,9 +210,9 @@ const ChatAIScreen = () => {
     }
   };
 
-  const renderMessageItem = useCallback(({ item }: { item: AiMessage }) => {
-    const currentView = messagesToggleState[item.id] || 'original';
-    const translation = localTranslations[item.id]?.[currentView];
+  const renderMessageItem = useCallback(({ item }: { item: ChatMessage }) => {
+    const currentView = messagesToggleState[item.id.chatMessageId] || 'original';
+    const translation = localTranslations[item.id.chatMessageId]?.[currentView];
 
     return (
       <MessageItem
@@ -226,12 +220,12 @@ const ChatAIScreen = () => {
         onToggleTranslation={handleToggleTranslation}
         translationData={translation}
         toggleState={currentView}
-        isTranslating={translatingMessageId === item.id}
+        isTranslating={translatingMessageId === item.id.chatMessageId}
       />
     );
   }, [messagesToggleState, localTranslations, translatingMessageId, handleToggleTranslation]);
 
-  const keyExtractor = useCallback((item: AiMessage) => item.id, []);
+  const keyExtractor = useCallback((item: ChatMessage) => item.id.chatMessageId, []);
 
   return (
     <ScreenLayout>
@@ -283,19 +277,15 @@ const ChatAIScreen = () => {
             maxToRenderPerBatch={10}
             windowSize={10}
             ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
-            ListEmptyComponent={!isLoading && !isAiStreaming ? (
-              <View style={{ alignItems: 'center', marginTop: 50 }}>
-                <Text style={{ color: '#9CA3AF' }}>Bắt đầu trò chuyện với AI...</Text>
+            ListEmptyComponent={!isLoading ? (
+              <View style={{ alignItems: 'center', marginTop: 50, paddingHorizontal: 20 }}>
+                <Icon name="chat-bubble-outline" size={48} color="#D1D5DB" />
+                <Text style={{ color: '#6B7280', marginTop: 16, textAlign: 'center', fontSize: 16 }}>
+                  {randomGreeting}
+                </Text>
               </View>
             ) : null}
           />
-
-          {isAiStreaming && !aiHistory.length && (
-            <View style={styles.streamingIndicator}>
-              <ActivityIndicator size="small" color="#6B7280" />
-              <Text style={styles.streamingText}>{t("loading.ai")}</Text>
-            </View>
-          )}
 
           {/* Input Area */}
           <View style={styles.inputContainer}>
@@ -307,12 +297,11 @@ const ChatAIScreen = () => {
               onSubmitEditing={handleSendMessage}
               returnKeyType="send"
               multiline
-              editable={!isAiStreaming}
             />
             <TouchableOpacity
-              style={[styles.sendButton, (!inputText.trim() || isAiStreaming) && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (!inputText.trim()) && styles.sendButtonDisabled]}
               onPress={handleSendMessage}
-              disabled={!inputText.trim() || isAiStreaming}
+              disabled={!inputText.trim()}
             >
               <Icon name="send" size={20} color="#FFFFFF" />
             </TouchableOpacity>
@@ -339,6 +328,10 @@ const ChatAIScreen = () => {
                 style={styles.newChatButton}
                 onPress={async () => {
                   setIsHistoryVisible(false);
+                  // Force new session explicitly if user clicks "New Chat"
+                  // Backend creates new room if user requests specifically, or we can just rely on logic
+                  // For "New Chat" button, we might need a specific API Param or just navigate to a fresh state.
+                  // Since `startNewAiChat` in store calls `ai-chat-room?newSession=true`, it will create a fresh room.
                   await startNewAiChat();
                 }}
               >
@@ -347,7 +340,7 @@ const ChatAIScreen = () => {
               </TouchableOpacity>
 
               <FlatList
-                data={aiRooms}
+                data={aiRoomList}
                 keyExtractor={(item) => item.roomId}
                 renderItem={({ item }) => (
                   <TouchableOpacity
@@ -415,9 +408,6 @@ const styles = createScaledSheet({
   aiMessageText: { color: "#1F2937" },
 
   translateButtonIcon: { marginLeft: 8, padding: 4 },
-
-  streamingIndicator: { flexDirection: "row", alignItems: "center", padding: 8, justifyContent: "center" },
-  streamingText: { marginLeft: 8, color: "#6B7280", fontSize: 12 },
 
   inputContainer: {
     flexDirection: "row",
