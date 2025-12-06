@@ -17,13 +17,13 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
 import { gotoTab } from "../../utils/navigationRef";
-import { useChatStore, getMessageDisplayData } from "../../stores/ChatStore";
+import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useFriendships } from "../../hooks/useFriendships";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
 import FileUploader from "../../components/common/FileUploader";
-import { RoomPurpose, FriendshipStatus } from "../../types/enums";
+import { FriendshipStatus } from "../../types/enums";
 import { UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
@@ -43,14 +43,12 @@ type UIMessage = {
     translatedText?: string;
     user: string;
     avatar: string | null;
-    hasTargetLangTranslation: boolean;
     sentAt: string;
     isRead: boolean;
     senderId: string;
     translatedLang?: string;
     isLocal?: boolean;
     senderProfile?: UserProfileResponse;
-    showTranslation?: boolean;
     roomId?: string;
     isDeleted?: boolean;
 };
@@ -177,12 +175,8 @@ const QuickProfilePopup = ({
 
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
-    initialRoomName,
     isBubbleMode = false,
-    onCloseBubble,
-    onMinimizeBubble,
-    autoTranslate = false,
-    soundEnabled = true,
+    autoTranslate = false, // Prop from AppStore Settings
     initialFocusMessageId = null
 }) => {
     const { t, i18n } = useTranslation();
@@ -196,9 +190,9 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [inputText, setInputText] = useState("");
     const [isUploading, setIsUploading] = useState(false);
 
+    // Local override translation storage if user manually translates
     const [localTranslations, setLocalTranslations] = useState<any>({});
-    const [messagesToggleState, setMessagesToggleState] = useState<any>({});
-    const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language || 'vi');
+    const [translationTargetLang] = useState(i18n.language || 'vi');
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
 
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
@@ -212,6 +206,8 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     }, [roomId, isBubbleMode]);
 
     const loadMessages = useChatStore(s => s.loadMessages);
+    const pageByRoom = useChatStore(s => s.pageByRoom);
+    const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
     const sendMessage = useChatStore(s => s.sendMessage);
     const editMessage = useChatStore(s => s.editMessage);
     const markMessageAsRead = useChatStore(s => s.markMessageAsRead);
@@ -219,19 +215,20 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const serverMessages = messagesByRoom[roomId] || [];
     const flatListRef = useRef<FlatList>(null);
+    const currentPage = pageByRoom[roomId] || 0;
+    const hasMore = hasMoreByRoom[roomId] || false;
+
+    useEffect(() => { loadMessages(roomId, 0); }, [roomId]);
 
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages.map((msg: any) => {
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
 
-            const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
+            // Priority: Local (manual) translation > DB translation
+            const dbTrans = msg.translatedText;
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
             const finalTranslation = localTrans || dbTrans;
-            const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
-
-            const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
-            const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!dbTrans);
 
             return {
                 id: messageId,
@@ -240,37 +237,40 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
                 text: msg.content || '',
                 content: msg.content || '',
-                translatedText: finalTranslation,
+                translatedText: finalTranslation, // Null if not translated yet
                 translatedLang: msg.translatedLang,
                 mediaUrl: (msg as any).mediaUrl,
                 messageType: (msg as any).messageType || 'TEXT',
                 user: msg.senderProfile?.fullname || 'Unknown',
                 avatar: msg.senderProfile?.avatarUrl || null,
                 sentAt: msg?.id?.sentAt,
-                showTranslation: showTranslation,
-                hasTargetLangTranslation: !!finalTranslation,
                 isRead: msg.isRead,
                 isLocal: (msg as any).isLocal,
                 senderProfile: msg.senderProfile,
                 roomId: roomId,
                 isDeleted: msg.isDeleted
             } as UIMessage;
-        }).sort((a, b) => {
-            const timeA = new Date(a.sentAt).getTime();
-            const timeB = new Date(b.sentAt).getTime();
-            return timeA - timeB;
         });
-    }, [serverMessages, localTranslations, translationTargetLang, currentUserId, autoTranslate]);
+    }, [serverMessages, localTranslations, translationTargetLang, currentUserId]);
 
-    useEffect(() => { loadMessages(roomId); }, [roomId]);
+    // Auto scroll logic
     useEffect(() => {
         if (!messages.length) return;
-        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
+        const lastMsg = messages[messages.length - 1];
+        if (lastMsg.sender === 'user' || lastMsg.isLocal) {
+            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
+        }
     }, [messages.length]);
 
     useEffect(() => {
         messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
     }, [messages.length, roomId]);
+
+    const handleLoadMore = () => {
+        if (hasMore) {
+            loadMessages(roomId, currentPage + 1);
+        }
+    };
 
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
@@ -290,19 +290,13 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         },
         onSuccess: (data) => {
             setLocalTranslations((prev: any) => ({ ...prev, [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text } }));
-            setMessagesToggleState((prev: any) => ({ ...prev, [data.id]: data.target }));
             setTranslatingMessageId(null);
         },
         onError: () => { setTranslatingMessageId(null); showToast({ message: t("error.translation"), type: "error" }); }
     });
 
-    const handleTranslateClick = (id: string, text: string) => {
-        const currentView = messagesToggleState[id];
-        if (currentView && currentView !== 'original') { setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' })); }
-        else {
-            if (localTranslations[id]?.[translationTargetLang]) { setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang })); }
-            else { translateMutate({ text, target: translationTargetLang, id }); }
-        }
+    const handleManualTranslate = (id: string, text: string) => {
+        translateMutate({ text, target: translationTargetLang, id });
     };
 
     const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
@@ -310,30 +304,25 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const handleNavigateProfile = () => {
         setIsPopupVisible(false);
         if (selectedProfile) {
-            gotoTab(
-                "Profile",
-                "UserProfileViewScreen",
-                { userId: selectedProfile.userId }
-            );
+            gotoTab("Profile", "UserProfileViewScreen", { userId: selectedProfile.userId });
         }
     };
 
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
-        const displayData = getMessageDisplayData(item);
-        const currentView = messagesToggleState[item.id];
-        let displayText = item.text;
-        let isTranslatedView = false;
 
-        if (currentView && currentView !== 'original') {
-            const localTrans = localTranslations[item.id]?.[currentView];
-            displayText = localTrans || (item.translatedLang === currentView ? item.translatedText : item.text);
-            isTranslatedView = true;
-        } else if (displayData.isTranslated) {
-            displayText = displayData.text;
-            isTranslatedView = true;
-        }
+        // --- LOGIC CHANGE ---
+        // Always show original text.
+        // If translatedText exists, show it BELOW with a divider.
+        // Don't hide buttons based on view toggle. 
+        // Button Logic: 
+        // 1. If translated: Hide button (Done).
+        // 2. If NOT translated AND autoTranslate=ON: Hide button (Async/Pending).
+        // 3. If NOT translated AND autoTranslate=OFF: Show button (Manual).
+
+        const hasTranslation = !!item.translatedText;
+        const showTranslateButton = !isUser && !isMedia && !hasTranslation && !autoTranslate;
 
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
@@ -350,22 +339,40 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 <View style={styles.msgContent}>
                     {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
                     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
+
+                        {/* 1. ORIGINAL CONTENT / MEDIA */}
                         {isMedia ? (
                             <View>
                                 {item.messageType === 'IMAGE' && <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />}
                                 {item.messageType === 'VIDEO' && <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
                                 {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
                             </View>
-                        ) : (<Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{displayText}</Text>)}
-                        {isTranslatedView && <Text style={styles.transTag}>{currentView || displayData.lang || translationTargetLang}</Text>}
+                        ) : (
+                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
+                        )}
+
+                        {/* 2. TRANSLATED CONTENT (SEPARATE BLOCK) */}
+                        {!isUser && !isMedia && hasTranslation && (
+                            <View style={styles.translationBlock}>
+                                <View style={styles.divider} />
+                                <Text style={styles.translatedText}>{item.translatedText}</Text>
+                                <Text style={styles.transTag}>{item.translatedLang || 'vi'}</Text>
+                            </View>
+                        )}
+
                         <View style={styles.metaRow}>
                             <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
                             {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
                         </View>
                     </View>
-                    {!isUser && !isMedia && (
-                        <TouchableOpacity onPress={() => handleTranslateClick(item.id, item.text)} style={styles.transBtn} disabled={translatingMessageId === item.id}>
-                            {translatingMessageId === item.id ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name={isTranslatedView ? "undo" : "translate"} size={16} color={isTranslatedView ? "#3B82F6" : "#9CA3AF"} />}
+
+                    {/* 3. TRANSLATE BUTTON (Conditional) */}
+                    {showTranslateButton && (
+                        <TouchableOpacity onPress={() => handleManualTranslate(item.id, item.text)} style={styles.transBtn} disabled={translatingMessageId === item.id}>
+                            {translatingMessageId === item.id ?
+                                <ActivityIndicator size="small" color="#6B7280" /> :
+                                <Icon name="translate" size={16} color="#9CA3AF" />
+                            }
                         </TouchableOpacity>
                     )}
                 </View>
@@ -375,7 +382,15 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     return (
         <ScreenLayout style={styles.container}>
-            <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} />
+            <FlatList
+                ref={flatListRef}
+                data={messages}
+                keyExtractor={item => item.id}
+                style={styles.list}
+                renderItem={renderMessageItem}
+                onRefresh={handleLoadMore}
+                refreshing={false}
+            />
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 90}>
                 {editingMessage && (
                     <View style={styles.editBanner}>
@@ -434,7 +449,11 @@ const styles = createScaledSheet({
     text: { fontSize: 16, lineHeight: 22 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
-    transTag: { fontSize: 10, color: '#9CA3AF', fontStyle: 'italic', marginTop: 2, textAlign: 'right' },
+    // New Styles for Translation Block
+    translationBlock: { marginTop: 8 },
+    divider: { height: 1, backgroundColor: '#E5E7EB', marginBottom: 6 },
+    translatedText: { fontSize: 15, color: '#4B5563', lineHeight: 20 },
+    transTag: { fontSize: 9, color: '#9CA3AF', fontStyle: 'italic', marginTop: 4, textAlign: 'right' },
     metaRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
     time: { fontSize: 10 },
     timeUser: { color: 'rgba(255,255,255,0.7)' },

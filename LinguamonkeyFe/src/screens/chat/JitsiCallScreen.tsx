@@ -45,7 +45,6 @@ const LANGUAGES = [
   { code: 'zh', name: 'Chinese' },
 ];
 
-// Định nghĩa cấu hình ICE Server (Sử dụng STUN server công cộng)
 const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
 ];
@@ -61,8 +60,9 @@ const WebRTCCallScreen = () => {
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
 
   // === API HOOKS ===
-  const { useUpdateVideoCall } = useVideoCalls();
+  const { useUpdateVideoCall, useVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
+  const { data: videoCallData, isLoading: isLoadingCallData } = useVideoCall(videoCallId);
 
   // === STATE ===
   const [nativeLang, setNativeLang] = useState(defaultNativeLangCode);
@@ -77,7 +77,7 @@ const WebRTCCallScreen = () => {
 
   // === REF ===
   const ws = useRef<WebSocket | null>(null);
-  const pc = useRef<any>(null); // RTCPeerConnection ref
+  const pc = useRef<any>(null);
 
   // === SETUP CONSTANTS ===
   const subtitleModes: ModeOption[] = [
@@ -109,30 +109,20 @@ const WebRTCCallScreen = () => {
   }, [roomId, user?.userId]);
 
   const setupPeerConnection = useCallback((stream: any) => {
-    // 1. Tạo PeerConnection
     pc.current = new (window as any).RTCPeerConnection({ iceServers });
 
-    // 2. Đăng ký các sự kiện
     pc.current.onicecandidate = (event: any) => {
       if (event.candidate) {
-        console.log("Sending ICE Candidate:", event.candidate);
         sendSignalingMessage({ type: 'ice_candidate', candidate: event.candidate });
       }
     };
 
     pc.current.onaddstream = (event: any) => {
-      console.log("Received Remote Stream!");
+      console.log("✅ Received Remote Stream!");
       setRemoteStream(event.stream);
     };
 
-    // 3. Thêm Local Stream
     pc.current.addStream(stream);
-
-    // 4. Thử tạo Offer (nếu là người gọi)
-    // Cần logic bên ngoài để xác định ai là người gọi đầu tiên, 
-    // nhưng ta giả định người tạo phòng/tham gia trước sẽ tạo offer
-    // Nếu có người dùng thứ 2 tham gia, họ sẽ nhận Offer và tạo Answer.
-
   }, [sendSignalingMessage]);
 
   // --- DEVICE AND STREAM SETUP ---
@@ -144,13 +134,14 @@ const WebRTCCallScreen = () => {
       ]);
     }
 
-    const constraints = {
+    // FIX TS ERROR 1 & 3: Loại bỏ import MediaStreamConstraints bị lỗi
+    // và sử dụng kiểu any hoặc cấu trúc đối tượng chuẩn.
+    const constraints: any = { // Sử dụng 'any' để tránh lỗi type import
       video: {
-        mandatory: {
-          minWidth: 500,
-          minHeight: 300,
-          minFrameRate: 30,
-        },
+        width: 640,
+        height: 480,
+        frameRate: 30,
+        facingMode: 'user'
       },
       audio: true,
     };
@@ -180,7 +171,6 @@ const WebRTCCallScreen = () => {
       if (stream) setupPeerConnection(stream);
     });
 
-    // Dọn dẹp khi thoát màn hình
     return () => {
       if (!callEnded && user?.userId) {
         updateCallStatus({
@@ -196,24 +186,28 @@ const WebRTCCallScreen = () => {
 
   // --- WEBSOCKET AND SIGNALING LOGIC ---
   useEffect(() => {
-    if (!roomId || !accessToken) return;
+    // Chỉ khởi tạo WebSocket khi có đủ dữ liệu cần thiết (đặc biệt là videoCallData)
+    if (!roomId || !accessToken || !videoCallData || !localStream) return;
 
     let cleanBase = API_BASE_URL.replace('http://', '').replace('https://', '');
     if (cleanBase.endsWith('/')) cleanBase = cleanBase.slice(0, -1);
     const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
 
-    // WebSocket dùng chung cho Signaling và Subtitles
     const wsUrl = `${protocol}${cleanBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
 
     if (ws.current) ws.current.close();
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
-      console.log("✅ WebSocket Connected (Signaling & Subtitle)");
+      console.log("✅ WebSocket Connected");
       initSubtitleAudioStream();
-      // Giả định: Người dùng đầu tiên tham gia sẽ gửi OFFER
-      if (user?.userId === 'USER_ID_OF_CALLER') { // Thay bằng logic xác định người gọi thực tế
+
+      // FIX LOGIC: Kiểm tra nếu mình là Caller thì tạo Offer
+      if (videoCallData.callerId === user?.userId) {
+        console.log("🚀 I am the CALLER, creating offer...");
         createOffer();
+      } else {
+        console.log("🎧 I am the CALLEE, waiting for offer...");
       }
     };
 
@@ -221,7 +215,6 @@ const WebRTCCallScreen = () => {
       try {
         const data = JSON.parse(e.data);
         if (data.type === 'subtitle') {
-          // Logic xử lý Subtitle (Giữ nguyên)
           setSubtitle({
             original: data.original, originalLang: data.originalLang || 'en',
             translated: data.translated, translatedLang: data.translatedLang || nativeLang,
@@ -231,7 +224,6 @@ const WebRTCCallScreen = () => {
           return () => clearTimeout(timer);
 
         } else if (data.type === 'webrtc_signal' && data.senderId !== user?.userId) {
-          // Logic xử lý WebRTC Signaling
           handleSignaling(data.payload);
         }
       } catch (err) { console.error("WS Parse Error:", err); }
@@ -241,7 +233,7 @@ const WebRTCCallScreen = () => {
       LiveAudioStream.stop();
       if (ws.current) ws.current.close();
     };
-  }, [roomId, nativeLang, spokenLang, accessToken, user?.userId]);
+  }, [roomId, nativeLang, spokenLang, accessToken, user?.userId, videoCallData, localStream]);
 
   // --- WEBRTC SIGNALING LOGIC ---
   const handleSignaling = async (message: any) => {
@@ -251,19 +243,21 @@ const WebRTCCallScreen = () => {
 
     try {
       if (type === 'offer') {
+        console.log("📩 Received Offer");
         await pc.current.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-        console.log("Received Offer, sending Answer...");
+
+        console.log("📤 Sending Answer...");
         const answer = await pc.current.createAnswer();
         await pc.current.setLocalDescription(answer);
-        sendSignalingMessage(pc.current.localDescription); // Send answer back
+        sendSignalingMessage(pc.current.localDescription);
 
       } else if (type === 'answer') {
+        console.log("📩 Received Answer");
         await pc.current.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
-        console.log("Received Answer.");
 
       } else if (type === 'ice_candidate') {
+        console.log("🧊 Adding ICE Candidate");
         await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
-        console.log("Added ICE Candidate.");
       }
     } catch (error) {
       console.error("WebRTC Signaling Error:", error);
@@ -271,23 +265,18 @@ const WebRTCCallScreen = () => {
   };
 
   const createOffer = async () => {
-    if (!pc.current || !localStream) {
-      // Nếu PeerConnection chưa sẵn sàng, thử lại sau.
-      // Đây là lỗi thiết kế nếu setupPeerConnection chưa gọi xong
-      return;
-    }
+    if (!pc.current) return;
 
     try {
       const offer = await pc.current.createOffer();
       await pc.current.setLocalDescription(offer);
       sendSignalingMessage(pc.current.localDescription);
-      console.log("Sent Offer.");
+      console.log("🚀 Sent Offer");
     } catch (error) {
       console.error("Create Offer Error:", error);
     }
   };
 
-  // --- SUBTITLE AUDIO STREAM (Giữ nguyên logic của bạn) ---
   const initSubtitleAudioStream = async () => {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(
@@ -313,7 +302,6 @@ const WebRTCCallScreen = () => {
     }
   };
 
-  // --- HANDLERS (Giữ nguyên) ---
   const handleCallEnd = useCallback(() => {
     if (callEnded || !user?.userId) return;
     setCallEnded(true);
@@ -335,6 +323,11 @@ const WebRTCCallScreen = () => {
     setShowSettings(false);
   };
 
+  const handleSpokenLangChange = (code: string) => {
+    setSpokenLang(code);
+    setShowSettings(false);
+  };
+
   const toggleMic = () => {
     const nextState = !isMicOn;
     setIsMicOn(nextState);
@@ -348,7 +341,6 @@ const WebRTCCallScreen = () => {
     }
   };
 
-  // === RENDER HELPERS (Giữ nguyên logic phụ đề) ===
   const renderSubtitleContent = () => {
     if (subtitleMode === 'off' || !subtitle) {
       if (subtitleMode !== 'off' && !subtitle) {
@@ -380,7 +372,6 @@ const WebRTCCallScreen = () => {
     );
   };
 
-  // --- MAIN RENDER ---
   return (
     <ScreenLayout>
       <View style={styles.container}>
@@ -394,7 +385,9 @@ const WebRTCCallScreen = () => {
         ) : (
           <View style={styles.remoteVideoPlaceholder}>
             <ActivityIndicator size="large" color="#4f46e5" />
-            <Text style={styles.remoteVideoText}>{t('waiting_for_partner')}</Text>
+            <Text style={styles.remoteVideoText}>
+              {isLoadingCallData ? "Loading info..." : t('waiting_for_partner')}
+            </Text>
           </View>
         )}
 
@@ -404,7 +397,7 @@ const WebRTCCallScreen = () => {
             streamURL={localStream.toURL()}
             style={styles.localVideo}
             objectFit="cover"
-            zOrder={1} // Đảm bảo nằm trên remote video
+            zOrder={1}
           />
         )}
 
@@ -434,7 +427,7 @@ const WebRTCCallScreen = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Settings Modal - Giữ nguyên như cũ */}
+        {/* Settings Modal */}
         <Modal visible={showSettings} transparent animationType="slide">
           <TouchableOpacity style={styles.modalBackdrop} onPress={() => setShowSettings(false)} />
           <View style={styles.modalContainer}>
@@ -508,7 +501,7 @@ const styles = createScaledSheet({
   localVideo: {
     position: 'absolute',
     top: 60,
-    right: 70, // Đặt gần nút controls
+    right: 70,
     width: 100,
     height: 150,
     aspectRatio: 0.75,
@@ -518,7 +511,7 @@ const styles = createScaledSheet({
     borderColor: 'white',
     elevation: 5,
   },
-  // --- OVERLAY STYLES (Giữ nguyên) ---
+  // --- OVERLAY STYLES ---
   endCallButton: {
     position: 'absolute', bottom: 40, alignSelf: 'center',
     backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30,

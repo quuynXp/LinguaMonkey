@@ -25,7 +25,7 @@ public class LessonQuestion extends BaseEntity {
     @JoinColumn(name = "lesson_id", referencedColumnName = "lesson_id")
     private Lesson lesson; 
 
-    @Column(name = "question")
+    @Column(name = "question", columnDefinition = "TEXT")
     private String question;
 
     @Column(name = "optiona")
@@ -47,29 +47,28 @@ public class LessonQuestion extends BaseEntity {
     @Column(name = "language_code")
     private String languageCode;
 
-    @Column(name = "options_json", columnDefinition = "text")
+    @Column(name = "options_json", columnDefinition = "TEXT")
     private String optionsJson;
 
     @Enumerated(EnumType.STRING)
     private SkillType skillType;
 
-    @Column(name = "media_url")
+    @Column(name = "media_url", length = 500)
     private String mediaUrl;
     
-    @Column(name = "transcript", columnDefinition = "text")
+    @Column(name = "transcript", columnDefinition = "TEXT")
     private String transcript;
 
     @Column(name = "weight")
     @Builder.Default
     private Integer weight = 1;
 
-    // Dùng cho câu hỏi trắc nghiệm (A, B, C, D)
-    @Column(name = "correct_option")
+    @Column(name = "correct_option", columnDefinition = "TEXT")
     private String correctOption;
 
     @Column(name = "order_index")
     private Integer orderIndex;
 
-    @Column(name = "explain_answer", columnDefinition = "text")
+    @Column(name = "explain_answer", columnDefinition = "TEXT")
     private String explainAnswer;
 }

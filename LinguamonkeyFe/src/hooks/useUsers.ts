@@ -11,7 +11,7 @@ import {
   UserRequest,
 } from "../types/dto";
 
-import { Country } from "../types/enums";
+import { AgeRange, Country } from "../types/enums";
 
 // Define basic interfaces for reference data if not already in dto
 export interface Interest {
@@ -63,7 +63,14 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 export const useUsers = () => {
   const queryClient = useQueryClient();
 
-  const useSearchPublicUsers = (params?: { keyword?: string; country?: Country; page?: number; size?: number }) => {
+  const useSearchPublicUsers = (params?: {
+    keyword?: string;
+    country?: Country;
+    gender?: string;      // Thêm
+    ageRange?: AgeRange;  // Thêm
+    page?: number;
+    size?: number
+  }) => {
     const { page = 0, size = 20, ...rest } = params || {};
     return useQuery({
       queryKey: userKeys.publicSearch({ ...rest, page, size }),

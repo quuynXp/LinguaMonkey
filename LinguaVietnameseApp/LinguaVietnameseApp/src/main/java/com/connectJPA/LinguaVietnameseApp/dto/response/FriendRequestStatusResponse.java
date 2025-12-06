@@ -12,5 +12,5 @@ import lombok.NoArgsConstructor;
 public class FriendRequestStatusResponse {
     private boolean hasSentRequest;
     private boolean hasReceivedRequest;
-    private String status;
+    // private String status;
 }

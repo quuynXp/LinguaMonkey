@@ -9,6 +9,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -21,7 +22,7 @@ public interface UserService {
     Page<UserResponse> getAllUsers(String email, String fullname, String nickname, Pageable pageable);
     
     // NEW: Safe search for public directory
-    Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, Pageable pageable);
+    Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, String gender, AgeRange ageRange, Pageable pageable);
 
     UserResponse getUserById(UUID id);
     UserResponse createUser(UserRequest request);

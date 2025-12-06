@@ -177,6 +177,7 @@ export interface ChatMessage {
     updatedAt?: string;
     sentAt?: string;
     deletedAt?: string;
+    senderProfile?: UserProfileResponse
     isRead: boolean;
     translatedText?: string; // Bản dịch được cache trong DB
     translatedLang?: string; // Mã ngôn ngữ của bản dịch (ví dụ: 'vi', 'en')

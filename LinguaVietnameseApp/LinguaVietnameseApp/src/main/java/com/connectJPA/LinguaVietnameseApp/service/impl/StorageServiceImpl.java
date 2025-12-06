@@ -33,11 +33,11 @@ public class StorageServiceImpl implements StorageService {
     @Value("${google.drive.folderId}")
     private String folderId;
 
-    // UPDATED: Limit to 100MB
+    // Limit to 100MB
     private static final long MAX_FILE_SIZE = 100 * 1024 * 1024;
     
-    // UPDATED: Using /file/d/ID/view format for better media access
-    private static final String VIEW_URL_TEMPLATE = "https://drive.google.com/file/d/%s/view?usp=sharing";
+    // UPDATED: Using Direct Link format (lh3) for images to work in mobile apps
+    private static final String VIEW_URL_TEMPLATE = "https://lh3.googleusercontent.com/d/%s";
 
     @Transactional
     @Override
@@ -99,7 +99,9 @@ public class StorageServiceImpl implements StorageService {
         try {
             String fileId = tempPath;
             
-            // FIX: Robustly extract fileId from the URL string (tempPath)
+            // Robustly extract fileId from various URL formats
+            
+            // Case 1: Standard View URL: /file/d/ID/view
             if (tempPath.contains("/file/d/")) {
                 int startIndex = tempPath.indexOf("/file/d/") + 8; // Start after /file/d/
                 
@@ -118,7 +120,14 @@ public class StorageServiceImpl implements StorageService {
                 
                 fileId = tempPath.substring(startIndex, endId); 
             } 
-            // Handle old download URL format (uc?export=download&id=ID)
+            // Case 2: Direct Link URL: googleusercontent.com/d/ID
+            else if (tempPath.contains("googleusercontent.com/d/")) {
+                int startIndex = tempPath.indexOf("/d/") + 3;
+                int endId = tempPath.indexOf("?", startIndex);
+                if (endId == -1) endId = tempPath.length();
+                fileId = tempPath.substring(startIndex, endId);
+            }
+            // Case 3: Old Download URL: id=ID
             else if (tempPath.contains("id=")) {
                 int startId = tempPath.indexOf("id=") + 3;
                 int endId = tempPath.indexOf("&", startId);
@@ -140,6 +149,7 @@ public class StorageServiceImpl implements StorageService {
 
             UserMedia savedMedia = mediaRepo.save(media);
             
+            // Generate the final URL using the clean ID
             savedMedia.setFileUrl(getFileUrl(fileId)); 
             
             return savedMedia;

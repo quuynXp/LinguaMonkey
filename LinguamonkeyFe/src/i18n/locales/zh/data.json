@@ -1,66 +1,66 @@
 {
     "currency": {
-        "title": "Currency",
-        "select": "Select Currency",
-        "convert": "Convert",
-        "rate": "Exchange Rate",
-        "updatedAt": "Last updated",
-        "VND": "Vietnamese Dong",
-        "USD": "US Dollar",
-        "CNY": "Chinese Yuan",
-        "JPY": "Japanese Yen",
-        "KRW": "Korean Won",
-        "EUR": "Euro"
+        "title": "货币",
+        "select": "选择货币",
+        "convert": "转换",
+        "rate": "汇率",
+        "updatedAt": "最后更新时间",
+        "VND": "越南盾",
+        "USD": "美元",
+        "CNY": "人民币",
+        "JPY": "日元",
+        "KRW": "韩元",
+        "EUR": "欧元"
     },
     "language": {
-        "chooseLanguages": "Choose your native and learning languages",
-        "nativeLanguage": "Native Language",
-        "learningLanguage": "Learning Language",
-        "selectLanguages": "Select Languages",
-        "changed": "Language changed successfully"
+        "chooseLanguages": "选择您的母语和学习语言",
+        "nativeLanguage": "母语",
+        "learningLanguage": "学习语言",
+        "selectLanguages": "选择语言",
+        "changed": "语言更改成功"
     },
     "languageSelection": {
-        "title": "Select Your Languages",
-        "nativeLanguage": "Native Language",
-        "learningLanguage": "Learning Language",
-        "selectNative": "Select your native language",
-        "selectLearning": "Select the language you want to learn"
+        "title": "选择您的语言",
+        "nativeLanguage": "母语",
+        "learningLanguage": "学习语言",
+        "selectNative": "选择您的母语",
+        "selectLearning": "选择您想学习的语言"
     },
     "environment": {
-        "general": "General",
-        "generalDesc": "Practice everyday conversations.",
-        "business": "Business",
-        "businessDesc": "Improve your business communication skills.",
-        "casual": "Casual",
-        "casualDesc": "Relaxed conversations with friends.",
-        "academic": "Academic",
-        "academicDesc": "Learn in an academic environment.",
-        "travel": "Travel",
-        "travelDesc": "Conversations for traveling abroad.",
-        "restaurant": "Restaurant",
-        "restaurantDesc": "Practice ordering and dining conversations.",
-        "switch": "Switch Environment"
+        "general": "一般",
+        "generalDesc": "练习日常对话。",
+        "business": "商务",
+        "businessDesc": "提高您的商务沟通技巧。",
+        "casual": "休闲",
+        "casualDesc": "与朋友进行轻松的对话。",
+        "academic": "学术",
+        "academicDesc": "在学术环境中学习。",
+        "travel": "旅行",
+        "travelDesc": "出国旅行的对话练习。",
+        "restaurant": "餐厅",
+        "restaurantDesc": "练习点餐和用餐对话。",
+        "switch": "切换环境"
     },
     "categories": {
-        "all": "All Categories",
-        "free": "Free",
-        "paid": "Paid",
-        "purchased": "Purchased"
+        "all": "所有类别",
+        "free": "免费",
+        "paid": "付费",
+        "purchased": "已购买"
     },
     "enums": {
-        "level": "Level",
+        "level": "级别",
         "country": {
-            "VIETNAM": "Vietnam",
-            "CHINA": "CHINA",
-            "JAPAN": "JAPAN",
-            "KOREAN": "KOREAN",
-            "FRANCE": "FRANCE"
+            "VIETNAM": "越南",
+            "CHINA": "中国",
+            "JAPAN": "日本",
+            "KOREAN": "韩国",
+            "FRANCE": "法国"
         },
         "ageRange": {
-            "AGE_18_24": "18 - 24 Years Old"
+            "AGE_18_24": "18 - 24 岁"
         },
         "learningPace": {
-            "SLOW": "Slow (20 mins/day)"
+            "SLOW": "慢速 (20 分钟/天)"
         }
     },
     "proficiency": {
@@ -70,38 +70,38 @@
         "B2": "B2",
         "C1": "C1",
         "C2": "C2",
-        "NATIVE": "Native Speaker",
-        "BEGINER": "Beginner"
+        "NATIVE": "母语者",
+        "BEGINER": "初学者"
     },
     "difficulty": {
-        "title": "Difficulty",
-        "easy": "Easy",
-        "medium": "Medium",
-        "hard": "Hard"
+        "title": "难度",
+        "easy": "简单",
+        "medium": "中等",
+        "hard": "困难"
     },
     "tips": {
-        "title": "Tips"
+        "title": "提示"
     },
     "appSubtitle": {
         "feature": {
-            "aiLearning": "AI-Powered Learning",
-            "socialLearning": "Social Learning",
-            "gamified": "Gamified Experience"
+            "aiLearning": "AI 驱动学习",
+            "socialLearning": "社交学习",
+            "gamified": "游戏化体验"
         }
     },
     "levels": {
-        "beginner": "Beginner",
-        "intermediate": "Intermediate",
-        "advanced": "Advanced"
+        "beginner": "初级",
+        "intermediate": "中级",
+        "advanced": "高级"
     },
     "level": {
-        "beginner": "Beginner",
-        "intermediate": "Intermediate",
-        "advanced": "Advanced"
+        "beginner": "初级",
+        "intermediate": "中级",
+        "advanced": "高级"
     },
     "purpose": {
-        "learning": "Learning",
-        "social": "Social",
-        "quiz": "Quiz"
+        "learning": "学习",
+        "social": "社交",
+        "quiz": "测验"
     }
 }

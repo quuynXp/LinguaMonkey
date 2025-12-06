@@ -116,26 +116,21 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, Pageable pageable) {
-        try {
-            Page<User> users;
-            if (keyword != null && !keyword.isBlank()) {
-                users = userRepository.searchUsersByKeyword(keyword, pageable);
-            } else if (country != null) {
-                users = userRepository.findAll(pageable);
-            } else {
-                users = userRepository.findAll(pageable);
-            }
-            List<UserProfileResponse> profileResponses = users.stream()
-                    .filter(u -> !u.isDeleted())
-                    .map(user -> getUserProfile(viewerId, user.getUserId()))
-                    .collect(Collectors.toList());
-            return new PageImpl<>(profileResponses, pageable, users.getTotalElements());
-        } catch (Exception e) {
-            log.error("Error searching public users", e);
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, String gender, AgeRange ageRange, Pageable pageable) {
+    try {
+        Page<User> users = userRepository.searchAdvanced(keyword, country, gender, ageRange, pageable);
+
+        List<UserProfileResponse> profileResponses = users.stream()
+                .filter(u -> !u.isDeleted())
+                .map(user -> getUserProfile(viewerId, user.getUserId())) // Lưu ý: hàm này có thể gây N+1 query, nên tối ưu sau
+                .collect(Collectors.toList());
+        
+        return new PageImpl<>(profileResponses, pageable, users.getTotalElements());
+    } catch (Exception e) {
+        log.error("Error searching public users", e);
+        throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
     }
+}
 
     @Transactional
     @Override
@@ -614,7 +609,7 @@ public class UserServiceImpl implements UserService {
                 .exp(target.getExp())
                 .bio(target.getBio())
                 .gender(target.getGender())
-                .ageRange(target.getAgeRange())       
+                .ageRange(target.getAgeRange())        
                 .proficiency(target.getProficiency())
                 .learningPace(target.getLearningPace())
                 .lastActiveAt(target.getLastActiveAt())
@@ -652,7 +647,13 @@ public class UserServiceImpl implements UserService {
             log.debug("getBadgesForUser failed: {}", e.getMessage());
         }
         boolean isFriend = false;
-        FriendRequestStatusResponse friendReqStatus = FriendRequestStatusResponse.builder().status("NONE").build();
+        
+        // FIX: Removed .status("NONE") usage
+        FriendRequestStatusResponse friendReqStatus = FriendRequestStatusResponse.builder()
+                .hasSentRequest(false)
+                .hasReceivedRequest(false)
+                .build();
+        
         boolean canSendFriendRequest = true;
         boolean canUnfriend = false;
         boolean canBlock = false;
@@ -663,7 +664,9 @@ public class UserServiceImpl implements UserService {
                 friendReqStatus = friendshipService.getFriendRequestStatus(viewerId, targetId);
                 canUnfriend = isFriend;
                 canBlock = true;
-                canSendFriendRequest = !isFriend && (friendReqStatus == null || !"SENT".equals(friendReqStatus.getStatus()));
+                
+                // FIX: Check boolean flag instead of string equality
+                canSendFriendRequest = !isFriend && (friendReqStatus == null || !friendReqStatus.isHasSentRequest());
                 
                 if (isFriend) {
                     Optional<Friendship> friendshipOpt = friendshipRepository.findByIdRequesterIdAndIdReceiverIdAndIsDeletedFalse(viewerId, targetId)

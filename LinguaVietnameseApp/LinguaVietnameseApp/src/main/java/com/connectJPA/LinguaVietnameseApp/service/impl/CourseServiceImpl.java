@@ -233,29 +233,19 @@ public class CourseServiceImpl implements CourseService {
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
         
-        // Fix: Course creation logic adjusted. 
-        // We need a dummy or temp version to hold initial data if strict mapping requires it,
-        // but typically 'createCourse' just makes the container.
-        // However, the input code used course.getLatestPublicVersion().setPrice(), which implies an existing object.
-        // Since we are creating a fresh course, latestPublicVersion is null.
-        // We will create the draft version first.
-        
         course.setApprovalStatus(CourseApprovalStatus.PENDING);
         course = courseRepository.save(course);
 
         // Create first Version (Draft v1)
         CourseVersion version = new CourseVersion();
-        // Fix: setCourseId instead of setCourse
         version.setCourseId(course.getCourseId());
         version.setVersionNumber(1);
         version.setStatus(VersionStatus.DRAFT);
         version.setIsIntegrityValid(null);
         version.setIsContentValid(null);
-        version.setPrice(request.getPrice()); // Set price on the version
+        version.setPrice(request.getPrice()); 
         
         courseVersionRepository.save(version);
-        
-        // Note: latestPublicVersion remains null until published.
         
         return enrichCourseResponse(courseMapper.toResponse(course));
     }
@@ -266,7 +256,6 @@ public class CourseServiceImpl implements CourseService {
         CourseVersion version = courseVersionRepository.findByVersionIdAndStatus(versionId, VersionStatus.DRAFT)
                 .orElseThrow(() -> new AppException(ErrorCode.VERSION_NOT_FOUND_OR_NOT_DRAFT));
 
-        // Fix: Fetch Course
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
@@ -317,7 +306,6 @@ public class CourseServiceImpl implements CourseService {
         CourseVersion version = courseVersionRepository.findByVersionIdAndStatus(versionId, VersionStatus.DRAFT)
                 .orElseThrow(() -> new AppException(ErrorCode.VERSION_NOT_FOUND_OR_NOT_DRAFT));
 
-        // Fix: Fetch Course
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
@@ -338,7 +326,6 @@ public class CourseServiceImpl implements CourseService {
         if (version.getLessons() == null || version.getLessons().isEmpty()) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
-        // Logic check: price from version, not course.latestPublic
         if (version.getPrice() != null && version.getPrice().compareTo(BigDecimal.ZERO) < 0) {
             throw new AppException(ErrorCode.INVALID_REQUEST);
         }
@@ -389,7 +376,6 @@ public class CourseServiceImpl implements CourseService {
         Course course = courseRepository.findById(courseId)
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
-        // Fix: Use new repo method signature (courseId)
         boolean draftExists = courseVersionRepository.existsByCourseIdAndStatus(courseId, VersionStatus.DRAFT);
         if (draftExists) {
             throw new AppException(ErrorCode.COURSE_HAS_DRAFT_ALREADY);
@@ -400,7 +386,6 @@ public class CourseServiceImpl implements CourseService {
         int nextVerNum = (publicVersion == null) ? 1 : publicVersion.getVersionNumber() + 1;
 
         CourseVersion newDraft = new CourseVersion();
-        // Fix: setCourseId
         newDraft.setCourseId(course.getCourseId());
         newDraft.setVersionNumber(nextVerNum);
         newDraft.setStatus(VersionStatus.DRAFT);
@@ -480,8 +465,6 @@ public class CourseServiceImpl implements CourseService {
     }
 
     private void sendLearnerUpdateNotification(Course course, CourseVersion version, String content) {
-        // Fix: Use new repo method signature for enrollment (findByUserId / findByCourseId)
-        // Assuming we have a method to find enrollments by course ID
         List<CourseVersionEnrollment> enrollments = courseEnrollmentRepository.findByCourseVersion_CourseIdAndIsDeletedFalse(course.getCourseId());
         
         for (CourseVersionEnrollment enrollment : enrollments) {
@@ -497,24 +480,32 @@ public class CourseServiceImpl implements CourseService {
         }
     }
 
+    // FIXED: Logic for Tab All, Search, and Type Filter
     @Override
     public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable) {
         Page<Course> courses;
+
+        // 1. Filter by Admin Created
         if (isAdminCreated != null && isAdminCreated) {
             courses = courseRepository.findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(
                     CourseApprovalStatus.APPROVED, pageable
             );
-        } else if (title != null && languageCode != null) {
-            courses = courseRepository.findByTitleContainingIgnoreCaseAndLanguageCodeAndApprovalStatusAndIsDeletedFalse(
-                    title, languageCode, CourseApprovalStatus.APPROVED, pageable);
-        } else if (type != null) {
+        } 
+        // 2. Search by Title (Prioritize searching if title exists, ignore languageCode requirement for basic title search)
+        else if (title != null && !title.isBlank()) {
+            // Using searchCoursesByKeyword which searches in Title and Description
+            courses = courseRepository.searchCoursesByKeyword(title, pageable);
+        } 
+        // 3. Filter by Type (FREE / PAID)
+        else if (type != null) {
             courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
-        } else {
-             courses = courseRepository.findByDifficultyLevelInAndCourseIdNotInAndApprovalStatusAndIsDeletedFalse(
-                     List.of("BEGINNER"), List.of(UUID.randomUUID()), CourseApprovalStatus.APPROVED, pageable
-             );
+        } 
+        // 4. Default: Get ALL Approved Courses (Fixes "Tab All" showing only Beginners)
+        else {
+            courses = courseRepository.findByApprovalStatusAndIsDeletedFalse(CourseApprovalStatus.APPROVED, pageable);
         }
-        return courses.map(courseMapper::toResponse);
+        
+        return courses.map(courseMapper::toResponse).map(this::enrichCourseResponse);
     }
 
     @Override
@@ -527,7 +518,6 @@ public class CourseServiceImpl implements CourseService {
         );
 
         return discounts.map(discount -> {
-            // Fix: Fetch Course via ID
             Course course = courseRepository.findById(discount.getCourseVersion().getCourseId()).orElse(null);
             
             CourseResponse response = (course != null) ? courseMapper.toResponse(course) : new CourseResponse();
@@ -553,7 +543,7 @@ public class CourseServiceImpl implements CourseService {
         List<UUID> enrolledCourseIds = enrollments.stream()
                 .map(enrollment -> {
                     if (enrollment.getCourseVersion() != null) {
-                        return enrollment.getCourseVersion().getCourseId(); // Fix
+                        return enrollment.getCourseVersion().getCourseId(); 
                     }
                     return null;
                 })
@@ -640,11 +630,9 @@ public class CourseServiceImpl implements CourseService {
     public Page<CourseResponse> getEnrolledCoursesByUserId(UUID userId, Pageable pageable) {
         Page<CourseVersionEnrollment> enrollments = courseEnrollmentRepository.findByUserId(userId, pageable);
         return enrollments.map(enrollment -> {
-            // Fix: Fetch Course
             Course course = courseRepository.findById(enrollment.getCourseVersion().getCourseId()).orElse(null);
             
             if (course == null) {
-                // Handle orphan enrollment or throw error, keeping logic simple here
                 throw new AppException(ErrorCode.COURSE_NOT_FOUND);
             }
             return enrichCourseResponse(courseMapper.toResponse(course));
@@ -663,7 +651,6 @@ public class CourseServiceImpl implements CourseService {
         CourseVersion version = courseVersionRepository.findByVersionIdAndStatus(versionId, VersionStatus.PENDING_APPROVAL)
                 .orElseThrow(() -> new AppException(ErrorCode.VERSION_NOT_FOUND_OR_NOT_DRAFT));
 
-        // Fix: Fetch Course
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 
@@ -706,7 +693,6 @@ public class CourseServiceImpl implements CourseService {
         CourseVersion version = courseVersionRepository.findByVersionIdAndStatus(versionId, VersionStatus.PENDING_APPROVAL)
                 .orElseThrow(() -> new AppException(ErrorCode.VERSION_NOT_FOUND_OR_NOT_DRAFT));
 
-        // Fix: Fetch Course
         Course course = courseRepository.findById(version.getCourseId())
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_NOT_FOUND));
 

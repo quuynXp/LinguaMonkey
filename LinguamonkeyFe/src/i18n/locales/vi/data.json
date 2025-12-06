@@ -1,66 +1,66 @@
 {
     "currency": {
-        "title": "Currency",
-        "select": "Select Currency",
-        "convert": "Convert",
-        "rate": "Exchange Rate",
-        "updatedAt": "Last updated",
-        "VND": "Vietnamese Dong",
-        "USD": "US Dollar",
-        "CNY": "Chinese Yuan",
-        "JPY": "Japanese Yen",
-        "KRW": "Korean Won",
+        "title": "Tiền tệ",
+        "select": "Chọn Tiền tệ",
+        "convert": "Chuyển đổi",
+        "rate": "Tỷ giá Hối đoái",
+        "updatedAt": "Cập nhật lần cuối",
+        "VND": "Đồng Việt Nam",
+        "USD": "Đô la Mỹ",
+        "CNY": "Nhân dân tệ",
+        "JPY": "Yên Nhật",
+        "KRW": "Won Hàn Quốc",
         "EUR": "Euro"
     },
     "language": {
-        "chooseLanguages": "Choose your native and learning languages",
-        "nativeLanguage": "Native Language",
-        "learningLanguage": "Learning Language",
-        "selectLanguages": "Select Languages",
-        "changed": "Language changed successfully"
+        "chooseLanguages": "Chọn ngôn ngữ bản địa và ngôn ngữ đang học của bạn",
+        "nativeLanguage": "Ngôn ngữ Bản địa",
+        "learningLanguage": "Ngôn ngữ Đang học",
+        "selectLanguages": "Chọn Ngôn ngữ",
+        "changed": "Thay đổi ngôn ngữ thành công"
     },
     "languageSelection": {
-        "title": "Select Your Languages",
-        "nativeLanguage": "Native Language",
-        "learningLanguage": "Learning Language",
-        "selectNative": "Select your native language",
-        "selectLearning": "Select the language you want to learn"
+        "title": "Chọn Ngôn ngữ Của Bạn",
+        "nativeLanguage": "Ngôn ngữ Bản địa",
+        "learningLanguage": "Ngôn ngữ Đang học",
+        "selectNative": "Chọn ngôn ngữ bản địa của bạn",
+        "selectLearning": "Chọn ngôn ngữ bạn muốn học"
     },
     "environment": {
-        "general": "General",
-        "generalDesc": "Practice everyday conversations.",
-        "business": "Business",
-        "businessDesc": "Improve your business communication skills.",
-        "casual": "Casual",
-        "casualDesc": "Relaxed conversations with friends.",
-        "academic": "Academic",
-        "academicDesc": "Learn in an academic environment.",
-        "travel": "Travel",
-        "travelDesc": "Conversations for traveling abroad.",
-        "restaurant": "Restaurant",
-        "restaurantDesc": "Practice ordering and dining conversations.",
-        "switch": "Switch Environment"
+        "general": "Tổng quát",
+        "generalDesc": "Thực hành các cuộc hội thoại hàng ngày.",
+        "business": "Kinh doanh",
+        "businessDesc": "Cải thiện kỹ năng giao tiếp trong kinh doanh của bạn.",
+        "casual": "Thân mật",
+        "casualDesc": "Các cuộc trò chuyện thoải mái với bạn bè.",
+        "academic": "Học thuật",
+        "academicDesc": "Học tập trong một môi trường học thuật.",
+        "travel": "Du lịch",
+        "travelDesc": "Các cuộc hội thoại khi đi du lịch nước ngoài.",
+        "restaurant": "Nhà hàng",
+        "restaurantDesc": "Thực hành gọi món và các cuộc hội thoại khi dùng bữa.",
+        "switch": "Chuyển đổi Môi trường"
     },
     "categories": {
-        "all": "All Categories",
-        "free": "Free",
-        "paid": "Paid",
-        "purchased": "Purchased"
+        "all": "Tất cả Danh mục",
+        "free": "Miễn phí",
+        "paid": "Trả phí",
+        "purchased": "Đã mua"
     },
     "enums": {
-        "level": "Level",
+        "level": "Cấp độ",
         "country": {
-            "VIETNAM": "Vietnam",
-            "CHINA": "CHINA",
-            "JAPAN": "JAPAN",
-            "KOREAN": "KOREAN",
-            "FRANCE": "FRANCE"
+            "VIETNAM": "Việt Nam",
+            "CHINA": "TRUNG QUỐC",
+            "JAPAN": "NHẬT BẢN",
+            "KOREAN": "HÀN QUỐC",
+            "FRANCE": "PHÁP"
         },
         "ageRange": {
-            "AGE_18_24": "18 - 24 Years Old"
+            "AGE_18_24": "18 - 24 Tuổi"
         },
         "learningPace": {
-            "SLOW": "Slow (20 mins/day)"
+            "SLOW": "Chậm (20 phút/ngày)"
         }
     },
     "proficiency": {
@@ -70,38 +70,38 @@
         "B2": "B2",
         "C1": "C1",
         "C2": "C2",
-        "NATIVE": "Native Speaker",
-        "BEGINER": "Beginner"
+        "NATIVE": "Người bản xứ",
+        "BEGINER": "Người mới bắt đầu"
     },
     "difficulty": {
-        "title": "Difficulty",
-        "easy": "Easy",
-        "medium": "Medium",
-        "hard": "Hard"
+        "title": "Độ khó",
+        "easy": "Dễ",
+        "medium": "Trung bình",
+        "hard": "Khó"
     },
     "tips": {
-        "title": "Tips"
+        "title": "Mẹo"
     },
     "appSubtitle": {
         "feature": {
-            "aiLearning": "AI-Powered Learning",
-            "socialLearning": "Social Learning",
-            "gamified": "Gamified Experience"
+            "aiLearning": "Học tập được hỗ trợ bởi AI",
+            "socialLearning": "Học tập Xã hội",
+            "gamified": "Trải nghiệm Game hóa"
         }
     },
     "levels": {
-        "beginner": "Beginner",
-        "intermediate": "Intermediate",
-        "advanced": "Advanced"
+        "beginner": "Người mới bắt đầu",
+        "intermediate": "Trung cấp",
+        "advanced": "Nâng cao"
     },
     "level": {
-        "beginner": "Beginner",
-        "intermediate": "Intermediate",
-        "advanced": "Advanced"
+        "beginner": "Người mới bắt đầu",
+        "intermediate": "Trung cấp",
+        "advanced": "Nâng cao"
     },
     "purpose": {
-        "learning": "Learning",
-        "social": "Social",
-        "quiz": "Quiz"
+        "learning": "Học tập",
+        "social": "Xã hội",
+        "quiz": "Bài kiểm tra"
     }
 }

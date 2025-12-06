@@ -179,8 +179,7 @@ services:
   # 3. PYTHON SERVICE
   # ==============================================================================
   - name: python-service
-    # FIX: Đổi 8001 -> 10000 để khớp với biến môi trường PORT trên Render
-    url: http://pythonservice:10000
+    url: http://pythonservice:8001
     connect_timeout: 60000
     write_timeout: 300000
     read_timeout: 300000

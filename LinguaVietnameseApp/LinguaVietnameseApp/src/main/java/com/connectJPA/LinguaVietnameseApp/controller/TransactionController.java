@@ -20,6 +20,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.view.RedirectView;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -50,51 +51,16 @@ public class TransactionController {
                 .build());
     }
 
-    @Operation(summary = "[Admin] Get pending refund requests")
-    @GetMapping("/refunds/pending")
-    // @PreAuthorize("hasRole('ADMIN')") 
-    public AppApiResponse<Page<RefundRequestResponse>> getPendingRefunds(
-            Pageable pageable,
-            Locale locale) {
-        Page<RefundRequestResponse> refunds = transactionService.getPendingRefundRequests(pageable);
-        return AppApiResponse.<Page<RefundRequestResponse>>builder()
-                .code(200)
-                .message("Pending refunds retrieved")
-                .result(refunds)
-                .build();
+    @Operation(summary = "Handle VNPAY Return URL", description = "Receives callback from VNPAY, validates checksum and redirects to Mobile App")
+    @GetMapping("/vnpay-return")
+    public RedirectView vnpayReturn(HttpServletRequest request) {
+        String appRedirectUrl = transactionService.processVnPayReturn(request);
+        RedirectView redirectView = new RedirectView();
+        redirectView.setUrl(appRedirectUrl);
+        return redirectView;
     }
 
-    @Operation(summary = "[Admin] Approve a refund")
-    @PostMapping("/refunds/approve")
-    // @PreAuthorize("hasRole('ADMIN')")
-    public AppApiResponse<TransactionResponse> approveRefund(
-            @RequestBody ApproveRefundRequest request,
-            Locale locale) {
-        TransactionResponse response = transactionService.approveRefund(request);
-        return AppApiResponse.<TransactionResponse>builder()
-                .code(200)
-                .message("Refund approved successfully")
-                .result(response)
-                .build();
-    }
-
-    @Operation(summary = "[Admin] Reject a refund")
-    @PostMapping("/refunds/{id}/reject")
-    // @PreAuthorize("hasRole('ADMIN')")
-    public AppApiResponse<TransactionResponse> rejectRefund(
-            @PathVariable UUID id,
-            @RequestParam UUID adminId,
-            @RequestParam String reason,
-            Locale locale) {
-        TransactionResponse response = transactionService.rejectRefund(id, adminId, reason);
-        return AppApiResponse.<TransactionResponse>builder()
-                .code(200)
-                .message("Refund rejected")
-                .result(response)
-                .build();
-    }
-
-    @Operation(summary = "Handle payment webhook", description = "Process webhook notifications from VNPAY, or Stripe")
+    @Operation(summary = "Handle payment webhook", description = "Process webhook notifications from Stripe")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Webhook processed successfully"),
             @ApiResponse(responseCode = "400", description = "Invalid webhook data")
@@ -109,6 +75,47 @@ public class TransactionController {
                 .message(messageSource.getMessage("transaction.webhook.success", null, locale))
                 .result(result)
                 .build());
+    }
+
+    @Operation(summary = "[Admin] Get pending refund requests")
+    @GetMapping("/refunds/pending")
+    public AppApiResponse<Page<RefundRequestResponse>> getPendingRefunds(
+            Pageable pageable,
+            Locale locale) {
+        Page<RefundRequestResponse> refunds = transactionService.getPendingRefundRequests(pageable);
+        return AppApiResponse.<Page<RefundRequestResponse>>builder()
+                .code(200)
+                .message("Pending refunds retrieved")
+                .result(refunds)
+                .build();
+    }
+
+    @Operation(summary = "[Admin] Approve a refund")
+    @PostMapping("/refunds/approve")
+    public AppApiResponse<TransactionResponse> approveRefund(
+            @RequestBody ApproveRefundRequest request,
+            Locale locale) {
+        TransactionResponse response = transactionService.approveRefund(request);
+        return AppApiResponse.<TransactionResponse>builder()
+                .code(200)
+                .message("Refund approved successfully")
+                .result(response)
+                .build();
+    }
+
+    @Operation(summary = "[Admin] Reject a refund")
+    @PostMapping("/refunds/{id}/reject")
+    public AppApiResponse<TransactionResponse> rejectRefund(
+            @PathVariable UUID id,
+            @RequestParam UUID adminId,
+            @RequestParam String reason,
+            Locale locale) {
+        TransactionResponse response = transactionService.rejectRefund(id, adminId, reason);
+        return AppApiResponse.<TransactionResponse>builder()
+                .code(200)
+                .message("Refund rejected")
+                .result(response)
+                .build();
     }
 
     @Operation(summary = "Get all transactions", description = "Retrieve a paginated list of transactions with optional filtering by userId or status")
@@ -218,7 +225,6 @@ public class TransactionController {
                 .build();
     }
 
-    // Helper method to extract Real IP when running behind Docker/Nginx/Kong
     private String getClientIp(HttpServletRequest request) {
         String ipAddress = request.getHeader("X-Forwarded-For");
         if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
@@ -230,7 +236,6 @@ public class TransactionController {
         if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
             ipAddress = request.getRemoteAddr();
         }
-        // In case of multiple proxies, X-Forwarded-For contains comma separated IPs, take the first one
         if (ipAddress != null && ipAddress.contains(",")) {
             ipAddress = ipAddress.split(",")[0].trim();
         }

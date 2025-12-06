@@ -16,67 +16,50 @@ import { QuestionType } from "../../types/enums";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { UniversalQuestionView } from "../../components/learn/SkillComponents";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
-import { getDirectMediaUrl } from "../../utils/mediaUtils";
 
-// Helper: Extract media URL from description
-const extractMediaFromDesc = (desc?: string) => {
-  if (!desc) return null;
-  const match = desc.match(/\[Media\]:\s*(\S+)/);
-  const rawUrl = match ? match[1] : null;
-  return getDirectMediaUrl(rawUrl || "");
+const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean => {
+  if (!question.correctOption) return false;
+
+  const normalize = (str: any) => String(str || "").trim().toLowerCase().replace(/\s+/g, ' ');
+  const correctRaw = question.correctOption;
+  const userRaw = answer;
+
+  switch (question.questionType) {
+    case QuestionType.MULTIPLE_CHOICE:
+    case QuestionType.TRUE_FALSE:
+      const cleanCorrect = normalize(correctRaw).replace(/^option/, '');
+      const cleanUser = normalize(userRaw).replace(/^option/, '');
+      return cleanCorrect === cleanUser;
+
+    case QuestionType.FILL_IN_THE_BLANK:
+      const alternatives = correctRaw.split(/\|\|/).map(s => normalize(s));
+      return alternatives.some(alt => alt === normalize(userRaw));
+
+    case QuestionType.ORDERING:
+      return normalize(correctRaw) === normalize(userRaw);
+
+    case QuestionType.MATCHING:
+      try {
+        const correctObj = JSON.parse(correctRaw);
+        const userObj = typeof userRaw === 'string' ? JSON.parse(userRaw) : userRaw;
+
+        const keys = Object.keys(correctObj);
+        if (keys.length !== Object.keys(userObj).length) return false;
+
+        for (const key of keys) {
+          if (normalize(correctObj[key]) !== normalize(userObj[key])) return false;
+        }
+        return true;
+      } catch (e) {
+        console.warn("Matching validation error", e);
+        return false;
+      }
+
+    default:
+      return normalize(correctRaw) === normalize(userRaw);
+  }
 };
 
-// --- JUST MEDIA COMPONENT ---
-const JustMediaView = ({
-  lesson,
-  onFinish
-}: {
-  lesson: LessonResponse;
-  onFinish: () => void;
-}) => {
-  const mediaUrl = extractMediaFromDesc(lesson.description) ||
-    getDirectMediaUrl(lesson.videoUrls?.[0]) ||
-    getDirectMediaUrl(lesson.thumbnailUrl);
-
-  const cleanDesc = lesson.description?.replace(/\[Media\]:\s*\S+/, '').trim();
-
-  const fakeQuestion: Partial<LessonQuestionResponse> = {
-    lessonQuestionId: 'media-only',
-    lessonId: lesson.lessonId,
-    question: cleanDesc || "Enjoy this content.",
-    questionType: lesson.lessonType === 'VIDEO' ? QuestionType.VIDEO :
-      lesson.lessonType === 'AUDIO' ? QuestionType.AUDIO :
-        QuestionType.READING,
-    mediaUrl: mediaUrl || "",
-    correctOption: "",
-    orderIndex: 0,
-    languageCode: lesson.languageCode,
-    skillType: lesson.skillTypes,
-    weight: 1,
-    isDeleted: false,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
-  };
-
-  return (
-    <ScrollView contentContainerStyle={{ padding: 20, alignItems: 'center' }}>
-      <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' }}>
-        {lesson.title}
-      </Text>
-
-      <UniversalQuestionView question={fakeQuestion as LessonQuestionResponse} />
-
-      <TouchableOpacity
-        style={{ backgroundColor: '#10B981', padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 30, width: '100%' }}
-        onPress={onFinish}
-      >
-        <Text style={{ color: '#FFF', fontSize: 16, fontWeight: 'bold' }}>Complete Lesson</Text>
-      </TouchableOpacity>
-    </ScrollView>
-  );
-};
-
-// --- MAIN SCREEN ---
 const LessonScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
   const { lesson } = route.params as { lesson: LessonResponse };
@@ -84,299 +67,104 @@ const LessonScreen = ({ navigation, route }: any) => {
   const userId = userStore.user?.userId;
 
   const { useLessonTest, useUpdateProgress, useSubmitTest } = useLessons();
-  const { useStreamPronunciation, useCheckWriting, useSubmitQuiz } = useSkillLessons();
+  const { useStreamPronunciation, useCheckWriting } = useSkillLessons();
 
   const updateProgressMutation = useUpdateProgress();
   const submitTestMutation = useSubmitTest();
-
-  const isJustMedia = ['VIDEO', 'AUDIO', 'DOCUMENT'].includes(lesson.lessonType);
+  const checkWritingMutation = useCheckWriting();
+  const streamPronunciationMutation = useStreamPronunciation();
 
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [isAnswered, setIsAnswered] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<any>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-  const [startTime] = useState(Date.now());
-
-  // Store user answers for final submission
   const [userAnswers, setUserAnswers] = useState<Record<string, any>>({});
-  const [attemptNumber, setAttemptNumber] = useState(1);
 
   const [isRecording, setIsRecording] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
 
-  const streamPronunciationMutation = useStreamPronunciation();
-  const checkWritingMutation = useCheckWriting();
-  const submitQuizMutation = useSubmitQuiz();
-
-  const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !isJustMedia && !!userId);
-
-  useEffect(() => {
-    if (testData?.attemptNumber) {
-      setAttemptNumber(testData.attemptNumber);
-    }
-  }, [testData]);
-
-  const questions: LessonQuestionResponse[] = useMemo(() => {
-    return (testData?.questions || []) as LessonQuestionResponse[];
-  }, [testData]);
-
+  const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !!userId);
+  const questions = (testData?.questions || []) as LessonQuestionResponse[];
   const currentQuestion = questions[currentQuestionIndex];
   const isLastQuestion = currentQuestionIndex >= questions.length - 1;
 
-  // --- JUST MEDIA HANDLER ---
-  const handleFinishMediaLesson = () => {
-    if (!userId) return;
-    const progressReq: LessonProgressRequest = {
-      lessonId: lesson.lessonId,
-      userId: userId,
-      score: 100,
-      maxScore: 100,
-      attemptNumber: 1,
-      completedAt: new Date().toISOString(),
-      needsReview: false,
-      answersJson: "{}"
-    };
-    updateProgressMutation.mutate({ lessonId: lesson.lessonId, userId, req: progressReq });
-    Alert.alert("Success", "Lesson Completed!", [
-      { text: "OK", onPress: () => navigation.goBack() }
-    ]);
-  };
-
-  // --- VALIDATION LOGIC (FIXED) ---
-  const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean => {
-    if (!question.correctOption) return false;
-
-    const correct = question.correctOption.trim().toLowerCase();
-
-    // Normalize selected answer
-    let selected = '';
-    if (typeof answer === 'string') {
-      selected = answer.trim().toLowerCase();
-    } else if (typeof answer === 'object') {
-      // For matching/ordering, we need careful stringify
-      selected = JSON.stringify(answer).toLowerCase();
-    }
-
-    console.log(`[Validation] Q: ${question.lessonQuestionId} | Type: ${question.questionType}`);
-    console.log(`[Validation] Correct (DB): ${correct} | Selected (User): ${selected}`);
-
-    switch (question.questionType) {
-      case QuestionType.MULTIPLE_CHOICE:
-      case QuestionType.TRUE_FALSE:
-        return correct === selected;
-
-      case QuestionType.FILL_IN_THE_BLANK:
-        const alternatives = correct.split('||').map(s => s.trim().toLowerCase());
-        return alternatives.some(alt => alt === selected);
-
-      case QuestionType.ORDERING:
-        // Remove spaces to compare sequence content
-        return correct.replace(/\s/g, '') === selected.replace(/\s/g, '');
-
-      case QuestionType.MATCHING:
-        try {
-          // Compare objects loosely by converting to entries, sorting, then stringifying
-          // This handles {"A":"1", "B":"2"} vs {"B":"2", "A":"1"}
-          const correctObj = JSON.parse(question.correctOption);
-          const selectedObj = typeof answer === 'object' ? answer : JSON.parse(answer);
-
-          const normalizeObj = (obj: any) => JSON.stringify(Object.entries(obj).sort());
-          return normalizeObj(correctObj) === normalizeObj(selectedObj);
-        } catch (e) {
-          console.error("Matching validation error", e);
-          return false;
-        }
-
-      default:
-        return false;
-    }
-  };
-
-  // --- ANSWER SUBMISSION ---
   const handleSubmitAnswer = async (answerValue: any) => {
-    if (!currentQuestion || !userId) return;
-
+    if (!currentQuestion) return;
     setIsAnswered(true);
     setSelectedAnswer(answerValue);
+    setUserAnswers(prev => ({ ...prev, [currentQuestion.lessonQuestionId]: answerValue }));
 
-    // Track locally - Ensure we store the Raw Value, not stringified yet if simple type
-    setUserAnswers(prev => ({
-      ...prev,
-      [currentQuestion.lessonQuestionId]: answerValue
-    }));
-
-    const duration = Math.floor((Date.now() - startTime) / 1000);
-
-    try {
-      if (currentQuestion.questionType === QuestionType.SPEAKING) {
-        return; // Handled in recording
-      } else if (currentQuestion.questionType === QuestionType.WRITING ||
-        currentQuestion.questionType === QuestionType.ESSAY) {
-        setIsStreaming(true);
-        const result = await checkWritingMutation.mutateAsync({
-          text: answerValue,
-          lessonQuestionId: currentQuestion.lessonQuestionId,
-          languageCode: currentQuestion.languageCode,
-          duration
+    if ([QuestionType.WRITING, QuestionType.ESSAY].includes(currentQuestion.questionType)) {
+      setIsStreaming(true);
+      try {
+        const res = await checkWritingMutation.mutateAsync({
+          text: answerValue, lessonQuestionId: currentQuestion.lessonQuestionId,
+          languageCode: 'vi', duration: 0
         });
-        setFeedbackMessage(`Score: ${result.score}/100\n${result.feedback}`);
-        setIsStreaming(false);
+        setFeedbackMessage(`Score: ${res.score}. ${res.feedback}`);
+        if (res.score >= 50) setCorrectCount(c => c + 1);
+      } finally { setIsStreaming(false); }
+      return;
+    }
 
-        const isCorrect = result.score >= 70;
-        if (isCorrect) setCorrectCount(prev => prev + 1);
-
-      } else {
-        // Immediate validation for user feedback
-        const isCorrect = validateAnswer(currentQuestion, answerValue);
-        if (isCorrect) {
-          setFeedbackMessage("Correct! Great job.");
-          setCorrectCount(prev => prev + 1);
-        } else {
-          setFeedbackMessage(`Incorrect. The answer is: ${currentQuestion.correctOption}`);
-        }
-      }
-    } catch (error: any) {
-      console.error('Submit error:', error);
-      Alert.alert("Error", error.message || "Failed to submit answer");
-      setIsAnswered(false);
+    const isCorrect = validateAnswer(currentQuestion, answerValue);
+    if (isCorrect) {
+      setCorrectCount(c => c + 1);
+      setFeedbackMessage(t("quiz.correct") || "Correct!");
+    } else {
+      setFeedbackMessage(`${t("quiz.incorrect") || "Incorrect"}. ${currentQuestion.explainAnswer || ""}`);
     }
   };
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (isLastQuestion) {
-      handleFinishLesson();
+      await submitTestMutation.mutateAsync({
+        lessonId: lesson.lessonId, userId: userId!,
+        body: { answers: userAnswers, attemptNumber: 1 }
+      });
+      Alert.alert("Completed", `Score: ${correctCount}/${questions.length}`, [{ text: "OK", onPress: () => navigation.goBack() }]);
     } else {
-      setCurrentQuestionIndex(prev => prev + 1);
+      setCurrentQuestionIndex(i => i + 1);
       setIsAnswered(false);
       setSelectedAnswer(null);
       setFeedbackMessage(null);
     }
   };
 
-  const handleSkip = () => {
-    handleNext();
-  };
-
-  const handleFinishLesson = async () => {
-    if (!userId) return;
-
-    const totalQuestions = questions.length;
-    const score = totalQuestions > 0 ? (correctCount / totalQuestions) * 100 : 100;
-
-    try {
-      // Ensure userAnswers matches Backend expectation (Map<String, Object>)
-      await submitTestMutation.mutateAsync({
-        lessonId: lesson.lessonId,
-        userId: userId,
-        body: {
-          answers: userAnswers,
-          attemptNumber: attemptNumber
-        }
-      });
-
-      Alert.alert(
-        "Lesson Complete!",
-        `Your score: ${score.toFixed(0)}%\nCorrect: ${correctCount}/${totalQuestions}`,
-        [{ text: "OK", onPress: () => navigation.goBack() }]
-      );
-    } catch (error) {
-      console.error("Failed to submit test", error);
-      Alert.alert("Error", "Failed to save lesson progress.");
-    }
-  };
-
-  // --- SPEAKING HANDLERS ---
   const handleStartRecording = async () => {
-    try {
-      setIsRecording(true);
-      await recorder.record();
-    } catch (err) {
-      console.error('Recording error:', err);
-      setIsRecording(false);
-    }
+    try { setIsRecording(true); await recorder.record(); } catch (e) { console.error(e); }
   };
 
   const handleStopRecording = async () => {
-    if (!currentQuestion || !userId) return;
-
-    try {
-      setIsRecording(false);
-      const uri = recorder.uri;
-      if (!uri) throw new Error("No recording URI");
-
+    setIsRecording(false);
+    const uri = recorder.uri;
+    if (uri) {
       setIsStreaming(true);
       setIsAnswered(true);
-
       await streamPronunciationMutation.mutateAsync({
-        audioUri: uri,
-        lessonQuestionId: currentQuestion.lessonQuestionId,
-        languageCode: currentQuestion.languageCode,
+        audioUri: uri, lessonQuestionId: currentQuestion.lessonQuestionId, languageCode: 'vi',
         onChunk: (chunk) => {
           if (chunk.type === 'final') {
-            setFeedbackMessage(`Score: ${chunk.score}/100\n${chunk.feedback}`);
+            setFeedbackMessage(`Score: ${chunk.score}`);
             setIsStreaming(false);
-            if ((chunk.score || 0) >= 70) setCorrectCount(prev => prev + 1);
+            if ((chunk.score || 0) > 70) setCorrectCount(c => c + 1);
           }
         }
       });
-    } catch (err) {
-      console.error('Stop recording error:', err);
-      setIsStreaming(false);
-      setIsAnswered(false);
     }
   };
 
-  // --- RENDER ---
-  if (isJustMedia) {
-    return (
-      <ScreenLayout style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-            <Icon name="close" size={24} color="#374151" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>{lesson.lessonType} Lesson</Text>
-        </View>
-        <JustMediaView lesson={lesson} onFinish={handleFinishMediaLesson} />
-      </ScreenLayout>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <ScreenLayout style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4F46E5" />
-      </ScreenLayout>
-    );
-  }
-
-  if (!currentQuestion) {
-    return (
-      <ScreenLayout style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-            <Icon name="arrow-back" size={24} color="#374151" />
-          </TouchableOpacity>
-          <Text style={styles.headerTitle}>No Questions</Text>
-        </View>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: '#9CA3AF' }}>This lesson has no questions yet.</Text>
-        </View>
-      </ScreenLayout>
-    );
-  }
+  if (isLoading) return <ActivityIndicator style={styles.center} />;
+  if (!currentQuestion) return <Text style={styles.center}>No questions found.</Text>;
 
   return (
     <ScreenLayout style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.closeBtn}>
-          <Icon name="arrow-back" size={24} color="#374151" />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          Question {currentQuestionIndex + 1}/{questions.length}
-        </Text>
-        <Text style={styles.scoreText}>{correctCount} ✓</Text>
+        <TouchableOpacity onPress={() => navigation.goBack()}><Icon name="close" size={24} /></TouchableOpacity>
+        <Text style={styles.headerTitle}>{currentQuestionIndex + 1}/{questions.length}</Text>
+        <Text style={{ fontWeight: 'bold', color: 'green' }}>{correctCount} ✓</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -386,9 +174,9 @@ const LessonScreen = ({ navigation, route }: any) => {
           question={currentQuestion}
           isAnswered={isAnswered}
           selectedAnswer={selectedAnswer}
-          isLoading={submitQuizMutation.isPending || checkWritingMutation.isPending}
+          isLoading={isStreaming}
           onAnswer={handleSubmitAnswer}
-          onSkip={handleSkip}
+          onSkip={handleNext}
           isRecording={isRecording}
           isStreaming={isStreaming}
           onStartRecording={handleStartRecording}
@@ -396,17 +184,14 @@ const LessonScreen = ({ navigation, route }: any) => {
         />
 
         {feedbackMessage && (
-          <View style={styles.feedbackBox}>
-            <Text style={styles.feedbackText}>{feedbackMessage}</Text>
+          <View style={[styles.feedback, { backgroundColor: feedbackMessage.includes("Correct") ? "#D1FAE5" : "#FEE2E2" }]}>
+            <Text>{feedbackMessage}</Text>
           </View>
         )}
 
         {isAnswered && (
           <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-            <Text style={styles.nextBtnText}>
-              {isLastQuestion ? "Finish Lesson" : "Next Question"}
-            </Text>
-            <Icon name={isLastQuestion ? "check" : "arrow-forward"} size={20} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>{isLastQuestion ? "Finish" : "Next"}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -415,41 +200,13 @@ const LessonScreen = ({ navigation, route }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F8FAFC" },
-  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    backgroundColor: '#FFF',
-    borderBottomWidth: 1,
-    borderColor: '#E5E7EB'
-  },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#1F2937', flex: 1, textAlign: 'center' },
-  closeBtn: { padding: 4 },
-  scoreText: { fontSize: 16, fontWeight: '700', color: '#10B981' },
+  container: { flex: 1, backgroundColor: "#FFF" },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderColor: '#EEE' },
+  headerTitle: { fontSize: 16, fontWeight: 'bold' },
   content: { padding: 20 },
-  feedbackBox: {
-    marginTop: 20,
-    padding: 16,
-    backgroundColor: '#EFF6FF',
-    borderRadius: 12,
-    borderLeftWidth: 4,
-    borderLeftColor: '#3B82F6'
-  },
-  feedbackText: { fontSize: 14, color: '#1E40AF', lineHeight: 20 },
-  nextBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: '#10B981',
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 20
-  },
-  nextBtnText: { color: '#FFF', fontSize: 16, fontWeight: 'bold' },
+  feedback: { padding: 15, borderRadius: 8, marginTop: 15 },
+  nextBtn: { backgroundColor: '#333', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 20 }
 });
 
 export default LessonScreen;

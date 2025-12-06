@@ -12,19 +12,19 @@ import {
     ScrollView,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { useRoute, RouteProp } from '@react-navigation/native';
+import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUserStore } from '../../stores/UserStore';
 import { useUsers } from '../../hooks/useUsers';
 import { useFriendships } from '../../hooks/useFriendships';
-import { useCouples } from '../../hooks/useCouples'; // Assumed existing based on context
+import { useCouples } from '../../hooks/useCouples';
 import { getAvatarSource } from '../../utils/avatarUtils';
 import { getCountryFlag } from '../../utils/flagUtils';
-import { UserResponse, UserProfileResponse, FriendshipResponse, CoupleResponse } from '../../types/dto';
+import { UserResponse, UserProfileResponse, FriendshipResponse } from '../../types/dto';
 import { gotoTab } from '../../utils/navigationRef';
-import { FriendshipStatus, Country, AgeRange, CoupleStatus } from '../../types/enums';
+import { FriendshipStatus, Country, AgeRange } from '../../types/enums';
 
 type RouteParams = {
     SuggestedUsersScreen: {
@@ -101,6 +101,7 @@ const SuggestedUsersScreen = () => {
     const { t } = useTranslation();
     const route = useRoute<RouteProp<RouteParams, 'SuggestedUsersScreen'>>();
     const user = useUserStore((state) => state.user);
+    const navigation = useNavigation<any>(); // Added navigation hook
 
     // 0: Explore (Search Public), 1: Requests, 2: Friends
     const [activeTab, setActiveTab] = useState(route.params?.initialTab ?? 0);
@@ -122,29 +123,21 @@ const SuggestedUsersScreen = () => {
     // --- DATA FETCHING ---
 
     // Tab 0: Explore - Public Users
-    // Note: UserController only accepts keyword and country. We filter gender/age client side if needed or pass as params if hook supports.
     const { data: publicUsersData, refetch: refetchPublicUsers, isLoading: loadingPublic } = useSearchPublicUsers({
         page: 0,
         size: 50,
         keyword: keyword,
         country: filters.country,
+        gender: filters.gender,     // Thêm dòng này
+        ageRange: filters.ageRange, // Thêm dòng này
     });
 
     const publicUsers = useMemo(() => {
-        let list = (publicUsersData?.data || []) as (UserResponse | UserProfileResponse)[];
-        // Client-side filtering for Gender and AgeRange (since BE controller snippet didn't explicitly show these params)
-        if (filters.gender) {
-            list = list.filter(u => u.gender === filters.gender);
-        }
-        if (filters.ageRange) {
-            list = list.filter(u => u.ageRange === filters.ageRange);
-        }
-        return list;
-    }, [publicUsersData, filters.gender, filters.ageRange]);
+        return (publicUsersData?.data || []) as UserProfileResponse[];
+    }, [publicUsersData]);
 
 
-    // Tab 1: Requests (Couples Sent -> Friends Sent -> Friends Received)
-    // 1.1 Couple Requests (Sent by me & Pending)
+    // Tab 1: Requests
     const { data: coupleReqData, refetch: refetchCoupleReq } = useAllCouples({
         user1Id: user?.userId,
         status: 'PENDING',
@@ -152,7 +145,6 @@ const SuggestedUsersScreen = () => {
         size: 20
     });
 
-    // 1.2 Friend Requests (Sent by me)
     const { data: friendSentData, refetch: refetchFriendSent } = useAllFriendships({
         requesterId: user?.userId,
         status: 'PENDING',
@@ -160,7 +152,6 @@ const SuggestedUsersScreen = () => {
         size: 20
     });
 
-    // 1.3 Friend Requests (Received by me)
     const { data: friendRecData, refetch: refetchFriendRec } = useAllFriendships({
         receiverId: user?.userId,
         status: 'PENDING',
@@ -168,15 +159,9 @@ const SuggestedUsersScreen = () => {
         size: 20
     });
 
-    // Tab 2: Friends (Accepted)
+    // Tab 2: Friends
     const { data: friendsData, refetch: refetchFriends, isLoading: loadingFriends } = useAllFriendships({
-        requesterId: user?.userId, // This hook/controller logic usually returns matches where user is EITHER requester OR receiver if logic handles it, or we might need two calls if backend is strict. Assuming hook/be handles bidirectional check for 'list friends'. 
-        // Based on provided FriendshipController: getAllFriendships filters by user1Id (requester). 
-        // To get ALL friends, we technically need to check both directions or if backend supports 'userId' param that checks both.
-        // For this snippet, assuming 'useAllFriendships' or a separate logic aggregates.
-        // If strict to provided code: We might miss friends where we are receiver. 
-        // FIX: Provided Service Impl `getAllFriendships` only checks `findByIdRequesterId...`. 
-        // For simplicity in this UI refactor, I will use what is provided, but ideally BE should have `getFriends(userId)`.
+        requesterId: user?.userId,
         status: 'ACCEPTED',
         page: 0,
         size: 100
@@ -185,9 +170,8 @@ const SuggestedUsersScreen = () => {
     // --- AGGREGATE & FILTER DATA FOR TABS ---
 
     const tab1Data = useMemo(() => {
-        // Apply keyword/filters to requests
         const filterFn = (item: any) => {
-            const u = item.partner || item.receiver || item.requester; // Normalize to target user
+            const u = item.partner || item.receiver || item.requester;
             if (!u) return false;
             let match = true;
             if (keyword) match = match && (u.fullname?.toLowerCase().includes(keyword.toLowerCase()) || u.nickname?.toLowerCase().includes(keyword.toLowerCase()));
@@ -204,9 +188,7 @@ const SuggestedUsersScreen = () => {
     }, [coupleReqData, friendSentData, friendRecData, keyword, filters]);
 
     const tab2Data = useMemo(() => {
-        // Normalize friends list
         const list = (friendsData?.content || []).map(f => {
-            // If I am requester, friend is receiver. If I am receiver, friend is requester.
             const isMeRequester = f.requester?.userId === user?.userId;
             return isMeRequester ? f.receiver : f.requester;
         }).filter(u => u !== null) as UserResponse[];
@@ -241,49 +223,77 @@ const SuggestedUsersScreen = () => {
                 receiverId: targetId,
                 status: FriendshipStatus.PENDING
             });
-            refetchPublicUsers();
+            if (activeTab === 0) refetchPublicUsers();
+            refetchFriendSent();
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
-    const handleAcceptRequest = async (friendship: FriendshipResponse) => {
-        if (!user?.userId || !friendship.id) return;
-        // Friendship ID in DTO is string "id1-id2", but update expects path variable.
-        // Based on Service logic `updateFriendship(user1Id, user2Id, ...)`
-        setActionLoadingId(friendship.id.toString());
+    // Generic Accept Friend Request (Handles both Tab 1 and Tab 0 contexts)
+    const handleAcceptRequestGeneric = async (requesterId: string) => {
+        if (!user?.userId) return;
+        setActionLoadingId(requesterId);
         try {
             await updateFriendshipMutation.mutateAsync({
-                user1Id: friendship.requesterId, // The one who sent it
+                user1Id: requesterId, // The person who sent the request
                 user2Id: user.userId, // Me (Receiver)
-                req: { status: FriendshipStatus.ACCEPTED, requesterId: friendship.requesterId, receiverId: user.userId }
+                req: { status: FriendshipStatus.ACCEPTED, requesterId: requesterId, receiverId: user.userId }
             });
+            if (activeTab === 0) refetchPublicUsers();
             refetchFriendRec();
             refetchFriends();
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
+    const handleChat = (targetUser: UserResponse | UserProfileResponse) => {
+        // Navigate to chat or init chat (logic not fully provided in snippet, adding placeholder)
+        console.log("Navigating to chat with", targetUser.userId);
+    };
+
+
     // --- RENDER HELPERS ---
 
+    // Refined Logic to match UserProfileViewScreen using Booleans
     const renderActionButton = (item: UserResponse | UserProfileResponse, isActionLoading: boolean) => {
-        // Logic for Public Tab (Explore)
-        const isProfile = 'friendRequestStatus' in item;
-        const status = isProfile ? (item as UserProfileResponse).friendRequestStatus?.status : 'NONE';
-        const isFriend = isProfile ? (item as UserProfileResponse).isFriend : false;
+        // Cast to UserProfileResponse to access specific flags
+        const profile = item as UserProfileResponse;
 
-        // Check local assumptions if not fully populated
-        if (isFriend || status === 'ACCEPTED') {
+        // 1. Check direct flags from Backend (populated in searchPublicUsers via getUserProfile)
+        const isFriend = profile.isFriend;
+        const hasSent = profile.friendRequestStatus?.hasSentRequest;
+        const hasReceived = profile.friendRequestStatus?.hasReceivedRequest;
+
+        // A. Already Friends -> Show Chat
+        if (isFriend) {
             return (
-                <TouchableOpacity style={styles.messageButton}>
+                <TouchableOpacity style={styles.messageButton} onPress={() => handleChat(item)}>
                     <Icon name="chat-bubble-outline" size={20} color="#4F46E5" />
                 </TouchableOpacity>
             );
         }
-        if (status === 'PENDING') {
+
+        // B. Received Request -> Show Accept
+        if (hasReceived) {
+            return (
+                <TouchableOpacity
+                    style={styles.acceptButton}
+                    onPress={() => handleAcceptRequestGeneric(item.userId)}
+                    disabled={isActionLoading}
+                >
+                    {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>{t('common.accept')}</Text>}
+                </TouchableOpacity>
+            );
+        }
+
+        // C. Sent Request -> Show Pending Icon
+        if (hasSent) {
             return (
                 <TouchableOpacity style={[styles.addButton, styles.sentButton]} disabled>
                     <Icon name="check" size={20} color="#FFF" />
                 </TouchableOpacity>
             );
         }
+
+        // D. Default -> Add Friend
         return (
             <TouchableOpacity
                 style={styles.addButton}
@@ -296,20 +306,16 @@ const SuggestedUsersScreen = () => {
     };
 
     const renderUserItem = ({ item, type }: { item: any, type?: 'PUBLIC' | 'COUPLE_SENT' | 'FRIEND_SENT' | 'FRIEND_RECEIVED' | 'FRIEND_ACCEPTED' }) => {
-        // Determine user object based on type
         let displayUser: UserResponse | UserProfileResponse = item;
-        let friendshipId = null;
 
+        // Extract actual user data for Tab 1 cases
         if (type === 'COUPLE_SENT') displayUser = item.target;
         if (type === 'FRIEND_SENT') displayUser = item.target;
-        if (type === 'FRIEND_RECEIVED') {
-            displayUser = item.target;
-            friendshipId = item.id;
-        }
+        if (type === 'FRIEND_RECEIVED') displayUser = item.target;
 
         if (!displayUser) return null;
 
-        const isActionLoading = actionLoadingId === (friendshipId || displayUser.userId);
+        const isActionLoading = actionLoadingId === displayUser.userId;
         const gender = displayUser.gender;
         const vip = displayUser.vip;
 
@@ -340,25 +346,30 @@ const SuggestedUsersScreen = () => {
                     </Text>
                 </View>
 
-                {/* Action Buttons based on Type */}
+                {/* Action Buttons */}
+
+                {/* Tab 0: Use robust logic based on profile flags */}
                 {type === 'PUBLIC' && renderActionButton(displayUser, isActionLoading)}
 
+                {/* Tab 1 (Received): Explicit Accept Button */}
                 {type === 'FRIEND_RECEIVED' && (
                     <TouchableOpacity
                         style={styles.acceptButton}
-                        onPress={() => handleAcceptRequest(item)}
+                        onPress={() => handleAcceptRequestGeneric(displayUser.userId)}
                         disabled={isActionLoading}
                     >
                         {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>{t('common.accept')}</Text>}
                     </TouchableOpacity>
                 )}
 
+                {/* Tab 2: Friends - Always Chat */}
                 {type === 'FRIEND_ACCEPTED' && (
-                    <TouchableOpacity style={styles.messageButton}>
+                    <TouchableOpacity style={styles.messageButton} onPress={() => handleChat(displayUser)}>
                         <Icon name="chat-bubble-outline" size={20} color="#4F46E5" />
                     </TouchableOpacity>
                 )}
 
+                {/* Pending Sent States */}
                 {(type === 'COUPLE_SENT' || type === 'FRIEND_SENT') && (
                     <View style={[styles.addButton, styles.sentButton]}>
                         <Icon name="access-time" size={20} color="#FFF" />
@@ -379,7 +390,6 @@ const SuggestedUsersScreen = () => {
                     placeholder={t('common.searchByNameNickEmailPhone')}
                     value={keyword}
                     onChangeText={setKeyword}
-                    // For Tab 0 we might want to trigger refetch on submit to save API calls
                     onSubmitEditing={() => activeTab === 0 && refetchPublicUsers()}
                 />
             </View>
@@ -397,12 +407,10 @@ const SuggestedUsersScreen = () => {
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             ListEmptyComponent={!loadingPublic ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
-        // Removed SuggestionsHeader with horizontal list as requested
         />
     );
 
     const renderTab1_Requests = () => {
-        // Group data for SectionList style rendering within FlatList
         const couples = tab1Data.filter((i: any) => i.type === 'COUPLE_SENT');
         const friendSent = tab1Data.filter((i: any) => i.type === 'FRIEND_SENT');
         const friendRec = tab1Data.filter((i: any) => i.type === 'FRIEND_RECEIVED');
@@ -418,9 +426,7 @@ const SuggestedUsersScreen = () => {
                 data={flattenedData}
                 keyExtractor={(item, index) => (item as any).id || index.toString()}
                 renderItem={({ item }: { item: any }) => {
-                    if (item.header) {
-                        return <Text style={styles.sectionHeader}>{item.header}</Text>;
-                    }
+                    if (item.header) return <Text style={styles.sectionHeader}>{item.header}</Text>;
                     return renderUserItem({ item, type: item.type });
                 }}
                 contentContainerStyle={styles.listContent}
@@ -456,7 +462,6 @@ const SuggestedUsersScreen = () => {
                     </TouchableOpacity>
                 </View>
 
-                {/* Search Bar applies to all tabs */}
                 <SearchAndFilterBar />
 
                 <View style={{ flex: 1 }}>

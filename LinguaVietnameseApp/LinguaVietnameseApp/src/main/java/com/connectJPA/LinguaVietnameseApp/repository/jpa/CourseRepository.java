@@ -112,4 +112,6 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
 
     Page<Course> findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(CourseApprovalStatus approved,
             Pageable pageable);
+
+Page<Course> findByApprovalStatusAndIsDeletedFalse(CourseApprovalStatus status, Pageable pageable);
 }

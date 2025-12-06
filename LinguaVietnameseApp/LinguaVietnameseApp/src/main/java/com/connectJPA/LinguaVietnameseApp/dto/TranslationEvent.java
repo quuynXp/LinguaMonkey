@@ -15,5 +15,5 @@ public class TranslationEvent {
     private UUID messageId;
     private String targetLang;
     private String translatedText;
-    private String provider;
+    // private String provider;
 }

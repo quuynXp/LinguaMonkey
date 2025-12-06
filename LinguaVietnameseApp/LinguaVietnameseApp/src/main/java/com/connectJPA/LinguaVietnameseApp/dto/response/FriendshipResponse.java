@@ -3,6 +3,9 @@ package com.connectJPA.LinguaVietnameseApp.dto.response;
 import com.connectJPA.LinguaVietnameseApp.enums.FriendshipStatus;
 import com.fasterxml.jackson.databind.annotation.JsonSerialize;
 import com.fasterxml.jackson.datatype.jsr310.ser.OffsetDateTimeSerializer;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -11,6 +14,8 @@ import java.util.UUID;
 
 @Data
 @NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class FriendshipResponse {
     private String id;
     private UserResponse requester;

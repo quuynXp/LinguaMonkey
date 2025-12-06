@@ -61,6 +61,8 @@
         "year": "Year",
         "skip": "Skip",
         "hot": "Hot",
+        "server_maintenance": "Server maintenance",
+        "please_wait_reconnecting": "Please Wait Reconnecting",
         "server_unavailable_msg": "Server is unavailable, please try again later, we are sorry for this unpleasant experience.",
         "reconnecting": "Reconnecting",
         "loading": "Loading...",

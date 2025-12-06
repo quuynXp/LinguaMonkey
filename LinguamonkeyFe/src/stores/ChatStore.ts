@@ -23,7 +23,6 @@ export type UserStatus = {
   lastActiveAt?: string;
 };
 
-// DTO cho sự kiện translation trả về từ server
 type TranslationEvent = {
   messageId: string;
   targetLang: string;
@@ -32,10 +31,8 @@ type TranslationEvent = {
 
 interface UseChatState {
   stompConnected: boolean;
-
   rooms: { [roomId: string]: Room };
   userStatuses: { [userId: string]: UserStatus };
-
   aiRoomList: Room[];
   pendingSubscriptions: string[];
   pendingPublishes: { destination: string, payload: any }[];
@@ -45,7 +42,6 @@ interface UseChatState {
   hasMoreByRoom: { [roomId: string]: boolean };
   loadingByRoom: { [roomId: string]: boolean };
   totalOnlineUsers: number;
-
   videoSubtitleService: VideoSubtitleService | null;
   currentVideoSubtitles: DualSubtitle | null;
   activeBubbleRoomId: string | null;
@@ -59,19 +55,16 @@ interface UseChatState {
   disconnectStompClient: () => void;
   subscribeToRoom: (roomId: string) => void;
   unsubscribeFromRoom: (roomId: string) => void;
-
   startPrivateChat: (targetUserId: string) => Promise<Room | null>;
   fetchAiRoomList: () => Promise<void>;
   startNewAiChat: () => Promise<void>;
   selectAiRoom: (roomId: string) => Promise<void>;
-
   loadMessages: (roomId: string, page?: number, size?: number) => Promise<void>;
   searchMessages: (roomId: string, keyword: string) => Promise<void>;
   sendMessage: (roomId: string, content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT', mediaUrl?: string) => void;
   editMessage: (roomId: string, messageId: string, newContent: string) => Promise<void>;
   deleteMessage: (roomId: string, messageId: string) => Promise<void>;
   markMessageAsRead: (roomId: string, messageId: string) => void;
-
   connectVideoSubtitles: (roomId: string, targetLang: string) => void;
   disconnectVideoSubtitles: () => void;
   disconnectStomp: () => void;
@@ -83,16 +76,12 @@ interface UseChatState {
   setCurrentAppScreen: (screen: string | null) => void;
   setAppIsActive: (isActive: boolean) => void;
   setCurrentViewedRoomId: (roomId: string | null) => void;
-
   acceptIncomingCall: () => void;
   rejectIncomingCall: () => void;
-
   updateUserStatus: (userId: string, isOnline: boolean, lastActiveAt?: string) => void;
-  // Helper internal để update translation
   updateMessageTranslation: (roomId: string, event: TranslationEvent) => void;
 }
 
-// Helper: Xử lý date format từ server
 const parseDate = (dateInput: any): number => {
   if (!dateInput) return Date.now();
   if (Array.isArray(dateInput)) {
@@ -136,6 +125,7 @@ const normalizeMessage = (msg: any): Message => {
   return baseMsg as Message;
 };
 
+// Merge logic to avoid overwriting existing profile or translation data if new data is partial
 function upsertMessage(list: Message[], rawMsg: any): Message[] {
   if (!rawMsg) return list;
   const msg = normalizeMessage(rawMsg);
@@ -144,49 +134,42 @@ function upsertMessage(list: Message[], rawMsg: any): Message[] {
   if (msg.isDeleted) return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
 
   let workingList = [...list];
+
+  // Remove temporary local message if server response arrives
   if (msg.senderId === currentUserId && !msg.isLocal) {
     workingList = workingList.filter(m => !(m.isLocal && m.content === msg.content));
   }
 
-  const exists = workingList.find((m) => m.id.chatMessageId === msg.id.chatMessageId);
-  if (exists) {
-    workingList = workingList.map((m) => (m.id.chatMessageId === msg.id.chatMessageId ? msg : m));
+  const existingIndex = workingList.findIndex((m) => m.id.chatMessageId === msg.id.chatMessageId);
+
+  if (existingIndex !== -1) {
+    const existingMsg = workingList[existingIndex];
+    // Keep existing translation if new message doesn't have it (unless explicitly cleared)
+    const mergedMsg = {
+      ...msg,
+      senderProfile: msg.senderProfile || existingMsg.senderProfile,
+      translatedText: msg.translatedText || existingMsg.translatedText,
+      translatedLang: msg.translatedLang || existingMsg.translatedLang
+    };
+    workingList[existingIndex] = mergedMsg;
   } else {
-    workingList = [msg, ...workingList];
+    workingList.push(msg);
   }
 
   return workingList.sort((a, b) => {
     const timeA = parseDate(a.id?.sentAt);
     const timeB = parseDate(b.id?.sentAt);
-    if (timeA === timeB) return (b.id?.chatMessageId || '').localeCompare(a.id?.chatMessageId || '');
-    return timeB - timeA;
+    return timeA - timeB;
   });
 }
 
 function extractRoomIdFromTopic(topic: string) {
   const parts = topic.split('/');
-  // topic format: /topic/room/{roomId} or /topic/room/{roomId}/translations
-  // Nếu là translations, roomId nằm ở index - 2
   if (topic.endsWith('/translations')) {
     return parts[parts.length - 2];
   }
   return parts[parts.length - 1];
 }
-
-export const getMessageDisplayData = (msg: any) => {
-  const { chatSettings, nativeLanguage } = useAppStore.getState();
-  const isAutoTranslateOn = chatSettings?.autoTranslate ?? false;
-  const textContent = msg.content || msg.text || '';
-  const hasEagerTranslation = !!msg.translatedText && !!msg.translatedLang;
-
-  // Logic hiển thị: Nếu autoTranslate bật + có bản dịch + ngôn ngữ dịch khớp ngôn ngữ máy -> hiển thị bản dịch
-  const isMatchingLanguage = !msg.translatedLang || msg.translatedLang === nativeLanguage || msg.translatedLang === 'vi'; // Fallback to 'vi' if needed
-
-  if (isAutoTranslateOn && hasEagerTranslation && isMatchingLanguage) {
-    return { text: msg.translatedText, isTranslated: true, showToggle: true, lang: msg.translatedLang };
-  }
-  return { text: textContent, isTranslated: false, showToggle: hasEagerTranslation, lang: 'original' };
-};
 
 export const useChatStore = create<UseChatState>((set, get) => ({
   stompConnected: false,
@@ -227,6 +210,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     set(state => {
       const currentMessages = state.messagesByRoom[roomId] || [];
       const updatedMessages = currentMessages.map(msg => {
+        // Match by Message ID and inject translation
         if (msg.id.chatMessageId === event.messageId) {
           return {
             ...msg,
@@ -236,6 +220,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         }
         return msg;
       });
+
+      // Ensure immutability for re-render
       return {
         messagesByRoom: {
           ...state.messagesByRoom,
@@ -306,7 +292,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
               if (rawMsg.userId) { get().updateUserStatus(rawMsg.userId, rawMsg.status === 'ONLINE', rawMsg.timestamp); }
               return;
             }
-            // [FIX] Handle Translation Event in pending flush
             if (dest.includes('/translations')) {
               get().updateMessageTranslation(roomId, rawMsg);
               return;
@@ -330,25 +315,21 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   subscribeToRoom: (roomId: string) => {
     const chatDest = `/topic/room/${roomId}`;
     const statusDest = `/topic/room/${roomId}/status`;
-    // [FIX] Subscribe to translation topic
     const transDest = `/topic/room/${roomId}/translations`;
 
     if (stompService.isConnected) {
-      // Chat Messages
       stompService.subscribe(chatDest, (rawMsg: any) => {
         if (rawMsg && rawMsg.type === 'VIDEO_CALL') { return; }
         if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
         set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg) } }));
       });
 
-      // User Status
       stompService.subscribe(statusDest, (msg: any) => {
         if (msg.userId) {
           get().updateUserStatus(msg.userId, msg.status === 'ONLINE', new Date().toISOString());
         }
       });
 
-      // [FIX] Handle Translation Events
       stompService.subscribe(transDest, (evt: TranslationEvent) => {
         get().updateMessageTranslation(roomId, evt);
       });
@@ -363,7 +344,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const chatDest = `/topic/room/${roomId}`;
     const statusDest = `/topic/room/${roomId}/status`;
     const transDest = `/topic/room/${roomId}/translations`;
-
     if (stompService.isConnected) {
       stompService.unsubscribe(chatDest);
       stompService.unsubscribe(statusDest);
@@ -424,23 +404,35 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const state = get();
     if (state.loadingByRoom[roomId] && page !== 0) return;
     set((s) => ({ loadingByRoom: { ...s.loadingByRoom, [roomId]: true } }));
+
     try {
       const res = await instance.get<AppApiResponse<PageResponse<any>>>(`/api/v1/chat/room/${roomId}/messages`, { params: { page, size, sort: 'id.sentAt,desc' } });
       const rawMessages = res.data.result?.content || [];
-      const newMessages = rawMessages.map(normalizeMessage);
       const totalPages = res.data.result?.totalPages || 0;
+
+      const newMessages = rawMessages.map(normalizeMessage);
+      newMessages.reverse();
+
       set((currentState) => {
         const currentMsgs = currentState.messagesByRoom[roomId] || [];
-        const updatedList = page === 0 ? newMessages : [...currentMsgs, ...newMessages];
+        let updatedList: Message[] = [];
+        if (page === 0) {
+          const locals = currentMsgs.filter(m => m.isLocal);
+          updatedList = [...newMessages, ...locals];
+        } else {
+          updatedList = [...newMessages, ...currentMsgs];
+        }
+
         const uniqueMap = new Map();
         updatedList.forEach(item => { if (item?.id?.chatMessageId) uniqueMap.set(item.id.chatMessageId, item); });
         const uniqueList = Array.from(uniqueMap.values()) as Message[];
+
         uniqueList.sort((a, b) => {
           const timeA = parseDate(a.id.sentAt);
           const timeB = parseDate(b.id.sentAt);
-          if (timeA === timeB) return (b.id.chatMessageId || '').localeCompare(a.id.chatMessageId || '');
-          return timeB - timeA;
+          return timeA - timeB;
         });
+
         return {
           messagesByRoom: { ...currentState.messagesByRoom, [roomId]: uniqueList },
           pageByRoom: { ...currentState.pageByRoom, [roomId]: page },
@@ -458,6 +450,8 @@ export const useChatStore = create<UseChatState>((set, get) => ({
       const res = await instance.get<AppApiResponse<PageResponse<any>>>(`/api/v1/chat/room/${roomId}/messages`, { params: { page: 0, size: 50, keyword } });
       const rawMessages = res.data.result?.content || [];
       const newMessages = rawMessages.map(normalizeMessage);
+      newMessages.reverse();
+
       set((currentState) => ({
         messagesByRoom: { ...currentState.messagesByRoom, [roomId]: newMessages },
         loadingByRoom: { ...currentState.loadingByRoom, [roomId]: false },
@@ -468,17 +462,16 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
   sendMessage: (roomId, content, type, mediaUrl) => {
     const state = get();
-    const { chatSettings } = useAppStore.getState(); // Get settings
+    const { chatSettings } = useAppStore.getState();
     const room = state.rooms[roomId];
 
-    // [FIX] Add isRoomAutoTranslate to payload
     const payload = {
       content,
       roomId,
       messageType: type,
       purpose: room?.purpose || RoomPurpose.AI_CHAT,
       mediaUrl: mediaUrl || null,
-      isRoomAutoTranslate: chatSettings?.autoTranslate || false // <-- QUAN TRỌNG
+      isRoomAutoTranslate: chatSettings?.autoTranslate || false
     };
 
     const optimisticMsg = { id: { chatMessageId: `local-${Date.now()}`, sentAt: new Date().toISOString() }, senderId: useUserStore.getState().user?.userId, content, messageType: type, mediaUrl: mediaUrl || null, isLocal: true, translatedText: null, translatedLang: null } as any;

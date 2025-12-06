@@ -1,158 +1,158 @@
 {
     "admin": {
         "section": {
-            "business": "Business",
-            "content": "Content"
+            "business": "业务",
+            "content": "内容"
         },
         "stats": {
-            "users": "Users",
-            "revenue": "Revenue",
-            "courses": "Courses",
-            "transactions": "Transactions"
+            "users": "用户",
+            "revenue": "收入",
+            "courses": "课程",
+            "transactions": "交易"
         },
         "actions": {
-            "addUser": "Add User",
-            "addCourse": "Add Course"
+            "addUser": "添加用户",
+            "addCourse": "添加课程"
         },
         "screens": {
-            "users": "Users",
-            "courses": "Courses",
-            "lessons": "Lessons",
-            "createVideo": "Create Video",
-            "analytics": "Analytics",
-            "transactions": "Transactions"
+            "users": "用户",
+            "courses": "课程",
+            "lessons": "课时",
+            "createVideo": "创建视频",
+            "analytics": "分析",
+            "transactions": "交易"
         },
         "desc": {
-            "createVideo": "Upload a new video lesson",
-            "analytics": "View system analytics and reports",
-            "transactions": "Monitor system transactions"
+            "createVideo": "上传新的视频课时",
+            "analytics": "查看系统分析和报告",
+            "transactions": "监控系统交易"
         },
         "transactions": {
-            "title": "Transactions",
-            "defaultTitle": "Transaction",
-            "noTransactions": "No transactions"
+            "title": "交易",
+            "defaultTitle": "交易",
+            "noTransactions": "暂无交易"
         },
         "lessons": {
-            "title": "Lesson Management",
-            "completions": "Lesson Completions",
-            "listTitle": "Lessons",
-            "noLessons": "No lessons"
+            "title": "课时管理",
+            "completions": "课时完成度",
+            "listTitle": "课时",
+            "noLessons": "暂无课时"
         },
         "courseDetail": {
-            "title": "Course Detail",
-            "updateSuccess": "Course updated successfully.",
+            "title": "课程详情",
+            "updateSuccess": "课程更新成功。",
             "delete": {
-                "title": "Delete Course",
-                "message": "Are you sure you want to delete this course? This action cannot be undone.",
-                "successTitle": "Deleted",
-                "successMessage": "Course removed."
+                "title": "删除课程",
+                "message": "您确定要删除此课程吗？此操作无法撤销。",
+                "successTitle": "已删除",
+                "successMessage": "课程已移除。"
             },
             "form": {
-                "thumbnailUrl": "Thumbnail URL",
-                "title": "Title",
-                "description": "Description",
-                "difficultyLevel": "Difficulty Level",
-                "type": "Type",
-                "price": "Price",
-                "courseId": "Course ID",
-                "creatorId": "Creator ID",
-                "createdAt": "Created At"
+                "thumbnailUrl": "缩略图网址",
+                "title": "标题",
+                "description": "描述",
+                "difficultyLevel": "难度等级",
+                "type": "类型",
+                "price": "价格",
+                "courseId": "课程 ID",
+                "creatorId": "创建者 ID",
+                "createdAt": "创建时间"
             }
         },
         "courses": {
-            "title": "Course Management",
+            "title": "课程管理",
             "overview": {
-                "totalCourses": "Total Courses",
-                "lessons": "Lessons"
+                "totalCourses": "课程总数",
+                "lessons": "课时"
             },
-            "listTitle": "Courses",
-            "noCourses": "No courses"
+            "listTitle": "课程",
+            "noCourses": "暂无课程"
         },
         "menu": {
-            "appInfo": "App information"
+            "appInfo": "应用信息"
         },
         "auth": {
-            "logout": "Log Out",
-            "logoutTitle": "Log Out",
-            "logoutConfirm": "Are you sure log out now?"
+            "logout": "退出登录",
+            "logoutTitle": "退出登录",
+            "logoutConfirm": "您确定要立即退出登录吗？"
         },
         "analytics": {
-            "title": "Revenue Analytics",
+            "title": "收入分析",
             "logout": {
-                "title": "Logout",
-                "message": "Are you sure you want to log out?"
+                "title": "退出登录",
+                "message": "您确定要退出登录吗？"
             },
             "periods": {
-                "week": "Week",
-                "month": "Month",
-                "year": "Year",
-                "custom": "Custom Range"
+                "week": "周",
+                "month": "月",
+                "year": "年",
+                "custom": "自定义范围"
             },
             "errors": {
-                "invalidRangeTitle": "Invalid Range",
-                "invalidRangeMessage": "End date must be on or after the start date."
+                "invalidRangeTitle": "无效范围",
+                "invalidRangeMessage": "结束日期必须等于或晚于开始日期。"
             },
             "charts": {
-                "revenue": "Revenue",
-                "transactions": "Transactions",
-                "breakdown": "Breakdown",
-                "notAvailable": "N/A",
-                "itemLabel": "Item {{index}}",
-                "noBreakdown": "No breakdown data"
+                "revenue": "收入",
+                "transactions": "交易",
+                "breakdown": "明细",
+                "notAvailable": "不可用",
+                "itemLabel": "项目 {{index}}",
+                "noBreakdown": "暂无明细数据"
             },
             "overview": {
-                "title": "Overview",
-                "users": "Users",
-                "revenue": "Revenue"
+                "title": "概览",
+                "users": "用户",
+                "revenue": "收入"
             }
         },
         "dashboard": {
-            "loading": "Loading dashboard...",
-            "totalUsers": "Total Users",
-            "totalCourses": "Total Courses",
-            "totalLessons": "Total Lessons",
-            "totalRevenue": "Total Revenue",
-            "revenueThisMonth": "Revenue This Month",
-            "quickActions": "Quick Actions",
+            "loading": "正在加载仪表板...",
+            "totalUsers": "用户总数",
+            "totalCourses": "课程总数",
+            "totalLessons": "课时总数",
+            "totalRevenue": "总收入",
+            "revenueThisMonth": "本月收入",
+            "quickActions": "快速操作",
             "periods": {
-                "week": "This Week",
-                "month": "This Month",
-                "year": "This Year"
+                "week": "本周",
+                "month": "本月",
+                "year": "今年"
             },
-            "overview": "Overview",
-            "totalTransactions": "Total Transactions",
-            "selectStart": "Select start date",
-            "selectEnd": "Select end date",
+            "overview": "概览",
+            "totalTransactions": "交易总数",
+            "selectStart": "选择开始日期",
+            "selectEnd": "选择结束日期",
             "charts": {
-                "revenue": "Revenue",
-                "transactions": "Transactions"
+                "revenue": "收入",
+                "transactions": "交易"
             },
-            "users": "Users",
-            "courses": "Courses",
-            "lessons": "Lessons",
-            "revenue": "Revenue",
-            "transactions": "Transactions",
-            "title": "Admin Dashboard",
+            "users": "用户",
+            "courses": "课程",
+            "lessons": "课时",
+            "revenue": "收入",
+            "transactions": "交易",
+            "title": "管理仪表板",
             "period": {
-                "week": "Week",
-                "month": "Month",
-                "year": "Year",
-                "custom": "Custom"
+                "week": "周",
+                "month": "月",
+                "year": "年",
+                "custom": "自定义"
             }
         },
         "users": {
-            "title": "User Management",
-            "total": "Total Users",
-            "new": "New Users",
-            "growthChart": "Growth Chart",
+            "title": "用户管理",
+            "total": "用户总数",
+            "new": "新用户",
+            "growthChart": "增长图表",
             "overview": {
-                "totalUsers": "Total Users",
-                "growth": "Growth"
+                "totalUsers": "用户总数",
+                "growth": "增长"
             },
-            "listTitle": "Users",
-            "defaultfullname": "User",
-            "noUsers": "No users to display",
-            "searchPlaceholder": "Search users by name or email..."
+            "listTitle": "用户",
+            "defaultfullname": "用户",
+            "noUsers": "暂无用户可显示",
+            "searchPlaceholder": "按姓名或邮箱搜索用户..."
         }
     }
 }

@@ -1,158 +1,158 @@
 {
     "admin": {
         "section": {
-            "business": "Business",
-            "content": "Content"
+            "business": "Kinh doanh",
+            "content": "Nội dung"
         },
         "stats": {
-            "users": "Users",
-            "revenue": "Revenue",
-            "courses": "Courses",
-            "transactions": "Transactions"
+            "users": "Người dùng",
+            "revenue": "Doanh thu",
+            "courses": "Khóa học",
+            "transactions": "Giao dịch"
         },
         "actions": {
-            "addUser": "Add User",
-            "addCourse": "Add Course"
+            "addUser": "Thêm Người dùng",
+            "addCourse": "Thêm Khóa học"
         },
         "screens": {
-            "users": "Users",
-            "courses": "Courses",
-            "lessons": "Lessons",
-            "createVideo": "Create Video",
-            "analytics": "Analytics",
-            "transactions": "Transactions"
+            "users": "Người dùng",
+            "courses": "Khóa học",
+            "lessons": "Bài học",
+            "createVideo": "Tạo Video",
+            "analytics": "Phân tích",
+            "transactions": "Giao dịch"
         },
         "desc": {
-            "createVideo": "Upload a new video lesson",
-            "analytics": "View system analytics and reports",
-            "transactions": "Monitor system transactions"
+            "createVideo": "Tải lên một bài học video mới",
+            "analytics": "Xem phân tích và báo cáo hệ thống",
+            "transactions": "Giám sát các giao dịch hệ thống"
         },
         "transactions": {
-            "title": "Transactions",
-            "defaultTitle": "Transaction",
-            "noTransactions": "No transactions"
+            "title": "Giao dịch",
+            "defaultTitle": "Giao dịch",
+            "noTransactions": "Không có giao dịch nào"
         },
         "lessons": {
-            "title": "Lesson Management",
-            "completions": "Lesson Completions",
-            "listTitle": "Lessons",
-            "noLessons": "No lessons"
+            "title": "Quản lý Bài học",
+            "completions": "Hoàn thành Bài học",
+            "listTitle": "Bài học",
+            "noLessons": "Không có bài học nào"
         },
         "courseDetail": {
-            "title": "Course Detail",
-            "updateSuccess": "Course updated successfully.",
+            "title": "Chi tiết Khóa học",
+            "updateSuccess": "Cập nhật khóa học thành công.",
             "delete": {
-                "title": "Delete Course",
-                "message": "Are you sure you want to delete this course? This action cannot be undone.",
-                "successTitle": "Deleted",
-                "successMessage": "Course removed."
+                "title": "Xóa Khóa học",
+                "message": "Bạn có chắc chắn muốn xóa khóa học này không? Hành động này không thể hoàn tác.",
+                "successTitle": "Đã Xóa",
+                "successMessage": "Khóa học đã được xóa."
             },
             "form": {
-                "thumbnailUrl": "Thumbnail URL",
-                "title": "Title",
-                "description": "Description",
-                "difficultyLevel": "Difficulty Level",
-                "type": "Type",
-                "price": "Price",
-                "courseId": "Course ID",
-                "creatorId": "Creator ID",
-                "createdAt": "Created At"
+                "thumbnailUrl": "URL Ảnh thu nhỏ",
+                "title": "Tiêu đề",
+                "description": "Mô tả",
+                "difficultyLevel": "Mức độ Khó",
+                "type": "Loại",
+                "price": "Giá",
+                "courseId": "ID Khóa học",
+                "creatorId": "ID Người tạo",
+                "createdAt": "Ngày tạo"
             }
         },
         "courses": {
-            "title": "Course Management",
+            "title": "Quản lý Khóa học",
             "overview": {
-                "totalCourses": "Total Courses",
-                "lessons": "Lessons"
+                "totalCourses": "Tổng số Khóa học",
+                "lessons": "Bài học"
             },
-            "listTitle": "Courses",
-            "noCourses": "No courses"
+            "listTitle": "Khóa học",
+            "noCourses": "Không có khóa học nào"
         },
         "menu": {
-            "appInfo": "App information"
+            "appInfo": "Thông tin ứng dụng"
         },
         "auth": {
-            "logout": "Log Out",
-            "logoutTitle": "Log Out",
-            "logoutConfirm": "Are you sure log out now?"
+            "logout": "Đăng Xuất",
+            "logoutTitle": "Đăng Xuất",
+            "logoutConfirm": "Bạn có chắc chắn muốn đăng xuất ngay bây giờ?"
         },
         "analytics": {
-            "title": "Revenue Analytics",
+            "title": "Phân tích Doanh thu",
             "logout": {
-                "title": "Logout",
-                "message": "Are you sure you want to log out?"
+                "title": "Đăng xuất",
+                "message": "Bạn có chắc chắn muốn đăng xuất?"
             },
             "periods": {
-                "week": "Week",
-                "month": "Month",
-                "year": "Year",
-                "custom": "Custom Range"
+                "week": "Tuần",
+                "month": "Tháng",
+                "year": "Năm",
+                "custom": "Khoảng thời gian Tùy chỉnh"
             },
             "errors": {
-                "invalidRangeTitle": "Invalid Range",
-                "invalidRangeMessage": "End date must be on or after the start date."
+                "invalidRangeTitle": "Khoảng thời gian Không hợp lệ",
+                "invalidRangeMessage": "Ngày kết thúc phải bằng hoặc sau ngày bắt đầu."
             },
             "charts": {
-                "revenue": "Revenue",
-                "transactions": "Transactions",
-                "breakdown": "Breakdown",
-                "notAvailable": "N/A",
-                "itemLabel": "Item {{index}}",
-                "noBreakdown": "No breakdown data"
+                "revenue": "Doanh thu",
+                "transactions": "Giao dịch",
+                "breakdown": "Phân tích chi tiết",
+                "notAvailable": "Không khả dụng",
+                "itemLabel": "Mục {{index}}",
+                "noBreakdown": "Không có dữ liệu phân tích chi tiết"
             },
             "overview": {
-                "title": "Overview",
-                "users": "Users",
-                "revenue": "Revenue"
+                "title": "Tổng quan",
+                "users": "Người dùng",
+                "revenue": "Doanh thu"
             }
         },
         "dashboard": {
-            "loading": "Loading dashboard...",
-            "totalUsers": "Total Users",
-            "totalCourses": "Total Courses",
-            "totalLessons": "Total Lessons",
-            "totalRevenue": "Total Revenue",
-            "revenueThisMonth": "Revenue This Month",
-            "quickActions": "Quick Actions",
+            "loading": "Đang tải trang tổng quan...",
+            "totalUsers": "Tổng số Người dùng",
+            "totalCourses": "Tổng số Khóa học",
+            "totalLessons": "Tổng số Bài học",
+            "totalRevenue": "Tổng Doanh thu",
+            "revenueThisMonth": "Doanh thu Tháng này",
+            "quickActions": "Thao tác Nhanh",
             "periods": {
-                "week": "This Week",
-                "month": "This Month",
-                "year": "This Year"
+                "week": "Tuần này",
+                "month": "Tháng này",
+                "year": "Năm nay"
             },
-            "overview": "Overview",
-            "totalTransactions": "Total Transactions",
-            "selectStart": "Select start date",
-            "selectEnd": "Select end date",
+            "overview": "Tổng quan",
+            "totalTransactions": "Tổng số Giao dịch",
+            "selectStart": "Chọn ngày bắt đầu",
+            "selectEnd": "Chọn ngày kết thúc",
             "charts": {
-                "revenue": "Revenue",
-                "transactions": "Transactions"
+                "revenue": "Doanh thu",
+                "transactions": "Giao dịch"
             },
-            "users": "Users",
-            "courses": "Courses",
-            "lessons": "Lessons",
-            "revenue": "Revenue",
-            "transactions": "Transactions",
-            "title": "Admin Dashboard",
+            "users": "Người dùng",
+            "courses": "Khóa học",
+            "lessons": "Bài học",
+            "revenue": "Doanh thu",
+            "transactions": "Giao dịch",
+            "title": "Bảng điều khiển Quản trị",
             "period": {
-                "week": "Week",
-                "month": "Month",
-                "year": "Year",
-                "custom": "Custom"
+                "week": "Tuần",
+                "month": "Tháng",
+                "year": "Năm",
+                "custom": "Tùy chỉnh"
             }
         },
         "users": {
-            "title": "User Management",
-            "total": "Total Users",
-            "new": "New Users",
-            "growthChart": "Growth Chart",
+            "title": "Quản lý Người dùng",
+            "total": "Tổng số Người dùng",
+            "new": "Người dùng Mới",
+            "growthChart": "Biểu đồ Tăng trưởng",
             "overview": {
-                "totalUsers": "Total Users",
-                "growth": "Growth"
+                "totalUsers": "Tổng số Người dùng",
+                "growth": "Tăng trưởng"
             },
-            "listTitle": "Users",
-            "defaultfullname": "User",
-            "noUsers": "No users to display",
-            "searchPlaceholder": "Search users by name or email..."
+            "listTitle": "Người dùng",
+            "defaultfullname": "Người dùng",
+            "noUsers": "Không có người dùng nào để hiển thị",
+            "searchPlaceholder": "Tìm kiếm người dùng bằng tên hoặc email..."
         }
     }
 }

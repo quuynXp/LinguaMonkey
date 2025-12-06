@@ -10,6 +10,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.response.UserProfileResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.UserStatsResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.enums.AgeRange;
 import com.connectJPA.LinguaVietnameseApp.enums.Country;
 import com.connectJPA.LinguaVietnameseApp.service.AuthenticationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserService;
@@ -67,23 +68,25 @@ public class UserController {
 
     @Operation(summary = "Search public users", description = "Retrieve a list of user profiles for public directory/search. Safe for general users.")
     @GetMapping("/search")
-    @PreAuthorize("isAuthenticated()")
-    public AppApiResponse<Page<UserProfileResponse>> searchPublicUsers(
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Country country,
-            @Parameter(description = "Pagination") Pageable pageable,
-            Principal principal,
-            Locale locale) {
-        
-        UUID viewerId = (principal != null) ? UUID.fromString(principal.getName()) : null;
-        Page<UserProfileResponse> users = userService.searchPublicUsers(viewerId, keyword, country, pageable);
-        
-        return AppApiResponse.<Page<UserProfileResponse>>builder()
-                .code(200)
-                .message(messageSource.getMessage("user.list.success", null, locale))
-                .result(users)
-                .build();
-    }
+@PreAuthorize("isAuthenticated()")
+public AppApiResponse<Page<UserProfileResponse>> searchPublicUsers(
+        @RequestParam(required = false) String keyword,
+        @RequestParam(required = false) Country country,
+        @RequestParam(required = false) String gender,
+        @RequestParam(required = false) AgeRange ageRange, 
+        @Parameter(description = "Pagination") Pageable pageable,
+        Principal principal,
+        Locale locale) {
+    
+    UUID viewerId = (principal != null) ? UUID.fromString(principal.getName()) : null;
+    Page<UserProfileResponse> users = userService.searchPublicUsers(viewerId, keyword, country, gender, ageRange, pageable);
+    
+    return AppApiResponse.<Page<UserProfileResponse>>builder()
+            .code(200)
+            .message(messageSource.getMessage("user.list.success", null, locale))
+            .result(users)
+            .build();
+}
 
     @GetMapping("/count-online")
 public AppApiResponse<Long> countOnlineUsers() {

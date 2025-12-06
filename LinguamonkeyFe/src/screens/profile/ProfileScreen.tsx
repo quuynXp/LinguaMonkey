@@ -46,35 +46,30 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
     if (!historyData) return [];
 
     const today = new Date();
-    // Calculate start date: Go back 16 weeks, then find the Sunday of that week
     const numWeeks = 16;
     const startDate = new Date(today);
     startDate.setDate(today.getDate() - (numWeeks * 7));
-    const dayOfWeek = startDate.getDay(); // 0 is Sunday
-    startDate.setDate(startDate.getDate() - dayOfWeek); // Align to Sunday
+    const dayOfWeek = startDate.getDay();
+    startDate.setDate(startDate.getDate() - dayOfWeek);
 
     const weeks = [];
     let currentWeek = [];
 
-    // Generate dates until we reach today (or end of this week)
     const itrDate = new Date(startDate);
     const endDate = new Date(today);
-    endDate.setDate(today.getDate() + (6 - today.getDay())); // Fill until end of current week
+    endDate.setDate(today.getDate() + (6 - today.getDay()));
 
     while (itrDate <= endDate) {
       const dateStr = itrDate.toISOString().split('T')[0];
 
       let count = 0;
 
-      // 1. Check if backend provided the pre-calculated heatmap map (Best accuracy)
       if (historyData.dailyActivity && typeof historyData.dailyActivity === 'object') {
         count = historyData.dailyActivity[dateStr] || 0;
       }
-      // 2. Fallback to direct map structure (Legacy support)
       else if (historyData[dateStr] && typeof historyData[dateStr] === 'number') {
         count = historyData[dateStr];
       }
-      // 3. Fallback to parsing sessions array (Lowest accuracy, misses generic online time)
       else if (historyData.sessions && Array.isArray(historyData.sessions)) {
         const sessions = historyData.sessions.filter((s: any) => {
           if (!s.date) return false;
@@ -157,12 +152,7 @@ const ActivityHeatmap = ({ userId }: { userId: string }) => {
   );
 };
 
-// ... (Rest of ProfileScreen.tsx remains unchanged: BadgeProgressSection, CombinedFriendsSection, etc.)
-// Re-exporting the rest of the file content as provided in context for completeness is assumed not needed unless requested.
-// The primary fix is in ActivityHeatmap logic above.
-
 const BadgeProgressSection = ({ userId }: { userId: string }) => {
-  // ... (same as original)
   const { t } = useTranslation();
   const { data: badgeProgress, isLoading } = useBadgeProgress(userId);
 
@@ -217,10 +207,7 @@ const BadgeProgressSection = ({ userId }: { userId: string }) => {
   );
 };
 
-// ... (Continuing with the rest of ProfileScreen components)
-
 const InfoRow = ({ icon, label, value, copyable = false }: { icon: string; label: string; value?: string | null | number | boolean; copyable?: boolean }) => {
-  // ... (same as original)
   if (value === undefined || value === null || value === '') return null;
   const handleCopy = () => {
     if (copyable && typeof value === 'string') {
@@ -242,10 +229,8 @@ const InfoRow = ({ icon, label, value, copyable = false }: { icon: string; label
   );
 };
 
-const SimpleUserAvatar = ({ imageUrl, gender, size }: { imageUrl?: string | null; gender?: string | null; size: number }) => {
-  const avatarSource = getAvatarSource(imageUrl, gender);
-  return <Image source={avatarSource} style={{ width: size, height: size, borderRadius: size / 2 }} />;
-};
+// Loại bỏ SimpleUserAvatar và logic cố định Google Drive URL.
+// Chỉ sử dụng URL thô hoặc fallback qua getAvatarSource (dành cho ảnh mặc định)
 
 const CombinedFriendsSection = () => {
   const { t } = useTranslation();
@@ -347,7 +332,11 @@ const CombinedFriendsSection = () => {
         onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: userToDisplay.userId })}
       >
         <View style={{ position: 'relative', width: 50, height: 50 }}>
-          <SimpleUserAvatar imageUrl={userToDisplay.avatarUrl} gender={userToDisplay.gender} size={50} />
+          {/* FIX: Xoá SimpleUserAvatar, dùng trực tiếp Image với URL thô (hoặc getAvatarSource cho default) */}
+          <Image
+            source={userToDisplay.avatarUrl ? { uri: userToDisplay.avatarUrl } : getAvatarSource(null, userToDisplay.gender)}
+            style={{ width: 50, height: 50, borderRadius: 25 }}
+          />
           {userToDisplay.country && (
             <View style={styles.flagBadgeSmall}>
               <Text style={styles.flagTextSmall}>{getCountryFlag(userToDisplay.country)}</Text>
@@ -464,9 +453,14 @@ const ProfileScreen: React.FC = () => {
   const handleUploadStart = useCallback(() => setUploading(true), []);
   const handleUploadEnd = useCallback(() => setUploading(false), []);
 
+  // FIX: Xóa hàm helper getFixedAvatarUrl theo yêu cầu
+
   const renderSingleHeader = () => {
-    // ... (Same as original)
-    const singleAvatarSource = getAvatarSource(user?.avatarUrl, user?.gender);
+    // FIX: Sử dụng URL thô ({ uri: URL }) cho ảnh động. 
+    // Chỉ dùng getAvatarSource để lấy default nếu URL rỗng.
+    const rawAvatarUrl = user?.avatarUrl;
+    const singleAvatarSource = rawAvatarUrl ? { uri: rawAvatarUrl } : getAvatarSource(null, user?.gender);
+
     const vip = user?.vip || userStore.vip;
     const show3D = character3d && character3d.modelUrl && character3d.modelUrl.length > 0;
 

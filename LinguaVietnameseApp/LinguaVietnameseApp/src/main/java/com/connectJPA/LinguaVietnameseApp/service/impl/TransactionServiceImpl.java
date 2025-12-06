@@ -21,6 +21,7 @@ import com.stripe.model.EventDataObjectDeserializer;
 import com.stripe.model.checkout.Session;
 import com.stripe.net.Webhook;
 import com.stripe.param.checkout.SessionCreateParams;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -69,6 +70,9 @@ public class TransactionServiceImpl implements TransactionService {
 
     @Value("${vnpay.url}")
     private String vnpPayUrl;
+
+    @Value("${app.backend.url:http://localhost:8080}")
+    private String appBackendUrl;
 
     @Value("${vip.price.monthly:9.99}")
     private BigDecimal vipPriceMonthly;
@@ -181,7 +185,7 @@ public class TransactionServiceImpl implements TransactionService {
         transaction = transactionRepository.save(transaction);
 
         if (request.getProvider() == TransactionProvider.VNPAY) {
-            return createVnPayUrl(transaction, request.getAmount(), request.getCurrency(), clientIp, request.getReturnUrl());
+            return createVnPayUrl(transaction, request.getAmount(), request.getCurrency(), clientIp);
         } else {
             return createStripeCheckoutSession(transaction, request.getAmount(), request.getCurrency(), "Deposit to wallet", request.getReturnUrl());
         }
@@ -265,7 +269,7 @@ public class TransactionServiceImpl implements TransactionService {
         transaction = transactionRepository.save(transaction);
 
         if (request.getProvider() == TransactionProvider.VNPAY) {
-            return createVnPayUrl(transaction, finalAmount, request.getCurrency(), clientIp, request.getReturnUrl());
+            return createVnPayUrl(transaction, finalAmount, request.getCurrency(), clientIp);
         } else {
             return createStripeCheckoutSession(transaction, finalAmount, request.getCurrency(), request.getDescription(), request.getReturnUrl());
         }
@@ -275,11 +279,15 @@ public class TransactionServiceImpl implements TransactionService {
         Stripe.apiKey = stripeApiKey;
         String stripeCurrency = (currency != null) ? currency.toLowerCase() : "usd";
         
+        // Deep Link for App
+        String deepLinkSuccess = returnUrl + "?status=success&transactionId=" + transaction.getTransactionId();
+        String deepLinkCancel = returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId();
+
         SessionCreateParams.Builder paramsBuilder = SessionCreateParams.builder()
                 .addPaymentMethodType(SessionCreateParams.PaymentMethodType.CARD)
                 .setMode(SessionCreateParams.Mode.PAYMENT)
-                .setSuccessUrl(returnUrl + "?status=success&transactionId=" + transaction.getTransactionId())
-                .setCancelUrl(returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId())
+                .setSuccessUrl(deepLinkSuccess)
+                .setCancelUrl(deepLinkCancel)
                 .setClientReferenceId(transaction.getTransactionId().toString())
                 .addLineItem(SessionCreateParams.LineItem.builder()
                         .setQuantity(1L)
@@ -300,21 +308,23 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
-    private String createVnPayUrl(Transaction transaction, BigDecimal amount, String currency, String clientIp, String returnUrl) {
+    private String createVnPayUrl(Transaction transaction, BigDecimal amount, String currency, String clientIp) {
         String vnp_Version = "2.1.0";
         String vnp_Command = "pay";
         String vnp_OrderInfo = (transaction.getDescription() != null) ? transaction.getDescription() : "Payment";
         String vnp_TxnRef = transaction.getTransactionId().toString();
         String vnp_IpAddr = (clientIp != null) ? clientIp : "127.0.0.1";
         
-        // Convert to VND if necessary
+        // Use Backend URL for redirect to avoid "Website not approved" error
+        // Ensure this URL is registered in VNPAY Sandbox or is localhost
+        String backendReturnUrl = appBackendUrl + "/api/v1/transactions/vnpay-return";
+
         BigDecimal amountVND = amount;
         if (!"VND".equalsIgnoreCase(currency)) {
             BigDecimal rate = currencyService.getUsdToVndRate();
             amountVND = amount.multiply(rate);
         }
         
-        // VNPAY Amount is multiplied by 100
         long amountVal = amountVND.multiply(BigDecimal.valueOf(100)).longValue();
 
         Map<String, String> vnp_Params = new HashMap<>();
@@ -325,9 +335,9 @@ public class TransactionServiceImpl implements TransactionService {
         vnp_Params.put("vnp_CurrCode", "VND");
         vnp_Params.put("vnp_TxnRef", vnp_TxnRef);
         vnp_Params.put("vnp_OrderInfo", vnp_OrderInfo);
-        vnp_Params.put("vnp_OrderType", "other"); // Required parameter
+        vnp_Params.put("vnp_OrderType", "other");
         vnp_Params.put("vnp_Locale", "vn");
-        vnp_Params.put("vnp_ReturnUrl", returnUrl);
+        vnp_Params.put("vnp_ReturnUrl", backendReturnUrl);
         vnp_Params.put("vnp_IpAddr", vnp_IpAddr);
 
         Calendar cld = Calendar.getInstance(TimeZone.getTimeZone("Etc/GMT+7"));
@@ -339,7 +349,6 @@ public class TransactionServiceImpl implements TransactionService {
         String vnp_ExpireDate = formatter.format(cld.getTime());
         vnp_Params.put("vnp_ExpireDate", vnp_ExpireDate);
 
-        // Sorting is crucial for VNPAY Checksum
         List<String> fieldNames = new ArrayList<>(vnp_Params.keySet());
         Collections.sort(fieldNames);
         StringBuilder hashData = new StringBuilder();
@@ -354,7 +363,7 @@ public class TransactionServiceImpl implements TransactionService {
                 hashData.append('=');
                 hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
                 
-                // Build query url
+                // Build query
                 query.append(URLEncoder.encode(fieldName, StandardCharsets.US_ASCII));
                 query.append('=');
                 query.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
@@ -389,6 +398,87 @@ public class TransactionServiceImpl implements TransactionService {
         } catch (Exception ex) {
             return "";
         }
+    }
+
+    @Override
+    @Transactional
+    public String processVnPayReturn(HttpServletRequest request) {
+        Map<String, String> fields = new HashMap<>();
+        for (Enumeration<String> params = request.getParameterNames(); params.hasMoreElements(); ) {
+            String fieldName = params.nextElement();
+            String fieldValue = request.getParameter(fieldName);
+            if ((fieldValue != null) && (fieldValue.length() > 0)) {
+                try {
+                    fields.put(fieldName, URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII.toString()));
+                } catch (Exception e) {
+                    log.error("Encoding error", e);
+                }
+            }
+        }
+
+        String vnp_SecureHash = request.getParameter("vnp_SecureHash");
+        if (fields.containsKey("vnp_SecureHashType")) fields.remove("vnp_SecureHashType");
+        if (fields.containsKey("vnp_SecureHash")) fields.remove("vnp_SecureHash");
+
+        String signValue = hashAllFields(fields);
+        String txnRef = request.getParameter("vnp_TxnRef");
+        
+        // App Deep Link
+        String baseDeepLink = "linguamonkey://deposit-result";
+
+        if (signValue.equals(vnp_SecureHash)) {
+            String responseCode = request.getParameter("vnp_ResponseCode");
+            
+            Transaction transaction = transactionRepository.findById(UUID.fromString(txnRef))
+                    .orElse(null);
+
+            if (transaction != null && transaction.getStatus() == TransactionStatus.PENDING) {
+                if ("00".equals(responseCode)) {
+                    transaction.setStatus(TransactionStatus.SUCCESS);
+                    
+                    // Logic success for Deposit/Payment
+                    if (transaction.getType() == TransactionType.DEPOSIT) {
+                        walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
+                    } else if (transaction.getType() == TransactionType.PAYMENT || transaction.getType() == TransactionType.UPGRADE_VIP) {
+                         handleSuccessfulPayment(transaction.getTransactionId().toString());
+                    }
+                    
+                    transactionRepository.save(transaction);
+                    return baseDeepLink + "?status=success&transactionId=" + txnRef;
+                } else {
+                    transaction.setStatus(TransactionStatus.FAILED);
+                    transactionRepository.save(transaction);
+                    return baseDeepLink + "?status=failed&reason=payment_failed_code_" + responseCode;
+                }
+            } else {
+                 // Transaction already processed or not found
+                 return baseDeepLink + "?status=success&transactionId=" + txnRef;
+            }
+        } else {
+            return baseDeepLink + "?status=failed&reason=invalid_checksum";
+        }
+    }
+    
+    private String hashAllFields(Map<String, String> fields) {
+        List<String> fieldNames = new ArrayList<>(fields.keySet());
+        Collections.sort(fieldNames);
+        StringBuilder sb = new StringBuilder();
+        Iterator<String> itr = fieldNames.iterator();
+        while (itr.hasNext()) {
+            String fieldName = itr.next();
+            String fieldValue = fields.get(fieldName);
+            if ((fieldValue != null) && (fieldValue.length() > 0)) {
+                sb.append(fieldName);
+                sb.append("=");
+                // Note: VNPAY Java logic usually appends decoded or raw value for hashing check
+                // In this simplified version, using URL Encoded value similar to createVnPayUrl logic
+                sb.append(fieldValue);
+            }
+            if (itr.hasNext()) {
+                sb.append("&");
+            }
+        }
+        return hmacSHA512(vnpHashSecret, sb.toString());
     }
 
     @Override

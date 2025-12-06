@@ -108,13 +108,15 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
             console.error(error);
             Alert.alert(t('common.error'), t('payment.failed'));
         } finally {
-            setIsProcessing(false);
+            // Note: setIsProcessing(false) is handled in individual payment functions
+            // to avoid state race condition or unexpected UI behavior
         }
     };
 
     const handleWalletPayment = async () => {
         const balance = walletData?.balance || 0;
         if (balance < displayPrice) {
+            setIsProcessing(false); // Stop processing if balance is insufficient
             Alert.alert(
                 t('payment.insufficientBalanceTitle'),
                 t('payment.insufficientBalanceMessage', { amount: (displayPrice - balance).toLocaleString() + ' ' + userCurrency }),
@@ -153,6 +155,9 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
             onError: (err: any) => {
                 console.log("Transaction Error", err?.response?.data || err);
                 Alert.alert(t('common.error'), t('payment.transactionFailed'));
+            },
+            onSettled: () => {
+                setIsProcessing(false);
             }
         });
     };
@@ -174,13 +179,20 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
         createPaymentUrl.mutate(payload, {
             onSuccess: async (url) => {
                 if (url) {
-                    onClose();
+                    // **FIX START:** Open browser before closing modal
                     await WebBrowser.openBrowserAsync(url);
+                    onClose();
+                    // **FIX END**
+                } else {
+                    Alert.alert(t('common.error'), t('payment.gatewayError'));
                 }
             },
             onError: (err: any) => {
-                console.log("Gateway Error", err?.response?.data);
+                console.log("Gateway Error", err?.response?.data || err);
                 Alert.alert(t('common.error'), t('payment.gatewayError'));
+            },
+            onSettled: () => {
+                setIsProcessing(false);
             }
         });
     };
