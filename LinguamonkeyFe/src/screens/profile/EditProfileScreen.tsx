@@ -9,14 +9,12 @@ import {
   ActivityIndicator,
   Modal,
   FlatList,
-  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from 'react-i18next';
 import { useUserStore } from '../../stores/UserStore';
 import instance from '../../api/axiosClient';
 import { gotoTab } from '../../utils/navigationRef';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import * as Enums from '../../types/enums';
 import { getCountryFlag } from '../../utils/flagUtils';
@@ -42,6 +40,12 @@ const ENUM_OPTIONS = {
   })),
 };
 
+const LANGUAGE_OPTIONS = [
+  { value: 'vi', label: 'Vietnamese', flag: getCountryFlag('vi') },
+  { value: 'en', label: 'English', flag: getCountryFlag('en') },
+  { value: 'zh', label: 'Chinese', flag: getCountryFlag('zh') },
+];
+
 const OptionModal = ({ visible, onClose, options, onSelect, title, t }: any) => (
   <Modal visible={visible} animationType="slide" transparent>
     <View style={styles.modalWrap}>
@@ -52,13 +56,48 @@ const OptionModal = ({ visible, onClose, options, onSelect, title, t }: any) => 
           keyExtractor={(i: any) => i.value}
           renderItem={({ item }) => (
             <TouchableOpacity style={styles.optionRow} onPress={() => { onSelect(item); onClose(); }}>
-              {item.flag && <Text style={{ marginRight: 8, fontSize: 20 }}>{item.flag}</Text>}
+              {item.flag && <Text style={{ marginRight: 12, fontSize: 24 }}>{item.flag}</Text>}
               <Text style={styles.optionText}>{item.label}</Text>
             </TouchableOpacity>
           )}
         />
         <TouchableOpacity style={styles.modalClose} onPress={onClose}>
           <Text style={styles.modalCloseText}>{t('common.close') ?? 'Close'}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </Modal>
+);
+
+const MultiSelectModal = ({ visible, onClose, options, selectedValues, onToggle, title, t }: any) => (
+  <Modal visible={visible} animationType="slide" transparent>
+    <View style={styles.modalWrap}>
+      <View style={styles.modalCard}>
+        <Text style={styles.modalTitle}>{title}</Text>
+        <FlatList
+          data={options}
+          keyExtractor={(i: any) => i.value}
+          renderItem={({ item }) => {
+            const isSelected = selectedValues.includes(item.value);
+            return (
+              <TouchableOpacity style={styles.optionRow} onPress={() => onToggle(item.value)}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {item.flag && <Text style={{ marginRight: 12, fontSize: 24 }}>{item.flag}</Text>}
+                  <Text style={[styles.optionText, isSelected && { fontWeight: '700', color: '#4F46E5' }]}>
+                    {item.label}
+                  </Text>
+                </View>
+                <Icon
+                  name={isSelected ? "check-box" : "check-box-outline-blank"}
+                  size={24}
+                  color={isSelected ? "#4F46E5" : "#9CA3AF"}
+                />
+              </TouchableOpacity>
+            );
+          }}
+        />
+        <TouchableOpacity style={styles.saveBtn} onPress={onClose}>
+          <Text style={styles.saveBtnText}>{t('common.done') ?? 'Done'}</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -151,6 +190,7 @@ const EditProfileScreen: React.FC = () => {
   const [local, setLocal] = useState<any>(null);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<{ key?: keyof typeof ENUM_OPTIONS, visible: boolean }>({ visible: false });
+  const [languageModalVisible, setLanguageModalVisible] = useState(false);
   const [dateModalVisible, setDateModalVisible] = useState(false);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [isProcessingDelete, setIsProcessingDelete] = useState(false);
@@ -170,6 +210,7 @@ const EditProfileScreen: React.FC = () => {
         gender: user.gender ?? null,
         vip: user.vip ?? false,
         userId: user.userId,
+        languages: user.languages ?? [],
       });
     }
   }, [user]);
@@ -180,6 +221,17 @@ const EditProfileScreen: React.FC = () => {
   const onSelectOption = (item: { value: string, label: string }) => {
     if (!modal.key) return;
     setLocal((s: any) => ({ ...s, [modal.key!]: item.value }));
+  };
+
+  const handleToggleLanguage = (langValue: string) => {
+    setLocal((prev: any) => {
+      const current = prev.languages || [];
+      if (current.includes(langValue)) {
+        return { ...prev, languages: current.filter((v: string) => v !== langValue) };
+      } else {
+        return { ...prev, languages: [...current, langValue] };
+      }
+    });
   };
 
   const handleDateSelect = (date: Date) => {
@@ -204,6 +256,7 @@ const EditProfileScreen: React.FC = () => {
         learningPace: local.learningPace,
         proficiency: local.proficiency,
         gender: local.gender,
+        languages: local.languages,
         dayOfBirth: local.dayOfBirth ? local.dayOfBirth.toISOString().split('T')[0] : null,
       };
 
@@ -258,6 +311,13 @@ const EditProfileScreen: React.FC = () => {
     return translatedValue;
   };
 
+  const calculateAge = (dob: Date | null) => {
+    if (!dob) return '';
+    const diff_ms = Date.now() - dob.getTime();
+    const age_dt = new Date(diff_ms);
+    return Math.abs(age_dt.getUTCFullYear() - 1970);
+  };
+
   if (!local) return <ActivityIndicator style={{ flex: 1 }} size="large" color="#4F46E5" />;
 
   const isEmailAuth = user?.authProvider === 'EMAIL';
@@ -301,14 +361,37 @@ const EditProfileScreen: React.FC = () => {
             <TextInput value={local.phone} keyboardType="phone-pad" onChangeText={(v) => setLocal((s: any) => ({ ...s, phone: v }))} style={styles.input} />
           </View>
 
-          {/* Date of Birth */}
+          {/* Date of Birth & Age */}
           <TouchableOpacity style={styles.fieldRow} onPress={() => setDateModalVisible(true)}>
-            <Text style={styles.label}>{t('profile.dayOfBirth') ?? 'Date of Birth'}</Text>
+            <View>
+              <Text style={styles.label}>{t('profile.dayOfBirth') ?? 'Date of Birth'}</Text>
+              {local.dayOfBirth && (
+                <Text style={styles.smallAgeText}>{t('profile.age')}: {calculateAge(local.dayOfBirth)}</Text>
+              )}
+            </View>
             <View style={styles.pillRight}>
               <Text style={styles.rightText}>
                 {local.dayOfBirth ? local.dayOfBirth.toLocaleDateString() : (t('common.select') ?? 'Select')}
               </Text>
               <Icon name="calendar-today" size={20} color="#9CA3AF" />
+            </View>
+          </TouchableOpacity>
+
+          {/* Languages (Multi-Select) */}
+          <TouchableOpacity style={styles.fieldRow} onPress={() => setLanguageModalVisible(true)}>
+            <Text style={styles.label}>{t('profile.languages') ?? 'Languages'}</Text>
+            <View style={styles.pillRight}>
+              <View style={{ flexDirection: 'row', maxWidth: '60%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                {local.languages && local.languages.length > 0 ? (
+                  local.languages.map((lang: string) => {
+                    const opt = LANGUAGE_OPTIONS.find(o => o.value === lang);
+                    return opt ? <Text key={lang} style={styles.flagStyle}>{opt.flag}</Text> : null;
+                  })
+                ) : (
+                  <Text style={styles.rightText}>{t('common.select') ?? 'Select'}</Text>
+                )}
+              </View>
+              <Icon name="chevron-right" size={20} color="#9CA3AF" />
             </View>
           </TouchableOpacity>
 
@@ -424,6 +507,16 @@ const EditProfileScreen: React.FC = () => {
           t={t}
         />
 
+        <MultiSelectModal
+          visible={languageModalVisible}
+          onClose={() => setLanguageModalVisible(false)}
+          options={LANGUAGE_OPTIONS}
+          selectedValues={local.languages || []}
+          onToggle={handleToggleLanguage}
+          title={t('profile.selectLanguages') ?? 'Select Languages'}
+          t={t}
+        />
+
         <DatePickerModal
           visible={dateModalVisible}
           onClose={() => setDateModalVisible(false)}
@@ -480,6 +573,7 @@ const styles = createScaledSheet({
   pillRight: { flexDirection: 'row', alignItems: 'center' },
   rightText: { color: '#374151', marginRight: 8, fontSize: 15, fontWeight: '500' },
   flagStyle: { marginRight: 8, fontSize: 20 },
+  smallAgeText: { fontSize: 11, color: '#6B7280', marginTop: 2 },
 
   linkedRow: {
     flexDirection: 'row',
@@ -513,7 +607,7 @@ const styles = createScaledSheet({
   modalWrap: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
   modalCard: { backgroundColor: '#fff', padding: 16, borderTopLeftRadius: 12, borderTopRightRadius: 12, maxHeight: '80%' },
   modalTitle: { fontWeight: '700', fontSize: 18, color: '#1F2937', marginBottom: 12, textAlign: 'center' },
-  optionRow: { paddingVertical: 12, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  optionRow: { paddingVertical: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   optionText: { color: '#1F2937', fontSize: 16 },
   modalClose: { marginTop: 12, alignItems: 'center', paddingVertical: 8 },
   modalCloseText: { color: '#4F46E5', fontWeight: '600' },

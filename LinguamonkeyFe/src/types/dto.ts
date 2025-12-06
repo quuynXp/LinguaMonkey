@@ -311,7 +311,24 @@ export interface CreateRoadmapRequest {
     targetLevel: number;
     targetProficiency: Enums.ProficiencyLevel;
     estimatedCompletionTime: number;
+    items: RoadmapItemRequest[];
     certification: Enums.Certification;
+}
+
+export interface RoadmapItemRequest {
+    title: string;
+    description: string;
+    estimatedTime: number;
+    orderIndex: number;
+    resources: ResourceRequest[];
+}
+
+export interface ResourceRequest {
+    title: string;
+    url: string;
+    type: string;
+    description: string;
+    duration: number;
 }
 
 export interface CustomTestRequest {
@@ -1033,6 +1050,7 @@ export interface CourseVersionEnrollmentResponse {
     course: CourseResponse;        // The abstract course info
     courseVersion: CourseVersionResponse; // The specific version enrolled
     progress: number;
+    completedLessonsCount: number;
 }
 export interface CourseLessonResponse {
     courseId: string;
@@ -1671,6 +1689,7 @@ export interface RoadmapItemResponse {
     expReward: number;
     difficulty: string;
     category: string;
+    resources: ResourceResponse[];
 }
 
 export interface RoadmapItemUserResponse {
@@ -1934,7 +1953,7 @@ export interface StudySessionResponse {
 export interface StudyHistoryResponse {
     sessions: StudySessionResponse[];
     stats?: StatsResponse;
-    dailyActivity: { [key: string]: number }; 
+    dailyActivity: { [key: string]: number };
 }
 export interface SubmitExerciseResponse {
     score: number;
@@ -2157,6 +2176,7 @@ export interface UserProfileResponse {
     flag?: string;
     gender?: string; // Sửa thành optional ? để an toàn
     country?: Enums.Country;
+    age?: number;
 
     vip?: boolean;
     vipDaysRemaining?: number;

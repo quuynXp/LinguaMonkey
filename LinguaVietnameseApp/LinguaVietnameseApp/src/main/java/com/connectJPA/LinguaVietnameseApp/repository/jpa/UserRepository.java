@@ -31,7 +31,7 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
             ") AND u.isDeleted = false")
     Page<User> searchUsersByKeyword(@Param("keyword") String keyword, Pageable pageable);
     
-    @Query("SELECT u FROM User u JOIN u.userSettings s WHERE " +
+    @Query("SELECT DISTINCT u FROM User u JOIN u.userSettings s WHERE " +
             "u.isDeleted = false " +
             "AND s.searchPrivacy = true " +
             "AND (:keyword IS NULL OR :keyword = '' OR (" +
@@ -41,7 +41,7 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
             "   u.phone LIKE CONCAT('%', :keyword, '%')" +
             ")) " +
             "AND (:country IS NULL OR u.country = :country) " +
-            "AND (:gender IS NULL OR :gender = '' OR u.gender = :gender) " +
+            "AND (:gender IS NULL OR :gender = '' OR LOWER(u.gender) = LOWER(:gender)) " +
             "AND (:ageRange IS NULL OR u.ageRange = :ageRange)")
     Page<User> searchAdvanced(
             @Param("keyword") String keyword,

@@ -22,4 +22,6 @@ public interface RoadmapResourceRepository extends JpaRepository<RoadmapResource
             "WHERE r.itemId IN (SELECT i.itemId FROM RoadmapItem i WHERE i.roadmap.roadmapId = :roadmapId) " +
             "AND r.isDeleted = false")
     void deleteByRoadmapIdAndIsDeletedFalse(@Param("roadmapId") UUID roadmapId);
+
+    List<RoadmapResource> findByRoadmapIdAndIsDeletedFalse(UUID roadmapId);
 }

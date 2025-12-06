@@ -29,4 +29,7 @@ public class NotificationRequest {
     
     private boolean read = false;
     private boolean isDeleted = false;
+
+    // Added to support the builder.additionalData(...) call
+    private Map<String, String> additionalData;
 }

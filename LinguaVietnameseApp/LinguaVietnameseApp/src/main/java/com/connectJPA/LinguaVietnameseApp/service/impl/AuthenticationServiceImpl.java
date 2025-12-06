@@ -661,6 +661,8 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         // Xoá token sau khi đã dùng
         secureResetTokens.remove(resetToken);
     }
+    
+    // FIX: Refactored logic to support CascadeType.ALL and prevent null identifier error
     public User findOrCreateUserAccount(String email, String fullName, String phone, AuthProvider provider, String providerUserId) {
         String normalizedPhone = (phone == null || phone.isBlank()) ? null : normalizePhone(phone);
         Optional<UserAuthAccount> existingAuth =
@@ -674,19 +676,18 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         } else if (normalizedPhone != null) {
             existingUser = userRepository.findByPhoneAndIsDeletedFalse(normalizedPhone);
         }
+        
         User user = existingUser.orElseGet(() -> {
+            // 1. Create User Object
             User u = User.builder()
                     .email(email != null ? email.toLowerCase().trim() : null)
                     .phone(normalizedPhone)
                     .fullname(fullName != null ? fullName : "User")
                     .createdAt(OffsetDateTime.now())
                     .build();
-            User savedUser = userRepository.save(u); // INSERT USERS LẦN 1 (CHO SOCIAL/OTP LOGIN)
 
-            // FIX: Create UserSettings explicitly when a new user is created
+            // 2. Create UserSettings Object
             UserSettings settings = UserSettings.builder()
-                    .user(savedUser) // Important for @MapsId
-                    .userId(savedUser.getUserId())
                     .soundEnabled(true)
                     .studyReminders(true)
                     .streakReminders(true)
@@ -700,9 +701,14 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .progressSharing(false)
                     .searchPrivacy(true)
                     .build();
-            userSettingsRepository.save(settings);
+            
+            // 3. Link them bi-directionally
+            // IMPORTANT: The setUserSettings method in User class now handles setting the parent back-reference
+            u.setUserSettings(settings);
 
-            return savedUser;
+            // 4. Save User (Cascade will save settings automatically)
+            // No need to explicitly save UserSettings or manage IDs manually
+            return userRepository.save(u);
         });
         
         // DÙNG HÀM TÁCH BIỆT ĐỂ TẠO LIÊN KẾT

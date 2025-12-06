@@ -56,6 +56,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -353,6 +354,13 @@ public class CourseServiceImpl implements CourseService {
                     "COURSE_APPROVAL_PENDING"
             );
         } else {
+            // Archive old version if exists
+            if (course.getLatestPublicVersion() != null) {
+                CourseVersion oldPublic = course.getLatestPublicVersion();
+                oldPublic.setStatus(VersionStatus.ARCHIVED);
+                courseVersionRepository.save(oldPublic);
+            }
+
             version.setStatus(VersionStatus.PUBLIC);
             version.setPublishedAt(OffsetDateTime.now());
             course.setLatestPublicVersion(version);
@@ -362,7 +370,7 @@ public class CourseServiceImpl implements CourseService {
             sendLearnerUpdateNotification(
                     course,
                     version,
-                    "A new version (v" + version.getVersionNumber() + ") is available. Reason: " + version.getReasonForChange()
+                    "A new version (v" + version.getVersionNumber() + ") is available. Update notes: " + version.getReasonForChange()
             );
         }
 
@@ -395,6 +403,11 @@ public class CourseServiceImpl implements CourseService {
         if (publicVersion != null) {
             newDraft.setDescription(publicVersion.getDescription());
             newDraft.setThumbnailUrl(publicVersion.getThumbnailUrl());
+            newDraft.setPrice(publicVersion.getPrice());
+            newDraft.setLanguageCode(publicVersion.getLanguageCode());
+            newDraft.setDifficultyLevel(publicVersion.getDifficultyLevel());
+            newDraft.setCategoryCode(publicVersion.getCategoryCode());
+            
             newDraft.setLessons(new ArrayList<>());
             List<CourseVersionLesson> oldLessons = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(publicVersion.getVersionId());
             for (CourseVersionLesson oldCvl : oldLessons) {
@@ -474,33 +487,28 @@ public class CourseServiceImpl implements CourseService {
                         .title("Course Updated: " + course.getTitle())
                         .content(content)
                         .type("COURSE_VERSION_UPDATE")
+                        .additionalData(Map.of("courseId", course.getCourseId().toString(), "versionId", version.getVersionId().toString()))
                         .build();
                 notificationService.createPushNotification(learnerNotif);
             }
         }
     }
 
-    // FIXED: Logic for Tab All, Search, and Type Filter
     @Override
     public Page<CourseResponse> getAllCourses(String title, String languageCode, CourseType type, Boolean isAdminCreated, Pageable pageable) {
         Page<Course> courses;
 
-        // 1. Filter by Admin Created
         if (isAdminCreated != null && isAdminCreated) {
             courses = courseRepository.findByIsAdminCreatedTrueAndApprovalStatusAndIsDeletedFalse(
                     CourseApprovalStatus.APPROVED, pageable
             );
         } 
-        // 2. Search by Title (Prioritize searching if title exists, ignore languageCode requirement for basic title search)
         else if (title != null && !title.isBlank()) {
-            // Using searchCoursesByKeyword which searches in Title and Description
             courses = courseRepository.searchCoursesByKeyword(title, pageable);
         } 
-        // 3. Filter by Type (FREE / PAID)
         else if (type != null) {
             courses = courseRepository.findByTypeAndApprovalStatusAndIsDeletedFalse(type, CourseApprovalStatus.APPROVED, pageable);
         } 
-        // 4. Default: Get ALL Approved Courses (Fixes "Tab All" showing only Beginners)
         else {
             courses = courseRepository.findByApprovalStatusAndIsDeletedFalse(CourseApprovalStatus.APPROVED, pageable);
         }
@@ -614,6 +622,19 @@ public class CourseServiceImpl implements CourseService {
     }
 
     @Override
+    public List<CourseVersionResponse> getCourseVersions(UUID courseId) {
+        if (!courseRepository.existsById(courseId)) {
+            throw new AppException(ErrorCode.COURSE_NOT_FOUND);
+        }
+        List<CourseVersion> versions = courseVersionRepository.findByCourseIdAndIsDeletedFalse(courseId);
+        
+        return versions.stream()
+                .sorted(Comparator.comparing(CourseVersion::getVersionNumber).reversed())
+                .map(versionMapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     @Transactional
     public void deleteCourse(UUID id) {
         Course course = courseRepository
@@ -681,7 +702,7 @@ public class CourseServiceImpl implements CourseService {
         sendLearnerUpdateNotification(
                 course,
                 version,
-                "A new version (v" + version.getVersionNumber() + ") is available. Reason: " + version.getReasonForChange()
+                "A new version (v" + version.getVersionNumber() + ") is available. Update notes: " + version.getReasonForChange()
         );
 
         return versionMapper.toResponse(version);

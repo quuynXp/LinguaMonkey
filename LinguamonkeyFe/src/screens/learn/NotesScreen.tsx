@@ -26,9 +26,10 @@ import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { TimeHelper } from "../../utils/timeHelper";
 
-const NotesScreen = ({ navigation }: any) => {
+const NotesScreen = ({ navigation, route }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
+  const { prefillContent, courseId } = route.params || {};
 
   const [selectedContentType, setSelectedContentType] = useState<string>("all");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -39,7 +40,9 @@ const NotesScreen = ({ navigation }: any) => {
 
   // Reminder State
   const [isReminderEnabled, setIsReminderEnabled] = useState(false);
-  const [reminderTime, setReminderTime] = useState(""); // Input Format HH:mm
+  const [reminderHour, setReminderHour] = useState("09");
+  const [reminderMinute, setReminderMinute] = useState("00");
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [reminderRepeat, setReminderRepeat] = useState<Enums.RepeatType>(Enums.RepeatType.DAILY);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -54,6 +57,16 @@ const NotesScreen = ({ navigation }: any) => {
 
   const { useCreateReminder } = useReminders();
   const { mutate: createReminder, isPending: isCreatingReminder } = useCreateReminder();
+
+  // Handle pre-fill from course details
+  useEffect(() => {
+    if (prefillContent) {
+      setNewNote(prefillContent);
+      setShowAddModal(true);
+      // Auto-enable reminder mode for study reminders
+      setIsReminderEnabled(true);
+    }
+  }, [prefillContent]);
 
   const searchParams = useMemo(() => {
     const params: any = { page: 0, size: 20 };
@@ -104,7 +117,7 @@ const NotesScreen = ({ navigation }: any) => {
 
     const notePayload: MemorizationRequest = {
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: null,
+      contentId: courseId || null,
       noteText: newNote.trim(),
       isFavorite: false,
       userId: user?.userId || "",
@@ -112,7 +125,7 @@ const NotesScreen = ({ navigation }: any) => {
 
     createMemorization(notePayload, {
       onSuccess: (createdNote) => {
-        if (isReminderEnabled && reminderTime) {
+        if (isReminderEnabled) {
           handleCreateReminder(createdNote.memorizationId, createdNote.noteText);
         } else {
           finishAddProcess();
@@ -123,17 +136,7 @@ const NotesScreen = ({ navigation }: any) => {
   };
 
   const handleCreateReminder = (targetId: string, noteTitle: string) => {
-    const [hours, minutes] = reminderTime.split(':').map(Number);
-    if (isNaN(hours) || isNaN(minutes)) {
-      Alert.alert("Invalid Time", "Please use HH:mm format");
-      finishAddProcess();
-      return;
-    }
-
-    const now = new Date();
-    now.setHours(hours, minutes, 0, 0);
-
-    const timeStringHHMM = TimeHelper.formatTimeHHMM(now);
+    const timeStringHHMM = `${reminderHour}:${reminderMinute}`;
 
     const reminderPayload: UserReminderRequest = {
       title: t("notes.reminderTitle") + ": " + noteTitle.substring(0, 20) + "...",
@@ -160,7 +163,8 @@ const NotesScreen = ({ navigation }: any) => {
 
   const finishAddProcess = () => {
     setNewNote("");
-    setReminderTime("");
+    setReminderHour("09");
+    setReminderMinute("00");
     setIsReminderEnabled(false);
     setShowAddModal(false);
     refetchMemorizations();
@@ -298,17 +302,36 @@ const NotesScreen = ({ navigation }: any) => {
 
               {isReminderEnabled && (
                 <View style={styles.reminderControls}>
-                  <View style={styles.timeInputContainer}>
-                    <Text style={styles.labelSmall}>{t("notes.time") ?? "Time (HH:MM)"}</Text>
-                    <TextInput
-                      style={styles.timeInput}
-                      value={reminderTime}
-                      onChangeText={setReminderTime}
-                      placeholder="10:00"
-                      keyboardType="numbers-and-punctuation"
-                      maxLength={5}
-                    />
+                  <Text style={styles.labelSmall}>{t("notes.time") ?? "Select Time"}</Text>
+
+                  {/* UX Optimized Time Picker (Two scroll lists simulated by buttons) */}
+                  <View style={styles.timePickerContainer}>
+                    <TouchableOpacity
+                      style={styles.timeBox}
+                      onPress={() => {
+                        const h = parseInt(reminderHour);
+                        const next = h >= 23 ? 0 : h + 1;
+                        setReminderHour(next.toString().padStart(2, '0'));
+                      }}
+                    >
+                      <Text style={styles.timeText}>{reminderHour}</Text>
+                      <Text style={styles.timeLabel}>Hr</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.timeSeparator}>:</Text>
+                    <TouchableOpacity
+                      style={styles.timeBox}
+                      onPress={() => {
+                        const m = parseInt(reminderMinute);
+                        const next = m >= 55 ? 0 : m + 5; // Jump by 5 mins for better UX
+                        setReminderMinute(next.toString().padStart(2, '0'));
+                      }}
+                    >
+                      <Text style={styles.timeText}>{reminderMinute}</Text>
+                      <Text style={styles.timeLabel}>Min</Text>
+                    </TouchableOpacity>
+                    <Text style={styles.hintText}>Tap to increment</Text>
                   </View>
+
                   <View style={styles.repeatContainer}>
                     <Text style={styles.labelSmall}>{t("notes.repeat") ?? "Repeat"}</Text>
                     <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
@@ -369,7 +392,7 @@ const styles = createScaledSheet({
   emptyState: { alignItems: 'center', marginTop: 60 },
   emptyText: { color: '#9CA3AF', marginTop: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '80%' },
+  modalContent: { backgroundColor: '#FFFFFF', borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 20, maxHeight: '90%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#37352F' },
   typeSelector: { flexDirection: 'row', marginBottom: 16, gap: 10 },
@@ -377,17 +400,24 @@ const styles = createScaledSheet({
   activeTypeBtn: { backgroundColor: '#E6F3FF' },
   typeBtnText: { fontSize: 13, color: '#37352F' },
   activeTypeBtnText: { color: '#0077D6', fontWeight: '600' },
-  modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 100, textAlignVertical: 'top', marginBottom: 10 },
+  modalInput: { fontSize: 16, lineHeight: 24, color: '#37352F', minHeight: 80, textAlignVertical: 'top', marginBottom: 10 },
 
   // Reminder Styles
   reminderSection: { backgroundColor: '#F7F7F5', padding: 12, borderRadius: 8, marginBottom: 20 },
   reminderHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   reminderLabel: { fontSize: 15, fontWeight: '500', color: '#37352F' },
   reminderControls: { marginTop: 12, borderTopWidth: 1, borderTopColor: '#E1E1E1', paddingTop: 12 },
-  timeInputContainer: { marginBottom: 10 },
-  timeInput: { backgroundColor: '#FFF', borderRadius: 4, padding: 8, borderWidth: 1, borderColor: '#E1E1E1', marginTop: 4 },
+
+  // Time Picker Custom UX
+  timePickerContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginVertical: 10 },
+  timeBox: { backgroundColor: '#FFF', borderRadius: 8, padding: 10, alignItems: 'center', borderWidth: 1, borderColor: '#E5E7EB', width: 60 },
+  timeText: { fontSize: 24, fontWeight: 'bold', color: '#37352F' },
+  timeLabel: { fontSize: 10, color: '#6B7280' },
+  timeSeparator: { fontSize: 24, fontWeight: 'bold', marginHorizontal: 10, color: '#37352F' },
+  hintText: { fontSize: 10, color: '#9CA3AF', marginLeft: 10 },
+
   labelSmall: { fontSize: 12, color: '#6B7280', fontWeight: '500' },
-  repeatContainer: {},
+  repeatContainer: { marginTop: 10 },
   repeatChip: { paddingVertical: 4, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#D1D5DB', backgroundColor: '#FFF' },
   activeChip: { backgroundColor: '#37352F', borderColor: '#37352F' },
   chipText: { fontSize: 12, color: '#37352F' },

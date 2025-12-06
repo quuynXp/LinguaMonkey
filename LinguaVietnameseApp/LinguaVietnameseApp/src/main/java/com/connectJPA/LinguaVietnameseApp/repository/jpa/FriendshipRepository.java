@@ -29,6 +29,13 @@ public interface FriendshipRepository extends JpaRepository<Friendship, Friendsh
     @Query("SELECT COUNT(f) FROM Friendship f WHERE (f.id.requesterId = :userId OR f.id.receiverId = :userId) AND f.status = 'accepted' AND f.isDeleted = false")
     long countAcceptedFriends(@Param("userId") UUID userId);
 
+    @Query("SELECT f FROM Friendship f WHERE (f.id.requesterId = :userId OR f.id.receiverId = :userId) AND f.status = :status AND f.isDeleted = false")
+    Page<Friendship> findAllFriendshipsByUserIdAndStatus(
+        @Param("userId") UUID userId, 
+        @Param("status") FriendshipStatus status, 
+        Pageable pageable
+    );
+    
     @Modifying
     @Query("UPDATE Friendship f SET f.status = 'expired' WHERE f.status = 'pending' AND f.createdAt < :sevenDaysAgo")
     int expirePendingFriendships(@Param("sevenDaysAgo") OffsetDateTime sevenDaysAgo);

@@ -7,6 +7,7 @@ networks:
 volumes:
   app_data:
   redis_data:
+  huggingface_cache: # [NEW] Volume để lưu dataset của HuggingFace
 
 services:
   # ==============================================================================
@@ -49,8 +50,8 @@ services:
   # ==============================================================================
   linguavietnameseapp:
     build:
-      context: ./LinguaVietnameseApp
-      dockerfile: Dockerfile.dev
+      context: .
+      dockerfile: ./LinguaVietnameseApp/Dockerfile.dev
     container_name: linguavietnameseapp
     depends_on:
       - app-database
@@ -59,21 +60,14 @@ services:
       - ./LinguaVietnameseApp/.env
     environment:
       - TZ=Asia/Ho_Chi_Minh
-      # SERVER CONFIGURATION
       - SERVER_PORT=10000
       - SERVER_TOMCAT_CONNECTION_TIMEOUT=300000
-      
-      # DATABASE & CACHE
       - SPRING_DATASOURCE_URL=jdbc:postgresql://app-database:5432/linguaviet_db
       - SPRING_REDIS_HOST=redis
-      
-      # GRPC CONFIGURATION
       - GRPC_SERVER_PORT=9090
       - GRPC_SERVER_ADDRESS=0.0.0.0
       - PYTHON_GRPC_HOST=pythonservice
       - PYTHON_GRPC_PORT=50051 
-      
-      # GOOGLE & FIREBASE
       - GOOGLE_SERVICE_ACCOUNT_FILE_URL=/app/config/gdrive-key.json
       - GOOGLE_CREDENTIALS_FILE_URL=/app/config/service-account-key.json
       - GOOGLE_FOLDER_ID=1BrqsnQ5vF38phPAT-8XexbsNgIzVQXOe
@@ -113,11 +107,12 @@ services:
       - REDIS_HOST=redis
       - GOOGLE_APPLICATION_CREDENTIALS=/app/config/service-account-key.json
       - GRPC_PORT=50051
-      # FIX: Gọi sang service name docker, không phải localhost
       - JAVA_GRPC_ADDRESS=linguavietnameseapp:9090 
+      - HF_HOME=/app/hf_cache # [NEW] Cấu hình đường dẫn cache
     volumes:
-      - ./PythonService:/app/PythonService
+      - ./PythonService:/app
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/app/public_key.pem:ro
+      - huggingface_cache:/app/hf_cache # [NEW] Mount volume
     ports:
       - "50052:8001" 
       - "50051:50051"
@@ -141,12 +136,14 @@ services:
       - REDIS_PASSWORD=redisPass123
       - DB_HOST=app-database
       - GOOGLE_APPLICATION_CREDENTIALS=/app/config/service-account-key.json
+      - HF_HOME=/app/hf_cache # [NEW] Dùng chung cache với service chính
     volumes:
-      - ./PythonService:/app/PythonService
+      - ./PythonService:/app
       - ./entrypoint.sh:/app/entrypoint.sh 
       - ./wait_for_db.py:/app/wait_for_db.py
+      - huggingface_cache:/app/hf_cache # [NEW] Mount volume
     entrypoint: ["/bin/bash", "/app/entrypoint.sh"]
-    command: ["celery", "-A", "src.worker.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+    command: ["celery", "-A", "src.worker.tasks.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     networks:
       - lingua-net
     restart: always
@@ -166,8 +163,8 @@ services:
       - REDIS_PASSWORD=redisPass123
       - DB_HOST=app-database
     volumes:
-      - ./PythonService:/app/PythonService
-    command: ["celery", "-A", "src.worker.celery_app", "beat", "--loglevel=info"]
+      - ./PythonService:/app
+    command: ["celery", "-A", "src.worker.tasks.celery_app", "beat", "--loglevel=info"]
     networks:
       - lingua-net
     restart: always

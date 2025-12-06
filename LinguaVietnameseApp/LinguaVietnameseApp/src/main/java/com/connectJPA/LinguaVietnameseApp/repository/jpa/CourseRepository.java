@@ -3,6 +3,7 @@ package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 import com.connectJPA.LinguaVietnameseApp.entity.Course;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
 import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
+import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -114,4 +115,7 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
             Pageable pageable);
 
 Page<Course> findByApprovalStatusAndIsDeletedFalse(CourseApprovalStatus status, Pageable pageable);
+
+List<Course> findByLatestPublicVersion_DifficultyLevelAndApprovalStatus(DifficultyLevel diffLevel,
+              CourseApprovalStatus approved);
 }

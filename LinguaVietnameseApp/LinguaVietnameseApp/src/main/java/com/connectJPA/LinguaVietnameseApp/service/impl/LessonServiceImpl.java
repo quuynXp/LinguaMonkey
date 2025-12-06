@@ -66,6 +66,8 @@ public class LessonServiceImpl implements LessonService {
     private final DailyChallengeService dailyChallengeService;
     private final BadgeService badgeService;
 
+    // ... (Keep existing searchLessons, getAllLessons, getLessonById, createLesson methods unchanged) ...
+
     @Override
     public Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
@@ -83,6 +85,7 @@ public class LessonServiceImpl implements LessonService {
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
                                               UUID categoryId, UUID subCategoryId, UUID courseId, UUID versionId, UUID seriesId, SkillType skillType,
                                               Pageable pageable) {
+        // ... (Keep existing implementation) ...
         try {
             if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
@@ -108,12 +111,10 @@ public class LessonServiceImpl implements LessonService {
                     predicates.add(cb.equal(root.get("lessonSubCategoryId"), subCategoryId));
                 }
                 
-                // CRITICAL: Filter specifically by Version to handle "lessons in courseversionlesson"
                 if (versionId != null) {
                     Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
                     predicates.add(cb.equal(cvlJoin.get("id").get("versionId"), versionId));
                 } else if (courseId != null) {
-                    // Fallback to all lessons in course if no specific version requested
                     Join<Lesson, CourseVersionLesson> cvlJoin = root.join("courseVersions");
                     Join<CourseVersionLesson, CourseVersion> cvJoin = cvlJoin.join("courseVersion");
                     Join<CourseVersion, Course> cJoin = cvJoin.join("course");
@@ -139,6 +140,7 @@ public class LessonServiceImpl implements LessonService {
         }
     }
 
+    // ... (Keep getLessonById, createLesson, getLessonsByIds, getLessonsByCreator unchanged) ...
     @Override
     public LessonResponse getLessonById(UUID id) {
         try {
@@ -193,7 +195,6 @@ public class LessonServiceImpl implements LessonService {
         Lesson lesson = lessonRepository.findById(lessonId).filter(l -> !l.isDeleted())
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
-        // Ensure questions are strictly for this lesson ID (which comes from CourseVersionLesson in frontend)
         List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
         
         if (Boolean.TRUE.equals(lesson.getShuffleQuestions())) {
@@ -217,7 +218,7 @@ public class LessonServiceImpl implements LessonService {
             m.put("weight", q.getWeight());
             m.put("orderIndex", q.getOrderIndex());
             m.put("transcript", q.getTranscript());
-            m.put("explainAnswer", q.getExplainAnswer()); // Mapped correctly
+            m.put("explainAnswer", q.getExplainAnswer()); 
             m.put("skillType", q.getSkillType());
             m.put("languageCode", q.getLanguageCode());
             m.put("optionsJson", q.getOptionsJson());
@@ -264,7 +265,6 @@ public class LessonServiceImpl implements LessonService {
             byte[] audioBytes = null;
             byte[] imageBytes = null;
             
-            // ROBUST PARSING LOGIC HERE
             if (rawAns instanceof Map) {
                 Map<String, Object> ansMap = (Map<String, Object>) rawAns;
                 userAnswerText = (String) ansMap.get("text_answer");
@@ -274,35 +274,33 @@ public class LessonServiceImpl implements LessonService {
                 if (audioBase64 != null) audioBytes = Base64.getDecoder().decode(audioBase64);
                 if (imageBase64 != null) imageBytes = Base64.getDecoder().decode(imageBase64);
             } else if (rawAns != null) {
-                // If Frontend sends just "A", this handles it.
                 userAnswerText = rawAns.toString();
             }
 
             int scoreGiven = 0;
             boolean correct = false;
             
+            // Logic check từng loại câu hỏi
             if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || 
                 q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || 
                 q.getQuestionType() == QuestionType.ORDERING ||
                 q.getQuestionType() == QuestionType.TRUE_FALSE ||
-                q.getQuestionType() == QuestionType.MATCHING) { // Added Matching & T/F handling
+                q.getQuestionType() == QuestionType.MATCHING) {
                 
                 correct = checkDeterministicAnswer(q, userAnswerText);
-                log.info("Checking Q: {} | User: {} | Correct: {} | Result: {}", qid, userAnswerText, q.getCorrectOption(), correct);
+                scoreGiven = correct ? (q.getWeight() == null ? 1 : q.getWeight()) : 0;
             }
             else if (q.getQuestionType() == QuestionType.SPEAKING) {
                 scoreGiven = checkSpeakingAnswer(q, token, audioBytes);
                 correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70);
             }
             else if (q.getQuestionType() == QuestionType.WRITING || q.getQuestionType() == QuestionType.ESSAY) {
+                // Sửa đổi: Truyền cả imageBytes (nếu user upload)
                 scoreGiven = checkWritingAnswer(q, token, userAnswerText, imageBytes);
-                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70);
+                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.5 : 50); // Threshold linh động
             }
 
             if (correct) {
-                if (scoreGiven == 0) {
-                    scoreGiven = q.getWeight() == null ? 1 : q.getWeight();
-                }
                 totalScore += scoreGiven;
             } else {
                 LessonProgressWrongItemsId wid = new LessonProgressWrongItemsId();
@@ -397,6 +395,10 @@ public class LessonServiceImpl implements LessonService {
             List<String> validOptions = Arrays.stream(correctAnswer.split("\\|\\|")).map(String::trim).collect(Collectors.toList());
             return validOptions.contains(got);
         }
+        if (q.getQuestionType() == QuestionType.MATCHING) {
+            // Simplistic check, ideally match JSON pairs
+            return got.equalsIgnoreCase(correctAnswer);
+        }
         return false;
     }
 
@@ -407,17 +409,40 @@ public class LessonServiceImpl implements LessonService {
                 token, audioBytes, q.getLanguageCode(), q.getTranscript()).get();
             return (int) response.getScore();
         } catch (Exception e) {
+            log.error("Speaking check failed for Q: " + q.getLessonQuestionId(), e);
             return 0;
         }
     }
 
-    private int checkWritingAnswer(LessonQuestion q, String token, String userText, byte[] imageBytes) {
+    // --- REFACTORED WRITING CHECK LOGIC ---
+    private int checkWritingAnswer(LessonQuestion q, String token, String userText, byte[] userUploadedImageBytes) {
         if (userText == null || q.getQuestion() == null) return 0;
+        
+        String mediaUrl = null;
+        String mimeType = "text/plain";
+        byte[] mediaBytes = null;
+
+        if (userUploadedImageBytes != null && userUploadedImageBytes.length > 0) {
+            mediaBytes = userUploadedImageBytes;
+            mimeType = "image/jpeg"; 
+        } 
+        else if (q.getMediaUrl() != null && !q.getMediaUrl().isEmpty()) {
+            mediaUrl = q.getMediaUrl();
+            
+            // Logic đoán loại media đơn giản hóa để gửi sang Python
+            if (q.getSkillType() == SkillType.LISTENING) {
+                mimeType = "audio/mpeg";
+            } else {
+                mimeType = "image/jpeg";
+            }
+        }
+
         try {
-            WritingResponseBody response = grpcClientService.callCheckWritingWithImageAsync(
-                token, userText, q.getQuestion(), imageBytes).get();
+            WritingResponseBody response = grpcClientService.callCheckWritingAssessmentAsync(
+                token, userText, q.getQuestion(), mediaBytes, mediaUrl, mimeType).get();
             return (int) response.getScore();
         } catch (Exception e) {
+            log.error("Writing check failed for Q: " + q.getLessonQuestionId(), e);
             return 0;
         }
     }

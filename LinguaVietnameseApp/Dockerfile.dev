@@ -1,20 +1,40 @@
-FROM eclipse-temurin:21-jdk AS builder
+# === STAGE 1: BUILD ===
+FROM maven:3.9-eclipse-temurin-21 AS builder
 
 WORKDIR /app
 
-COPY LinguaVietnameseApp/.mvn .mvn
-COPY LinguaVietnameseApp/mvnw .
-COPY LinguaVietnameseApp/pom.xml .
-COPY LinguaVietnameseApp/src ./src
+# Copy pom.xml và tải dependencies
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/pom.xml .
+RUN mvn dependency:go-offline
 
-RUN sed -i 's/\r$//' mvnw && chmod +x mvnw
-RUN ./mvnw clean package -DskipTests
+# Copy source code
+COPY ./LinguaVietnameseApp/LinguaVietnameseApp/src ./src
 
-FROM eclipse-temurin:21-jre-alpine AS runtime
+# Build
+RUN mvn clean package -DskipTests
+
+# === STAGE 2: RUNTIME ===
+FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
+
+# Cài đặt thư viện để xử lý env (nếu cần) và bash
+RUN apk add --no-cache bash
+
+# Copy file jar
 COPY --from=builder /app/target/*.jar app.jar
 
-EXPOSE 8080
+# Copy file entrypoint từ thư mục gốc của context build vào container
+# Đảm bảo đường dẫn nguồn đúng với cấu trúc thư mục của bạn
+COPY ./LinguaVietnameseApp/entrypoint.sh /app/entrypoint.sh
 
-ENTRYPOINT ["java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]
+# Cấp quyền thực thi và convert format file (đề phòng lỗi Windows CRLF)
+RUN sed -i 's/\r$//' /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh && \
+    mkdir -p /app/config
+
+EXPOSE 8080
+EXPOSE 9090
+
+# Dùng entrypoint script để khởi chạy
+ENTRYPOINT ["/app/entrypoint.sh", "java", "-Djava.security.egd=file:/dev/./urandom", "-jar", "/app/app.jar"]

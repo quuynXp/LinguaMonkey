@@ -58,7 +58,7 @@ public class FriendshipServiceImpl implements FriendshipService {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
-            UUID requesterUuid = (requesterId != null && !requesterId.isEmpty()) ? UUID.fromString(requesterId) : null;
+            UUID userIdUuid = (requesterId != null && !requesterId.isEmpty()) ? UUID.fromString(requesterId) : null;
             
             FriendshipStatus statusEnum = null;
             if (status != null && !status.isEmpty()) {
@@ -69,7 +69,17 @@ public class FriendshipServiceImpl implements FriendshipService {
                 }
             }
 
-            Page<Friendship> friendships = friendshipRepository.findByIdRequesterIdAndStatusAndIsDeletedFalse(requesterUuid, statusEnum, pageable);
+            Page<Friendship> friendships;
+
+            // FIX: If status is ACCEPTED, we need to check BOTH requester and receiver columns
+            // to find all friends regardless of who sent the request.
+            if (statusEnum == FriendshipStatus.ACCEPTED && userIdUuid != null) {
+                friendships = friendshipRepository.findAllFriendshipsByUserIdAndStatus(userIdUuid, statusEnum, pageable);
+            } else {
+                // For PENDING (Sent requests) or other cases, keep strict requester check
+                friendships = friendshipRepository.findByIdRequesterIdAndStatusAndIsDeletedFalse(userIdUuid, statusEnum, pageable);
+            }
+
             return friendships.map(this::toPopulatedResponse);
         } catch (IllegalArgumentException e) {
              throw new AppException(ErrorCode.INVALID_KEY);

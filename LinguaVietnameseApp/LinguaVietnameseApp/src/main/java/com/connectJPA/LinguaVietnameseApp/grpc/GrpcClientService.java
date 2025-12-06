@@ -83,7 +83,48 @@ public class GrpcClientService {
         });
     }
 
-    // --- OTHER METHODS (Standardized) ---
+    // --- WRITING & MEDIA ASSESSMENT (Updated for Image/Video/Audio) ---
+
+    public CompletableFuture<WritingResponseBody> callCheckWritingAssessmentAsync(
+            String token, String userText, String prompt, 
+            byte[] mediaData, String mediaUrl, String mediaType) {
+        
+        ManagedChannel channel = createChannelWithToken(token);
+        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
+
+        // Build request with new Proto message
+        WritingAssessmentRequest.Builder requestBuilder = WritingAssessmentRequest.newBuilder()
+                .setUserText(userText)
+                .setPrompt(prompt)
+                .setMediaType(mediaType != null ? mediaType : "text/plain")
+                .setLanguage("en"); // Default or pass as arg
+
+        // Handle Media: Priority to Inline Data (User Upload), then URL (Existing Question Media)
+        if (mediaData != null && mediaData.length > 0) {
+            requestBuilder.setMedia(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(mediaData)));
+        } else if (mediaUrl != null && !mediaUrl.isEmpty()) {
+            requestBuilder.setMedia(MediaRef.newBuilder().setUrl(mediaUrl));
+        }
+
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                WritingAssessmentResponse response = stub.checkWritingAssessment(requestBuilder.build()).get();
+                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+
+                WritingResponseBody result = new WritingResponseBody();
+                result.setFeedback(response.getFeedback());
+                result.setScore(response.getScore());
+                return result;
+            } catch (Exception e) {
+                log.error("gRPC CheckWritingAssessment failed", e);
+                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
+            } finally {
+                channel.shutdown();
+            }
+        });
+    }
+
+    // --- OTHER METHODS ---
 
     public CompletableFuture<SeedDataResponse> callGenerateSeedDataAsync(
             String token, 
@@ -221,7 +262,6 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                // The proto generated class should be correct here
                 learning.ReviewQualityResponse response = stub.analyzeReviewQuality(request).get();
                 if (!response.getError().isEmpty()) {
                     throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
@@ -229,7 +269,7 @@ public class GrpcClientService {
                 
                 return ReviewQualityResponse.builder()
                         .isValid(response.getIsValid())
-                        .isToxic(response.getIsToxic()) // New field mapping
+                        .isToxic(response.getIsToxic()) 
                         .sentiment(response.getSentiment())
                         .topics(response.getTopicsList())
                         .suggestedAction(response.getSuggestedAction())
@@ -409,37 +449,6 @@ public class GrpcClientService {
                 requestObserver.onError(e);
             }
         }).start();
-    }
-
-    public CompletableFuture<WritingResponseBody> callCheckWritingWithImageAsync(
-            String token, String userText, String prompt, byte[] imageData) {
-        
-        ManagedChannel channel = createChannelWithToken(token);
-        LearningServiceGrpc.LearningServiceFutureStub stub = LearningServiceGrpc.newFutureStub(channel);
-
-        WritingImageRequest.Builder requestBuilder = WritingImageRequest.newBuilder()
-                .setUserText(userText)
-                .setPrompt(prompt);
-
-        if (imageData != null && imageData.length > 0) {
-            requestBuilder.setImage(MediaRef.newBuilder().setInlineData(ByteString.copyFrom(imageData)));
-        }
-
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                WritingImageResponse response = stub.checkWritingWithImage(requestBuilder.build()).get();
-                if (!response.getError().isEmpty()) throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-
-                WritingResponseBody result = new WritingResponseBody();
-                result.setFeedback(response.getFeedback());
-                result.setScore(response.getScore());
-                return result;
-            } catch (Exception e) {
-                throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-            } finally {
-                channel.shutdown();
-            }
-        });
     }
 
     public CompletableFuture<List<String>> callCheckSpellingAsync(String token, String text, String language) {

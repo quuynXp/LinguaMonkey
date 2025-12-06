@@ -29,15 +29,12 @@ public class UserProgressScheduler {
         int size = 50;
         Page<User> users;
         
-        // Quét từng batch user để tránh overload memory
         do {
             users = userRepository.findAll(PageRequest.of(page, size));
             for (User user : users) {
-                // Chỉ phân tích user có hoạt động trong 48h qua để tiết kiệm chi phí AI
                 if (user.getLastActiveAt() != null && 
                     user.getLastActiveAt().isAfter(OffsetDateTime.now().minusDays(2))) {
                     try {
-                        // Gọi logic thật trong service (kết nối gRPC -> Python -> Gemini)
                         activityService.generateDailyAnalysisForUser(user.getUserId());
                     } catch (Exception e) {
                         log.error("Failed to analyze user {}", user.getUserId(), e);

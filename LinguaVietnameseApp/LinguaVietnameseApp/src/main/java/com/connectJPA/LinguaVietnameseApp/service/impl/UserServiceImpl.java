@@ -115,22 +115,24 @@ public class UserServiceImpl implements UserService {
         ).map(userMapper::toResponse);
     }
 
-    @Override
-public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, String gender, AgeRange ageRange, Pageable pageable) {
-    try {
-        Page<User> users = userRepository.searchAdvanced(keyword, country, gender, ageRange, pageable);
+   @Override
+    public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword, Country country, String gender, AgeRange ageRange, Pageable pageable) {
+        try {
+            String searchKeyword = (keyword != null) ? keyword.trim() : null;
+            
+            Page<User> users = userRepository.searchAdvanced(searchKeyword, country, gender, ageRange, pageable);
 
-        List<UserProfileResponse> profileResponses = users.stream()
-                .filter(u -> !u.isDeleted())
-                .map(user -> getUserProfile(viewerId, user.getUserId())) // Lưu ý: hàm này có thể gây N+1 query, nên tối ưu sau
-                .collect(Collectors.toList());
-        
-        return new PageImpl<>(profileResponses, pageable, users.getTotalElements());
-    } catch (Exception e) {
-        log.error("Error searching public users", e);
-        throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+            List<UserProfileResponse> profileResponses = users.stream()
+                    .map(user -> getUserProfile(viewerId, user.getUserId()))
+                    .collect(Collectors.toList());
+            
+            return new PageImpl<>(profileResponses, pageable, users.getTotalElements());
+        } catch (Exception e) {
+            log.error("Error searching public users with filters: keyword={}, country={}, gender={}, ageRange={}. Error: {}", 
+                    keyword, country, gender, ageRange, e.getMessage());
+            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
     }
-}
 
     @Transactional
     @Override
@@ -615,6 +617,12 @@ public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword
                 .lastActiveAt(target.getLastActiveAt())
                 .isOnline(UserStatusUtils.isOnline(target.getLastActiveAt()))
                 .lastActiveText(UserStatusUtils.formatLastActive(target.getLastActiveAt()));
+        
+        // --- Calculate Age ---
+        if (target.getDayOfBirth() != null) {
+            respB.age(Period.between(target.getDayOfBirth(), LocalDate.now()).getYears());
+        }
+        
         try {
              respB.allowStrangerChat(true); 
         } catch (Exception e) {
@@ -648,7 +656,6 @@ public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword
         }
         boolean isFriend = false;
         
-        // FIX: Removed .status("NONE") usage
         FriendRequestStatusResponse friendReqStatus = FriendRequestStatusResponse.builder()
                 .hasSentRequest(false)
                 .hasReceivedRequest(false)
@@ -665,7 +672,6 @@ public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword
                 canUnfriend = isFriend;
                 canBlock = true;
                 
-                // FIX: Check boolean flag instead of string equality
                 canSendFriendRequest = !isFriend && (friendReqStatus == null || !friendReqStatus.isHasSentRequest());
                 
                 if (isFriend) {
@@ -674,7 +680,7 @@ public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword
                     
                     if (friendshipOpt.isPresent()) {
                         Friendship f = friendshipOpt.get();
-                        OffsetDateTime startDate = f.getUpdatedAt(); // Usually Accepted At
+                        OffsetDateTime startDate = f.getUpdatedAt(); 
                         if (startDate == null) startDate = f.getCreatedAt();
                         
                         long days = ChronoUnit.DAYS.between(startDate.toLocalDate(), LocalDate.now());
@@ -725,7 +731,6 @@ public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword
         }
         respB.leaderboardRanks(leaderboardRanks);
         
-        // --- NEW LOGIC: Detailed Couple Info ---
         try {
             Optional<Couple> coupleOpt = coupleRepository.findByUserId(targetId);
             if (coupleOpt.isPresent()) {
@@ -753,7 +758,6 @@ public Page<UserProfileResponse> searchPublicUsers(UUID viewerId, String keyword
 
                 respB.coupleInfo(coupleDetailed);
                 
-                // Logic expiration for Exploring couple
                 if (c.getStatus() == CoupleStatus.EXPLORING && c.getExploringExpiresAt() != null) {
                     Duration rem = Duration.between(OffsetDateTime.now(), c.getExploringExpiresAt());
                     long seconds = Math.max(0, rem.getSeconds());

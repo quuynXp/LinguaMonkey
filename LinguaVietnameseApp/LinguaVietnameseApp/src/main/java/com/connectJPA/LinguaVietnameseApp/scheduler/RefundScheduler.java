@@ -21,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
@@ -31,14 +32,25 @@ public class RefundScheduler {
     private final GrpcClientService grpcClientService;
     private final WalletService walletService;
     private final NotificationService notificationService;
-    private final AuthenticationService authenticationService; // To generate system token for gRPC
+    private final AuthenticationService authenticationService;
 
-    @Scheduled(cron = "0 0/10 * * * ?") // Run every 10 minutes
+    // Fast Track: Runs every 5 minutes for Standard Reasons (Dropdown selected)
+    @Scheduled(cron = "0 0/5 * * * ?") 
     @Transactional
-    public void processSmartRefunds() {
-        log.info("Starting AI Refund Analysis...");
+    public void processFastTrackRefunds() {
+        log.info("Starting VIP/Fast Track Refund Analysis...");
+        processRefunds(true);
+    }
 
-        // 1. Get Pending Refunds (NOT PENDING_REVIEW yet)
+    // Standard Track: Runs every 10 minutes for "Other" (Complex text analysis)
+    @Scheduled(cron = "0 0/10 * * * ?")
+    @Transactional
+    public void processComplexRefunds() {
+        log.info("Starting Standard AI Refund Analysis...");
+        processRefunds(false);
+    }
+
+    private void processRefunds(boolean isFastTrack) {
         List<Transaction> pendingRefunds = transactionRepository.findByTypeAndStatus(
                 TransactionType.REFUND, 
                 TransactionStatus.PENDING
@@ -48,9 +60,12 @@ public class RefundScheduler {
 
         String systemToken = authenticationService.generateSystemToken(); 
 
-        for (Transaction refundTx : pendingRefunds) {
+        List<Transaction> filteredRefunds = pendingRefunds.stream()
+            .filter(tx -> isFastTrack ? isStandardReason(tx.getDescription()) : !isStandardReason(tx.getDescription()))
+            .collect(Collectors.toList());
+
+        for (Transaction refundTx : filteredRefunds) {
             try {
-                // Truyền systemToken vào hàm gọi gRPC
                 processSingleRefund(refundTx, systemToken);
             } catch (Exception e) {
                 log.error("Failed to process refund tx: {}", refundTx.getTransactionId(), e);
@@ -58,21 +73,29 @@ public class RefundScheduler {
         }
     }
 
+    private boolean isStandardReason(String description) {
+        // Frontend sends standard reasons prefixed with [STD] or specific codes
+        return description != null && (
+            description.startsWith("[ACCIDENTAL_PURCHASE]") ||
+            description.startsWith("[CONTENT_MISMATCH]") ||
+            description.startsWith("[TECHNICAL_ISSUE]")
+        );
+    }
+
     private void processSingleRefund(Transaction refundTx, String token) {
         Transaction originalTx = refundTx.getOriginalTransaction();
-        String courseId = "N/A"; // Extract course ID from description or metadata if available
+        String courseId = "N/A";
         
-        // Call Python Gemini Service
         CompletableFuture<RefundDecisionResponse> future = grpcClientService.callRefundDecisionAsync(
             token,
             refundTx.getTransactionId().toString(),
-            refundTx.getUser().getUserId().toString(), // User ID của người mua (để AI phân tích context)
-            "N/A", 
+            refundTx.getUser().getUserId().toString(), 
+            courseId, 
             refundTx.getDescription()
         );
 
         future.thenAccept(response -> {
-            String decision = response.getDecision(); // APPROVE, REJECT, REVIEW
+            String decision = response.getDecision();
             float confidence = response.getConfidence();
 
             log.info("AI Decision for TX {}: {} (Confidence: {})", refundTx.getTransactionId(), decision, confidence);
@@ -86,7 +109,7 @@ public class RefundScheduler {
             }
         }).exceptionally(ex -> {
             log.error("gRPC Error: ", ex);
-            markForAdminReview(refundTx); // Fallback to human
+            markForAdminReview(refundTx);
             return null;
         });
     }
@@ -103,13 +126,12 @@ public class RefundScheduler {
 
     private void autoReject(Transaction refundTx, Transaction originalTx, String reason) {
         refundTx.setStatus(TransactionStatus.REJECTED);
-        originalTx.setStatus(TransactionStatus.SUCCESS); // Revert to success
+        originalTx.setStatus(TransactionStatus.SUCCESS);
         
         saveAndNotify(refundTx, originalTx, "REFUND_REJECTED", "Refund rejected. Reason: Policy Violation.");
     }
 
     private void markForAdminReview(Transaction refundTx) {
-        // Change status to PENDING_REVIEW so Admin UI can see it, and Scheduler skips it next time
         refundTx.setStatus(TransactionStatus.PENDING_REVIEW);
         transactionRepository.save(refundTx);
     }

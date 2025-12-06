@@ -73,7 +73,16 @@ public class CourseVersionEnrollmentServiceImpl implements CourseVersionEnrollme
         try {
             CourseVersionEnrollment enrollment = courseVersionEnrollmentRepository.findByCourseVersion_Course_CourseIdAndUserIdAndIsDeletedFalse(courseId, userId)
                     .orElseThrow(() -> new AppException(ErrorCode.COURSE_ENROLLMENT_NOT_FOUND));
-            return CourseVersionEnrollmentMapper.toResponse(enrollment);
+            
+            CourseVersionEnrollmentResponse response = CourseVersionEnrollmentMapper.toResponse(enrollment);
+            
+            // Logic tính toán completedLessonsCount
+            if (enrollment.getCourseVersion() != null) {
+                long completedCount = courseVersionEnrollmentRepository.countCompletedLessonsInVersion(userId, enrollment.getCourseVersion().getVersionId());
+                response.setCompletedLessonsCount((int) completedCount);
+            }
+            
+            return response;
         } catch (RedisConnectionFailureException e) {
             throw new AppException(ErrorCode.REDIS_CONNECTION_FAILED);
         } catch (Exception e) {

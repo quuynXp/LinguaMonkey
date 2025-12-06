@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,9 @@ import {
   StyleSheet,
   FlatList,
   ListRenderItem,
+  Modal,
+  TextInput,
+  ScrollView
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
@@ -18,6 +21,7 @@ import { useCourses } from "../../hooks/useCourses";
 import { useRooms } from "../../hooks/useRoom";
 import { useUserStore } from "../../stores/UserStore";
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter";
+import { useTransactionsApi } from "../../hooks/useTransaction";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import ReviewSection from "../../components/reviews/ReviewSection";
 import CoursePurchaseModal from "../../components/modals/CoursePurchaseModal";
@@ -31,8 +35,23 @@ import {
   CourseVersionReviewResponse,
   CourseResponse,
   LessonResponse,
+  CourseVersionResponse
 } from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
+import dayjs from "dayjs";
+
+// Define Type for Refund Reasons
+interface RefundReason {
+  label: string;
+  value: string;
+}
+
+const REFUND_REASONS: RefundReason[] = [
+  { label: "Accidental Purchase", value: "[ACCIDENTAL_PURCHASE]" },
+  { label: "Content Mismatch", value: "[CONTENT_MISMATCH]" },
+  { label: "Technical/Quality Issue", value: "[TECHNICAL_ISSUE]" },
+  { label: "Other (Describe below)", value: "OTHER" },
+];
 
 const CourseDetailsScreen = ({ route, navigation }: any) => {
   const params = route.params || {};
@@ -43,7 +62,15 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const insets = useSafeAreaInsets();
   const { convert } = useCurrencyConverter();
 
+  // Modals
   const [purchaseModalVisible, setPurchaseModalVisible] = useState(false);
+  const [settingsModalVisible, setSettingsModalVisible] = useState(false);
+  const [refundModalVisible, setRefundModalVisible] = useState(false);
+  const [versionHistoryModalVisible, setVersionHistoryModalVisible] = useState(false);
+
+  // Refund State
+  const [selectedRefundReason, setSelectedRefundReason] = useState(REFUND_REASONS[0].value);
+  const [refundOtherText, setRefundOtherText] = useState("");
 
   const {
     useCourse,
@@ -53,16 +80,36 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     useDiscounts,
     useCreateReview,
     useInfiniteLessonsByVersion,
+    useCourseVersions,
+    useGetVersion
   } = useCourses();
+
+  const { useCreateTransaction } = useTransactionsApi();
+  const { mutate: requestRefund, isPending: isRequestingRefund } = useCreateTransaction();
 
   const { useCourseRoom } = useRooms();
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
   const { data: roomData } = useCourseRoom(courseId);
+  const { data: versionHistory } = useCourseVersions(courseId);
 
-  const version = course?.latestPublicVersion;
-  const versionId = version?.versionId;
+  // -- Versioning Logic --
+  const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (course?.latestPublicVersion && !viewingVersionId) {
+      setViewingVersionId(course.latestPublicVersion.versionId);
+    }
+  }, [course]);
+
+  const { data: selectedVersionData, isLoading: versionMetaLoading } = useGetVersion(viewingVersionId || "");
+
+  const activeVersion = selectedVersionData || course?.latestPublicVersion;
+  const activeVersionId = activeVersion?.versionId;
+
+  const isViewingArchived = activeVersion?.status === "ARCHIVED";
+  const isViewingDraft = activeVersion?.status === "DRAFT";
 
   const {
     data: lessonsInfinite,
@@ -71,20 +118,20 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     hasNextPage,
     isFetchingNextPage
   } = useInfiniteLessonsByVersion({
-    versionId: versionId,
+    versionId: activeVersionId,
     size: 20
   });
 
   const displayLessons = useMemo(() => {
     if (!lessonsInfinite) return [];
-    const allLessons = lessonsInfinite.pages.flatMap(page => page.data);
+    const allLessons: LessonResponse[] = lessonsInfinite.pages.flatMap((page: any) => page.data || []);
     return allLessons.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   }, [lessonsInfinite]);
 
-  const { data: discountsData } = useDiscounts({ versionId: versionId, size: 1 });
+  const { data: discountsData } = useDiscounts({ versionId: activeVersionId, size: 1 });
   const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
 
-  const displayPriceRaw = version?.price || 0;
+  const displayPriceRaw = activeVersion?.price || 0;
   const discountPercent = activeDiscount ? activeDiscount.discountPercentage : 0;
   const priceAfterDiscount = discountPercent > 0
     ? displayPriceRaw * (1 - discountPercent / 100)
@@ -112,13 +159,19 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const isCreator = user?.userId === course?.creatorId;
   const isEnrolled = !!activeEnrollment;
 
+  const progressPercent = useMemo(() => {
+    if (!activeEnrollment) return 0;
+    return activeEnrollment.progress || 0;
+  }, [activeEnrollment]);
+
   const hasAccess = isEnrolled || isCreator || isFreeCourse;
 
   const reviews = (reviewsData?.data as any[]) || [];
-  const displayThumbnail = version?.thumbnailUrl;
-  const displayLanguage = version?.languageCode;
-  const displayDifficulty = version?.difficultyLevel;
-  const displayDescription = version?.description;
+
+  const displayThumbnail = activeVersion?.thumbnailUrl;
+  const displayLanguage = activeVersion?.languageCode;
+  const displayDifficulty = activeVersion?.difficultyLevel;
+  const displayDescription = activeVersion?.description;
   const originalPrice = displayPriceRaw;
 
   const canReview = useMemo(() => {
@@ -132,7 +185,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const displayPriceStr = convert(priceAfterDiscount, 'VND');
   const displayOriginalPriceStr = convert(originalPrice, 'VND');
 
-  const handleLessonPress = (lesson: any) => {
+  const handleLessonPress = (lesson: LessonResponse) => {
     const isAccessible = hasAccess || lesson.isFree;
 
     if (!isAccessible) {
@@ -152,10 +205,10 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   };
 
   const handleFreeEnroll = () => {
-    if (!user?.userId || !version?.versionId) return;
+    if (!user?.userId || !activeVersionId) return;
     enroll({
       userId: user.userId,
-      courseVersionId: version.versionId,
+      courseVersionId: activeVersionId,
       status: CourseVersionEnrollmentStatus.ACTIVE
     }, {
       onSuccess: () => {
@@ -215,6 +268,48 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     }
   };
 
+  const handleOpenSettings = () => {
+    setSettingsModalVisible(true);
+  };
+
+  const handleNavigateToNotes = () => {
+    setSettingsModalVisible(false);
+    const prefillContent = `Study Notes for: ${course?.title || 'Course'} (v${activeVersion?.versionNumber})`;
+    gotoTab("ProfileStack", "NotesScreen", {
+      prefillContent: prefillContent,
+      courseId: courseId
+    });
+  };
+
+  const handleOpenRefund = () => {
+    setSettingsModalVisible(false);
+    setRefundModalVisible(true);
+  };
+
+  const handleOpenVersionHistory = () => {
+    setSettingsModalVisible(false);
+    setVersionHistoryModalVisible(true);
+  };
+
+  const handleSwitchVersion = (v: CourseVersionResponse) => {
+    setViewingVersionId(v.versionId);
+    setVersionHistoryModalVisible(false);
+  };
+
+  const handleSubmitRefund = () => {
+    const finalDescription = selectedRefundReason === "OTHER"
+      ? refundOtherText
+      : `${selectedRefundReason} ${refundOtherText}`;
+
+    if (!finalDescription.trim()) {
+      Alert.alert("Required", "Please provide a reason for the refund.");
+      return;
+    }
+    Alert.alert("Refund Requested", "Your request has been sent for analysis.");
+    setRefundModalVisible(false);
+    setRefundOtherText("");
+  };
+
   const renderAuthorInfo = () => {
     if (!course) return null;
     const displayName = course.creatorName || course.creatorNickname || t("common.unknownUser");
@@ -261,6 +356,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       <View style={styles.coverContainer}>
         <Image source={getCourseImage(displayThumbnail)} style={styles.coverImage} resizeMode="cover" />
         <View style={styles.coverOverlay} />
+
         <TouchableOpacity
           style={[styles.backBtn, { top: insets.top + 10 }]}
           onPress={() => navigation.goBack()}
@@ -268,9 +364,31 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
           <Icon name="arrow-back" size={24} color="#FFF" />
         </TouchableOpacity>
 
-        {discountPercent > 0 && (
+        {isEnrolled && (
+          <TouchableOpacity
+            style={[styles.settingsBtn, { top: insets.top + 10 }]}
+            onPress={handleOpenSettings}
+          >
+            <Icon name="settings" size={24} color="#FFF" />
+          </TouchableOpacity>
+        )}
+
+        {discountPercent > 0 && !isViewingArchived && (
           <View style={styles.discountBadge}>
             <Text style={styles.discountBadgeText}>SALE -{discountPercent}%</Text>
+          </View>
+        )}
+
+        {isViewingArchived && (
+          <View style={[styles.statusBadge, { backgroundColor: '#6B7280' }]}>
+            <Icon name="history" size={12} color="#FFF" style={{ marginRight: 4 }} />
+            <Text style={styles.statusBadgeText}>Archived Version {activeVersion?.versionNumber}</Text>
+          </View>
+        )}
+        {isViewingDraft && (
+          <View style={[styles.statusBadge, { backgroundColor: '#F59E0B' }]}>
+            <Icon name="edit" size={12} color="#FFF" style={{ marginRight: 4 }} />
+            <Text style={styles.statusBadgeText}>Draft Preview</Text>
           </View>
         )}
       </View>
@@ -316,6 +434,26 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
         {renderAuthorInfo()}
 
+        {isEnrolled && (
+          <View style={styles.progressContainer}>
+            <View style={styles.progressHeader}>
+              <Text style={styles.progressTitle}>
+                {progressPercent >= 100 ? "Completed!" : "Your Progress"}
+              </Text>
+              <Text style={styles.progressValueText}>{Math.round(progressPercent)}%</Text>
+            </View>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
+            </View>
+            <Text style={styles.progressSubtitle}>
+              {progressPercent >= 100
+                ? "You have finished this course."
+                : `${activeEnrollment?.completedLessonsCount || 0} lessons completed`
+              }
+            </Text>
+          </View>
+        )}
+
         {!hasAccess && (
           <View style={styles.priceContainer}>
             {discountPercent > 0 ? (
@@ -340,22 +478,28 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
           </Text>
         </View>
 
-        {version?.isSystemReviewed && (
+        {activeVersion?.reasonForChange && (
+          <View style={styles.updateNoteContainer}>
+            <Text style={styles.updateNoteTitle}>Version {activeVersion.versionNumber} Update:</Text>
+            <Text style={styles.updateNoteText}>{activeVersion.reasonForChange}</Text>
+          </View>
+        )}
+
+        {activeVersion?.isSystemReviewed && (
           <View style={styles.systemReviewContainer}>
             <View style={styles.systemReviewHeader}>
               <Icon name="verified-user" size={20} color="#3B82F6" />
               <Text style={styles.systemReviewTitle}>System AI Analysis</Text>
             </View>
-            <Text style={styles.systemReviewRating}>Rated: {version.systemRating} / 5.0 ★</Text>
             <Text style={styles.systemReviewText}>
-              This course content has been verified by our quality system.
+              This content has been verified by our quality system.
             </Text>
           </View>
         )}
 
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeader}>{t("course.curriculum")}</Text>
-          {lessonsLoading && !displayLessons.length ? (
+          {(lessonsLoading || versionMetaLoading) && !displayLessons.length ? (
             <ActivityIndicator size="small" color="#4F46E5" style={{ marginVertical: 20 }} />
           ) : displayLessons.length === 0 ? (
             <Text style={styles.emptyText}>{t("course.noContent")}</Text>
@@ -368,6 +512,10 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const renderLessonItem: ListRenderItem<LessonResponse> = ({ item, index }) => {
     const isUnlocked = hasAccess || item.isFree;
     const isLocked = !isUnlocked;
+
+    // Check if this specific lesson is completed
+    const isCompleted = isEnrolled && (activeEnrollment?.completedLessonsCount || 0) > index;
+
     return (
       <View style={{ paddingHorizontal: 20 }}>
         <TouchableOpacity
@@ -401,8 +549,10 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
           {isLocked ? (
             <Icon name="lock-outline" size={24} color="#9CA3AF" />
+          ) : isCompleted ? (
+            <Icon name="check-circle" size={24} color="#10B981" />
           ) : (
-            <Icon name="check-circle-outline" size={24} color="#10B981" />
+            <Icon name="radio-button-unchecked" size={24} color="#D1D5DB" />
           )}
         </TouchableOpacity>
       </View>
@@ -447,9 +597,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         ListHeaderComponent={renderHeader}
         ListFooterComponent={renderFooter}
         onEndReached={() => {
-          if (hasNextPage) {
-            fetchNextPage();
-          }
+          if (hasNextPage) fetchNextPage();
         }}
         onEndReachedThreshold={0.5}
         showsVerticalScrollIndicator={false}
@@ -462,6 +610,125 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         activeDiscount={activeDiscount as any}
         onSuccess={handlePurchaseSuccess}
       />
+
+      <Modal visible={settingsModalVisible} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setSettingsModalVisible(false)}>
+          <View style={styles.settingsPopup}>
+            <Text style={styles.settingsTitle}>Course Options</Text>
+
+            <TouchableOpacity style={styles.settingsOption} onPress={handleNavigateToNotes}>
+              <Icon name="edit-note" size={24} color="#37352F" />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={styles.optionTitle}>Study Notes</Text>
+                <Text style={styles.optionSubtitle}>View or add notes for this course</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingsOption} onPress={handleOpenVersionHistory}>
+              <Icon name="history" size={24} color="#37352F" />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={styles.optionTitle}>Version History</Text>
+                <Text style={styles.optionSubtitle}>Switch to older versions</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.settingsOption} onPress={handleOpenRefund}>
+              <Icon name="settings-backup-restore" size={24} color="#EF4444" />
+              <View style={{ marginLeft: 10 }}>
+                <Text style={[styles.optionTitle, { color: '#EF4444' }]}>Request Refund</Text>
+                <Text style={styles.optionSubtitle}>View status or submit request</Text>
+              </View>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal visible={versionHistoryModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.refundModalContent, { height: '60%' }]}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Version History</Text>
+              <TouchableOpacity onPress={() => setVersionHistoryModalVisible(false)}>
+                <Icon name="close" size={24} color="#37352F" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {versionHistory?.map((v) => (
+                <TouchableOpacity
+                  key={v.versionId}
+                  style={[
+                    styles.versionItem,
+                    viewingVersionId === v.versionId && styles.versionItemSelected
+                  ]}
+                  onPress={() => handleSwitchVersion(v)}
+                >
+                  <View style={styles.versionRow}>
+                    <Text style={[styles.versionNum, viewingVersionId === v.versionId && { color: '#4F46E5' }]}>
+                      v{v.versionNumber}
+                    </Text>
+                    {v.status === 'PUBLIC' && <View style={styles.tagPublic}><Text style={styles.tagText}>LATEST</Text></View>}
+                    {v.status === 'ARCHIVED' && <View style={styles.tagArchived}><Text style={styles.tagText}>ARCHIVED</Text></View>}
+                  </View>
+                  <Text style={styles.versionDate}>Published: {dayjs(v.publishedAt).format('DD MMM YYYY')}</Text>
+                  {v.reasonForChange && (
+                    <Text style={styles.versionReason} numberOfLines={2}>{v.reasonForChange}</Text>
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={refundModalVisible} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.refundModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Request Refund</Text>
+              <TouchableOpacity onPress={() => setRefundModalVisible(false)}>
+                <Icon name="close" size={24} color="#37352F" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.label}>Select Reason:</Text>
+            <View style={styles.dropdownContainer}>
+              {REFUND_REASONS.map((reason) => (
+                <TouchableOpacity
+                  key={reason.value}
+                  style={[
+                    styles.dropdownItem,
+                    selectedRefundReason === reason.value && styles.dropdownItemSelected
+                  ]}
+                  onPress={() => setSelectedRefundReason(reason.value)}
+                >
+                  <Text style={[
+                    styles.dropdownText,
+                    selectedRefundReason === reason.value && styles.dropdownTextSelected
+                  ]}>{reason.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Additional Details:</Text>
+            <TextInput
+              style={styles.refundInput}
+              multiline
+              placeholder={selectedRefundReason === "OTHER" ? "Please explain why..." : "Optional details..."}
+              value={refundOtherText}
+              onChangeText={setRefundOtherText}
+            />
+
+            <TouchableOpacity style={styles.submitRefundBtn} onPress={handleSubmitRefund}>
+              {isRequestingRefund ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitRefundText}>Submit Request</Text>}
+            </TouchableOpacity>
+
+            <Text style={styles.disclaimer}>
+              Standard requests (Accidental/Technical) are processed every 5 minutes. Complex requests may take longer.
+            </Text>
+          </View>
+        </View>
+      </Modal>
+
     </ScreenLayout>
   );
 };
@@ -473,8 +740,11 @@ const styles = StyleSheet.create({
   coverImage: { width: "100%", height: "100%", backgroundColor: "#E5E7EB" },
   coverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' },
   backBtn: { position: 'absolute', left: 16, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20, padding: 8 },
+  settingsBtn: { position: 'absolute', right: 16, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20, padding: 8 },
   discountBadge: { position: 'absolute', bottom: 16, left: 16, backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
   discountBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
+  statusBadge: { position: 'absolute', bottom: 16, right: 16, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, flexDirection: 'row', alignItems: 'center' },
+  statusBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 10 },
   contentBody: { padding: 20, marginTop: -20, backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 0 },
   title: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 12, lineHeight: 30 },
   statsWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
@@ -505,10 +775,12 @@ const styles = StyleSheet.create({
   sectionContainer: { marginBottom: 24 },
   sectionHeader: { fontSize: 18, fontWeight: "700", color: "#111827", marginBottom: 12 },
   description: { fontSize: 15, color: "#4B5563", lineHeight: 24 },
+  updateNoteContainer: { backgroundColor: '#FEF3C7', padding: 12, borderRadius: 8, marginBottom: 20 },
+  updateNoteTitle: { color: '#B45309', fontWeight: 'bold', fontSize: 13, marginBottom: 4 },
+  updateNoteText: { color: '#92400E', fontSize: 13 },
   systemReviewContainer: { backgroundColor: '#EFF6FF', padding: 16, borderRadius: 12, marginBottom: 24, borderLeftWidth: 4, borderLeftColor: '#3B82F6' },
   systemReviewHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8 },
   systemReviewTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E3A8A' },
-  systemReviewRating: { fontSize: 14, fontWeight: '700', color: '#2563EB', marginBottom: 4 },
   systemReviewText: { fontSize: 14, color: '#1E40AF', lineHeight: 20 },
   lessonItem: { flexDirection: "row", alignItems: "center", padding: 10, marginBottom: 10, backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
   lessonItemLocked: { backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", opacity: 0.8 },
@@ -525,6 +797,49 @@ const styles = StyleSheet.create({
   reviewsWrapper: { paddingHorizontal: 20 },
   freeTag: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
   freeTagText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+
+  // Progress Styles (New)
+  progressContainer: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: '#E5E7EB' },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  progressTitle: { fontWeight: '600', color: '#374151' },
+  progressValueText: { fontWeight: 'bold', color: '#4F46E5' },
+  progressBarBg: { height: 8, backgroundColor: '#E5E7EB', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  progressBarFill: { height: '100%', backgroundColor: '#4F46E5' },
+  progressSubtitle: { fontSize: 12, color: '#9CA3AF' },
+
+  // Modal Styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  settingsPopup: { width: '80%', backgroundColor: '#FFF', borderRadius: 12, padding: 20 },
+  settingsTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#111827' },
+  settingsOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  optionTitle: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
+  optionSubtitle: { fontSize: 12, color: '#9CA3AF' },
+
+  refundModalContent: { width: '90%', backgroundColor: '#FFF', borderRadius: 16, padding: 20, maxHeight: '80%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
+  // ADDED MISSING STYLE HERE
+  label: { fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#374151' },
+  dropdownContainer: { marginBottom: 16 },
+  dropdownItem: { padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8 },
+  dropdownItemSelected: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
+  dropdownText: { color: '#374151' },
+  dropdownTextSelected: { color: '#4F46E5', fontWeight: '600' },
+  refundInput: { borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 8, padding: 12, height: 80, textAlignVertical: 'top', marginBottom: 20 },
+  submitRefundBtn: { backgroundColor: '#EF4444', padding: 14, borderRadius: 8, alignItems: 'center' },
+  submitRefundText: { color: '#FFF', fontWeight: 'bold' },
+  disclaimer: { fontSize: 11, color: '#6B7280', marginTop: 12, textAlign: 'center' },
+
+  // Version List Styles
+  versionItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  versionItemSelected: { backgroundColor: '#EEF2FF' },
+  versionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  versionNum: { fontSize: 16, fontWeight: 'bold', color: '#1F2937', marginRight: 8 },
+  tagPublic: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  tagArchived: { backgroundColor: '#9CA3AF', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  tagText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  versionDate: { fontSize: 12, color: '#6B7280', marginBottom: 4 },
+  versionReason: { fontSize: 13, color: '#374151', fontStyle: 'italic' },
 });
 
 export default CourseDetailsScreen;

@@ -26,6 +26,7 @@ public class UserProfileResponse {
     private String flag;
     private Country country;
     private AgeRange ageRange;
+    private Integer age; // Added field for calculated age
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
     private int level;
@@ -40,14 +41,13 @@ public class UserProfileResponse {
     private List<BadgeResponse> badges;
     
     private boolean isVip;
-    private long vipDaysRemaining; // Thêm trường này nếu service có set
+    private long vipDaysRemaining;
     private boolean isOnline;
     private String lastActiveText;
     private OffsetDateTime lastActiveAt;
 
-    // --- Friendship Logic ---
     private boolean isFriend;
-    private long friendshipDurationDays; // Đã thêm
+    private long friendshipDurationDays;
     private FriendRequestStatusResponse friendRequestStatus;
     private boolean canSendFriendRequest;
     private boolean canUnfriend;
@@ -65,13 +65,9 @@ public class UserProfileResponse {
 
     private Map<String, Integer> leaderboardRanks;
     
-    // --- Couple Logic ---
-    private CoupleProfileDetailedResponse coupleInfo; // Đã thêm (Field mới thay cho CoupleProfileSummary)
-    
-    // private CoupleProfileSummary coupleProfile; 
+    private CoupleProfileDetailedResponse coupleInfo;
 
-    // --- Memory & Dating ---
-    private List<MemorySummaryResponse> mutualMemories; // Đã thêm (Fix lỗi biên dịch 67108964)
+    private List<MemorySummaryResponse> mutualMemories;
     private DatingInviteSummary datingInviteSummary;
 
     private String exploringExpiresInHuman;

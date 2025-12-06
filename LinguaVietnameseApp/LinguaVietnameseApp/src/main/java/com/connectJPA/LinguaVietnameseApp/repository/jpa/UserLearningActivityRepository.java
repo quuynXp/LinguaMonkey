@@ -79,4 +79,6 @@ public interface UserLearningActivityRepository extends JpaRepository<UserLearni
                               @Param("startDate") OffsetDateTime startDate,
                               @Param("endDate") OffsetDateTime endDate);
 
+    boolean existsByUserIdAndCreatedAtBetween(UUID userId, OffsetDateTime yesterdayStart, OffsetDateTime yesterdayEnd);
+
 }

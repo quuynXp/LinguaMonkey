@@ -216,7 +216,6 @@ const ChatLanguageSelector = ({
     const [isExpanded, setIsExpanded] = useState(false);
     const canExpand = availableLanguages.length > 1;
 
-    // Filter out languages that don't have a code (if any) or are invalid
     if (!availableLanguages || availableLanguages.length === 0) return null;
 
     return (
@@ -306,7 +305,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const availableLanguages: LanguageOption[] = useMemo(() => {
         const langs = user?.languages && user.languages.length > 0 ? user.languages : [i18n.language || 'en'];
-        // Ensure current target lang is in the list
         if (!langs.includes(translationTargetLang)) {
             langs.push(translationTargetLang);
         }
@@ -321,7 +319,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         setTranslationTargetLang(lang.code);
     };
 
-    // 🎯 MEMOIZE MEMBER LOOKUP
     const membersMap = useMemo(() => {
         const map: Record<string, MemberResponse> = {};
         members.forEach(m => { map[m.userId] = m; });
@@ -415,10 +412,21 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const handleTranslateClick = (id: string, text: string) => {
         const currentView = messagesToggleState[id];
-        if (currentView && currentView !== 'original') { setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' })); }
+
+        // 1. Nếu đang hiển thị đúng ngôn ngữ target hiện tại -> Tắt dịch (về original)
+        if (currentView === translationTargetLang) {
+            setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
+        }
+        // 2. Các trường hợp khác (đang ở original HOẶC đang ở ngôn ngữ khác) -> Bật dịch sang target hiện tại
         else {
-            if (localTranslations[id]?.[translationTargetLang]) { setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang })); }
-            else { translateMutate({ text, target: translationTargetLang, id }); }
+            // Kiểm tra cache local xem có bản dịch của ngôn ngữ này chưa
+            if (localTranslations[id]?.[translationTargetLang]) {
+                setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang }));
+            }
+            // Nếu chưa có, gọi API
+            else {
+                translateMutate({ text, target: translationTargetLang, id });
+            }
         }
     };
 
@@ -429,11 +437,13 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
         const displayData = getMessageDisplayData(item);
         const currentView = messagesToggleState[item.id];
+
         let displayText = item.text;
         let isTranslatedView = false;
 
         if (currentView && currentView !== 'original') {
             const localTrans = localTranslations[item.id]?.[currentView];
+            // Nếu localTrans chưa có (đang load) thì giữ text gốc, tránh hiển thị sai
             displayText = localTrans || (item.translatedLang === currentView ? item.translatedText : item.text);
             isTranslatedView = true;
         } else if (displayData.isTranslated) {
@@ -463,7 +473,14 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                                 {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
                             </View>
                         ) : (<Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{displayText}</Text>)}
-                        {isTranslatedView && <Text style={styles.transTag}>{currentView || displayData.lang || translationTargetLang}</Text>}
+
+                        {/* Chỉ hiển thị tag ngôn ngữ khi đã có bản dịch thực sự */}
+                        {isTranslatedView && (
+                            <Text style={styles.transTag}>
+                                {currentView || displayData.lang || translationTargetLang}
+                            </Text>
+                        )}
+
                         <View style={styles.metaRow}>
                             <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
                             {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}

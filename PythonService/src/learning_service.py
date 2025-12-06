@@ -294,18 +294,40 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     #     )
 
     # --- WRITING ---
+
+    async def CheckWritingAssessment(self, request, context):
+        try:
+            media_bytes = request.media.inline_data if request.media.inline_data else None
+            media_url = request.media.url
+            
+            feedback, score, error = await grade_writing_logic(
+                user_text=request.user_text,
+                prompt_text=request.prompt,
+                media_bytes=media_bytes,
+                media_url=media_url,     # Truyền vào logic
+                mime_type=request.media_type,
+                language=request.language
+            )
+            
+            return learning_pb2.WritingAssessmentResponse(
+                feedback=feedback,
+                score=score,
+                error=error or ""
+            )
+        except Exception as e:
+            logging.error(f"CheckWritingAssessment Error: {e}")
+            return learning_pb2.WritingAssessmentResponse(error=str(e))
+
+
     async def CheckWritingWithImage(self, request, context):
-        """
-        Writing Check: Nhận Prompt (Đề bài) + User Text (Bài làm) + Image (Optional)
-        """
         try:
             image_bytes = request.image.inline_data if request.image.inline_data else None
             
-            # Gọi logic chấm điểm mới (dùng Gemini thay vì CLIP)
+            # Using the NEW logic in writing_grader.py
             feedback, score, error = await grade_writing_logic(
-                user_text=request.user_text,   # Bài làm
-                prompt_text=request.prompt,    # Đề bài từ DB
-                image_bytes=image_bytes,       # Ảnh đính kèm (nếu có)
+                user_text=request.user_text,
+                prompt_text=request.prompt,
+                image_bytes=image_bytes,
                 language=request.language
             )
             

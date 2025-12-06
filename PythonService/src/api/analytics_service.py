@@ -66,24 +66,38 @@ async def analyze_course_quality(course_id: str, lesson_ids: list[str]) -> tuple
 
 
 async def decide_refund(transaction_id: str, user_id: str, course_id: str, reason_text: str):
+    # Pre-processing: Check if it is a Standard Code from Dropdown
+    is_standard = False
+    context_prefix = ""
+    
+    if "[ACCIDENTAL_PURCHASE]" in reason_text:
+        is_standard = True
+        context_prefix = "User selected: Accidental Purchase. "
+    elif "[CONTENT_MISMATCH]" in reason_text:
+        is_standard = True
+        context_prefix = "User selected: Content does not match description. "
+    elif "[TECHNICAL_ISSUE]" in reason_text:
+        is_standard = True
+        context_prefix = "User selected: Technical/Quality Issue. "
+
     prompt = f"""
     You are an AI arbitrator for a Course Platform. Analyze this refund request.
     
     Context:
     - User ID: {user_id}
     - Course ID: {course_id}
-    - Refund Reason: "{reason_text}"
+    - Raw Reason Input: "{reason_text}"
+    - Pre-Categorized Context: "{context_prefix}"
 
     Policy:
-    1. REJECT if the reason indicates USER ERROR or PREFERENCE. 
-        Examples: "Bought by mistake", "Changed mind", "Don't like it anymore", "Too expensive", "Accidental purchase", "Forgot to cancel".
-    2. APPROVE if the reason indicates PLATFORM/CREATOR FAULT.
-        Examples: "Course is empty", "Video not playing", "Scam content", "Audio missing", "Content doesn't match description", "Duplicate charge".
-    3. REVIEW if the reason is ambiguous, mixed, or requires human investigation.
+    1. REJECT if the reason indicates USER ERROR or PREFERENCE (unless it's a technical error they can't fix).
+        Examples: "Changed mind", "Too hard", "Don't like it".
+    2. APPROVE if the reason indicates PLATFORM/CREATOR FAULT or ACCIDENTAL PURCHASE (within short time).
+        Examples: "Course is empty", "Video not playing", "Duplicate charge", "Accidental click".
+    3. REVIEW if the reason is ambiguous, mixed, or "Other" with insufficient detail.
 
     Task:
-    - Detect the language of the reason automatically.
-    - Classify the request based on the meaning, not just keywords.
+    - If a Pre-Categorized Context exists, heavily weight it but verify if any additional text contradicts it.
     - Return a JSON object ONLY.
 
     Format:
@@ -107,6 +121,10 @@ async def decide_refund(transaction_id: str, user_id: str, course_id: str, reaso
         decision = data.get("decision", "REVIEW")
         explanation = data.get("explanation", "No explanation provided")
         confidence = float(data.get("confidence", 0.0))
+
+        # Boost confidence for standard codes if AI agrees
+        if is_standard and confidence > 0.7:
+             confidence = min(0.99, confidence + 0.1)
 
         return decision, decision, confidence, [explanation], ""
 

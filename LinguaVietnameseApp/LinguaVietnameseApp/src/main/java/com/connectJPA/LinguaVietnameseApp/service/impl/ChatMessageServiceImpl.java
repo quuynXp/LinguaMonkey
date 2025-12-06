@@ -65,6 +65,9 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Lazy
     private final BadgeService badgeService;
 
+    // UUID cố định cho AI Bot, đồng bộ với Python và Mobile
+    private static final UUID AI_BOT_ID = UUID.fromString("00000000-0000-0000-0000-000000000000");
+
     @Override
     public Page<ChatMessage> searchMessages(String keyword, UUID roomId, int page, int size) {
         if (keyword == null || keyword.isBlank()) {
@@ -85,7 +88,10 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
                 .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
 
-        if (room.getPurpose() != RoomPurpose.AI_CHAT) {
+        // Logic check member: Bỏ qua nếu là AI Bot gửi tin
+        boolean isAiBot = AI_BOT_ID.equals(request.getSenderId());
+        
+        if (!isAiBot && room.getPurpose() != RoomPurpose.AI_CHAT) {
             UUID currentUserId = request.getSenderId();
             if(!roomMemberRepository.existsById_RoomIdAndId_UserIdAndIsDeletedFalse(roomId, currentUserId)){
                 throw new AppException(ErrorCode.NOT_ROOM_MEMBER);
@@ -111,8 +117,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
             if (room.getPurpose() == RoomPurpose.PRIVATE_CHAT) {
                 UUID receiverId = request.getReceiverId(); 
                 if (receiverId == null) {
-                     // Fallback tìm member còn lại
-                     receiverId = roomMemberRepository.findOtherMemberId(roomId, request.getSenderId());
+                      // Fallback tìm member còn lại
+                      receiverId = roomMemberRepository.findOtherMemberId(roomId, request.getSenderId());
                 }
                 
                 if (receiverId != null) {
@@ -166,29 +172,33 @@ public class ChatMessageServiceImpl implements ChatMessageService {
         room.setUpdatedAt(OffsetDateTime.now());
         roomRepository.save(room);
 
-        // --- UPDATE CHALLENGES AND BADGES ---
-        try {
-            // 1. Badge Update (Message Count)
-            if (badgeService != null) {
-                badgeService.updateBadgeProgress(request.getSenderId(), BadgeType.MESSAGE_COUNT, 1);
+        // --- UPDATE CHALLENGES AND BADGES (Only for real users) ---
+        if (!isAiBot) {
+            try {
+                // 1. Badge Update (Message Count)
+                if (badgeService != null) {
+                    badgeService.updateBadgeProgress(request.getSenderId(), BadgeType.MESSAGE_COUNT, 1);
+                }
+    
+                // 2. Daily Challenge Update
+                if (dailyChallengeService != null) {
+                    dailyChallengeService.updateChallengeProgress(request.getSenderId(), ChallengeType.VOCABULARY_REVIEW, 1);
+                }
+            } catch (Exception e) {
+                log.warn("Failed to update challenge/badge progress for message: {}", e.getMessage());
             }
-
-            // 2. Daily Challenge Update
-            // If the room is for Learning/Practice, we can count it as Review
-            // If we don't have explicit CHAT type, we can map to VOCABULARY_REVIEW as a proxy for "using language"
-            if (dailyChallengeService != null) {
-                 // Using VOCABULARY_REVIEW as a proxy for social practice/chatting in target language
-                dailyChallengeService.updateChallengeProgress(request.getSenderId(), ChallengeType.VOCABULARY_REVIEW, 1);
-            }
-        } catch (Exception e) {
-            log.warn("Failed to update challenge/badge progress for message: {}", e.getMessage());
         }
 
         ChatMessageResponse response = chatMessageMapper.toResponse(savedMessage);
         response.setPurpose(room.getPurpose());
 
-        UserProfileResponse senderProfile = userService.getUserProfile(null, savedMessage.getSenderId());
-        response.setSenderProfile(senderProfile);
+        // Handle Sender Profile: If AI, return null or dummy, else fetch user
+        if (isAiBot) {
+            response.setSenderProfile(null); 
+        } else {
+            UserProfileResponse senderProfile = userService.getUserProfile(null, savedMessage.getSenderId());
+            response.setSenderProfile(senderProfile);
+        }
 
         try {
             messagingTemplate.convertAndSend("/topic/room/" + roomId, response);
@@ -249,27 +259,8 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Override
     @Transactional
     public ChatMessageResponse saveMessageInternal(UUID roomId, ChatMessageRequest request) {
-        try {
-            Room room = roomRepository.findByRoomIdAndIsDeletedFalse(roomId)
-                    .orElseThrow(() -> new AppException(ErrorCode.ROOM_NOT_FOUND));
-
-            ChatMessage message = chatMessageMapper.toEntity(request);
-            
-            if (message.getId() == null) {
-                message.setId(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()));
-            }
-
-            message.setRoomId(roomId);
-            message.setSenderId(request.getSenderId());
-
-            message = chatMessageRepository.save(message);
-            ChatMessageResponse response = chatMessageMapper.toResponse(message);
-            response.setPurpose(room.getPurpose());
-            return response;
-        } catch (Exception e) {
-            log.error("Error during internal saveMessage for room ID {}: {}", roomId, e.getMessage());
-            throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-        }
+        // Redirect to main save logic to reuse AI UUID checking
+        return this.saveMessage(roomId, request);
     }
 
     @Override
@@ -390,10 +381,11 @@ public class ChatMessageServiceImpl implements ChatMessageService {
     @Transactional
     public ChatMessageResponse generateAIResponse(ChatMessageResponse userMessage) {
         try {
+            // FIXED: Use standardized AI_BOT_ID instead of randomUUID
             ChatMessage aiMessage = ChatMessage.builder()
                     .id(new ChatMessagesId(UUID.randomUUID(), OffsetDateTime.now()))
                     .roomId(userMessage.getRoomId())
-                    .senderId(UUID.randomUUID()) 
+                    .senderId(AI_BOT_ID) 
                     .content("AI response to: " + userMessage.getContent())
                     .messageType(userMessage.getMessageType())
                     .isRead(false)

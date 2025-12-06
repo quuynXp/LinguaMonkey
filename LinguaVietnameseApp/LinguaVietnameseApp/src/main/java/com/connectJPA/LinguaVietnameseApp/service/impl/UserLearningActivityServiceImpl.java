@@ -1,16 +1,20 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.LearningActivityEventRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserLearningActivityRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.enums.ChallengeType;
+import com.connectJPA.LinguaVietnameseApp.enums.DifficultyLevel;
+import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserLearningActivityMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.DailyChallengeService;
+import com.connectJPA.LinguaVietnameseApp.service.NotificationService;
 import com.connectJPA.LinguaVietnameseApp.service.UserLearningActivityService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +32,8 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -38,11 +44,12 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
     private final UserLearningActivityRepository userLearningActivityRepository;
     private final LessonRepository lessonRepository;
     private final UserRepository userRepository;
-    private final UserDailyChallengeRepository userDailyChallengeRepository;
     private final UserLearningActivityMapper userLearningActivityMapper;
     private final DailyChallengeService dailyChallengeService;
     private final RedisTemplate<String, Object> redisTemplate;
     private final GrpcClientService grpcClientService;
+    private final CourseRepository courseRepository; 
+    private final NotificationService notificationService;
 
     private static final String HISTORY_CACHE_KEY = "user:history:";
     private static final String ONLINE_TIME_KEY = "user:online_minutes:";
@@ -102,12 +109,10 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             Long totalDurationToday = userLearningActivityRepository.sumDurationMinutesByUserIdAndDate(user.getUserId(), today);
             if (totalDurationToday == null) totalDurationToday = 0L;
             
-            // Check Redis for more accurate online time
             String redisKey = ONLINE_TIME_KEY + user.getUserId() + ":" + today.toString();
             Object redisVal = redisTemplate.opsForValue().get(redisKey);
             long onlineMinutes = redisVal != null ? Long.parseLong(redisVal.toString()) : 0L;
             
-            // Use maximum of recorded lesson time OR online heartbeat time
             long effectiveMinutes = Math.max(totalDurationToday, onlineMinutes);
 
             if (effectiveMinutes >= minGoal) {
@@ -230,11 +235,9 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         OffsetDateTime endOdt = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime prevStartOdt = prevStartDate.atStartOfDay().atOffset(ZoneOffset.UTC);
 
-        // 1. Fetch DB Data (Specific Activities)
         List<UserLearningActivity> activities = userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, startOdt, endOdt);
         User user = userRepository.findById(userId).orElseThrow(() -> new RuntimeException("User not found"));
 
-        // 2. Metrics Calculation
         long currentTotalTime = activities.stream().mapToLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0).sum();
         int currentLessons = (int) activities.stream().filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETED).count();
         
@@ -251,15 +254,13 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         List<Object[]> weakSkills = userLearningActivityRepository.findWeakestSkills(userId, startOdt, endOdt);
         String weakestSkill = weakSkills.isEmpty() ? "NONE" : weakSkills.get(0)[0].toString();
 
-        // 3. Build Detailed Charts & Heatmap Data using Redis (Heartbeat) + DB
         List<StatsResponse.ChartDataPoint> timeChart = new ArrayList<>();
         List<StatsResponse.ChartDataPoint> accuracyChart = new ArrayList<>();
-        Map<String, Integer> dailyHeatmap = new HashMap<>(); // NEW: Merged Map
+        Map<String, Integer> dailyHeatmap = new HashMap<>(); 
         
         Map<LocalDate, Long> dbDailyTime = new HashMap<>();
         Map<LocalDate, List<Double>> dailyAccuracy = new HashMap<>();
 
-        // Aggregate DB data first
         for (UserLearningActivity a : activities) {
             LocalDate d = a.getCreatedAt().toLocalDate();
             dbDailyTime.merge(d, a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L, Long::sum);
@@ -275,19 +276,15 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
             String dateStr = temp.toString();
             String redisKey = ONLINE_TIME_KEY + userId + ":" + dateStr;
             
-            // Get Redis Heartbeat Data
             Object redisValObj = redisTemplate.opsForValue().get(redisKey);
             long redisMinutes = redisValObj != null ? Long.parseLong(redisValObj.toString()) : 0L;
             
-            // Get DB Lesson Data (converted to minutes)
             long dbSeconds = dbDailyTime.getOrDefault(temp, 0L);
             long dbMinutes = dbSeconds / 60;
 
-            // Merge: Use the greater of the two. Redis tracks general presence, DB tracks focused learning.
             long finalMinutes = Math.max(redisMinutes, dbMinutes);
             dailyHeatmap.put(dateStr, (int) finalMinutes);
 
-            // Chart Data construction
             String label = temp.format(labelFormatter);
             List<Double> accList = dailyAccuracy.getOrDefault(temp, Collections.emptyList());
             double accVal = accList.isEmpty() ? 0.0 : accList.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
@@ -322,7 +319,7 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         return StudyHistoryResponse.builder()
                 .sessions(sessionList)
                 .stats(stats)
-                .dailyActivity(dailyHeatmap) // NEW FIELD
+                .dailyActivity(dailyHeatmap)
                 .build();
     }
 
@@ -333,52 +330,128 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         if (user == null) return;
 
         OffsetDateTime now = OffsetDateTime.now();
-        OffsetDateTime yesterday = now.minusDays(1);
-        
-        List<UserLearningActivity> recentActivities = userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, yesterday, now);
-        
-        if (recentActivities.isEmpty()) return;
+        OffsetDateTime yesterdayStart = now.minusDays(1).toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime yesterdayEnd = now.toLocalDate().atStartOfDay().atOffset(ZoneOffset.UTC);
 
-        double totalScore = 0;
-        double totalMax = 0;
-        int totalSeconds = 0;
-        Set<String> weakSpots = new HashSet<>();
-        
-        for (UserLearningActivity a : recentActivities) {
-            if (a.getDurationInSeconds() != null) totalSeconds += a.getDurationInSeconds();
-            if (a.getMaxScore() != null && a.getMaxScore() > 0) {
-                totalScore += a.getScore();
-                totalMax += a.getMaxScore();
-                if ((double)a.getScore()/a.getMaxScore() < 0.6) {
-                    weakSpots.add(a.getActivityType().toString());
-                }
-            }
+        // 1. FILTER: Only process users who were active yesterday
+        boolean activeYesterday = userLearningActivityRepository.existsByUserIdAndCreatedAtBetween(userId, yesterdayStart, yesterdayEnd);
+        boolean onlineYesterday = checkRedisActivity(userId, now.minusDays(1).toLocalDate());
+
+        if (!activeYesterday && !onlineYesterday) {
+            log.info("Skipping analysis for user {} (Inactive yesterday)", userId);
+            return;
         }
+
+        // 2. CONTEXT: Fetch available public courses for the user's current or next level
+        ProficiencyLevel currentLevel = user.getProficiency() != null ? user.getProficiency() : ProficiencyLevel.A1;
+        ProficiencyLevel nextLevel = getNextLevel(currentLevel);
+        DifficultyLevel diffLevel = mapProficiencyToDifficulty(nextLevel);
         
-        double accuracy = totalMax > 0 ? (totalScore / totalMax * 100) : 0;
-        int minutes = totalSeconds / 60;
-        String weakAreasStr = weakSpots.isEmpty() ? "None" : String.join(", ", weakSpots);
-        
-        String prompt = String.format(
-            "Analyze this language learner's daily progress and give a short, encouraging 1-sentence tip. " +
-            "Data: Learned %d minutes today. Accuracy: %.1f%%. Struggled with: %s. " +
-            "Language: %s. Proficiency: %s.",
-            minutes, accuracy, weakAreasStr, 
-            user.getNativeLanguageCode() != null ? "Vietnamese" : "English", 
-            user.getProficiency() != null ? user.getProficiency().toString() : "Beginner"
+        // Find candidate courses to suggest (Public, Matching Next Level)
+        List<Course> candidateCourses = courseRepository.findByLatestPublicVersion_DifficultyLevelAndApprovalStatus(
+            diffLevel, 
+            com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus.APPROVED
         );
-        
+
+        String candidateCoursesText = candidateCourses.stream()
+            .limit(5) // Limit context size
+            .map(c -> "- " + c.getTitle() + " (" + c.getLatestPublicVersion().getDifficultyLevel() + ")")
+            .collect(Collectors.joining("\n"));
+
+        // 3. PROMPT: Construct detailed prompt for Gemini
+        String prompt = String.format(
+            "Analyze this user's learning data (provided in context). They are currently at level %s.\n" +
+            "1. Evaluate their roadmap progress and course enrollments.\n" +
+            "2. If they have completed most requirements for %s, check if they are ready for %s.\n" +
+            "3. Suggest specific improvements based on their weak skills.\n" +
+            "4. Recommend one of these available courses if suitable:\n%s\n\n" +
+            "Format output:\n" +
+            "Provide a short, encouraging 2-sentence tip for the user.\n" +
+            "IF AND ONLY IF the user is clearly ready for the next level based on high accuracy/completion, append exactly: '[LEVEL_UP: %s]'.",
+            currentLevel, currentLevel, nextLevel, candidateCoursesText, nextLevel
+        );
+
         try {
+            // 4. CALL AI
             grpcClientService.callChatWithAIAsync(null, userId.toString(), prompt, new ArrayList<>())
                 .thenAccept(suggestion -> {
                     if (suggestion != null && !suggestion.isEmpty()) {
+                        
+                        // 5. LOGIC: Check for Level Up Trigger
+                        if (suggestion.contains("[LEVEL_UP:")) {
+                            updateUserLevel(user, suggestion);
+                            // Remove the technical tag from the message shown to user
+                            suggestion = suggestion.replaceAll("\\[LEVEL_UP:.*?\\]", "").trim();
+                        }
+
+                        // Save suggestion to DB for UI display
                         user.setLatestImprovementSuggestion(suggestion);
                         user.setLastSuggestionGeneratedAt(OffsetDateTime.now());
                         userRepository.save(user);
+
+                        // 6. NOTIFICATION: Push to user
+                        NotificationRequest notifRequest = NotificationRequest.builder()
+                                .userId(userId)
+                                .title("Daily AI Coach \uD83E\uDD16") // Robot emoji
+                                .content(suggestion)
+                                .type("AI_SUGGESTION")
+                                .build();
+                        notificationService.createPushNotification(notifRequest);
                     }
                 });
         } catch (Exception e) {
             log.error("Error calling AI for user analysis: {}", e.getMessage());
+        }
+    }
+
+    private boolean checkRedisActivity(UUID userId, LocalDate date) {
+        String redisKey = ONLINE_TIME_KEY + userId + ":" + date.toString();
+        Object val = redisTemplate.opsForValue().get(redisKey);
+        return val != null && Long.parseLong(val.toString()) > 0;
+    }
+
+    private ProficiencyLevel getNextLevel(ProficiencyLevel current) {
+        return switch (current) {
+            case A1 -> ProficiencyLevel.A2;
+            case A2 -> ProficiencyLevel.B1;
+            case B1 -> ProficiencyLevel.B2;
+            case B2 -> ProficiencyLevel.C1;
+            case C1 -> ProficiencyLevel.C2;
+            default -> ProficiencyLevel.A1;
+        };
+    }
+
+    private DifficultyLevel mapProficiencyToDifficulty(ProficiencyLevel level) {
+        return switch (level) {
+            case A1, A2 -> DifficultyLevel.BEGINNER;
+            case B1, B2 -> DifficultyLevel.INTERMEDIATE;
+            case C1, C2 -> DifficultyLevel.ADVANCED;
+            default -> DifficultyLevel.BEGINNER;
+        };
+    }
+
+    private void updateUserLevel(User user, String aiResponse) {
+        Pattern pattern = Pattern.compile("\\[LEVEL_UP:\\s*([A-Z0-9]+)\\]");
+        Matcher matcher = pattern.matcher(aiResponse);
+        if (matcher.find()) {
+            String newLevelStr = matcher.group(1);
+            try {
+                ProficiencyLevel newLevel = ProficiencyLevel.valueOf(newLevelStr);
+                user.setProficiency(newLevel);
+                log.info("User {} auto-upgraded to level {} by AI Analysis.", user.getUserId(), newLevel);
+                
+                // Send specific congratulation notification
+                NotificationRequest levelUpNotif = NotificationRequest.builder()
+                        .userId(user.getUserId())
+                        .title("Level Up! \uD83C\uDF89")
+                        .content("Congratulations! Based on your recent progress, you have been promoted to " + newLevel + "!")
+                        .type("LEVEL_UP")
+                        .build();
+                notificationService.createPushNotification(levelUpNotif);
+                
+            } catch (IllegalArgumentException e) {
+                log.warn("AI suggested invalid level: {}", newLevelStr);
+            }
         }
     }
 
@@ -387,7 +460,6 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
     public void recordHeartbeat(UUID userId) {
         User user = userRepository.findById(userId).orElse(null);
         if (user == null) {
-            log.warn("Heartbeat received for unknown user ID: {}", userId);
             return;
         }
 
@@ -399,7 +471,5 @@ public class UserLearningActivityServiceImpl implements UserLearningActivityServ
         
         redisTemplate.opsForValue().increment(key, 1);
         redisTemplate.expire(key, 30, TimeUnit.DAYS);
-
-        log.debug("Heartbeat recorded for user: {} minute count key: {}", userId, key);
     }
 }

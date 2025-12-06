@@ -41,4 +41,6 @@ public class RoadmapResource extends BaseEntity {
 
     @Column(name = "duration")
     private Integer duration;
+
+    private UUID roadmapId;
 }

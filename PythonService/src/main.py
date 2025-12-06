@@ -4,7 +4,7 @@ import logging
 import jwt
 import asyncio
 import os
-import uuid  # Added to handle UUID conversion
+import uuid
 from datetime import datetime
 from collections import defaultdict
 from typing import Dict, List
@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 from fastapi import (
-    FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query
+    FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query, BackgroundTasks
 )
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -26,19 +26,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.user_profile_service import get_user_profile
 from src.core.models import ChatMessage, MessageType
-
-# Imports logic chính
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
 from src.api.speech_to_text import speech_to_text
 from src.api.tts_generator import generate_tts
 from src.core.java_persistence_client import send_chat_to_java_via_grpc
-from src.api.translator import get_translator
-from src.worker.tasks import warm_up_redis_task, populate_lexicon_from_community_task
-from src.scripts.seed_lexicon import seed_data
+from src.core.translator import get_translator
+# Import Task
+from src.worker.tasks import ingest_huggingface_task
 
 load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# --- CONSTANTS ---
+# UUID đặc biệt dành cho AI Bot (Zero UUID) để Java không bị lỗi parse và DB có dữ liệu
+AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
 security = HTTPBearer()
 PUBLIC_KEY = None
@@ -48,9 +50,9 @@ try:
         PUBLIC_KEY = serialization.load_pem_public_key(
             f.read(), backend=default_backend()
         )
-    logger.info("Public key loaded successfully.")
+    logger.info("✅ Public key loaded successfully.")
 except Exception as e:
-    logger.warning(f"Could not load public_key.pem: {e}")
+    logger.critical(f"❌ Could not load public_key.pem: {e}")
 
 internal_router = APIRouter(prefix="/internal")
 protected_router = APIRouter(dependencies=[Depends(security)])
@@ -75,7 +77,6 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket, room_id: str):
         await websocket.accept()
         self.active_connections[room_id].append(websocket)
-        logger.info(f"WebSocket connected to room {room_id}. Total: {len(self.active_connections[room_id])}")
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.active_connections:
@@ -99,16 +100,30 @@ class ConnectionManager:
 manager = ConnectionManager()
 audio_buffers = defaultdict(list)
 
+# --- LIFESPAN EVENT: AUTO TRIGGER INGESTION ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 1. Startup
     await get_redis_client()
     logger.info("Redis client initialized.")
+    
+    # Trigger task nạp dữ liệu Hugging Face ngay khi Server chạy
+    logger.info("🚀 Triggering Auto-Ingest Task...")
+    try:
+        ingest_huggingface_task.delay()
+        logger.info("✅ Auto-Ingest Task sent to Worker.")
+    except Exception as e:
+        logger.error(f"❌ Failed to trigger Auto-Ingest: {e}")
+
     yield
+    
+    # 2. Shutdown
     await close_redis_client()
     logger.info("Redis client closed.")
 
 app = FastAPI(lifespan=lifespan)
 
+# --- AUTH HELPER (HTTP) ---
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
@@ -120,30 +135,53 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
             PUBLIC_KEY, 
             algorithms=["RS256"],
             issuer="LinguaMonkey.com", 
-            options={"verify_exp": True}
+            options={"verify_exp": True, "verify_aud": False}
         )
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except Exception as e:
-        raise HTTPException(status_code=401, detail=str(e))
+        logger.error(f"Token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
 
-async def get_websocket_user(websocket: WebSocket, token: str) -> str:
+# --- AUTH HELPER (WEBSOCKET) ---
+async def validate_websocket_token(websocket: WebSocket, token: str) -> str:
+    if not token:
+        logger.warning("WS Auth: Token missing")
+        return None
+        
     try:
-        if not token:
-             await websocket.close(code=1008, reason="Missing Token")
-             raise WebSocketDisconnect()
         key = PUBLIC_KEY if PUBLIC_KEY else ""
-        options = {"verify_signature": False} if PUBLIC_KEY is None else {"verify_exp": True}
+        options = {"verify_signature": False} if PUBLIC_KEY is None else {
+            "verify_exp": True,
+            "verify_aud": False,
+            "verify_iss": True
+        }
+        
         decoded_token = jwt.decode(
-            token, key, algorithms=["RS256"], issuer="LinguaMonkey.com", 
+            token, 
+            key, 
+            algorithms=["RS256"], 
+            issuer="LinguaMonkey.com", 
             options=options
         )
-        return decoded_token.get("sub") or decoded_token.get("userId")
+        
+        user_id = decoded_token.get("sub")
+        if not user_id:
+            logger.warning("WS Auth: No 'sub' claim in token")
+            return None
+            
+        return user_id
+        
+    except jwt.ExpiredSignatureError:
+        logger.warning("WS Auth: Token expired")
+        return None
     except Exception as e:
-        logger.warning(f"WebSocket Auth failed: {e}")
-        await websocket.close(code=1008, reason="Invalid Token")
-        raise WebSocketDisconnect()
+        logger.warning(f"WS Auth failed: {e}")
+        return None
 
+# ==============================================================================
+# INTERNAL ENDPOINTS
+# ==============================================================================
 @internal_router.post("/invalidate-cache") 
 async def invalidate_user_cache(
     request: CacheInvalidationRequest,
@@ -157,35 +195,24 @@ async def invalidate_user_cache(
         logger.error(f"Invalidate cache error: {e}")
         raise HTTPException(status_code=500, detail="Redis error")
 
-@internal_router.post("/trigger-warmup")
-async def trigger_warmup():
-    task = warm_up_redis_task.delay()
-    return {"status": "Warmup task triggered", "task_id": str(task.id)}
-
-@internal_router.post("/trigger-community-fetch")
-async def trigger_community_fetch():
-    task = populate_lexicon_from_community_task.delay()
-    return {"status": "Community fetch task triggered", "task_id": str(task.id)}
-
-@internal_router.post("/seed-database")
-async def run_seed_database():
-    try:
-        await seed_data()
-        return {"status": "Database seeding started and warmup triggered"}
-    except Exception as e:
-        logger.error(f"Seeding failed: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+@internal_router.post("/trigger-hf-ingest")
+async def trigger_hf_ingest():
+    task = ingest_huggingface_task.delay()
+    return {"status": "Hugging Face ingestion task sent to worker", "task_id": str(task.id)}
 
 @internal_router.get("/check-redis/{lang}/{text}")
 async def check_redis_key(lang: str, text: str, redis: Redis = Depends(get_redis_client)):
     key = f"lex:{lang}:{text.strip().lower()}"
-    value = await redis.get(key)
+    value = await redis.hgetall(key)
     return {
         "key": key,
-        "exists": value is not None,
-        "value": json.loads(value) if value else None
+        "exists": bool(value),
+        "value": value
     }
 
+# ==============================================================================
+# PROTECTED API
+# ==============================================================================
 @protected_router.post("/translate")
 async def translate(
     request: TranslationRequest, 
@@ -197,7 +224,6 @@ async def translate(
         translated_text, detected_lang = await translator.translate(
             request.text, request.source_lang, request.target_lang
         )
-        
         return {
             "code": 200,
             "result": { 
@@ -240,10 +266,17 @@ async def text_to_speech_endpoint(
         "audio_base64": base64.b64encode(audio_bytes).decode('utf-8')
     }
 
+# ==============================================================================
+# WEBSOCKETS
+# ==============================================================================
 @app.websocket("/voice")
 async def voice_stream(websocket: WebSocket, token: str = Query(...)):
-    await get_websocket_user(websocket, token)
     await websocket.accept()
+    user_id = await validate_websocket_token(websocket, token)
+    if not user_id:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
     try:
         while True:
             data = await websocket.receive_text()
@@ -262,8 +295,14 @@ async def voice_stream(websocket: WebSocket, token: str = Query(...)):
 
 @app.websocket("/chat-stream")
 async def chat_stream(websocket: WebSocket, token: str = Query(...)):
-    user_id_str = await get_websocket_user(websocket, token)
     await websocket.accept()
+    user_id_str = await validate_websocket_token(websocket, token)
+    if not user_id_str:
+        logger.error(f"Chat WS Rejected: Invalid token for token start: {token[:10]}...")
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
+    logger.info(f"✅ User {user_id_str} connected to AI Chat")
     
     db_session = AsyncSessionLocal()
     redis = await get_redis_client()
@@ -280,92 +319,81 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                 history = msg.get("history", [])
                 room_id_str = msg.get("roomId")
                 
-                if not room_id_str:
-                    await websocket.send_text(json.dumps({"type": "error", "content": "roomId required"}))
+                if not room_id_str or not raw_prompt:
                     continue
                 
-                # Convert string IDs to UUIDs for DB compatibility
                 try:
                     room_uuid = uuid.UUID(room_id_str)
                     user_uuid = uuid.UUID(user_id_str)
                 except ValueError:
-                    logger.error(f"Invalid UUID format: room={room_id_str}, user={user_id_str}")
+                    logger.error(f"Invalid UUID format")
                     continue
 
-                actual_prompt = raw_prompt
-                if raw_prompt == "INITIAL_WELCOME_MESSAGE":
-                    actual_prompt = "Hello AI, please introduce yourself briefly in English and ask me what I want to learn today. Act as a friendly tutor."
-                
-                # --- 1. LƯU USER MESSAGE VÀO DB ---
-                if raw_prompt != "INITIAL_WELCOME_MESSAGE":
-                    try:
-                        user_msg_db = ChatMessage(
-                            chat_message_id=uuid.uuid4(),
-                            content=raw_prompt,
-                            room_id=room_uuid,
-                            sender_id=user_uuid,
-                            message_type=MessageType.TEXT.value,
-                            sent_at=datetime.utcnow()
-                        )
-                        db_session.add(user_msg_db)
-                        await db_session.commit()
-                        logger.info(f"💾 Saved User Message to Room {room_id_str}")
-                    except Exception as e:
-                        logger.error(f"❌ Failed to save user message: {e}")
-                        await db_session.rollback()
-
-                    # Sync với Java service
-                    asyncio.create_task(send_chat_to_java_via_grpc({
-                        "userId": user_id_str, "roomId": room_id_str,
-                        "content": raw_prompt,
-                        "messageType": msg.get("messageType", "TEXT"),
-                        "sentAt": datetime.now().isoformat()
-                    }))
-
-                # --- 2. GENERATE AI RESPONSE ---
-                full_ai_response = ""
-                async for chunk in chat_with_ai_stream(actual_prompt, history, user_profile):
-                    full_ai_response += chunk
-                    await websocket.send_text(json.dumps({
-                        "type": "chat_response_chunk",
-                        "content": chunk
-                    }))
-                await websocket.send_text(json.dumps({"type": "chat_response_complete"}))
-                
-                # --- 3. LƯU AI MESSAGE VÀO DB ---
+                # 1. Save User Message
                 try:
-                    # Lưu tin nhắn AI với roomId nhận từ FE. 
-                    # sender_id để là user_uuid (hoặc Bot UUID nếu bạn cấu hình sau này)
-                    ai_msg_db = ChatMessage(
+                    user_msg_db = ChatMessage(
                         chat_message_id=uuid.uuid4(),
-                        content=full_ai_response,
+                        content=raw_prompt,
                         room_id=room_uuid,
-                        sender_id=user_uuid, 
+                        sender_id=user_uuid,
                         message_type=MessageType.TEXT.value,
                         sent_at=datetime.utcnow()
                     )
-                    
-                    db_session.add(ai_msg_db)
+                    db_session.add(user_msg_db)
                     await db_session.commit()
-                    logger.info(f"💾 Saved AI Message to Room {room_id_str}")
-                    
                 except Exception as e:
-                    logger.error(f"❌ Failed to save AI message: {e}")
+                    logger.error(f"Failed to save user message: {e}")
                     await db_session.rollback()
 
-                # Sync với Java service
                 asyncio.create_task(send_chat_to_java_via_grpc({
-                    "userId": "AI_BOT", 
-                    "roomId": room_id_str,
-                    "content": full_ai_response,
-                    "messageType": "TEXT",
+                    "userId": user_id_str, "roomId": room_id_str,
+                    "content": raw_prompt, "messageType": "TEXT",
                     "sentAt": datetime.now().isoformat()
                 }))
 
+                # 2. Stream AI Response
+                full_ai_response = ""
+                async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile):
+                    full_ai_response += chunk
+                    await websocket.send_text(json.dumps({
+                        "type": "chat_response_chunk",
+                        "content": chunk,
+                        "roomId": room_id_str
+                    }))
+                
+                await websocket.send_text(json.dumps({"type": "chat_response_complete", "roomId": room_id_str}))
+                
+                # 3. Save AI Message
+                if full_ai_response.strip():
+                    try:
+                        ai_msg_db = ChatMessage(
+                            chat_message_id=uuid.uuid4(),
+                            content=full_ai_response,
+                            room_id=room_uuid,
+                            # FIX: Use AI_BOT_ID instead of None
+                            sender_id=AI_BOT_ID,
+                            message_type=MessageType.TEXT.value,
+                            sent_at=datetime.utcnow()
+                        )
+                        db_session.add(ai_msg_db)
+                        await db_session.commit()
+                    except Exception as e:
+                        logger.error(f"Failed to save AI message: {e}")
+                        await db_session.rollback()
+
+                    # FIX: Send valid UUID string to Java gRPC
+                    asyncio.create_task(send_chat_to_java_via_grpc({
+                        "userId": str(AI_BOT_ID), 
+                        "roomId": room_id_str,
+                        "content": full_ai_response,
+                        "messageType": "TEXT",
+                        "sentAt": datetime.now().isoformat()
+                    }))
+
     except WebSocketDisconnect:
-        pass
+        logger.info(f"User {user_id_str} disconnected form Chat AI")
     except Exception as e:
-        logger.error(f"Chat WS Error: {e}")
+        logger.error(f"Chat WS Error: {e}", exc_info=True)
     finally:
         await db_session.close()
 
@@ -377,7 +405,13 @@ async def live_subtitles(
     nativeLang: str = Query("vi"),
     spokenLang: str = Query("en")
 ):
-    user_id = await get_websocket_user(websocket, token)
+    await websocket.accept()
+    user_id = await validate_websocket_token(websocket, token)
+    
+    if not user_id:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return
+
     await manager.connect(websocket, roomId)
     redis = await get_redis_client()
     
@@ -436,4 +470,4 @@ app.include_router(internal_router, tags=["Internal API"])
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8001)) 
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")

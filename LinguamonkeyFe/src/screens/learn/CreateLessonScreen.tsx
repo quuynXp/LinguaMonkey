@@ -11,15 +11,21 @@ import {
     Modal,
     KeyboardAvoidingView,
     Platform,
+    Image,
+    Dimensions
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLessons } from '../../hooks/useLessons';
 import { useUserStore } from '../../stores/UserStore';
 import { LessonRequest, LessonQuestionRequest, LessonQuestionResponse } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import FileUploader from '../../components/common/FileUploader';
 import { DifficultyLevel, LessonType, QuestionType, SkillType } from '../../types/enums';
+
+// --- Interface & Constants ---
+const { width } = Dimensions.get('window');
 
 interface LocalQuestionState {
     id: string;
@@ -39,6 +45,74 @@ type RootStackParamList = {
     CreateLesson: { courseId: string; versionId: string; lessonId?: string };
 };
 
+const defaultQ: LocalQuestionState = {
+    id: '',
+    question: '',
+    questionType: QuestionType.MULTIPLE_CHOICE,
+    options: { A: '', B: '', C: '', D: '' },
+    pairs: [{ key: '', value: '' }, { key: '', value: '' }],
+    orderItems: ['', '', ''],
+    correctOption: '',
+    transcript: '',
+    explainAnswer: '',
+    weight: '1',
+    mediaUrl: ''
+};
+
+// --- Helper Component: MediaPreviewItem ---
+const MediaPreviewItem = ({
+    url,
+    onDelete,
+    style,
+    containerStyle
+}: {
+    url: string;
+    onDelete?: () => void;
+    style?: any;
+    containerStyle?: any;
+}) => {
+    // 1. Tính toán logic isImage trước
+    // Nếu url null/undefined, coi như không phải ảnh
+    const isImage = url ? (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null || url.includes('googleusercontent')) : false;
+
+    // 2. Chuẩn bị source cho Video Player
+    // Nếu là ảnh hoặc url rỗng, truyền null cho player (player sẽ ở trạng thái idle)
+    // useVideoPlayer chấp nhận null hoặc string
+    const videoSource = (url && !isImage) ? url : null;
+
+    // 3. GỌI HOOK LUÔN LUÔN (Không bao giờ return trước dòng này)
+    const player = useVideoPlayer(videoSource, (player) => {
+        player.loop = false;
+    });
+
+    // 4. Bây giờ mới kiểm tra url để return null nếu cần
+    if (!url) return null;
+
+    return (
+        <View style={[styles.mediaItemContainer, containerStyle]}>
+            {isImage ? (
+                <Image source={{ uri: url }} style={[styles.imagePreview, style]} resizeMode="contain" />
+            ) : (
+                <View style={[styles.videoContainer, style]}>
+                    <VideoView
+                        player={player}
+                        style={{ width: '100%', height: '100%' }}
+                        contentFit="contain"
+                        nativeControls={true}
+                    />
+                </View>
+            )}
+
+            {onDelete && (
+                <TouchableOpacity style={styles.deleteOverlayBtn} onPress={onDelete}>
+                    <Ionicons name="trash" size={18} color="#FFF" />
+                </TouchableOpacity>
+            )}
+        </View>
+    );
+};
+
+// --- Main Screen ---
 const CreateLessonScreen = () => {
     const navigation = useNavigation();
     const route = useRoute<RouteProp<RootStackParamList, 'CreateLesson'>>();
@@ -51,13 +125,15 @@ const CreateLessonScreen = () => {
         useCreateQuestion,
         useUpdateQuestion,
         useLesson,
-        useAllQuestions
+        useAllQuestions,
+        useDeleteQuestion
     } = useLessons();
 
     const createLessonMutation = useCreateLesson();
     const updateLessonMutation = useUpdateLesson();
     const createQuestionMutation = useCreateQuestion();
     const updateQuestionMutation = useUpdateQuestion();
+    const deleteQuestionMutation = useDeleteQuestion();
 
     const isEditMode = !!lessonId;
     const { data: lessonData } = useLesson(lessonId || null);
@@ -74,19 +150,6 @@ const CreateLessonScreen = () => {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isEditingIndex, setIsEditingIndex] = useState<number | null>(null);
 
-    const defaultQ: LocalQuestionState = {
-        id: '',
-        question: '',
-        questionType: QuestionType.MULTIPLE_CHOICE,
-        options: { A: '', B: '', C: '', D: '' },
-        pairs: [{ key: '', value: '' }, { key: '', value: '' }],
-        orderItems: ['', '', ''],
-        correctOption: '',
-        transcript: '',
-        explainAnswer: '',
-        weight: '1',
-        mediaUrl: ''
-    };
     const [currentQ, setCurrentQ] = useState<LocalQuestionState>(defaultQ);
 
     const isMediaLesson = [LessonType.VIDEO, LessonType.AUDIO, LessonType.DOCUMENT].includes(lessonType);
@@ -148,7 +211,6 @@ const CreateLessonScreen = () => {
         if (!currentQ.question && !currentQ.mediaUrl) return Alert.alert("Error", "Enter a question or attach media.");
 
         const finalQ = { ...currentQ };
-
         if (currentQ.questionType === QuestionType.TRUE_FALSE) {
             if (!['True', 'False'].includes(finalQ.correctOption)) finalQ.correctOption = 'True';
         }
@@ -162,6 +224,25 @@ const CreateLessonScreen = () => {
         }
         setModalVisible(false);
         setCurrentQ(defaultQ);
+    };
+
+    const handleDeleteQuestion = async (index: number) => {
+        const q = questions[index];
+        if (q.id && q.id.length > 20) {
+            Alert.alert("Confirm", "Delete this question permanently?", [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Delete", style: "destructive", onPress: async () => {
+                        await deleteQuestionMutation.mutateAsync(q.id);
+                        const updated = questions.filter((_, i) => i !== index);
+                        setQuestions(updated);
+                    }
+                }
+            ]);
+        } else {
+            const updated = questions.filter((_, i) => i !== index);
+            setQuestions(updated);
+        }
     };
 
     const handleSave = async () => {
@@ -233,7 +314,8 @@ const CreateLessonScreen = () => {
                         mediaUrl: q.mediaUrl,
                         explainAnswer: q.explainAnswer,
                         weight: parseInt(q.weight) || 1,
-                        orderIndex: i
+                        orderIndex: i,
+                        isDeleted: false
                     };
 
                     if (q.id && q.id.length > 20) {
@@ -261,68 +343,69 @@ const CreateLessonScreen = () => {
             case QuestionType.MULTIPLE_CHOICE:
                 return (
                     <View>
-                        <Text style={styles.label}>Options</Text>
+                        <Text style={styles.label}>Options & Correct Answer</Text>
                         {['A', 'B', 'C', 'D'].map(opt => (
                             <View key={opt} style={styles.rowCenter}>
+                                <TouchableOpacity
+                                    style={[styles.radioBtn, currentQ.correctOption === opt && styles.radioBtnActive]}
+                                    onPress={() => setCurrentQ({ ...currentQ, correctOption: opt })}
+                                >
+                                    <Text style={[styles.radioText, currentQ.correctOption === opt && styles.textActive]}>{opt}</Text>
+                                </TouchableOpacity>
                                 <TextInput
-                                    style={[styles.input, { flex: 1, marginBottom: 5 }]}
+                                    style={[styles.input, { flex: 1, marginLeft: 10 }]}
                                     placeholder={`Option ${opt}`}
                                     value={(currentQ.options as any)[opt]}
                                     onChangeText={t => setCurrentQ({ ...currentQ, options: { ...currentQ.options, [opt]: t } })}
                                 />
-                                <TouchableOpacity onPress={() => setCurrentQ({ ...currentQ, correctOption: opt })}>
-                                    <Ionicons name={currentQ.correctOption === opt ? "radio-button-on" : "radio-button-off"} size={24} color="#4ECDC4" />
-                                </TouchableOpacity>
                             </View>
                         ))}
                     </View>
                 );
             case QuestionType.TRUE_FALSE:
                 return (
-                    <View style={styles.rowCenter}>
-                        <Text style={styles.label}>Answer: </Text>
-                        {['True', 'False'].map(val => (
-                            <TouchableOpacity key={val} onPress={() => setCurrentQ({ ...currentQ, correctOption: val })} style={[styles.rowCenter, { marginRight: 15 }]}>
-                                <Ionicons name={currentQ.correctOption === val ? "radio-button-on" : "radio-button-off"} size={24} color="#4ECDC4" />
-                                <Text>{val}</Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                );
-            case QuestionType.FILL_IN_THE_BLANK:
-                return (
                     <View>
-                        <Text style={styles.label}>Correct Answer (use || for variations)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="e.g. going || to go"
-                            value={currentQ.correctOption}
-                            onChangeText={t => setCurrentQ({ ...currentQ, correctOption: t })}
-                        />
+                        <Text style={styles.label}>Correct Answer</Text>
+                        <View style={styles.rowCenter}>
+                            {['True', 'False'].map(val => (
+                                <TouchableOpacity
+                                    key={val}
+                                    style={[styles.choiceCard, currentQ.correctOption === val && styles.choiceCardActive]}
+                                    onPress={() => setCurrentQ({ ...currentQ, correctOption: val })}
+                                >
+                                    <Ionicons
+                                        name={val === 'True' ? 'checkmark-circle' : 'close-circle'}
+                                        size={24}
+                                        color={currentQ.correctOption === val ? '#FFF' : '#666'}
+                                    />
+                                    <Text style={[styles.choiceText, currentQ.correctOption === val && styles.textActive]}>{val}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
                     </View>
                 );
             case QuestionType.MATCHING:
                 return (
                     <View>
-                        <Text style={styles.label}>Pairs (Left - Right)</Text>
+                        <Text style={styles.label}>Matching Pairs (Left - Right)</Text>
                         {currentQ.pairs.map((pair, idx) => (
                             <View key={idx} style={[styles.rowCenter, { marginBottom: 8 }]}>
                                 <TextInput
-                                    style={[styles.input, { flex: 1 }]} placeholder="Left" value={pair.key}
+                                    style={[styles.input, { flex: 1 }]} placeholder="Key" value={pair.key}
                                     onChangeText={t => { const p = [...currentQ.pairs]; p[idx].key = t; setCurrentQ({ ...currentQ, pairs: p }) }}
                                 />
-                                <Ionicons name="arrow-forward" size={16} style={{ marginHorizontal: 5 }} />
+                                <Ionicons name="swap-horizontal" size={20} color="#999" style={{ marginHorizontal: 5 }} />
                                 <TextInput
-                                    style={[styles.input, { flex: 1 }]} placeholder="Right" value={pair.value}
+                                    style={[styles.input, { flex: 1 }]} placeholder="Value" value={pair.value}
                                     onChangeText={t => { const p = [...currentQ.pairs]; p[idx].value = t; setCurrentQ({ ...currentQ, pairs: p }) }}
                                 />
                                 <TouchableOpacity onPress={() => { const p = currentQ.pairs.filter((_, i) => i !== idx); setCurrentQ({ ...currentQ, pairs: p }) }}>
-                                    <Ionicons name="trash" size={20} color="red" />
+                                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" style={{ marginLeft: 5 }} />
                                 </TouchableOpacity>
                             </View>
                         ))}
-                        <TouchableOpacity onPress={() => setCurrentQ({ ...currentQ, pairs: [...currentQ.pairs, { key: '', value: '' }] })}>
-                            <Text style={{ color: 'blue' }}>+ Add Pair</Text>
+                        <TouchableOpacity style={styles.addBtnSmall} onPress={() => setCurrentQ({ ...currentQ, pairs: [...currentQ.pairs, { key: '', value: '' }] })}>
+                            <Text style={styles.addBtnText}>+ Add Pair</Text>
                         </TouchableOpacity>
                     </View>
                 );
@@ -332,19 +415,31 @@ const CreateLessonScreen = () => {
                         <Text style={styles.label}>Correct Sequence (Top to Bottom)</Text>
                         {currentQ.orderItems.map((item, idx) => (
                             <View key={idx} style={[styles.rowCenter, { marginBottom: 5 }]}>
-                                <Text style={{ width: 20 }}>{idx + 1}.</Text>
+                                <Text style={styles.indexBadge}>{idx + 1}</Text>
                                 <TextInput
                                     style={[styles.input, { flex: 1 }]} value={item}
                                     onChangeText={t => { const i = [...currentQ.orderItems]; i[idx] = t; setCurrentQ({ ...currentQ, orderItems: i }) }}
                                 />
                                 <TouchableOpacity onPress={() => { const i = currentQ.orderItems.filter((_, n) => n !== idx); setCurrentQ({ ...currentQ, orderItems: i }) }}>
-                                    <Ionicons name="close" size={20} color="red" />
+                                    <Ionicons name="close-circle" size={24} color="#FF6B6B" style={{ marginLeft: 5 }} />
                                 </TouchableOpacity>
                             </View>
                         ))}
-                        <TouchableOpacity onPress={() => setCurrentQ({ ...currentQ, orderItems: [...currentQ.orderItems, ''] })}>
-                            <Text style={{ color: 'blue' }}>+ Add Item</Text>
+                        <TouchableOpacity style={styles.addBtnSmall} onPress={() => setCurrentQ({ ...currentQ, orderItems: [...currentQ.orderItems, ''] })}>
+                            <Text style={styles.addBtnText}>+ Add Item</Text>
                         </TouchableOpacity>
+                    </View>
+                );
+            case QuestionType.FILL_IN_THE_BLANK:
+                return (
+                    <View>
+                        <Text style={styles.label}>Answer (Use || for variations)</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="e.g. going || to go"
+                            value={currentQ.correctOption}
+                            onChangeText={t => setCurrentQ({ ...currentQ, correctOption: t })}
+                        />
                     </View>
                 );
             default: return null;
@@ -353,113 +448,226 @@ const CreateLessonScreen = () => {
 
     return (
         <ScreenLayout style={styles.container}>
-            <ScrollView contentContainerStyle={styles.content}>
-                <View style={styles.headerRow}>
-                    <TouchableOpacity onPress={() => navigation.goBack()}><Ionicons name="arrow-back" size={24} /></TouchableOpacity>
-                    <Text style={styles.headerTitle}>{isEditMode ? "Edit Lesson" : "Create Lesson"}</Text>
-                    <View style={{ width: 24 }} />
-                </View>
+            <View style={styles.headerRow}>
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+                    <Ionicons name="arrow-back" size={24} color="#333" />
+                </TouchableOpacity>
+                <Text style={styles.headerTitle}>{isEditMode ? "Edit Lesson" : "Create Lesson"}</Text>
+                <View style={{ width: 40 }} />
+            </View>
 
+            <ScrollView contentContainerStyle={styles.content}>
+                {/* --- LESSON INFO SECTION --- */}
                 <View style={styles.section}>
-                    <Text style={styles.label}>Name</Text>
-                    <TextInput style={styles.input} value={lessonName} onChangeText={setLessonName} />
-                    <Text style={styles.label}>Type</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <Text style={styles.sectionHeader}>Basic Information</Text>
+                    <Text style={styles.label}>Thumbnail</Text>
+                    <View style={styles.rowCenter}>
+                        {thumbnailUrl ? <MediaPreviewItem url={thumbnailUrl} style={{ width: 60, height: 60, borderRadius: 8, marginRight: 10 }} /> : null}
+                        <View style={{ flex: 1 }}>
+                            <FileUploader mediaType="image" onUploadSuccess={(id) => setThumbnailUrl(formatDriveUrl(id))}>
+                                <View style={styles.uploadBtn}>
+                                    <Ionicons name="image-outline" size={20} color="#FFF" />
+                                    <Text style={styles.uploadBtnText}>{thumbnailUrl ? "Change" : "Upload Thumbnail"}</Text>
+                                </View>
+                            </FileUploader>
+                        </View>
+                    </View>
+
+                    <Text style={styles.label}>Lesson Name</Text>
+                    <TextInput style={styles.input} value={lessonName} onChangeText={setLessonName} placeholder="Enter lesson title" />
+
+                    <Text style={styles.label}>Lesson Type</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
                         {Object.values(LessonType).map(t => (
                             <TouchableOpacity key={t} style={[styles.pill, lessonType === t && styles.pillActive]} onPress={() => setLessonType(t)}>
                                 <Text style={[styles.pillText, lessonType === t && styles.textActive]}>{t}</Text>
                             </TouchableOpacity>
                         ))}
                     </ScrollView>
+
+                    <Text style={styles.label}>Lesson Media (Video/Audio)</Text>
+                    {/* Danh sách media của Lesson */}
+                    {mediaUrls.map((url, idx) => (
+                        <MediaPreviewItem
+                            key={idx}
+                            url={url}
+                            style={{ height: 180, borderRadius: 8 }}
+                            containerStyle={{ marginBottom: 15 }}
+                            onDelete={() => setMediaUrls(mediaUrls.filter((_, i) => i !== idx))}
+                        />
+                    ))}
+                    <FileUploader mediaType="all" onUploadSuccess={(id) => setMediaUrls([...mediaUrls, formatDriveUrl(id)])}>
+                        <View style={styles.uploadBtnOutline}>
+                            <Ionicons name="cloud-upload-outline" size={20} color="#4ECDC4" />
+                            <Text style={{ color: '#4ECDC4', marginLeft: 5 }}>Add Video/Audio</Text>
+                        </View>
+                    </FileUploader>
                 </View>
 
+                {/* --- QUESTIONS LIST SECTION --- */}
                 <View style={styles.section}>
                     <View style={styles.rowBetween}>
-                        <Text style={styles.sectionTitle}>Questions ({questions.length})</Text>
-                        <TouchableOpacity onPress={() => { setCurrentQ(defaultQ); setModalVisible(true); setIsEditingIndex(null); }}>
-                            <Ionicons name="add-circle" size={30} color="#4ECDC4" />
+                        <Text style={styles.sectionHeader}>Questions ({questions.length})</Text>
+                        <TouchableOpacity
+                            style={styles.addIconBtn}
+                            onPress={() => { setCurrentQ(defaultQ); setModalVisible(true); setIsEditingIndex(null); }}
+                        >
+                            <Ionicons name="add" size={24} color="#FFF" />
                         </TouchableOpacity>
                     </View>
+
                     {questions.map((q, i) => (
-                        <TouchableOpacity key={i} style={styles.questionCard} onPress={() => { setCurrentQ(q); setModalVisible(true); setIsEditingIndex(i); }}>
-                            <Text style={{ fontWeight: 'bold' }}>{q.questionType}</Text>
-                            <Text numberOfLines={1}>{q.question}</Text>
-                        </TouchableOpacity>
+                        <View key={i} style={styles.questionCard}>
+                            <View style={styles.qHeader}>
+                                <View style={[styles.qTypeTag, { backgroundColor: '#E0F7FA' }]}>
+                                    <Text style={{ color: '#006064', fontSize: 10, fontWeight: 'bold' }}>{q.questionType}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row' }}>
+                                    <TouchableOpacity style={styles.actionIcon} onPress={() => { setCurrentQ(q); setModalVisible(true); setIsEditingIndex(i); }}>
+                                        <Ionicons name="create-outline" size={20} color="#4ECDC4" />
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={styles.actionIcon} onPress={() => handleDeleteQuestion(i)}>
+                                        <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                            <Text style={styles.qText} numberOfLines={2}>{q.question || "(No text content)"}</Text>
+                            {/* Preview nhỏ trong danh sách câu hỏi */}
+                            {q.mediaUrl ? (
+                                <View style={{ marginTop: 10 }}>
+                                    <MediaPreviewItem url={q.mediaUrl} style={{ width: 120, height: 80, borderRadius: 5, backgroundColor: '#000' }} />
+                                </View>
+                            ) : null}
+                        </View>
                     ))}
                 </View>
 
-                <TouchableOpacity style={styles.saveBtn} onPress={handleSave} disabled={isSubmitting}>
-                    {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>Save Lesson</Text>}
+                <TouchableOpacity style={styles.saveMainBtn} onPress={handleSave} disabled={isSubmitting}>
+                    {isSubmitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveMainText}>SAVE LESSON</Text>}
                 </TouchableOpacity>
+                <View style={{ height: 50 }} />
             </ScrollView>
 
-            <Modal visible={modalVisible} animationType="slide">
-                <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-                    <View style={styles.modalContent}>
-                        <View style={styles.rowBetween}>
-                            <Text style={styles.header}>Details</Text>
-                            <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={{ color: 'blue' }}>Close</Text></TouchableOpacity>
-                        </View>
-                        <ScrollView>
-                            <Text style={styles.label}>Type</Text>
-                            <ScrollView horizontal>
+            {/* --- EDIT/ADD QUESTION MODAL --- */}
+            <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
+                <ScreenLayout style={{ backgroundColor: '#FFF' }}>
+                    <View style={styles.modalHeader}>
+                        <TouchableOpacity onPress={() => setModalVisible(false)}>
+                            <Text style={{ color: '#666', fontSize: 16 }}>Cancel</Text>
+                        </TouchableOpacity>
+                        <Text style={{ fontSize: 18, fontWeight: 'bold' }}>{isEditingIndex !== null ? 'Edit Question' : 'New Question'}</Text>
+                        <TouchableOpacity onPress={handleSaveQuestion}>
+                            <Text style={{ color: '#4ECDC4', fontSize: 16, fontWeight: 'bold' }}>Done</Text>
+                        </TouchableOpacity>
+                    </View>
+                    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                        <ScrollView contentContainerStyle={{ padding: 20 }}>
+                            <Text style={styles.label}>Question Type</Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
                                 {Object.values(QuestionType).map(t => (
-                                    <TouchableOpacity key={t} style={[styles.pillSmall, currentQ.questionType === t && styles.pillActive]} onPress={() => setCurrentQ({ ...currentQ, questionType: t })}>
+                                    <TouchableOpacity
+                                        key={t}
+                                        style={[styles.pillSmall, currentQ.questionType === t && styles.pillActive]}
+                                        onPress={() => setCurrentQ({ ...currentQ, questionType: t })}
+                                    >
                                         <Text style={[styles.pillTextSmall, currentQ.questionType === t && styles.textActive]}>{t}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </ScrollView>
 
-                            <Text style={styles.label}>Question Prompt</Text>
-                            <TextInput style={[styles.input, { height: 50 }]} multiline value={currentQ.question} onChangeText={t => setCurrentQ({ ...currentQ, question: t })} />
+                            <Text style={styles.label}>Question Text</Text>
+                            <TextInput
+                                style={[styles.input, { minHeight: 60, textAlignVertical: 'top' }]}
+                                multiline
+                                value={currentQ.question}
+                                onChangeText={t => setCurrentQ({ ...currentQ, question: t })}
+                                placeholder="Type question here..."
+                            />
 
-                            <Text style={styles.label}>Media</Text>
-                            <FileUploader mediaType="all" onUploadSuccess={(id) => setCurrentQ({ ...currentQ, mediaUrl: formatDriveUrl(id) })}>
-                                <View style={styles.miniUpload}><Text>{currentQ.mediaUrl ? "Media Attached" : "Upload Media"}</Text></View>
-                            </FileUploader>
+                            <Text style={styles.label}>Attachment</Text>
+                            {/* Preview Media trong Modal */}
+                            {currentQ.mediaUrl ? (
+                                <MediaPreviewItem
+                                    url={currentQ.mediaUrl}
+                                    style={{ height: 200, width: '100%', borderRadius: 8, backgroundColor: '#000' }}
+                                    containerStyle={{ marginTop: 5 }}
+                                    onDelete={() => setCurrentQ({ ...currentQ, mediaUrl: '' })}
+                                />
+                            ) : (
+                                <FileUploader mediaType="all" onUploadSuccess={(id) => setCurrentQ({ ...currentQ, mediaUrl: formatDriveUrl(id) })}>
+                                    <View style={styles.uploadPlaceholder}>
+                                        <Ionicons name="cloud-upload" size={30} color="#CCC" />
+                                        <Text style={{ color: '#999', marginTop: 5 }}>Upload Image/Audio/Video</Text>
+                                    </View>
+                                </FileUploader>
+                            )}
 
-                            <Text style={styles.label}>Explain Answer (Optional)</Text>
-                            <TextInput style={styles.input} multiline value={currentQ.explainAnswer} onChangeText={t => setCurrentQ({ ...currentQ, explainAnswer: t })} />
+                            <View style={styles.divider} />
+                            {renderDynamicInputs()}
 
-                            <View style={styles.dynamicArea}>{renderDynamicInputs()}</View>
-
-                            <TouchableOpacity style={styles.modalSaveBtn} onPress={handleSaveQuestion}>
-                                <Text style={styles.saveText}>Confirm Question</Text>
-                            </TouchableOpacity>
-                            <View style={{ height: 50 }} />
+                            <View style={styles.divider} />
+                            <Text style={styles.label}>Explanation (Optional)</Text>
+                            <TextInput
+                                style={styles.input}
+                                multiline
+                                value={currentQ.explainAnswer}
+                                onChangeText={t => setCurrentQ({ ...currentQ, explainAnswer: t })}
+                                placeholder="Why is this the correct answer?"
+                            />
+                            <View style={{ height: 100 }} />
                         </ScrollView>
-                    </View>
-                </KeyboardAvoidingView>
+                    </KeyboardAvoidingView>
+                </ScreenLayout>
             </Modal>
         </ScreenLayout>
     );
 };
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#F8F9FA' },
-    content: { padding: 20 },
-    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-    headerTitle: { fontSize: 20, fontWeight: 'bold' },
-    header: { fontSize: 20, fontWeight: 'bold', marginBottom: 15 },
-    section: { marginBottom: 20, backgroundColor: '#FFF', padding: 15, borderRadius: 10 },
-    label: { fontSize: 13, color: '#666', marginBottom: 5, fontWeight: '600', marginTop: 10 },
-    input: { borderWidth: 1, borderColor: '#DDD', borderRadius: 8, padding: 10, backgroundColor: '#FAFAFA' },
-    pill: { padding: 8, backgroundColor: '#EEE', borderRadius: 20, marginRight: 8, marginBottom: 5 },
-    pillSmall: { padding: 6, backgroundColor: '#EEE', borderRadius: 15, marginRight: 6 },
+    container: { flex: 1, backgroundColor: '#F4F6F8' },
+    content: { padding: 16 },
+    headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#FFF' },
+    backBtn: { padding: 5 },
+    headerTitle: { fontSize: 18, fontWeight: 'bold', color: '#333' },
+    section: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, marginBottom: 16, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 5, elevation: 2 },
+    sectionHeader: { fontSize: 16, fontWeight: 'bold', color: '#2C3E50', marginBottom: 12 },
+    label: { fontSize: 13, color: '#7F8C8D', marginBottom: 6, fontWeight: '600', marginTop: 12 },
+    input: { borderWidth: 1, borderColor: '#ECF0F1', borderRadius: 8, padding: 12, backgroundColor: '#FAFAFA', fontSize: 14, color: '#333' },
+    pill: { paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#F0F2F5', borderRadius: 20, marginRight: 8 },
+    pillSmall: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: '#F0F2F5', borderRadius: 16, marginRight: 6 },
     pillActive: { backgroundColor: '#4ECDC4' },
     textActive: { color: '#FFF', fontWeight: 'bold' },
-    pillText: { fontSize: 12 },
-    pillTextSmall: { fontSize: 11 },
+    pillText: { fontSize: 13, color: '#555' },
+    pillTextSmall: { fontSize: 12, color: '#555' },
     rowCenter: { flexDirection: 'row', alignItems: 'center' },
     rowBetween: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-    questionCard: { padding: 10, borderWidth: 1, borderColor: '#EEE', borderRadius: 8, marginBottom: 8, backgroundColor: '#FAFAFA' },
-    sectionTitle: { fontSize: 16, fontWeight: 'bold' },
-    saveBtn: { backgroundColor: '#333', padding: 15, borderRadius: 10, alignItems: 'center' },
-    saveText: { color: '#FFF', fontWeight: 'bold' },
-    modalContent: { flex: 1, backgroundColor: '#FFF', marginTop: 50, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
-    dynamicArea: { marginVertical: 15, padding: 10, backgroundColor: '#F5F5F5', borderRadius: 8 },
-    miniUpload: { padding: 10, backgroundColor: '#EEE', alignItems: 'center', borderRadius: 5, marginTop: 5 },
-    modalSaveBtn: { backgroundColor: '#4ECDC4', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 20 }
+    uploadBtn: { backgroundColor: '#4ECDC4', flexDirection: 'row', alignItems: 'center', padding: 10, borderRadius: 8, justifyContent: 'center' },
+    uploadBtnOutline: { borderWidth: 1, borderColor: '#4ECDC4', borderStyle: 'dashed', flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 8, justifyContent: 'center', marginTop: 10 },
+    uploadBtnText: { color: '#FFF', fontWeight: '600', marginLeft: 5 },
+    saveMainBtn: { backgroundColor: '#2C3E50', padding: 16, borderRadius: 10, alignItems: 'center', shadowColor: '#4ECDC4', shadowOpacity: 0.3, shadowOffset: { width: 0, height: 4 } },
+    saveMainText: { color: '#FFF', fontWeight: 'bold', fontSize: 16, letterSpacing: 1 },
+    questionCard: { padding: 12, backgroundColor: '#FAFAFA', borderRadius: 10, marginBottom: 10, borderWidth: 1, borderColor: '#EEE' },
+    qHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+    qTypeTag: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+    actionIcon: { marginLeft: 10, padding: 4 },
+    qText: { fontSize: 14, color: '#333', fontWeight: '500' },
+    addIconBtn: { backgroundColor: '#4ECDC4', width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+    modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: '#EEE' },
+    mediaItemContainer: { position: 'relative', overflow: 'hidden' },
+    deleteOverlayBtn: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(239, 68, 68, 0.8)', borderRadius: 12, padding: 6, zIndex: 10 },
+    uploadPlaceholder: { height: 100, backgroundColor: '#F9F9F9', borderWidth: 1, borderColor: '#DDD', borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+    divider: { height: 1, backgroundColor: '#EEE', marginVertical: 20 },
+    radioBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEE', alignItems: 'center', justifyContent: 'center', marginRight: 5 },
+    radioBtnActive: { backgroundColor: '#4ECDC4' },
+    radioText: { fontWeight: 'bold', color: '#555' },
+    choiceCard: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 8, backgroundColor: '#F0F2F5', marginHorizontal: 5, borderWidth: 1, borderColor: 'transparent' },
+    choiceCardActive: { backgroundColor: '#4ECDC4', borderColor: '#3EBDB4' },
+    choiceText: { marginLeft: 8, fontWeight: 'bold', color: '#555' },
+    addBtnSmall: { marginTop: 10, alignSelf: 'flex-start' },
+    addBtnText: { color: '#4ECDC4', fontWeight: '600' },
+    indexBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#DDD', textAlign: 'center', textAlignVertical: 'center', marginRight: 8, fontSize: 12, fontWeight: 'bold' },
+    imagePreview: { backgroundColor: '#F0F0F0', borderRadius: 8 },
+    videoContainer: { backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }
 });
 
 export default CreateLessonScreen;

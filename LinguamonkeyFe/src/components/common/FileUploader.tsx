@@ -10,7 +10,6 @@ type MediaType = 'image' | 'video' | 'audio' | 'document' | 'all';
 interface FileUploaderProps {
     onUploadStart?: () => void;
     onUploadEnd?: () => void;
-    // UPDATED: Accept 'any' for result to handle FileUploadResponse object
     onUploadSuccess: (result: any, type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT') => void;
     onUploadError?: (error: any) => void;
     mediaType?: MediaType;
@@ -30,7 +29,6 @@ const FileUploader: React.FC<FileUploaderProps> = ({
     style,
     children,
     allowEditing = false,
-    // UPDATED: Default size limit increased to 50MB
     maxSizeMB = 50,
     maxDuration = 60,
 }) => {
@@ -79,10 +77,19 @@ const FileUploader: React.FC<FileUploaderProps> = ({
                 return;
             }
 
+            // FIX: Use explicit string arrays cast to 'any' to bypass TS check but satisfy Runtime
+            let mediaTypes: any;
+            if (mediaType === 'video') {
+                mediaTypes = ['videos'];
+            } else if (mediaType === 'image') {
+                mediaTypes = ['images'];
+            } else {
+                // 'all' -> images AND videos
+                mediaTypes = ['images', 'videos'];
+            }
+
             const result = await ImagePicker.launchImageLibraryAsync({
-                mediaTypes: mediaType === 'video' ? ImagePicker.MediaTypeOptions.Videos :
-                    mediaType === 'image' ? ImagePicker.MediaTypeOptions.Images :
-                        ImagePicker.MediaTypeOptions.All,
+                mediaTypes: mediaTypes,
                 allowsEditing: allowEditing,
                 quality: 0.8,
                 videoMaxDuration: maxDuration,

@@ -32,14 +32,11 @@ const RootNavigation = () => {
   const [initialAuthParams, setInitialAuthParams] = useState<any>(undefined);
   const appState = useRef(AppState.currentState);
 
-  // --- GLOBAL STOMP CONNECTION MANAGEMENT ---
   useEffect(() => {
-    // 1. Connect if we have a token on mount
     if (accessToken) {
       initStompClient();
     }
 
-    // 2. Manage connection based on Foreground/Background
     const subscription = AppState.addEventListener("change", (nextAppState) => {
       appState.current = nextAppState;
       const isActive = nextAppState === "active";
@@ -47,12 +44,7 @@ const RootNavigation = () => {
 
       if (accessToken) {
         if (isActive) {
-          console.log("[Root] App foreground, reconnecting socket...");
           initStompClient();
-        } else {
-          // Optional: Disconnect on background to save battery
-          // console.log("[Root] App background, disconnecting socket...");
-          // disconnectStompClient(); 
         }
       }
     });
@@ -88,41 +80,44 @@ const RootNavigation = () => {
 
   const HEALTH_CHECK_ENDPOINT = "/health";
 
-  const waitForConnectivity = async () => {
-    while (true) {
-      const netState = await NetInfo.fetch();
-      if (!netState.isConnected) {
-        setServerErrorMsg("no_internet");
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        continue;
-      }
-      try {
-        await instance.get(HEALTH_CHECK_ENDPOINT, { timeout: 3000 });
-        setServerErrorMsg(null);
-        break;
-      } catch (error: any) {
-        if (error.response) {
-          setServerErrorMsg(null);
-          break;
-        } else {
+  useEffect(() => {
+    let mounted = true;
+
+    const waitForConnectivity = async () => {
+      while (mounted) {
+        const netState = await NetInfo.fetch();
+        if (!netState.isConnected) {
+          setServerErrorMsg("no_internet");
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          continue;
+        }
+
+        try {
+          const response = await instance.get(HEALTH_CHECK_ENDPOINT, { timeout: 5000 });
+          if (response.status === 200) {
+            setServerErrorMsg(null);
+            return true;
+          } else {
+            setServerErrorMsg("server_maintenance");
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        } catch (error) {
           setServerErrorMsg("server_maintenance");
           await new Promise((resolve) => setTimeout(resolve, 2000));
         }
       }
-    }
-  };
+      return false;
+    };
 
-  useEffect(() => {
-    let mounted = true;
     const boot = async () => {
-      if (!mounted) return;
       try {
         setIsLoading(true);
 
-        await waitForConnectivity();
-        if (!mounted) return;
+        await initializeTokens();
 
-        const hasValidToken = await initializeTokens();
+        const isHealthy = await waitForConnectivity();
+        if (!mounted || !isHealthy) return;
+
         let savedLanguage = await AsyncStorage.getItem("userLanguage");
         const locales = Localization.getLocales();
         if (!savedLanguage) {
@@ -132,14 +127,14 @@ const RootNavigation = () => {
         setLocalNativeLanguage(savedLanguage);
         if (i18n.language !== savedLanguage) await i18n.changeLanguage(savedLanguage);
 
-        if (hasValidToken && useTokenStore.getState().accessToken) {
-          const currentToken = useTokenStore.getState().accessToken;
-          const payload = decodeToken(currentToken!);
+        const currentToken = useTokenStore.getState().accessToken;
+        if (currentToken) {
+          const payload = decodeToken(currentToken);
           if (payload?.userId) {
             try {
               const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
               const rawUser = userRes.data.result || {};
-              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: getRoleFromToken(currentToken!) }, savedLanguage);
+              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: getRoleFromToken(currentToken) }, savedLanguage);
               notificationService.registerTokenToBackend();
               setInitialMainRoute("TabApp");
             } catch (userErr) {
@@ -153,6 +148,7 @@ const RootNavigation = () => {
         if (mounted) setIsLoading(false);
       }
     };
+
     boot();
     return () => { mounted = false; };
   }, [initializeTokens, setUser, setLocalNativeLanguage]);
@@ -166,7 +162,6 @@ const RootNavigation = () => {
         linking={linking}
         fallback={<SplashScreen serverError={serverErrorMsg} />}
         onReady={() => {
-          console.log("Navigation Ready");
           flushPendingActions();
         }}
         onStateChange={() => {

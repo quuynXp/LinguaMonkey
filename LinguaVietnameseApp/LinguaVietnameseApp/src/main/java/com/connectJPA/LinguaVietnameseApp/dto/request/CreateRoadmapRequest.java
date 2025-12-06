@@ -1,5 +1,7 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
+import java.util.List;
+
 import com.connectJPA.LinguaVietnameseApp.enums.Certification;
 import com.connectJPA.LinguaVietnameseApp.enums.ProficiencyLevel;
 
@@ -23,4 +25,5 @@ public class CreateRoadmapRequest {
     private String targetProficiency;
     private Integer estimatedCompletionTime;
     private Certification certification;
+    private List<RoadmapItemRequest> items;
 }

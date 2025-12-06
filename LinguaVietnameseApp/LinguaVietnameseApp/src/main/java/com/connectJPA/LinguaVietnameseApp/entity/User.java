@@ -41,7 +41,8 @@ public class User extends BaseEntity {
     @Column(name = "nickname")
     private String nickname;
 
-    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY)
+    // FIX: Thêm cascade = CascadeType.ALL để khi lưu User sẽ tự động lưu UserSettings
+    @OneToOne(mappedBy = "user", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private UserSettings userSettings;
 
     @Column(name = "bio", columnDefinition = "text")
@@ -145,5 +146,12 @@ public class User extends BaseEntity {
     @Transient
     public boolean isVip() {
         return vipExpirationDate != null && vipExpirationDate.isAfter(OffsetDateTime.now());
+    }
+
+    public void setUserSettings(UserSettings userSettings) {
+        this.userSettings = userSettings;
+        if (userSettings != null) {
+            userSettings.setUser(this);
+        }
     }
 }

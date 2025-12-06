@@ -49,4 +49,5 @@ public interface CourseService {
 
     CreatorDashboardResponse getCourseDashboardStats(UUID courseId);
     List<CourseResponse> getTopSellingCourses(int limit);
+    List<CourseVersionResponse> getCourseVersions(UUID courseId);
 }

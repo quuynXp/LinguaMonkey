@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet, LayoutAnimation } from "react-native";
+import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { LessonQuestionResponse } from "../../types/dto";
 import { QuestionType } from "../../types/enums";
@@ -15,12 +15,13 @@ interface LessonInputAreaProps {
     isStreaming?: boolean;
     onStartRecording?: () => void;
     onStopRecording?: () => void;
+    reviewMode?: boolean;
 }
 
 export const LessonInputArea = ({
     question, isAnswered, selectedAnswer, isLoading,
     onAnswer, onSkip, isRecording, isStreaming,
-    onStartRecording, onStopRecording
+    onStartRecording, onStopRecording, reviewMode = false
 }: LessonInputAreaProps) => {
     const [textInput, setTextInput] = useState("");
     const [orderedList, setOrderedList] = useState<string[]>([]);
@@ -40,23 +41,27 @@ export const LessonInputArea = ({
     const leftSide = pairs.map((p: any) => p.key);
     const rightSide = pairs.map((p: any) => p.value);
 
-    useEffect(() => { resetState(); }, [question.lessonQuestionId]);
-
-    const resetState = () => {
-        setTextInput("");
-        setOrderedList([]);
-        setMatches({});
-        setSelectedLeft(null);
-    };
+    useEffect(() => {
+        if (reviewMode && selectedAnswer) {
+            if (question.questionType === QuestionType.FILL_IN_THE_BLANK || question.questionType === QuestionType.WRITING) {
+                setTextInput(String(selectedAnswer));
+            }
+        } else if (!reviewMode) {
+            setTextInput("");
+            setOrderedList([]);
+            setMatches({});
+            setSelectedLeft(null);
+        }
+    }, [question.lessonQuestionId, reviewMode]);
 
     const renderSkipButton = () => (
-        <TouchableOpacity style={styles.skipBtn} onPress={onSkip} disabled={isAnswered || isLoading}>
+        <TouchableOpacity style={styles.skipBtn} onPress={onSkip} disabled={isAnswered || isLoading || reviewMode}>
             <Text style={styles.skipBtnText}>Skip</Text>
         </TouchableOpacity>
     );
 
     const renderSubmitButton = (onSubmit: () => void, disabled: boolean, label: string = "Check") => (
-        <TouchableOpacity style={[styles.submitBtn, disabled && styles.disabledBtn]} onPress={onSubmit} disabled={disabled}>
+        <TouchableOpacity style={[styles.submitBtn, disabled && styles.disabledBtn]} onPress={onSubmit} disabled={disabled || reviewMode}>
             {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.btnText}>{label}</Text>}
         </TouchableOpacity>
     );
@@ -92,18 +97,16 @@ export const LessonInputArea = ({
                         }
 
                         return (
-                            <TouchableOpacity key={opt.key} style={btnStyle} onPress={() => onAnswer(`option${opt.key}`)} disabled={isAnswered || isLoading}>
+                            <TouchableOpacity key={opt.key} style={btnStyle} onPress={() => onAnswer(`option${opt.key}`)} disabled={isAnswered || isLoading || reviewMode}>
                                 <View style={[styles.optionKeyBadge, isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && { backgroundColor: '#10B981' }]}>
                                     <Text style={[styles.optionKeyText, isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && { color: '#FFF' }]}>{opt.key}</Text>
                                 </View>
                                 <Text style={textStyle}>{opt.value}</Text>
-                                {isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && <Icon name="check-circle" size={24} color="#10B981" />}
-                                {isAnswered && isSelected && opt.key !== question.correctOption?.replace(/^option/i, '') && <Icon name="cancel" size={24} color="#EF4444" />}
                             </TouchableOpacity>
                         );
                     })}
                 </View>
-                {!isAnswered && renderSkipButton()}
+                {!isAnswered && !reviewMode && renderSkipButton()}
             </View>
         );
     }
@@ -113,18 +116,20 @@ export const LessonInputArea = ({
             <View style={styles.container}>
                 <View style={styles.writingContainer}>
                     <Text style={styles.label}>Fill in the blank:</Text>
-                    <TextInput style={styles.singleLineInput} placeholder="Type your answer here..." value={textInput} onChangeText={setTextInput} editable={!isAnswered} />
+                    <TextInput
+                        style={[styles.singleLineInput, reviewMode && styles.readOnlyInput]}
+                        placeholder="Type your answer here..."
+                        value={textInput}
+                        onChangeText={setTextInput}
+                        editable={!isAnswered && !reviewMode}
+                    />
                     <View style={styles.actionRow}>
-                        {!isAnswered && renderSkipButton()}
-                        {!isAnswered && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading)}
+                        {!isAnswered && !reviewMode && renderSkipButton()}
+                        {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading)}
                     </View>
                 </View>
-                {isAnswered && (
+                {isAnswered && !reviewMode && (
                     <View style={styles.resultBox}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={styles.textLabel}>Your Answer: </Text>
-                            <Text style={[styles.resultText, selectedAnswer === question.correctOption ? styles.textCorrect : styles.textWrong]}>{selectedAnswer}</Text>
-                        </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                             <Text style={styles.textLabel}>Correct Answer: </Text>
                             <Text style={styles.textCorrect}>{question.correctOption}</Text>
@@ -141,35 +146,30 @@ export const LessonInputArea = ({
             else setOrderedList(prev => [...prev, val]);
         };
 
-        const submitOrder = () => {
-            const sentence = orderedList.join(" ");
-            onAnswer(sentence);
-        };
-
         return (
             <View style={styles.container}>
                 <Text style={styles.label}>Order the sentence:</Text>
                 <View style={styles.orderDisplayArea}>
-                    {orderedList.map((val, index) => (
-                        <TouchableOpacity key={index} onPress={() => !isAnswered && handleSelectFragment(val)} disabled={isAnswered}>
-                            <View style={styles.chipSelected}><Text style={styles.chipTextSelected}>{val}</Text></View>
-                        </TouchableOpacity>
+                    {(reviewMode ? String(selectedAnswer || "").split(" ") : orderedList).map((val, index) => (
+                        <View key={index} style={styles.chipSelected}><Text style={styles.chipTextSelected}>{val}</Text></View>
                     ))}
                 </View>
-                <View style={styles.chipContainer}>
-                    {fragments.map((val: string, idx: number) => {
-                        const isSelected = orderedList.includes(val);
-                        if (isSelected) return <View key={idx} style={styles.chipPlaceholder} />;
-                        return (
-                            <TouchableOpacity key={idx} style={styles.chip} onPress={() => handleSelectFragment(val)} disabled={isAnswered}>
-                                <Text style={styles.chipText}>{val}</Text>
-                            </TouchableOpacity>
-                        );
-                    })}
-                </View>
+                {!reviewMode && (
+                    <View style={styles.chipContainer}>
+                        {fragments.map((val: string, idx: number) => {
+                            const isSelected = orderedList.includes(val);
+                            if (isSelected) return <View key={idx} style={styles.chipPlaceholder} />;
+                            return (
+                                <TouchableOpacity key={idx} style={styles.chip} onPress={() => handleSelectFragment(val)} disabled={isAnswered}>
+                                    <Text style={styles.chipText}>{val}</Text>
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                )}
                 <View style={styles.actionRow}>
-                    {!isAnswered && renderSkipButton()}
-                    {!isAnswered && renderSubmitButton(submitOrder, orderedList.length === 0 || isLoading)}
+                    {!isAnswered && !reviewMode && renderSkipButton()}
+                    {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(orderedList.join(" ")), orderedList.length === 0 || isLoading)}
                 </View>
             </View>
         );
@@ -183,10 +183,6 @@ export const LessonInputArea = ({
             }
         };
 
-        const submitMatching = () => {
-            onAnswer(JSON.stringify(matches));
-        };
-
         return (
             <View style={styles.container}>
                 <Text style={styles.label}>Match pairs:</Text>
@@ -198,10 +194,9 @@ export const LessonInputArea = ({
                                 <TouchableOpacity key={leftKey}
                                     style={[styles.matchItem, selectedLeft === leftKey && styles.matchItemSelected, isMatched && styles.matchItemMatched]}
                                     onPress={() => !isMatched && !isAnswered && setSelectedLeft(leftKey)}
-                                    disabled={isMatched || isAnswered}
+                                    disabled={isMatched || isAnswered || reviewMode}
                                 >
                                     <Text style={[styles.matchItemText, isMatched && { color: '#FFF' }]}>{leftKey}</Text>
-                                    {isMatched && <Icon name="check" size={16} color="#FFF" />}
                                 </TouchableOpacity>
                             );
                         })}
@@ -213,7 +208,7 @@ export const LessonInputArea = ({
                                 <TouchableOpacity key={rightVal}
                                     style={[styles.matchItem, isMatchedTo && styles.matchItemMatchedTarget]}
                                     onPress={() => !isAnswered && handleMatch(rightVal)}
-                                    disabled={isMatchedTo || !selectedLeft || isAnswered}
+                                    disabled={isMatchedTo || !selectedLeft || isAnswered || reviewMode}
                                 >
                                     <Text style={styles.matchItemText}>{rightVal}</Text>
                                 </TouchableOpacity>
@@ -222,8 +217,8 @@ export const LessonInputArea = ({
                     </View>
                 </View>
                 <View style={styles.actionRow}>
-                    {!isAnswered && renderSkipButton()}
-                    {!isAnswered && renderSubmitButton(submitMatching, Object.keys(matches).length === 0 || isLoading)}
+                    {!isAnswered && !reviewMode && renderSkipButton()}
+                    {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(JSON.stringify(matches)), Object.keys(matches).length === 0 || isLoading)}
                 </View>
             </View>
         );
@@ -240,18 +235,18 @@ export const LessonInputArea = ({
                         </View>
                     ) : (
                         <View style={{ alignItems: 'center' }}>
-                            <TouchableOpacity style={[styles.recordBtn, isRecording && styles.recordingBtn, isAnswered && styles.disabledRecordBtn]}
-                                onPressIn={!isAnswered ? onStartRecording : undefined}
-                                onPressOut={!isAnswered ? onStopRecording : undefined}
-                                disabled={isAnswered}
+                            <TouchableOpacity style={[styles.recordBtn, isRecording && styles.recordingBtn, (isAnswered || reviewMode) && styles.disabledRecordBtn]}
+                                onPressIn={!isAnswered && !reviewMode ? onStartRecording : undefined}
+                                onPressOut={!isAnswered && !reviewMode ? onStopRecording : undefined}
+                                disabled={isAnswered || reviewMode}
                             >
                                 <Icon name={isRecording ? "graphic-eq" : "mic"} size={40} color="#FFF" />
                             </TouchableOpacity>
-                            <Text style={styles.hintText}>{isAnswered ? "Answered" : isRecording ? "Release to send" : "Hold to speak"}</Text>
+                            <Text style={styles.hintText}>{reviewMode ? "Review Mode" : isAnswered ? "Answered" : isRecording ? "Release to send" : "Hold to speak"}</Text>
                         </View>
                     )}
                 </View>
-                {!isAnswered && !isRecording && !isStreaming && renderSkipButton()}
+                {!isAnswered && !isRecording && !isStreaming && !reviewMode && renderSkipButton()}
             </View>
         );
     }
@@ -260,10 +255,16 @@ export const LessonInputArea = ({
         return (
             <View style={styles.container}>
                 <View style={styles.writingContainer}>
-                    <TextInput style={styles.textInput} multiline placeholder="Type your answer..." value={textInput} onChangeText={setTextInput} editable={!isAnswered} />
+                    <TextInput
+                        style={[styles.textInput, reviewMode && styles.readOnlyInput]}
+                        multiline placeholder="Type your answer..."
+                        value={textInput}
+                        onChangeText={setTextInput}
+                        editable={!isAnswered && !reviewMode}
+                    />
                     <View style={styles.actionRow}>
-                        {!isAnswered && renderSkipButton()}
-                        {!isAnswered && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading, "Submit")}
+                        {!isAnswered && !reviewMode && renderSkipButton()}
+                        {!isAnswered && !reviewMode && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading, "Submit")}
                     </View>
                 </View>
             </View>
@@ -295,6 +296,7 @@ const styles = StyleSheet.create({
     processingText: { marginTop: 8, color: '#4F46E5', fontWeight: '600' },
     writingContainer: { marginTop: 12 },
     textInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 16, minHeight: 120, textAlignVertical: 'top', fontSize: 16 },
+    readOnlyInput: { backgroundColor: '#F9FAFB', color: '#374151' },
     singleLineInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 12, fontSize: 16, marginTop: 8 },
     label: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 8 },
     resultBox: { marginTop: 16, padding: 16, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },

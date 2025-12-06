@@ -38,7 +38,7 @@ service LearningService {
   rpc CheckPronunciation (PronunciationRequest) returns (PronunciationResponse);
   rpc StreamPronunciation (stream PronunciationChunk) returns (stream PronunciationChunkResponse);
   rpc CheckWritingWithImage (WritingImageRequest) returns (WritingImageResponse);
-
+rpc CheckWritingAssessment (WritingAssessmentRequest) returns (WritingAssessmentResponse);
   // --- Data Seeding / Admin Tools ---
   // Transforms raw/random data into valid content with media
   rpc GenerateSeedData (SeedDataRequest) returns (SeedDataResponse);
@@ -54,9 +54,24 @@ service PersistenceService {
 
 message SeedDataRequest {
     string raw_question = 1;
-    repeated string raw_options = 2; // Should be 4 options
+    repeated string raw_options = 2;
     string topic = 3;
     string difficulty = 4;
+}
+
+message WritingAssessmentRequest {
+  string user_text = 1;
+  string prompt = 2;
+  MediaRef media = 3;
+  string media_type = 4; 
+  string language = 5;
+}
+
+message WritingAssessmentResponse {
+  string feedback = 1;
+  float score = 2;
+  repeated string corrections = 3;
+  string error = 4;
 }
 
 message SeedDataResponse {

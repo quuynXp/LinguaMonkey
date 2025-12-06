@@ -1,4 +1,7 @@
-# src/core/models.py
+import uuid
+import enum
+from datetime import datetime
+
 from sqlalchemy import (
     Column,
     String,
@@ -10,17 +13,12 @@ from sqlalchemy import (
     Integer,
     Numeric,
     DATE,
+    BigInteger,
+    Float,
 )
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import declarative_base, relationship
-import uuid
-from datetime import datetime
-from sqlalchemy import Column, String, Integer, Text, TIMESTAMP, BigInteger
 from sqlalchemy.sql import func
-
-Base = declarative_base()
-import enum
-from datetime import datetime
 
 Base = declarative_base()
 
@@ -44,7 +42,7 @@ class RoomType(str, enum.Enum):
 
 class RoomTopic(str, enum.Enum):
     WORLD = "WORLD"
-    VN = "VN" 
+    VN = "VN"
     EN_LEARNING = "EN_LEARNING"
 
 class MessageType(str, enum.Enum):
@@ -53,20 +51,6 @@ class MessageType(str, enum.Enum):
     VIDEO = "VIDEO"
     AUDIO = "AUDIO"
 
-# --- ENTITIES ---
-
-# class TranslationLexicon(Base):
-#     __tablename__ = "translation_lexicon"
-#     __table_args__ = {"schema": "public"}
-
-#     id = Column(BigInteger, primary_key=True, index=True)
-#     original_text = Column(Text, nullable=False)
-#     original_lang = Column(String(10), nullable=False)
-#     translations = Column(JSONB, default={})
-#     usage_count = Column(BigInteger, default=1)
-#     last_used_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-#     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-
 class Room(Base):
     __tablename__ = "rooms"
     __table_args__ = {"schema": "public"}
@@ -74,11 +58,10 @@ class Room(Base):
     room_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     room_name = Column(String(255), nullable=False)
     course_id = Column(UUID(as_uuid=True), nullable=True)
-    creator_id = Column(UUID(as_uuid=True), nullable=True) # Lưu ý: Java dùng UUID, cần check User table
+    creator_id = Column(UUID(as_uuid=True), nullable=True)
     max_members = Column(Integer, nullable=False, default=2)
-    
-    # Map Enum String vào DB
-    purpose = Column(String(50), nullable=True) 
+
+    purpose = Column(String(50), nullable=True)
     topic = Column(String(50), nullable=True)
     room_type = Column(String(50), nullable=False, default="PRIVATE")
     status = Column(String(50), nullable=False, default="ACTIVE")
@@ -86,7 +69,7 @@ class Room(Base):
     room_code = Column(String(6), unique=True, nullable=True)
     password = Column(String(255), nullable=True)
     content = Column(Text, nullable=True)
-    
+
     created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
     updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
 
@@ -102,13 +85,6 @@ class TranslationLexicon(Base):
     usage_count = Column(BigInteger, default=1)
     last_used_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
-
-
-class MessageType(str, Enum):
-    TEXT = "TEXT"
-    IMAGE = "IMAGE"
-    VIDEO = "VIDEO"
-    AUDIO = "AUDIO"
 
 
 class ChatMessage(Base):
@@ -146,15 +122,11 @@ class Users(Base):
     proficiency = Column(String(50))
     last_active_at = Column(TIMESTAMP(timezone=True))
 
-    # Relationships
     languages = relationship("UserLanguages", back_populates="user")
     goals = relationship("UserGoals", back_populates="user")
     interests = relationship("UserInterests", back_populates="user")
     roadmaps = relationship("UserRoadmaps", back_populates="user")
     lesson_progress = relationship("LessonProgress", back_populates="user")
-
-
-# --- Các bảng liên quan (Nhiều-Nhiều hoặc 1-Nhiều) ---
 
 
 class Languages(Base):
@@ -224,9 +196,7 @@ class Lessons(Base):
     lesson_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String(255))
     skill_types = Column(Text)
-    difficulty_level = Column(
-        "difficulty_level ", String
-    )  # Chú ý tên cột có khoảng trắng
+    difficulty_level = Column("difficulty_level ", String)
 
 
 class LessonProgress(Base):
@@ -268,3 +238,58 @@ class UserRoadmaps(Base):
 
     user = relationship("Users", back_populates="roadmaps")
     roadmap = relationship("Roadmaps", foreign_keys=[roadmap_id])
+
+
+class Course(Base):
+    __tablename__ = "courses"
+
+    course_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    title = Column(String, nullable=False)
+    approval_status = Column(String, default="PENDING")  # Enum: PENDING, APPROVED...
+    is_admin_created = Column(Boolean, default=False)
+
+    versions = relationship("CourseVersion", back_populates="course")
+
+
+class CourseVersion(Base):
+    __tablename__ = "course_versions"
+
+    version_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    course_id = Column(String, ForeignKey("courses.course_id"), nullable=False)
+    title = Column(String, nullable=False)
+    difficulty_level = Column(String)
+    status = Column(String)
+
+    created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    updated_at = Column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+    is_deleted = Column(Boolean, default=False)
+
+    course = relationship("Course", back_populates="versions")
+    enrollments = relationship(
+        "CourseVersionEnrollment", back_populates="course_version"
+    )
+
+
+class CourseVersionEnrollment(Base):
+    __tablename__ = "course_version_enrollments"
+
+    enrollment_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String, ForeignKey("users.user_id"), nullable=False)
+    course_version_id = Column(
+        String, ForeignKey("course_versions.version_id"), nullable=False
+    )
+
+    progress = Column(Float, default=0.0)
+    status = Column(String)
+
+    enrolled_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    completed_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    last_accessed_at = Column(
+        TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+    # Relations
+    course_version = relationship("CourseVersion", back_populates="enrollments")
+    user = relationship("Users")

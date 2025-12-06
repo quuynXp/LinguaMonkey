@@ -122,6 +122,11 @@ class LearningServiceStub(object):
                 request_serializer=learning__service__pb2.WritingImageRequest.SerializeToString,
                 response_deserializer=learning__service__pb2.WritingImageResponse.FromString,
                 )
+        self.CheckWritingAssessment = channel.unary_unary(
+                '/learning.LearningService/CheckWritingAssessment',
+                request_serializer=learning__service__pb2.WritingAssessmentRequest.SerializeToString,
+                response_deserializer=learning__service__pb2.WritingAssessmentResponse.FromString,
+                )
         self.GenerateSeedData = channel.unary_unary(
                 '/learning.LearningService/GenerateSeedData',
                 request_serializer=learning__service__pb2.SeedDataRequest.SerializeToString,
@@ -267,6 +272,12 @@ class LearningServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CheckWritingAssessment(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GenerateSeedData(self, request, context):
         """--- Data Seeding / Admin Tools ---
         Transforms raw/random data into valid content with media
@@ -382,6 +393,11 @@ def add_LearningServiceServicer_to_server(servicer, server):
                     servicer.CheckWritingWithImage,
                     request_deserializer=learning__service__pb2.WritingImageRequest.FromString,
                     response_serializer=learning__service__pb2.WritingImageResponse.SerializeToString,
+            ),
+            'CheckWritingAssessment': grpc.unary_unary_rpc_method_handler(
+                    servicer.CheckWritingAssessment,
+                    request_deserializer=learning__service__pb2.WritingAssessmentRequest.FromString,
+                    response_serializer=learning__service__pb2.WritingAssessmentResponse.SerializeToString,
             ),
             'GenerateSeedData': grpc.unary_unary_rpc_method_handler(
                     servicer.GenerateSeedData,
@@ -755,6 +771,23 @@ class LearningService(object):
         return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckWritingWithImage',
             learning__service__pb2.WritingImageRequest.SerializeToString,
             learning__service__pb2.WritingImageResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def CheckWritingAssessment(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/learning.LearningService/CheckWritingAssessment',
+            learning__service__pb2.WritingAssessmentRequest.SerializeToString,
+            learning__service__pb2.WritingAssessmentResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
 

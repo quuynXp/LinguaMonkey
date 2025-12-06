@@ -30,43 +30,35 @@ public class StreakReminderScheduler {
     private static final String TIME_ZONE = "UTC";
     private static final ZoneId VN_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
 
-    // 12:00 VN = 05:00 UTC
     @Scheduled(cron = "0 0 5 * * ?", zone = TIME_ZONE)
     @Transactional
     public void sendStreakRemindersMidday() {
         log.info("Running Midday Streak Reminder (VN Time)");
-        sendStreakReminders("MIDDAY");
+        sendStreakReminders();
     }
 
-    // 17:00 VN = 10:00 UTC
     @Scheduled(cron = "0 0 10 * * ?", zone = TIME_ZONE)
     @Transactional
     public void sendStreakRemindersAfternoon() {
         log.info("Running Afternoon Streak Reminder (VN Time)");
-        sendStreakReminders("AFTERNOON");
+        sendStreakReminders();
     }
 
-    // 22:00 VN = 15:00 UTC
     @Scheduled(cron = "0 0 15 * * ?", zone = TIME_ZONE)
     @Transactional
     public void sendStreakRemindersEvening() {
         log.info("Running Evening Streak Reminder (VN Time)");
-        sendStreakReminders("EVENING");
+        sendStreakReminders();
     }
 
-    public void sendStreakReminders(String timeSlot) {
+    public void sendStreakReminders() {
         List<UUID> userIdsWithToken = userFcmTokenRepository.findAllUserIdsWithTokens();
         if (userIdsWithToken.isEmpty()) return;
 
         List<User> users = userRepository.findAllById(userIdsWithToken);
-        // Fix: Use VN Time to check progress for "today"
         LocalDate today = LocalDate.now(VN_ZONE);
 
-        String notificationKey = "STREAK_REMINDER_MIDDAY"; 
-        switch (timeSlot) {
-            case "AFTERNOON": notificationKey = "STREAK_REMINDER_AFTERNOON"; break;
-            case "EVENING": notificationKey = "STREAK_REMINDER_EVENING"; break;
-        }
+        String notificationKey = "STREAK_REMINDER";
 
         for (User user : users) {
             if (user.isDeleted() || !user.getUserSettings().isStreakReminders()) continue;
@@ -100,14 +92,12 @@ public class StreakReminderScheduler {
         }
     }
 
-    // 00:00 VN = 17:00 UTC (Previous Day)
     @Scheduled(cron = "0 0 17 * * ?", zone = TIME_ZONE)
     @Transactional
     public void resetStreaks() {
         log.info("Running Streak Reset (VN Time Sync)");
         List<User> users = userRepository.findAllByIsDeletedFalse();
         
-        // Fix: Calculate "yesterday" based on VN time, not Server UTC time
         LocalDate yesterday = LocalDate.now(VN_ZONE).minusDays(1);
 
         for (User user : users) {

@@ -1,6 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
-import com.connectJPA.LinguaVietnameseApp.dto.response.RoomResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.Room;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomPurpose;
 import com.connectJPA.LinguaVietnameseApp.enums.RoomType;
@@ -54,9 +53,10 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     @Query("SELECT COUNT(rm) FROM RoomMember rm WHERE rm.room.roomId = :roomId AND rm.isDeleted = false")
     long countMembersByRoomId(@Param("roomId") UUID roomId);
 
-    // FIXED: Use EXISTS logic is safer and bidirectional. 
-    // Finds a valid PRIVATE room containing BOTH users, regardless of who is 'rm1' or 'rm2'
-    // We check existence of members linked to this room.
+    // FIXED: Query này quan trọng.
+    // 1. Tìm Room PRIVATE_CHAT chưa bị xóa.
+    // 2. Chứa member user1 và user2.
+    // 3. LƯU Ý: Không check rm.isDeleted = false trong subquery. Lý do: Nếu user đã rời phòng (soft delete), ta vẫn muốn tìm thấy phòng này để khôi phục lại họ.
     @Query("SELECT r FROM Room r " +
             "WHERE r.purpose = 'PRIVATE_CHAT' " +
             "AND r.isDeleted = false " +
@@ -67,8 +67,8 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
     @Query("SELECT r FROM Room r WHERE r.purpose = :purpose AND r.roomType = :roomType AND r.isDeleted = false " +
             "AND (SELECT COUNT(rm) FROM RoomMember rm WHERE rm.room.roomId = r.roomId AND rm.isDeleted = false) < r.maxMembers")
     Page<Room> findAvailableRoomsByPurposeAndType(@Param("purpose") RoomPurpose purpose,
-                                                  @Param("roomType") com.connectJPA.LinguaVietnameseApp.enums.RoomType roomType,
-                                                  Pageable pageable);
+                                                                                  @Param("roomType") com.connectJPA.LinguaVietnameseApp.enums.RoomType roomType,
+                                                                                  Pageable pageable);
 
     @Query("SELECT r FROM Room r " +
             "JOIN RoomMember rm ON r.roomId = rm.id.roomId " +
@@ -76,8 +76,8 @@ public interface RoomRepository extends JpaRepository<Room, UUID> {
             "AND (:purpose IS NULL OR r.purpose = :purpose) " +
             "ORDER BY r.updatedAt DESC")
     Page<Room> findRoomsByMemberUserId(@Param("userId") UUID userId,
-                                       @Param("purpose") RoomPurpose purpose,
-                                       Pageable pageable);
+                                                             @Param("purpose") RoomPurpose purpose,
+                                                             Pageable pageable);
 
     boolean existsByRoomCode(String roomCode);
 
