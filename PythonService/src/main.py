@@ -38,8 +38,6 @@ load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- CONSTANTS ---
-# UUID đặc biệt dành cho AI Bot (Zero UUID) để Java không bị lỗi parse và DB có dữ liệu
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
 security = HTTPBearer()

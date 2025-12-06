@@ -10,6 +10,10 @@ import { RoomPurpose } from "../types/enums";
 import { playInAppSound } from '../utils/soundUtils';
 import { useAppStore } from './appStore';
 
+// --- CONSTANTS ---
+// Matches Java & Python Zero-UUID
+const AI_BOT_ID = "00000000-0000-0000-0000-000000000000";
+
 // --- TYPES ---
 type AiMessage = {
   id: string;
@@ -147,9 +151,13 @@ function upsertMessage(list: Message[], rawMsg: any): Message[] {
   if (msg.isDeleted) return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
 
   let workingList = [...list];
+
+  // Logic: Prevent local optimistic duplicates, but ALLOW AI messages (which have a different ID)
+  // If message is from ME (current user) and NOT local, replace the local optimistic one
   if (msg.senderId === currentUserId && !msg.isLocal) {
     workingList = workingList.filter(m => !(m.isLocal && m.content === msg.content));
   }
+
   const exists = workingList.find((m) => m.id.chatMessageId === msg.id.chatMessageId);
   if (exists) {
     workingList = workingList.map((m) => (m.id.chatMessageId === msg.id.chatMessageId ? msg : m));
@@ -202,7 +210,7 @@ export const useChatStore = create<UseChatState>((set, get) => ({
   loadingByRoom: {},
   aiChatHistory: [],
   isAiStreaming: false,
-  activeAiRoomId: null, // Fixed: Added missing property
+  activeAiRoomId: null,
 
   videoSubtitleService: null,
   currentVideoSubtitles: null,
@@ -247,7 +255,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           const senderId = rawMsg?.senderId || rawMsg?.sender_id;
           const currentUserId = useUserStore.getState().user?.userId;
           const state = get();
-          if (roomId && senderId !== currentUserId) {
+
+          // Only show bubble if NOT AI Bot
+          if (roomId && senderId !== currentUserId && senderId !== AI_BOT_ID) {
             if (state.currentViewedRoomId !== roomId && !(state.isBubbleOpen && state.activeBubbleRoomId === roomId)) {
               if (state.appIsActive) { await playInAppSound(); state.openBubble(roomId); }
             }
@@ -422,9 +432,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
 
     const messages = get().messagesByRoom[roomId] || [];
     const sortedForAi = [...messages].reverse(); // Oldest to newest
+
+    // FIX: Correctly identify AI role using the constant UUID
     const aiFormatMessages: AiMessage[] = sortedForAi.map((m) => ({
       id: m.id.chatMessageId,
-      role: m.senderId ? 'user' : 'assistant', // Assumes if senderId exists it's user, else AI
+      role: (m.senderId && m.senderId !== AI_BOT_ID) ? 'user' : 'assistant',
       content: m.content || '',
       roomId: roomId
     }));
@@ -439,7 +451,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const { activeAiRoomId } = get();
     if (!activeAiRoomId) return;
 
-    // Check if we already have messages, if so, don't show welcome
     if (get().aiChatHistory.length > 0) return;
 
     const welcomeMsg: AiMessage = {
