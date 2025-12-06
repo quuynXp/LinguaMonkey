@@ -66,4 +66,7 @@ public class CourseVersionReview extends BaseEntity {
     @Column(name = "reviewed_at", nullable = false)
     @CreationTimestamp
     private OffsetDateTime reviewedAt;
+
+    private Boolean isSystemChecked;
+
 }

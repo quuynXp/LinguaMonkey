@@ -34,6 +34,14 @@ public interface CourseVersionRepository extends JpaRepository<CourseVersion, UU
 
     boolean existsByCourseIdAndStatus(UUID courseId, VersionStatus status);
 
+    @Query("SELECT cv FROM CourseVersion cv " +
+           "JOIN Course c ON cv.courseId = c.courseId " +
+           "JOIN User u ON c.creatorId = u.userId " +
+           "WHERE cv.status = 'DRAFT' " +
+           "AND (cv.isIntegrityValid IS NULL OR cv.isContentValid IS NULL) " +
+           "ORDER BY u.isVip DESC, cv.createdAt ASC")
+    List<CourseVersion> findDraftsPendingValidationSortedByPriority();
+    
     @Query("SELECT cv FROM CourseVersion cv WHERE cv.status = 'DRAFT' AND (cv.isIntegrityValid IS NULL OR cv.isContentValid IS NULL)")
     List<CourseVersion> findDraftsPendingValidation();
 

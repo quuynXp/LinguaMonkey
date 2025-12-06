@@ -143,9 +143,12 @@ services:
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
-      # Đảm bảo biến PORT là 10000, Render sẽ tự động bind port này
+      # Port Render sẽ lắng nghe (HTTP)
       - key: PORT
         value: 10000
+      # FIX OOM: Giới hạn phân mảnh bộ nhớ cho glibc
+      - key: MALLOC_ARENA_MAX
+        value: "2"
       - key: DB_HOST
         fromDatabase:
           name: shared-postgres

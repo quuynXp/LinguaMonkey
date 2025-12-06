@@ -9,6 +9,7 @@ import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.protobuf.ByteString;
+import com.connectJPA.LinguaVietnameseApp.dto.response.ReviewQualityResponse;
 
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -220,11 +221,19 @@ public class GrpcClientService {
 
         return CompletableFuture.supplyAsync(() -> {
             try {
-                ReviewQualityResponse response = stub.analyzeReviewQuality(request).get();
+                // The proto generated class should be correct here
+                learning.ReviewQualityResponse response = stub.analyzeReviewQuality(request).get();
                 if (!response.getError().isEmpty()) {
                     throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
                 }
-                return response;
+                
+                return ReviewQualityResponse.builder()
+                        .isValid(response.getIsValid())
+                        .isToxic(response.getIsToxic()) // New field mapping
+                        .sentiment(response.getSentiment())
+                        .topics(response.getTopicsList())
+                        .suggestedAction(response.getSuggestedAction())
+                        .build();
             } catch (Exception e) {
                 throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
             } finally {

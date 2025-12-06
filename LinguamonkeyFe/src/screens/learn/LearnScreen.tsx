@@ -25,7 +25,6 @@ import type {
   CourseResponse,
   LessonResponse,
   CourseVersionEnrollmentResponse,
-  LessonCategoryResponse,
 } from "../../types/dto";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCourseImage } from "../../utils/courseUtils";
@@ -150,6 +149,7 @@ const CategoryLessonsView = ({
   );
 };
 
+// --- Language Selector Component ---
 const LearningLanguageSelector = ({
   selectedLanguage,
   onSelectLanguage,
@@ -174,9 +174,10 @@ const LearningLanguageSelector = ({
   return (
     <View style={styles.languageSelectorContainer}>
       <TouchableOpacity
-        style={styles.selectedLanguageButton}
+        style={[styles.selectedLanguageButton, !canExpand && { paddingRight: 8 }]}
         onPress={() => canExpand && setIsExpanded(!isExpanded)}
         activeOpacity={canExpand ? 0.7 : 1}
+        disabled={!canExpand}
       >
         <View style={styles.languageFlagWrapper}>
           {selectedLanguage.flag}
@@ -186,6 +187,7 @@ const LearningLanguageSelector = ({
             name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
             size={20}
             color="#4F46E5"
+            style={{ marginLeft: 4 }}
           />
         )}
       </TouchableOpacity>
@@ -212,7 +214,7 @@ const LearningLanguageSelector = ({
   );
 };
 
-// --- NEW Sub-View: Top 10 Best Selling Courses ---
+// --- Sub-View: Top 10 Best Selling Courses ---
 const TopSellingCoursesList = ({
   t,
   onSeeAll,
@@ -228,10 +230,9 @@ const TopSellingCoursesList = ({
     gotoTab("CourseStack", "CourseDetailsScreen", { courseId: course.courseId });
   };
 
-  const renderItem: ListRenderItem<CourseResponse> = ({ item, index }) => {
+  const renderItem: ListRenderItem<CourseResponse> = ({ item }) => {
     if (!item.latestPublicVersion) return null;
 
-    // Use a field for student count (purchase count), defaulting to 0
     const studentCount = item.totalStudents || 0;
 
     return (
@@ -315,10 +316,11 @@ const LearnScreen = ({ navigation }: any) => {
   const [selectedCategory, setSelectedCategory] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
-    if (!learningLanguages.find(lang => lang.code === selectedLanguage.code)) {
-      setSelectedLanguage(learningLanguages[0] || getLanguageOption('en'));
+    // If selected language is no longer in the list (e.g. user removed it in profile), revert to first one
+    if (learningLanguages.length > 0 && !learningLanguages.find(lang => lang.code === selectedLanguage.code)) {
+      setSelectedLanguage(learningLanguages[0]);
     }
-  }, [learningLanguages, selectedLanguage.code, getLanguageOption]);
+  }, [learningLanguages]);
 
   // Data Fetching
   const { data: enrolledData, isLoading: enrolledLoading, refetch: refetchEnrolled } = useEnrollments({
@@ -338,11 +340,10 @@ const LearnScreen = ({ navigation }: any) => {
     5
   );
 
-  // NEW: Fetch Top 10 Selling Courses
   const { data: topSellingData, isLoading: topSellingLoading, refetch: refetchTopSelling } = useTopSellingCourses(10);
 
-  // Old category data fetching - Not used for main display anymore
-  const { data: categoryData, isLoading: catLoading, refetch: refetchCats } = useCategories({
+  // Old category data fetching - Not used for main display anymore but kept for logic structure
+  const { refetch: refetchCats } = useCategories({
     lang: selectedLanguage.code,
     page: 0,
     size: 50
@@ -365,7 +366,6 @@ const LearnScreen = ({ navigation }: any) => {
 
   const topSellingCourses = useMemo(() => (topSellingData as CourseResponse[]) || [], [topSellingData]);
 
-  // Hàm xử lý chung để chuyển sang màn hình danh sách tất cả khóa học
   const handleSeeAll = () => {
     gotoTab("CourseStack", "StudentCoursesScreen");
   };
@@ -489,7 +489,7 @@ const LearnScreen = ({ navigation }: any) => {
             </TouchableOpacity>
           </View>
 
-          {/* TOP SELLING COURSES (Replaced Admin Courses) */}
+          {/* TOP SELLING COURSES */}
           {topSellingCourses.length > 0 && (
             <TopSellingCoursesList
               t={t}
@@ -540,7 +540,7 @@ const LearnScreen = ({ navigation }: any) => {
             </View>
           )}
 
-          {/* Creator Courses List (General View) */}
+          {/* Creator Courses List */}
           {creatorCourses.length > 0 && (
             <View style={styles.section}>
               <View style={styles.sectionHeaderRow}>
@@ -665,6 +665,7 @@ const styles = createScaledSheet({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    zIndex: 20,
   },
   headerIconButton: {
     width: 36,
@@ -676,7 +677,7 @@ const styles = createScaledSheet({
   },
   languageSelectorContainer: {
     position: 'relative',
-    zIndex: 10,
+    zIndex: 50,
     minWidth: 40,
   },
   selectedLanguageButton: {
@@ -690,7 +691,7 @@ const styles = createScaledSheet({
   },
   languageDropdown: {
     position: 'absolute',
-    top: 40,
+    top: 45,
     right: 0,
     backgroundColor: '#FFF',
     borderRadius: 12,
@@ -701,6 +702,7 @@ const styles = createScaledSheet({
     shadowRadius: 10,
     elevation: 5,
     minWidth: 60,
+    zIndex: 100,
   },
   languageItem: {
     flexDirection: 'row',
@@ -711,7 +713,7 @@ const styles = createScaledSheet({
     borderBottomColor: '#F3F4F6',
   },
   languageFlagWrapper: {
-    marginRight: 4,
+    marginRight: 0,
   },
   noLanguageText: {
     fontSize: 12,
@@ -870,7 +872,6 @@ const styles = createScaledSheet({
     fontWeight: '700',
     color: '#D97706',
   },
-  // Modified to support Course Image Fallback and Top Selling style
   gridCardFlat: {
     width: '48%',
     backgroundColor: "#FFFFFF",

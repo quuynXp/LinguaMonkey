@@ -39,6 +39,7 @@ export const courseKeys = {
   categories: () => [...courseKeys.all, "categories"] as const,
   enrollments: (params: any) => [...courseKeys.all, "enrollments", params] as const,
   lessons: (params: any) => [...courseKeys.all, "lessons", params] as const,
+  lessonsInfinite: (params: any) => [...courseKeys.all, "lessons_infinite", params] as const,
   discounts: (params: any) => [...courseKeys.all, "discounts", params] as const,
   reviews: (params: any) => [...courseKeys.all, "reviews", params] as const,
   creatorStats: (creatorId: string) => [...courseKeys.all, "creatorStats", creatorId] as const,
@@ -757,6 +758,31 @@ export const useCourses = () => {
     });
   };
 
+  const useInfiniteLessonsByVersion = (params: { versionId?: string; size?: number }) => {
+    const { versionId, size = 10 } = params;
+    return useInfiniteQuery({
+      queryKey: courseKeys.lessonsInfinite({ versionId, size }),
+      queryFn: async ({ pageParam = 0 }) => {
+        if (!versionId) return mapPageResponse(null, pageParam, size);
+        const qp = new URLSearchParams();
+        qp.append("versionId", versionId);
+        qp.append("page", pageParam.toString());
+        qp.append("size", size.toString());
+
+        const { data } = await instance.get<AppApiResponse<PageResponse<LessonResponse>>>(
+          `/api/v1/lessons?${qp.toString()}`
+        );
+        return mapPageResponse(data.result, pageParam, size);
+      },
+      getNextPageParam: (lastPage) => {
+        if (lastPage.pagination.isLast) return undefined;
+        return lastPage.pagination.pageNumber + 1;
+      },
+      initialPageParam: 0,
+      enabled: !!versionId
+    });
+  };
+
   const useValidateDiscount = () => {
     return useMutation({
       mutationFn: async ({ code, versionId }: { code: string; versionId: string }) => {
@@ -804,6 +830,7 @@ export const useCourses = () => {
     useUpdateCourseLesson,
     useDeleteCourseLesson,
     useLessonsByVersion,
+    useInfiniteLessonsByVersion,
     useReviews,
     useReviewDetail,
     useCreateReview,
@@ -822,7 +849,6 @@ export const useCourses = () => {
   };
 };
 
-// FIXED: Robust mapping handling Spring Page defaults (last, number) vs DTO (isLast, pageNumber)
 const mapPageResponse = <T>(result: any, page: number, size: number) => {
   if (!result) {
     return {
@@ -840,7 +866,6 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => {
     };
   }
 
-  // Handle both "isLast" (DTO) and "last" (Spring default)
   const isLast = result.isLast ?? result.last ?? true;
   const isFirst = result.isFirst ?? result.first ?? true;
   const pageNumber = result.pageNumber ?? result.number ?? page;

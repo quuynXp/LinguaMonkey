@@ -86,10 +86,11 @@ message ReviewQualityRequest {
 
 message ReviewQualityResponse {
   bool is_valid = 1;         
-  string sentiment = 2;      
-  repeated string topics = 3;  
-  string suggested_action = 4; 
-  string error = 5;
+  bool is_toxic = 2;
+  string sentiment = 3;      
+  repeated string topics = 4;  
+  string suggested_action = 5; 
+  string error = 6;
 }
 
 message MediaRef {

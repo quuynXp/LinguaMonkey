@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  ScrollView,
   StatusBar,
   StyleSheet,
+  FlatList,
+  ListRenderItem,
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
@@ -29,6 +30,7 @@ import {
   CourseVersionEnrollmentResponse,
   CourseVersionReviewResponse,
   CourseResponse,
+  LessonResponse,
 } from "../../types/dto";
 import { gotoTab } from "../../utils/navigationRef";
 
@@ -50,7 +52,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     useReviews,
     useDiscounts,
     useCreateReview,
-    useLessonsByVersion, // FIX: Use specific hook for version lessons
+    useInfiniteLessonsByVersion,
   } = useCourses();
 
   const { useCourseRoom } = useRooms();
@@ -62,18 +64,22 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const version = course?.latestPublicVersion;
   const versionId = version?.versionId;
 
-  // FIX: Fetch lessons specifically for this version to ensure correct ID and order
-  const { data: lessonsData, isLoading: lessonsLoading } = useLessonsByVersion({
+  const {
+    data: lessonsInfinite,
+    isLoading: lessonsLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage
+  } = useInfiniteLessonsByVersion({
     versionId: versionId,
-    page: 0,
-    size: 100 // Fetch sufficient lessons to display list properly
+    size: 20
   });
 
   const displayLessons = useMemo(() => {
-    if (!lessonsData?.data) return [];
-    // Ensure sorting by orderIndex logic from CourseVersionLesson
-    return [...lessonsData.data].sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
-  }, [lessonsData]);
+    if (!lessonsInfinite) return [];
+    const allLessons = lessonsInfinite.pages.flatMap(page => page.data);
+    return allLessons.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
+  }, [lessonsInfinite]);
 
   const { data: discountsData } = useDiscounts({ versionId: versionId, size: 1 });
   const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
@@ -142,7 +148,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       handleFreeEnroll();
     }
 
-    // Pass the exact lesson object from the version query
     gotoTab("CourseStack", "LessonScreen", { lesson: lesson });
   };
 
@@ -251,45 +256,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     );
   };
 
-  const renderLessonItem = (item: any, index: number, isLocked: boolean) => (
-    <TouchableOpacity
-      key={item.lessonId || index}
-      style={[styles.lessonItem, isLocked && styles.lessonItemLocked]}
-      onPress={() => handleLessonPress(item)}
-      activeOpacity={0.7}
-    >
-      <View style={styles.lessonThumbContainer}>
-        <Image source={getLessonImage(item.thumbnailUrl)} style={styles.lessonThumb} />
-        <View style={styles.playIconOverlay}>
-          <Icon name="play-arrow" size={20} color="#FFF" />
-        </View>
-      </View>
-
-      <View style={styles.lessonContent}>
-        <Text style={[styles.lessonTitle, isLocked && styles.textLocked]} numberOfLines={2}>
-          {item.orderIndex !== undefined ? item.orderIndex + 1 : index + 1}. {item.lessonName || item.title}
-        </Text>
-        <View style={styles.lessonMetaRow}>
-          <Icon name="schedule" size={12} color="#9CA3AF" />
-          <Text style={styles.lessonDuration}>
-            {Math.ceil((item.durationSeconds || 0) / 60)} min • {item.lessonType || 'LESSON'}
-          </Text>
-          {item.isFree && isPaidCourse && (
-            <View style={styles.freeTag}>
-              <Text style={styles.freeTagText}>FREE</Text>
-            </View>
-          )}
-        </View>
-      </View>
-
-      {isLocked ? (
-        <Icon name="lock-outline" size={24} color="#9CA3AF" />
-      ) : (
-        <Icon name="check-circle-outline" size={24} color="#10B981" />
-      )}
-    </TouchableOpacity>
-  );
-
   const renderHeader = () => (
     <View style={styles.headerContainer}>
       <View style={styles.coverContainer}>
@@ -389,20 +355,74 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
         <View style={styles.sectionContainer}>
           <Text style={styles.sectionHeader}>{t("course.curriculum")}</Text>
-          <View style={styles.lessonGroup}>
-            {lessonsLoading ? (
-              <ActivityIndicator size="small" color="#4F46E5" style={{ marginVertical: 20 }} />
-            ) : displayLessons.length > 0 ? (
-              displayLessons.map((l, i) => {
-                const isUnlocked = hasAccess || l.isFree;
-                const isLocked = !isUnlocked;
-                return renderLessonItem(l, i, isLocked);
-              })
-            ) : (
-              <Text style={styles.emptyText}>{t("course.noContent")}</Text>
-            )}
-          </View>
+          {lessonsLoading && !displayLessons.length ? (
+            <ActivityIndicator size="small" color="#4F46E5" style={{ marginVertical: 20 }} />
+          ) : displayLessons.length === 0 ? (
+            <Text style={styles.emptyText}>{t("course.noContent")}</Text>
+          ) : null}
         </View>
+      </View>
+    </View>
+  );
+
+  const renderLessonItem: ListRenderItem<LessonResponse> = ({ item, index }) => {
+    const isUnlocked = hasAccess || item.isFree;
+    const isLocked = !isUnlocked;
+    return (
+      <View style={{ paddingHorizontal: 20 }}>
+        <TouchableOpacity
+          style={[styles.lessonItem, isLocked && styles.lessonItemLocked]}
+          onPress={() => handleLessonPress(item)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.lessonThumbContainer}>
+            <Image source={getLessonImage(item.thumbnailUrl)} style={styles.lessonThumb} />
+            <View style={styles.playIconOverlay}>
+              <Icon name="play-arrow" size={20} color="#FFF" />
+            </View>
+          </View>
+
+          <View style={styles.lessonContent}>
+            <Text style={[styles.lessonTitle, isLocked && styles.textLocked]} numberOfLines={2}>
+              {item.orderIndex !== undefined ? item.orderIndex + 1 : index + 1}. {item.lessonName || item.title}
+            </Text>
+            <View style={styles.lessonMetaRow}>
+              <Icon name="schedule" size={12} color="#9CA3AF" />
+              <Text style={styles.lessonDuration}>
+                {Math.ceil((item.durationSeconds || 0) / 60)} min • {item.lessonType || 'LESSON'}
+              </Text>
+              {item.isFree && isPaidCourse && (
+                <View style={styles.freeTag}>
+                  <Text style={styles.freeTagText}>FREE</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {isLocked ? (
+            <Icon name="lock-outline" size={24} color="#9CA3AF" />
+          ) : (
+            <Icon name="check-circle-outline" size={24} color="#10B981" />
+          )}
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderFooter = () => (
+    <View style={styles.footerContainer}>
+      {isFetchingNextPage && (
+        <ActivityIndicator size="small" color="#4F46E5" style={{ marginBottom: 20 }} />
+      )}
+      <View style={styles.reviewsWrapper}>
+        <ReviewSection
+          entityId={courseId}
+          reviews={reviews}
+          onAddReview={handleAddReview}
+          isAddingReview={isCreatingReview}
+          onLikeReview={handleLikeReview}
+          canReview={canReview}
+        />
       </View>
     </View>
   );
@@ -420,13 +440,28 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   return (
     <ScreenLayout>
       <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-        {renderHeader()}
-        <View style={styles.reviewsWrapper}>
-          <ReviewSection entityId={courseId} reviews={reviews} onAddReview={handleAddReview} isAddingReview={isCreatingReview} onLikeReview={handleLikeReview} canReview={canReview} />
-        </View>
-      </ScrollView>
-      <CoursePurchaseModal visible={purchaseModalVisible} onClose={() => setPurchaseModalVisible(false)} course={course as CourseResponse} activeDiscount={activeDiscount as any} onSuccess={handlePurchaseSuccess} />
+      <FlatList
+        data={displayLessons}
+        renderItem={renderLessonItem}
+        keyExtractor={(item) => item.lessonId || String(item.orderIndex)}
+        ListHeaderComponent={renderHeader}
+        ListFooterComponent={renderFooter}
+        onEndReached={() => {
+          if (hasNextPage) {
+            fetchNextPage();
+          }
+        }}
+        onEndReachedThreshold={0.5}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 40, backgroundColor: "#FFF" }}
+      />
+      <CoursePurchaseModal
+        visible={purchaseModalVisible}
+        onClose={() => setPurchaseModalVisible(false)}
+        course={course as CourseResponse}
+        activeDiscount={activeDiscount as any}
+        onSuccess={handlePurchaseSuccess}
+      />
     </ScreenLayout>
   );
 };
@@ -440,7 +475,7 @@ const styles = StyleSheet.create({
   backBtn: { position: 'absolute', left: 16, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20, padding: 8 },
   discountBadge: { position: 'absolute', bottom: 16, left: 16, backgroundColor: '#EF4444', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
   discountBadgeText: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
-  contentBody: { padding: 20, marginTop: -20, backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24 },
+  contentBody: { padding: 20, marginTop: -20, backgroundColor: '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingBottom: 0 },
   title: { fontSize: 22, fontWeight: "800", color: "#111827", marginBottom: 12, lineHeight: 30 },
   statsWrapper: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 },
   statsContainer: { flexDirection: 'row', alignItems: 'center' },
@@ -475,7 +510,6 @@ const styles = StyleSheet.create({
   systemReviewTitle: { fontSize: 16, fontWeight: 'bold', color: '#1E3A8A' },
   systemReviewRating: { fontSize: 14, fontWeight: '700', color: '#2563EB', marginBottom: 4 },
   systemReviewText: { fontSize: 14, color: '#1E40AF', lineHeight: 20 },
-  lessonGroup: { marginBottom: 8 },
   lessonItem: { flexDirection: "row", alignItems: "center", padding: 10, marginBottom: 10, backgroundColor: "#FFF", borderRadius: 12, borderWidth: 1, borderColor: "#E5E7EB", shadowColor: "#000", shadowOpacity: 0.03, shadowRadius: 2, elevation: 1 },
   lessonItemLocked: { backgroundColor: "#F9FAFB", borderColor: "#F3F4F6", opacity: 0.8 },
   lessonThumbContainer: { position: 'relative', width: 60, height: 60, marginRight: 12 },
@@ -487,8 +521,7 @@ const styles = StyleSheet.create({
   lessonDuration: { fontSize: 12, color: "#9CA3AF" },
   textLocked: { color: "#9CA3AF" },
   emptyText: { fontStyle: "italic", color: "#9CA3AF", marginBottom: 10 },
-  loadMoreBtn: { alignItems: 'center', padding: 12, marginTop: 10, backgroundColor: '#F3F4F6', borderRadius: 8 },
-  loadMoreText: { color: '#4F46E5', fontWeight: '600' },
+  footerContainer: { marginTop: 10 },
   reviewsWrapper: { paddingHorizontal: 20 },
   freeTag: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
   freeTagText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },

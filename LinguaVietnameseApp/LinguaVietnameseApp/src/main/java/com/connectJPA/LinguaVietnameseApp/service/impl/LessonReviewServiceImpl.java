@@ -56,30 +56,6 @@ public class LessonReviewServiceImpl implements LessonReviewService {
         LessonReview review = lessonReviewMapper.toEntity(request);
         review.setVerified(false); // Mặc định
 
-        // 4. Gọi gRPC để phân tích review (bất đồng bộ)
-        try {
-            CompletableFuture<ReviewQualityResponse> aiFuture = grpcClientService.callAnalyzeReviewQualityAsync(
-                    null, // token
-                    userId.toString(),
-                    lessonId.toString(),
-                    request.getComment(),
-                    request.getRating().floatValue(),
-                    "LESSON" // contentType
-            );
-
-            ReviewQualityResponse aiResponse = aiFuture.get(); // Chờ kết quả
-
-            if (aiResponse.getIsValid()) {
-                review.setVerified(true);
-            } else {
-                review.setVerified(false);
-                log.warn("AI flagged lesson review. Reason: {}", aiResponse.getSentiment());
-            }
-
-        } catch (Exception e) {
-            review.setVerified(false); // Nếu AI lỗi, lưu là chưa xác thực
-        }
-
         // 5. Lưu review
         review = lessonReviewRepository.save(review);
         return lessonReviewMapper.toResponse(review);
@@ -120,29 +96,6 @@ public class LessonReviewServiceImpl implements LessonReviewService {
                 .orElseThrow(() -> new AppException(ErrorCode.COURSE_REVIEW_NOT_FOUND));
 
         lessonReviewMapper.updateEntityFromRequest(request, review);
-
-        try {
-            CompletableFuture<ReviewQualityResponse> aiFuture = grpcClientService.callAnalyzeReviewQualityAsync(
-                    null, // token
-                    userId.toString(),
-                    lessonId.toString(),
-                    request.getComment(),
-                    request.getRating().floatValue(),
-                    "LESSON" // contentType
-            );
-
-            ReviewQualityResponse aiResponse = aiFuture.get(); // Chờ kết quả
-
-            if (aiResponse.getIsValid()) {
-                review.setVerified(true);
-            } else {
-                review.setVerified(false);
-            }
-
-        } catch (Exception e) {
-            log.error("gRPC call failed during lesson review, saving as unverified: {}", e.getMessage());
-            review.setVerified(false); // Nếu AI lỗi, lưu là chưa xác thực
-        }
 
         review = lessonReviewRepository.save(review);
         return lessonReviewMapper.toResponse(review);

@@ -4,6 +4,7 @@ import logging
 import jwt
 import asyncio
 import os
+import uuid  # Added to handle UUID conversion
 from datetime import datetime
 from collections import defaultdict
 from typing import Dict, List
@@ -24,13 +25,14 @@ from src.core.session import get_db, AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import get_redis_client, close_redis_client
 from src.core.user_profile_service import get_user_profile
+from src.core.models import ChatMessage, MessageType
 
-from src.core.translator import get_translator
-
+# Imports logic chính
 from src.api.chat_ai import chat_with_ai, chat_with_ai_stream
 from src.api.speech_to_text import speech_to_text
 from src.api.tts_generator import generate_tts
 from src.core.java_persistence_client import send_chat_to_java_via_grpc
+from src.api.translator import get_translator
 from src.worker.tasks import warm_up_redis_task, populate_lexicon_from_community_task
 from src.scripts.seed_lexicon import seed_data
 
@@ -59,7 +61,7 @@ class CacheInvalidationRequest(BaseModel):
 
 class TranslationRequest(BaseModel):
     text: str
-    source_lang: str = "auto" # Default to auto
+    source_lang: str
     target_lang: str
 
 class ChatRequest(BaseModel):
@@ -69,19 +71,28 @@ class ChatRequest(BaseModel):
 class ConnectionManager:
     def __init__(self):
         self.active_connections = defaultdict(list)
+    
     async def connect(self, websocket: WebSocket, room_id: str):
         await websocket.accept()
         self.active_connections[room_id].append(websocket)
+        logger.info(f"WebSocket connected to room {room_id}. Total: {len(self.active_connections[room_id])}")
+
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.active_connections:
             if websocket in self.active_connections[room_id]:
                 self.active_connections[room_id].remove(websocket)
+                if not self.active_connections[room_id]:
+                    del self.active_connections[room_id]
+    
     async def broadcast(self, message: dict, room_id: str):
         if room_id in self.active_connections:
             data = json.dumps(message)
             for conn in self.active_connections[room_id]:
-                try: await conn.send_text(data)
-                except: pass
+                try: 
+                    await conn.send_text(data)
+                except Exception as e:
+                    logger.error(f"Broadcast error: {e}")
+
     async def broadcast_json(self, message: dict, room_id: str):
         await self.broadcast(message, room_id)
 
@@ -98,7 +109,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# VERIFY TOKEN STATELESSLY USING PUBLIC KEY
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
@@ -134,7 +144,6 @@ async def get_websocket_user(websocket: WebSocket, token: str) -> str:
         await websocket.close(code=1008, reason="Invalid Token")
         raise WebSocketDisconnect()
 
-# --- INTERNAL ROUTERS ---
 @internal_router.post("/invalidate-cache") 
 async def invalidate_user_cache(
     request: CacheInvalidationRequest,
@@ -169,7 +178,6 @@ async def run_seed_database():
 
 @internal_router.get("/check-redis/{lang}/{text}")
 async def check_redis_key(lang: str, text: str, redis: Redis = Depends(get_redis_client)):
-    # Helper to debug keys
     key = f"lex:{lang}:{text.strip().lower()}"
     value = await redis.get(key)
     return {
@@ -178,39 +186,28 @@ async def check_redis_key(lang: str, text: str, redis: Redis = Depends(get_redis
         "value": json.loads(value) if value else None
     }
 
-# --- PROTECTED ROUTERS ---
-
 @protected_router.post("/translate")
 async def translate(
     request: TranslationRequest, 
     user: dict = Depends(verify_token),
-    redis: Redis = Depends(get_redis_client) # Inject Redis
+    redis: Redis = Depends(get_redis_client)
 ):
-    """
-    Sử dụng HybridTranslator để tận dụng Cache Redis trước khi gọi Google/Gemini
-    """
     try:
-        # Lấy instance Translator (Singleton logic inside)
         translator = get_translator(redis)
-        
-        # Gọi translate thông qua HybridTranslator
-        # source_lang_hint giúp bypass detect language nếu client đã gửi lên
         translated_text, detected_lang = await translator.translate(
-            text=request.text, 
-            source_lang_hint=request.source_lang, 
-            target_lang=request.target_lang
+            request.text, request.source_lang, request.target_lang
         )
         
         return {
             "code": 200,
             "result": { 
                 "translated_text": translated_text,
-                "source_lang_detected": detected_lang
+                "detected_lang": detected_lang
             },
-            "error": ""
+            "error": None
         }
     except Exception as e:
-        logger.error(f"Translate endpoint exception: {e}", exc_info=True)
+        logger.error(f"Translate endpoint exception: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @protected_router.post("/chat-ai")
@@ -243,7 +240,6 @@ async def text_to_speech_endpoint(
         "audio_base64": base64.b64encode(audio_bytes).decode('utf-8')
     }
 
-# --- WEBSOCKETS ---
 @app.websocket("/voice")
 async def voice_stream(websocket: WebSocket, token: str = Query(...)):
     await get_websocket_user(websocket, token)
@@ -266,26 +262,67 @@ async def voice_stream(websocket: WebSocket, token: str = Query(...)):
 
 @app.websocket("/chat-stream")
 async def chat_stream(websocket: WebSocket, token: str = Query(...)):
-    user_id = await get_websocket_user(websocket, token)
+    user_id_str = await get_websocket_user(websocket, token)
     await websocket.accept()
-    db = AsyncSessionLocal()
+    
+    db_session = AsyncSessionLocal()
     redis = await get_redis_client()
+    
     try:
-        user_profile = await get_user_profile(user_id, db, redis)
+        user_profile = await get_user_profile(user_id_str, db_session, redis)
+        
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
+            
             if msg.get("type") == "chat_request":
                 raw_prompt = msg.get("prompt", "")
                 history = msg.get("history", [])
-                room_id = msg.get("roomId")
-                if not room_id:
+                room_id_str = msg.get("roomId")
+                
+                if not room_id_str:
                     await websocket.send_text(json.dumps({"type": "error", "content": "roomId required"}))
                     continue
+                
+                # Convert string IDs to UUIDs for DB compatibility
+                try:
+                    room_uuid = uuid.UUID(room_id_str)
+                    user_uuid = uuid.UUID(user_id_str)
+                except ValueError:
+                    logger.error(f"Invalid UUID format: room={room_id_str}, user={user_id_str}")
+                    continue
+
                 actual_prompt = raw_prompt
                 if raw_prompt == "INITIAL_WELCOME_MESSAGE":
                     actual_prompt = "Hello AI, please introduce yourself briefly in English and ask me what I want to learn today. Act as a friendly tutor."
                 
+                # --- 1. LƯU USER MESSAGE VÀO DB ---
+                if raw_prompt != "INITIAL_WELCOME_MESSAGE":
+                    try:
+                        user_msg_db = ChatMessage(
+                            chat_message_id=uuid.uuid4(),
+                            content=raw_prompt,
+                            room_id=room_uuid,
+                            sender_id=user_uuid,
+                            message_type=MessageType.TEXT.value,
+                            sent_at=datetime.utcnow()
+                        )
+                        db_session.add(user_msg_db)
+                        await db_session.commit()
+                        logger.info(f"💾 Saved User Message to Room {room_id_str}")
+                    except Exception as e:
+                        logger.error(f"❌ Failed to save user message: {e}")
+                        await db_session.rollback()
+
+                    # Sync với Java service
+                    asyncio.create_task(send_chat_to_java_via_grpc({
+                        "userId": user_id_str, "roomId": room_id_str,
+                        "content": raw_prompt,
+                        "messageType": msg.get("messageType", "TEXT"),
+                        "sentAt": datetime.now().isoformat()
+                    }))
+
+                # --- 2. GENERATE AI RESPONSE ---
                 full_ai_response = ""
                 async for chunk in chat_with_ai_stream(actual_prompt, history, user_profile):
                     full_ai_response += chunk
@@ -295,27 +332,42 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                     }))
                 await websocket.send_text(json.dumps({"type": "chat_response_complete"}))
                 
-                if raw_prompt != "INITIAL_WELCOME_MESSAGE":
-                    asyncio.create_task(send_chat_to_java_via_grpc({
-                        "userId": user_id, "roomId": room_id,
-                        "content": raw_prompt,
-                        "messageType": msg.get("messageType", "TEXT"),
-                        "sentAt": datetime.now().isoformat()
-                    }))
-                
+                # --- 3. LƯU AI MESSAGE VÀO DB ---
+                try:
+                    # Lưu tin nhắn AI với roomId nhận từ FE. 
+                    # sender_id để là user_uuid (hoặc Bot UUID nếu bạn cấu hình sau này)
+                    ai_msg_db = ChatMessage(
+                        chat_message_id=uuid.uuid4(),
+                        content=full_ai_response,
+                        room_id=room_uuid,
+                        sender_id=user_uuid, 
+                        message_type=MessageType.TEXT.value,
+                        sent_at=datetime.utcnow()
+                    )
+                    
+                    db_session.add(ai_msg_db)
+                    await db_session.commit()
+                    logger.info(f"💾 Saved AI Message to Room {room_id_str}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Failed to save AI message: {e}")
+                    await db_session.rollback()
+
+                # Sync với Java service
                 asyncio.create_task(send_chat_to_java_via_grpc({
                     "userId": "AI_BOT", 
-                    "roomId": room_id,
+                    "roomId": room_id_str,
                     "content": full_ai_response,
                     "messageType": "TEXT",
                     "sentAt": datetime.now().isoformat()
                 }))
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
         logger.error(f"Chat WS Error: {e}")
     finally:
-        await db.close()
+        await db_session.close()
 
 @app.websocket("/live-subtitles")
 async def live_subtitles(
@@ -328,74 +380,60 @@ async def live_subtitles(
     user_id = await get_websocket_user(websocket, token)
     await manager.connect(websocket, roomId)
     redis = await get_redis_client()
-    translator = get_translator(redis) # Sử dụng HybridTranslator
     
+    translator = get_translator(redis)
     buffer_key = f"{roomId}_{user_id}"
     
-    # Giới hạn buffer size để tránh tràn RAM (ví dụ: tối đa 50 chunks chưa xử lý)
-    MAX_BUFFER_CHUNKS = 50 
-
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
             
-            # --- SIGNALING FOR WEBRTC ---
-            # Xử lý tin nhắn signaling (Offer, Answer, ICE Candidates)
             if msg.get("type") == "webrtc_signal":
-                # Broadcast lại cho tất cả user trong room (client tự filter senderId)
                 await manager.broadcast_json(msg, roomId)
-            
-            # --- AUDIO STREAM & SUBTITLES ---
-            elif "audio_chunk" in msg and msg["audio_chunk"]:
+                continue
+                
+            original_text = ""
+            if "audio_chunk" in msg and msg["audio_chunk"]:
                 chunk = base64.b64decode(msg["audio_chunk"])
                 audio_buffers[buffer_key].append(chunk)
-                
-                if len(audio_buffers[buffer_key]) > MAX_BUFFER_CHUNKS:
-                    audio_buffers[buffer_key] = audio_buffers[buffer_key][-20:]
-
                 full_audio = b"".join(audio_buffers[buffer_key]) 
                 
                 stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, full_audio, spokenLang)
-                
                 if stt_text and len(stt_text.strip()) > 1:
                     translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
-                    
                     await manager.broadcast_json({
                         "type": "subtitle",
-                        "senderId": user_id,
                         "original": stt_text,
                         "originalLang": detected_lang,
                         "translated": translated_text,
-                        "translatedLang": nativeLang
+                        "translatedLang": nativeLang,
+                        "senderId": user_id
                     }, roomId)
-                    
-                    audio_buffers[buffer_key] = [] 
-
             elif "text" in msg:
                 original_text = msg["text"]
-                if original_text:
-                    translated, err = await translator.translate(original_text, spokenLang, nativeLang)
-                    await manager.broadcast({
-                        "type": "subtitle",
-                        "senderId": user_id,
-                        "original": original_text,
-                        "originalLang": spokenLang,
-                        "translated": translated,
-                        "translatedLang": nativeLang,
-                        "timestamp": datetime.now().isoformat()
-                    }, roomId)
-
+            
+            if original_text:
+                translated, err = await translator.translate(original_text, spokenLang, nativeLang)
+                await manager.broadcast({
+                    "type": "subtitle",
+                    "senderId": user_id,
+                    "original": original_text,
+                    "originalLang": spokenLang,
+                    "translated": translated,
+                    "translatedLang": nativeLang,
+                    "timestamp": datetime.now().isoformat()
+                }, roomId)
     except WebSocketDisconnect:
         manager.disconnect(websocket, roomId)
         if buffer_key in audio_buffers: del audio_buffers[buffer_key]
     except Exception as e:
-        logger.error(f"Live Subtitles WS Error: {e}", exc_info=True)
+        logger.error(f"Live Subtitles WS Error: {e}")
         manager.disconnect(websocket, roomId)
 
 app.include_router(protected_router, tags=["Protected API"])
 app.include_router(internal_router, tags=["Internal API"])
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8001))
+    port = int(os.environ.get("PORT", 8001)) 
     uvicorn.run(app, host="0.0.0.0", port=port)

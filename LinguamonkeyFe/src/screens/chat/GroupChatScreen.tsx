@@ -1,5 +1,3 @@
-// screens/chat/GroupChatScreen.tsx
-
 import React, { useEffect, useCallback, useState, useMemo } from "react";
 import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Switch, ScrollView } from "react-native";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
@@ -21,28 +19,24 @@ import { useToast } from "../../utils/useToast";
 import IncomingCallModal from "../../components/modals/IncomingCallModal";
 import { stompService } from "../../services/stompService";
 
-// 🎯 CẬP NHẬT TYPE PARAMS
 type ChatRoomParams = {
     ChatRoom: {
         roomId: string;
         roomName: string;
-        initialFocusMessageId?: string; // <-- THÊM DÒNG NÀY
+        initialFocusMessageId?: string;
     };
 };
 
 const GroupChatScreen = () => {
-    // Component này là SCREEN, nên dùng useRoute ở đây LÀ ĐÚNG
     const route = useRoute<RouteProp<ChatRoomParams, 'ChatRoom'>>();
     const navigation = useNavigation<any>();
     const { t } = useTranslation();
 
-    // 🎯 LẤY PARAMS TỪ ROUTE
     const { roomId, roomName: initialRoomName, initialFocusMessageId } = route.params;
 
     const { user } = useUserStore();
     const { showToast } = useToast();
 
-    // App Store for Settings
     const {
         chatSettings,
         setChatSettings,
@@ -62,7 +56,7 @@ const GroupChatScreen = () => {
         userStatuses
     } = useChatStore();
 
-    const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom, useUpdateMemberNickname } = useRooms();
+    const { useRoomMembers, useRemoveRoomMembers, useLeaveRoom, useRoom } = useRooms();
     const { useCreateGroupCall } = useVideoCalls();
 
     const { data: members } = useRoomMembers(roomId);
@@ -73,7 +67,6 @@ const GroupChatScreen = () => {
 
     const [showSettings, setShowSettings] = useState(false);
 
-    // Sync settings to backend
     const syncSettingToBackend = async (
         updateChat: Partial<typeof chatSettings> = {},
         updateNotif: Partial<typeof notificationPreferences> = {}
@@ -118,8 +111,13 @@ const GroupChatScreen = () => {
 
     const renderActiveDot = (userId: string | undefined, size = 10) => {
         if (!userId) return null;
-        const status = userStatuses[userId];
-        if (status?.isOnline) {
+        const realtimeStatus = userStatuses[userId];
+
+        // Priority: Realtime Socket -> Initial Room Info -> Member Info
+        const isOnline = realtimeStatus?.isOnline ??
+            (isPrivateRoom && userId === targetMember?.userId ? roomInfo?.partnerIsOnline : false);
+
+        if (isOnline) {
             return <View style={[styles.headerActiveDot, { width: size, height: size, borderRadius: size / 2 }]} />;
         }
         return null;
@@ -188,17 +186,31 @@ const GroupChatScreen = () => {
 
     const getHeaderStatusText = () => {
         if (isPrivateRoom && targetMember) {
-            const status = userStatuses[targetMember.userId];
-            if (status?.isOnline) return t('chat.active_now');
-            if (status?.lastActiveAt) {
-                const diff = Date.now() - new Date(status.lastActiveAt).getTime();
+            const userId = targetMember.userId;
+            const realtimeStatus = userStatuses[userId];
+
+            // 1. Check Realtime Online
+            if (realtimeStatus?.isOnline) return t('chat.active_now');
+
+            // 2. Check Static/Initial Online (from RoomInfo)
+            if (!realtimeStatus && roomInfo?.partnerIsOnline) return t('chat.active_now');
+
+            // 3. Calculate Last Active (Realtime -> RoomInfo -> MemberInfo)
+            const lastActive = realtimeStatus?.lastActiveAt || roomInfo?.partnerLastActiveText;
+
+            if (lastActive) {
+                const diff = Date.now() - new Date(lastActive).getTime();
                 const minutes = Math.floor(diff / 60000);
+                if (minutes < 1) return t('chat.active_now'); // Just went offline
                 if (minutes < 60) return `${t('chat.active')} ${minutes}m ${t('chat.ago')}`;
                 const hours = Math.floor(minutes / 60);
                 if (hours < 24) return `${t('chat.active')} ${hours}h ${t('chat.ago')}`;
+                // Return text from roomInfo if available (e.g. "Active 2 days ago")
+                if (roomInfo?.partnerLastActiveText) return roomInfo.partnerLastActiveText;
                 return t('chat.offline');
             }
-            return t('chat.offline');
+
+            return roomInfo?.partnerLastActiveText || t('chat.offline');
         }
         return `${members?.length || 0} ${t('chat.members')}`;
     };
@@ -231,13 +243,13 @@ const GroupChatScreen = () => {
             </View>
 
             <View style={{ flex: 1 }}>
-                {/* 🎯 TRUYỀN PARAMS VÀO PROP */}
                 <ChatInnerView
                     roomId={roomId}
                     isBubbleMode={false}
                     autoTranslate={chatSettings.autoTranslate}
                     soundEnabled={notificationPreferences.soundEnabled}
                     initialFocusMessageId={initialFocusMessageId}
+                    members={members} // 🎯 FIX: Pass members to ChatInnerView
                 />
             </View>
 

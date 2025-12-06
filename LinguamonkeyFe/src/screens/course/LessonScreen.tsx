@@ -79,6 +79,7 @@ const LessonScreen = ({ navigation, route }: any) => {
   const [isAnswered, setIsAnswered] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<any>(null);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
+  const [isCorrect, setIsCorrect] = useState<boolean>(false);
   const [userAnswers, setUserAnswers] = useState<Record<string, any>>({});
 
   const [isRecording, setIsRecording] = useState(false);
@@ -104,13 +105,16 @@ const LessonScreen = ({ navigation, route }: any) => {
           languageCode: 'vi', duration: 0
         });
         setFeedbackMessage(`Score: ${res.score}. ${res.feedback}`);
-        if (res.score >= 50) setCorrectCount(c => c + 1);
+        const passed = res.score >= 50;
+        setIsCorrect(passed);
+        if (passed) setCorrectCount(c => c + 1);
       } finally { setIsStreaming(false); }
       return;
     }
 
-    const isCorrect = validateAnswer(currentQuestion, answerValue);
-    if (isCorrect) {
+    const checkCorrect = validateAnswer(currentQuestion, answerValue);
+    setIsCorrect(checkCorrect);
+    if (checkCorrect) {
       setCorrectCount(c => c + 1);
       setFeedbackMessage(t("quiz.correct") || "Correct!");
     } else {
@@ -130,6 +134,7 @@ const LessonScreen = ({ navigation, route }: any) => {
       setIsAnswered(false);
       setSelectedAnswer(null);
       setFeedbackMessage(null);
+      setIsCorrect(false);
     }
   };
 
@@ -147,9 +152,11 @@ const LessonScreen = ({ navigation, route }: any) => {
         audioUri: uri, lessonQuestionId: currentQuestion.lessonQuestionId, languageCode: 'vi',
         onChunk: (chunk) => {
           if (chunk.type === 'final') {
+            const passed = (chunk.score || 0) > 70;
             setFeedbackMessage(`Score: ${chunk.score}`);
+            setIsCorrect(passed);
             setIsStreaming(false);
-            if ((chunk.score || 0) > 70) setCorrectCount(c => c + 1);
+            if (passed) setCorrectCount(c => c + 1);
           }
         }
       });
@@ -157,14 +164,38 @@ const LessonScreen = ({ navigation, route }: any) => {
   };
 
   if (isLoading) return <ActivityIndicator style={styles.center} />;
-  if (!currentQuestion) return <Text style={styles.center}>No questions found.</Text>;
+
+  if (!questions || questions.length === 0) {
+    return (
+      <ScreenLayout style={styles.container}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Icon name="close" size={24} color="#333" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Lesson</Text>
+          <View style={{ width: 24 }} />
+        </View>
+        <View style={styles.center}>
+          <Icon name="library-books" size={64} color="#9CA3AF" />
+          <Text style={styles.emptyText}>No questions found for this lesson.</Text>
+          <TouchableOpacity style={styles.nextBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.btnText}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </ScreenLayout>
+    );
+  }
+
+  if (!currentQuestion) return <ActivityIndicator style={styles.center} />;
 
   return (
     <ScreenLayout style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}><Icon name="close" size={24} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => navigation.goBack()}>
+          <Icon name="close" size={24} color="#333" />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>{currentQuestionIndex + 1}/{questions.length}</Text>
-        <Text style={{ fontWeight: 'bold', color: 'green' }}>{correctCount} ✓</Text>
+        <Text style={{ fontWeight: 'bold', color: '#10B981' }}>{correctCount} ✓</Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
@@ -184,14 +215,23 @@ const LessonScreen = ({ navigation, route }: any) => {
         />
 
         {feedbackMessage && (
-          <View style={[styles.feedback, { backgroundColor: feedbackMessage.includes("Correct") ? "#D1FAE5" : "#FEE2E2" }]}>
-            <Text>{feedbackMessage}</Text>
+          <View style={[styles.feedback, isCorrect ? styles.feedbackCorrect : styles.feedbackWrong]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+              <Icon name={isCorrect ? "check-circle" : "cancel"} size={24} color={isCorrect ? "#10B981" : "#EF4444"} />
+              <Text style={[styles.feedbackTitle, { color: isCorrect ? "#065F46" : "#991B1B" }]}>
+                {isCorrect ? "Excellent!" : "Incorrect"}
+              </Text>
+            </View>
+            <Text style={{ color: isCorrect ? "#065F46" : "#991B1B", fontSize: 15 }}>{feedbackMessage}</Text>
           </View>
         )}
 
         {isAnswered && (
-          <TouchableOpacity style={styles.nextBtn} onPress={handleNext}>
-            <Text style={{ color: '#FFF', fontWeight: 'bold' }}>{isLastQuestion ? "Finish" : "Next"}</Text>
+          <TouchableOpacity
+            style={[styles.nextBtn, isCorrect ? { backgroundColor: '#10B981' } : { backgroundColor: '#333' }]}
+            onPress={handleNext}
+          >
+            <Text style={styles.btnText}>{isLastQuestion ? "Finish" : "Next"}</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
@@ -201,12 +241,17 @@ const LessonScreen = ({ navigation, route }: any) => {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FFF" },
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderColor: '#EEE' },
-  headerTitle: { fontSize: 16, fontWeight: 'bold' },
-  content: { padding: 20 },
-  feedback: { padding: 15, borderRadius: 8, marginTop: 15 },
-  nextBtn: { backgroundColor: '#333', padding: 15, borderRadius: 10, alignItems: 'center', marginTop: 20 }
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderColor: '#F3F4F6' },
+  headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
+  content: { padding: 20, paddingBottom: 40 },
+  feedback: { padding: 16, borderRadius: 12, marginTop: 20, borderWidth: 1 },
+  feedbackCorrect: { backgroundColor: '#ECFDF5', borderColor: '#A7F3D0' },
+  feedbackWrong: { backgroundColor: '#FEF2F2', borderColor: '#FECACA' },
+  feedbackTitle: { fontWeight: 'bold', fontSize: 16, marginLeft: 8 },
+  nextBtn: { backgroundColor: '#333', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 20 },
+  btnText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
+  emptyText: { marginTop: 16, fontSize: 16, color: '#6B7280', textAlign: 'center', marginBottom: 20 }
 });
 
 export default LessonScreen;

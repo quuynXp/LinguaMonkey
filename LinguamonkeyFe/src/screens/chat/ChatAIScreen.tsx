@@ -1,3 +1,5 @@
+// /d:/LinguaApp/LinguamonkeyFe/src/screens/chat/ChatAIScreen.tsx
+
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   ActivityIndicator,
@@ -20,16 +22,16 @@ import { useUserStore } from "../../stores/UserStore";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import instance from "../../api/axiosClient";
 import { createScaledSheet } from "../../utils/scaledStyles";
-import { Room, ChatMessage } from "../../types/entity";
+import { Room } from "../../types/entity";
 
-const GREETINGS = [
-  "Hello! How can I help you practice today?",
-  "Xin chào! Bạn muốn học gì hôm nay?",
-  "Ready to improve your language skills?",
-  "I'm listening! What's on your mind?",
-  "Hãy bắt đầu trò chuyện để luyện tập nào!",
-];
+type AiMessage = {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  isStreaming?: boolean;
+};
 
+// --- OPTIMIZED MESSAGE ITEM COMPONENT ---
 const MessageItem = React.memo(({
   message,
   onToggleTranslation,
@@ -37,13 +39,13 @@ const MessageItem = React.memo(({
   toggleState,
   isTranslating
 }: {
-  message: ChatMessage,
+  message: AiMessage,
   onToggleTranslation: (id: string, text: string) => void,
   translationData: string | undefined,
   toggleState: string | 'original',
   isTranslating: boolean
 }) => {
-  const isUser = !!message.senderId;
+  const isUser = message.role === 'user';
   const displayedText = (toggleState !== 'original' && translationData)
     ? translationData
     : message.content;
@@ -52,13 +54,14 @@ const MessageItem = React.memo(({
     <View style={[styles.messageContainer, isUser ? styles.userMessageContainer : styles.aiMessageContainer]}>
       <View style={styles.messageRow}>
         <TouchableOpacity
-          onPress={() => !isUser && onToggleTranslation(message.id.chatMessageId, message.content)}
+          onPress={() => !isUser && onToggleTranslation(message.id, message.content)}
           style={{ maxWidth: "80%" }}
           disabled={isUser}
         >
           <View style={[styles.messageBubble, isUser ? styles.userMessage : styles.aiMessage]}>
             <Text style={[styles.messageText, isUser ? styles.userMessageText : styles.aiMessageText]}>
               {displayedText}
+              {message.isStreaming && <Text style={{ color: '#9CA3AF' }}> •</Text>}
             </Text>
           </View>
         </TouchableOpacity>
@@ -66,7 +69,7 @@ const MessageItem = React.memo(({
         {!isUser && (
           <TouchableOpacity
             style={styles.translateButtonIcon}
-            onPress={() => onToggleTranslation(message.id.chatMessageId, message.content)}
+            onPress={() => onToggleTranslation(message.id, message.content)}
             disabled={isTranslating}
           >
             {isTranslating ? (
@@ -80,14 +83,17 @@ const MessageItem = React.memo(({
     </View>
   );
 }, (prev, next) => {
+  // Custom comparison to prevent re-renders of non-changing items
   return (
     prev.message.content === next.message.content &&
+    prev.message.isStreaming === next.message.isStreaming &&
     prev.translationData === next.translationData &&
     prev.toggleState === next.toggleState &&
     prev.isTranslating === next.isTranslating
   );
 });
 
+// THÊM displayName VÀO ĐÂY ĐỂ KHẮC PHỤC LỖI react/display-name
 MessageItem.displayName = 'MessageItem';
 
 const ChatAIScreen = () => {
@@ -102,48 +108,52 @@ const ChatAIScreen = () => {
   const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
   const [isHistoryVisible, setIsHistoryVisible] = useState(false);
   const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language);
-  const [randomGreeting, setRandomGreeting] = useState("");
 
+  // Store Selectors
   const activeAiRoomId = useChatStore(s => s.activeAiRoomId);
-  const aiRoomList = useChatStore(s => s.aiRoomList);
+  const aiHistory = useChatStore(s => s.aiChatHistory);
+  const aiRooms = useChatStore(s => s.aiRoomList);
+  const isAiStreaming = useChatStore(s => s.isAiStreaming);
   const loadingByRoom = useChatStore(s => s.loadingByRoom);
   const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
   const pageByRoom = useChatStore(s => s.pageByRoom);
-  const messagesByRoom = useChatStore(s => s.messagesByRoom);
+  const isAiInitialMessageSent = useChatStore(s => s.isAiInitialMessageSent);
+  const aiWsConnected = useChatStore(s => s.aiWsConnected);
 
+  // ACTIONS
+  const initAiClient = useChatStore(s => s.initAiClient);
+  const disconnectAi = useChatStore(s => s.disconnectAi);
   const startNewAiChat = useChatStore(s => s.startNewAiChat);
   const selectAiRoom = useChatStore(s => s.selectAiRoom);
   const fetchAiRoomList = useChatStore(s => s.fetchAiRoomList);
   const loadMessages = useChatStore(s => s.loadMessages);
-  const sendMessage = useChatStore(s => s.sendMessage);
-  const disconnectAi = useChatStore(s => s.disconnectAi);
+  const sendAiPrompt = useChatStore(s => s.sendAiPrompt);
+  const sendAiWelcomeMessage = useChatStore(s => s.sendAiWelcomeMessage);
 
   const isLoading = activeAiRoomId ? loadingByRoom[activeAiRoomId] : false;
-  const messages = activeAiRoomId ? messagesByRoom[activeAiRoomId] || [] : [];
-  const displayMessages = useMemo(() => messages, [messages]);
+
+  // Memoize the reversed list to avoid recalculation on every render
+  const displayMessages = useMemo(() => [...aiHistory].reverse(), [aiHistory]);
 
   useEffect(() => {
-    setRandomGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)]);
-
-    return () => {
-      disconnectAi();
-    };
-  }, [disconnectAi]);
-
-  useEffect(() => {
+    initAiClient();
     const initializeData = async () => {
-      if (!user?.userId) return;
-
       await fetchAiRoomList();
-
-      const currentStoreState = useChatStore.getState();
-      if (!currentStoreState.activeAiRoomId) {
+      if (!activeAiRoomId) {
         await startNewAiChat();
       }
     };
+    if (user?.userId) initializeData();
+    return () => { disconnectAi(); };
+  }, [user?.userId, initAiClient, disconnectAi]);
 
-    initializeData();
-  }, [user?.userId, fetchAiRoomList, startNewAiChat]);
+  useEffect(() => {
+    if (activeAiRoomId && aiWsConnected && !isLoading && !isAiStreaming) {
+      if (aiHistory.length === 0 && !isAiInitialMessageSent) {
+        sendAiWelcomeMessage();
+      }
+    }
+  }, [activeAiRoomId, isLoading, aiHistory.length, isAiStreaming, aiWsConnected, sendAiWelcomeMessage]);
 
   const handleLoadMore = () => {
     if (activeAiRoomId && !isLoading && hasMoreByRoom[activeAiRoomId]) {
@@ -153,10 +163,10 @@ const ChatAIScreen = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !activeAiRoomId) return;
+    if (!inputText.trim()) return;
     const textToSend = inputText.trim();
     setInputText("");
-    sendMessage(activeAiRoomId, textToSend, 'TEXT');
+    await sendAiPrompt(textToSend);
   };
 
   const { mutate: translateMutate } = useMutation({
@@ -182,6 +192,7 @@ const ChatAIScreen = () => {
     },
   });
 
+  // Callbacks
   const handleToggleTranslation = useCallback((messageId: string, messageText: string) => {
     const currentView = messagesToggleState[messageId] || 'original';
     if (currentView !== 'original') {
@@ -205,9 +216,9 @@ const ChatAIScreen = () => {
     }
   };
 
-  const renderMessageItem = useCallback(({ item }: { item: ChatMessage }) => {
-    const currentView = messagesToggleState[item.id.chatMessageId] || 'original';
-    const translation = localTranslations[item.id.chatMessageId]?.[currentView];
+  const renderMessageItem = useCallback(({ item }: { item: AiMessage }) => {
+    const currentView = messagesToggleState[item.id] || 'original';
+    const translation = localTranslations[item.id]?.[currentView];
 
     return (
       <MessageItem
@@ -215,12 +226,12 @@ const ChatAIScreen = () => {
         onToggleTranslation={handleToggleTranslation}
         translationData={translation}
         toggleState={currentView}
-        isTranslating={translatingMessageId === item.id.chatMessageId}
+        isTranslating={translatingMessageId === item.id}
       />
     );
   }, [messagesToggleState, localTranslations, translatingMessageId, handleToggleTranslation]);
 
-  const keyExtractor = useCallback((item: ChatMessage) => item.id.chatMessageId, []);
+  const keyExtractor = useCallback((item: AiMessage) => item.id, []);
 
   return (
     <ScreenLayout>
@@ -230,6 +241,7 @@ const ChatAIScreen = () => {
         keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}
       >
         <View style={styles.container}>
+          {/* Custom Header */}
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconButton}>
@@ -256,6 +268,7 @@ const ChatAIScreen = () => {
             </View>
           </View>
 
+          {/* Chat List */}
           <FlatList
             data={displayMessages}
             renderItem={renderMessageItem}
@@ -270,16 +283,21 @@ const ChatAIScreen = () => {
             maxToRenderPerBatch={10}
             windowSize={10}
             ListFooterComponent={isLoading ? <ActivityIndicator size="small" color="#3B82F6" style={{ marginVertical: 10 }} /> : null}
-            ListEmptyComponent={!isLoading ? (
-              <View style={{ alignItems: 'center', marginTop: 50, paddingHorizontal: 20 }}>
-                <Icon name="chat-bubble-outline" size={48} color="#D1D5DB" />
-                <Text style={{ color: '#6B7280', marginTop: 16, textAlign: 'center', fontSize: 16 }}>
-                  {randomGreeting}
-                </Text>
+            ListEmptyComponent={!isLoading && !isAiStreaming ? (
+              <View style={{ alignItems: 'center', marginTop: 50 }}>
+                <Text style={{ color: '#9CA3AF' }}>Bắt đầu trò chuyện với AI...</Text>
               </View>
             ) : null}
           />
 
+          {isAiStreaming && !aiHistory.length && (
+            <View style={styles.streamingIndicator}>
+              <ActivityIndicator size="small" color="#6B7280" />
+              <Text style={styles.streamingText}>{t("loading.ai")}</Text>
+            </View>
+          )}
+
+          {/* Input Area */}
           <View style={styles.inputContainer}>
             <TextInput
               style={styles.input}
@@ -289,17 +307,19 @@ const ChatAIScreen = () => {
               onSubmitEditing={handleSendMessage}
               returnKeyType="send"
               multiline
+              editable={!isAiStreaming}
             />
             <TouchableOpacity
-              style={[styles.sendButton, (!inputText.trim()) && styles.sendButtonDisabled]}
+              style={[styles.sendButton, (!inputText.trim() || isAiStreaming) && styles.sendButtonDisabled]}
               onPress={handleSendMessage}
-              disabled={!inputText.trim()}
+              disabled={!inputText.trim() || isAiStreaming}
             >
               <Icon name="send" size={20} color="#FFFFFF" />
             </TouchableOpacity>
           </View>
         </View>
 
+        {/* History Modal */}
         <Modal
           visible={isHistoryVisible}
           animationType="slide"
@@ -327,7 +347,7 @@ const ChatAIScreen = () => {
               </TouchableOpacity>
 
               <FlatList
-                data={aiRoomList}
+                data={aiRooms}
                 keyExtractor={(item) => item.roomId}
                 renderItem={({ item }) => (
                   <TouchableOpacity
@@ -396,6 +416,9 @@ const styles = createScaledSheet({
 
   translateButtonIcon: { marginLeft: 8, padding: 4 },
 
+  streamingIndicator: { flexDirection: "row", alignItems: "center", padding: 8, justifyContent: "center" },
+  streamingText: { marginLeft: 8, color: "#6B7280", fontSize: 12 },
+
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -419,6 +442,7 @@ const styles = createScaledSheet({
   sendButton: { backgroundColor: "#3B82F6", borderRadius: 24, padding: 10 },
   sendButtonDisabled: { backgroundColor: "#D1D5DB" },
 
+  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" },
   modalContent: { backgroundColor: "#FFFFFF", borderTopLeftRadius: 20, borderTopRightRadius: 20, height: "70%", padding: 16 },
   modalHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 },

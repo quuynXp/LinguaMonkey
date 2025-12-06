@@ -19,6 +19,77 @@ from sqlalchemy import Column, String, Integer, Text, TIMESTAMP, BigInteger
 from sqlalchemy.sql import func
 
 Base = declarative_base()
+import enum
+from datetime import datetime
+
+Base = declarative_base()
+
+class RoomPurpose(str, enum.Enum):
+    QUIZ_TEAM = "QUIZ_TEAM"
+    CALL = "CALL"
+    PRIVATE_CHAT = "PRIVATE_CHAT"
+    GROUP_CHAT = "GROUP_CHAT"
+    AI_CHAT = "AI_CHAT"
+    COURSE_CHAT = "COURSE_CHAT"
+
+class RoomStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+    CLOSED = "CLOSED"
+
+class RoomType(str, enum.Enum):
+    PUBLIC = "PUBLIC"
+    PRIVATE = "PRIVATE"
+    GROUP = "GROUP"
+
+class RoomTopic(str, enum.Enum):
+    WORLD = "WORLD"
+    VN = "VN" 
+    EN_LEARNING = "EN_LEARNING"
+
+class MessageType(str, enum.Enum):
+    TEXT = "TEXT"
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
+    AUDIO = "AUDIO"
+
+# --- ENTITIES ---
+
+# class TranslationLexicon(Base):
+#     __tablename__ = "translation_lexicon"
+#     __table_args__ = {"schema": "public"}
+
+#     id = Column(BigInteger, primary_key=True, index=True)
+#     original_text = Column(Text, nullable=False)
+#     original_lang = Column(String(10), nullable=False)
+#     translations = Column(JSONB, default={})
+#     usage_count = Column(BigInteger, default=1)
+#     last_used_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+#     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
+
+class Room(Base):
+    __tablename__ = "rooms"
+    __table_args__ = {"schema": "public"}
+
+    room_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    room_name = Column(String(255), nullable=False)
+    course_id = Column(UUID(as_uuid=True), nullable=True)
+    creator_id = Column(UUID(as_uuid=True), nullable=True) # Lưu ý: Java dùng UUID, cần check User table
+    max_members = Column(Integer, nullable=False, default=2)
+    
+    # Map Enum String vào DB
+    purpose = Column(String(50), nullable=True) 
+    topic = Column(String(50), nullable=True)
+    room_type = Column(String(50), nullable=False, default="PRIVATE")
+    status = Column(String(50), nullable=False, default="ACTIVE")
+
+    room_code = Column(String(6), unique=True, nullable=True)
+    password = Column(String(255), nullable=True)
+    content = Column(Text, nullable=True)
+    
+    created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    updated_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+
 
 class TranslationLexicon(Base):
     __tablename__ = "translation_lexicon"

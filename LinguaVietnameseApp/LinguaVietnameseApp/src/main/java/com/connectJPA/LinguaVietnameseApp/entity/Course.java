@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
@@ -41,6 +42,8 @@ public class Course extends BaseEntity {
 
     @Column(name = "creator_id")
     private UUID creatorId;
+
+    private OffsetDateTime lastQualityWarningAt;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "approval_status", nullable = false)

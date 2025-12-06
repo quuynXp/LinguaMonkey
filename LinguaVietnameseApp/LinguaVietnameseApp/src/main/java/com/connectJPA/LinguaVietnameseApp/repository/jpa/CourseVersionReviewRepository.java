@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -30,7 +32,16 @@ public interface CourseVersionReviewRepository extends JpaRepository<CourseVersi
             
     long countByCourseIdAndParentIsNullAndIsDeletedFalse(UUID courseId);
 
+    @Query("SELECT r FROM CourseVersionReview r WHERE r.isSystemChecked = false AND r.isDeleted = false")
+    List<CourseVersionReview> findReviewsPendingToxicityCheck();
 
+    @Query("SELECT COUNT(r) FROM CourseVersionReview r " +
+           "WHERE r.courseId = :courseId " +
+           "AND r.rating < 3.0 " +
+           "AND r.reviewedAt >= :since " +
+           "AND r.isDeleted = false")
+    long countNegativeReviewsSince(@Param("courseId") UUID courseId, @Param("since") OffsetDateTime since);
+    
         // --- New Methods for Creator Dashboard ---
 
     @Query("SELECT COUNT(r) FROM CourseVersionReview r " +

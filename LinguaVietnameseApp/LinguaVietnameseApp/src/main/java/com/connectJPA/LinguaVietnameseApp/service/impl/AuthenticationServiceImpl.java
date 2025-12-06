@@ -1,4 +1,5 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
+
 import com.connectJPA.LinguaVietnameseApp.dto.request.AuthenticationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FacebookUserResponse;
@@ -53,6 +54,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 import static lombok.AccessLevel.PRIVATE;
+
 @Slf4j
 @Service
 @FieldDefaults(level = PRIVATE)
@@ -84,6 +86,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     final RoleRepository roleRepository;
     final RestTemplate restTemplate;
     final UserAuthAccountRepository userAuthAccountRepository;
+    final UserSettingsRepository userSettingsRepository;
     
     private RSAPrivateKey getPrivateKey() throws Exception {
         try {
@@ -678,7 +681,28 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .fullname(fullName != null ? fullName : "User")
                     .createdAt(OffsetDateTime.now())
                     .build();
-            return userRepository.save(u); // INSERT USERS LẦN 1 (CHO SOCIAL/OTP LOGIN)
+            User savedUser = userRepository.save(u); // INSERT USERS LẦN 1 (CHO SOCIAL/OTP LOGIN)
+
+            // FIX: Create UserSettings explicitly when a new user is created
+            UserSettings settings = UserSettings.builder()
+                    .user(savedUser) // Important for @MapsId
+                    .userId(savedUser.getUserId())
+                    .soundEnabled(true)
+                    .studyReminders(true)
+                    .streakReminders(true)
+                    .dailyChallengeReminders(true)
+                    .courseReminders(true)
+                    .coupleReminders(true)
+                    .vipReminders(true)
+                    .autoTranslate(false)
+                    .vibrationEnabled(true)
+                    .profileVisibility(true)
+                    .progressSharing(false)
+                    .searchPrivacy(true)
+                    .build();
+            userSettingsRepository.save(settings);
+
+            return savedUser;
         });
         
         // DÙNG HÀM TÁCH BIỆT ĐỂ TẠO LIÊN KẾT
@@ -697,7 +721,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .provider(provider)
                     .providerUserId(providerUserId)
                     .verified(true)
-                    // Thiết lập isPrimary nếu là tài khoản Auth đầu tiên được thêm (logic này có thể phức tạp hơn)
                     .isPrimary(userAuthAccountRepository.countByUser_UserId(user.getUserId()) == 0) 
                     .linkedAt(OffsetDateTime.now())
                     .build();

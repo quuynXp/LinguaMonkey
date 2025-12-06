@@ -8,6 +8,8 @@ import com.connectJPA.LinguaVietnameseApp.service.MatchmakingQueueService;
 import com.connectJPA.LinguaVietnameseApp.service.RoomService;
 import io.swagger.v3.oas.annotations.Operation;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
@@ -18,11 +20,12 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/matchmaking")
 @RequiredArgsConstructor
+@Slf4j
 public class MatchmakingController {
 
     private final MatchmakingQueueService queueService;
     private final RoomService roomService;
-    private final RoomRepository roomRepository;
+    private final SimpMessagingTemplate messagingTemplate; // FIX: Inject Template
 
     @Operation(summary = "Find a call partner", description = "Adds user to queue and tries to find a best match.")
     @PostMapping("/find-call")
@@ -35,8 +38,7 @@ public class MatchmakingController {
         // 1. Check if I was already matched by someone else while I was waiting
         MatchmakingQueueService.MatchResult pendingMatch = queueService.checkPendingMatch(currentUserId);
         if (pendingMatch != null) {
-            // Reconstruct Room Response from stored data or fetch fresh
-            RoomResponse room = roomService.getRoomById(pendingMatch.getRoomId()); // Assuming roomName stores the unique ID string
+            RoomResponse room = roomService.getRoomById(pendingMatch.getRoomId());
             return buildMatchedResponse(room, pendingMatch.getScore());
         }
 
@@ -48,20 +50,23 @@ public class MatchmakingController {
 
         if (matchResult != null) {
             UUID partnerId = matchResult.getPartnerId();
+            // Create a private room for both
             RoomResponse room = roomService.findOrCreatePrivateRoom(currentUserId, partnerId);
 
             // 4. Notify myself (Immediate return)
             queueService.removeFromQueue(currentUserId);
             
-            // 5. Notify partner (Save to pendingMatches so they find it on next poll)
-            // Storing room info in the result for the partner
+            // 5. Notify partner (Realtime Socket Notification)
+            // FIX: Gửi thông báo socket đến partner đang đợi để họ chuyển màn hình
             MatchmakingQueueService.MatchResult partnerResult = new MatchmakingQueueService.MatchResult(
                 currentUserId, 
                 matchResult.getScore(), 
                 room.getRoomId(), 
-                room.getRoomId().toString() // Fixed: Convert UUID to String for roomName
+                room.getRoomId().toString()
             );
-            queueService.notifyPartner(partnerId, partnerResult);
+            
+            queueService.notifyPartner(partnerId, partnerResult); // Save to map as backup
+            sendMatchNotificationToPartner(partnerId, room, matchResult.getScore());
 
             return buildMatchedResponse(room, matchResult.getScore());
         } else {
@@ -80,6 +85,26 @@ public class MatchmakingController {
         }
     }
     
+    private void sendMatchNotificationToPartner(UUID partnerId, RoomResponse room, int score) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("type", "MATCH_FOUND");
+            payload.put("status", "MATCHED");
+            payload.put("room", room);
+            payload.put("score", score);
+            
+            // Gửi vào queue cá nhân của user
+            messagingTemplate.convertAndSendToUser(
+                partnerId.toString(),
+                "/queue/notifications",
+                payload
+            );
+            log.info("Sent MATCH_FOUND notification to user {}", partnerId);
+        } catch (Exception e) {
+            log.error("Failed to send match notification via socket: {}", e.getMessage());
+        }
+    }
+
     private AppApiResponse<Map<String, Object>> buildMatchedResponse(RoomResponse room, int score) {
         Map<String, Object> responseData = new HashMap<>();
         responseData.put("status", "MATCHED");

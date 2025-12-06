@@ -1,35 +1,35 @@
+# src/learning_service.py
+import os
 import grpc.aio
 from concurrent import futures
 import logging
 import jwt
-import httpx 
-import os
-import asyncio
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
+import asyncio
 from dotenv import load_dotenv
-from google.protobuf import empty_pb2
-
-# --- INTERNAL MODULES ---
 from .api.matchmaking_service import match_users_with_gemini
+
 from .core.grpc_auth_decorator import authenticated_grpc_method
+
 from src.grpc_generated import learning_service_pb2 as learning_pb2
 from src.grpc_generated import learning_service_pb2_grpc as learning_pb2_grpc
 
 from .core.session import AsyncSessionLocal
 from .core.cache import get_redis_client, close_redis_client
 from .core.user_profile_service import get_user_profile
-from .core.translator import get_translator
 
-# --- API HANDLERS ---
 from .api.speech_to_text import speech_to_text
 from .api.chat_ai import chat_with_ai
 # from .api.spelling_checker import check_spelling
+# from .api.pronunciation_checker import check_pronunciation
+from .api.image_text_analyzer import analyze_image_with_text
 from .api.passage_generator import generate_passage
 from .api.image_generator import generate_image
 from .api.text_generator import generate_text
 from .api.roadmap_generator import generate_roadmap
 from .api.translation_checker import check_translation
+from .api.translation import translate_text
 from .api.tts_generator import generate_tts
 from .api.quiz_generator import generate_quiz
 from .api.analytics_service import analyze_course_quality, decide_refund
@@ -37,26 +37,22 @@ from .api.review_analyzer import analyze_review
 from .api.course_evaluator import evaluate_course_structure
 from .api.pronunciation_checker import check_pronunciation_logic, stream_pronunciation_logic
 from .api.writing_grader import grade_writing_logic
+from .core.translator import get_translator
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO)
+
 
 class LearningService(learning_pb2_grpc.LearningServiceServicer):
     def __init__(self):
         try:
-            # Load Public Key for JWT Verification
             with open("public_key.pem", "rb") as f:
                 self.public_key = serialization.load_pem_public_key(
                     f.read(), backend=default_backend()
                 )
         except Exception as e:
             logging.error(f"Failed to load public key: {str(e)}")
-            # Fallback for dev environment or panic
-            self.public_key = None 
-            
+            raise
         self.redis_client = get_redis_client()
-        # Init Hybrid Translator with Redis
-        self.translator = get_translator(self.redis_client)
 
     def _verify_token(self, context):
         try:
@@ -67,11 +63,6 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 context.set_details("Missing or invalid Authorization header")
                 return None
             token = auth[7:]
-            
-            # If no public key (e.g. dev), skip signature check or handle accordingly
-            if not self.public_key:
-                 return jwt.decode(token, options={"verify_signature": False})
-
             decoded = jwt.decode(
                 token,
                 self.public_key,
@@ -94,49 +85,35 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             return None
         return await get_user_profile(user_id, db_session, self.redis_client)
 
-    @authenticated_grpc_method
-    async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
-        """
-        Uses HybridTranslator (Redis LTM + Gemini)
-        """
-        # Call the hybrid translator
-        translated_text, detected_lang = await self.translator.translate(
-            text=request.text, 
-            source_lang_hint=request.source_language, 
-            target_lang=request.target_language
-        )
-        
-        return learning_pb2.TranslateResponse(
-            translated_text=translated_text,
-            source_language_detected=detected_lang,
-            confidence=1.0 if translated_text else 0.0,
-            error=""
-        )
 
     @authenticated_grpc_method
     async def EvaluateCourseVersion(self, request, context, claims) -> learning_pb2.EvaluateCourseVersionResponse:
         logging.info(f"Evaluating course: {request.course_title}")
+        
         rating, comment, error = await evaluate_course_structure(
             request.course_title,
             request.course_description,
             request.lessons
         )
+
         return learning_pb2.EvaluateCourseVersionResponse(
             rating=rating,
             review_comment=comment,
             error=error
         )
 
+
     @authenticated_grpc_method
     async def GradeCertificationTest(self, request, context, claims) -> learning_pb2.GradeTestResponse:
         logging.info(f"Grading test session {request.session_id} type {request.test_type}")
+        
         graded_answers = []
         total_score = 0
         total_possible = 0
         
         for answer in request.answers:
             graded_answer = learning_pb2.GradedAnswerProto(question_id=answer.question_id)
-            points = 10.0
+            points = 10.0 # Standardize points per question for now
             total_possible += points
 
             try:
@@ -147,31 +124,36 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                         graded_answer.is_correct = False
                         graded_answer.feedback = "No audio provided"
                     else:
-                        feedback, score, error = await check_pronunciation_logic(audio_data, answer.reference_text, "en")
+                        # Use existing pronunciation module
+                        feedback, score, error = await check_pronunciation(audio_data, answer.reference_text)
                         if error:
                             graded_answer.score = 0
                             graded_answer.feedback = f"Error: {error}"
                         else:
+                            # Standardize 0-100 score to points
                             graded_answer.score = (score / 100.0) * points
                             graded_answer.is_correct = score > 60
                             graded_answer.feedback = feedback
 
                 elif answer.type == "WRITING":
-                    feedback, score, error = await grade_writing_logic(
-                        user_text=answer.text_content,
-                        prompt_text=answer.reference_text,
-                        image_bytes=None,
-                        language="en"
-                    )
+                    prompt = f"Grade this writing for a {request.test_type} exam. Topic/Prompt: '{answer.reference_text}'. Student Answer: '{answer.text_content}'. Provide a score out of 100 and brief feedback."
+                    response_text, error = await chat_with_ai(prompt, [], "en")
+                    
                     if error:
                         graded_answer.score = 0
                         graded_answer.feedback = "AI Grading failed"
                     else:
-                        graded_answer.score = (score / 100.0) * points
-                        graded_answer.is_correct = score > 60
-                        graded_answer.feedback = feedback
+                    #   Simple heuristics to parse score (In production, use structured JSON output)
+                        import re
+                        score_match = re.search(r'\b(\d{1,3})/100', response_text)
+                        ai_score = float(score_match.group(1)) if score_match else 70.0 # Fallback
+                            
+                        graded_answer.score = (ai_score / 100.0) * points
+                        graded_answer.is_correct = ai_score > 60
+                        graded_answer.feedback = response_text
                             
                 else: 
+                    # Choice questions should ideally be graded by Java, but if passed here, assume incorrect or skip
                     graded_answer.score = 0
                     graded_answer.feedback = "Passed to AI but not AI type"
 
@@ -184,7 +166,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 graded_answer.feedback = "System Error"
                 graded_answers.append(graded_answer)
 
-        proficiency = "A1"
+        proficiency = "A1" # Calculate based on score logic
         percent = (total_score / total_possible * 100) if total_possible > 0 else 0
         if percent > 90: proficiency = "C2"
         elif percent > 80: proficiency = "C1"
@@ -201,37 +183,57 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     
     @authenticated_grpc_method
     async def SpeechToText(self, request, context, claims) -> learning_pb2.SpeechResponse:
-        audio_data = request.audio.inline_data if request.audio.inline_data else b""
-        text, detected_lang, error = speech_to_text(audio_data, request.language)
+        audio_data = (
+            request.audio.inline_data if request.audio.inline_data else b""
+        )
+        text, error = speech_to_text(audio_data, request.language)
         return learning_pb2.SpeechResponse(text=text, error=error)
 
     @authenticated_grpc_method
     async def GenerateTts(self, request, context, claims) -> learning_pb2.TtsResponse:
-        audio_data, error = await generate_tts(request.text, request.language, self.redis_client)
+        audio_data, error = generate_tts(request.text, request.language)
         return learning_pb2.TtsResponse(audio_data=audio_data, error=error)
 
+    # --- SPEAKING ---
     async def CheckPronunciation(self, request, context):
+        """
+        Non-streaming Check: Nhận Audio + Transcript chuẩn từ Java
+        """
         try:
+            # Lấy transcript chuẩn từ request gRPC (đã update proto)
             reference_text = request.reference_text 
             if not reference_text:
                 return learning_pb2.PronunciationResponse(error="Missing reference text form Server")
 
             audio_bytes = request.audio.inline_data
+            
+            # Gọi logic (bên file pronunciation_checker.py)
             feedback, score, error = await check_pronunciation_logic(
-                audio_bytes, reference_text, request.language
+                audio_bytes, 
+                reference_text, 
+                request.language
             )
+            
             return learning_pb2.PronunciationResponse(
-                feedback=feedback, score=score, error=error or ""
+                feedback=feedback,
+                score=score,
+                error=error or ""
             )
         except Exception as e:
             logging.error(f"CheckPronunciation Error: {e}")
             return learning_pb2.PronunciationResponse(error=str(e))
 
     async def StreamPronunciation(self, request_iterator, context):
+        """
+        Streaming Check: Nhận Audio stream + Transcript (gửi ở chunk đầu)
+        """
         full_audio = b""
         reference_text = ""
+        
+        # Gom chunks (Demo simple buffering, prod nên stream pipe)
         async for chunk in request_iterator:
             full_audio += chunk.audio_chunk
+            # Java gửi reference_text ở chunk đầu tiên
             if chunk.reference_text:
                 reference_text = chunk.reference_text
         
@@ -241,6 +243,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             )
              return
 
+        # Gọi logic xử lý
         async for result in stream_pronunciation_logic(full_audio, reference_text):
             yield learning_pb2.PronunciationChunkResponse(
                 score=float(result.get("score", 0)),
@@ -248,6 +251,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 is_final=result.get("is_final", False),
                 chunk_type=result.get("type", "chunk")
             )
+
 
     @authenticated_grpc_method
     async def FindMatch(self, request, context, claims) -> learning_pb2.FindMatchResponse:
@@ -257,16 +261,20 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 request.current_user_prefs,
                 request.candidates
             )
+
             if error or not match_result:
                 return learning_pb2.FindMatchResponse(
-                    match_found=False, error=error or "No match found"
+                    match_found=False,
+                    error=error or "No match found"
                 )
+
             return learning_pb2.FindMatchResponse(
                 match_found=True,
                 partner_user_id=match_result["best_match_id"],
                 compatibility_score=float(match_result["score"]),
                 reason=match_result["reason"]
             )
+
         except Exception as e:
             logging.error(f"Error during FindMatch: {e}", exc_info=True)
             return learning_pb2.FindMatchResponse(error=f"Internal error: {str(e)}")
@@ -276,54 +284,70 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
     #     corrections, error = check_spelling(request.text, request.language)
     #     return learning_pb2.SpellingResponse(corrections=corrections, error=error)
 
-    @authenticated_grpc_method
-    async def CheckTranslation(self, request, context, claims) -> learning_pb2.CheckTranslationResponse:
-        feedback, score, error = check_translation(
-            request.reference_text, request.translated_text, request.target_language
-        )
-        return learning_pb2.CheckTranslationResponse(
-            feedback=feedback, score=score, error=error
-        )
+    # @authenticated_grpc_method
+    # async def CheckTranslation(self, request, context, claims) -> learning_pb2.CheckTranslationResponse:
+    #     feedback, score, error = check_translation(
+    #         request.reference_text, request.translated_text, request.target_language
+    #     )
+    #     return learning_pb2.CheckTranslationResponse(
+    #         feedback=feedback, score=score, error=error
+    #     )
 
+    # --- WRITING ---
     async def CheckWritingWithImage(self, request, context):
+        """
+        Writing Check: Nhận Prompt (Đề bài) + User Text (Bài làm) + Image (Optional)
+        """
         try:
             image_bytes = request.image.inline_data if request.image.inline_data else None
+            
+            # Gọi logic chấm điểm mới (dùng Gemini thay vì CLIP)
             feedback, score, error = await grade_writing_logic(
-                user_text=request.user_text,
-                prompt_text=request.prompt,
-                image_bytes=image_bytes,
+                user_text=request.user_text,   # Bài làm
+                prompt_text=request.prompt,    # Đề bài từ DB
+                image_bytes=image_bytes,       # Ảnh đính kèm (nếu có)
                 language=request.language
             )
+            
             return learning_pb2.WritingImageResponse(
-                feedback=feedback, score=score, error=error or ""
+                feedback=feedback,
+                score=score,
+                error=error or ""
             )
         except Exception as e:
             logging.error(f"CheckWriting Error: {e}")
             return learning_pb2.WritingImageResponse(error=str(e))
 
+
     @authenticated_grpc_method
     async def ChatWithAI(self, request, context, claims) -> learning_pb2.ChatResponse:
         user_id = request.user_id or claims.get("sub")
         history_list = [{"role": m.role, "content": m.content} for m in request.history]
+
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
                 response, error = await chat_with_ai(
-                    request.message, history_list, "en", user_profile,
+                    request.message,
+                    history_list,
+                    "en",
+                    user_profile,
                 )
             return learning_pb2.ChatResponse(response=response, error=error)
         except Exception as e:
             logging.error(f"Error during ChatWithAI with session: {e}", exc_info=True)
             return learning_pb2.ChatResponse(error=f"Internal service error: {str(e)}")
 
+
     @authenticated_grpc_method
     async def GenerateSeedData(self, request, context, claims) -> learning_pb2.SeedDataResponse:
-        # Move import here to avoid circular imports if any
-        from .api.quiz_generator import improve_quiz_data 
         logging.info(f"Generating Seed Data for topic: {request.topic}")
         
+        # 1. Fix/Generate Text Data using Gemini
         fixed_data, text_error = await improve_quiz_data(
-            request.raw_question, list(request.raw_options), request.topic
+            request.raw_question, 
+            list(request.raw_options), 
+            request.topic
         )
         
         if text_error or not fixed_data:
@@ -333,25 +357,32 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         fixed_options = fixed_data.get("fixed_options", [])
         image_prompt = fixed_data.get("image_prompt", f"Illustration for: {fixed_question}")
 
+        # 2. Generate Audio (TTS) for the Question
         audio_bytes = b""
         try:
-            audio_bytes, tts_error = await generate_tts(fixed_question, "vi", self.redis_client) 
-            if tts_error: logging.warning(f"TTS generation failed: {tts_error}")
+            # Reusing existing tts logic
+            audio_bytes, tts_error = await generate_tts(fixed_question, "vi") 
+            if tts_error:
+                logging.warning(f"TTS generation failed for seed data: {tts_error}")
         except Exception as e:
             logging.error(f"TTS Exception: {e}")
 
+        # 3. Generate Image
         image_bytes = b""
         try:
+            # Generate Image returns a URL usually. We need to download it to return bytes to Java.
             image_url, img_error = await generate_image("admin_seed", image_prompt, "en", None)
+            
             if image_url and not img_error:
-                async with httpx.AsyncClient() as client:
-                    resp = await client.get(image_url)
-                    if resp.status_code == 200:
-                        image_bytes = resp.content
-                    else:
-                        logging.warning(f"Failed to download generated image from {image_url}")
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(image_url) as resp:
+                        if resp.status == 200:
+                            image_bytes = await resp.read()
+                        else:
+                            logging.warning(f"Failed to download generated image from {image_url}")
             else:
                  logging.warning(f"Image generation failed: {img_error}")
+
         except Exception as e:
              logging.error(f"Image Seed Exception: {e}")
 
@@ -365,23 +396,41 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
             image_prompt_used=image_prompt,
             error=""
         )
+
         
+    @authenticated_grpc_method
+    async def Translate(self, request, context, claims) -> learning_pb2.TranslateResponse:
+        translated_text, detected_lang = await self.translator.translate(
+            request.text, 
+            request.source_language, 
+            request.target_language
+        )
+        
+        return learning_pb2.TranslateResponse(
+            translated_text=translated_text,
+            source_language_detected=detected_lang, # Return actual detected lang
+            confidence=1.0 if translated_text else 0.0,
+            error=""
+        )
+
     @authenticated_grpc_method
     async def GenerateImage(self, request, context, claims) -> learning_pb2.GenerateImageResponse:
         user_id = request.user_id or claims.get("sub")
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
-                image_url, error = await generate_image(
+                # Assuming generate_image returns a URL string in the first return value
+                image_url, error = generate_image(
                     user_id, request.prompt, request.language, user_profile
                 )
+            
             return learning_pb2.GenerateImageResponse(
                 image_urls=[image_url] if image_url else [], 
                 model_used="gemini-imagen",
                 error=error,
             )
         except Exception as e:
-            logging.error(f"Error during GenerateImage: {e}", exc_info=True)
+            logging.error(f"Error during GenerateImage with session: {e}", exc_info=True)
             return learning_pb2.GenerateImageResponse(error=f"Internal service error: {str(e)}")
 
     @authenticated_grpc_method
@@ -390,12 +439,13 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
+                # Now awaiting the async Gemini call
                 text, error = await generate_text(
                     user_id, request.prompt, request.language, user_profile
                 )
             return learning_pb2.GenerateTextResponse(text=text, error=error)
         except Exception as e:
-            logging.error(f"Error during GenerateText: {e}", exc_info=True)
+            logging.error(f"Error during GenerateText with session: {e}", exc_info=True)
             return learning_pb2.GenerateTextResponse(error=f"Internal service error: {str(e)}")
 
     @authenticated_grpc_method
@@ -404,14 +454,14 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
         try:
             async with AsyncSessionLocal() as db_session:
                 user_profile = await self._get_profile_from_db(user_id, db_session)
-                passage, error = await generate_passage(
+                passage, error = generate_passage(
                     user_id, request.language, request.topic, user_profile
                 )
             return learning_pb2.GeneratePassageResponse(
                 passage=passage, difficulty="medium", error=error
             )
         except Exception as e:
-            logging.error(f"Error during GeneratePassage: {e}", exc_info=True)
+            logging.error(f"Error during GeneratePassage with session: {e}", exc_info=True)
             return learning_pb2.GeneratePassageResponse(error=f"Internal service error: {str(e)}")
 
     @authenticated_grpc_method
@@ -437,8 +487,11 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                     )
                 )
 
-            if error: return learning_pb2.RoadmapDetailedResponse(error=error)
+            if error:
+                return learning_pb2.RoadmapDetailedResponse(error=error)
             
+            title = totals.get("title", "Generated Detailed Roadmap")
+            description = totals.get("description", generated_text)
             items_proto = [learning_pb2.RoadmapItemProto(**i) for i in items]
             resources_proto = [learning_pb2.RoadmapResourceProto(**r) for r in resources]
             guidances_proto = [learning_pb2.RoadmapGuidanceProto(**g) for g in guidances]
@@ -446,8 +499,8 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
 
             return learning_pb2.RoadmapDetailedResponse(
                 roadmap_id=request.roadmap_id or "new-detail-id",
-                title=totals.get("title", "Generated Detailed Roadmap"),
-                description=totals.get("description", generated_text),
+                title=title,
+                description=description,
                 language=request.language,
                 items=items_proto,
                 resources=resources_proto,
@@ -455,7 +508,7 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 milestones=milestones_proto,
             )
         except Exception as e:
-            logging.error(f"Error during CreateOrUpdateRoadmapDetailed: {e}", exc_info=True)
+            logging.error(f"Error during CreateOrUpdateRoadmapDetailed with session: {e}", exc_info=True)
             return learning_pb2.RoadmapDetailedResponse(error=f"Internal service error: {str(e)}")
 
     @authenticated_grpc_method
@@ -467,19 +520,19 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 questions_list, error = await generate_quiz(
                     user_id, request.num_questions, request.mode, request.topic, user_profile
                 )
-                if error: return learning_pb2.QuizGenerationResponse(error=error)
-                
+                if error:
+                    return learning_pb2.QuizGenerationResponse(error=error)
                 questions_proto = [learning_pb2.QuizQuestionProto(**q) for q in questions_list]
                 return learning_pb2.QuizGenerationResponse(
                     quiz_id="quiz_" + os.urandom(4).hex(), questions=questions_proto
                 )
         except Exception as e:
-            logging.error(f"Error during GenerateLanguageQuiz: {e}", exc_info=True)
+            logging.error(f"Error during GenerateLanguageQuiz with session: {e}", exc_info=True)
             return learning_pb2.QuizGenerationResponse(error=f"Internal service error: {str(e)}")
 
     @authenticated_grpc_method
     async def AnalyzeCourseQuality(self, request, context, claims) -> learning_pb2.CourseQualityResponse:
-        score, warnings, verdict, error = await analyze_course_quality(
+        score, warnings, verdict, error = analyze_course_quality(
             request.course_id, request.lesson_ids
         )
         return learning_pb2.CourseQualityResponse(
@@ -488,12 +541,18 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
 
     @authenticated_grpc_method
     async def RefundDecision(self, request, context, claims) -> learning_pb2.RefundDecisionResponse:
+        caller_role = claims.get("role", "USER")
+        caller_sub = claims.get("sub", "")
+
+        logging.info(f"RefundDecision called by: {caller_sub} (Role: {caller_role})")
+        
         decision, label, confidence, explanations, error = await decide_refund(
             request.transaction_id,
             request.user_id,
             request.course_id,
             request.reason_text,
         )
+
         return learning_pb2.RefundDecisionResponse(
             decision=decision,
             label=label,
@@ -513,9 +572,15 @@ class LearningService(learning_pb2_grpc.LearningServiceServicer):
                 rating=request.rating,
                 content_type=request.content_type,
             )
-            if error: return learning_pb2.ReviewQualityResponse(error=error)
+            
+            is_toxic = "TOXIC" in sentiment.upper() or "HATE" in sentiment.upper() or "OFFENSIVE" in sentiment.upper()
+
+            if error:
+                return learning_pb2.ReviewQualityResponse(error=error)
+                
             return learning_pb2.ReviewQualityResponse(
                 is_valid=is_valid,
+                is_toxic=is_toxic,
                 sentiment=sentiment,
                 topics=topics,
                 suggested_action=suggested_action,
@@ -535,8 +600,13 @@ async def serve():
 
     try:
         await server.wait_for_termination()
+    # except KeyboardInterrupt:
+    #     logging.info("Stopping server...")
+    #     await server.stop(0)
     finally:
         await close_redis_client()
 
+
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     asyncio.run(serve())

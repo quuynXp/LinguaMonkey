@@ -78,6 +78,7 @@ const WebRTCCallScreen = () => {
   // === REF ===
   const ws = useRef<WebSocket | null>(null);
   const pc = useRef<any>(null);
+  const iceCandidateQueue = useRef<any[]>([]); // FIX: Queue for ICE candidates before remote desc set
 
   // === SETUP CONSTANTS ===
   const subtitleModes: ModeOption[] = [
@@ -105,10 +106,15 @@ const WebRTCCallScreen = () => {
         senderId: user?.userId,
         payload: message
       }));
+    } else {
+      console.warn("WS not open, cannot send signal:", message.type);
     }
   }, [roomId, user?.userId]);
 
   const setupPeerConnection = useCallback((stream: any) => {
+    if (pc.current) return; // Prevent double initialization
+
+    console.log("🛠️ Setting up PeerConnection...");
     pc.current = new (window as any).RTCPeerConnection({ iceServers });
 
     pc.current.onicecandidate = (event: any) => {
@@ -134,9 +140,7 @@ const WebRTCCallScreen = () => {
       ]);
     }
 
-    // FIX TS ERROR 1 & 3: Loại bỏ import MediaStreamConstraints bị lỗi
-    // và sử dụng kiểu any hoặc cấu trúc đối tượng chuẩn.
-    const constraints: any = { // Sử dụng 'any' để tránh lỗi type import
+    const constraints: any = {
       video: {
         width: 640,
         height: 480,
@@ -187,12 +191,13 @@ const WebRTCCallScreen = () => {
   // --- WEBSOCKET AND SIGNALING LOGIC ---
   useEffect(() => {
     // Chỉ khởi tạo WebSocket khi có đủ dữ liệu cần thiết (đặc biệt là videoCallData)
-    if (!roomId || !accessToken || !videoCallData || !localStream) return;
+    if (!roomId || !accessToken || !videoCallData || !localStream || !pc.current) return;
 
     let cleanBase = API_BASE_URL.replace('http://', '').replace('https://', '');
     if (cleanBase.endsWith('/')) cleanBase = cleanBase.slice(0, -1);
     const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
 
+    // FIX: Đảm bảo connect đúng endpoint Python đã được sửa
     const wsUrl = `${protocol}${cleanBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${roomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
 
     if (ws.current) ws.current.close();
@@ -202,7 +207,7 @@ const WebRTCCallScreen = () => {
       console.log("✅ WebSocket Connected");
       initSubtitleAudioStream();
 
-      // FIX LOGIC: Kiểm tra nếu mình là Caller thì tạo Offer
+      // LOGIC QUAN TRỌNG: Caller tạo Offer
       if (videoCallData.callerId === user?.userId) {
         console.log("🚀 I am the CALLER, creating offer...");
         createOffer();
@@ -224,6 +229,8 @@ const WebRTCCallScreen = () => {
           return () => clearTimeout(timer);
 
         } else if (data.type === 'webrtc_signal' && data.senderId !== user?.userId) {
+          // FIX: Thêm log để debug
+          console.log("📡 Received Signal:", data.payload.type);
           handleSignaling(data.payload);
         }
       } catch (err) { console.error("WS Parse Error:", err); }
@@ -246,6 +253,12 @@ const WebRTCCallScreen = () => {
         console.log("📩 Received Offer");
         await pc.current.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
 
+        // Process queued ICE candidates
+        while (iceCandidateQueue.current.length > 0) {
+          const c = iceCandidateQueue.current.shift();
+          await pc.current.addIceCandidate(new RTCIceCandidate(c));
+        }
+
         console.log("📤 Sending Answer...");
         const answer = await pc.current.createAnswer();
         await pc.current.setLocalDescription(answer);
@@ -254,10 +267,20 @@ const WebRTCCallScreen = () => {
       } else if (type === 'answer') {
         console.log("📩 Received Answer");
         await pc.current.setRemoteDescription(new RTCSessionDescription({ type, sdp }));
+        // Process queued ICE candidates
+        while (iceCandidateQueue.current.length > 0) {
+          const c = iceCandidateQueue.current.shift();
+          await pc.current.addIceCandidate(new RTCIceCandidate(c));
+        }
 
       } else if (type === 'ice_candidate') {
-        console.log("🧊 Adding ICE Candidate");
-        await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
+        if (pc.current.remoteDescription) {
+          console.log("🧊 Adding ICE Candidate");
+          await pc.current.addIceCandidate(new RTCIceCandidate(candidate));
+        } else {
+          console.log("🧊 Queueing ICE Candidate (Remote Desc not ready)");
+          iceCandidateQueue.current.push(candidate);
+        }
       }
     } catch (error) {
       console.error("WebRTC Signaling Error:", error);
@@ -388,6 +411,10 @@ const WebRTCCallScreen = () => {
             <Text style={styles.remoteVideoText}>
               {isLoadingCallData ? "Loading info..." : t('waiting_for_partner')}
             </Text>
+            {/* Debug Info */}
+            <Text style={{ color: 'gray', fontSize: 10, marginTop: 5 }}>
+              Room: {roomId} | Role: {videoCallData?.callerId === user?.userId ? 'Caller' : 'Callee'}
+            </Text>
           </View>
         )}
 
@@ -501,7 +528,7 @@ const styles = createScaledSheet({
   localVideo: {
     position: 'absolute',
     top: 60,
-    right: 70,
+    right: 20, // Adjusted to avoid overlapping with controls if needed, or keep 70
     width: 100,
     height: 150,
     aspectRatio: 0.75,
@@ -528,7 +555,7 @@ const styles = createScaledSheet({
   subtitleTextOriginal: { color: '#e5e7eb', fontSize: 14, fontWeight: '500', textAlign: 'center', marginBottom: 4, fontStyle: 'italic' },
   subtitleTextTranslated: { color: '#fbbf24', fontSize: 18, fontWeight: 'bold', textAlign: 'center', textShadowColor: 'rgba(0, 0, 0, 0.75)', textShadowOffset: { width: -1, height: 1 }, textShadowRadius: 10 },
   subtitlePlaceholder: { color: '#9ca3af', fontSize: 14, fontStyle: 'italic' },
-  controls: { position: 'absolute', top: 60, right: 20, flexDirection: 'column', gap: 16, zIndex: 10 },
+  controls: { position: 'absolute', top: 60, left: 20, flexDirection: 'column', gap: 16, zIndex: 10 }, // Moved to Left to avoid Local Video overlap
   iconButton: { backgroundColor: 'rgba(31, 41, 55, 0.8)', padding: 10, borderRadius: 25, alignItems: 'center', justifyContent: 'center', width: 48, height: 48, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   iconText: { fontSize: 24, color: 'white' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)' },

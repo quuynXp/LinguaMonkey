@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import {
     ActivityIndicator,
     FlatList,
@@ -15,16 +15,16 @@ import {
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
-import { useMutation } from "@tanstack/react-query";
-import { gotoTab } from "../../utils/navigationRef";
-import { useChatStore } from "../../stores/ChatStore";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
+import { useChatStore, getMessageDisplayData } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useFriendships } from "../../hooks/useFriendships";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
 import FileUploader from "../../components/common/FileUploader";
-import { FriendshipStatus } from "../../types/enums";
-import { UserProfileResponse } from "../../types/dto";
+import { RoomPurpose, FriendshipStatus } from "../../types/enums";
+import { RoomResponse, MemberResponse, AppApiResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCountryFlag } from "../../utils/flagUtils";
@@ -32,6 +32,7 @@ import { getAvatarSource } from "../../utils/avatarUtils";
 
 const { width } = Dimensions.get('window');
 
+// --- TYPES ---
 type UIMessage = {
     id: string;
     sender: 'user' | 'other';
@@ -43,12 +44,14 @@ type UIMessage = {
     translatedText?: string;
     user: string;
     avatar: string | null;
+    hasTargetLangTranslation: boolean;
     sentAt: string;
     isRead: boolean;
     senderId: string;
     translatedLang?: string;
     isLocal?: boolean;
     senderProfile?: UserProfileResponse;
+    showTranslation?: boolean;
     roomId?: string;
     isDeleted?: boolean;
 };
@@ -62,8 +65,21 @@ interface ChatInnerViewProps {
     autoTranslate?: boolean;
     soundEnabled?: boolean;
     initialFocusMessageId?: string | null;
+    members?: MemberResponse[];
 }
 
+type ChatInnerViewRouteParams = {
+    roomId: string;
+    initialFocusMessageId?: string | null;
+};
+
+type LanguageOption = {
+    code: string;
+    name: string;
+    flag: React.JSX.Element | null;
+};
+
+// --- HELPER FUNCTIONS ---
 const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en') => {
     const date = new Date(sentAt);
     if (isNaN(date.getTime())) return '...';
@@ -71,6 +87,7 @@ const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en'
     return date.toLocaleTimeString(locale, timeOptions);
 };
 
+// --- SUB-COMPONENT: QUICK PROFILE POPUP ---
 const QuickProfilePopup = ({
     visible,
     profile,
@@ -80,7 +97,7 @@ const QuickProfilePopup = ({
     statusInfo
 }: {
     visible: boolean;
-    profile: UserProfileResponse | null;
+    profile: UserProfileResponse | MemberResponse | null;
     onClose: () => void;
     onNavigateProfile: () => void;
     currentUserId: string;
@@ -95,7 +112,9 @@ const QuickProfilePopup = ({
     if (!profile) return null;
 
     const isMe = profile.userId === currentUserId;
-    const { isFriend, friendRequestStatus } = profile;
+    const fullProfile = (profile as any).friendRequestStatus ? (profile as UserProfileResponse) : null;
+    const isFriend = fullProfile?.isFriend;
+    const friendRequestStatus = fullProfile?.friendRequestStatus;
     const hasSentRequest = friendRequestStatus?.hasSentRequest;
     const hasReceivedRequest = friendRequestStatus?.hasReceivedRequest;
 
@@ -115,37 +134,47 @@ const QuickProfilePopup = ({
         }
     }
 
+    const avatarUrl = profile.avatarUrl;
+    const name = profile.fullname || (profile as any).nickNameInRoom;
+    const countryFlag = fullProfile?.country ? getCountryFlag(fullProfile.country) : "";
+
     return (
         <Modal transparent visible={visible} animationType="fade" onRequestClose={onClose}>
             <Pressable style={styles.modalOverlay} onPress={onClose}>
                 <View style={styles.popupContainer}>
                     <View style={styles.popupHeader}>
                         <View>
-                            <Image source={getAvatarSource(profile.avatarUrl, null)} style={styles.popupAvatar} />
+                            <Image source={getAvatarSource(avatarUrl, null)} style={styles.popupAvatar} />
                             {statusInfo?.isOnline && <View style={[styles.activeDot, { right: 15, bottom: 5 }]} />}
                         </View>
                         <View style={styles.popupInfo}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={styles.popupName}>{profile.fullname}</Text>
-                                <Text style={{ marginLeft: 5 }}>{getCountryFlag(profile.country)}</Text>
+                                <Text style={styles.popupName}>{name}</Text>
+                                <Text style={{ marginLeft: 5 }}>{countryFlag}</Text>
                             </View>
                             <Text style={styles.popupNickname}>@{profile.nickname}</Text>
                             {statusText !== "" && <Text style={{ fontSize: 10, color: '#10B981' }}>{statusText}</Text>}
-                            <View style={styles.popupStatsRow}>
-                                <Text style={styles.popupStat}>Lv.{profile.level}</Text>
-                                <Text style={styles.popupStat}>🔥 {profile.streak}</Text>
+                            {fullProfile && (
+                                <View style={styles.popupStatsRow}>
+                                    <Text style={styles.popupStat}>Lv.{fullProfile.level}</Text>
+                                    <Text style={styles.popupStat}>🔥 {fullProfile.streak}</Text>
+                                </View>
+                            )}
+                        </View>
+                    </View>
+
+                    {fullProfile && (
+                        <View style={styles.popupDetails}>
+                            <Text style={styles.popupDetailText}>{t('profile.proficiency')}: {fullProfile.proficiency}</Text>
+                            <View style={styles.langRow}>
+                                {fullProfile.languages?.map((lang, idx) => (
+                                    <View key={idx} style={styles.langTag}><Text style={styles.langText}>{lang}</Text></View>
+                                ))}
                             </View>
                         </View>
-                    </View>
-                    <View style={styles.popupDetails}>
-                        <Text style={styles.popupDetailText}>{t('profile.proficiency')}: {profile.proficiency}</Text>
-                        <View style={styles.langRow}>
-                            {profile.languages?.map((lang, idx) => (
-                                <View key={idx} style={styles.langTag}><Text style={styles.langText}>{lang}</Text></View>
-                            ))}
-                        </View>
-                    </View>
-                    {!isMe && (
+                    )}
+
+                    {!isMe && fullProfile && (
                         <View style={styles.popupActions}>
                             {isFriend ? (
                                 <TouchableOpacity style={styles.actionBtnSecondary} onPress={handleCancelOrUnfriend}><Text style={styles.actionTextSec}>{t('profile.unfriend')}</Text></TouchableOpacity>
@@ -173,15 +202,80 @@ const QuickProfilePopup = ({
     );
 };
 
+// --- SUB-COMPONENT: CHAT LANGUAGE SELECTOR ---
+const ChatLanguageSelector = ({
+    selectedLanguage,
+    onSelectLanguage,
+    availableLanguages,
+}: {
+    selectedLanguage: LanguageOption;
+    onSelectLanguage: (lang: LanguageOption) => void;
+    availableLanguages: LanguageOption[];
+}) => {
+    const { t } = useTranslation();
+    const [isExpanded, setIsExpanded] = useState(false);
+    const canExpand = availableLanguages.length > 1;
+
+    // Filter out languages that don't have a code (if any) or are invalid
+    if (!availableLanguages || availableLanguages.length === 0) return null;
+
+    return (
+        <View style={styles.languageSelectorContainer}>
+            <TouchableOpacity
+                style={[styles.selectedLanguageButton, !canExpand && { paddingRight: 8 }]}
+                onPress={() => canExpand && setIsExpanded(!isExpanded)}
+                activeOpacity={canExpand ? 0.7 : 1}
+                disabled={!canExpand}
+            >
+                <Text style={styles.selectorLabel}>{t('common.translateTo', 'Dịch sang')}:</Text>
+                <View style={styles.languageFlagWrapper}>
+                    {selectedLanguage.flag}
+                </View>
+                {canExpand && (
+                    <Icon
+                        name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
+                        size={20}
+                        color="#4F46E5"
+                        style={{ marginLeft: 4 }}
+                    />
+                )}
+            </TouchableOpacity>
+
+            {isExpanded && canExpand && (
+                <View style={styles.languageDropdown}>
+                    {availableLanguages.filter(lang => lang.code !== selectedLanguage.code).map((lang) => (
+                        <TouchableOpacity
+                            key={lang.code}
+                            style={styles.languageItem}
+                            onPress={() => {
+                                onSelectLanguage(lang);
+                                setIsExpanded(false);
+                            }}
+                        >
+                            <View style={styles.languageFlagWrapper}>
+                                {lang.flag}
+                            </View>
+                        </TouchableOpacity>
+                    ))}
+                </View>
+            )}
+        </View>
+    );
+};
+
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
+    initialRoomName,
     isBubbleMode = false,
-    autoTranslate = false, // Prop from AppStore Settings
-    initialFocusMessageId = null
+    onCloseBubble,
+    onMinimizeBubble,
+    autoTranslate = false,
+    soundEnabled = true,
+    members = []
 }) => {
     const { t, i18n } = useTranslation();
     const { showToast } = useToast();
-
+    const navigation = useNavigation<any>();
     const { user } = useUserStore();
     const currentUserId = user?.userId;
     const setCurrentViewedRoomId = useChatStore(s => s.setCurrentViewedRoomId);
@@ -190,15 +284,49 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [inputText, setInputText] = useState("");
     const [isUploading, setIsUploading] = useState(false);
 
-    // Local override translation storage if user manually translates
+    // Translation State
     const [localTranslations, setLocalTranslations] = useState<any>({});
-    const [translationTargetLang] = useState(i18n.language || 'vi');
+    const [messagesToggleState, setMessagesToggleState] = useState<any>({});
+    const [translationTargetLang, setTranslationTargetLang] = useState(i18n.language || 'vi');
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
 
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
-    const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | null>(null);
+    const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | MemberResponse | null>(null);
     const [isPopupVisible, setIsPopupVisible] = useState(false);
+
+    const route = useRoute<RouteProp<Record<string, ChatInnerViewRouteParams>, string>>();
+
+    // --- Language Options Logic ---
+    const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
+        code: langCode,
+        name: langCode.toUpperCase(),
+        flag: getCountryFlag(langCode, 20),
+    }), []);
+
+    const availableLanguages: LanguageOption[] = useMemo(() => {
+        const langs = user?.languages && user.languages.length > 0 ? user.languages : [i18n.language || 'en'];
+        // Ensure current target lang is in the list
+        if (!langs.includes(translationTargetLang)) {
+            langs.push(translationTargetLang);
+        }
+        return Array.from(new Set(langs)).map(getLanguageOption);
+    }, [user?.languages, i18n.language, translationTargetLang, getLanguageOption]);
+
+    const selectedLanguageOption = useMemo(() =>
+        availableLanguages.find(l => l.code === translationTargetLang) || getLanguageOption(translationTargetLang),
+        [availableLanguages, translationTargetLang, getLanguageOption]);
+
+    const handleSelectLanguage = (lang: LanguageOption) => {
+        setTranslationTargetLang(lang.code);
+    };
+
+    // 🎯 MEMOIZE MEMBER LOOKUP
+    const membersMap = useMemo(() => {
+        const map: Record<string, MemberResponse> = {};
+        members.forEach(m => { map[m.userId] = m; });
+        return map;
+    }, [members]);
 
     useEffect(() => {
         if (!isBubbleMode) setCurrentViewedRoomId(roomId);
@@ -206,8 +334,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     }, [roomId, isBubbleMode]);
 
     const loadMessages = useChatStore(s => s.loadMessages);
-    const pageByRoom = useChatStore(s => s.pageByRoom);
-    const hasMoreByRoom = useChatStore(s => s.hasMoreByRoom);
     const sendMessage = useChatStore(s => s.sendMessage);
     const editMessage = useChatStore(s => s.editMessage);
     const markMessageAsRead = useChatStore(s => s.markMessageAsRead);
@@ -215,20 +341,19 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     const serverMessages = messagesByRoom[roomId] || [];
     const flatListRef = useRef<FlatList>(null);
-    const currentPage = pageByRoom[roomId] || 0;
-    const hasMore = hasMoreByRoom[roomId] || false;
-
-    useEffect(() => { loadMessages(roomId, 0); }, [roomId]);
 
     const messages: UIMessage[] = useMemo(() => {
         return serverMessages.map((msg: any) => {
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
-
-            // Priority: Local (manual) translation > DB translation
-            const dbTrans = msg.translatedText;
+            const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
             const finalTranslation = localTrans || dbTrans;
+            const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
+            const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
+            const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!dbTrans);
+
+            const senderProfile = msg.senderProfile || membersMap[senderId];
 
             return {
                 id: messageId,
@@ -237,40 +362,32 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 timestamp: formatMessageTime(msg?.id?.sentAt || new Date()),
                 text: msg.content || '',
                 content: msg.content || '',
-                translatedText: finalTranslation, // Null if not translated yet
+                translatedText: finalTranslation,
                 translatedLang: msg.translatedLang,
                 mediaUrl: (msg as any).mediaUrl,
                 messageType: (msg as any).messageType || 'TEXT',
-                user: msg.senderProfile?.fullname || 'Unknown',
-                avatar: msg.senderProfile?.avatarUrl || null,
+                user: senderProfile?.fullname || senderProfile?.nickname || 'Unknown',
+                avatar: senderProfile?.avatarUrl || null,
                 sentAt: msg?.id?.sentAt,
+                showTranslation: showTranslation,
+                hasTargetLangTranslation: !!finalTranslation,
                 isRead: msg.isRead,
                 isLocal: (msg as any).isLocal,
-                senderProfile: msg.senderProfile,
+                senderProfile: senderProfile,
                 roomId: roomId,
                 isDeleted: msg.isDeleted
             } as UIMessage;
-        });
-    }, [serverMessages, localTranslations, translationTargetLang, currentUserId]);
+        }).sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+    }, [serverMessages, localTranslations, translationTargetLang, currentUserId, autoTranslate, membersMap]);
 
-    // Auto scroll logic
+    useEffect(() => { loadMessages(roomId); }, [roomId]);
     useEffect(() => {
         if (!messages.length) return;
-        const lastMsg = messages[messages.length - 1];
-        if (lastMsg.sender === 'user' || lastMsg.isLocal) {
-            setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
-        }
+        setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
     }, [messages.length]);
-
     useEffect(() => {
         messages.forEach(msg => { if (msg.sender === 'other' && !msg.isRead) markMessageAsRead(roomId, msg.id); });
     }, [messages.length, roomId]);
-
-    const handleLoadMore = () => {
-        if (hasMore) {
-            loadMessages(roomId, currentPage + 1);
-        }
-    };
 
     const handleSendMessage = () => {
         if (inputText.trim() === "") return;
@@ -290,39 +407,39 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         },
         onSuccess: (data) => {
             setLocalTranslations((prev: any) => ({ ...prev, [data.id]: { ...(prev[data.id] || {}), [data.target]: data.text } }));
+            setMessagesToggleState((prev: any) => ({ ...prev, [data.id]: data.target }));
             setTranslatingMessageId(null);
         },
         onError: () => { setTranslatingMessageId(null); showToast({ message: t("error.translation"), type: "error" }); }
     });
 
-    const handleManualTranslate = (id: string, text: string) => {
-        translateMutate({ text, target: translationTargetLang, id });
+    const handleTranslateClick = (id: string, text: string) => {
+        const currentView = messagesToggleState[id];
+        if (currentView && currentView !== 'original') { setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' })); }
+        else {
+            if (localTranslations[id]?.[translationTargetLang]) { setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang })); }
+            else { translateMutate({ text, target: translationTargetLang, id }); }
+        }
     };
 
     const handleAvatarPress = (profile?: UserProfileResponse) => { if (profile) { setSelectedProfile(profile); setIsPopupVisible(true); } };
 
-    const handleNavigateProfile = () => {
-        setIsPopupVisible(false);
-        if (selectedProfile) {
-            gotoTab("Profile", "UserProfileViewScreen", { userId: selectedProfile.userId });
-        }
-    };
-
     const renderMessageItem = ({ item }: { item: UIMessage }) => {
         const isUser = item.sender === 'user';
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
+        const displayData = getMessageDisplayData(item);
+        const currentView = messagesToggleState[item.id];
+        let displayText = item.text;
+        let isTranslatedView = false;
 
-        // --- LOGIC CHANGE ---
-        // Always show original text.
-        // If translatedText exists, show it BELOW with a divider.
-        // Don't hide buttons based on view toggle. 
-        // Button Logic: 
-        // 1. If translated: Hide button (Done).
-        // 2. If NOT translated AND autoTranslate=ON: Hide button (Async/Pending).
-        // 3. If NOT translated AND autoTranslate=OFF: Show button (Manual).
-
-        const hasTranslation = !!item.translatedText;
-        const showTranslateButton = !isUser && !isMedia && !hasTranslation && !autoTranslate;
+        if (currentView && currentView !== 'original') {
+            const localTrans = localTranslations[item.id]?.[currentView];
+            displayText = localTrans || (item.translatedLang === currentView ? item.translatedText : item.text);
+            isTranslatedView = true;
+        } else if (displayData.isTranslated) {
+            displayText = displayData.text;
+            isTranslatedView = true;
+        }
 
         const status = item.senderId !== 'unknown' ? userStatuses[item.senderId] : null;
 
@@ -331,7 +448,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 {!isUser && (
                     <TouchableOpacity onPress={() => handleAvatarPress(item.senderProfile)}>
                         <View>
-                            <Image source={getAvatarSource(item.senderProfile?.avatarUrl, null)} style={styles.msgAvatarImg} />
+                            <Image source={getAvatarSource(item.avatar, null)} style={styles.msgAvatarImg} />
                             {status?.isOnline && <View style={[styles.activeDot, { right: 8, bottom: 0, borderWidth: 1 }]} />}
                         </View>
                     </TouchableOpacity>
@@ -339,40 +456,22 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 <View style={styles.msgContent}>
                     {!isUser && <Text style={styles.senderName}>{item.user}</Text>}
                     <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleOther, item.isLocal && styles.localBubble]}>
-
-                        {/* 1. ORIGINAL CONTENT / MEDIA */}
                         {isMedia ? (
                             <View>
                                 {item.messageType === 'IMAGE' && <Image source={{ uri: item.mediaUrl }} style={styles.msgImage} resizeMode="cover" />}
                                 {item.messageType === 'VIDEO' && <View style={[styles.msgImage, { justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }]}><Icon name="play-circle-outline" size={50} color="#FFF" /></View>}
                                 {item.text ? <Text style={[styles.text, isUser ? styles.textUser : styles.textOther, { marginTop: 5 }]}>{item.text}</Text> : null}
                             </View>
-                        ) : (
-                            <Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{item.text}</Text>
-                        )}
-
-                        {/* 2. TRANSLATED CONTENT (SEPARATE BLOCK) */}
-                        {!isUser && !isMedia && hasTranslation && (
-                            <View style={styles.translationBlock}>
-                                <View style={styles.divider} />
-                                <Text style={styles.translatedText}>{item.translatedText}</Text>
-                                <Text style={styles.transTag}>{item.translatedLang || 'vi'}</Text>
-                            </View>
-                        )}
-
+                        ) : (<Text style={[styles.text, isUser ? styles.textUser : styles.textOther]}>{displayText}</Text>)}
+                        {isTranslatedView && <Text style={styles.transTag}>{currentView || displayData.lang || translationTargetLang}</Text>}
                         <View style={styles.metaRow}>
                             <Text style={[styles.time, isUser ? styles.timeUser : styles.timeOther]}>{item.timestamp}</Text>
                             {isUser && <Icon name={item.isRead ? "done-all" : "done"} size={12} color={item.isRead ? "#FFF" : "rgba(255,255,255,0.7)"} style={{ marginLeft: 4 }} />}
                         </View>
                     </View>
-
-                    {/* 3. TRANSLATE BUTTON (Conditional) */}
-                    {showTranslateButton && (
-                        <TouchableOpacity onPress={() => handleManualTranslate(item.id, item.text)} style={styles.transBtn} disabled={translatingMessageId === item.id}>
-                            {translatingMessageId === item.id ?
-                                <ActivityIndicator size="small" color="#6B7280" /> :
-                                <Icon name="translate" size={16} color="#9CA3AF" />
-                            }
+                    {!isUser && !isMedia && (
+                        <TouchableOpacity onPress={() => handleTranslateClick(item.id, item.text)} style={styles.transBtn} disabled={translatingMessageId === item.id}>
+                            {translatingMessageId === item.id ? <ActivityIndicator size="small" color="#6B7280" /> : <Icon name={isTranslatedView ? "undo" : "translate"} size={16} color={isTranslatedView ? "#3B82F6" : "#9CA3AF"} />}
                         </TouchableOpacity>
                     )}
                 </View>
@@ -382,15 +481,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 
     return (
         <ScreenLayout style={styles.container}>
-            <FlatList
-                ref={flatListRef}
-                data={messages}
-                keyExtractor={item => item.id}
-                style={styles.list}
-                renderItem={renderMessageItem}
-                onRefresh={handleLoadMore}
-                refreshing={false}
-            />
+            {/* --- Chat Header Toolbar for Language Selection --- */}
+            <View style={styles.chatHeaderToolbar}>
+                <View style={{ flex: 1 }} />
+                <ChatLanguageSelector
+                    selectedLanguage={selectedLanguageOption}
+                    onSelectLanguage={handleSelectLanguage}
+                    availableLanguages={availableLanguages}
+                />
+            </View>
+
+            <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} />
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 90}>
                 {editingMessage && (
                     <View style={styles.editBanner}>
@@ -400,18 +501,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 )}
                 <View style={styles.inputArea}>
                     <View style={{ zIndex: 10 }}>
-                        <FileUploader
-                            mediaType="all"
-                            maxSizeMB={100}
-                            maxDuration={300}
-                            onUploadStart={() => setIsUploading(true)}
-                            onUploadEnd={() => setIsUploading(false)}
-                            onUploadSuccess={(result, type) => {
-                                const url = result?.fileUrl || result;
-                                sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url);
-                            }}
-                            style={styles.attachBtn}
-                        >
+                        <FileUploader mediaType="all" maxSizeMB={20} maxDuration={60} onUploadStart={() => setIsUploading(true)} onUploadEnd={() => setIsUploading(false)} onUploadSuccess={(url, type) => { sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url); }} style={styles.attachBtn}>
                             {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="attach-file" size={24} color="#3B82F6" />}
                         </FileUploader>
                     </View>
@@ -419,20 +509,69 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}><Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" /></TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
-            <QuickProfilePopup
-                visible={isPopupVisible}
-                profile={selectedProfile}
-                onClose={() => setIsPopupVisible(false)}
-                onNavigateProfile={handleNavigateProfile}
-                currentUserId={currentUserId || ""}
-                statusInfo={selectedProfile ? userStatuses[selectedProfile.userId] : undefined}
-            />
+            <QuickProfilePopup visible={isPopupVisible} profile={selectedProfile} onClose={() => setIsPopupVisible(false)} onNavigateProfile={() => { setIsPopupVisible(false); if (selectedProfile) navigation.navigate("UserProfileViewScreen", { userId: selectedProfile.userId }); }} currentUserId={currentUserId || ""} statusInfo={selectedProfile ? userStatuses[selectedProfile.userId] : undefined} />
         </ScreenLayout>
     );
 };
 
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#FFF' },
+    chatHeaderToolbar: {
+        flexDirection: 'row',
+        justifyContent: 'flex-end',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+        backgroundColor: '#FFF',
+        zIndex: 50,
+    },
+    // --- New Selector Styles ---
+    languageSelectorContainer: {
+        position: 'relative',
+        zIndex: 50,
+    },
+    selectedLanguageButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#F3F4F6',
+        borderRadius: 20,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        justifyContent: 'center',
+    },
+    selectorLabel: {
+        fontSize: 12,
+        color: '#6B7280',
+        marginRight: 6,
+    },
+    languageDropdown: {
+        position: 'absolute',
+        top: 40,
+        right: 0,
+        backgroundColor: '#FFF',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        shadowColor: '#000',
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 5,
+        minWidth: 60,
+        zIndex: 100,
+    },
+    languageItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: '#F3F4F6',
+    },
+    languageFlagWrapper: {
+        marginRight: 0,
+    },
+    // --- End Selector Styles ---
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },
@@ -449,11 +588,7 @@ const styles = createScaledSheet({
     text: { fontSize: 16, lineHeight: 22 },
     textUser: { color: '#FFF' },
     textOther: { color: '#1F2937' },
-    // New Styles for Translation Block
-    translationBlock: { marginTop: 8 },
-    divider: { height: 1, backgroundColor: '#E5E7EB', marginBottom: 6 },
-    translatedText: { fontSize: 15, color: '#4B5563', lineHeight: 20 },
-    transTag: { fontSize: 9, color: '#9CA3AF', fontStyle: 'italic', marginTop: 4, textAlign: 'right' },
+    transTag: { fontSize: 10, color: '#9CA3AF', fontStyle: 'italic', marginTop: 2, textAlign: 'right' },
     metaRow: { flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 },
     time: { fontSize: 10 },
     timeUser: { color: 'rgba(255,255,255,0.7)' },

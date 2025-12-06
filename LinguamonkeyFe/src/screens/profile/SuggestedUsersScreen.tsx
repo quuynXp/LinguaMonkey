@@ -22,7 +22,7 @@ import { useFriendships } from '../../hooks/useFriendships';
 import { useCouples } from '../../hooks/useCouples';
 import { getAvatarSource } from '../../utils/avatarUtils';
 import { getCountryFlag } from '../../utils/flagUtils';
-import { UserResponse, UserProfileResponse, FriendshipResponse } from '../../types/dto';
+import { UserResponse, UserProfileResponse } from '../../types/dto';
 import { gotoTab } from '../../utils/navigationRef';
 import { FriendshipStatus, Country, AgeRange } from '../../types/enums';
 
@@ -101,9 +101,9 @@ const SuggestedUsersScreen = () => {
     const { t } = useTranslation();
     const route = useRoute<RouteProp<RouteParams, 'SuggestedUsersScreen'>>();
     const user = useUserStore((state) => state.user);
-    const navigation = useNavigation<any>(); // Added navigation hook
+    const navigation = useNavigation<any>();
 
-    // 0: Explore (Search Public), 1: Requests, 2: Friends
+    // 0: Suggestions (Explore), 1: Requests (Friend/Couple), 2: Friends & Couple
     const [activeTab, setActiveTab] = useState(route.params?.initialTab ?? 0);
     const [refreshing, setRefreshing] = useState(false);
     const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
@@ -113,7 +113,7 @@ const SuggestedUsersScreen = () => {
     const [showFilter, setShowFilter] = useState(false);
 
     // Hooks
-    const { useSearchPublicUsers } = useUsers();
+    const { useSearchPublicUsers, useSuggestedUsers } = useUsers();
     const { useAllFriendships, useCreateFriendship, useUpdateFriendship } = useFriendships();
     const { useAllCouples } = useCouples();
 
@@ -122,78 +122,120 @@ const SuggestedUsersScreen = () => {
 
     // --- DATA FETCHING ---
 
-    // Tab 0: Explore - Public Users
-    const { data: publicUsersData, refetch: refetchPublicUsers, isLoading: loadingPublic } = useSearchPublicUsers({
-        page: 0,
-        size: 50,
-        keyword: keyword,
-        country: filters.country,
-        gender: filters.gender,     // Thêm dòng này
-        ageRange: filters.ageRange, // Thêm dòng này
+    // TAB 0: Explore / Suggestions
+    const isSearching = !!keyword || !!filters.country || !!filters.gender || !!filters.ageRange;
+
+    const { data: searchData, refetch: refetchSearch, isLoading: loadingSearch } = useSearchPublicUsers({
+        page: 0, size: 50, keyword, ...filters
     });
 
-    const publicUsers = useMemo(() => {
-        return (publicUsersData?.data || []) as UserProfileResponse[];
-    }, [publicUsersData]);
+    const { data: suggestedData, refetch: refetchSuggested, isLoading: loadingSuggested } = useSuggestedUsers(
+        user?.userId || '', 0, 20
+    );
+
+    // FIX TYPE ERROR: Explicitly type the useMemo return to allow mixed types in FlatList
+    const exploreUsers = useMemo((): (UserResponse | UserProfileResponse)[] => {
+        if (isSearching) return (searchData?.data || []);
+        return (suggestedData?.content || []);
+    }, [isSearching, searchData, suggestedData]);
+
+    const loadingExplore = isSearching ? loadingSearch : loadingSuggested;
 
 
-    // Tab 1: Requests
+    // TAB 1: Requests (Couple Pending + Friend Sent/Received)
     const { data: coupleReqData, refetch: refetchCoupleReq } = useAllCouples({
         user1Id: user?.userId,
         status: 'PENDING',
-        page: 0,
-        size: 20
+        page: 0, size: 20
     });
 
     const { data: friendSentData, refetch: refetchFriendSent } = useAllFriendships({
         requesterId: user?.userId,
         status: 'PENDING',
-        page: 0,
-        size: 20
+        page: 0, size: 20
     });
 
     const { data: friendRecData, refetch: refetchFriendRec } = useAllFriendships({
         receiverId: user?.userId,
         status: 'PENDING',
-        page: 0,
-        size: 20
+        page: 0, size: 20
     });
 
-    // Tab 2: Friends
+    // TAB 2: Friends & Active Couple
     const { data: friendsData, refetch: refetchFriends, isLoading: loadingFriends } = useAllFriendships({
         requesterId: user?.userId,
         status: 'ACCEPTED',
-        page: 0,
-        size: 100
+        page: 0, size: 100
     });
 
-    // --- AGGREGATE & FILTER DATA FOR TABS ---
+    // Fetch Active Couple (In Love)
+    const { data: activeCoupleData, refetch: refetchActiveCouple } = useAllCouples({
+        user1Id: user?.userId,
+        status: 'IN_LOVE',
+        page: 0, size: 1
+    });
+    // Fallback for EXPLORING status if needed
+    const { data: exploringCoupleData, refetch: refetchExploringCouple } = useAllCouples({
+        user1Id: user?.userId,
+        status: 'EXPLORING',
+        page: 0, size: 1
+    });
+
+
+    // --- AGGREGATE DATA ---
 
     const tab1Data = useMemo(() => {
         const filterFn = (item: any) => {
-            const u = item.partner || item.receiver || item.requester;
+            const u = item.target;
             if (!u) return false;
             let match = true;
             if (keyword) match = match && (u.fullname?.toLowerCase().includes(keyword.toLowerCase()) || u.nickname?.toLowerCase().includes(keyword.toLowerCase()));
-            if (filters.country) match = match && u.country === filters.country;
-            if (filters.gender) match = match && u.gender === filters.gender;
             return match;
         };
 
-        const couples = (coupleReqData?.content || []).map(c => ({ ...c, type: 'COUPLE_SENT', target: c.user2 })).filter(filterFn);
+        const couples = (coupleReqData?.content || []).map(c => {
+            const isMeUser1 = c.user1?.userId === user?.userId;
+            return {
+                ...c,
+                type: isMeUser1 ? 'COUPLE_SENT' : 'COUPLE_RECEIVED',
+                target: isMeUser1 ? c.user2 : c.user1
+            };
+        }).filter(filterFn);
+
         const friendSent = (friendSentData?.content || []).map(f => ({ ...f, type: 'FRIEND_SENT', target: f.receiver })).filter(filterFn);
         const friendRec = (friendRecData?.content || []).map(f => ({ ...f, type: 'FRIEND_RECEIVED', target: f.requester })).filter(filterFn);
 
-        return [...couples, ...friendSent, ...friendRec];
-    }, [coupleReqData, friendSentData, friendRecData, keyword, filters]);
+        return { couples, friendSent, friendRec };
+    }, [coupleReqData, friendSentData, friendRecData, keyword, user?.userId]);
 
     const tab2Data = useMemo(() => {
         const list = (friendsData?.content || []).map(f => {
             const isMeRequester = f.requester?.userId === user?.userId;
-            return isMeRequester ? f.receiver : f.requester;
-        }).filter(u => u !== null) as UserResponse[];
+            return { ...f, targetUser: isMeRequester ? f.receiver : f.requester, type: 'FRIEND' };
+        }).filter(item => item.targetUser !== null);
 
-        return list.filter(u => {
+        const activeCouple = (activeCoupleData?.content && activeCoupleData.content.length > 0)
+            ? activeCoupleData.content[0]
+            : (exploringCoupleData?.content && exploringCoupleData.content.length > 0 ? exploringCoupleData.content[0] : null);
+
+        let finalList: any[] = list;
+
+        if (activeCouple) {
+            const isMeUser1 = activeCouple.user1?.userId === user?.userId;
+            const partner = isMeUser1 ? activeCouple.user2 : activeCouple.user1;
+            if (partner) {
+                finalList = list.filter(f => f.targetUser.userId !== partner.userId);
+                finalList.unshift({
+                    ...activeCouple,
+                    targetUser: partner,
+                    type: 'COUPLE_PARTNER',
+                    coupleStatus: activeCouple.status
+                });
+            }
+        }
+
+        return finalList.filter(item => {
+            const u = item.targetUser;
             let match = true;
             if (keyword) match = match && (u.fullname?.toLowerCase().includes(keyword.toLowerCase()) || u.nickname?.toLowerCase().includes(keyword.toLowerCase()));
             if (filters.country) match = match && u.country === filters.country;
@@ -201,18 +243,21 @@ const SuggestedUsersScreen = () => {
             if (filters.ageRange) match = match && u.ageRange === filters.ageRange;
             return match;
         });
-    }, [friendsData, user?.userId, keyword, filters]);
+    }, [friendsData, activeCoupleData, exploringCoupleData, user?.userId, keyword, filters]);
 
 
     // --- ACTIONS ---
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        if (activeTab === 0) await refetchPublicUsers();
+        if (activeTab === 0) {
+            if (isSearching) await refetchSearch();
+            else await refetchSuggested();
+        }
         if (activeTab === 1) await Promise.all([refetchCoupleReq(), refetchFriendSent(), refetchFriendRec()]);
-        if (activeTab === 2) await refetchFriends();
+        if (activeTab === 2) await Promise.all([refetchFriends(), refetchActiveCouple(), refetchExploringCouple()]);
         setRefreshing(false);
-    }, [activeTab, refetchPublicUsers, refetchCoupleReq, refetchFriendSent, refetchFriendRec, refetchFriends]);
+    }, [activeTab, isSearching, refetchSearch, refetchSuggested, refetchCoupleReq, refetchFriendSent, refetchFriendRec, refetchFriends, refetchActiveCouple, refetchExploringCouple]);
 
     const handleAddFriend = async (targetId: string) => {
         if (!user?.userId) return;
@@ -223,46 +268,39 @@ const SuggestedUsersScreen = () => {
                 receiverId: targetId,
                 status: FriendshipStatus.PENDING
             });
-            if (activeTab === 0) refetchPublicUsers();
+            if (activeTab === 0) { isSearching ? refetchSearch() : refetchSuggested(); }
             refetchFriendSent();
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
-    // Generic Accept Friend Request (Handles both Tab 1 and Tab 0 contexts)
     const handleAcceptRequestGeneric = async (requesterId: string) => {
         if (!user?.userId) return;
         setActionLoadingId(requesterId);
         try {
             await updateFriendshipMutation.mutateAsync({
-                user1Id: requesterId, // The person who sent the request
-                user2Id: user.userId, // Me (Receiver)
+                user1Id: requesterId,
+                user2Id: user.userId,
                 req: { status: FriendshipStatus.ACCEPTED, requesterId: requesterId, receiverId: user.userId }
             });
-            if (activeTab === 0) refetchPublicUsers();
             refetchFriendRec();
             refetchFriends();
         } catch (e) { console.error(e); } finally { setActionLoadingId(null); }
     };
 
-    const handleChat = (targetUser: UserResponse | UserProfileResponse) => {
-        // Navigate to chat or init chat (logic not fully provided in snippet, adding placeholder)
+    const handleChat = (targetUser: any) => {
         console.log("Navigating to chat with", targetUser.userId);
+        // navigation.navigate('ChatDetail', { partner: targetUser });
     };
 
+    // --- RENDER ---
 
-    // --- RENDER HELPERS ---
-
-    // Refined Logic to match UserProfileViewScreen using Booleans
     const renderActionButton = (item: UserResponse | UserProfileResponse, isActionLoading: boolean) => {
-        // Cast to UserProfileResponse to access specific flags
         const profile = item as UserProfileResponse;
 
-        // 1. Check direct flags from Backend (populated in searchPublicUsers via getUserProfile)
         const isFriend = profile.isFriend;
         const hasSent = profile.friendRequestStatus?.hasSentRequest;
         const hasReceived = profile.friendRequestStatus?.hasReceivedRequest;
 
-        // A. Already Friends -> Show Chat
         if (isFriend) {
             return (
                 <TouchableOpacity style={styles.messageButton} onPress={() => handleChat(item)}>
@@ -270,21 +308,13 @@ const SuggestedUsersScreen = () => {
                 </TouchableOpacity>
             );
         }
-
-        // B. Received Request -> Show Accept
         if (hasReceived) {
             return (
-                <TouchableOpacity
-                    style={styles.acceptButton}
-                    onPress={() => handleAcceptRequestGeneric(item.userId)}
-                    disabled={isActionLoading}
-                >
+                <TouchableOpacity style={styles.acceptButton} onPress={() => handleAcceptRequestGeneric(item.userId)} disabled={isActionLoading}>
                     {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>{t('common.accept')}</Text>}
                 </TouchableOpacity>
             );
         }
-
-        // C. Sent Request -> Show Pending Icon
         if (hasSent) {
             return (
                 <TouchableOpacity style={[styles.addButton, styles.sentButton]} disabled>
@@ -292,84 +322,76 @@ const SuggestedUsersScreen = () => {
                 </TouchableOpacity>
             );
         }
-
-        // D. Default -> Add Friend
         return (
-            <TouchableOpacity
-                style={styles.addButton}
-                onPress={() => handleAddFriend(item.userId)}
-                disabled={isActionLoading}
-            >
+            <TouchableOpacity style={styles.addButton} onPress={() => handleAddFriend(item.userId)} disabled={isActionLoading}>
                 {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Icon name="person-add" size={20} color="#FFF" />}
             </TouchableOpacity>
         );
     };
 
-    const renderUserItem = ({ item, type }: { item: any, type?: 'PUBLIC' | 'COUPLE_SENT' | 'FRIEND_SENT' | 'FRIEND_RECEIVED' | 'FRIEND_ACCEPTED' }) => {
-        let displayUser: UserResponse | UserProfileResponse = item;
+    const renderUserItem = ({ item, type, coupleStatus }: { item: any, type: string, coupleStatus?: string }) => {
+        let displayUser = item;
 
-        // Extract actual user data for Tab 1 cases
-        if (type === 'COUPLE_SENT') displayUser = item.target;
-        if (type === 'FRIEND_SENT') displayUser = item.target;
-        if (type === 'FRIEND_RECEIVED') displayUser = item.target;
+        if (['COUPLE_SENT', 'COUPLE_RECEIVED', 'FRIEND_SENT', 'FRIEND_RECEIVED'].includes(type)) displayUser = item.target;
+        if (type === 'FRIEND' || type === 'COUPLE_PARTNER') displayUser = item.targetUser;
 
         if (!displayUser) return null;
 
         const isActionLoading = actionLoadingId === displayUser.userId;
-        const gender = displayUser.gender;
-        const vip = displayUser.vip;
+        const isCouplePartner = type === 'COUPLE_PARTNER';
 
         return (
             <TouchableOpacity
-                style={styles.userCard}
+                style={[styles.userCard, isCouplePartner && styles.coupleCard]}
                 onPress={() => gotoTab('Profile', 'UserProfileViewScreen', { userId: displayUser.userId })}
             >
                 <View style={styles.avatarContainer}>
-                    <Image source={getAvatarSource(displayUser.avatarUrl, gender?.toString())} style={styles.avatar} />
+                    <Image source={getAvatarSource(displayUser.avatarUrl, displayUser.gender?.toString())} style={styles.avatar} />
                     {displayUser.country && (
                         <View style={styles.flagBadge}>
                             <Text style={{ fontSize: 10 }}>{getCountryFlag(displayUser.country)}</Text>
+                        </View>
+                    )}
+                    {isCouplePartner && (
+                        <View style={styles.heartBadge}>
+                            <Icon name="favorite" size={12} color="#FFF" />
                         </View>
                     )}
                 </View>
 
                 <View style={styles.userInfo}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <Text style={styles.userName} numberOfLines={1}>{displayUser.fullname || displayUser.nickname}</Text>
-                        {vip && <Icon name="verified" size={14} color="#F59E0B" style={{ marginLeft: 4 }} />}
+                        <Text style={[styles.userName, isCouplePartner && { color: '#BE123C' }]} numberOfLines={1}>
+                            {displayUser.fullname || displayUser.nickname}
+                        </Text>
+                        {displayUser.vip && <Icon name="verified" size={14} color="#F59E0B" style={{ marginLeft: 4 }} />}
                     </View>
-                    <Text style={styles.userSubtext}>
+                    <Text style={styles.userSubtext} numberOfLines={1}>
                         {type === 'COUPLE_SENT' && `Waiting couple response...`}
+                        {type === 'COUPLE_RECEIVED' && `Wants to be your couple`}
                         {type === 'FRIEND_SENT' && `Request sent`}
                         {type === 'FRIEND_RECEIVED' && `Wants to be friends`}
-                        {!type && `@${displayUser.nickname}`}
+                        {type === 'COUPLE_PARTNER' && `Your Partner (${coupleStatus})`}
+                        {['FRIEND', 'PUBLIC'].includes(type) && `@${displayUser.nickname}`}
                     </Text>
                 </View>
 
-                {/* Action Buttons */}
+                {/* --- ACTIONS --- */}
 
-                {/* Tab 0: Use robust logic based on profile flags */}
                 {type === 'PUBLIC' && renderActionButton(displayUser, isActionLoading)}
 
-                {/* Tab 1 (Received): Explicit Accept Button */}
-                {type === 'FRIEND_RECEIVED' && (
-                    <TouchableOpacity
-                        style={styles.acceptButton}
-                        onPress={() => handleAcceptRequestGeneric(displayUser.userId)}
-                        disabled={isActionLoading}
-                    >
+                {(type === 'FRIEND_RECEIVED' || type === 'COUPLE_RECEIVED') && (
+                    <TouchableOpacity style={styles.acceptButton} onPress={() => handleAcceptRequestGeneric(displayUser.userId)} disabled={isActionLoading}>
                         {isActionLoading ? <ActivityIndicator size="small" color="#FFF" /> : <Text style={styles.acceptButtonText}>{t('common.accept')}</Text>}
                     </TouchableOpacity>
                 )}
 
-                {/* Tab 2: Friends - Always Chat */}
-                {type === 'FRIEND_ACCEPTED' && (
+                {(type === 'FRIEND' || type === 'COUPLE_PARTNER') && (
                     <TouchableOpacity style={styles.messageButton} onPress={() => handleChat(displayUser)}>
                         <Icon name="chat-bubble-outline" size={20} color="#4F46E5" />
                     </TouchableOpacity>
                 )}
 
-                {/* Pending Sent States */}
                 {(type === 'COUPLE_SENT' || type === 'FRIEND_SENT') && (
                     <View style={[styles.addButton, styles.sentButton]}>
                         <Icon name="access-time" size={20} color="#FFF" />
@@ -379,46 +401,24 @@ const SuggestedUsersScreen = () => {
         );
     };
 
-    // --- TAB RENDERING ---
-
-    const SearchAndFilterBar = () => (
-        <View style={styles.searchBarContainer}>
-            <View style={styles.searchInputWrapper}>
-                <Icon name="search" size={20} color="#9CA3AF" />
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder={t('common.searchByNameNickEmailPhone')}
-                    value={keyword}
-                    onChangeText={setKeyword}
-                    onSubmitEditing={() => activeTab === 0 && refetchPublicUsers()}
-                />
-            </View>
-            <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilter(true)}>
-                <Icon name="filter-list" size={24} color="#4F46E5" />
-            </TouchableOpacity>
-        </View>
-    );
-
     const renderTab0_Explore = () => (
         <FlatList
-            data={publicUsers}
+            data={exploreUsers}
             renderItem={({ item }) => renderUserItem({ item, type: 'PUBLIC' })}
             keyExtractor={(item) => item.userId}
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-            ListEmptyComponent={!loadingPublic ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
+            ListEmptyComponent={!loadingExplore ? <Text style={styles.emptyText}>{t('common.noResults')}</Text> : null}
+            ListHeaderComponent={!isSearching ? <Text style={styles.sectionHeader}>{t('Suggested for you')}</Text> : null}
         />
     );
 
     const renderTab1_Requests = () => {
-        const couples = tab1Data.filter((i: any) => i.type === 'COUPLE_SENT');
-        const friendSent = tab1Data.filter((i: any) => i.type === 'FRIEND_SENT');
-        const friendRec = tab1Data.filter((i: any) => i.type === 'FRIEND_RECEIVED');
-
+        const { couples, friendSent, friendRec } = tab1Data;
         const flattenedData = [
-            ...(couples.length ? [{ header: 'Couple Requests (Sent)' }, ...couples] : []),
-            ...(friendSent.length ? [{ header: 'Friend Requests (Sent)' }, ...friendSent] : []),
+            ...(couples.length ? [{ header: 'Couple Requests' }, ...couples] : []),
             ...(friendRec.length ? [{ header: 'Friend Requests (Received)' }, ...friendRec] : []),
+            ...(friendSent.length ? [{ header: 'Friend Requests (Sent)' }, ...friendSent] : []),
         ];
 
         return (
@@ -439,8 +439,8 @@ const SuggestedUsersScreen = () => {
     const renderTab2_Friends = () => (
         <FlatList
             data={tab2Data}
-            renderItem={({ item }) => renderUserItem({ item, type: 'FRIEND_ACCEPTED' })}
-            keyExtractor={(item) => item.userId}
+            renderItem={({ item }) => renderUserItem({ item, type: item.type, coupleStatus: item.coupleStatus })}
+            keyExtractor={(item) => item.id || item.targetUser.userId}
             contentContainerStyle={styles.listContent}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
             ListEmptyComponent={!loadingFriends ? <Text style={styles.emptyText}>{t('profile.noFriends')}</Text> : null}
@@ -452,7 +452,7 @@ const SuggestedUsersScreen = () => {
             <View style={styles.container}>
                 <View style={styles.tabContainer}>
                     <TouchableOpacity style={[styles.tab, activeTab === 0 && styles.activeTab]} onPress={() => setActiveTab(0)}>
-                        <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>{t('Explore')}</Text>
+                        <Text style={[styles.tabText, activeTab === 0 && styles.activeTabText]}>{t('Suggested')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity style={[styles.tab, activeTab === 1 && styles.activeTab]} onPress={() => setActiveTab(1)}>
                         <Text style={[styles.tabText, activeTab === 1 && styles.activeTabText]}>{t('Requests')}</Text>
@@ -462,7 +462,21 @@ const SuggestedUsersScreen = () => {
                     </TouchableOpacity>
                 </View>
 
-                <SearchAndFilterBar />
+                {/* Filter & Search */}
+                <View style={styles.searchBarContainer}>
+                    <View style={styles.searchInputWrapper}>
+                        <Icon name="search" size={20} color="#9CA3AF" />
+                        <TextInput
+                            style={styles.searchInput}
+                            placeholder={t('common.searchByNameNickEmailPhone')}
+                            value={keyword}
+                            onChangeText={setKeyword}
+                        />
+                    </View>
+                    <TouchableOpacity style={styles.filterButton} onPress={() => setShowFilter(true)}>
+                        <Icon name="filter-list" size={24} color="#4F46E5" />
+                    </TouchableOpacity>
+                </View>
 
                 <View style={{ flex: 1 }}>
                     {activeTab === 0 && renderTab0_Explore()}
@@ -473,7 +487,7 @@ const SuggestedUsersScreen = () => {
                 <FilterModal
                     visible={showFilter}
                     onClose={() => setShowFilter(false)}
-                    onApply={(newFilters: any) => { setFilters(newFilters); activeTab === 0 && refetchPublicUsers(); }}
+                    onApply={(newFilters: any) => { setFilters(newFilters); }}
                     currentFilters={filters}
                 />
             </View>
@@ -490,9 +504,11 @@ const styles = createScaledSheet({
     activeTabText: { color: '#4F46E5', fontWeight: '700' },
     listContent: { padding: 16, paddingBottom: 40 },
     userCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 16, marginBottom: 12, elevation: 1 },
+    coupleCard: { backgroundColor: '#FFF1F2', borderColor: '#FECDD3', borderWidth: 1 },
     avatarContainer: { position: 'relative', width: 50, height: 50 },
     avatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#E5E7EB' },
     flagBadge: { position: 'absolute', top: -2, left: -2, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 8, padding: 1, elevation: 2 },
+    heartBadge: { position: 'absolute', bottom: -2, right: -2, backgroundColor: '#E11D48', borderRadius: 10, padding: 3, elevation: 2 },
     userInfo: { flex: 1, marginLeft: 12 },
     userName: { fontSize: 16, fontWeight: '700', color: '#111827' },
     userSubtext: { fontSize: 13, color: '#6B7280' },

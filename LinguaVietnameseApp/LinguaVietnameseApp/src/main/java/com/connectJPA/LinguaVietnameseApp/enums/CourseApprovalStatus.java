@@ -1,6 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.enums;
 
 public enum CourseApprovalStatus {
-    PENDING, APPROVED, REJECTED
+    PENDING, APPROVED, REJECTED, BLOCKED
 }
 

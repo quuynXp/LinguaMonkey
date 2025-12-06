@@ -1,3 +1,232 @@
+# _format_version: "3.0"
+# _transform: true
+
+# consumers:
+#   - username: mobile-app-consumer
+#     jwt_secrets:
+#       - key: "lingua-jwt-key"
+#         algorithm: RS256
+#         rsa_public_key: |
+#           -----BEGIN PUBLIC KEY-----
+#           MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1LNS9rOO1cg//uC3GXvu
+#           r6HIw9HsDRsU6r+yyV/RjioHLLwasQByDTJhMZfvRJkMmZWKLxam+v8p9tyDLBRa
+#           /jm+LHrl37ZgRo3EnQeJvJRNWLr0Uahuqez8OLRXAKdydgZWf0B4fJxgN+RsSXP7
+#           vWNm6idJ0h32M7Obnd8iJDP0+MXdgy2pVd8PUAVFcmS/+7VLcWj1V0gDoMbHscN1
+#           kswUB8rykRF0m+v5l1jx4ldSX1eKeYoQdznRMjViUTkKuYf5vhTsApgbows5pzs4
+#           6NxKcxxm2kHLDpa4TKexdSJX9ckDkFAA4Z5ohAwcDvMcwyn0BHJaxIjGtRRwQP+H
+#           OQIDAQAB
+#           -----END PUBLIC KEY-----
+
+# services:
+#   # ==============================================================================
+#   # 1. PUBLIC JAVA SERVICE
+#   # ==============================================================================
+#   - name: public-java-service
+#     url: http://linguavietnameseapp:10000
+#     routes:
+#       # --- FIX START: Thêm Route riêng cho Register User (Create Temp Account) ---
+#       - name: public-user-registration
+#         strip_path: false
+#         methods: [POST]
+#         paths:
+#           - /api/v1/users
+#       # --- FIX END ---
+
+#       - name: public-routes
+#         strip_path: false
+#         methods: [GET, POST, OPTIONS]
+#         paths:
+#           - /health
+#           - /api/v1/auth
+#           - /api/v1/users/check-email
+#           - /api/swagger
+#           - /swagger-ui/
+#           - /v3/api-docs/
+#           - /api/v1/badges
+#           - /api/v1/basic-lessons
+#           - /api/v1/certificates
+#           - /api/v1/character3ds
+#           - /api/v1/courses
+#           - /api/v1/course-version-discounts
+#           - /api/v1/course-version-reviews
+#           - /api/v1/events
+#           - /api/v1/grammar
+#           - /api/v1/interests
+#           - /api/v1/languages
+#           - /api/v1/leaderboards
+#           - /api/v1/leaderboard-entries
+#           - /api/v1/lesson-categories
+#           - /api/v1/lessons
+#           - /api/v1/lesson-questions
+#           - /api/v1/lesson-reviews
+#           - /api/v1/lesson-series
+#           - /api/v1/lesson-sub-categories
+#           - /api/v1/roadmaps
+#           - /api/v1/search
+#           - /api/v1/skill-lessons
+#           - /api/v1/videos
+#       - name: health-check-route
+#         strip_path: true
+#         methods: [GET]
+#         paths:
+#           - /api/v1/health
+#     plugins:
+#       - name: rate-limiting
+#         config:
+#           policy: redis
+#           redis_host: redis
+#           redis_port: 6379
+#           redis_password: redisPass123
+#           limit_by: ip
+#           second: 10
+#           minute: 200
+
+#   # ==============================================================================
+#   # 2. PROTECTED JAVA SERVICE
+#   # ==============================================================================
+#   - name: java-service
+#     url: http://linguavietnameseapp:10000
+#     connect_timeout: 60000
+#     write_timeout: 60000
+#     read_timeout: 60000
+#     routes:
+#       - name: java-api-protected
+#         strip_path: false
+#         methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
+#         paths:
+#           - /api/v1/chat
+#           - /api/v1/couples
+#           - /api/v1/course-version-enrollments
+#           - /api/v1/course-lessons
+#           - /api/v1/daily-challenges
+#           - /api/v1/files/
+#           - /api/v1/files/user/
+#           - /api/v1/flashcards
+#           - /api/v1/friendships
+#           - /api/v1/group-answers
+#           - /api/v1/group-sessions
+#           - /api/v1/lesson-order-in-series
+#           - /api/v1/lesson-progress
+#           - /api/v1/lesson-progress-wrong-items
+#           - /api/v1/matchmaking
+#           - /api/v1/media
+#           - /api/v1/memorizations
+#           - /api/v1/notifications
+#           - /api/v1/permissions
+#           - /api/v1/roles
+#           - /api/v1/rooms
+#           - /api/v1/statistics
+#           - /api/v1/tests
+#           - /api/v1/transactions
+#           - /api/v1/users/ # Giữ cái này cho GET/PUT/DELETE users cần quyền
+#           # - /api/v1/users    # BỎ CÁI NÀY ĐI HOẶC ĐỂ NGUYÊN CŨNG ĐƯỢC VÌ ROUTE PUBLIC Ở TRÊN CỤ THỂ HƠN (MATCH POST)
+#           - /api/v1/user-settings
+#           - /api/v1/user-goals
+#           - /api/v1/user-learning-activities
+#           - /api/v1/video-calls
+#           - /api/v1/wallets
+#           - /api/v1/wallets/
+#     plugins:
+#       - name: jwt
+#         config:
+#           claims_to_verify: [exp]
+#           key_claim_name: kid
+#       - name: rate-limiting
+#         config:
+#           policy: redis
+#           redis_host: redis
+#           redis_port: 6379
+#           redis_password: redisPass123
+#           limit_by: consumer
+#           second: 20
+#           minute: 500
+#       - name: request-size-limiting
+#         config:
+#           allowed_payload_size: 200
+
+#   # ==============================================================================
+#   # 2.1. JAVA UPLOAD SERVICE
+#   # ==============================================================================
+#   - name: java-upload-service
+#     url: http://linguavietnameseapp:10000
+#     connect_timeout: 60000
+#     write_timeout: 300000
+#     read_timeout: 300000
+#     routes:
+#       - name: java-upload-route
+#         strip_path: false
+#         methods: [POST, OPTIONS]
+#         paths:
+#           - /api/v1/files/upload-temp
+#     plugins:
+#       - name: jwt
+#         config:
+#           claims_to_verify: [exp]
+#           key_claim_name: kid
+#       - name: request-size-limiting
+#         config:
+#           allowed_payload_size: 200
+
+#   # ==============================================================================
+#   # 2.2. JAVA WEBSOCKET SERVICE
+#   # ==============================================================================
+#   - name: java-websocket-service
+#     url: http://linguavietnameseapp:10000
+#     connect_timeout: 60000
+#     write_timeout: 300000
+#     read_timeout: 300000
+#     routes:
+#       - name: java-websocket-route
+#         strip_path: false
+#         methods: [GET, POST, OPTIONS]
+#         paths:
+#           - /ws/
+#         protocols: [http, https]
+
+#   # ==============================================================================
+#   # 3. PYTHON SERVICE
+#   # ==============================================================================
+#   - name: python-service
+#     url: http://pythonservice:8001
+#     connect_timeout: 60000
+#     write_timeout: 300000
+#     read_timeout: 300000
+#     routes:
+#       - name: python-api
+#         strip_path: true
+#         methods: [POST, OPTIONS]
+#         paths:
+#           - /api/py/
+#       - name: python-ws
+#         strip_path: true
+#         protocols: [http, https]
+#         methods: [GET, OPTIONS]
+#         paths:
+#           - /ws/py/
+#     plugins:
+#       - name: jwt
+#         config:
+#           claims_to_verify: [exp]
+#           key_claim_name: kid
+#       - name: rate-limiting
+#         config:
+#           policy: redis
+#           redis_host: redis
+#           redis_port: 6379
+#           redis_password: redisPass123
+#           limit_by: consumer
+#           second: 10
+#           minute: 100
+
+# plugins:
+#   - name: cors
+#     config:
+#       origins: ["*"]
+#       methods: [GET, POST, PUT, DELETE, PATCH, OPTIONS]
+#       headers: ["*"]
+#       exposed_headers: ["*"]
+#       credentials: false
+#       max_age: 3600
 _format_version: "3.0"
 _transform: true
 
@@ -18,10 +247,8 @@ consumers:
           -----END PUBLIC KEY-----
 
 services:
-  # ==============================================================================
-  # 1. PUBLIC JAVA SERVICE
-  # ==============================================================================
   - name: public-java-service
+    # FIX: Đổi 8080 -> 10000
     url: http://linguavietnameseapp:10000
     routes:
       - name: public-routes
@@ -73,10 +300,8 @@ services:
           second: 10
           minute: 200
 
-  # ==============================================================================
-  # 2. PROTECTED JAVA SERVICE
-  # ==============================================================================
   - name: java-service
+    # FIX: Đổi 8080 -> 10000
     url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 60000
@@ -112,7 +337,7 @@ services:
           - /api/v1/transactions
           - /api/v1/users/
           - /api/v1/users
-          - /api/v1/user-settings
+          - /api/v1/user-settings # ADDED THIS LINE
           - /api/v1/user-goals
           - /api/v1/user-learning-activities
           - /api/v1/video-calls
@@ -136,10 +361,8 @@ services:
         config:
           allowed_payload_size: 200
 
-  # ==============================================================================
-  # 2.1. JAVA UPLOAD SERVICE
-  # ==============================================================================
   - name: java-upload-service
+    # FIX: Đổi 8080 -> 10000
     url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 300000
@@ -159,10 +382,8 @@ services:
         config:
           allowed_payload_size: 200
 
-  # ==============================================================================
-  # 2.2. JAVA WEBSOCKET SERVICE
-  # ==============================================================================
   - name: java-websocket-service
+    # FIX: Đổi 8080 -> 10000
     url: http://linguavietnameseapp:10000
     connect_timeout: 60000
     write_timeout: 300000
@@ -175,9 +396,6 @@ services:
           - /ws/
         protocols: [http, https]
 
-  # ==============================================================================
-  # 3. PYTHON SERVICE
-  # ==============================================================================
   - name: python-service
     url: http://pythonservice:8001
     connect_timeout: 60000

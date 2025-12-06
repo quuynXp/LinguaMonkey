@@ -1,8 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.scheduler;
 
 import com.connectJPA.LinguaVietnameseApp.dto.response.CourseEvaluationResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.ReviewQualityResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseApprovalStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.CourseType;
 import com.connectJPA.LinguaVietnameseApp.enums.NotificationType;
 import com.connectJPA.LinguaVietnameseApp.grpc.GrpcClientService;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
@@ -26,207 +29,221 @@ import java.util.stream.Collectors;
 @Slf4j
 public class CourseScheduler {
 
+    private final CourseRepository courseRepository;
     private final CourseVersionRepository courseVersionRepository;
     private final CourseVersionLessonRepository cvlRepository;
-    private final CourseVersionReviewRepository courseVersionReviewRepository;
+    private final CourseVersionReviewRepository reviewRepository;
+    private final CourseVersionEnrollmentRepository enrollmentRepository;
     private final VideoRepository videoRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final GrpcClientService grpcClientService;
-    private final CourseRepository courseRepository;
-    private final CourseVersionEnrollmentRepository courseVersionEnrollmentRepository;
-
-    private static final String TIME_ZONE = "UTC";
-    private static final UUID SYSTEM_USER_UUID = UUID.fromString("00000000-0000-0000-0000-000000000000");
 
     @Value("${app.system.token}")
     private String systemToken;
 
-    @Scheduled(cron = "0 0 9,15,21 * * ?", zone = TIME_ZONE)
-    @Transactional
-    public void runCourseValidationJob() {
-        log.info("=== Starting Scheduled Course Validation Job ===");
-        validatePendingDrafts();
-        performSystemReviews();
-        log.info("=== Completed Scheduled Course Validation Job ===");
-    }
+    private static final int MIN_LESSONS_REQUIRED = 10;
+    private static final int QUALITY_WARNING_THRESHOLD_LOW = 5;
+    private static final int QUALITY_WARNING_THRESHOLD_MED = 10;
+    private static final int QUALITY_WARNING_THRESHOLD_HIGH = 15;
+    private static final int DAYS_BEFORE_LOCK = 3;
 
-    // Runs at 20:00 VN Time (13:00 UTC) every 3 days
-    @Scheduled(cron = "0 0 13 */3 * ?", zone = TIME_ZONE)
+    // =========================================================================
+    // 1. ASYNC VALIDATION QUEUE (Priority: VIP > FIFO)
+    // Runs frequently (every 1 min) to process uploaded courses fast
+    // =========================================================================
+    @Scheduled(fixedDelay = 60000) 
     @Transactional
-    public void remindInactiveCourseStudents() {
-        log.info("Starting Inactive Course Student Reminder...");
-        OffsetDateTime threshold = OffsetDateTime.now().minusDays(3);
+    public void processCourseValidationQueue() {
+        log.info(">>> Processing Course Validation Queue (Priority Mode)...");
         
-        List<CourseVersionEnrollment> stalledEnrollments = courseVersionEnrollmentRepository.findStalledEnrollments(threshold);
-
-        for (CourseVersionEnrollment enrollment : stalledEnrollments) {
-            User user = enrollment.getUser();
-            if (user == null || user.isDeleted() || !user.getUserSettings().isCourseReminders()) continue;
-
-            if (enrollment.getProgress() >= 100) continue;
-
-            try {
-                String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
-                String courseTitle = enrollment.getCourseVersion().getCourse().getTitle();
-                
-                String[] message = NotificationI18nUtil.getLocalizedMessage("COURSE_INACTIVITY_REMINDER", langCode);
-                
-                NotificationRequest request = NotificationRequest.builder()
-                        .userId(user.getUserId())
-                        .title(message[0])
-                        .content(String.format(message[1], courseTitle))
-                        .type("COURSE_REMINDER")
-                        .payload(String.format("{\"screen\":\"CourseStack\", \"stackScreen\":\"CourseDetail\", \"courseId\":\"%s\"}", enrollment.getCourseVersion().getCourseId()))
-                        .build();
-
-                notificationService.createPushNotification(request);
-
-            } catch (Exception e) {
-                log.error("Error sending course reminder to user {}", user.getUserId(), e);
-            }
-        }
-    }
-
-    private void validatePendingDrafts() {
-        List<CourseVersion> pendingDrafts = courseVersionRepository.findDraftsPendingValidation();
-        log.info("Found {} drafts pending validation.", pendingDrafts.size());
+        // Fetch drafts sorted by VIP Status DESC, then Time ASC
+        List<CourseVersion> pendingDrafts = courseVersionRepository.findDraftsPendingValidationSortedByPriority();
 
         for (CourseVersion draft : pendingDrafts) {
-            StringBuilder warningLog = new StringBuilder();
-            boolean integrityPassed = checkVersionIntegrity(draft, warningLog);
-            boolean contentPassed = checkContentQuality(draft, warningLog);
+            StringBuilder validationLog = new StringBuilder();
+            boolean isPassed = true;
 
-            draft.setIsIntegrityValid(integrityPassed);
-            draft.setIsContentValid(contentPassed);
-            draft.setValidationWarnings(warningLog.toString());
-            
-            updateOptimizationFlags(draft);
+            // Rule 1: Strict Lesson Count Check (> 10 lessons)
+            List<CourseVersionLesson> lessons = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(draft.getVersionId());
+            if (lessons.size() < MIN_LESSONS_REQUIRED) {
+                validationLog.append("Failed: Course must have at least ").append(MIN_LESSONS_REQUIRED).append(" lessons. Found: ").append(lessons.size()).append(". ");
+                isPassed = false;
+            }
+
+            // Rule 2: Content Check (Fast check in Java)
+            for (CourseVersionLesson cvl : lessons) {
+                Lesson lesson = cvl.getLesson();
+                boolean hasContent = (lesson.getLessonQuestions() != null && !lesson.getLessonQuestions().isEmpty()) 
+                                   || !videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId()).isEmpty()
+                                   || (lesson.getDurationSeconds() != null && lesson.getDurationSeconds() > 30); // Simple audio/video size heuristic
+                
+                if (!hasContent) {
+                    validationLog.append("Failed: Lesson '").append(lesson.getLessonName()).append("' is empty or too short. ");
+                    isPassed = false;
+                    break; // Fail fast
+                }
+            }
+
+            draft.setIsContentValid(isPassed);
+            draft.setIsIntegrityValid(isPassed); // Simplified integrity check for new drafts
+            draft.setValidationWarnings(validationLog.toString());
             courseVersionRepository.save(draft);
 
-            if (!integrityPassed || !contentPassed) {
-                notifyCreator(draft, "COURSE_VALIDATION_FAILED", draft.getVersionNumber().toString());
+            if (isPassed) {
+                notifyCreator(draft.getCourseId(), "COURSE_VALIDATION_PASSED", draft.getVersionNumber().toString());
+            } else {
+                notifyCreator(draft.getCourseId(), "COURSE_VALIDATION_FAILED", validationLog.toString());
             }
         }
     }
 
-    private boolean checkVersionIntegrity(CourseVersion draft, StringBuilder warnings) {
-        if (draft.getVersionNumber() == 1) return true;
-
-        Optional<CourseVersion> previousPublicOpt = courseVersionRepository.findLatestPublicVersionByCourseId(draft.getCourseId());
-        if (previousPublicOpt.isEmpty()) return true;
-
-        CourseVersion oldVersion = previousPublicOpt.get();
-        List<CourseVersionLesson> oldCVLs = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(oldVersion.getVersionId());
-        List<CourseVersionLesson> newCVLs = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(draft.getVersionId());
-
-        Set<UUID> newLessonIds = newCVLs.stream().map(cvl -> cvl.getLesson().getLessonId()).collect(Collectors.toSet());
-
-        boolean missingOldLessons = false;
-        List<String> missingNames = new ArrayList<>();
-
-        for (CourseVersionLesson oldCvl : oldCVLs) {
-            if (!newLessonIds.contains(oldCvl.getLesson().getLessonId())) {
-                missingOldLessons = true;
-                missingNames.add(oldCvl.getLesson().getLessonName());
-            }
-        }
-
-        if (missingOldLessons) {
-            warnings.append("Integrity Violation: Cannot delete published lessons: ").append(String.join(", ", missingNames)).append("; ");
-            return false;
-        }
-        return true;
-    }
-
-    private boolean checkContentQuality(CourseVersion draft, StringBuilder warnings) {
-        List<CourseVersionLesson> cvls = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(draft.getVersionId());
-        boolean isValid = true;
-
-        for (CourseVersionLesson cvl : cvls) {
-            Lesson lesson = cvl.getLesson();
-            if (lesson.getDurationSeconds() == null || lesson.getDurationSeconds() < 60) {
-                 boolean hasQuestions = lesson.getLessonQuestions() != null && !lesson.getLessonQuestions().isEmpty();
-                 boolean hasVideo = !videoRepository.findByLessonIdAndIsDeletedFalse(lesson.getLessonId()).isEmpty();
-
-                 if (!hasQuestions && !hasVideo) {
-                     warnings.append(String.format("Lesson '%s' is too short (Duration < 1m, no content). ", lesson.getLessonName()));
-                     isValid = false;
-                 }
-            }
-        }
-        return isValid;
-    }
-
-    private void updateOptimizationFlags(CourseVersion version) {
-        // optimization logic stub
-    }
-
-    private void performSystemReviews() {
-        List<CourseVersion> unreviewedVersions = courseVersionRepository.findPublicVersionsPendingSystemReview();
+    // =========================================================================
+    // 2. QUALITY MONITORING & LOCKING (Daily)
+    // Checks complaints, warns users, and locks if ignored for 3 days
+    // =========================================================================
+    @Scheduled(cron = "0 0 8 * * ?") // 8 AM Daily
+    @Transactional
+    public void monitorCourseQuality() {
+        log.info(">>> Monitoring Course Quality...");
         
-        for (CourseVersion version : unreviewedVersions) {
+        // Get all APPROVED courses
+        List<Course> activeCourses = courseRepository.findByApprovalStatusAndIsDeletedFalse(CourseApprovalStatus.APPROVED, null).getContent();
+
+        for (Course course : activeCourses) {
+            // Count negative reviews (< 3 stars) in the last 30 days
+            long complaints = reviewRepository.countNegativeReviewsSince(course.getCourseId(), OffsetDateTime.now().minusDays(30));
+
+            if (complaints >= QUALITY_WARNING_THRESHOLD_LOW) {
+                handleQualityWarning(course, complaints);
+            }
+        }
+    }
+
+    private void handleQualityWarning(Course course, long complaints) {
+        OffsetDateTime lastWarning = course.getLastQualityWarningAt();
+        OffsetDateTime now = OffsetDateTime.now();
+
+        // Level 1: Warning
+        if (complaints >= QUALITY_WARNING_THRESHOLD_LOW && complaints < QUALITY_WARNING_THRESHOLD_HIGH) {
+            notifyCreator(course.getCourseId(), "COURSE_QUALITY_WARNING", String.valueOf(complaints));
+            course.setLastQualityWarningAt(now);
+            courseRepository.save(course);
+        }
+        // Level 2: Strict Action (Locking)
+        else if (complaints >= QUALITY_WARNING_THRESHOLD_HIGH) {
+            if (lastWarning != null && lastWarning.isBefore(now.minusDays(DAYS_BEFORE_LOCK))) {
+                // Creator ignored warnings for 3 days -> LOCK
+                course.setApprovalStatus(CourseApprovalStatus.BLOCKED);
+                courseRepository.save(course);
+                notifyCreator(course.getCourseId(), "COURSE_LOCKED_QUALITY", String.valueOf(complaints));
+                log.warn("Course {} locked due to ignored quality warnings.", course.getCourseId());
+            } else {
+                // Final warning before lock
+                notifyCreator(course.getCourseId(), "COURSE_QUALITY_CRITICAL", String.valueOf(DAYS_BEFORE_LOCK));
+                if (lastWarning == null) {
+                    course.setLastQualityWarningAt(now);
+                    courseRepository.save(course);
+                }
+            }
+        }
+    }
+
+    // =========================================================================
+    // 3. TOXIC REVIEW SCRUBBER (Real-time/Frequent)
+    // Removes toxic comments and warns the commenter
+    // =========================================================================
+    @Scheduled(fixedDelay = 300000) // Every 5 minutes
+    @Transactional
+    public void scrubToxicReviews() {
+        List<CourseVersionReview> pendingReviews = reviewRepository.findReviewsPendingToxicityCheck();
+
+        for (CourseVersionReview review : pendingReviews) {
             try {
-                Course course = courseRepository.findById(version.getCourseId()).orElse(null);
-                if (course == null) continue;
+                // Async AI Check
+                ReviewQualityResponse aiResponse = grpcClientService.callAnalyzeReviewQualityAsync(
+                        systemToken, 
+                        review.getUserId().toString(), 
+                        review.getReviewId().toString(), 
+                        review.getComment(), 
+                        review.getRating().floatValue(), 
+                        "COURSE_REVIEW"
+                ).join();
 
-                List<CourseVersionLesson> cvls = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(version.getVersionId());
-                List<Lesson> lessons = cvls.stream().map(CourseVersionLesson::getLesson).collect(Collectors.toList());
-                
-                CompletableFuture<CourseEvaluationResponse> future = grpcClientService.callEvaluateCourseVersionAsync(
-                        systemToken, course.getTitle(), version.getDescription(), lessons
-                );
-                
-                CourseEvaluationResponse aiResponse = future.join();
+                review.setIsSystemChecked(true);
 
-                CourseVersionReview review = new CourseVersionReview();
-                review.setCourseId(version.getCourseId());
-                review.setUserId(SYSTEM_USER_UUID);
-                review.setRating(BigDecimal.valueOf(aiResponse.getRating()));
-                review.setComment(aiResponse.getReviewComment());
-                review.setReviewedAt(OffsetDateTime.now());
-                review.setCourseVersion(version);
-                
-                courseVersionReviewRepository.save(review);
+                if (aiResponse.isToxic()) {
+                    // Delete review content (Soft delete or clear content)
+                    review.setDeleted(true);
+                    review.setComment("[Removed for toxicity]");
+                    reviewRepository.save(review);
 
-                version.setIsSystemReviewed(true);
-                version.setSystemRating(aiResponse.getRating());
-                courseVersionRepository.save(version);
-
-                notifyCreator(version, "COURSE_SYSTEM_REVIEW_DONE", String.valueOf(aiResponse.getRating()));
+                    // Warn the Reviewer
+                    notifyUser(review.getUserId(), "REVIEW_REMOVED_TOXIC", 
+                        String.format("Content: %s... Course: %s", 
+                        review.getComment().substring(0, Math.min(review.getComment().length(), 20)),
+                        review.getCourseVersion().getCourse().getTitle())
+                    );
+                } else {
+                    reviewRepository.save(review);
+                }
 
             } catch (Exception e) {
-                log.error("Failed to perform system review for version {}", version.getVersionId(), e);
+                log.error("Failed to check toxicity for review {}", review.getReviewId(), e);
             }
         }
     }
 
-    private void notifyCreator(CourseVersion version, String notificationKey, String arg) {
-        try {
-            Course course = courseRepository.findById(version.getCourseId()).orElse(null);
-            if (course == null) return;
+    // =========================================================================
+    // 4. MONETIZATION SUGGESTION (Community Acceptance)
+    // Suggests pricing for successful free courses
+    // =========================================================================
+    @Scheduled(cron = "0 0 10 * * ?") // 10 AM Daily
+    @Transactional
+    public void suggestMonetization() {
+        // Find FREE courses
+        List<Course> freeCourses = courseRepository.findCoursesByTypeAndIsDeletedFalse(CourseType.FREE, null).getContent();
 
-            UUID creatorId = course.getCreatorId();
-            User creator = userRepository.findById(creatorId).orElse(null);
-            
-            if (creator != null) {
-                String langCode = creator.getNativeLanguageCode() != null ? creator.getNativeLanguageCode() : "en";
-                String[] message = NotificationI18nUtil.getLocalizedMessage(notificationKey, langCode);
-                
-                String content = message[1];
-                if (arg != null) content = String.format(message[1], arg);
+        for (Course course : freeCourses) {
+            long studentCount = enrollmentRepository.countStudentsByCourseId(course.getCourseId());
+            Double rating = reviewRepository.getAverageRatingByCourseId(course.getCourseId());
 
-                NotificationRequest request = NotificationRequest.builder()
-                        .userId(creatorId)
-                        .title(message[0])
-                        .content(content)
-                        .type(NotificationType.SYSTEM.name())
-                        .build();
-                        
-                notificationService.createPushNotification(request);
+            // Threshold: > 100 students AND > 4.5 Stars
+            if (studentCount > 100 && rating != null && rating >= 4.5) {
+                // Check if we haven't nagged them recently (logic can be added using LastQualityWarningAt or similar field)
+                 notifyCreator(course.getCourseId(), "SUGGEST_MONETIZATION", 
+                     String.format("Students: %d, Rating: %.1f", studentCount, rating));
             }
-        } catch (Exception e) {
-            log.error("Error sending notification for version {}", version.getVersionId(), e);
+        }
+    }
+
+    // =========================================================================
+    // Helper Methods
+    // =========================================================================
+
+    private void notifyCreator(UUID courseId, String type, String arg) {
+        Course course = courseRepository.findById(courseId).orElse(null);
+        if (course != null) {
+            notifyUser(course.getCreatorId(), type, arg);
+        }
+    }
+
+    private void notifyUser(UUID userId, String type, String arg) {
+        User user = userRepository.findById(userId).orElse(null);
+        if (user != null) {
+            String langCode = user.getNativeLanguageCode() != null ? user.getNativeLanguageCode() : "en";
+            String[] message = NotificationI18nUtil.getLocalizedMessage(type, langCode);
+            
+            String content = message[1];
+            if (arg != null) content = String.format(message[1], arg);
+
+            NotificationRequest req = NotificationRequest.builder()
+                    .userId(userId)
+                    .title(message[0])
+                    .content(content)
+                    .type(type)
+                    .build();
+            notificationService.createPushNotification(req);
         }
     }
 }

@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { LessonQuestionResponse } from "../../types/dto";
 import { getLessonImage } from "../../utils/courseUtils";
 import { QuestionType } from "../../types/enums";
-import { getDirectMediaUrl } from "../../utils/mediaUtils"; // IMPORT THIS
+import { getDirectMediaUrl } from "../../utils/mediaUtils";
 
 const MediaNotFound = ({ type }: { type: string }) => (
     <View style={styles.notFoundContainer}>
@@ -19,22 +19,18 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
     const { t } = useTranslation();
     const [imgError, setImgError] = useState(false);
 
-    // CONVERT TO DIRECT LINK HERE
     const mediaUrl = getDirectMediaUrl(question.mediaUrl);
 
-    // Determine media type based on extension or context
-    // Check if it's a drive view link (now converted) or standard mp4/mp3
     const isVideoOrAudio = mediaUrl && (
         mediaUrl.endsWith('.mp4') ||
         mediaUrl.endsWith('.mp3') ||
-        mediaUrl.includes('export=view') // Google drive ID check
+        mediaUrl.includes('export=view')
     ) && (question.questionType === QuestionType.VIDEO || question.questionType === QuestionType.AUDIO);
 
     const isImage = mediaUrl && !isVideoOrAudio;
 
     const player = useVideoPlayer(isVideoOrAudio ? mediaUrl : "", (player) => {
         player.loop = false;
-        // Auto play if it's audio/video context
         if (isVideoOrAudio) player.play();
     });
 
@@ -42,7 +38,6 @@ export const UniversalQuestionView = ({ question }: { question: LessonQuestionRe
         if (!mediaUrl) return null;
 
         if (isVideoOrAudio) {
-            // For simple implementation, wrapping Expo Video
             return (
                 <View style={styles.mediaContainer}>
                     <VideoView player={player} style={{ width: 300, height: 200 }} contentFit="contain" />

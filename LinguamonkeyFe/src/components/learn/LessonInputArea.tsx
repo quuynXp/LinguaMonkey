@@ -27,14 +27,11 @@ export const LessonInputArea = ({
     const [matches, setMatches] = useState<Record<string, string>>({});
     const [selectedLeft, setSelectedLeft] = useState<string | null>(null);
 
-    // --- Hooks Moved to Top Level ---
-    // Error 1 fix: useMemo for ORDERING fragments moved here
     const fragments = React.useMemo(() => {
         if (question.questionType !== QuestionType.ORDERING) return [];
         try { return JSON.parse(question.optionsJson || "[]"); } catch { return []; }
     }, [question.optionsJson, question.questionType]);
 
-    // Error 2 fix: useMemo for MATCHING pairs moved here
     const pairs = React.useMemo(() => {
         if (question.questionType !== QuestionType.MATCHING) return [];
         try { return JSON.parse(question.optionsJson || "[]"); } catch { return []; }
@@ -42,7 +39,6 @@ export const LessonInputArea = ({
 
     const leftSide = pairs.map((p: any) => p.key);
     const rightSide = pairs.map((p: any) => p.value);
-    // --- End of Hooks Moved to Top Level ---
 
     useEffect(() => { resetState(); }, [question.lessonQuestionId]);
 
@@ -79,17 +75,30 @@ export const LessonInputArea = ({
                     {options.map((opt) => {
                         const isSelected = selectedAnswer && (selectedAnswer === opt.key || selectedAnswer === `option${opt.key}`);
                         let btnStyle = styles.optionBtn;
+                        let textStyle = styles.optionText;
+
                         if (isAnswered) {
                             const correctKey = question.correctOption?.replace(/^option/i, '');
-                            if (opt.key === correctKey) btnStyle = styles.optionBtnCorrect as any;
-                            else if (isSelected) btnStyle = styles.optionBtnWrong as any;
+                            if (opt.key === correctKey) {
+                                btnStyle = styles.optionBtnCorrect as any;
+                                textStyle = styles.optionTextCorrect as any;
+                            } else if (isSelected) {
+                                btnStyle = styles.optionBtnWrong as any;
+                                textStyle = styles.optionTextWrong as any;
+                            }
                         } else if (isSelected) {
                             btnStyle = styles.optionBtnSelected as any;
+                            textStyle = styles.optionTextSelected as any;
                         }
+
                         return (
                             <TouchableOpacity key={opt.key} style={btnStyle} onPress={() => onAnswer(`option${opt.key}`)} disabled={isAnswered || isLoading}>
-                                <View style={styles.optionKeyBadge}><Text style={styles.optionKeyText}>{opt.key}</Text></View>
-                                <Text style={styles.optionText}>{opt.value}</Text>
+                                <View style={[styles.optionKeyBadge, isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && { backgroundColor: '#10B981' }]}>
+                                    <Text style={[styles.optionKeyText, isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && { color: '#FFF' }]}>{opt.key}</Text>
+                                </View>
+                                <Text style={textStyle}>{opt.value}</Text>
+                                {isAnswered && opt.key === question.correctOption?.replace(/^option/i, '') && <Icon name="check-circle" size={24} color="#10B981" />}
+                                {isAnswered && isSelected && opt.key !== question.correctOption?.replace(/^option/i, '') && <Icon name="cancel" size={24} color="#EF4444" />}
                             </TouchableOpacity>
                         );
                     })}
@@ -103,8 +112,8 @@ export const LessonInputArea = ({
         return (
             <View style={styles.container}>
                 <View style={styles.writingContainer}>
-                    <Text style={styles.label}>Fill in:</Text>
-                    <TextInput style={styles.singleLineInput} placeholder="..." value={textInput} onChangeText={setTextInput} editable={!isAnswered} />
+                    <Text style={styles.label}>Fill in the blank:</Text>
+                    <TextInput style={styles.singleLineInput} placeholder="Type your answer here..." value={textInput} onChangeText={setTextInput} editable={!isAnswered} />
                     <View style={styles.actionRow}>
                         {!isAnswered && renderSkipButton()}
                         {!isAnswered && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading)}
@@ -112,8 +121,14 @@ export const LessonInputArea = ({
                 </View>
                 {isAnswered && (
                     <View style={styles.resultBox}>
-                        <Text style={[styles.resultText, styles.textWrong]}>Your: {selectedAnswer}</Text>
-                        <Text style={styles.correctText}>Correct: {question.correctOption}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={styles.textLabel}>Your Answer: </Text>
+                            <Text style={[styles.resultText, selectedAnswer === question.correctOption ? styles.textCorrect : styles.textWrong]}>{selectedAnswer}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                            <Text style={styles.textLabel}>Correct Answer: </Text>
+                            <Text style={styles.textCorrect}>{question.correctOption}</Text>
+                        </View>
                     </View>
                 )}
             </View>
@@ -121,8 +136,6 @@ export const LessonInputArea = ({
     }
 
     if (question.questionType === QuestionType.ORDERING) {
-        // fragments is now defined at the top level
-
         const handleSelectFragment = (val: string) => {
             if (orderedList.includes(val)) setOrderedList(prev => prev.filter(k => k !== val));
             else setOrderedList(prev => [...prev, val]);
@@ -163,8 +176,6 @@ export const LessonInputArea = ({
     }
 
     if (question.questionType === QuestionType.MATCHING) {
-        // pairs, leftSide, and rightSide are now defined at the top level
-
         const handleMatch = (rightVal: string) => {
             if (selectedLeft) {
                 setMatches(prev => ({ ...prev, [selectedLeft]: rightVal }));
@@ -189,7 +200,7 @@ export const LessonInputArea = ({
                                     onPress={() => !isMatched && !isAnswered && setSelectedLeft(leftKey)}
                                     disabled={isMatched || isAnswered}
                                 >
-                                    <Text style={styles.matchItemText}>{leftKey}</Text>
+                                    <Text style={[styles.matchItemText, isMatched && { color: '#FFF' }]}>{leftKey}</Text>
                                     {isMatched && <Icon name="check" size={16} color="#FFF" />}
                                 </TouchableOpacity>
                             );
@@ -249,7 +260,7 @@ export const LessonInputArea = ({
         return (
             <View style={styles.container}>
                 <View style={styles.writingContainer}>
-                    <TextInput style={styles.textInput} multiline placeholder="Type answer..." value={textInput} onChangeText={setTextInput} editable={!isAnswered} />
+                    <TextInput style={styles.textInput} multiline placeholder="Type your answer..." value={textInput} onChangeText={setTextInput} editable={!isAnswered} />
                     <View style={styles.actionRow}>
                         {!isAnswered && renderSkipButton()}
                         {!isAnswered && renderSubmitButton(() => onAnswer(textInput), !textInput.trim() || isLoading, "Submit")}
@@ -267,11 +278,14 @@ const styles = StyleSheet.create({
     optionsContainer: { gap: 12 },
     optionBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#E5E7EB', shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
     optionBtnSelected: { borderColor: '#4F46E5', backgroundColor: '#EEF2FF' },
-    optionBtnCorrect: { borderColor: '#10B981', backgroundColor: '#D1FAE5' },
-    optionBtnWrong: { borderColor: '#EF4444', backgroundColor: '#FEE2E2' },
+    optionBtnCorrect: { borderColor: '#10B981', backgroundColor: '#ECFDF5', borderWidth: 2 },
+    optionBtnWrong: { borderColor: '#EF4444', backgroundColor: '#FEF2F2', borderWidth: 2 },
     optionKeyBadge: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center', marginRight: 12 },
     optionKeyText: { fontSize: 14, fontWeight: '700', color: '#6B7280' },
     optionText: { fontSize: 16, color: '#1F2937', fontWeight: '500', flex: 1 },
+    optionTextSelected: { color: '#4F46E5', fontWeight: '700' },
+    optionTextCorrect: { color: '#065F46', fontWeight: '700' },
+    optionTextWrong: { color: '#991B1B', fontWeight: '700' },
     speakingContainer: { alignItems: 'center', marginTop: 12 },
     recordBtn: { width: 80, height: 80, borderRadius: 40, backgroundColor: '#4F46E5', justifyContent: 'center', alignItems: 'center', elevation: 6 },
     recordingBtn: { backgroundColor: '#EF4444', transform: [{ scale: 1.1 }] },
@@ -283,10 +297,11 @@ const styles = StyleSheet.create({
     textInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 16, minHeight: 120, textAlignVertical: 'top', fontSize: 16 },
     singleLineInput: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 12, padding: 12, fontSize: 16, marginTop: 8 },
     label: { fontSize: 16, fontWeight: '600', color: '#374151', marginBottom: 8 },
-    resultBox: { marginTop: 16, padding: 12, backgroundColor: '#F3F4F6', borderRadius: 8 },
+    resultBox: { marginTop: 16, padding: 16, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB' },
+    textLabel: { fontWeight: '600', color: '#6B7280' },
     resultText: { fontSize: 16, fontWeight: '600' },
-    correctText: { fontSize: 14, color: '#10B981', marginTop: 4 },
-    textWrong: { color: '#EF4444' },
+    textCorrect: { color: '#10B981', fontWeight: 'bold' },
+    textWrong: { color: '#EF4444', fontWeight: 'bold', textDecorationLine: 'line-through' },
     orderDisplayArea: { minHeight: 60, backgroundColor: '#F9FAFB', borderRadius: 12, padding: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 16, alignItems: 'center' },
     chipContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
     chip: { backgroundColor: '#EEF2FF', paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: '#C7D2FE' },

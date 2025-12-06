@@ -2,25 +2,26 @@ import React, { useRef, useState, useEffect, useCallback } from "react"
 import { Alert, Animated, ScrollView, Text, TouchableOpacity, View, ActivityIndicator } from "react-native"
 import Icon from "react-native-vector-icons/MaterialIcons"
 import { useTranslation } from "react-i18next"
+import CountryFlag from "react-native-country-flag"
 import { useAppStore, CallPreferences } from "../../stores/appStore"
 import { useUserStore } from "../../stores/UserStore"
-import { useChatStore } from "../../stores/ChatStore" // Import ChatStore
+import { useChatStore } from "../../stores/ChatStore"
 import { useUsers } from "../../hooks/useUsers"
 import { useVideoCalls, MatchResponseData } from "../../hooks/useVideos"
 import ScreenLayout from "../../components/layout/ScreenLayout"
 import { AgeRange, ProficiencyLevel, LearningPace } from "../../types/enums"
 import { createScaledSheet } from "../../utils/scaledStyles"
-import { getCountryFlag } from "../../utils/flagUtils"
 import { RoomResponse, CallPreferencesRequest, LanguageResponse } from "../../types/dto"
+import { languageToCountry } from "../../types/api"
 
-const ICON_MAP = {
+const ICON_MAP: Record<string, string> = {
   plane: "flight",
   music: "music-note",
   film: "movie",
   cutlery: "restaurant",
 }
 
-const getMaterialIconName = (iconName) => {
+const getMaterialIconName = (iconName: string | undefined) => {
   if (!iconName) return "star"
   return ICON_MAP[iconName] || iconName
 }
@@ -38,17 +39,23 @@ interface FinalCallPreferences extends Omit<CallPreferences, 'learningLanguage'>
   learningPace: string;
 }
 
-const CallSetupScreen = ({ navigation }) => {
+const getFlagIsoFromLang = (langCode?: string) => {
+  if (!langCode) return undefined
+  const lower = String(langCode).toLowerCase()
+  const mapped = (languageToCountry as Record<string, string>)[lower]
+  if (mapped) return mapped
+  return langCode.slice(0, 2).toUpperCase()
+}
+
+const CallSetupScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
   const { user } = useUserStore()
   const { callPreferences: savedPreferences, setCallPreferences, supportLanguage: rawSupportedLangs = [] } = useAppStore()
-  // Use Global Online Count from Store
   const totalOnlineUsers = useChatStore(s => s.totalOnlineUsers)
 
   const supportedLanguages = rawSupportedLangs as unknown as LanguageResponse[]
 
   const { useInterests } = useUsers()
-
   const { useFindCallPartner, useCancelFindMatch } = useVideoCalls()
   const { mutate: findMatch } = useFindCallPartner()
   const { mutate: cancelMatch } = useCancelFindMatch()
@@ -230,7 +237,7 @@ const CallSetupScreen = ({ navigation }) => {
     }
   }, [isSearching, startTime, performSearch])
 
-  const renderOptionButton = (options, selectedValue, onSelect) => (
+  const renderOptionButton = (options: any[], selectedValue: any, onSelect: (val: any) => void) => (
     <View style={styles.optionsContainer}>
       {options.map((option) => (
         <TouchableOpacity
@@ -255,15 +262,19 @@ const CallSetupScreen = ({ navigation }) => {
       <View style={styles.languagesGrid}>
         {displayLangs.map((lang) => {
           const isSelected = preferences.learningLanguages.includes(lang.languageCode)
+          const iso = getFlagIsoFromLang(lang.languageCode)
+
           return (
             <TouchableOpacity
               key={lang.languageCode}
               style={[styles.languageOption, isSelected && styles.selectedLanguageOption]}
               onPress={() => toggleLearningLanguage(lang.languageCode)}
             >
-              <View style={styles.flagContainer}>
-                {getCountryFlag(lang.languageCode, 16)}
-              </View>
+              {iso ? (
+                <CountryFlag isoCode={iso} size={16} />
+              ) : (
+                <View style={{ width: 16, height: 16 }} />
+              )}
               <Text style={[styles.languageText, isSelected && styles.selectedLanguageText]}>
                 {lang.languageName}
               </Text>
@@ -304,7 +315,6 @@ const CallSetupScreen = ({ navigation }) => {
           <View style={styles.statsContainer}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>
-                {/* Use Real-time Data from Store */}
                 {totalOnlineUsers > 0 ? totalOnlineUsers.toLocaleString() : 1}
               </Text>
               <Text style={styles.statLabel}>{t("call.onlineUsers")}</Text>
@@ -436,7 +446,6 @@ const styles = createScaledSheet({
   selectedLanguageOption: { borderColor: "#4F46E5", backgroundColor: "#EEF2FF" },
   languageText: { fontSize: 14, color: "#374151", fontWeight: "500" },
   selectedLanguageText: { color: "#4F46E5", fontWeight: "700" },
-  flagContainer: { width: 20, justifyContent: 'center', alignItems: 'center' },
   interestsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   interestItem: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 10, borderRadius: 100, borderWidth: 1, borderColor: "#E5E7EB", backgroundColor: "#FFFFFF", gap: 8 },
   interestText: { fontSize: 14, color: "#374151", fontWeight: "500" },
