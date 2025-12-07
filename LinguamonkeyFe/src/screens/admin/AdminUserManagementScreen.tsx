@@ -28,6 +28,11 @@ const AdminUserManagementScreen = () => {
     size: 20,
     email: searchQuery || undefined,
   });
+  // NOTE: useAllUsers trong hooks/useUsers.ts mặc định có enabled: false. 
+  // Để khắc phục, ta cần đảm bảo hook này được kích hoạt.
+  // Nếu không thể thay đổi hook trong useUsers.ts, ta phải thêm enabled: true vào đây, 
+  // hoặc lý tưởng là xóa 'enabled: false' trong useUsers.ts. 
+  // Giả định bạn đã sửa lại file useUsers.ts hoặc sẽ sửa.
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
 

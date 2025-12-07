@@ -95,7 +95,7 @@ export const useUsers = () => {
         );
         return mapPageResponse(data.result, page, size);
       },
-      enabled: false,
+      enabled: true,
     });
   };
 

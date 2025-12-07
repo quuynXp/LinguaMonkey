@@ -173,62 +173,37 @@ const AdminDashboardScreen = () => {
           />
         </View>
 
+        {/* Cập nhật Section Management */}
         <View style={styles.section}>
-          <Text style={styles.sectionHeader}>{t("admin.section.management")}</Text>
+          <Text style={styles.sectionHeader}>{t("admin.section.management") || "Management"}</Text>
           <View style={styles.menuCard}>
             <MenuStepItem
-              title={t("admin.screens.users")}
-              subtitle="User accounts & permissions"
+              title={t("admin.screens.users") || "User Management"}
+              subtitle="View, Search & Manage user accounts"
               icon="group"
               color="#4F46E5"
               route="AdminUserManagementScreen"
             />
             <MenuStepItem
-              title={t("admin.screens.courses")}
-              subtitle="Manage courses & curriculum"
+              title={t("admin.screens.courses") || "Course Management"}
+              subtitle="View, Create, Edit courses & refunds"
               icon="library-books"
               color="#F59E0B"
               route="AdminCourseManagementScreen"
             />
             <MenuStepItem
-              title={t("admin.screens.lessons")}
-              subtitle="Manage individual lessons"
-              icon="class"
-              color="#8B5CF6"
-              route="AdminLessonManagementScreen"
-              isLast
-            />
-          </View>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionHeader}>{t("admin.section.content_business")}</Text>
-          <View style={styles.menuCard}>
-            <MenuStepItem
-              title={t("admin.screens.createVideo")}
-              subtitle="Upload and manage videos"
-              icon="video-library"
-              color="#EC4899"
-              route="AdminCreateVideoScreen"
-            />
-            <MenuStepItem
-              title={t("admin.screens.analytics")}
-              subtitle="Revenue detailed reports"
-              icon="analytics"
-              color="#10B981"
-              route="AdminRevenueAnalyticsScreen"
-            />
-            <MenuStepItem
-              title={t("admin.screens.transactions")}
-              subtitle="Payment history logs"
-              icon="history"
-              color="#6366F1"
+              title={t("admin.screens.transactions") || "Transaction Management"}
+              subtitle="View and track all payment history"
+              icon="receipt-long"
+              color="#059669"
               route="AdminTransactionScreen"
               isLast
             />
           </View>
         </View>
 
+        {/* Xóa Section Content/Business không cần thiết, thay bằng một section mới nếu cần, hoặc xóa hoàn toàn */}
+        {/* Giữ nguyên Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Icon name="logout" size={20} color="#EF4444" />
           <Text style={styles.logoutText}>{t("admin.auth.logout")}</Text>

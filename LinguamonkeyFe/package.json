@@ -162,5 +162,18 @@
     "ts-jest": "^29.4.5",
     "typescript": "~5.9.2"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "react-native-fs",
+          "react-native-webrtc",
+          "react-native-audio-recorder-player",
+          "react-native-live-audio-stream",
+          "react-native-vector-icons"
+        ]
+      }
+    }
+  }
 }
