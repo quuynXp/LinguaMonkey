@@ -281,33 +281,8 @@ export const useCourses = () => {
     });
   };
 
-  const useCreatorStats = (creatorId?: string) => {
-    return useQuery({
-      queryKey: courseKeys.creatorStats(creatorId!),
-      queryFn: async () => {
-        if (!creatorId) throw new Error("Creator ID required");
-        const { data } = await instance.get<AppApiResponse<CreatorDashboardResponse>>(
-          `/api/v1/courses/creator/${creatorId}/stats`
-        );
-        return data.result!;
-      },
-      enabled: !!creatorId,
-    });
-  };
-
-  const useCourseStats = (courseId?: string) => {
-    return useQuery({
-      queryKey: courseKeys.courseStats(courseId!),
-      queryFn: async () => {
-        if (!courseId) throw new Error("Course ID required");
-        const { data } = await instance.get<AppApiResponse<CreatorDashboardResponse>>(
-          `/api/v1/courses/${courseId}/stats`
-        );
-        return data.result!;
-      },
-      enabled: !!courseId,
-    });
-  };
+  // REMOVED: useCreatorStats - không cần thiết vì endpoint stats chỉ dùng cho dashboard riêng
+  // FIX: useCourseStats cũng không cần thiết cho màn edit course
 
   const useRecommendedCourses = (userId?: string, limit = 5) => {
     return useQuery({
@@ -803,8 +778,6 @@ export const useCourses = () => {
     useCourseVersions,
     useGetVersion,
     useCreatorCourses,
-    useCreatorStats,
-    useCourseStats,
     useLoadReplies,
     useRecommendedCourses,
     useCourseLevels,

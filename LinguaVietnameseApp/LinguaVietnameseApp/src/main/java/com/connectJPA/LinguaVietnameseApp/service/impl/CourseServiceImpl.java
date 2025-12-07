@@ -126,6 +126,14 @@ public class CourseServiceImpl implements CourseService {
         return response;
     }
 
+
+    @Override
+    public CourseVersionResponse getCourseVersionById(UUID versionId) {
+        CourseVersion version = courseVersionRepository.findById(versionId)
+                .orElseThrow(() -> new AppException(ErrorCode.VERSION_NOT_FOUND));
+        return versionMapper.toResponse(version);
+    }
+
     @Override
     public List<CourseResponse> getTopSellingCourses(int limit) {
         Pageable pageable = PageRequest.of(0, limit);

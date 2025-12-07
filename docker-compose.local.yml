@@ -7,11 +7,12 @@ networks:
 volumes:
   app_data:
   redis_data:
-  huggingface_cache:
+  huggingface_cache: # [NEW] Volume để lưu dataset của HuggingFace
 
 services:
-  # ... (Database & Redis giữ nguyên) ...
-
+  # ==============================================================================
+  # DATABASES
+  # ==============================================================================
   app-database:
     image: postgres:17
     container_name: app-database
@@ -29,6 +30,9 @@ services:
       - lingua-net
     restart: always
 
+  # ==============================================================================
+  # CACHE
+  # ==============================================================================
   redis:
     image: redis:6-alpine
     container_name: redis
@@ -41,6 +45,9 @@ services:
       - lingua-net
     restart: always
 
+  # ==============================================================================
+  # BACKEND SERVICES
+  # ==============================================================================
   linguavietnameseapp:
     build:
       context: .
@@ -54,29 +61,35 @@ services:
     environment:
       - TZ=Asia/Ho_Chi_Minh
       - SERVER_PORT=10000
+      - SERVER_TOMCAT_CONNECTION_TIMEOUT=300000
       - SPRING_DATASOURCE_URL=jdbc:postgresql://app-database:5432/linguaviet_db
       - SPRING_REDIS_HOST=redis
-      # --- FIX QUAN TRỌNG: Mapping đúng biến cho FirebaseConfig ---
-      - FIREBASE_CONFIG_PATH=/app/config/service-account-key.json
-      # ---------------------------------------------------------
-      - GOOGLE_CREDENTIALS_FILE_URL=/app/config/service-account-key.json
-      - GOOGLE_SERVICE_ACCOUNT_FILE_URL=/app/config/gdrive-key.json
       - GRPC_SERVER_PORT=9090
       - GRPC_SERVER_ADDRESS=0.0.0.0
       - PYTHON_GRPC_HOST=pythonservice
       - PYTHON_GRPC_PORT=50051
+      - FIREBASE_CONFIG_PATH=/app/config/service-account-key.json
+      - GOOGLE_SERVICE_ACCOUNT_FILE_URL=/app/config/gdrive-key.json
+      - GOOGLE_CREDENTIALS_FILE_URL=/app/config/service-account-key.json
+      - GOOGLE_FOLDER_ID=1BrqsnQ5vF38phPAT-8XexbsNgIzVQXOe
+      - GOOGLE_OAUTH_CLIENT_ID=691949892970-sifep58js9d5a79pfifs3ff471e34v5k.apps.googleusercontent.com
+      - SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE=200MB
+      - GOOGLE_OAUTH_CLIENT_SECRET=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
+      - GOOGLE_OAUTH_REFRESH_TOKEN=1//04yirHdhFSkvlCgYIARAAGAQSNwF-L9IrqJA90w968n8hZ5ShzKd592q1OTkU0ObdZ67T3DOZwWtB0g-0pbJVLZ2ACRRPy0ftE00
+      - SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE=200MB
     volumes:
-      # LƯU Ý: Kiểm tra kỹ đường dẫn host ./LinguaVietnameseApp/LinguaVietnameseApp... có bị thừa một cấp không
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/firebase/service-account-key.json:/app/config/service-account-key.json:ro
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/driver/gdrive-key.json:/app/config/gdrive-key.json:ro
     ports:
-      - "10000:10000"
-      - "9090:9090"
+      - "10000:10000" 
+      - "9090:9090"   
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     networks:
       - lingua-net
     restart: always
 
-  # ... (Các service Python, Kong, Backup giữ nguyên) ...
   pythonservice:
     build:
       context: ./PythonService
@@ -95,14 +108,14 @@ services:
       - REDIS_HOST=redis
       - GOOGLE_APPLICATION_CREDENTIALS=/app/config/service-account-key.json
       - GRPC_PORT=50051
-      - JAVA_GRPC_ADDRESS=linguavietnameseapp:9090
-      - HF_HOME=/app/hf_cache
+      - JAVA_GRPC_ADDRESS=linguavietnameseapp:9090 
+      - HF_HOME=/app/hf_cache # [NEW] Cấu hình đường dẫn cache
     volumes:
       - ./PythonService:/app
       - ./LinguaVietnameseApp/LinguaVietnameseApp/src/main/resources/public_key.pem:/app/public_key.pem:ro
-      - huggingface_cache:/app/hf_cache
+      - huggingface_cache:/app/hf_cache # [NEW] Mount volume
     ports:
-      - "50052:8001"
+      - "50052:8001" 
       - "50051:50051"
     networks:
       - lingua-net
@@ -124,12 +137,12 @@ services:
       - REDIS_PASSWORD=redisPass123
       - DB_HOST=app-database
       - GOOGLE_APPLICATION_CREDENTIALS=/app/config/service-account-key.json
-      - HF_HOME=/app/hf_cache
+      - HF_HOME=/app/hf_cache # [NEW] Dùng chung cache với service chính
     volumes:
       - ./PythonService:/app
-      - ./entrypoint.sh:/app/entrypoint.sh
+      - ./entrypoint.sh:/app/entrypoint.sh 
       - ./wait_for_db.py:/app/wait_for_db.py
-      - huggingface_cache:/app/hf_cache
+      - huggingface_cache:/app/hf_cache # [NEW] Mount volume
     entrypoint: ["/bin/bash", "/app/entrypoint.sh"]
     command: ["celery", "-A", "src.worker.tasks.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
     networks:
@@ -157,6 +170,9 @@ services:
       - lingua-net
     restart: always
 
+  # ==============================================================================
+  # GATEWAY
+  # ==============================================================================
   kong:
     image: kong:3.4
     container_name: kong
@@ -181,6 +197,9 @@ services:
       - lingua-net
     restart: always
 
+  # ==============================================================================
+  # BACKUP
+  # ==============================================================================
   db-backup:
     image: prodrigestivill/postgres-backup-local
     container_name: db-backup

@@ -30,6 +30,9 @@ public interface CourseService {
 
     Page<CourseResponse> getSpecialOffers(String keyword, String languageCode, Integer minRating, Pageable pageable);
 
+
+        CourseVersionResponse getCourseVersionById(UUID versionId);
+
     // === LOGIC CŨ (ĐÃ ĐIỀU CHỈNH) ===
     List<CourseResponse> getRecommendedCourses(UUID userId, int limit);
     List<CourseSummaryResponse> getCourseSummariesByTeacher(UUID teacherId, int limit);

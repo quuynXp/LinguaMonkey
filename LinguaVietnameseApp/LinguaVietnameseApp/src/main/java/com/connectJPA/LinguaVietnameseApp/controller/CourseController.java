@@ -269,18 +269,19 @@ public class CourseController {
                 .build();
     }
     
-    // --- Endpoint GET /versions/{versionId} ---
-    // Để frontend hoạt động (useGetVersion), bạn cần endpoint này.
-    // Do CourseService interface chưa có method getCourseVersionById, tôi sẽ gọi repo gián tiếp qua service
-    // Nhưng vì quy tắc clean architecture, tôi khuyến nghị bạn thêm method `CourseVersionResponse getCourseVersionById(UUID id)` vào Service.
-    // Ở đây tôi sẽ để placeholder, bạn hãy chắc chắn rằng ServiceImpl có method này nếu muốn dùng.
-    /*
+    @Operation(summary = "Get specific course version", description = "Lấy chi tiết một phiên bản cụ thể")
     @GetMapping("/versions/{versionId}")
-    public AppApiResponse<CourseVersionResponse> getVersionDetail(@PathVariable UUID versionId) {
-         // return courseService.getCourseVersionById(versionId); 
-         return null; 
+    public AppApiResponse<CourseVersionResponse> getCourseVersionDetail(
+            @PathVariable UUID versionId,
+            Locale locale) {
+        CourseVersionResponse version = courseService.getCourseVersionById(versionId);
+        return AppApiResponse.<CourseVersionResponse>builder()
+                .code(200)
+                .message(messageSource.getMessage("course.version.get.success", null, locale))
+                .result(version)
+                .build();
     }
-    */
+
 
     @Operation(summary = "[Creator] Publish a draft version", description = "Yêu cầu public một bản DRAFT (cần lý do)")
     @PostMapping("/versions/{versionId}/publish")
