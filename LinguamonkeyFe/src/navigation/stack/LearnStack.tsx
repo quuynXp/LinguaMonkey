@@ -13,7 +13,6 @@ import NotesScreen from '../../screens/learn/NotesScreen';
 import BilingualVideoScreen from '../../screens/learn/BilingualVideoScreen';
 import GrammarLearningScreen from '../../screens/learn/GrammarLearningScreen';
 import GrammarMindMapScreen from '../../screens/learn/GrammarMindMapScreen';
-import CreateLessonScreen from '../../screens/learn/CreateLessonScreen';
 
 type LearnStackParamList = {
   LearnScreen: undefined;
@@ -32,7 +31,6 @@ type LearnStackParamList = {
   BilingualVideoScreen: undefined;
   GrammarLearningScreen: undefined;
   GrammarMindMapScreen: undefined;
-  CreateLessonScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<LearnStackParamList>();
@@ -53,7 +51,6 @@ const LearnStack = () => (
     <Stack.Screen name="WritingScreen" component={WritingScreen} />
     <Stack.Screen name="GrammarLearningScreen" component={GrammarLearningScreen} />
     <Stack.Screen name="GrammarMindMapScreen" component={GrammarMindMapScreen} />
-    <Stack.Screen name="CreateLessonScreen" component={CreateLessonScreen} />
   </Stack.Navigator>
 );
 

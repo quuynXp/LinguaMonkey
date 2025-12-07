@@ -12,6 +12,7 @@ import LessonDocumentScreen from '../../screens/course/LessonDocumentScreen';
 import LessonVideoScreen from '../../screens/course/LessonVideoScreen';
 import LessonEditorScreen from '../../screens/course/LessonEditorScreen';
 import LessonScreen from '../../screens/course/LessonScreen';
+import CreateLessonScreen from '../../screens/course/CreateLessonScreen';
 
 
 export type CourseStackParamList = {
@@ -27,6 +28,7 @@ export type CourseStackParamList = {
     LessonDocumentScreen: undefined;
     LessonEditorScreen: undefined;
     LessonScreen: undefined;
+    CreateLessonScreen: undefined;
 };
 
 const Stack = createNativeStackNavigator<CourseStackParamList>();
@@ -45,6 +47,7 @@ const CourseStack = () => (
         <Stack.Screen name="LessonVideoScreen" component={LessonVideoScreen} />
         <Stack.Screen name="LessonEditorScreen" component={LessonEditorScreen} />
         <Stack.Screen name="LessonScreen" component={LessonScreen} />
+        <Stack.Screen name="CreateLessonScreen" component={CreateLessonScreen} />
     </Stack.Navigator>
 );
 

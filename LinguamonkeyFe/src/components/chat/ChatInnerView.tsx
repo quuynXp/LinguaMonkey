@@ -588,7 +588,6 @@ const styles = createScaledSheet({
     languageFlagWrapper: {
         marginRight: 0,
     },
-    // --- End Selector Styles ---
     list: { flex: 1, paddingHorizontal: 16 },
     msgRow: { flexDirection: 'row', marginVertical: 8 },
     rowUser: { justifyContent: 'flex-end' },
