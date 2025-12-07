@@ -52,11 +52,8 @@ RUN mkdir -p src/grpc_generated && \
         --grpc_python_out=./src/grpc_generated \
         ./proto_files/*.proto
 
-# Fix imports in generated files
 RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' src/grpc_generated/learning_service_pb2_grpc.py
 
-# FIX 3: Updated execution script
-# - Runs python as a module (-m src.main) to resolve 'from src...' imports
 # - Checks for gRPC server existence cleanly
 RUN printf '#!/bin/bash\n\
 set -e\n\

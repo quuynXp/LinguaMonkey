@@ -38,6 +38,7 @@ load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# UUID cố định cho AI Bot (đã insert vào DB ở bước trước)
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
 security = HTTPBearer()
@@ -327,7 +328,7 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                     logger.error(f"Invalid UUID format")
                     continue
 
-                # 1. Save User Message
+                # 1. Save User Message (Python DB)
                 try:
                     user_msg_db = ChatMessage(
                         chat_message_id=uuid.uuid4(),
@@ -343,11 +344,8 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                     logger.error(f"Failed to save user message: {e}")
                     await db_session.rollback()
 
-                asyncio.create_task(send_chat_to_java_via_grpc({
-                    "userId": user_id_str, "roomId": room_id_str,
-                    "content": raw_prompt, "messageType": "TEXT",
-                    "sentAt": datetime.now().isoformat()
-                }))
+                # DISABLE DUPLICATE GRPC CALL
+                # asyncio.create_task(send_chat_to_java_via_grpc({...}))
 
                 # 2. Stream AI Response
                 full_ai_response = ""
@@ -361,14 +359,13 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                 
                 await websocket.send_text(json.dumps({"type": "chat_response_complete", "roomId": room_id_str}))
                 
-                # 3. Save AI Message
+                # 3. Save AI Message (Python DB Only)
                 if full_ai_response.strip():
                     try:
                         ai_msg_db = ChatMessage(
                             chat_message_id=uuid.uuid4(),
                             content=full_ai_response,
                             room_id=room_uuid,
-                            # FIX: Use AI_BOT_ID instead of None
                             sender_id=AI_BOT_ID,
                             message_type=MessageType.TEXT.value,
                             sent_at=datetime.utcnow()
@@ -379,14 +376,8 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                         logger.error(f"Failed to save AI message: {e}")
                         await db_session.rollback()
 
-                    # FIX: Send valid UUID string to Java gRPC
-                    asyncio.create_task(send_chat_to_java_via_grpc({
-                        "userId": str(AI_BOT_ID), 
-                        "roomId": room_id_str,
-                        "content": full_ai_response,
-                        "messageType": "TEXT",
-                        "sentAt": datetime.now().isoformat()
-                    }))
+                    # DISABLE DUPLICATE GRPC CALL
+                    # asyncio.create_task(send_chat_to_java_via_grpc({...}))
 
     except WebSocketDisconnect:
         logger.info(f"User {user_id_str} disconnected form Chat AI")
