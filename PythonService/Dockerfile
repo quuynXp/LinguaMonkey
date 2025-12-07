@@ -4,7 +4,7 @@ WORKDIR /opt/venv
 RUN python -m venv .
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Cài đặt build dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libsndfile1-dev \
@@ -17,7 +17,7 @@ RUN pip install --upgrade pip setuptools wheel
 
 COPY PythonService/requirements.txt .
 
-# FIX MEMORY: Cài bản CPU cho torch để nhẹ nhất
+# Install CPU version of torch to save space
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu || true
 
 RUN pip install --no-cache-dir -r requirements.txt
@@ -25,7 +25,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # --- Final Stage ---
 FROM python:3.11-slim-bookworm
 
-# Cài đặt runtime libs và dos2unix (đề phòng cần debug file)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     libjpeg62-turbo \
@@ -35,36 +34,36 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /app
+# FIX 1: Set WORKDIR to the specific service folder so imports work correctly
+WORKDIR /app/PythonService
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy source code
-COPY ./PythonService ./PythonService
+# FIX 2: Copy source code directly into the WORKDIR
+COPY ./PythonService .
 
-# Generate gRPC code
-RUN mkdir -p /app/PythonService/src/grpc_generated && \
-    touch /app/PythonService/src/grpc_generated/__init__.py && \
+# Generate gRPC code (Paths updated relative to WORKDIR)
+RUN mkdir -p src/grpc_generated && \
+    touch src/grpc_generated/__init__.py && \
     python -m grpc_tools.protoc \
-        -I=./PythonService/proto_files \
-        --python_out=./PythonService/src/grpc_generated \
-        --grpc_python_out=./PythonService/src/grpc_generated \
-        ./PythonService/proto_files/*.proto
+        -I=./proto_files \
+        --python_out=./src/grpc_generated \
+        --grpc_python_out=./src/grpc_generated \
+        ./proto_files/*.proto
 
 # Fix imports in generated files
-RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' /app/PythonService/src/grpc_generated/learning_service_pb2_grpc.py
+RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' src/grpc_generated/learning_service_pb2_grpc.py
 
-# --- FIX EXEC FORMAT ERROR: TẠO FILE SCRIPT TRỰC TIẾP TRONG DOCKER ---
-# Thay vì COPY file start_services.sh (dễ lỗi Windows), ta tạo mới nó tại đây.
-# Script này kiểm tra file gRPC có tồn tại không trước khi chạy để tránh lỗi crash.
+# FIX 3: Updated execution script
+# - Runs python as a module (-m src.main) to resolve 'from src...' imports
+# - Checks for gRPC server existence cleanly
 RUN printf '#!/bin/bash\n\
 set -e\n\
 \n\
 echo "Starting Python Service..."\n\
 \n\
-# Kiểm tra nếu file gRPC server tồn tại thì chạy, không thì bỏ qua\n\
-if [ -f "PythonService/src/grpc_server.py" ] || [ -f "src/grpc_server.py" ]; then\n\
+if [ -f "src/grpc_server.py" ]; then\n\
     echo "Found gRPC server file, starting..."\n\
     python -m src.grpc_server &\n\
 else\n\
@@ -72,17 +71,14 @@ else\n\
 fi\n\
 \n\
 echo "Starting FastAPI Server on port $PORT..."\n\
-# Chạy main.py (FastAPI)\n\
-exec python PythonService/src/main.py\n\
-' > /app/PythonService/start_services.sh
+exec python -m src.main\n\
+' > start_services.sh
 
-# Cấp quyền thực thi cho file vừa tạo
-RUN chmod +x /app/PythonService/start_services.sh
+RUN chmod +x start_services.sh
 
 EXPOSE 10000
 EXPOSE 50051
 
 ENV PORT=10000
 
-# Chạy script
-CMD ["/app/PythonService/start_services.sh"]
+CMD ["./start_services.sh"]

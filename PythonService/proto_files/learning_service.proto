@@ -88,8 +88,6 @@ message SeedDataResponse {
     string error = 8;
 }
 
-// ... [Keep all existing messages below exactly as they were in your provided file] ...
-
 message ReviewQualityRequest {
   string user_id = 1;
   string content_id = 2;   

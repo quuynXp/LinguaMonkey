@@ -15,12 +15,15 @@ from sqlalchemy import (
     DATE,
     BigInteger,
     Float,
+    PrimaryKeyConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID, ARRAY, JSONB
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.sql import func
 
 Base = declarative_base()
+
+# --- ENUMS ---
 
 class RoomPurpose(str, enum.Enum):
     QUIZ_TEAM = "QUIZ_TEAM"
@@ -50,6 +53,8 @@ class MessageType(str, enum.Enum):
     IMAGE = "IMAGE"
     VIDEO = "VIDEO"
     AUDIO = "AUDIO"
+
+# --- CORE TABLES ---
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -229,23 +234,36 @@ class Roadmaps(Base):
 
 class UserRoadmaps(Base):
     __tablename__ = "user_roadmaps"
-    __table_args__ = {"schema": "public"}
-
-    user_roadmap_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    roadmap_id = Column(UUID(as_uuid=True), ForeignKey("public.roadmaps.roadmap_id"))
-    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"))
+    __table_args__ = (
+        PrimaryKeyConstraint("user_id", "roadmap_id"),
+        {"schema": "public"}
+    )
+    
+    roadmap_id = Column(UUID(as_uuid=True), ForeignKey("public.roadmaps.roadmap_id"), primary_key=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), primary_key=True)
+    
+    current_level = Column(Integer)
+    target_level = Column(Integer)
+    target_proficiency = Column(String(50))
+    estimated_completion_time = Column(Integer)
+    completed_items = Column(Integer) 
     status = Column(String(20), default="active")
+    is_public = Column(Boolean, default=False, nullable=False)
+    language = Column(String(50))
 
     user = relationship("Users", back_populates="roadmaps")
     roadmap = relationship("Roadmaps", foreign_keys=[roadmap_id])
 
 
+# --- COURSE & ENROLLMENT TABLES ---
+
 class Course(Base):
     __tablename__ = "courses"
+    __table_args__ = {"schema": "public"}
 
-    course_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    course_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     title = Column(String, nullable=False)
-    approval_status = Column(String, default="PENDING")  # Enum: PENDING, APPROVED...
+    approval_status = Column(String, default="PENDING")
     is_admin_created = Column(Boolean, default=False)
 
     versions = relationship("CourseVersion", back_populates="course")
@@ -253,9 +271,10 @@ class Course(Base):
 
 class CourseVersion(Base):
     __tablename__ = "course_versions"
+    __table_args__ = {"schema": "public"}
 
-    version_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    course_id = Column(String, ForeignKey("courses.course_id"), nullable=False)
+    version_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    course_id = Column(UUID(as_uuid=True), ForeignKey("public.courses.course_id"), nullable=False)
     title = Column(String, nullable=False)
     difficulty_level = Column(String)
     status = Column(String)
@@ -274,11 +293,12 @@ class CourseVersion(Base):
 
 class CourseVersionEnrollment(Base):
     __tablename__ = "course_version_enrollments"
+    __table_args__ = {"schema": "public"}
 
-    enrollment_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(String, ForeignKey("users.user_id"), nullable=False)
+    enrollment_id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("public.users.user_id"), nullable=False) 
     course_version_id = Column(
-        String, ForeignKey("course_versions.version_id"), nullable=False
+        UUID(as_uuid=True), ForeignKey("public.course_versions.version_id"), nullable=False
     )
 
     progress = Column(Float, default=0.0)
@@ -286,9 +306,7 @@ class CourseVersionEnrollment(Base):
 
     enrolled_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
     completed_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    last_accessed_at = Column(
-        TIMESTAMP(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow
-    )
+    # Đã xóa last_accessed_at vì DB không có
 
     # Relations
     course_version = relationship("CourseVersion", back_populates="enrollments")

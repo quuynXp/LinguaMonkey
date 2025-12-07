@@ -1,4 +1,7 @@
+# src/core/user_profile_service.py
+
 import logging
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc
@@ -64,7 +67,7 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
         )
 
         roadmap_query = (
-            select(Roadmaps.title, Roadmaps.language_code, UserRoadmaps.status, UserRoadmaps.progress)
+            select(Roadmaps.title, Roadmaps.language_code, UserRoadmaps.status, UserRoadmaps.completed_items)
             .join(Roadmaps, UserRoadmaps.roadmap_id == Roadmaps.roadmap_id)
             .where(UserRoadmaps.user_id == user_id, UserRoadmaps.status == "active")
         )
@@ -75,12 +78,12 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
                 CourseVersion.difficulty_level,
                 CourseVersionEnrollment.progress,
                 CourseVersionEnrollment.status,
-                CourseVersionEnrollment.last_accessed_at
+                CourseVersionEnrollment.enrolled_at
             )
             .join(CourseVersion, CourseVersionEnrollment.course_version_id == CourseVersion.version_id)
             .join(Course, CourseVersion.course_id == Course.course_id)
             .where(CourseVersionEnrollment.user_id == user_id)
-            .order_by(desc(CourseVersionEnrollment.last_accessed_at))
+            .order_by(desc(CourseVersionEnrollment.enrolled_at))
         )
 
         chat_query = (
@@ -103,6 +106,12 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
         if not user_data:
             return {"error": "User not found"}
 
+        # Helper: Convert datetime to ISO string for JSON serialization
+        def serialize_dt(dt):
+            if isinstance(dt, datetime):
+                return dt.isoformat()
+            return str(dt) if dt else None
+
         user_profile = {
             "user_id": str(user_data.user_id),
             "nickname": user_data.nickname,
@@ -111,7 +120,7 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
             "streak": user_data.streak,
             "bio": user_data.bio,
             "proficiency": user_data.proficiency,
-            "last_active_at": user_data.last_active_at,
+            "last_active_at": serialize_dt(user_data.last_active_at),
             "learning_languages": [
                 {"lang": row.language_name, "level": row.proficiency_level}
                 for row in lang_result.all()
@@ -134,7 +143,7 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
                 for row in lessons_result.all()
             ],
             "active_roadmaps": [
-                {"title": row.title, "lang": row.language_code, "status": row.status, "progress": row.progress}
+                {"title": row.title, "lang": row.language_code, "status": row.status, "completed_items": row.completed_items}
                 for row in roadmap_result.all()
             ],
             "course_enrollments": [
@@ -143,6 +152,7 @@ async def _build_user_profile_from_db(user_id: str, db_session: AsyncSession) ->
                     "level": row.difficulty_level,
                     "progress": row.progress,
                     "status": row.status,
+                    "enrolled_at": serialize_dt(row.enrolled_at)
                 }
                 for row in enrollment_result.all()
             ],
