@@ -161,6 +161,7 @@ export interface CallPreferencesRequest {
     proficiency?: Enums.ProficiencyLevel; // FIX: Thêm trường
     learningPace?: Enums.LearningPace; // FIX: Thêm trường
     callDuration?: string; // Giữ lại string theo DTO gốc
+    userId: string;
 }
 export interface CertificateRequest {
     name: string;
@@ -519,6 +520,7 @@ export interface LessonRequest {
     passScorePercent?: number;
     shuffleQuestions?: boolean;
     allowedRetakeCount?: number;
+    questions?: LessonQuestionRequest[];
 }
 
 export interface LessonReviewRequest {
@@ -2046,6 +2048,7 @@ export interface TransactionResponse {
     description: string;
     isDeleted: boolean;
     createdAt: string;
+    user?: UserProfileResponse;
     updatedAt: string;
     type: Enums.TransactionType
     currency: string;
@@ -2174,6 +2177,7 @@ export interface UserProfileResponse {
     nickname?: string;
     avatarUrl?: string;
     flag?: string;
+    email?: string;
     gender?: string; // Sửa thành optional ? để an toàn
     country?: Enums.Country;
     age?: number;

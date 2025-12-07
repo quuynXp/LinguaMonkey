@@ -39,14 +39,6 @@ interface FinalCallPreferences extends Omit<CallPreferences, 'learningLanguage'>
   learningPace: string;
 }
 
-const getFlagIsoFromLang = (langCode?: string) => {
-  if (!langCode) return undefined
-  const lower = String(langCode).toLowerCase()
-  const mapped = (languageToCountry as Record<string, string>)[lower]
-  if (mapped) return mapped
-  return langCode.slice(0, 2).toUpperCase()
-}
-
 const CallSetupScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
   const { user } = useUserStore()
@@ -97,6 +89,15 @@ const CallSetupScreen = ({ navigation }: any) => {
   const pollingTimeout = useRef<any>(null)
 
   const { data: interests = [], isLoading: isLoadingInterests } = useInterests()
+
+  // Helper function moved inside component to match SetupInitScreen pattern
+  const getFlagIsoFromLang = (langCode?: string) => {
+    if (!langCode) return undefined
+    const lower = String(langCode).toLowerCase()
+    const mapped = (languageToCountry as Record<string, string>)[lower]
+    if (mapped) return mapped
+    return langCode.slice(0, 2).toUpperCase()
+  }
 
   useEffect(() => {
     Animated.parallel([
@@ -169,6 +170,13 @@ const CallSetupScreen = ({ navigation }: any) => {
   const performSearch = useCallback(() => {
     if (!isSearching) return
 
+    if (!user?.userId) {
+      Alert.alert(t("common.error"), t("auth.loginRequired"))
+      setIsSearching(false)
+      stopAnimations()
+      return
+    }
+
     const requestPayload: CallPreferencesRequest = {
       interests: preferences.interests,
       gender: preferences.gender,
@@ -177,6 +185,7 @@ const CallSetupScreen = ({ navigation }: any) => {
       ageRange: preferences.ageRange,
       proficiency: preferences.proficiency as ProficiencyLevel,
       learningPace: preferences.learningPace as LearningPace,
+      userId: user.userId,
     }
 
     findMatch(
@@ -200,12 +209,19 @@ const CallSetupScreen = ({ navigation }: any) => {
         },
         onError: (error) => {
           console.error("Match error:", error)
+          if (error.message?.includes("400")) {
+            Alert.alert("Error", "Invalid Request Format. Please restart app.")
+            setIsSearching(false)
+            stopAnimations()
+            return
+          }
+
           if (!isSearching) return
           pollingTimeout.current = setTimeout(performSearch, 10000)
         }
       }
     )
-  }, [isSearching, preferences, findMatch, handleMatchSuccess])
+  }, [isSearching, preferences, findMatch, handleMatchSuccess, user])
 
   const handleStartSearch = () => {
     if (preferences.interests.length === 0) {
@@ -221,7 +237,11 @@ const CallSetupScreen = ({ navigation }: any) => {
 
   const handleCancelSearch = () => {
     if (pollingTimeout.current) clearTimeout(pollingTimeout.current)
-    cancelMatch()
+
+    if (user?.userId) {
+      cancelMatch({ userId: user.userId } as any)
+    }
+
     stopAnimations()
     setIsSearching(false)
     setElapsedSeconds(0)

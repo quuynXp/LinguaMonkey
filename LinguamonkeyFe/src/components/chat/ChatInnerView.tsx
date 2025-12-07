@@ -15,16 +15,15 @@ import {
 } from "react-native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
 import { useChatStore, getMessageDisplayData } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
 import { useFriendships } from "../../hooks/useFriendships";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
-import FileUploader from "../../components/common/FileUploader";
-import { RoomPurpose, FriendshipStatus } from "../../types/enums";
-import { RoomResponse, MemberResponse, AppApiResponse, UserProfileResponse } from "../../types/dto";
+import { FriendshipStatus } from "../../types/enums";
+import { MemberResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCountryFlag } from "../../utils/flagUtils";
@@ -281,7 +280,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const userStatuses = useChatStore(s => s.userStatuses);
 
     const [inputText, setInputText] = useState("");
-    const [isUploading, setIsUploading] = useState(false);
 
     // Translation State
     const [localTranslations, setLocalTranslations] = useState<any>({});
@@ -517,11 +515,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                     </View>
                 )}
                 <View style={styles.inputArea}>
-                    <View style={{ zIndex: 10 }}>
-                        <FileUploader mediaType="all" maxSizeMB={20} maxDuration={60} onUploadStart={() => setIsUploading(true)} onUploadEnd={() => setIsUploading(false)} onUploadSuccess={(url, type) => { sendMessage(roomId, type === 'IMAGE' ? 'Image Sent' : 'Media Sent', type, url); }} style={styles.attachBtn}>
-                            {isUploading ? <ActivityIndicator color="#3B82F6" size="small" /> : <Icon name="attach-file" size={24} color="#3B82F6" />}
-                        </FileUploader>
-                    </View>
                     <TextInput style={styles.input} value={inputText} onChangeText={setInputText} placeholder={t("group.input.placeholder")} multiline />
                     <TouchableOpacity onPress={handleSendMessage} style={styles.sendBtn}><Icon name={editingMessage ? "check" : "send"} size={20} color="#FFF" /></TouchableOpacity>
                 </View>
@@ -612,7 +605,6 @@ const styles = createScaledSheet({
     transBtn: { marginTop: 4, padding: 4, alignSelf: 'flex-start' },
     inputArea: { flexDirection: 'row', padding: 10, borderTopWidth: 1, borderColor: '#EEE', alignItems: 'flex-end', backgroundColor: '#FFF' },
     input: { flex: 1, backgroundColor: '#F9FAFB', borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8, maxHeight: 100, marginLeft: 5 },
-    attachBtn: { padding: 10 },
     sendBtn: { backgroundColor: '#3B82F6', borderRadius: 20, padding: 10, marginLeft: 8 },
     editBanner: { backgroundColor: '#FEF3C7', padding: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     editText: { color: '#D97706', fontSize: 12, fontWeight: 'bold' },

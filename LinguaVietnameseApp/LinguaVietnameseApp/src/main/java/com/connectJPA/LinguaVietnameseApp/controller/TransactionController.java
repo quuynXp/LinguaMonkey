@@ -4,6 +4,7 @@ import com.connectJPA.LinguaVietnameseApp.dto.request.ApproveRefundRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.PaymentRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.TransactionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.WebhookRequest;
+import com.connectJPA.LinguaVietnameseApp.dto.request.WithdrawRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RefundRequestResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.TransactionResponse;
@@ -33,11 +34,7 @@ public class TransactionController {
     private final TransactionService transactionService;
     private final MessageSource messageSource;
 
-    @Operation(summary = "Create a payment URL", description = "Generate a payment URL for VNPAY, or Stripe")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Payment URL generated successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid payment request")
-    })
+    @Operation(summary = "Create a payment URL")
     @PostMapping("/create-payment")
     public ResponseEntity<AppApiResponse<String>> createPayment(
             @Valid @RequestBody PaymentRequest request,
@@ -52,7 +49,7 @@ public class TransactionController {
                 .build());
     }
 
-    @Operation(summary = "Handle VNPAY Return URL", description = "Receives callback from VNPAY, validates checksum and redirects to Mobile App")
+    @Operation(summary = "Handle VNPAY Return URL")
     @GetMapping("/vnpay-return")
     public RedirectView vnpayReturn(HttpServletRequest request) {
         String appRedirectUrl = transactionService.processVnPayReturn(request);
@@ -61,11 +58,7 @@ public class TransactionController {
         return redirectView;
     }
 
-    @Operation(summary = "Handle payment webhook", description = "Process webhook notifications from Stripe")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Webhook processed successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid webhook data")
-    })
+    @Operation(summary = "Handle payment webhook")
     @PostMapping("/webhook")
     public ResponseEntity<AppApiResponse<String>> handleWebhook(
             @RequestBody WebhookRequest request,
@@ -76,6 +69,62 @@ public class TransactionController {
                 .message(messageSource.getMessage("transaction.webhook.success", null, locale))
                 .result(result)
                 .build());
+    }
+
+    @Operation(summary = "User request withdrawal")
+    @PostMapping("/withdraw")
+    public AppApiResponse<TransactionResponse> withdraw(
+            @Valid @RequestBody WithdrawRequest request,
+            Locale locale) {
+        TransactionResponse response = transactionService.withdraw(request);
+        return AppApiResponse.<TransactionResponse>builder()
+                .code(200)
+                .message("Withdrawal requested successfully")
+                .result(response)
+                .build();
+    }
+
+    @Operation(summary = "[Admin] Get pending withdrawal requests")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @GetMapping("/withdrawals/pending")
+    public AppApiResponse<Page<TransactionResponse>> getPendingWithdrawals(
+            Pageable pageable,
+            Locale locale) {
+        Page<TransactionResponse> withdrawals = transactionService.getPendingWithdrawals(pageable);
+        return AppApiResponse.<Page<TransactionResponse>>builder()
+                .code(200)
+                .message("Pending withdrawals retrieved")
+                .result(withdrawals)
+                .build();
+    }
+
+    @Operation(summary = "[Admin] Approve a withdrawal")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PostMapping("/withdrawals/{id}/approve")
+    public AppApiResponse<TransactionResponse> approveWithdrawal(
+            @PathVariable UUID id,
+            Locale locale) {
+        TransactionResponse response = transactionService.approveWithdrawal(id);
+        return AppApiResponse.<TransactionResponse>builder()
+                .code(200)
+                .message("Withdrawal approved successfully")
+                .result(response)
+                .build();
+    }
+
+    @Operation(summary = "[Admin] Reject a withdrawal")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
+    @PostMapping("/withdrawals/{id}/reject")
+    public AppApiResponse<TransactionResponse> rejectWithdrawal(
+            @PathVariable UUID id,
+            @RequestParam String reason,
+            Locale locale) {
+        TransactionResponse response = transactionService.rejectWithdrawal(id, reason);
+        return AppApiResponse.<TransactionResponse>builder()
+                .code(200)
+                .message("Withdrawal rejected")
+                .result(response)
+                .build();
     }
 
     @Operation(summary = "[Admin] Get pending refund requests")
@@ -119,17 +168,13 @@ public class TransactionController {
                 .build();
     }
 
-    @Operation(summary = "Get all transactions", description = "Retrieve a paginated list of transactions with optional filtering by userId or status")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved transactions"),
-            @ApiResponse(responseCode = "400", description = "Invalid query parameters")
-    })
+    @Operation(summary = "Get all transactions")
     @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @GetMapping
     public AppApiResponse<Page<TransactionResponse>> getAllTransactions(
-            @Parameter(description = "User ID filter") @RequestParam(required = false) UUID userId,
-            @Parameter(description = "Transaction status filter") @RequestParam(required = false) String status,
-            @Parameter(description = "Pagination and sorting") Pageable pageable,
+            @RequestParam(required = false) UUID userId,
+            @RequestParam(required = false) String status,
+            Pageable pageable,
             Locale locale) {
         Page<TransactionResponse> transactions = transactionService.getAllTransactions(userId, status, pageable);
         return AppApiResponse.<Page<TransactionResponse>>builder()
@@ -139,14 +184,10 @@ public class TransactionController {
                 .build();
     }
 
-    @Operation(summary = "Get transaction by ID", description = "Retrieve a transaction by its ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved transaction"),
-            @ApiResponse(responseCode = "404", description = "Transaction not found")
-    })
+    @Operation(summary = "Get transaction by ID")
     @GetMapping("/{id}")
     public AppApiResponse<TransactionResponse> getTransactionById(
-            @Parameter(description = "Transaction ID") @PathVariable UUID id,
+            @PathVariable UUID id,
             Locale locale) {
         TransactionResponse transaction = transactionService.getTransactionById(id);
         return AppApiResponse.<TransactionResponse>builder()
@@ -156,17 +197,13 @@ public class TransactionController {
                 .build();
     }
 
-    @Operation(summary = "Get all transactions by user", description = "Retrieve all transactions for the authenticated user")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Successfully retrieved user transactions"),
-            @ApiResponse(responseCode = "400", description = "Invalid user ID")
-    })
+    @Operation(summary = "Get all transactions by user")
     @GetMapping("/user/{userId}")
     public AppApiResponse<Page<TransactionResponse>> getTransactionsByUser(
             @PathVariable UUID userId,
             Pageable pageable,
             Locale locale) {
-        Page<TransactionResponse> transactions = transactionService.getAllTransactions(userId, null, pageable);
+        Page<TransactionResponse> transactions = transactionService.getAllUserTransactions(userId, pageable);
         return AppApiResponse.<Page<TransactionResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("transaction.list.success", null, locale))
@@ -174,12 +211,7 @@ public class TransactionController {
                 .build();
     }
 
-
-    @Operation(summary = "Create a new transaction", description = "Create a new transaction with the provided details")
-    @ApiResponses({
-            @ApiResponse(responseCode = "201", description = "Transaction created successfully"),
-            @ApiResponse(responseCode = "400", description = "Invalid transaction data")
-    })
+    @Operation(summary = "Create a new transaction")
     @PostMapping
     public AppApiResponse<TransactionResponse> createTransaction(
             @Valid @RequestBody TransactionRequest request,
@@ -192,15 +224,10 @@ public class TransactionController {
                 .build();
     }
 
-    @Operation(summary = "Update a transaction", description = "Update an existing transaction by its ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Transaction updated successfully"),
-            @ApiResponse(responseCode = "404", description = "Transaction not found"),
-            @ApiResponse(responseCode = "400", description = "Invalid transaction data")
-    })
+    @Operation(summary = "Update a transaction")
     @PutMapping("/{id}")
     public AppApiResponse<TransactionResponse> updateTransaction(
-            @Parameter(description = "Transaction ID") @PathVariable UUID id,
+            @PathVariable UUID id,
             @Valid @RequestBody TransactionRequest request,
             Locale locale) {
         TransactionResponse transaction = transactionService.updateTransaction(id, request);
@@ -211,14 +238,10 @@ public class TransactionController {
                 .build();
     }
 
-    @Operation(summary = "Delete a transaction", description = "Soft delete a transaction by its ID")
-    @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "Transaction deleted successfully"),
-            @ApiResponse(responseCode = "404", description = "Transaction not found")
-    })
+    @Operation(summary = "Delete a transaction")
     @DeleteMapping("/{id}")
     public AppApiResponse<Void> deleteTransaction(
-            @Parameter(description = "Transaction ID") @PathVariable UUID id,
+            @PathVariable UUID id,
             Locale locale) {
         transactionService.deleteTransaction(id);
         return AppApiResponse.<Void>builder()

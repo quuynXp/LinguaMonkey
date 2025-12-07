@@ -394,28 +394,37 @@ async def live_subtitles(
     nativeLang: str = Query("vi"),
     spokenLang: str = Query("en")
 ):
-    await websocket.accept()
+    # --- FIX: STRICT ROOM ID NORMALIZATION ---
+    # Python dictionary keys are case-sensitive. 
+    # UUIDs from Java/DB might be uppercase, React might send lowercase.
+    # We enforce lowercase string to ensure they meet in the same list.
+    normalized_room_id = str(roomId).strip().lower()
+
     user_id = await validate_websocket_token(websocket, token)
-    
     if not user_id:
         await websocket.close(code=1008, reason="Unauthorized")
         return
 
-    await manager.connect(websocket, roomId)
-    redis = await get_redis_client()
+    # Use normalized ID for connection manager
+    await manager.connect(websocket, normalized_room_id)
     
+    redis = await get_redis_client()
     translator = get_translator(redis)
-    buffer_key = f"{roomId}_{user_id}"
+    buffer_key = f"{normalized_room_id}_{user_id}"
     
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
             
+            # --- SIGNALING BRIDGE ---
             if msg.get("type") == "webrtc_signal":
-                await manager.broadcast_json(msg, roomId)
+                # Ensure roomId in payload matches connection key logic if needed, 
+                # but broadcast goes to active_connections[normalized_room_id]
+                await manager.broadcast_json(msg, normalized_room_id)
                 continue
                 
+            # --- SUBTITLES LOGIC ---
             original_text = ""
             if "audio_chunk" in msg and msg["audio_chunk"]:
                 chunk = base64.b64decode(msg["audio_chunk"])
@@ -432,7 +441,7 @@ async def live_subtitles(
                         "translated": translated_text,
                         "translatedLang": nativeLang,
                         "senderId": user_id
-                    }, roomId)
+                    }, normalized_room_id)
             elif "text" in msg:
                 original_text = msg["text"]
             
@@ -446,13 +455,13 @@ async def live_subtitles(
                     "translated": translated,
                     "translatedLang": nativeLang,
                     "timestamp": datetime.now().isoformat()
-                }, roomId)
+                }, normalized_room_id)
     except WebSocketDisconnect:
-        manager.disconnect(websocket, roomId)
+        manager.disconnect(websocket, normalized_room_id)
         if buffer_key in audio_buffers: del audio_buffers[buffer_key]
     except Exception as e:
         logger.error(f"Live Subtitles WS Error: {e}")
-        manager.disconnect(websocket, roomId)
+        manager.disconnect(websocket, normalized_room_id)
 
 app.include_router(protected_router, tags=["Protected API"])
 app.include_router(internal_router, tags=["Internal API"])

@@ -33,4 +33,7 @@ public interface TransactionService {
     String createPaymentUrl(PaymentRequest request, String clientIp);
     Page<RefundRequestResponse> getPendingRefundRequests(Pageable pageable);
     String processVnPayReturn(HttpServletRequest request);
+    TransactionResponse rejectWithdrawal(UUID transactionId, String reason);
+    TransactionResponse approveWithdrawal(UUID transactionId);
+    Page<TransactionResponse> getPendingWithdrawals(Pageable pageable);
 }

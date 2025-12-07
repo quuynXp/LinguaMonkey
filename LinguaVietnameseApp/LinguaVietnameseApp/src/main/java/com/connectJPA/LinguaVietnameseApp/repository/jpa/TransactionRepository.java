@@ -49,6 +49,10 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     List<Transaction> findByUserIdAndCreatedAtBetween(UUID userId, OffsetDateTime start, OffsetDateTime end);
 
-    Page<TransactionResponse> findByTypeAndStatus(TransactionType refund, TransactionStatus pending, Pageable pageable);
+    Page<Transaction> findByTypeAndStatus(TransactionType refund, TransactionStatus pending, Pageable pageable);
+
+    Page<Transaction> findByUser_UserId(UUID userId, Pageable pageable);
+
+    Page<Transaction> findByStatus(TransactionStatus ts, Pageable pageable);
 
 }

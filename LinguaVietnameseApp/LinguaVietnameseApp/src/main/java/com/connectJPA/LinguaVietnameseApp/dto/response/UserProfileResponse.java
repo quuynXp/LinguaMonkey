@@ -21,12 +21,13 @@ import java.util.UUID;
 public class UserProfileResponse {
     private UUID userId;
     private String fullname;
+    private String email; // Added to support Admin Transaction View
     private String nickname;
     private String avatarUrl;
     private String flag;
     private Country country;
     private AgeRange ageRange;
-    private Integer age; // Added field for calculated age
+    private Integer age;
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
     private int level;

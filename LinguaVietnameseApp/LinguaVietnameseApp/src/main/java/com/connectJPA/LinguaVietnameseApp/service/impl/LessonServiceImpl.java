@@ -1,9 +1,11 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.LessonQuestionRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.PronunciationResponseBody;
 import com.connectJPA.LinguaVietnameseApp.dto.response.WritingResponseBody;
 import com.connectJPA.LinguaVietnameseApp.dto.request.LessonRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonHierarchicalResponse;
+import com.connectJPA.LinguaVietnameseApp.dto.response.LessonQuestionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.LessonResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.QuizResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
@@ -66,8 +68,6 @@ public class LessonServiceImpl implements LessonService {
     private final DailyChallengeService dailyChallengeService;
     private final BadgeService badgeService;
 
-    // ... (Keep existing searchLessons, getAllLessons, getLessonById, createLesson methods unchanged) ...
-
     @Override
     public Page<Lesson> searchLessons(String keyword, int page, int size, Map<String, Object> filters) {
         if (keyword == null || keyword.isBlank()) {
@@ -85,7 +85,6 @@ public class LessonServiceImpl implements LessonService {
     public Page<LessonResponse> getAllLessons(String lessonName, String languageCode, Integer minExpReward,
                                               UUID categoryId, UUID subCategoryId, UUID courseId, UUID versionId, UUID seriesId, SkillType skillType,
                                               Pageable pageable) {
-        // ... (Keep existing implementation) ...
         try {
             if (pageable.getPageNumber() < 0 || pageable.getPageSize() <= 0) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
@@ -140,17 +139,47 @@ public class LessonServiceImpl implements LessonService {
         }
     }
 
-    // ... (Keep getLessonById, createLesson, getLessonsByIds, getLessonsByCreator unchanged) ...
     @Override
     public LessonResponse getLessonById(UUID id) {
         try {
             Lesson lesson = lessonRepository.findById(id)
                     .filter(l -> !l.isDeleted())
                     .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            return toLessonResponse(lesson);
+            
+            LessonResponse response = toLessonResponse(lesson);
+
+            List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(id);
+            
+            List<LessonQuestionResponse> questionResponses = questions.stream().map(q -> 
+                LessonQuestionResponse.builder()
+                    .lessonQuestionId(q.getLessonQuestionId())
+                    .lessonId(q.getLesson().getLessonId())
+                    .question(q.getQuestion())
+                    .questionType(q.getQuestionType())
+                    .skillType(q.getSkillType())
+                    .languageCode(q.getLanguageCode())
+                    .optionsJson(q.getOptionsJson())
+                    .optionA(q.getOptionA())
+                    .optionB(q.getOptionB())
+                    .optionC(q.getOptionC())
+                    .optionD(q.getOptionD())
+                    .correctOption(q.getCorrectOption())
+                    .transcript(q.getTranscript())
+                    .mediaUrl(q.getMediaUrl())
+                    .explainAnswer(q.getExplainAnswer())
+                    .weight(q.getWeight())
+                    .orderIndex(q.getOrderIndex())
+                    .isDeleted(q.isDeleted())
+                    .build()
+            ).collect(Collectors.toList());
+
+            response.setQuestions(questionResponses);
+
+            return response;
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
+            log.error("Error getting lesson detail", e);
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
@@ -159,24 +188,61 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public LessonResponse createLesson(LessonRequest request) {
         try {
+            // 1. Validate Creator
             userRepository.findById(request.getCreatorId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
+            // 2. Create and Save Lesson FIRST (to generate ID)
             Lesson lesson = lessonMapper.toEntity(request);
+            lesson = lessonRepository.save(lesson); // Saved! Now has ID.
+
+            // 3. Link to Course if applicable
             if (request.getCourseId() != null) {
                 CourseLesson courseLesson = CourseLesson.builder()
-                        .id(new CourseLessonId(request.getCourseId(), lesson.getLessonId()))
-                        .orderIndex(lesson.getOrderIndex())
+                        .id(new CourseLessonId(request.getCourseId(), lesson.getLessonId())) // Safe now
+                        .orderIndex(lesson.getOrderIndex() != null ? lesson.getOrderIndex() : 0)
                         .build();
                 courseLessonRepository.save(courseLesson);
             }
-            lesson = lessonRepository.save(lesson);
+
+            // 4. Handle Questions (Simplified Logic)
+            if (request.getQuestions() != null && !request.getQuestions().isEmpty()) {
+                Lesson finalLesson = lesson;
+                List<LessonQuestion> questions = request.getQuestions().stream()
+                        .map(qDto -> mapToQuestionEntity(qDto, finalLesson))
+                        .collect(Collectors.toList());
+                lessonQuestionRepository.saveAll(questions);
+            }
+
             return toLessonResponse(lesson);
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
+            log.error("Error creating lesson: ", e);
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
+    }
+
+    private LessonQuestion mapToQuestionEntity(LessonQuestionRequest dto, Lesson lesson) {
+        return LessonQuestion.builder()
+                .lesson(lesson)
+                .question(dto.getQuestion())
+                .questionType(dto.getQuestionType())
+                .skillType(dto.getSkillType() != null ? dto.getSkillType() : lesson.getSkillTypes()) // Fallback to lesson skill
+                .languageCode(dto.getLanguageCode() != null ? dto.getLanguageCode() : lesson.getLanguageCode())
+                .optionsJson(dto.getOptionsJson())
+                .optionA(dto.getOptionA())
+                .optionB(dto.getOptionB())
+                .optionC(dto.getOptionC())
+                .optionD(dto.getOptionD())
+                .correctOption(dto.getCorrectOption())
+                .mediaUrl(dto.getMediaUrl())
+                .transcript(dto.getTranscript())
+                .explainAnswer(dto.getExplainAnswer())
+                .weight(dto.getWeight() != null ? dto.getWeight() : 1)
+                .orderIndex(dto.getOrderIndex() != null ? dto.getOrderIndex() : 0)
+                .isDeleted(false)
+                .build();
     }
 
     @Override
@@ -222,24 +288,44 @@ public class LessonServiceImpl implements LessonService {
             m.put("skillType", q.getSkillType());
             m.put("languageCode", q.getLanguageCode());
             m.put("optionsJson", q.getOptionsJson());
+            m.put("mediaUrl", q.getMediaUrl());
             return m;
         }).collect(Collectors.toList());
 
-        Map<String, Object> resp = new HashMap<>();
-        resp.put("lessonId", lessonId);
-        resp.put("questions", qDtos);
-        resp.put("durationSeconds", lesson.getDurationSeconds());
-        resp.put("allowedRetakeCount", lesson.getAllowedRetakeCount());
-        
-        int attemptNumber = 1;
-        if (userId != null) {
-            Optional<LessonProgress> existing = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId));
-            attemptNumber = existing.map(LessonProgress::getAttemptNumber).orElse(0) + 1;
+    Map<String, Object> resp = new HashMap<>();
+    resp.put("lessonId", lessonId);
+    resp.put("questions", qDtos);
+    resp.put("durationSeconds", lesson.getDurationSeconds());
+    resp.put("allowedRetakeCount", lesson.getAllowedRetakeCount());
+    
+    int attemptNumber = 1;
+    Float latestScore = null;
+    List<String> wrongQuestionIds = new ArrayList<>();
+
+    if (userId != null) {
+        // 1. Lấy thông tin Progress hiện tại
+        Optional<LessonProgress> existing = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId));
+        if (existing.isPresent()) {
+            LessonProgress lp = existing.get();
+            attemptNumber = lp.getAttemptNumber() + 1;
+            latestScore = lp.getScore(); // Lấy điểm số cao nhất/gần nhất
         }
-        resp.put("attemptNumber", attemptNumber);
-        return resp;
+
+        // 2. Lấy danh sách câu sai từ lần trước
+        List<LessonProgressWrongItem> wrongItems = lessonProgressWrongItemRepository
+                .findById_LessonIdAndId_UserIdAndIsDeletedFalse(lessonId, userId);
+        
+        wrongQuestionIds = wrongItems.stream()
+                .map(item -> item.getId().getLessonQuestionId().toString())
+                .collect(Collectors.toList());
     }
 
+    resp.put("attemptNumber", attemptNumber);
+    resp.put("latestScore", latestScore); // Trả về điểm số (null nếu chưa học)
+    resp.put("wrongQuestionIds", wrongQuestionIds); // Trả về list ID câu sai
+
+    return resp;
+}
     @Override
     @Transactional
     public Map<String, Object> submitTest(UUID lessonId, UUID userId, Map<String, Object> payload) {
@@ -280,7 +366,6 @@ public class LessonServiceImpl implements LessonService {
             int scoreGiven = 0;
             boolean correct = false;
             
-            // Logic check từng loại câu hỏi
             if (q.getQuestionType() == QuestionType.MULTIPLE_CHOICE || 
                 q.getQuestionType() == QuestionType.FILL_IN_THE_BLANK || 
                 q.getQuestionType() == QuestionType.ORDERING ||
@@ -295,9 +380,8 @@ public class LessonServiceImpl implements LessonService {
                 correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.7 : 70);
             }
             else if (q.getQuestionType() == QuestionType.WRITING || q.getQuestionType() == QuestionType.ESSAY) {
-                // Sửa đổi: Truyền cả imageBytes (nếu user upload)
                 scoreGiven = checkWritingAnswer(q, token, userAnswerText, imageBytes);
-                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.5 : 50); // Threshold linh động
+                correct = scoreGiven >= (q.getWeight() != null ? q.getWeight() * 0.5 : 50); 
             }
 
             if (correct) {
@@ -396,7 +480,6 @@ public class LessonServiceImpl implements LessonService {
             return validOptions.contains(got);
         }
         if (q.getQuestionType() == QuestionType.MATCHING) {
-            // Simplistic check, ideally match JSON pairs
             return got.equalsIgnoreCase(correctAnswer);
         }
         return false;
@@ -414,7 +497,6 @@ public class LessonServiceImpl implements LessonService {
         }
     }
 
-    // --- REFACTORED WRITING CHECK LOGIC ---
     private int checkWritingAnswer(LessonQuestion q, String token, String userText, byte[] userUploadedImageBytes) {
         if (userText == null || q.getQuestion() == null) return 0;
         
@@ -428,8 +510,6 @@ public class LessonServiceImpl implements LessonService {
         } 
         else if (q.getMediaUrl() != null && !q.getMediaUrl().isEmpty()) {
             mediaUrl = q.getMediaUrl();
-            
-            // Logic đoán loại media đơn giản hóa để gửi sang Python
             if (q.getSkillType() == SkillType.LISTENING) {
                 mimeType = "audio/mpeg";
             } else {

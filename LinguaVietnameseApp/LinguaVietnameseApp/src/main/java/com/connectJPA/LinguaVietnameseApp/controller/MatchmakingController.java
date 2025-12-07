@@ -25,15 +25,23 @@ public class MatchmakingController {
 
     private final MatchmakingQueueService queueService;
     private final RoomService roomService;
-    private final SimpMessagingTemplate messagingTemplate; // FIX: Inject Template
+    private final SimpMessagingTemplate messagingTemplate;
 
     @Operation(summary = "Find a call partner", description = "Adds user to queue and tries to find a best match.")
     @PostMapping("/find-call")
     public AppApiResponse<Map<String, Object>> findCallPartner(
             @RequestBody CallPreferencesRequest request) {
 
-        String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
-        UUID currentUserId = UUID.fromString(currentUserIdStr);
+        // LẤY USER ID TỪ REQUEST BODY (THAY VÌ SECURITY CONTEXT)
+        UUID currentUserId = request.getUserId();
+
+        if (currentUserId == null) {
+            return AppApiResponse.<Map<String, Object>>builder()
+                    .code(400)
+                    .message("User ID must be provided in the request body.")
+                    .result(null)
+                    .build();
+        }
 
         // 1. Check if I was already matched by someone else while I was waiting
         MatchmakingQueueService.MatchResult pendingMatch = queueService.checkPendingMatch(currentUserId);
@@ -57,7 +65,6 @@ public class MatchmakingController {
             queueService.removeFromQueue(currentUserId);
             
             // 5. Notify partner (Realtime Socket Notification)
-            // FIX: Gửi thông báo socket đến partner đang đợi để họ chuyển màn hình
             MatchmakingQueueService.MatchResult partnerResult = new MatchmakingQueueService.MatchResult(
                 currentUserId, 
                 matchResult.getScore(), 
@@ -65,7 +72,7 @@ public class MatchmakingController {
                 room.getRoomId().toString()
             );
             
-            queueService.notifyPartner(partnerId, partnerResult); // Save to map as backup
+            queueService.notifyPartner(partnerId, partnerResult);
             sendMatchNotificationToPartner(partnerId, room, matchResult.getScore());
 
             return buildMatchedResponse(room, matchResult.getScore());
@@ -106,22 +113,32 @@ public class MatchmakingController {
     }
 
     private AppApiResponse<Map<String, Object>> buildMatchedResponse(RoomResponse room, int score) {
-        Map<String, Object> responseData = new HashMap<>();
-        responseData.put("status", "MATCHED");
-        responseData.put("room", room);
-        responseData.put("score", score);
+    Map<String, Object> responseData = new HashMap<>();
+    responseData.put("status", "MATCHED");
+    
+    Map<String, Object> roomData = new HashMap<>();
+    roomData.put("roomId", room.getRoomId().toString()); 
+    
+    responseData.put("room", room); // Jackson thường xử lý UUID tốt thành String "xxxx-xxxx..."
+    responseData.put("score", score);
 
-        return AppApiResponse.<Map<String, Object>>builder()
-                .code(200)
-                .message("Match found successfully!")
-                .result(responseData)
-                .build();
-    }
+    return AppApiResponse.<Map<String, Object>>builder()
+            .code(200)
+            .message("Match found successfully!")
+            .result(responseData)
+            .build();
+}
 
     @PostMapping("/cancel")
-    public AppApiResponse<Void> cancelSearch() {
-        String currentUserIdStr = SecurityContextHolder.getContext().getAuthentication().getName();
-        queueService.removeFromQueue(UUID.fromString(currentUserIdStr));
-        return AppApiResponse.<Void>builder().code(200).message("Removed from queue").build();
+    public AppApiResponse<Void> cancelSearch(@RequestBody Map<String, UUID> requestBody) {
+        // LẤY USER ID TỪ REQUEST BODY (CHO HÀM CANCEL)
+        UUID currentUserId = requestBody.get("userId");
+        
+        if (currentUserId != null) {
+            queueService.removeFromQueue(currentUserId);
+            return AppApiResponse.<Void>builder().code(200).message("Removed from queue").build();
+        } else {
+            return AppApiResponse.<Void>builder().code(400).message("User ID must be provided in the request body.").build();
+        }
     }
 }

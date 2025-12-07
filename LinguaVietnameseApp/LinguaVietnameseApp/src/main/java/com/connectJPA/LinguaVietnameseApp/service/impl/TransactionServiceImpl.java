@@ -91,7 +91,96 @@ public class TransactionServiceImpl implements TransactionService {
     public Page<TransactionResponse> getAllUserTransactions(UUID userId, Pageable pageable) {
         return transactionRepository.findByUser_UserIdOrSender_UserIdOrReceiver_UserId(
                 userId, userId, userId, pageable
-        ).map(transactionMapper::approveRefundtoResponse);
+        ).map(transactionMapper::toResponse);
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse withdraw(WithdrawRequest request) {
+        User user = getUser(request.getUserId());
+        Wallet wallet = getWallet(user.getUserId());
+
+        if (wallet.getBalance().compareTo(request.getAmount()) < 0) {
+            throw new AppException(ErrorCode.INSUFFICIENT_FUNDS);
+        }
+
+        Transaction transaction = Transaction.builder()
+                .transactionId(UUID.randomUUID())
+                .user(user)
+                .wallet(wallet)
+                .amount(request.getAmount())
+                .currency("USD")
+                .type(TransactionType.WITHDRAW)
+                .status(TransactionStatus.PENDING)
+                .provider(TransactionProvider.INTERNAL)
+                .description("Withdrawal Request")
+                .createdAt(OffsetDateTime.now())
+                .build();
+        
+        transaction = transactionRepository.save(transaction);
+        
+        // Deduct balance immediately (Hold funds)
+        walletService.debit(user.getUserId(), request.getAmount());
+
+        return transactionMapper.toResponse(transaction);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<TransactionResponse> getPendingWithdrawals(Pageable pageable) {
+        return transactionRepository.findByTypeAndStatus(TransactionType.WITHDRAW, TransactionStatus.PENDING, pageable)
+                .map(transactionMapper::toResponse);
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse approveWithdrawal(UUID transactionId) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+
+        if (transaction.getType() != TransactionType.WITHDRAW || transaction.getStatus() != TransactionStatus.PENDING) {
+            throw new AppException(ErrorCode.INVALID_TRANSACTION_STATUS);
+        }
+
+        // Funds already deducted, just update status
+        transaction.setStatus(TransactionStatus.SUCCESS);
+        transactionRepository.save(transaction);
+
+        notificationService.createPushNotification(NotificationRequest.builder()
+                .userId(transaction.getUser().getUserId())
+                .title("Withdrawal Approved")
+                .content("Your withdrawal of " + transaction.getAmount() + " USD has been processed.")
+                .type("WITHDRAWAL_APPROVED")
+                .build());
+
+        return transactionMapper.toResponse(transaction);
+    }
+
+    @Override
+    @Transactional
+    public TransactionResponse rejectWithdrawal(UUID transactionId, String reason) {
+        Transaction transaction = transactionRepository.findById(transactionId)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+
+        if (transaction.getType() != TransactionType.WITHDRAW || transaction.getStatus() != TransactionStatus.PENDING) {
+            throw new AppException(ErrorCode.INVALID_TRANSACTION_STATUS);
+        }
+
+        // Refund the held amount
+        walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
+
+        transaction.setStatus(TransactionStatus.REJECTED);
+        transaction.setDescription(transaction.getDescription() + " - Rejected: " + reason);
+        transactionRepository.save(transaction);
+
+        notificationService.createPushNotification(NotificationRequest.builder()
+                .userId(transaction.getUser().getUserId())
+                .title("Withdrawal Rejected")
+                .content("Your withdrawal request was rejected: " + reason)
+                .type("WITHDRAWAL_REJECTED")
+                .build());
+
+        return transactionMapper.toResponse(transaction);
     }
 
     @Override
@@ -133,7 +222,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .type("REFUND_APPROVED")
                 .build());
 
-        return transactionMapper.approveRefundtoResponse(refundTx);
+        return transactionMapper.toResponse(refundTx);
     }
 
     @Override
@@ -153,7 +242,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .type("REFUND_REJECTED")
                 .build());
 
-        return transactionMapper.approveRefundtoResponse(refundTx);
+        return transactionMapper.toResponse(refundTx);
     }
 
     @Override
@@ -161,7 +250,7 @@ public class TransactionServiceImpl implements TransactionService {
     public TransactionResponse getTransactionById(UUID id) {
         Transaction transaction = transactionRepository.findById(id)
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-        return transactionMapper.approveRefundtoResponse(transaction);
+        return transactionMapper.toResponse(transaction);
     }
 
     @Override
@@ -180,6 +269,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .type(TransactionType.DEPOSIT)
                 .description("Deposit to wallet via " + request.getProvider())
                 .status(TransactionStatus.PENDING)
+                .createdAt(OffsetDateTime.now())
                 .build();
         
         transaction = transactionRepository.save(transaction);
@@ -264,6 +354,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .type(request.getType() != null ? request.getType() : TransactionType.PAYMENT)
                 .description(request.getDescription())
                 .status(TransactionStatus.PENDING)
+                .createdAt(OffsetDateTime.now())
                 .build();
         
         transaction = transactionRepository.save(transaction);
@@ -279,7 +370,6 @@ public class TransactionServiceImpl implements TransactionService {
         Stripe.apiKey = stripeApiKey;
         String stripeCurrency = (currency != null) ? currency.toLowerCase() : "usd";
         
-        // Deep Link for App
         String deepLinkSuccess = returnUrl + "?status=success&transactionId=" + transaction.getTransactionId();
         String deepLinkCancel = returnUrl + "?status=cancel&transactionId=" + transaction.getTransactionId();
 
@@ -315,8 +405,6 @@ public class TransactionServiceImpl implements TransactionService {
         String vnp_TxnRef = transaction.getTransactionId().toString();
         String vnp_IpAddr = (clientIp != null) ? clientIp : "127.0.0.1";
         
-        // Use Backend URL for redirect to avoid "Website not approved" error
-        // Ensure this URL is registered in VNPAY Sandbox or is localhost
         String backendReturnUrl = appBackendUrl + "/api/v1/transactions/vnpay-return";
 
         BigDecimal amountVND = amount;
@@ -358,12 +446,10 @@ public class TransactionServiceImpl implements TransactionService {
             String fieldName = itr.next();
             String fieldValue = vnp_Params.get(fieldName);
             if ((fieldValue != null) && (fieldValue.length() > 0)) {
-                // Build hash data
                 hashData.append(fieldName);
                 hashData.append('=');
                 hashData.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
                 
-                // Build query
                 query.append(URLEncoder.encode(fieldName, StandardCharsets.US_ASCII));
                 query.append('=');
                 query.append(URLEncoder.encode(fieldValue, StandardCharsets.US_ASCII));
@@ -423,7 +509,6 @@ public class TransactionServiceImpl implements TransactionService {
         String signValue = hashAllFields(fields);
         String txnRef = request.getParameter("vnp_TxnRef");
         
-        // App Deep Link
         String baseDeepLink = "linguamonkey://deposit-result";
 
         if (signValue.equals(vnp_SecureHash)) {
@@ -436,11 +521,10 @@ public class TransactionServiceImpl implements TransactionService {
                 if ("00".equals(responseCode)) {
                     transaction.setStatus(TransactionStatus.SUCCESS);
                     
-                    // Logic success for Deposit/Payment
                     if (transaction.getType() == TransactionType.DEPOSIT) {
                         walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
                     } else if (transaction.getType() == TransactionType.PAYMENT || transaction.getType() == TransactionType.UPGRADE_VIP) {
-                         handleSuccessfulPayment(transaction.getTransactionId().toString());
+                          handleSuccessfulPayment(transaction.getTransactionId().toString());
                     }
                     
                     transactionRepository.save(transaction);
@@ -451,7 +535,6 @@ public class TransactionServiceImpl implements TransactionService {
                     return baseDeepLink + "?status=failed&reason=payment_failed_code_" + responseCode;
                 }
             } else {
-                 // Transaction already processed or not found
                  return baseDeepLink + "?status=success&transactionId=" + txnRef;
             }
         } else {
@@ -470,8 +553,6 @@ public class TransactionServiceImpl implements TransactionService {
             if ((fieldValue != null) && (fieldValue.length() > 0)) {
                 sb.append(fieldName);
                 sb.append("=");
-                // Note: VNPAY Java logic usually appends decoded or raw value for hashing check
-                // In this simplified version, using URL Encoded value similar to createVnPayUrl logic
                 sb.append(fieldValue);
             }
             if (itr.hasNext()) {
@@ -564,7 +645,7 @@ public class TransactionServiceImpl implements TransactionService {
         if (request.getIdempotencyKey() != null) {
             var existingTx = transactionRepository.findByIdempotencyKey(request.getIdempotencyKey());
             if (existingTx.isPresent()) {
-                return transactionMapper.approveRefundtoResponse(existingTx.get());
+                return transactionMapper.toResponse(existingTx.get());
             }
         }
 
@@ -581,6 +662,7 @@ public class TransactionServiceImpl implements TransactionService {
                 .provider(TransactionProvider.INTERNAL)
                 .idempotencyKey(request.getIdempotencyKey())
                 .description(request.getDescription())
+                .createdAt(OffsetDateTime.now())
                 .build();
         transaction = transactionRepository.save(transaction);
 
@@ -591,7 +673,7 @@ public class TransactionServiceImpl implements TransactionService {
             transaction.setStatus(TransactionStatus.SUCCESS);
             transaction = transactionRepository.save(transaction);
 
-            return transactionMapper.approveRefundtoResponse(transaction);
+            return transactionMapper.toResponse(transaction);
         } catch (Exception e) {
             transaction.setStatus(TransactionStatus.FAILED);
             transactionRepository.save(transaction);
@@ -600,38 +682,21 @@ public class TransactionServiceImpl implements TransactionService {
         }
     }
 
-    @Override @Transactional public TransactionResponse withdraw(WithdrawRequest request) { 
-        User user = getUser(request.getUserId());
-        Wallet wallet = getWallet(user.getUserId());
-        if (wallet.getBalance().compareTo(request.getAmount()) < 0) throw new AppException(ErrorCode.INSUFFICIENT_FUNDS);
-        Transaction transaction = Transaction.builder().user(user).wallet(wallet).amount(request.getAmount()).currency("USD").type(TransactionType.WITHDRAW).status(TransactionStatus.PENDING).provider(TransactionProvider.INTERNAL).description("Withdraw").build();
-        transaction = transactionRepository.save(transaction);
-        walletService.debit(user.getUserId(), request.getAmount());
-        return transactionMapper.approveRefundtoResponse(transaction);
+    @Override
+    public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) {
+        if (userId != null) {
+            return transactionRepository.findByUser_UserId(userId, pageable).map(transactionMapper::toResponse);
+        }
+        if (status != null) {
+            try {
+                TransactionStatus ts = TransactionStatus.valueOf(status.toUpperCase());
+                return transactionRepository.findByStatus(ts, pageable).map(transactionMapper::toResponse);
+            } catch (IllegalArgumentException e) {
+                return transactionRepository.findAll(pageable).map(transactionMapper::toResponse);
+            }
+        }
+        return transactionRepository.findAll(pageable).map(transactionMapper::toResponse);
     }
-    @Override public TransactionResponse requestRefund(RefundRequest request) { 
-        Transaction original = transactionRepository.findById(request.getOriginalTransactionId())
-            .orElseThrow(()->new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
-        original.setStatus(TransactionStatus.PENDING_REFUND);
-        transactionRepository.save(original);
-        User requester = userRepository.findById(request.getRequesterId()).orElseThrow();
-        Transaction refundTx = Transaction.builder()
-            .user(requester)
-            .wallet(original.getWallet())
-            .sender(original.getReceiver())
-            .receiver(original.getSender())
-            .amount(original.getAmount())
-            .currency(original.getCurrency())
-            .type(TransactionType.REFUND)
-            .status(TransactionStatus.PENDING)
-            .provider(TransactionProvider.INTERNAL)
-            .originalTransaction(original)
-            .description(request.getReason())
-            .build();
-        return transactionMapper.approveRefundtoResponse(transactionRepository.save(refundTx));
-    }
-
-    @Override public Page<TransactionResponse> getAllTransactions(UUID userId, String status, Pageable pageable) { return null; }
 
     @Override
     @Transactional
@@ -657,6 +722,7 @@ public class TransactionServiceImpl implements TransactionService {
         transaction.setSender(user);
         transaction.setAmount(finalAmount);
         transaction.setStatus(request.getStatus() != null ? request.getStatus() : TransactionStatus.PENDING);
+        transaction.setCreatedAt(OffsetDateTime.now());
         
         if (transaction.getCurrency() == null) {
             transaction.setCurrency("USD");
@@ -689,7 +755,7 @@ public class TransactionServiceImpl implements TransactionService {
              }
         }
 
-        return transactionMapper.approveRefundtoResponse(transaction);
+        return transactionMapper.toResponse(transaction);
     }
 
     private void createEnrollment(User user, UUID courseVersionId) {
@@ -713,8 +779,46 @@ public class TransactionServiceImpl implements TransactionService {
         enrollmentRepository.save(enrollment);
     }
 
-    @Override @Transactional public TransactionResponse updateTransaction(UUID id, TransactionRequest request) { return null; }
-    @Override @Transactional public void deleteTransaction(UUID id) { }
+    @Override
+    @Transactional
+    public TransactionResponse updateTransaction(UUID id, TransactionRequest request) {
+        Transaction transaction = transactionRepository.findById(id)
+                .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+        
+        if(request.getStatus() != null) transaction.setStatus(request.getStatus());
+        
+        return transactionMapper.toResponse(transactionRepository.save(transaction));
+    }
+    
+    @Override 
+    @Transactional 
+    public void deleteTransaction(UUID id) { 
+        transactionRepository.deleteById(id);
+    }
+
+    @Override
+    public TransactionResponse requestRefund(RefundRequest request) { 
+        Transaction original = transactionRepository.findById(request.getOriginalTransactionId())
+            .orElseThrow(()->new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
+        original.setStatus(TransactionStatus.PENDING_REFUND);
+        transactionRepository.save(original);
+        User requester = userRepository.findById(request.getRequesterId()).orElseThrow();
+        Transaction refundTx = Transaction.builder()
+            .user(requester)
+            .wallet(original.getWallet())
+            .sender(original.getReceiver())
+            .receiver(original.getSender())
+            .amount(original.getAmount())
+            .currency(original.getCurrency())
+            .type(TransactionType.REFUND)
+            .status(TransactionStatus.PENDING)
+            .provider(TransactionProvider.INTERNAL)
+            .originalTransaction(original)
+            .description(request.getReason())
+            .createdAt(OffsetDateTime.now())
+            .build();
+        return transactionMapper.toResponse(transactionRepository.save(refundTx));
+    }
 
     private User getUser(UUID userId) {
         return userRepository.findById(userId)

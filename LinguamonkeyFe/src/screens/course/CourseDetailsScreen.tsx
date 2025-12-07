@@ -18,6 +18,7 @@ import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCourses } from "../../hooks/useCourses";
+import { useLessons } from "../../hooks/useLessons";
 import { useRooms } from "../../hooks/useRoom";
 import { useUserStore } from "../../stores/UserStore";
 import { useCurrencyConverter } from "../../hooks/useCurrencyConverter";
@@ -40,7 +41,6 @@ import {
 import { gotoTab } from "../../utils/navigationRef";
 import dayjs from "dayjs";
 
-// Define Type for Refund Reasons
 interface RefundReason {
   label: string;
   value: string;
@@ -62,13 +62,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const insets = useSafeAreaInsets();
   const { convert } = useCurrencyConverter();
 
-  // Modals
   const [purchaseModalVisible, setPurchaseModalVisible] = useState(false);
   const [settingsModalVisible, setSettingsModalVisible] = useState(false);
   const [refundModalVisible, setRefundModalVisible] = useState(false);
   const [versionHistoryModalVisible, setVersionHistoryModalVisible] = useState(false);
 
-  // Refund State
   const [selectedRefundReason, setSelectedRefundReason] = useState(REFUND_REASONS[0].value);
   const [refundOtherText, setRefundOtherText] = useState("");
 
@@ -84,6 +82,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     useGetVersion
   } = useCourses();
 
+  const { useLessonProgresses } = useLessons();
+
   const { useCreateTransaction } = useTransactionsApi();
   const { mutate: requestRefund, isPending: isRequestingRefund } = useCreateTransaction();
 
@@ -93,8 +93,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
   const { data: roomData } = useCourseRoom(courseId);
   const { data: versionHistory } = useCourseVersions(courseId);
+  const { data: userProgressData } = useLessonProgresses({ userId: user?.userId, size: 100 });
 
-  // -- Versioning Logic --
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -128,6 +128,18 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     return allLessons.sort((a, b) => (a.orderIndex || 0) - (b.orderIndex || 0));
   }, [lessonsInfinite]);
 
+  const progressMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    if (!userProgressData?.data) return map;
+    userProgressData.data.forEach((p: any) => {
+      const lId = p.id?.lessonId || p.lessonId;
+      if (lId) {
+        map[lId] = p.score;
+      }
+    });
+    return map;
+  }, [userProgressData]);
+
   const { data: discountsData } = useDiscounts({ versionId: activeVersionId, size: 1 });
   const activeDiscount = discountsData?.data?.[0] as CourseVersionDiscountResponse | undefined;
 
@@ -137,7 +149,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     ? displayPriceRaw * (1 - discountPercent / 100)
     : displayPriceRaw;
 
-  // SỬA LỖI: isFreeCourse phải kiểm tra giá sau chiết khấu
   const isFreeCourse = priceAfterDiscount <= 0;
   const isPaidCourse = !isFreeCourse;
 
@@ -176,10 +187,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const originalPrice = displayPriceRaw;
 
   const canReview = useMemo(() => {
-    if (isCreator) return false;
-    // Logic mới: có thể đánh giá nếu (miễn phí) HOẶC (đã ghi danh/mua)
     return isFreeCourse || isEnrolled;
-  }, [isFreeCourse, isEnrolled, isCreator]);
+  }, [isFreeCourse, isEnrolled]);
 
   const displayPriceStr = convert(priceAfterDiscount, 'VND');
   const displayOriginalPriceStr = convert(originalPrice, 'VND');
@@ -211,7 +220,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       status: CourseVersionEnrollmentStatus.ACTIVE
     }, {
       onSuccess: () => {
-        // Đã ghi danh, chỉ cần refetch để cập nhật trạng thái
         refetchEnrollments();
       },
       onError: () => {
@@ -230,7 +238,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       return;
     }
 
-    // THÊM KIỂM TRA canReview
     if (!canReview) {
       Alert.alert(t("notice"), t("course.reviewNotAllowed", "Bạn chưa đủ điều kiện để đánh giá khóa học này."));
       return;
@@ -517,8 +524,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const isUnlocked = hasAccess || item.isFree;
     const isLocked = !isUnlocked;
 
-    // Check if this specific lesson is completed
-    const isCompleted = isEnrolled && (activeEnrollment?.completedLessonsCount || 0) > index;
+    const score = progressMap[item.lessonId];
+    const isLessonCompleted = score !== undefined;
 
     return (
       <View style={{ paddingHorizontal: 20 }}>
@@ -543,7 +550,15 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
               <Text style={styles.lessonDuration}>
                 {Math.ceil((item.durationSeconds || 0) / 60)} min • {item.lessonType || 'LESSON'}
               </Text>
-              {item.isFree && isPaidCourse && (
+
+              {isLessonCompleted && (
+                <View style={styles.progressTag}>
+                  <Icon name="check-circle" size={12} color="#10B981" />
+                  <Text style={styles.progressTagText}>{Math.round(score)}%</Text>
+                </View>
+              )}
+
+              {item.isFree && isPaidCourse && !isLessonCompleted && (
                 <View style={styles.freeTag}>
                   <Text style={styles.freeTagText}>FREE</Text>
                 </View>
@@ -553,7 +568,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
           {isLocked ? (
             <Icon name="lock-outline" size={24} color="#9CA3AF" />
-          ) : isCompleted ? (
+          ) : isLessonCompleted ? (
             <Icon name="check-circle" size={24} color="#10B981" />
           ) : (
             <Icon name="radio-button-unchecked" size={24} color="#D1D5DB" />
@@ -741,7 +756,7 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: '#FFF' },
   headerContainer: { backgroundColor: "#FFF" },
   coverContainer: { height: 240, width: "100%", position: "relative" },
-  coverImage: { width: "100%", height: "100%", backgroundColor: "#E5E7EB" },
+  coverImage: { width: "100%", height: "100%", borderRadius: 0, backgroundColor: "#E5E7EB" },
   coverOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)' },
   backBtn: { position: 'absolute', left: 16, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20, padding: 8 },
   settingsBtn: { position: 'absolute', right: 16, backgroundColor: 'rgba(0,0,0,0.4)', borderRadius: 20, padding: 8 },
@@ -801,8 +816,9 @@ const styles = StyleSheet.create({
   reviewsWrapper: { paddingHorizontal: 20 },
   freeTag: { backgroundColor: '#10B981', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8 },
   freeTagText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  progressTag: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#ECFDF5', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, marginLeft: 8, gap: 2 },
+  progressTagText: { color: '#10B981', fontSize: 10, fontWeight: 'bold' },
 
-  // Progress Styles (New)
   progressContainer: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: '#E5E7EB' },
   progressHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
   progressTitle: { fontWeight: '600', color: '#374151' },
@@ -811,7 +827,6 @@ const styles = StyleSheet.create({
   progressBarFill: { height: '100%', backgroundColor: '#4F46E5' },
   progressSubtitle: { fontSize: 12, color: '#9CA3AF' },
 
-  // Modal Styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   settingsPopup: { width: '80%', backgroundColor: '#FFF', borderRadius: 12, padding: 20 },
   settingsTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, color: '#111827' },
@@ -833,7 +848,6 @@ const styles = StyleSheet.create({
   submitRefundText: { color: '#FFF', fontWeight: 'bold' },
   disclaimer: { fontSize: 11, color: '#6B7280', marginTop: 12, textAlign: 'center' },
 
-  // Version List Styles
   versionItem: { padding: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
   versionItemSelected: { backgroundColor: '#EEF2FF' },
   versionRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },

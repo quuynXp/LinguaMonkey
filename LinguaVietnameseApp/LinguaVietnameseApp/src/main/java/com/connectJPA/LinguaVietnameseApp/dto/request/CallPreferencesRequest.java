@@ -1,22 +1,43 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty; // <--- IMPORT CÁI NÀY
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.UUID;
 
-@Data // Tự động tạo Getters, Setters, toString, equals, hashCode
-@NoArgsConstructor // Tạo constructor rỗng (cần cho Jackson/JSON)
-@AllArgsConstructor // Tạo constructor với tất cả các trường
+@Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class CallPreferencesRequest {
-    private List<String> interests;
-    private String gender;
-    private String nativeLanguage;
-    private List<String> learningLanguages;
-    private String ageRange;
-    private String proficiency; // New Field
-    private String learningPace; // New Field
-    private String callDuration;
+    
+    // Đảm bảo map đúng key "userId" từ JSON
+    @JsonProperty("userId") 
+    private UUID userId;
 
+    @JsonProperty("interests")
+    private List<String> interests;
+
+    @JsonProperty("gender")
+    private String gender;
+
+    @JsonProperty("nativeLanguage")
+    private String nativeLanguage;
+
+    @JsonProperty("learningLanguages")
+    private List<String> learningLanguages;
+
+    @JsonProperty("ageRange")
+    private String ageRange;
+
+    @JsonProperty("proficiency")
+    private String proficiency;
+
+    @JsonProperty("learningPace")
+    private String learningPace;
+
+    @JsonProperty("callDuration")
+    private String callDuration;
 }

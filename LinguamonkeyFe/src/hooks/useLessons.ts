@@ -504,6 +504,8 @@ export const useLessons = () => {
           durationSeconds: number;
           allowedRetakeCount: number;
           attemptNumber: number;
+          latestScore?: number;
+          wrongQuestionIds?: string[];
         }>>(
           `/api/v1/lessons/${lessonId}/start-test?userId=${userId}`
         );

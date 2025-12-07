@@ -15,19 +15,21 @@ import java.util.UUID;
 @NoArgsConstructor
 @Builder
 public class LessonQuestionRequest {
-    @NotNull(message = "Lesson ID cannot be null")
     private UUID lessonId;
 
+    @NotNull(message = "Question content is required")
     private String question;
     
-    private QuestionType questionType;
+    @NotNull(message = "Question Type is required (CHECK ENUM UPPERCASE)")
+    private QuestionType questionType; 
+
     private SkillType skillType;
+    
     private String languageCode;
 
-    // FE gửi JSON string của options (A, B, C, D) vào đây
     private String optionsJson;
 
-    // Vẫn giữ các field rời để tương thích ngược hoặc tiện mapping
+    // Các field rời rạc (nên ưu tiên dùng optionsJson để nhẹ payload)
     private String optionA;
     private String optionB;
     private String optionC;
@@ -35,9 +37,8 @@ public class LessonQuestionRequest {
 
     private String correctOption;
     
-    // Trường quan trọng cho tính năng mới
     private String transcript;
-    private String mediaUrl;       
+    private String mediaUrl;        
     private String explainAnswer;
     
     private Integer weight;

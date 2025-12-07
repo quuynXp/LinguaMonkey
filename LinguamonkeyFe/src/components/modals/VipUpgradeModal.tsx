@@ -11,6 +11,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as WebBrowser from 'expo-web-browser';
 import * as Enums from '../../types/enums';
 import { TransactionRequest, PaymentRequest } from '../../types/dto';
+import { gotoTab } from '../../utils/navigationRef';
 
 interface VipUpgradeModalProps {
     visible: boolean;
@@ -126,7 +127,7 @@ const VipUpgradeModal: React.FC<VipUpgradeModalProps> = ({ visible, onClose }) =
                         text: t('payment.depositNow'),
                         onPress: () => {
                             onClose();
-                            navigation.navigate('DepositScreen', { minAmount: displayPrice - balance });
+                            gotoTab("PaymentStack", 'DepositScreen', { minAmount: displayPrice - balance });
                         }
                     }
                 ]

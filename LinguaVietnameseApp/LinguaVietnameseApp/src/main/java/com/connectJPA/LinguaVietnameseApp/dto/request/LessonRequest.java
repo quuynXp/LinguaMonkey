@@ -1,8 +1,12 @@
 package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
-import jakarta.validation.constraints.*;
-import lombok.*;
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.util.List;
 import java.util.UUID;
@@ -12,7 +16,6 @@ import java.util.UUID;
 @AllArgsConstructor
 public class LessonRequest {
     @NotBlank(message = "Lesson name is required")
-    @Size(max = 50, message = "Lesson name must not exceed 50 characters")
     private String lessonName;
 
     private String title;
@@ -21,6 +24,7 @@ public class LessonRequest {
 
     private int expReward;
 
+    @NotNull(message = "Creator ID is required")
     private UUID creatorId;
 
     private SkillType skillType;
@@ -34,4 +38,7 @@ public class LessonRequest {
     private UUID lessonCategoryId;
 
     private UUID lessonSubCategoryId;
+
+    @Valid
+    private List<LessonQuestionRequest> questions;
 }

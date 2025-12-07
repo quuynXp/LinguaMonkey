@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
     View,
     Text,
@@ -17,26 +17,36 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import type { CourseVersionReviewResponse } from "../../types/dto";
 
-// Không cần định nghĩa TabType nếu không dùng tab bar
-// type TabType = "DASHBOARD" | "REVIEWS";
-
 const CourseManagerScreen = () => {
     const { t } = useTranslation();
     const route = useRoute<any>();
     const navigation = useNavigation<any>();
-    const { courseId } = route.params;
+
+    // Defensive: Fallback to empty object to prevent crash if params is undefined
+    const { courseId } = route.params || {};
     const user = useUserStore((state) => state.user);
 
-    // Filter State for Revenue (vẫn giữ để dùng trong Dashboard section)
     const [revenueFilter, setRevenueFilter] = useState<'day' | 'week' | 'month' | 'year'>('month');
 
-    // --- Hooks ---
+    // Validate courseId immediately
+    useEffect(() => {
+        if (!courseId) {
+            console.error("CourseManagerScreen Error: courseId is missing in route.params", route.params);
+            Alert.alert(
+                "Error",
+                "Course ID is missing. Please go back and try again.",
+                [{ text: "Go Back", onPress: () => navigation.goBack() }]
+            );
+        }
+    }, [courseId, navigation, route.params]);
+
     const {
         useCourse,
         useReviews,
         useCourseStats,
     } = useCourses();
 
+    // Only run hooks if courseId exists to avoid unnecessary API calls
     const { data: course, isLoading: courseLoading } = useCourse(courseId);
     const { data: reviewsData, isLoading: reviewsLoading } = useReviews({ courseId });
     const { data: statsData, isLoading: statsLoading } = useCourseStats(courseId);
@@ -44,17 +54,15 @@ const CourseManagerScreen = () => {
     const currentVersion = course?.latestPublicVersion;
     const isDraft = currentVersion?.status === "DRAFT";
 
-    // --- Actions ---
-
     const handleNavigateToEdit = () => {
+        if (!courseId) return;
         navigation.navigate("EditCourseScreen", { courseId });
     };
 
     const handlePreview = () => {
+        if (!courseId) return;
         navigation.navigate("CourseDetailsScreen", { courseId });
     };
-
-    // --- Renderers ---
 
     const renderDashboardSection = () => {
         if (statsLoading) return <ActivityIndicator style={styles.loadingSection} size="large" />;
@@ -74,7 +82,6 @@ const CourseManagerScreen = () => {
             <View style={styles.section}>
                 <Text style={styles.mainSectionTitle}>{t("creator.dashboard")}</Text>
 
-                {/* Stats Grid */}
                 <View style={styles.statsGrid}>
                     <View style={styles.statCard}>
                         <View style={[styles.statIconContainer, { backgroundColor: `#4F46E520` }]}>
@@ -93,7 +100,6 @@ const CourseManagerScreen = () => {
                     </View>
                 </View>
 
-                {/* Revenue Summary */}
                 <View style={styles.revenueCard}>
                     <Text style={styles.revenueTitle}>{t("creator.totalRevenue")}</Text>
                     <Text style={styles.revenueAmount}>${displayRevenue.toFixed(2)}</Text>
@@ -112,7 +118,6 @@ const CourseManagerScreen = () => {
                     </View>
                 </View>
 
-                {/* Revenue Chart */}
                 {chartData.length > 0 && (
                     <View style={styles.chartContainer}>
                         <View style={styles.chartHeader}>
@@ -150,28 +155,18 @@ const CourseManagerScreen = () => {
                         <FlatList
                             data={reviews}
                             keyExtractor={(item) => item.reviewId}
-                            scrollEnabled={false} // Tắt cuộn của FlatList con
+                            scrollEnabled={false}
                             ListEmptyComponent={<Text style={styles.emptyText}>{t("course.noReviews")}</Text>}
                             renderItem={({ item }) => (
                                 <View style={styles.reviewCard}>
                                     <View style={styles.reviewHeader}>
-                                        <Text style={styles.reviewerName}>User {item.userId.substring(0, 5)}</Text>
+                                        <Text style={styles.reviewerName}>{item.userFullname.substring(0, 5)}</Text>
                                         <View style={styles.ratingRow}>
                                             <Icon name="star" size={14} color="#F59E0B" />
                                             <Text style={styles.ratingText}>{item.rating}</Text>
                                         </View>
                                     </View>
                                     <Text style={styles.reviewComment}>{item.comment}</Text>
-                                    <View style={styles.reviewActions}>
-                                        <TouchableOpacity style={styles.actionLink} onPress={() => Alert.alert("Liked")}>
-                                            <Icon name="thumb-up" size={16} color="#4F46E5" />
-                                            <Text style={styles.actionText}>{t("common.like")}</Text>
-                                        </TouchableOpacity>
-                                        <TouchableOpacity style={styles.actionLink} onPress={() => Alert.alert(t("info"), "Reply feature coming soon")}>
-                                            <Icon name="reply" size={16} color="#4F46E5" />
-                                            <Text style={styles.actionText}>{t("common.reply")}</Text>
-                                        </TouchableOpacity>
-                                    </View>
                                 </View>
                             )}
                         />
@@ -181,11 +176,12 @@ const CourseManagerScreen = () => {
         );
     };
 
+    if (!courseId) return <ScreenLayout><View /></ScreenLayout>;
+
     if (courseLoading) return <ScreenLayout><ActivityIndicator style={{ marginTop: 50 }} size="large" /></ScreenLayout>;
 
     return (
         <ScreenLayout>
-            {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity onPress={() => navigation.goBack()}>
                     <Icon name="arrow-back" size={24} color="#1F2937" />
@@ -203,23 +199,19 @@ const CourseManagerScreen = () => {
                     </View>
                 </View>
                 <View style={styles.headerActions}>
-                    {/* Nút EDITING (Chuyển sang màn hình EditCourseScreen) */}
                     <TouchableOpacity onPress={handleNavigateToEdit} style={styles.editingBtn}>
                         <Icon name="edit" size={20} color="#FFF" />
                         <Text style={styles.editingBtnText}>{t("common.editing")}</Text>
                     </TouchableOpacity>
 
-                    {/* Nút View/Preview */}
                     <TouchableOpacity onPress={handlePreview} style={styles.iconBtn}>
                         <Icon name="visibility" size={28} color="#4F46E5" />
                     </TouchableOpacity>
                 </View>
             </View>
 
-            {/* Content (Gộp Dashboard và Reviews vào một ScrollView) */}
             <ScrollView style={styles.contentContainer} contentContainerStyle={styles.contentPadding}>
                 {renderDashboardSection()}
-
                 {renderReviewsSection()}
             </ScrollView>
         </ScreenLayout>
@@ -246,8 +238,6 @@ const styles = createScaledSheet({
     textPublic: { color: "#166534" },
     headerActions: { flexDirection: "row", alignItems: "center", gap: 12 },
     iconBtn: { padding: 4 },
-
-    // Nút EDITING
     editingBtn: {
         flexDirection: "row",
         alignItems: "center",
@@ -262,16 +252,11 @@ const styles = createScaledSheet({
         fontWeight: "600",
         fontSize: 14,
     },
-
     contentContainer: { flex: 1, backgroundColor: "#F8FAFC" },
     contentPadding: { padding: 16, paddingBottom: 40 },
-
-    // Section Titles
     section: { marginBottom: 20 },
     mainSectionTitle: { fontSize: 20, fontWeight: "800", color: "#1F2937", marginBottom: 16 },
     loadingSection: { marginTop: 20, padding: 20 },
-
-    // Stats Grid
     statsGrid: { flexDirection: "row", gap: 12, marginBottom: 16 },
     statCard: {
         flex: 1, backgroundColor: "#FFF", borderRadius: 12, padding: 16, alignItems: "center",
@@ -282,8 +267,6 @@ const styles = createScaledSheet({
     statValue: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
     statLabel: { fontSize: 12, color: "#6B7280", marginTop: 2 },
     statSubLabel: { fontSize: 10, color: "#9CA3AF" },
-
-    // Revenue Card
     revenueCard: {
         backgroundColor: "#FFF", borderRadius: 16, padding: 16, marginBottom: 16,
         borderWidth: 1, borderColor: "#E5E7EB",
@@ -295,8 +278,6 @@ const styles = createScaledSheet({
     filterChipActive: { backgroundColor: "#FFF", shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 1, elevation: 1 },
     filterText: { fontSize: 12, fontWeight: "500", color: "#6B7280" },
     filterTextActive: { color: "#1F2937", fontWeight: "600" },
-
-    // Chart Styles
     chartContainer: {
         marginBottom: 8, backgroundColor: "#FFF", borderRadius: 16, padding: 16,
         borderWidth: 1, borderColor: "#E5E7EB",
@@ -308,8 +289,6 @@ const styles = createScaledSheet({
     barWrapper: { height: 100, width: 20, justifyContent: "flex-end", backgroundColor: "#F3F4F6", borderRadius: 4, overflow: "hidden" },
     barFill: { backgroundColor: "#4F46E5", borderRadius: 4, width: "100%" },
     barLabel: { fontSize: 10, color: "#6B7280", marginTop: 6 },
-
-    // Reviews
     emptyText: { color: "#9CA3AF", fontStyle: "italic", textAlign: 'center', marginTop: 20 },
     reviewCard: { backgroundColor: "#FFF", padding: 16, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: "#E5E7EB" },
     reviewHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
@@ -317,9 +296,6 @@ const styles = createScaledSheet({
     ratingRow: { flexDirection: "row", alignItems: "center", gap: 2 },
     ratingText: { fontSize: 12, fontWeight: "700", color: "#F59E0B" },
     reviewComment: { color: "#4B5563", fontSize: 14, lineHeight: 20 },
-    reviewActions: { flexDirection: "row", marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: "#F3F4F6", gap: 20 },
-    actionLink: { flexDirection: "row", alignItems: "center", gap: 4 },
-    actionText: { color: "#4F46E5", fontSize: 13, fontWeight: "600" },
 });
 
 export default CourseManagerScreen;

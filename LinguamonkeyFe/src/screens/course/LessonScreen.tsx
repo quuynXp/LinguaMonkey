@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View, Text, TouchableOpacity, ScrollView,
-  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Dimensions, Alert
+  ActivityIndicator, StyleSheet, Modal, SafeAreaView, Alert
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
@@ -15,6 +15,7 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import { UniversalQuestionView } from "../../components/learn/SkillComponents";
 import { LessonInputArea } from "../../components/learn/LessonInputArea";
 
+// Helper check đáp án (giữ nguyên logic của bạn)
 const validateAnswer = (question: LessonQuestionResponse, answer: any): boolean => {
   if (!question.correctOption) return false;
   const normalize = (str: any) => String(str || "").trim().toLowerCase().replace(/\s+/g, ' ');
@@ -55,6 +56,7 @@ const LessonScreen = ({ navigation, route }: any) => {
   const checkWritingMutation = useCheckWriting();
   const streamPronunciationMutation = useStreamPronunciation();
 
+  const [activeQuestions, setActiveQuestions] = useState<LessonQuestionResponse[]>([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [correctCount, setCorrectCount] = useState(0);
   const [isAnswered, setIsAnswered] = useState(false);
@@ -68,11 +70,64 @@ const LessonScreen = ({ navigation, route }: any) => {
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
 
+  // State mới để quản lý chế độ làm lại
+  const [isRetryWrongMode, setIsRetryWrongMode] = useState(false);
+
   const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // Fetch data từ API đã update (có latestScore, wrongQuestionIds)
   const { data: testData, isLoading } = useLessonTest(lesson.lessonId, userId!, !!userId);
-  const questions = (testData?.questions || []) as LessonQuestionResponse[];
-  const currentQuestion = questions[currentQuestionIndex];
-  const isLastQuestion = currentQuestionIndex >= questions.length - 1;
+
+  // Effect xử lý khi data load xong: Check đã học chưa?
+  useEffect(() => {
+    if (testData?.questions) {
+      const allQuestions = testData.questions;
+      const score = testData.latestScore;
+      const wrongIds = testData.wrongQuestionIds || [];
+
+      // Nếu đã có điểm (tức là đã học)
+      if (score !== undefined && score !== null) {
+        Alert.alert(
+          t("lesson.completedTitle", "Lesson Completed"),
+          t("lesson.completedMsg", `You have completed this lesson with ${Math.round(score)}%.`),
+          [
+            {
+              text: t("lesson.retryWrong", "Retry Wrong Answers"),
+              onPress: () => {
+                // Lọc ra các câu hỏi có ID nằm trong danh sách sai
+                const wrongQuestions = allQuestions.filter(q => wrongIds.includes(q.lessonQuestionId));
+                if (wrongQuestions.length > 0) {
+                  setActiveQuestions(wrongQuestions);
+                  setIsRetryWrongMode(true);
+                } else {
+                  Alert.alert("Info", "Great job! No wrong answers found. Starting full review.");
+                  setActiveQuestions(allQuestions);
+                }
+              }
+            },
+            {
+              text: t("lesson.retakeAll", "Retake All"),
+              onPress: () => {
+                setActiveQuestions(allQuestions);
+                setIsRetryWrongMode(false);
+              }
+            },
+            {
+              text: t("common.cancel", "Cancel"),
+              style: "cancel",
+              onPress: () => navigation.goBack()
+            }
+          ]
+        );
+      } else {
+        // Chưa học, load tất cả
+        setActiveQuestions(allQuestions);
+      }
+    }
+  }, [testData]);
+
+  const currentQuestion = activeQuestions[currentQuestionIndex];
+  const isLastQuestion = currentQuestionIndex >= activeQuestions.length - 1;
 
   const handleSubmitAnswer = async (answerValue: any) => {
     if (!currentQuestion || isProcessingAI) return;
@@ -80,7 +135,7 @@ const LessonScreen = ({ navigation, route }: any) => {
     setSelectedAnswer(answerValue);
     setUserAnswers(prev => ({ ...prev, [currentQuestion.lessonQuestionId]: answerValue }));
 
-    // AI Check Logic - Block UI immediately
+    // AI Check Logic
     if ([QuestionType.WRITING, QuestionType.ESSAY].includes(currentQuestion.questionType)) {
       setIsProcessingAI(true);
       setIsAnswered(true);
@@ -97,7 +152,7 @@ const LessonScreen = ({ navigation, route }: any) => {
         setIsCorrect(passed);
         if (passed) setCorrectCount(c => c + 1);
       } catch (e) {
-        setFeedbackMessage("Lỗi kết nối AI. Vui lòng thử lại.");
+        setFeedbackMessage("AI connection error. Please try again.");
         setIsCorrect(false);
       } finally {
         setIsProcessingAI(false);
@@ -115,11 +170,13 @@ const LessonScreen = ({ navigation, route }: any) => {
 
   const handleNext = async () => {
     if (isLastQuestion) {
-      // Final submission of the whole lesson (mostly for record keeping if individual APIs were called)
-      await submitTestMutation.mutateAsync({
-        lessonId: lesson.lessonId, userId: userId!,
-        body: { answers: userAnswers, attemptNumber: 1 }
-      });
+      // Chỉ submit kết quả nếu KHÔNG phải chế độ làm lại câu sai
+      if (!isRetryWrongMode) {
+        await submitTestMutation.mutateAsync({
+          lessonId: lesson.lessonId, userId: userId!,
+          body: { answers: userAnswers, attemptNumber: testData?.attemptNumber || 1 }
+        });
+      }
       setShowSummary(true);
     } else {
       setCurrentQuestionIndex(i => i + 1);
@@ -137,6 +194,7 @@ const LessonScreen = ({ navigation, route }: any) => {
     setIsProcessingAI(false);
   };
 
+  // Recording Logic (Giữ nguyên)
   const handleStartRecording = async () => {
     try { setIsRecording(true); await recorder.record(); } catch (e) { console.error(e); }
   };
@@ -168,10 +226,13 @@ const LessonScreen = ({ navigation, route }: any) => {
     setShowSummary(false);
     setReviewMode(true);
     setCurrentQuestionIndex(index);
-    const question = questions[index];
+    const question = activeQuestions[index];
     const pastAnswer = userAnswers[question.lessonQuestionId];
+
     setIsAnswered(true);
     setSelectedAnswer(pastAnswer);
+
+    // Logic review giữ nguyên
     if ([QuestionType.WRITING, QuestionType.ESSAY, QuestionType.SPEAKING].includes(question.questionType)) {
       setIsCorrect(true);
       setFeedbackMessage("Review mode: Answer submitted.");
@@ -188,27 +249,36 @@ const LessonScreen = ({ navigation, route }: any) => {
     setCorrectCount(0);
     setUserAnswers({});
     resetQuestionState();
+    // Reset về full list hoặc giữ list wrong tùy UX, ở đây mình reset về logic ban đầu
+    if (testData?.questions) setActiveQuestions(testData.questions);
+    setIsRetryWrongMode(false);
   };
 
   if (isLoading) return <ActivityIndicator style={styles.center} size="large" color="#4F46E5" />;
-  if (!questions || questions.length === 0) return <View style={styles.center}><Text>No questions.</Text></View>;
+  if (!activeQuestions || activeQuestions.length === 0) return <View style={styles.center}><Text>No questions available.</Text></View>;
 
   return (
     <ScreenLayout style={styles.container}>
       <Modal visible={showSummary} animationType="slide">
         <SafeAreaView style={styles.summaryContainer}>
-          <Text style={styles.summaryTitle}>Lesson Complete!</Text>
-          <Text style={styles.scoreText}>{Math.round((correctCount / questions.length) * 100)}%</Text>
+          <Text style={styles.summaryTitle}>
+            {isRetryWrongMode ? "Practice Complete!" : "Lesson Complete!"}
+          </Text>
+          <Text style={styles.scoreText}>
+            {activeQuestions.length > 0 ? Math.round((correctCount / activeQuestions.length) * 100) : 0}%
+          </Text>
+          {isRetryWrongMode && <Text style={styles.retryNote}>(Wrong answers practice mode)</Text>}
+
           <ScrollView style={styles.summaryList}>
-            {questions.map((q, i) => (
+            {activeQuestions.map((q, i) => (
               <TouchableOpacity key={i} style={styles.summaryItem} onPress={() => handleReviewQuestion(i)}>
-                <Text>Q{i + 1}: {q.question.substring(0, 30)}...</Text>
-                <Icon name={userAnswers[q.lessonQuestionId] ? "check-circle" : "cancel"} size={20} color={userAnswers[q.lessonQuestionId] ? "green" : "red"} />
+                <Text style={{ flex: 1 }}>Q{i + 1}: {q.question.substring(0, 30)}...</Text>
+                <Icon name={userAnswers[q.lessonQuestionId] ? "check-circle" : "cancel"} size={20} color={isCorrect /* Logic tạm */ || userAnswers[q.lessonQuestionId] ? "green" : "red"} />
               </TouchableOpacity>
             ))}
           </ScrollView>
           <View style={styles.summaryFooter}>
-            <TouchableOpacity style={styles.secondaryBtn} onPress={handleRetake}><Text>Retake</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryBtn} onPress={handleRetake}><Text>Retake Full</Text></TouchableOpacity>
             <TouchableOpacity style={styles.primaryBtn} onPress={() => navigation.goBack()}><Text style={{ color: '#FFF' }}>Finish</Text></TouchableOpacity>
           </View>
         </SafeAreaView>
@@ -216,16 +286,18 @@ const LessonScreen = ({ navigation, route }: any) => {
 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => navigation.goBack()}><Icon name="close" size={24} color="#333" /></TouchableOpacity>
-        <Text style={styles.headerTitle}>{currentQuestionIndex + 1}/{questions.length}</Text>
+        <Text style={styles.headerTitle}>{currentQuestionIndex + 1}/{activeQuestions.length}</Text>
         <View style={styles.progressBar}>
-          <View style={[styles.progressFill, { width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }]} />
+          <View style={[styles.progressFill, { width: `${((currentQuestionIndex + 1) / activeQuestions.length) * 100}%` }]} />
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        <UniversalQuestionView question={currentQuestion} />
+        {/* Truyền key để force re-render khi đổi câu hỏi */}
+        <UniversalQuestionView key={`q-${currentQuestion.lessonQuestionId}`} question={currentQuestion} />
 
         <LessonInputArea
+          key={`input-${currentQuestion.lessonQuestionId}`}
           question={currentQuestion}
           isAnswered={isAnswered}
           selectedAnswer={selectedAnswer}
@@ -242,7 +314,7 @@ const LessonScreen = ({ navigation, route }: any) => {
         {isProcessingAI && (
           <View style={styles.aiLoading}>
             <ActivityIndicator color="#4F46E5" size="large" />
-            <Text style={styles.aiText}>AI is grading your answer...</Text>
+            <Text style={styles.aiText}>AI is grading...</Text>
           </View>
         )}
 
@@ -276,7 +348,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontWeight: 'bold' },
   progressBar: { width: 100, height: 6, backgroundColor: '#EEE', borderRadius: 3 },
   progressFill: { height: '100%', backgroundColor: '#10B981', borderRadius: 3 },
-  content: { padding: 20 },
+  content: { padding: 20, paddingBottom: 100 },
   feedback: { marginTop: 20, padding: 15, borderRadius: 10, borderWidth: 1 },
   feedbackCorrect: { backgroundColor: '#ECFDF5', borderColor: '#10B981' },
   feedbackWrong: { backgroundColor: '#FEF2F2', borderColor: '#EF4444' },
@@ -292,6 +364,7 @@ const styles = StyleSheet.create({
   summaryContainer: { flex: 1, backgroundColor: '#FFF', padding: 20 },
   summaryTitle: { fontSize: 24, fontWeight: 'bold', textAlign: 'center', marginTop: 20 },
   scoreText: { fontSize: 40, fontWeight: 'bold', textAlign: 'center', color: '#4F46E5', marginVertical: 20 },
+  retryNote: { textAlign: 'center', color: '#666', marginBottom: 10, fontStyle: 'italic' },
   summaryList: { flex: 1 },
   summaryItem: { flexDirection: 'row', justifyContent: 'space-between', padding: 15, borderBottomWidth: 1, borderColor: '#EEE' },
   summaryFooter: { flexDirection: 'row', gap: 10, marginTop: 20 },

@@ -24,13 +24,10 @@ public class RoomRequest {
 
     private String description;
 
-    @Min(2)
     private int maxMembers;
 
-    @NotNull
     private RoomPurpose purpose;
 
-    @NotNull
     private RoomType roomType;
 
     private boolean isDeleted = false;

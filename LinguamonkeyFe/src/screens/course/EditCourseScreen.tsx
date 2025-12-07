@@ -1,4 +1,3 @@
-// EditCourseScreen.tsx (FULL updated file)
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
@@ -18,18 +17,22 @@ import { useTranslation } from "react-i18next";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute } from "@react-navigation/native";
 import { useCourses } from "../../hooks/useCourses";
+import { useUserStore } from "../../stores/UserStore"; // Cần store để lấy creatorId
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { DifficultyLevel, VersionStatus } from "../../types/enums";
 import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
 import {
   LessonResponse,
   CourseVersionDiscountResponse,
-  CourseVersionDiscountRequest
-} from "../../types/dto";
+  CourseVersionDiscountRequest,
+  CourseResponse,
+  CourseVersionResponse
+} from "../../types/dto"; // Import chuẩn từ dto.ts
 import FileUploader from "../../components/common/FileUploader";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 
-// --- Types ---
+// --- Components Con (Modal) ---
+
 interface DiscountModalProps {
   visible: boolean;
   onClose: () => void;
@@ -38,7 +41,6 @@ interface DiscountModalProps {
   onSuccess: (versionId: string) => void;
 }
 
-// Discount modal (fixed: use isPending, ensure mutate is called)
 const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: DiscountModalProps) => {
   const { t } = useTranslation();
   const [code, setCode] = useState(initialData?.code || "");
@@ -55,6 +57,10 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
     if (visible) {
       setCode(initialData?.code || "");
       setPercentage(initialData?.discountPercentage?.toString() || "10");
+    } else {
+      // Reset form khi đóng modal
+      setCode("");
+      setPercentage("10");
     }
   }, [visible, initialData]);
 
@@ -64,13 +70,16 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
       return;
     }
 
+    const now = new Date();
+    const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000); // +30 days
+
     const payload: CourseVersionDiscountRequest = {
-      versionId,
+      versionId, // DTO yêu cầu versionId
       code: code.toUpperCase(),
       discountPercentage: parseInt(percentage, 10),
       isActive: true,
-      startDate: new Date().toISOString(),
-      endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      startDate: now.toISOString(),
+      endDate: future.toISOString(),
     };
 
     const options = {
@@ -79,6 +88,7 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
         onClose();
       },
       onError: (error: any) => {
+        console.error("Discount Error:", error);
         const errorMessage = error?.response?.data?.message || t("course.discountFailed");
         Alert.alert(t("error"), errorMessage);
       }
@@ -130,7 +140,6 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
   );
 };
 
-// Publish reason modal (cross-platform replacement for Alert.prompt)
 const PublishReasonModal = ({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: (reason: string) => void; }) => {
   const { t } = useTranslation();
   const [reason, setReason] = useState("");
@@ -163,12 +172,22 @@ const PublishReasonModal = ({ visible, onClose, onConfirm }: { visible: boolean;
   );
 };
 
+// --- Main Screen ---
+
 const EditCourseScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { courseId: initialCourseId, isNew } = route.params || {};
-  const { t } = useTranslation();
+  // Lấy ID từ params an toàn hơn
+  const initialCourseId = route.params?.courseId;
+  const isNew = route.params?.isNew;
 
+  const { t } = useTranslation();
+  const user = useUserStore((state) => state.user);
+
+  // State quản lý ID course đang edit (ban đầu có thể null nếu tạo mới)
+  const [activeCourseId, setActiveCourseId] = useState<string | undefined>(initialCourseId);
+
+  // Form State
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("0");
   const [description, setDescription] = useState("");
@@ -176,11 +195,12 @@ const EditCourseScreen = () => {
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.A1);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
 
+  // Modal State
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [selectedDiscount, setSelectedDiscount] = useState<CourseVersionDiscountResponse | undefined>(undefined);
-
   const [publishModalVisible, setPublishModalVisible] = useState(false);
 
+  // Hooks
   const {
     useCourse,
     useCourseVersions,
@@ -190,13 +210,16 @@ const EditCourseScreen = () => {
     usePublishVersion,
     useInfiniteLessonsByVersion,
     useDiscounts,
-    useDeleteDiscount
+    useDeleteDiscount,
+    useCreateCourse
   } = useCourses();
 
-  const { data: courseData } = useCourse(initialCourseId);
-  const { data: versionsData, refetch: refetchVersions } = useCourseVersions(initialCourseId);
+  // Fetch Data (Chỉ fetch khi có activeCourseId)
+  const { data: courseData, isLoading: isLoadingCourse } = useCourse(activeCourseId || null);
+  const { data: versionsData, refetch: refetchVersions, isLoading: isLoadingVersions } = useCourseVersions(activeCourseId || null);
   const deleteDiscount = useDeleteDiscount();
 
+  // Xác định version đang làm việc (Draft > Public > First)
   const workingVersion = useMemo(() => {
     if (!versionsData || versionsData.length === 0) return null;
     return versionsData.find(v => v.status === VersionStatus.DRAFT) ||
@@ -204,9 +227,9 @@ const EditCourseScreen = () => {
       versionsData[0];
   }, [versionsData]);
 
-  const isDraft = workingVersion?.status === VersionStatus.DRAFT;
+  const isDraft = workingVersion?.status === VersionStatus.DRAFT || (!activeCourseId); // Nếu chưa có ID thì coi như đang Draft
 
-  // Pagination Logic
+  // Pagination Logic cho Lessons
   const {
     data: lessonsData,
     fetchNextPage,
@@ -229,7 +252,6 @@ const EditCourseScreen = () => {
     size: 50
   });
 
-  // Price change handler (keeps stable reference)
   const handlePriceChange = useCallback((text: string) => {
     const numericValue = text.replace(/[^0-9.]/g, '');
     setPrice(numericValue);
@@ -239,34 +261,34 @@ const EditCourseScreen = () => {
     refetchDiscounts();
   }
 
+  // Sync data từ API vào Form State
   useEffect(() => {
-    if (courseData) setTitle(courseData.title);
+    if (courseData) {
+      setTitle(courseData.title);
+    }
   }, [courseData]);
 
-  // Sync working version into state when version changes
   useEffect(() => {
     if (workingVersion) {
-      if (!description) setDescription(workingVersion.description || "");
-      if (price === "0" || workingVersion.price?.toString() !== price) {
-        setPrice(workingVersion.price?.toString() || "0");
+      if (workingVersion.description) setDescription(workingVersion.description);
+      if (workingVersion.price !== undefined && workingVersion.price !== null) {
+        setPrice(workingVersion.price.toString());
       }
-      setDifficulty(workingVersion.difficultyLevel || DifficultyLevel.A1);
+      if (workingVersion.difficultyLevel) setDifficulty(workingVersion.difficultyLevel);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workingVersion?.versionId]);
+  }, [workingVersion]);
 
-  // Mutations (use isPending from react-query)
-  // trước đó: const { mutate: updateDetailsMutate, isPending: isUpdatingDetails } = useUpdateCourseDetails();
-  // thêm mutateAsync:
-  const { mutate: updateDetailsMutate, mutateAsync: updateDetailsMutateAsync, isPending: isUpdatingDetails } = useUpdateCourseDetails();
-  const { mutate: updateVersionMutate, mutateAsync: updateVersionMutateAsync, isPending: isUpdatingVersion } = useUpdateCourseVersion();
-  const { mutate: createDraftMutate, mutateAsync: createDraftMutateAsync, isPending: isCreatingDraft } = useCreateDraftVersion();
+  // Mutations
+  const { mutateAsync: createCourseMutateAsync, isPending: isCreatingCourse } = useCreateCourse();
+  const { mutateAsync: updateDetailsMutateAsync, isPending: isUpdatingDetails } = useUpdateCourseDetails();
+  const { mutateAsync: updateVersionMutateAsync, isPending: isUpdatingVersion } = useUpdateCourseVersion();
+  const { mutateAsync: createDraftMutateAsync, isPending: isCreatingDraft } = useCreateDraftVersion();
+  const { mutate: publishMutate, isPending: isPublishing } = usePublishVersion();
 
-  const isSaving = isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing;
+  const isSaving = isCreatingCourse || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing;
+  const displayThumbnail = localThumbnailUrl || workingVersion?.thumbnailUrl || "";
 
-  const displayThumbnail = localThumbnailUrl || workingVersion?.thumbnailUrl;
-
-  // Memoize header so it won't remount on each render (fix keyboard losing focus)
+  // UI Components
   const headerElement = useMemo(() => (
     <View style={styles.contentContainer}>
       <View style={styles.thumbnailContainer}>
@@ -301,7 +323,12 @@ const EditCourseScreen = () => {
 
       <View style={styles.section}>
         <Text style={styles.label}>{t("course.title")}</Text>
-        <TextInput style={styles.input} value={title} onChangeText={setTitle} />
+        <TextInput
+          style={styles.input}
+          value={title}
+          onChangeText={setTitle}
+          placeholder="Course Title (Required)"
+        />
 
         <View style={styles.row}>
           <View style={[styles.column, { marginRight: 8 }]}>
@@ -311,10 +338,9 @@ const EditCourseScreen = () => {
               value={price}
               onChangeText={handlePriceChange}
               keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
-              key="price-input"
               returnKeyType="done"
-              // prevent auto-correct / suggestions
               autoCorrect={false}
+              placeholder="0"
             />
           </View>
           <View style={[styles.column, { marginLeft: 8 }]}>
@@ -324,54 +350,65 @@ const EditCourseScreen = () => {
         </View>
 
         <Text style={styles.label}>{t("course.description")}</Text>
-        <TextInput style={[styles.input, styles.textArea]} value={description} onChangeText={setDescription} multiline />
-      </View>
-
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t("course.promotions")}</Text>
-          <TouchableOpacity
-            onPress={() => { setSelectedDiscount(undefined); setShowDiscountModal(true); }}
-            disabled={!isDraft}
-          >
-            <Text style={[styles.actionLink, !isDraft && { opacity: 0.5 }]}>+ {t("course.addCode")}</Text>
-          </TouchableOpacity>
-        </View>
-        <FlatList
-          horizontal
-          data={(discountsData?.data || []) as CourseVersionDiscountResponse[]}
-          keyExtractor={(item) => item.discountId}
-          showsHorizontalScrollIndicator={false}
-          ListEmptyComponent={<Text style={styles.emptyText}>{t("course.noDiscounts")}</Text>}
-          renderItem={({ item }) => (
-            <TouchableOpacity
-              style={styles.discountCard}
-              onPress={() => {
-                if (!isDraft) return;
-                Alert.alert(t("common.options"), item.code, [
-                  { text: t("common.cancel"), style: "cancel" },
-                  { text: t("common.edit"), onPress: () => { setSelectedDiscount(item); setShowDiscountModal(true); } },
-                  { text: t("common.delete"), style: "destructive", onPress: () => handleDeleteDiscount(item.discountId) }
-                ]);
-              }}
-            >
-              <Text style={styles.discountCode}>{item.code}</Text>
-              <Text style={styles.discountDetail}>{item.discountPercentage}% OFF</Text>
-              <Text style={styles.discountUsage}>
-                {item.isActive ? "Active" : "Inactive"}
-              </Text>
-            </TouchableOpacity>
-          )}
+        <TextInput
+          style={[styles.input, styles.textArea]}
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          placeholder="Course description (min 20 chars)"
         />
       </View>
 
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>{t("course.curriculum")}</Text>
-        <TouchableOpacity style={styles.addLessonBtn} onPress={() => navigateToLesson()}>
-          <Icon name="add" size={18} color="#FFF" />
-          <Text style={styles.addLessonText}>{t("course.addLesson")}</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Chỉ hiển thị phần Discount/Lesson khi đã có Course ID (tức là đã lưu lần đầu) */}
+      {activeCourseId && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t("course.promotions")}</Text>
+            <TouchableOpacity
+              onPress={() => { setSelectedDiscount(undefined); setShowDiscountModal(true); }}
+              disabled={!isDraft || !workingVersion}
+            >
+              <Text style={[styles.actionLink, (!isDraft || !workingVersion) && { opacity: 0.5 }]}>+ {t("course.addCode")}</Text>
+            </TouchableOpacity>
+          </View>
+          <FlatList
+            horizontal
+            data={(discountsData?.data || []) as CourseVersionDiscountResponse[]}
+            keyExtractor={(item) => item.discountId}
+            showsHorizontalScrollIndicator={false}
+            ListEmptyComponent={<Text style={styles.emptyText}>{t("course.noDiscounts")}</Text>}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.discountCard}
+                onPress={() => {
+                  if (!isDraft) return;
+                  Alert.alert(t("common.options"), item.code, [
+                    { text: t("common.cancel"), style: "cancel" },
+                    { text: t("common.edit"), onPress: () => { setSelectedDiscount(item); setShowDiscountModal(true); } },
+                    { text: t("common.delete"), style: "destructive", onPress: () => handleDeleteDiscount(item.discountId) }
+                  ]);
+                }}
+              >
+                <Text style={styles.discountCode}>{item.code}</Text>
+                <Text style={styles.discountDetail}>{item.discountPercentage}% OFF</Text>
+                <Text style={styles.discountUsage}>
+                  {item.isActive ? "Active" : "Inactive"}
+                </Text>
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      )}
+
+      {activeCourseId && (
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>{t("course.curriculum")}</Text>
+          <TouchableOpacity style={styles.addLessonBtn} onPress={() => navigateToLesson()}>
+            <Icon name="add" size={18} color="#FFF" />
+            <Text style={styles.addLessonText}>{t("course.addLesson")}</Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   ), [
     displayThumbnail,
@@ -383,6 +420,8 @@ const EditCourseScreen = () => {
     discountsData,
     isDraft,
     lessonsList.length,
+    activeCourseId,
+    workingVersion,
     t
   ]);
 
@@ -407,33 +446,62 @@ const EditCourseScreen = () => {
     </TouchableOpacity>
   );
 
-  // Save handler
-  // Thay thế handleSave cũ bằng đoạn này
+  // --- Logic Save ---
   const handleSave = async () => {
     if (!title) return Alert.alert(t("error"), t("course.titleRequired"));
 
     try {
-      // 1) Update course details (title) and wait kết quả
-      await updateDetailsMutateAsync({ id: initialCourseId, req: { title } });
+      let targetCourseId = activeCourseId;
+      let targetVersion = workingVersion;
 
-      // Chuẩn bị payload version
+      // 1. TRƯỜNG HỢP TẠO MỚI (chưa có activeCourseId)
+      if (!targetCourseId) {
+        if (!user?.userId) {
+          return Alert.alert(t("error"), "User authentication missing. Please login again.");
+        }
+
+        // Gọi API Create từ DTO: { creatorId, title, price, categoryCode? }
+        const newCourse = await createCourseMutateAsync({
+          title: title,
+          creatorId: user.userId,
+          price: parseFloat(price) || 0,
+        });
+
+        targetCourseId = newCourse.courseId;
+        setActiveCourseId(targetCourseId); // Cập nhật state để UI render các phần còn lại
+
+        // Cập nhật params để nếu user reload thì vẫn ở course này
+        navigation.setParams({ courseId: targetCourseId, isNew: false });
+
+        Alert.alert(t("success"), t("course.createdSuccess"), [
+          { text: "OK", onPress: () => refetchVersions() } // Refetch để lấy version draft vừa được backend tạo tự động
+        ]);
+        return;
+      }
+
+      // 2. TRƯỜNG HỢP UPDATE (đã có activeCourseId)
+      // Update thông tin chung (Title)
+      await updateDetailsMutateAsync({ id: targetCourseId, req: { title } });
+
+      // Update thông tin Version
       const versionPayload = {
         description,
         thumbnailUrl: displayThumbnail || "",
         price: parseFloat(price) || 0,
         difficultyLevel: difficulty,
+        languageCode: "en",
         lessonIds: lessonsList.map((l: LessonResponse) => l.lessonId)
       };
 
-      if (isDraft && workingVersion) {
-        // Save vào draft hiện tại
+      if (isDraft && targetVersion) {
+        // Đang ở Draft -> Update trực tiếp
         await updateVersionMutateAsync({
-          versionId: workingVersion.versionId,
+          versionId: targetVersion.versionId,
           req: versionPayload
         });
         Alert.alert(t("success"), t("course.saved"));
-      } else {
-        // Tạo draft mới, rồi update nó
+      } else if (!isDraft) {
+        // Đang ở Public -> Tạo Draft mới từ Public hiện tại
         Alert.alert(
           t("course.editMode"),
           t("course.createDraftPrompt"),
@@ -443,7 +511,8 @@ const EditCourseScreen = () => {
               text: t("common.continue"),
               onPress: async () => {
                 try {
-                  const newDraft = await createDraftMutateAsync(initialCourseId);
+                  const newDraft = await createDraftMutateAsync(targetCourseId!);
+                  // Update luôn draft vừa tạo với thông tin mới nhập
                   await updateVersionMutateAsync({
                     versionId: newDraft.versionId,
                     req: versionPayload
@@ -458,11 +527,12 @@ const EditCourseScreen = () => {
           ]
         );
       }
-    } catch (err) {
-      Alert.alert(t("error"), t("course.saveFailed"));
+    } catch (err: any) {
+      console.error("Save error:", err);
+      const msg = err?.response?.data?.message || t("course.saveFailed");
+      Alert.alert(t("error"), msg);
     }
   };
-
 
   const handlePublishConfirm = (reason?: string) => {
     if (!isDraft || !workingVersion) {
@@ -470,16 +540,18 @@ const EditCourseScreen = () => {
       setPublishModalVisible(false);
       return;
     }
-    setPublishModalVisible(false);
+
     publishMutate({
       versionId: workingVersion.versionId,
       req: { reasonForChange: reason || "Update content" }
     }, {
       onSuccess: () => {
+        setPublishModalVisible(false);
         refetchVersions();
         Alert.alert(t("success"), t("course.publishSuccess"));
       },
       onError: (err: any) => {
+        setPublishModalVisible(false);
         const msg = err?.response?.data?.message || t("course.publishFailed");
         Alert.alert(t("error"), msg);
       }
@@ -491,7 +563,6 @@ const EditCourseScreen = () => {
       Alert.alert(t("notice"), t("course.noDraftToPublish"));
       return;
     }
-    // show our cross-platform modal
     setPublishModalVisible(true);
   };
 
@@ -507,6 +578,10 @@ const EditCourseScreen = () => {
   };
 
   const navigateToLesson = (lessonId?: string) => {
+    if (!activeCourseId) {
+      Alert.alert(t("notice"), "Please save the course first to create lessons.");
+      return;
+    }
     if (!isDraft) {
       Alert.alert(t("notice"), t("course.mustCreateDraftToEditLesson"), [
         { text: "Cancel", style: "cancel" },
@@ -515,11 +590,22 @@ const EditCourseScreen = () => {
       return;
     }
     navigation.navigate("CreateLessonScreen", {
-      courseId: initialCourseId,
+      courseId: activeCourseId,
       versionId: workingVersion?.versionId,
       lessonId: lessonId
     });
   };
+
+  // Render Loader nếu đang fetch course lần đầu để tránh flash NULL
+  if (activeCourseId && (isLoadingCourse || isLoadingVersions) && !courseData) {
+    return (
+      <ScreenLayout>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color="#4F46E5" />
+        </View>
+      </ScreenLayout>
+    )
+  }
 
   return (
     <ScreenLayout>
@@ -528,10 +614,10 @@ const EditCourseScreen = () => {
           <Icon name="arrow-back" size={24} color="#374151" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>
-          {isNew ? t("course.setupNew") : t("course.edit")}
+          {(!activeCourseId || isNew) ? t("course.setupNew") : t("course.edit")}
         </Text>
         <View style={styles.headerRight}>
-          {isDraft && (
+          {isDraft && activeCourseId && (
             <TouchableOpacity
               onPress={handlePublish}
               disabled={isSaving}
@@ -545,10 +631,10 @@ const EditCourseScreen = () => {
             </TouchableOpacity>
           )}
           <TouchableOpacity onPress={handleSave} disabled={isSaving} style={styles.saveHeaderBtn}>
-            {(isUpdatingDetails || isUpdatingVersion || isCreatingDraft) ? (
+            {(isCreatingCourse || isUpdatingDetails || isUpdatingVersion || isCreatingDraft) ? (
               <ActivityIndicator color="#FFF" size="small" />
             ) : (
-              <Text style={styles.saveHeaderText}>{t("common.save")}</Text>
+              <Text style={styles.saveHeaderText}>{(!activeCourseId) ? t("common.create") : t("common.save")}</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -569,15 +655,19 @@ const EditCourseScreen = () => {
           ListEmptyComponent={
             !isFetchingNextPage ? (
               <View style={styles.emptyContainer}>
-                <Text style={styles.emptyText}>{t("course.noLessonsYet")}</Text>
+                {activeCourseId ? (
+                  <Text style={styles.emptyText}>{t("course.noLessonsYet")}</Text>
+                ) : (
+                  <Text style={styles.emptyText}>Save course to add lessons</Text>
+                )}
               </View>
             ) : null
           }
-          // keep keyboard behavior better
           keyboardShouldPersistTaps="handled"
         />
       </KeyboardAvoidingView>
 
+      {/* Chỉ render modal khi workingVersion đã có để tránh crash null versionId */}
       {workingVersion && (
         <DiscountModal
           visible={showDiscountModal}
@@ -643,7 +733,6 @@ const styles = createScaledSheet({
   emptyContainer: { padding: 20, alignItems: "center" },
   emptyText: { color: "#9CA3AF", fontStyle: "italic" },
 
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { backgroundColor: '#FFF', width: '100%', borderRadius: 16, padding: 20, maxWidth: 400 },
   modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 16, textAlign: 'center' },

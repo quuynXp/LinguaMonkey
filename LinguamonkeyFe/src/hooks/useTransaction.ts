@@ -7,6 +7,7 @@ import {
   TransactionRequest,
   PaymentRequest,
   WebhookRequest,
+  WithdrawRequest,
 } from "../types/dto";
 
 // --- Keys Factory ---
@@ -15,6 +16,7 @@ export const transactionKeys = {
   lists: (params: any) => [...transactionKeys.all, "list", params] as const,
   detail: (id: string) => [...transactionKeys.all, "detail", id] as const,
   byUser: (userId: string, params: any) => [...transactionKeys.all, "user", userId, params] as const,
+  pendingWithdrawals: (params: any) => [...transactionKeys.all, "pending-withdrawals", params] as const,
 };
 
 // ==========================================
@@ -91,6 +93,70 @@ export const useTransactionsApi = () => {
     });
   };
 
+  // POST /api/v1/transactions/withdraw
+  const useWithdraw = () => {
+    return useMutation({
+      mutationFn: async (payload: WithdrawRequest) => {
+        const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
+          `/api/v1/transactions/withdraw`,
+          payload
+        );
+        return data.result!;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: transactionKeys.all });
+      }
+    });
+  }
+
+  // GET /api/v1/transactions/withdrawals/pending
+  const usePendingWithdrawals = (page?: number, size?: number) => {
+    const p = { page: page || 0, size: size || 10 };
+    return useQuery({
+      queryKey: transactionKeys.pendingWithdrawals(p),
+      queryFn: async () => {
+        const { data } = await instance.get<AppApiResponse<PageResponse<TransactionResponse>>>(
+          `/api/v1/transactions/withdrawals/pending`,
+          { params: p }
+        );
+        return mapPageResponse(data.result, p.page, p.size);
+      },
+      staleTime: 30 * 1000,
+    });
+  };
+
+  // POST /api/v1/transactions/withdrawals/{id}/approve
+  const useApproveWithdrawal = () => {
+    return useMutation({
+      mutationFn: async (id: string) => {
+        const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
+          `/api/v1/transactions/withdrawals/${id}/approve`
+        );
+        return data.result!;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: transactionKeys.all });
+      },
+    });
+  };
+
+  // POST /api/v1/transactions/withdrawals/{id}/reject
+  const useRejectWithdrawal = () => {
+    return useMutation({
+      mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
+        const { data } = await instance.post<AppApiResponse<TransactionResponse>>(
+          `/api/v1/transactions/withdrawals/${id}/reject`,
+          null,
+          { params: { reason } }
+        );
+        return data.result!;
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: transactionKeys.all });
+      },
+    });
+  };
+
   // POST /api/v1/transactions
   const useCreateTransaction = () => {
     return useMutation({
@@ -147,12 +213,11 @@ export const useTransactionsApi = () => {
         return data.result!;
       },
       onSuccess: () => {
-        // Invalidate lists as a new PENDING transaction is likely created
         queryClient.invalidateQueries({ queryKey: transactionKeys.all });
       },
     });
 
-  // POST /api/v1/transactions/webhook (No invalidation needed here, scheduler handles status)
+  // POST /api/v1/transactions/webhook
   const useHandleWebhook = () =>
     useMutation({
       mutationFn: async (payload: WebhookRequest) => {
@@ -168,6 +233,10 @@ export const useTransactionsApi = () => {
     useTransaction,
     useTransactions,
     useTransactionsByUser,
+    useWithdraw,
+    usePendingWithdrawals,
+    useApproveWithdrawal,
+    useRejectWithdrawal,
     useCreateTransaction,
     useUpdateTransaction,
     useDeleteTransaction,

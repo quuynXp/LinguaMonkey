@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ public interface LessonProgressWrongItemRepository extends JpaRepository<LessonP
 
     Optional<LessonProgressWrongItem> findById_LessonIdAndId_UserIdAndId_LessonQuestionIdAndIsDeletedFalse(UUID lessonId, UUID userId, UUID lessonQuestionId);
 
+    List<LessonProgressWrongItem> findById_LessonIdAndId_UserIdAndIsDeletedFalse(UUID lessonId, UUID userId);
 
     @Modifying
     @Transactional
