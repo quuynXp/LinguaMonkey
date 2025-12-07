@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./LinguamonkeyFe
+        working-directory: LinguamonkeyFe
 
     steps:
       - name: 🧱 Checkout repository
