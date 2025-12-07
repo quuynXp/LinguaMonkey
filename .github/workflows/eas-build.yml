@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: LinguamonkeyFe
+        working-directory: ./LinguamonkeyFe
 
     steps:
       - name: 🧱 Checkout repository
@@ -28,18 +28,7 @@ jobs:
 
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
-        
-      # 1. 🧹 Thêm bước dọn dẹp các thành phần không cần thiết
-      # Bước này giúp giải phóng không gian đĩa trước khi Gradle bắt đầu
-      - name: 🧹 Clean up large components (Free disk space)
-        uses: easimon/maximize-build-space@v7
-        with:
-          # Các thành phần phổ biến chiếm dung lượng lớn trên runner
-          remove-dotnet: 'true'
-          remove-haskell: 'true'
-          remove-codeql: 'true'
-          remove-android-sdk-components: 'platform_tools, emulator'
-          
+
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
@@ -55,7 +44,6 @@ jobs:
           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
-            
       - name: 🔐 Install EAS CLI
         run: npm install -g eas-cli
 
@@ -65,8 +53,6 @@ jobs:
       - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
-          
-      # 2. ⚙️ Build signed APK locally (Đã bao gồm `eas build ...`)
       - name: ⚙️ Build signed APK locally
         env:
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
@@ -76,19 +62,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "🔧 Start signed local EAS build..."
-          # Đã xử lý các lỗi expo doctor về dependency và CNG/Prebuild trong local
-          # Nếu các lỗi đó đã được khắc phục, EAS build sẽ chạy thành công
           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
-          
-      # 3. 🗑️ Dọn dẹp cache Gradle/NDK sau khi build để giải phóng không gian cho các bước tiếp theo
-      - name: 🗑️ Clear Gradle and NDK cache after build
-        run: |
-          echo "Cleaning up Gradle and NDK cache..."
-          rm -rf ~/.gradle/caches/transforms-* || true
-          rm -rf ~/.gradle/caches/modules-2 || true
-          rm -rf /usr/local/lib/android/sdk/ndk || true
-        if: always() # Luôn chạy, kể cả khi build thất bại, để tránh cache bị đầy
-
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:

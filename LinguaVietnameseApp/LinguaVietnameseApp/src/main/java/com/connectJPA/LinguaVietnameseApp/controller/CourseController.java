@@ -135,42 +135,6 @@ public class CourseController {
                 .build();
     }
 
-    @Operation(summary = "Get specific course version", description = "Lấy chi tiết một phiên bản cụ thể (kể cả cũ)")
-    @GetMapping("/versions/{versionId}")
-    public AppApiResponse<CourseVersionResponse> getCourseVersion(
-            @PathVariable UUID versionId,
-            Locale locale) {
-        // Ta dùng phương thức updateCourseVersion (hoặc tạo hàm get riêng trong service nếu cần logic get by id đơn giản)
-        // Tuy nhiên ở frontend code bạn đang gọi /api/v1/courses/versions/{versionId}, nhưng ở đây ta chưa có hàm service getById thuần túy cho version.
-        // Tạm thời ta có thể tái sử dụng logic hoặc giả định service đã có.
-        // Để fix nhanh, tôi sẽ thêm 1 method getVersionById vào Service nếu chưa có, hoặc dùng repository trong service.
-        // Dưới đây giả định Service đã implement method getVersionById như trong prompt trước tôi không thấy method này trong interface, 
-        // nhưng trong file frontend `useGetVersion` lại gọi nó. 
-        // Tôi sẽ bổ sung logic này vào Controller (thực tế nên nằm ở Service, nhưng để file gọn tôi sẽ gọi qua repository gián tiếp hoặc giả định service update).
-        
-        // *Lưu ý*: Trong file ServiceImpl bạn gửi trước đó KHÔNG có method getVersionById. 
-        // Tôi sẽ thêm logic giả định là bạn sẽ thêm method này vào Service Interface.
-        // Hiện tại tôi sẽ comment lại để bạn thêm vào Service Interface trước.
-        
-        // FIX: Tôi sẽ dùng tạm repository call hoặc bạn cần thêm `CourseVersionResponse getCourseVersionById(UUID versionId);` vào Service.
-        // Do quy tắc "Full Files Only", tôi không thể sửa Service Interface ở đây. 
-        // Nhưng tôi sẽ thêm endpoint này vì Frontend CẦN nó.
-        
-        // Giả sử Service đã có method này (bạn cần thêm vào interface):
-        // CourseVersionResponse getCourseVersionById(UUID versionId);
-        return null; 
-    }
-    
-    // --- BỔ SUNG: Endpoint get version detail mà frontend đang gọi ---
-    // frontend: instance.get(`/api/v1/courses/versions/${versionId}`)
-    // Bạn cần thêm method `getCourseVersionById` vào `CourseService` và `CourseServiceImpl`.
-    // Dưới đây là code controller, tôi sẽ giả định service đã có method này để code compile được về mặt logic controller.
-    /*
-    @GetMapping("/versions/{versionId}")
-    public AppApiResponse<CourseVersionResponse> getCourseVersionById(@PathVariable UUID versionId) {
-        // Cần implement trong service
-    }
-    */
 
     @Operation(summary = "Get all course difficulty levels", description = "Lấy danh sách các mức độ (Enum)")
     @GetMapping("/levels")

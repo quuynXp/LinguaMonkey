@@ -20,10 +20,10 @@ import { useCourses } from "../../hooks/useCourses";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { DifficultyLevel, VersionStatus } from "../../types/enums";
 import { getCourseImage, getLessonImage } from "../../utils/courseUtils";
-import { 
-  LessonResponse, 
-  CourseVersionDiscountResponse, 
-  CourseVersionDiscountRequest 
+import {
+  LessonResponse,
+  CourseVersionDiscountResponse,
+  CourseVersionDiscountRequest
 } from "../../types/dto";
 import FileUploader from "../../components/common/FileUploader";
 import ScreenLayout from "../../components/layout/ScreenLayout";
@@ -43,7 +43,7 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
   const { t } = useTranslation();
   const [code, setCode] = useState(initialData?.code || "");
   const [percentage, setPercentage] = useState(initialData?.discountPercentage?.toString() || "10");
-  
+
   const { useCreateDiscount, useUpdateDiscount } = useCourses();
   const createDiscount = useCreateDiscount();
   const updateDiscount = useUpdateDiscount();
@@ -60,7 +60,7 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
 
   const handleSubmit = () => {
     if (!code || !percentage) return;
-    
+
     const payload: CourseVersionDiscountRequest = {
       versionId,
       code: code.toUpperCase(),
@@ -96,7 +96,7 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
             value={code}
             onChangeText={setCode}
             autoCapitalize="characters"
-            editable={!isEdit} // Code usually shouldn't change, but logic permits it if needed
+            editable={!isEdit}
           />
           <View style={styles.row}>
             <View style={styles.column}>
@@ -128,14 +128,14 @@ const EditCourseScreen = () => {
   const route = useRoute<any>();
   const { courseId: initialCourseId, isNew } = route.params || {};
   const { t } = useTranslation();
-  
+
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("0");
   const [description, setDescription] = useState("");
   const [localThumbnailUrl, setLocalThumbnailUrl] = useState("");
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.A1);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
-  
+
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [selectedDiscount, setSelectedDiscount] = useState<CourseVersionDiscountResponse | undefined>(undefined);
 
@@ -158,18 +158,18 @@ const EditCourseScreen = () => {
   const workingVersion = useMemo(() => {
     if (!versionsData || versionsData.length === 0) return null;
     return versionsData.find(v => v.status === VersionStatus.DRAFT) ||
-           versionsData.find(v => v.status === VersionStatus.PUBLIC) ||
-           versionsData[0];
+      versionsData.find(v => v.status === VersionStatus.PUBLIC) ||
+      versionsData[0];
   }, [versionsData]);
 
   const isDraft = workingVersion?.status === VersionStatus.DRAFT;
 
   // Pagination Logic
-  const { 
-    data: lessonsData, 
-    fetchNextPage, 
-    hasNextPage, 
-    isFetchingNextPage 
+  const {
+    data: lessonsData,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage
   } = useInfiniteLessonsByVersion({
     versionId: workingVersion?.versionId,
     size: 20
@@ -212,8 +212,12 @@ const EditCourseScreen = () => {
   const handleSave = () => {
     if (!title) return Alert.alert(t("error"), t("course.titleRequired"));
 
-    updateDetailsMutate({ id: initialCourseId, req: { title } });
+    // Update course title
+    updateDetailsMutate({ id: initialCourseId, req: { title } }, {
+      onError: () => Alert.alert(t("error"), t("course.saveFailed"))
+    });
 
+    // Prepare version payload
     const versionPayload = {
       description,
       thumbnailUrl: displayThumbnail || "",
@@ -223,6 +227,7 @@ const EditCourseScreen = () => {
     };
 
     if (isDraft && workingVersion) {
+      // Save to existing draft
       updateVersionMutate({
         versionId: workingVersion.versionId,
         req: versionPayload
@@ -231,6 +236,7 @@ const EditCourseScreen = () => {
         onError: () => Alert.alert(t("error"), t("course.saveFailed"))
       });
     } else {
+      // Create new draft version first
       Alert.alert(
         t("course.editMode"),
         t("course.createDraftPrompt"),
@@ -248,9 +254,11 @@ const EditCourseScreen = () => {
                     onSuccess: () => {
                       refetchVersions();
                       Alert.alert(t("success"), t("course.draftCreatedAndSaved"));
-                    }
+                    },
+                    onError: () => Alert.alert(t("error"), t("course.saveFailed"))
                   });
-                }
+                },
+                onError: () => Alert.alert(t("error"), t("course.createDraftFailed"))
               });
             }
           }
@@ -260,36 +268,46 @@ const EditCourseScreen = () => {
   };
 
   const handlePublish = () => {
-    if (!isDraft || !workingVersion) return;
+    if (!isDraft || !workingVersion) {
+      Alert.alert(t("notice"), t("course.noDraftToPublish"));
+      return;
+    }
+
     Alert.prompt(
       t("course.publishTitle"),
       t("course.publishReasonPrompt"),
-      (reason) => {
-        publishMutate({
-          versionId: workingVersion.versionId,
-          req: { reasonForChange: reason || "Update content" }
-        }, {
-          onSuccess: () => {
-            Alert.alert(t("success"), t("course.publishSuccess"));
-            navigation.goBack();
-          },
-          onError: (err: any) => {
-            const msg = err?.response?.data?.message || t("course.publishFailed");
-            Alert.alert(t("error"), msg);
+      [
+        { text: t("common.cancel"), style: "cancel" },
+        {
+          text: t("common.publish"),
+          onPress: (reason) => {
+            publishMutate({
+              versionId: workingVersion.versionId,
+              req: { reasonForChange: reason || "Update content" }
+            }, {
+              onSuccess: () => {
+                refetchVersions();
+                Alert.alert(t("success"), t("course.publishSuccess"));
+              },
+              onError: (err: any) => {
+                const msg = err?.response?.data?.message || t("course.publishFailed");
+                Alert.alert(t("error"), msg);
+              }
+            });
           }
-        });
-      }
+        }
+      ],
+      "plain-text"
     );
   };
 
   const handleDeleteDiscount = (id: string) => {
     Alert.alert(t("common.confirm"), t("common.deleteConfirm"), [
       { text: t("common.cancel"), style: "cancel" },
-      { 
-        text: t("common.delete"), 
-        style: "destructive", 
-        // FIX: Wrapped refetchDiscounts in an arrow function to match onSuccess signature
-        onPress: () => deleteDiscount.mutate(id, { onSuccess: () => refetchDiscounts() }) 
+      {
+        text: t("common.delete"),
+        style: "destructive",
+        onPress: () => deleteDiscount.mutate(id, { onSuccess: () => refetchDiscounts() })
       }
     ]);
   };
@@ -313,8 +331,8 @@ const EditCourseScreen = () => {
     <View style={styles.contentContainer}>
       {/* Thumbnail Section */}
       <View style={styles.thumbnailContainer}>
-        <Image 
-          source={getCourseImage(displayThumbnail)} 
+        <Image
+          source={getCourseImage(displayThumbnail)}
           style={styles.thumbnail}
           resizeMode="cover"
         />
@@ -336,9 +354,9 @@ const EditCourseScreen = () => {
           )}
         </FileUploader>
         <View style={styles.statusBadge}>
-           <Text style={styles.statusText}>
-             {isDraft ? "DRAFT MODE" : "PUBLIC MODE"}
-           </Text>
+          <Text style={styles.statusText}>
+            {isDraft ? "DRAFT MODE" : "PUBLIC MODE"}
+          </Text>
         </View>
       </View>
 
@@ -366,24 +384,24 @@ const EditCourseScreen = () => {
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t("course.promotions")}</Text>
-          <TouchableOpacity 
-            onPress={() => { setSelectedDiscount(undefined); setShowDiscountModal(true); }} 
+          <TouchableOpacity
+            onPress={() => { setSelectedDiscount(undefined); setShowDiscountModal(true); }}
             disabled={!isDraft}
           >
             <Text style={[styles.actionLink, !isDraft && { opacity: 0.5 }]}>+ {t("course.addCode")}</Text>
           </TouchableOpacity>
         </View>
-        <FlatList 
+        <FlatList
           horizontal
           data={(discountsData?.data || []) as CourseVersionDiscountResponse[]}
           keyExtractor={(item) => item.discountId}
           showsHorizontalScrollIndicator={false}
           ListEmptyComponent={<Text style={styles.emptyText}>{t("course.noDiscounts")}</Text>}
           renderItem={({ item }) => (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.discountCard}
               onPress={() => {
-                if(!isDraft) return;
+                if (!isDraft) return;
                 Alert.alert(t("common.options"), item.code, [
                   { text: t("common.cancel"), style: "cancel" },
                   { text: t("common.edit"), onPress: () => { setSelectedDiscount(item); setShowDiscountModal(true); } },
@@ -394,7 +412,7 @@ const EditCourseScreen = () => {
               <Text style={styles.discountCode}>{item.code}</Text>
               <Text style={styles.discountDetail}>{item.discountPercentage}% OFF</Text>
               <Text style={styles.discountUsage}>
-                 {item.isActive ? "Active" : "Inactive"}
+                {item.isActive ? "Active" : "Inactive"}
               </Text>
             </TouchableOpacity>
           )}
@@ -412,20 +430,20 @@ const EditCourseScreen = () => {
   );
 
   const renderLessonItem = ({ item, index }: { item: LessonResponse; index: number }) => (
-    <TouchableOpacity 
-      style={styles.lessonItem} 
+    <TouchableOpacity
+      style={styles.lessonItem}
       onPress={() => navigateToLesson(item.lessonId)}
     >
-      <Image 
-        source={getLessonImage(item.thumbnailUrl)} 
-        style={styles.lessonThumb} 
+      <Image
+        source={getLessonImage(item.thumbnailUrl)}
+        style={styles.lessonThumb}
       />
       <View style={styles.lessonContent}>
         <Text style={styles.lessonTitle} numberOfLines={1}>
           {index + 1}. {item.title || item.lessonName}
         </Text>
         <Text style={styles.lessonMeta}>
-           {item.isFree ? "Free Preview" : "Locked"} • {item.lessonType}
+          {item.isFree ? "Free Preview" : "Locked"} • {item.lessonType}
         </Text>
       </View>
       <Icon name="chevron-right" size={24} color="#9CA3AF" />
@@ -443,12 +461,24 @@ const EditCourseScreen = () => {
         </Text>
         <View style={styles.headerRight}>
           {isDraft && (
-            <TouchableOpacity onPress={handlePublish} disabled={isSaving} style={[styles.saveHeaderBtn, { backgroundColor: '#059669', marginRight: 8 }]}>
-              <Text style={styles.saveHeaderText}>{t("common.publish")}</Text>
+            <TouchableOpacity
+              onPress={handlePublish}
+              disabled={isSaving}
+              style={[styles.saveHeaderBtn, { backgroundColor: '#059669', marginRight: 8 }]}
+            >
+              {isPublishing ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : (
+                <Text style={styles.saveHeaderText}>{t("common.publish")}</Text>
+              )}
             </TouchableOpacity>
           )}
           <TouchableOpacity onPress={handleSave} disabled={isSaving} style={styles.saveHeaderBtn}>
-            {isSaving ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.saveHeaderText}>{t("common.save")}</Text>}
+            {(isUpdatingDetails || isUpdatingVersion || isCreatingDraft) ? (
+              <ActivityIndicator color="#FFF" size="small" />
+            ) : (
+              <Text style={styles.saveHeaderText}>{t("common.save")}</Text>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -476,7 +506,7 @@ const EditCourseScreen = () => {
       </KeyboardAvoidingView>
 
       {workingVersion && (
-        <DiscountModal 
+        <DiscountModal
           visible={showDiscountModal}
           onClose={() => setShowDiscountModal(false)}
           versionId={workingVersion.versionId}
@@ -495,10 +525,10 @@ const styles = createScaledSheet({
   headerRight: { flexDirection: "row" },
   saveHeaderBtn: { backgroundColor: "#4F46E5", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
   saveHeaderText: { color: "#FFF", fontWeight: "600", fontSize: 14 },
-  
+
   contentContainer: { paddingBottom: 10 },
   listContent: { padding: 16, backgroundColor: "#F8FAFC" },
-  
+
   thumbnailContainer: { height: 200, borderRadius: 12, overflow: "hidden", marginBottom: 20, backgroundColor: "#E5E7EB", position: "relative" },
   thumbnail: { width: "100%", height: "100%" },
   thumbnailOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.3)' },
@@ -515,16 +545,16 @@ const styles = createScaledSheet({
   textArea: { height: 80, textAlignVertical: "top" },
   row: { flexDirection: "row" },
   column: { flex: 1 },
-  
+
   actionLink: { color: "#4F46E5", fontWeight: "600", fontSize: 14 },
   discountCard: { backgroundColor: "#EEF2FF", padding: 10, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: "#C7D2FE", minWidth: 100 },
   discountCode: { fontWeight: "700", color: "#4338CA", fontSize: 14 },
   discountDetail: { fontSize: 12, color: "#6366F1", marginTop: 2 },
   discountUsage: { fontSize: 10, color: "#9CA3AF", marginTop: 4 },
-  
+
   addLessonBtn: { flexDirection: "row", alignItems: "center", backgroundColor: "#4F46E5", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, gap: 4 },
   addLessonText: { color: "#FFF", fontSize: 12, fontWeight: "600" },
-  
+
   lessonItem: { flexDirection: "row", alignItems: "center", backgroundColor: "#FFF", padding: 12, borderRadius: 12, marginBottom: 12, shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 },
   lessonThumb: { width: 60, height: 40, borderRadius: 6, backgroundColor: "#E5E7EB" },
   lessonContent: { flex: 1, marginLeft: 12 },
