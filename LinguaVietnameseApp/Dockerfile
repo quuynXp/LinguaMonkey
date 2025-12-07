@@ -16,13 +16,16 @@ FROM eclipse-temurin:21-jre-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache gettext
+# Cài đặt gettext (nếu cần cho envsubst), dos2unix (sửa lỗi CRLF), và bash (cần cho #!/bin/bash và lệnh tr)
+RUN apk add --no-cache gettext dos2unix bash
 
 COPY --from=builder /app/target/*.jar app.jar
 COPY ./LinguaVietnameseApp/entrypoint.sh /app/entrypoint.sh
 
-RUN mkdir -p /app/config && \
-    chmod +x /app/entrypoint.sh
+# Bước SỬA LỖI QUAN TRỌNG: Sửa định dạng dòng và cấp quyền thực thi
+RUN dos2unix /app/entrypoint.sh && \
+    chmod +x /app/entrypoint.sh && \
+    mkdir -p /app/config
 
 EXPOSE 8080
 EXPOSE 9090
