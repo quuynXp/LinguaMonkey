@@ -29,6 +29,6 @@ echo "gRPC Server started with PID $PID_GRPC on port 50051"
 # 2. Chạy FastAPI Server ở foreground (Blocking) để giữ container sống
 # Port 10000 (được set bởi Render qua biến $PORT)
 echo "Starting FastAPI Server on port $PORT..."
-python PythonService/main.py
+python PythonService/src/main.py
 
 # Nếu main.py dừng, script sẽ kết thúc và container sẽ restart

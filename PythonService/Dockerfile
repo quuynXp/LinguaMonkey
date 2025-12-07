@@ -73,7 +73,7 @@ fi\n\
 \n\
 echo "Starting FastAPI Server on port $PORT..."\n\
 # Chạy main.py (FastAPI)\n\
-exec python PythonService/main.py\n\
+exec python PythonService/src/main.py\n\
 ' > /app/PythonService/start_services.sh
 
 # Cấp quyền thực thi cho file vừa tạo
