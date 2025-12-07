@@ -1,4 +1,4 @@
-import IPAScreen from '../../screens/learn/IPAScreen';
+// import IPAScreen from '../../screens/learn/IPAScreen';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import React from 'react';
 import CertificationLearningScreen from '../../screens/learn/CertificationLearningScreen';
@@ -42,7 +42,7 @@ const LearnStack = () => (
     <Stack.Screen name="LearnScreen" component={LearnScreen} />
     <Stack.Screen name="CertificationLearningScreen" component={CertificationLearningScreen} />
     <Stack.Screen name="VocabularyFlashcardsScreen" component={VocabularyFlashcardsScreen} />
-    <Stack.Screen name="IPAScreen" component={IPAScreen} />
+    {/* <Stack.Screen name="IPAScreen" component={IPAScreen} /> */}
     <Stack.Screen name="ListeningScreen" component={ListeningScreen} />
     {/* <Stack.Screen name="CourseDetailsScreen" component={CourseDetailsScreen} /> */}
     <Stack.Screen name="StudentCoursesScreen" component={StudentCoursesScreen} />
