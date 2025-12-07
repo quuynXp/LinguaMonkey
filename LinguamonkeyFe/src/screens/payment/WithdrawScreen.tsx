@@ -5,25 +5,18 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import { useUserStore } from '../../stores/UserStore';
-import { useWallet } from '../../hooks/useWallet';
+import { useWallet, walletKeys } from '../../hooks/useWallet';
 import * as Enums from '../../types/enums';
 import { WithdrawRequest } from '../../types/dto';
 import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
+import { useQueryClient } from '@tanstack/react-query';
 
-const parseBankInfo = (info: string) => {
-    const parts = info.split('-').map(p => p.trim());
-    return {
-        bankCode: parts[0] || 'UNKNOWN_BANK',
-        accountNumber: parts[1] || '',
-        accountName: parts[2] || '',
-    };
-};
-
-const WithdrawScreen = ({ navigation }) => {
+const WithdrawScreen = ({ navigation }: any) => {
     const { t } = useTranslation();
     const { user } = useUserStore();
     const formatCurrency = useCurrencyConverter().convert;
     const withdrawMutation = useWallet().useWithdraw();
+    const queryClient = useQueryClient();
 
     const {
         data: walletData,
@@ -31,14 +24,19 @@ const WithdrawScreen = ({ navigation }) => {
     } = useWallet().useWalletBalance(user?.userId);
 
     const [amountText, setAmountText] = useState('');
-    const [bankInfo, setBankInfo] = useState('');
+    const [bankCode, setBankCode] = useState('');
+    const [accountNumber, setAccountNumber] = useState('');
+    const [accountName, setAccountName] = useState('');
 
     const availableBalance = walletData?.balance || 0;
 
-    const MIN_WITHDRAWAL = 1;
+    const MIN_WITHDRAWAL = 1000;
+
     const handleWithdraw = async () => {
-        if (!user?.userId || loadingBalance) {
-            return Alert.alert(t('errors.auth') ?? 'Error', t('errors.userNotFound') ?? 'User not ready.');
+        const userId = user?.userId;
+
+        if (!userId || loadingBalance) {
+            return Alert.alert(t('errors.auth') ?? 'Error', t('errors.userNotFound') ?? 'User not ready or session expired.');
         }
 
         const amount = parseFloat(amountText.replace(/,/g, ''));
@@ -46,19 +44,20 @@ const WithdrawScreen = ({ navigation }) => {
         if (isNaN(amount) || amount < MIN_WITHDRAWAL || amount > availableBalance) {
             return Alert.alert(
                 t('withdraw.error.invalidAmount') ?? 'Invalid Amount',
-                t('withdraw.error.amountDetails', { available: formatCurrency(availableBalance, 'USD') })
+                t('withdraw.error.amountDetails', { available: formatCurrency(availableBalance, 'USD'), min: formatCurrency(MIN_WITHDRAWAL, 'USD') }) ?? `Minimum withdrawal is ${formatCurrency(MIN_WITHDRAWAL, 'USD')}. Available: ${formatCurrency(availableBalance, 'USD')}.`
             );
         }
 
-        const bankDetails = parseBankInfo(bankInfo);
-
-        if (!bankDetails.accountNumber || !bankDetails.accountName) {
-            return Alert.alert(t('withdraw.error.invalidBank') ?? 'Error', t('withdraw.error.bankDetailsRequired') ?? 'Please enter valid bank details (Bank - Account - Name).');
+        if (!bankCode.trim() || !accountNumber.trim() || !accountName.trim()) {
+            return Alert.alert(
+                t('withdraw.error.invalidBank') ?? 'Error',
+                t('withdraw.error.bankDetailsRequired') ?? 'Please enter all bank details (Bank Code, Account Number, Account Name).'
+            );
         }
 
         Alert.alert(
             t('withdraw.confirmTitle') ?? 'Confirm Withdrawal',
-            t('withdraw.confirmMessage', { amount: formatCurrency(amount, 'USD'), bank: bankDetails.accountName }),
+            t('withdraw.confirmMessage', { amount: formatCurrency(amount, 'USD'), accountName: accountName }),
             [
                 { text: t('common.cancel') ?? 'Cancel', style: 'cancel' },
                 {
@@ -66,15 +65,18 @@ const WithdrawScreen = ({ navigation }) => {
                     onPress: async () => {
                         try {
                             const payload: WithdrawRequest = {
-                                userId: user.userId,
+                                userId: userId as any,
                                 amount: amount,
-                                provider: Enums.TransactionProvider.INTERNAL, // Giả định INTERNAL là nhà cung cấp cho chuyển khoản
-                                bankCode: bankDetails.bankCode,
-                                accountNumber: bankDetails.accountNumber,
-                                accountName: bankDetails.accountName,
+                                provider: Enums.TransactionProvider.INTERNAL,
+                                bankCode: bankCode.trim(),
+                                accountNumber: accountNumber.trim(),
+                                accountName: accountName.trim(),
                             };
 
                             await withdrawMutation.mutateAsync(payload);
+
+                            queryClient.invalidateQueries({ queryKey: walletKeys.balance(userId) });
+                            queryClient.invalidateQueries({ queryKey: walletKeys.history(userId, {}) });
 
                             Alert.alert(
                                 t('withdraw.successTitle') ?? 'Success',
@@ -83,7 +85,8 @@ const WithdrawScreen = ({ navigation }) => {
                             navigation.goBack();
 
                         } catch (error: any) {
-                            Alert.alert(t('errors.api') ?? 'Withdrawal failed.');
+                            const errorMessage = error.response?.data?.message || error.message || 'An unknown error occurred.';
+                            Alert.alert(t('errors.api') ?? 'Withdrawal failed.', errorMessage);
                         }
                     },
                 },
@@ -99,6 +102,8 @@ const WithdrawScreen = ({ navigation }) => {
             </View>
         );
     }
+
+    const isSubmitDisabled = withdrawMutation.isPending || !amountText.trim() || !bankCode.trim() || !accountNumber.trim() || !accountName.trim();
 
     return (
         <ScreenLayout>
@@ -122,25 +127,42 @@ const WithdrawScreen = ({ navigation }) => {
                     keyboardType="numeric"
                     value={amountText}
                     onChangeText={setAmountText}
-                    placeholder={t('withdraw.amountPlaceholder') ?? 'Enter amount'}
+                    placeholder={t('withdraw.amountPlaceholder') ?? `Min: ${formatCurrency(MIN_WITHDRAWAL, 'USD')}`}
                 />
 
-                <Text style={styles.label}>{t('withdraw.bankInfoLabel') ?? 'Bank Details / Account No.'}</Text>
+                <Text style={styles.label}>{t('withdraw.bankCodeLabel') ?? 'Bank Code (e.g., VCB, TCB)'}</Text>
                 <TextInput
-                    style={[styles.input, styles.bankInfoInput]}
-                    multiline
-                    value={bankInfo}
-                    onChangeText={setBankInfo}
-                    placeholder={t('withdraw.bankInfoPlaceholder') ?? 'Bank Name - Account Number - Account Holder Name'}
-                    textAlignVertical="top"
+                    style={styles.input}
+                    value={bankCode}
+                    onChangeText={setBankCode}
+                    placeholder={t('withdraw.bankCodePlaceholder') ?? 'Enter Bank Code'}
+                    autoCapitalize="characters"
+                />
+
+                <Text style={styles.label}>{t('withdraw.accountNumberLabel') ?? 'Account Number'}</Text>
+                <TextInput
+                    style={styles.input}
+                    keyboardType="numeric"
+                    value={accountNumber}
+                    onChangeText={setAccountNumber}
+                    placeholder={t('withdraw.accountNumberPlaceholder') ?? 'Enter Account Number'}
+                />
+
+                <Text style={styles.label}>{t('withdraw.accountNameLabel') ?? 'Account Holder Name'}</Text>
+                <TextInput
+                    style={styles.input}
+                    value={accountName}
+                    onChangeText={setAccountName}
+                    placeholder={t('withdraw.accountNamePlaceholder') ?? 'Enter Account Holder Name'}
+                    autoCapitalize="words"
                 />
 
                 <Text style={styles.note}>{t('withdraw.note') ?? 'Note: Withdrawal requests are processed within 1-3 business days.'}</Text>
 
                 <TouchableOpacity
-                    style={[styles.btn, withdrawMutation.isPending || !amountText.trim() || !bankInfo.trim() ? styles.btnDisabled : null]}
+                    style={[styles.btn, isSubmitDisabled ? styles.btnDisabled : null]}
                     onPress={handleWithdraw}
-                    disabled={withdrawMutation.isPending || !amountText.trim() || !bankInfo.trim()}
+                    disabled={isSubmitDisabled}
                 >
                     {withdrawMutation.isPending ? (
                         <ActivityIndicator color="#fff" />
@@ -153,9 +175,7 @@ const WithdrawScreen = ({ navigation }) => {
     );
 };
 
-// Sử dụng createScaledSheet cho đồng bộ
 const styles = createScaledSheet({
-    // Header
     header: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -170,7 +190,6 @@ const styles = createScaledSheet({
     headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
     placeholder: { width: 24 },
 
-    // Content
     container: { flex: 1, padding: 20, backgroundColor: '#F8FAFC' },
     loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F8FAFC' },
     loadingText: { marginTop: 10, fontSize: 16, color: '#4F46E5' },
@@ -195,10 +214,6 @@ const styles = createScaledSheet({
         fontSize: 16,
         color: '#1F2937',
         backgroundColor: '#fff',
-    },
-    bankInfoInput: {
-        height: 100,
-        paddingTop: 12,
     },
     note: {
         fontSize: 12,

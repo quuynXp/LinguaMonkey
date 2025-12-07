@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useUserStore } from '../../stores/UserStore';
 import { useWallet } from '../../hooks/useWallet';
-import { useTransactionsApi } from '../../hooks/useTransaction'; // Sử dụng đúng hook từ prompt đầu tiên
+import { useTransactionsApi } from '../../hooks/useTransaction';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
 import { TransactionResponse } from '../../types/dto';
@@ -21,14 +21,12 @@ const WalletScreen = ({ navigation }: any) => {
   const [page, setPage] = useState(0);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
 
-  // 1. Lấy số dư ví
   const {
     data: walletData,
     isLoading: loadingBalance,
     refetch: refetchWallet
   } = useWallet().useWalletBalance(user?.userId);
 
-  // 2. Lấy lịch sử giao dịch (Sử dụng useTransactionsByUser từ useTransactionsApi)
   const {
     data: historyQueryResult,
     isLoading: loadingHistory,
@@ -36,7 +34,6 @@ const WalletScreen = ({ navigation }: any) => {
     isRefetching,
   } = useTransactionsApi().useTransactionsByUser(user?.userId, page, PAGE_SIZE);
 
-  // Xử lý dữ liệu phân trang: Reset list khi refresh, nối list khi load more
   useEffect(() => {
     if (historyQueryResult?.data) {
       if (page === 0) {
@@ -63,11 +60,8 @@ const WalletScreen = ({ navigation }: any) => {
     }
   };
 
-  // --- Render Components ---
-
   const renderHeader = () => (
     <View style={styles.headerContainer}>
-      {/* Balance Card */}
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>{t('wallet.availableBalance')}</Text>
         <Text style={styles.balanceAmount}>
@@ -90,18 +84,9 @@ const WalletScreen = ({ navigation }: any) => {
             <Icon name="arrow-downward" size={20} color="#fff" />
             <Text style={styles.actionText}>{t('wallet.withdraw')}</Text>
           </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => navigation.navigate('TransferScreen')}
-          >
-            <Icon name="compare-arrows" size={20} color="#fff" />
-            <Text style={styles.actionText}>{t('wallet.transfer')}</Text>
-          </TouchableOpacity>
         </View>
       </View>
 
-      {/* Section Title */}
       <View style={styles.listHeader}>
         <Text style={styles.sectionTitle}>{t('wallet.transactionHistory')}</Text>
       </View>
@@ -112,11 +97,9 @@ const WalletScreen = ({ navigation }: any) => {
     const isIncome = [
       Enums.TransactionType.DEPOSIT,
       Enums.TransactionType.REFUND,
-      // Logic backend cho transfer receive chưa rõ ràng trong DTO, giả định check receiverId === userId
-      // Nhưng ở đây dùng Type để style đơn giản
     ].includes(item.type) || (item.type === Enums.TransactionType.TRANSFER && item.receiver?.userId === user?.userId);
 
-    const isExpense = !isIncome; // Transfer sent, Payment, Withdraw
+    const isExpense = !isIncome;
 
     const statusColor =
       item.status === Enums.TransactionStatus.SUCCESS ? '#10B981' :
@@ -168,7 +151,7 @@ const WalletScreen = ({ navigation }: any) => {
   };
 
   const renderEmpty = () => {
-    if (loadingHistory && page === 0) return null; // Đang load lần đầu
+    if (loadingHistory && page === 0) return null;
     return (
       <View style={styles.emptyState}>
         <Icon name="receipt" size={48} color="#D1D5DB" />
@@ -179,7 +162,6 @@ const WalletScreen = ({ navigation }: any) => {
 
   return (
     <ScreenLayout style={styles.container}>
-      {/* Top Bar - Fixed */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => navigation.goBack()}>
           <Icon name="arrow-back" size={24} color="#374151" />
@@ -188,7 +170,6 @@ const WalletScreen = ({ navigation }: any) => {
         <View style={styles.placeholder} />
       </View>
 
-      {/* Main List - Includes Balance Card as Header */}
       <FlatList
         data={transactions}
         keyExtractor={(item) => item.transactionId}
@@ -214,7 +195,6 @@ const WalletScreen = ({ navigation }: any) => {
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: '#F8FAFC' },
 
-  // Top Bar
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -229,11 +209,9 @@ const styles = createScaledSheet({
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
   placeholder: { width: 24 },
 
-  // List Config
   listContent: { paddingBottom: 20 },
   headerContainer: { paddingBottom: 8 },
 
-  // Balance Card
   balanceCard: { backgroundColor: '#4F46E5', margin: 16, padding: 24, borderRadius: 16, elevation: 4, shadowColor: "#4F46E5", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8 },
   balanceLabel: { color: '#E0E7FF', fontSize: 14, marginBottom: 8 },
   balanceAmount: { color: '#FFFFFF', fontSize: 32, fontWeight: 'bold', marginBottom: 24 },
@@ -241,11 +219,9 @@ const styles = createScaledSheet({
   actionBtn: { flex: 1, backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 12, borderRadius: 8, alignItems: 'center' },
   actionText: { color: '#fff', fontSize: 12, fontWeight: '600', marginTop: 4 },
 
-  // History Section
   listHeader: { paddingHorizontal: 16, marginTop: 8, marginBottom: 12 },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
 
-  // Transaction Card
   txnCard: { backgroundColor: '#fff', marginHorizontal: 16, borderRadius: 12, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#F1F5F9' },
   txnLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   txnIcon: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
@@ -257,7 +233,6 @@ const styles = createScaledSheet({
   statusBadge: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, minWidth: 50, alignItems: 'center' },
   statusText: { color: '#fff', fontSize: 10, fontWeight: '700' },
 
-  // Utils
   emptyState: { alignItems: 'center', paddingVertical: 40 },
   emptyText: { fontSize: 14, color: '#6B7280', marginTop: 12 },
   loadingFooter: { paddingVertical: 20, alignItems: 'center' },

@@ -22,7 +22,7 @@ public class WithdrawRequest {
     private UUID userId;
 
     @NotNull
-    @Min(50000) // Ví dụ: rút tối thiểu
+    @Min(100)
     private BigDecimal amount;
 
     @NotNull

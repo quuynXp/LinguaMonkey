@@ -19,6 +19,7 @@ import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.view.RedirectView;
 
@@ -123,6 +124,7 @@ public class TransactionController {
             @ApiResponse(responseCode = "200", description = "Successfully retrieved transactions"),
             @ApiResponse(responseCode = "400", description = "Invalid query parameters")
     })
+    @PreAuthorize("hasAuthority('ROLE_ADMIN')")
     @GetMapping
     public AppApiResponse<Page<TransactionResponse>> getAllTransactions(
             @Parameter(description = "User ID filter") @RequestParam(required = false) UUID userId,

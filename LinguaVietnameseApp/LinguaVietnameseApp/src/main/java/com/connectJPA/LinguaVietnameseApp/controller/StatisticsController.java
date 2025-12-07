@@ -71,7 +71,6 @@ public class StatisticsController {
                 .result(dashboardData)
                 .build();
     }
-
     @GetMapping("/overview")
     public AppApiResponse<StatisticsOverviewResponse> overview(
             @RequestParam(value = "userId", required = false) UUID userId,

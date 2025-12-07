@@ -137,7 +137,8 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     ? displayPriceRaw * (1 - discountPercent / 100)
     : displayPriceRaw;
 
-  const isFreeCourse = priceAfterDiscount === 0;
+  // SỬA LỖI: isFreeCourse phải kiểm tra giá sau chiết khấu
+  const isFreeCourse = priceAfterDiscount <= 0;
   const isPaidCourse = !isFreeCourse;
 
   const { data: reviewsData, refetch: refetchReviews } = useReviews({
@@ -176,11 +177,9 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const canReview = useMemo(() => {
     if (isCreator) return false;
-    if (isFreeCourse) return true;
-    if (!isEnrolled) return false;
-    const progress = activeEnrollment?.progress || 0;
-    return progress >= 50;
-  }, [isFreeCourse, isEnrolled, activeEnrollment, isCreator]);
+    // Logic mới: có thể đánh giá nếu (miễn phí) HOẶC (đã ghi danh/mua)
+    return isFreeCourse || isEnrolled;
+  }, [isFreeCourse, isEnrolled, isCreator]);
 
   const displayPriceStr = convert(priceAfterDiscount, 'VND');
   const displayOriginalPriceStr = convert(originalPrice, 'VND');
@@ -212,13 +211,11 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       status: CourseVersionEnrollmentStatus.ACTIVE
     }, {
       onSuccess: () => {
-        if (isPaidCourse) {
-          Alert.alert(t("success"), t("course.enrollmentSuccess"));
-        }
+        // Đã ghi danh, chỉ cần refetch để cập nhật trạng thái
         refetchEnrollments();
       },
       onError: () => {
-        if (isPaidCourse) Alert.alert(t("error"), t("course.enrollmentFailed"));
+        Alert.alert(t("error"), t("course.enrollmentFailed"));
       }
     });
   };
@@ -232,6 +229,13 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
       Alert.alert(t("auth.required"), t("auth.loginToReview"));
       return;
     }
+
+    // THÊM KIỂM TRA canReview
+    if (!canReview) {
+      Alert.alert(t("notice"), t("course.reviewNotAllowed", "Bạn chưa đủ điều kiện để đánh giá khóa học này."));
+      return;
+    }
+
     if (!courseId) return;
 
     try {
@@ -818,7 +822,6 @@ const styles = StyleSheet.create({
   refundModalContent: { width: '90%', backgroundColor: '#FFF', borderRadius: 16, padding: 20, maxHeight: '80%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#111827' },
-  // ADDED MISSING STYLE HERE
   label: { fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#374151' },
   dropdownContainer: { marginBottom: 16 },
   dropdownItem: { padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB', marginBottom: 8 },

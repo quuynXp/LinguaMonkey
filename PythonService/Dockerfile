@@ -4,7 +4,6 @@ WORKDIR /opt/venv
 RUN python -m venv .
 ENV PATH="/opt/venv/bin:$PATH"
 
-# Install build dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libsndfile1-dev \
@@ -17,12 +16,10 @@ RUN pip install --upgrade pip setuptools wheel
 
 COPY PythonService/requirements.txt .
 
-# Install CPU version of torch to save space
 RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu || true
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-# --- Final Stage ---
 FROM python:3.11-slim-bookworm
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -34,16 +31,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     dos2unix \
     && rm -rf /var/lib/apt/lists/*
 
-# FIX 1: Set WORKDIR to the specific service folder so imports work correctly
 WORKDIR /app/PythonService
 
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# FIX 2: Copy source code directly into the WORKDIR
 COPY ./PythonService .
 
-# Generate gRPC code (Paths updated relative to WORKDIR)
 RUN mkdir -p src/grpc_generated && \
     touch src/grpc_generated/__init__.py && \
     python -m grpc_tools.protoc \
@@ -54,7 +48,6 @@ RUN mkdir -p src/grpc_generated && \
 
 RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' src/grpc_generated/learning_service_pb2_grpc.py
 
-# - Checks for gRPC server existence cleanly
 RUN printf '#!/bin/bash\n\
 set -e\n\
 \n\

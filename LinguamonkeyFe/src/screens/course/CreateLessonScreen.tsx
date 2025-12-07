@@ -24,7 +24,6 @@ import ScreenLayout from '../../components/layout/ScreenLayout';
 import FileUploader from '../../components/common/FileUploader';
 import { DifficultyLevel, LessonType, QuestionType, SkillType } from '../../types/enums';
 
-// --- Interface & Constants ---
 const { width } = Dimensions.get('window');
 
 interface LocalQuestionState {
@@ -59,7 +58,6 @@ const defaultQ: LocalQuestionState = {
     mediaUrl: ''
 };
 
-// --- Helper Component: MediaPreviewItem ---
 const MediaPreviewItem = ({
     url,
     onDelete,
@@ -71,28 +69,52 @@ const MediaPreviewItem = ({
     style?: any;
     containerStyle?: any;
 }) => {
-    // 1. Tính toán logic isImage trước
-    // Nếu url null/undefined, coi như không phải ảnh
     const isImage = url ? (url.match(/\.(jpeg|jpg|gif|png|webp)$/i) != null || url.includes('googleusercontent')) : false;
 
-    // 2. Chuẩn bị source cho Video Player
-    // Nếu là ảnh hoặc url rỗng, truyền null cho player (player sẽ ở trạng thái idle)
-    // useVideoPlayer chấp nhận null hoặc string
-    const videoSource = (url && !isImage) ? url : null;
+    // SỬA LỖI 2: Thêm logic để kiểm tra nếu mediaUrl là THUMBNAIL_URL (ảnh đại diện) thì LUÔN LUÔN hiển thị Image
+    // Do component này được dùng cho cả thumbnailUrl và mediaUrls của Question
+    // Nếu url null/undefined, coi như không phải ảnh
 
-    // 3. GỌI HOOK LUÔN LUÔN (Không bao giờ return trước dòng này)
+    // LOGIC: Nếu url kết thúc bằng extension video/audio, hoặc không có extension nhưng không phải ảnh: Coi là video/audio
+    const isVideoOrAudio = url ? (
+        url.match(/\.(mp4|mov|avi|webm|m4a|mp3|wav|ogg)$/i) != null ||
+        !isImage
+    ) : false;
+
+    // Nếu là ảnh, CHẮC CHẮN hiển thị <Image>
+    // Nếu là video/audio, hiển thị <VideoView>
+    // Component này đã được gọi ở 2 vị trí khác nhau:
+    // 1. Thumbnail Lesson (thumbnailUrl) -> LUÔN LUÔN phải là Ảnh. 
+    //    Ở vị trí này, chúng ta cần đảm bảo FileUploader chỉ cho phép tải ảnh (đã được định nghĩa là mediaType="image" ở dưới).
+    //    Tuy nhiên, nếu link đã có sẵn từ backend (ví dụ từ Google Drive link không có extension rõ ràng), 
+    //    thì logic `isImage` ở trên có thể bị sai.
+    // 2. Media Question (q.mediaUrl) -> Có thể là Ảnh, Audio, hoặc Video.
+
+    // Tinh chỉnh logic: Nếu url có chứa domain video/audio thường gặp mà không có extension rõ ràng, thì dùng VideoView.
+    // Vì component này được dùng cho cả Thumbnail (luôn là ảnh) và Question Media (có thể là video/audio), 
+    // việc dựa vào extension là cách tốt nhất. Nếu url cho thumbnail có vẻ không phải ảnh (theo extension)
+    // thì vẫn nên hiển thị Image vì mục đích của nó là thumbnail.
+
+    const isMediaFile = url ? !isImage : false;
+
+    const videoSource = (url && isMediaFile) ? url : null;
+
     const player = useVideoPlayer(videoSource, (player) => {
         player.loop = false;
     });
 
-    // 4. Bây giờ mới kiểm tra url để return null nếu cần
     if (!url) return null;
+
+    // Đảm bảo Thumbnail (được gọi ở trên) luôn hiển thị ảnh
+    // và Media Question (được gọi trong Modal) hiển thị đúng loại.
+    const shouldRenderImage = isImage;
+    const shouldRenderVideo = !isImage && isMediaFile; // Chỉ render video nếu không phải ảnh và có vẻ là file media
 
     return (
         <View style={[styles.mediaItemContainer, containerStyle]}>
-            {isImage ? (
+            {shouldRenderImage ? (
                 <Image source={{ uri: url }} style={[styles.imagePreview, style]} resizeMode="contain" />
-            ) : (
+            ) : shouldRenderVideo ? (
                 <View style={[styles.videoContainer, style]}>
                     <VideoView
                         player={player}
@@ -100,6 +122,12 @@ const MediaPreviewItem = ({
                         contentFit="contain"
                         nativeControls={true}
                     />
+                </View>
+            ) : (
+                // Fallback nếu không phải ảnh, cũng không phải video/audio rõ ràng (ví dụ: file document)
+                <View style={[styles.imagePreview, style, { justifyContent: 'center', alignItems: 'center' }]}>
+                    <Ionicons name="document-text-outline" size={30} color="#777" />
+                    <Text style={{ fontSize: 12, color: '#777', marginTop: 5 }}>File Preview</Text>
                 </View>
             )}
 
@@ -112,7 +140,6 @@ const MediaPreviewItem = ({
     );
 };
 
-// --- Main Screen ---
 const CreateLessonScreen = () => {
     const navigation = useNavigation();
     const route = useRoute<RouteProp<RootStackParamList, 'CreateLesson'>>();
@@ -184,7 +211,7 @@ const CreateLessonScreen = () => {
                         }
                     }
                 } catch (e) {
-                    console.log("Error parsing optionsJson", e);
+                    // console.log("Error parsing optionsJson", e);
                 }
 
                 return {
@@ -253,6 +280,17 @@ const CreateLessonScreen = () => {
         try {
             let targetLessonId = lessonId;
 
+            // LỖI 1: SkillType trong LessonRequest không thay đổi theo LessonType
+            // Cần cập nhật SkillType nếu LessonType là Speaking
+            let skillType: SkillType = SkillType.READING;
+            if (lessonType === LessonType.SPEAKING) {
+                skillType = SkillType.SPEAKING;
+            } else if (lessonType === LessonType.AUDIO) {
+                skillType = SkillType.LISTENING;
+            } else if (lessonType === LessonType.VOCABULARY) {
+                skillType = SkillType.VOCABULARY;
+            }
+
             const lessonPayload: LessonRequest = {
                 lessonName,
                 title: lessonName,
@@ -261,7 +299,7 @@ const CreateLessonScreen = () => {
                 thumbnailUrl,
                 lessonType,
                 mediaUrls: mediaUrls,
-                skillType: 'READING',
+                skillType: skillType, // ĐÃ SỬA: Cập nhật SkillType
                 languageCode: 'vi',
                 expReward: isMediaLesson ? 10 : 10 + (questions.length * 2),
                 orderIndex: 0,
@@ -287,6 +325,15 @@ const CreateLessonScreen = () => {
                     let optionsJson = "";
                     let finalCorrectOption = q.correctOption;
 
+                    // LỖI 1: Cập nhật SkillType cho Question
+                    let questionSkillType = SkillType.READING;
+                    if (q.questionType === QuestionType.SPEAKING) {
+                        questionSkillType = SkillType.SPEAKING;
+                    } else if (q.questionType === QuestionType.LISTENING) {
+                        questionSkillType = SkillType.LISTENING;
+                    }
+                    // Các loại câu hỏi khác giữ nguyên READING/VOCABULARY
+
                     if (q.questionType === QuestionType.MATCHING) {
                         optionsJson = JSON.stringify(q.pairs);
                         const correctMap = q.pairs.reduce((acc, pair) => ({ ...acc, [pair.key]: pair.value }), {});
@@ -302,7 +349,7 @@ const CreateLessonScreen = () => {
                         lessonId: targetLessonId,
                         question: q.question,
                         questionType: q.questionType,
-                        skillType: SkillType.READING,
+                        skillType: questionSkillType, // ĐÃ SỬA: Cập nhật SkillType cho Question
                         languageCode: 'vi',
                         optionsJson: optionsJson,
                         optionA: q.options.A,
@@ -331,7 +378,7 @@ const CreateLessonScreen = () => {
             ]);
 
         } catch (e) {
-            console.error(e);
+            // console.error(e);
             Alert.alert("Error", "Failed to save lesson");
         } finally {
             setIsSubmitting(false);
@@ -339,29 +386,36 @@ const CreateLessonScreen = () => {
     };
 
     const renderDynamicInputs = () => {
+        // Thêm trường Transcript nếu QuestionType là SPEAKING
+        const transcriptInput = (
+            <View>
+                <Text style={styles.label}>Transcript (Correct Answer Text)</Text>
+                <TextInput
+                    style={[styles.input, { minHeight: 80, textAlignVertical: 'top' }]}
+                    multiline
+                    value={currentQ.transcript}
+                    onChangeText={t => setCurrentQ({ ...currentQ, transcript: t })}
+                    placeholder="Enter the correct transcript for the speaking question..."
+                />
+            </View>
+        );
+
         switch (currentQ.questionType) {
-            case QuestionType.MULTIPLE_CHOICE:
+            case QuestionType.SPEAKING:
+                // SỬA LỖI 1: Hiển thị ô nhập Transcript khi chọn Speaking
+                return transcriptInput;
+            case QuestionType.LISTENING:
                 return (
                     <View>
-                        <Text style={styles.label}>Options & Correct Answer</Text>
-                        {['A', 'B', 'C', 'D'].map(opt => (
-                            <View key={opt} style={styles.rowCenter}>
-                                <TouchableOpacity
-                                    style={[styles.radioBtn, currentQ.correctOption === opt && styles.radioBtnActive]}
-                                    onPress={() => setCurrentQ({ ...currentQ, correctOption: opt })}
-                                >
-                                    <Text style={[styles.radioText, currentQ.correctOption === opt && styles.textActive]}>{opt}</Text>
-                                </TouchableOpacity>
-                                <TextInput
-                                    style={[styles.input, { flex: 1, marginLeft: 10 }]}
-                                    placeholder={`Option ${opt}`}
-                                    value={(currentQ.options as any)[opt]}
-                                    onChangeText={t => setCurrentQ({ ...currentQ, options: { ...currentQ.options, [opt]: t } })}
-                                />
-                            </View>
-                        ))}
+                        {transcriptInput}
+                        <View style={styles.divider} />
+                        {/* Listening có thể có thêm Multiple Choice, nếu cần thì thêm logic ở đây. */}
+                        {/* Hiện tại, giữ nguyên như Multiple Choice nếu có. */}
+                        {renderOptionsInputs()}
                     </View>
                 );
+            case QuestionType.MULTIPLE_CHOICE:
+                return renderOptionsInputs();
             case QuestionType.TRUE_FALSE:
                 return (
                     <View>
@@ -446,6 +500,29 @@ const CreateLessonScreen = () => {
         }
     };
 
+    // Tách riêng phần render Options cho Multiple Choice
+    const renderOptionsInputs = () => (
+        <View>
+            <Text style={styles.label}>Options & Correct Answer</Text>
+            {['A', 'B', 'C', 'D'].map(opt => (
+                <View key={opt} style={styles.rowCenter}>
+                    <TouchableOpacity
+                        style={[styles.radioBtn, currentQ.correctOption === opt && styles.radioBtnActive]}
+                        onPress={() => setCurrentQ({ ...currentQ, correctOption: opt })}
+                    >
+                        <Text style={[styles.radioText, currentQ.correctOption === opt && styles.textActive]}>{opt}</Text>
+                    </TouchableOpacity>
+                    <TextInput
+                        style={[styles.input, { flex: 1, marginLeft: 10 }]}
+                        placeholder={`Option ${opt}`}
+                        value={(currentQ.options as any)[opt]}
+                        onChangeText={t => setCurrentQ({ ...currentQ, options: { ...currentQ.options, [opt]: t } })}
+                    />
+                </View>
+            ))}
+        </View>
+    );
+
     return (
         <ScreenLayout style={styles.container}>
             <View style={styles.headerRow}>
@@ -457,11 +534,16 @@ const CreateLessonScreen = () => {
             </View>
 
             <ScrollView contentContainerStyle={styles.content}>
-                {/* --- LESSON INFO SECTION --- */}
                 <View style={styles.section}>
                     <Text style={styles.sectionHeader}>Basic Information</Text>
                     <Text style={styles.label}>Thumbnail</Text>
                     <View style={styles.rowCenter}>
+                        {/* LỖI 2: Dùng MediaPreviewItem cho Thumbnail. 
+                            MediaPreviewItem hiện tại coi mọi thứ không có extension ảnh là video/audio. 
+                            Nếu thumbnail không có đuôi rõ ràng, nó sẽ hiển thị VideoView.
+                            Đã sửa logic trong MediaPreviewItem để xử lý tốt hơn,
+                            nhưng để an toàn, có thể dùng trực tiếp <Image> ở đây vì thumbnailUrl luôn là ảnh.
+                            Tuy nhiên, sửa MediaPreviewItem là giải pháp tốt hơn cho toàn bộ ứng dụng. */}
                         {thumbnailUrl ? <MediaPreviewItem url={thumbnailUrl} style={{ width: 60, height: 60, borderRadius: 8, marginRight: 10 }} /> : null}
                         <View style={{ flex: 1 }}>
                             <FileUploader mediaType="image" onUploadSuccess={(id) => setThumbnailUrl(formatDriveUrl(id))}>
@@ -486,7 +568,6 @@ const CreateLessonScreen = () => {
                     </ScrollView>
 
                     <Text style={styles.label}>Lesson Media (Video/Audio)</Text>
-                    {/* Danh sách media của Lesson */}
                     {mediaUrls.map((url, idx) => (
                         <MediaPreviewItem
                             key={idx}
@@ -504,7 +585,6 @@ const CreateLessonScreen = () => {
                     </FileUploader>
                 </View>
 
-                {/* --- QUESTIONS LIST SECTION --- */}
                 <View style={styles.section}>
                     <View style={styles.rowBetween}>
                         <Text style={styles.sectionHeader}>Questions ({questions.length})</Text>
@@ -532,7 +612,6 @@ const CreateLessonScreen = () => {
                                 </View>
                             </View>
                             <Text style={styles.qText} numberOfLines={2}>{q.question || "(No text content)"}</Text>
-                            {/* Preview nhỏ trong danh sách câu hỏi */}
                             {q.mediaUrl ? (
                                 <View style={{ marginTop: 10 }}>
                                     <MediaPreviewItem url={q.mediaUrl} style={{ width: 120, height: 80, borderRadius: 5, backgroundColor: '#000' }} />
@@ -548,7 +627,6 @@ const CreateLessonScreen = () => {
                 <View style={{ height: 50 }} />
             </ScrollView>
 
-            {/* --- EDIT/ADD QUESTION MODAL --- */}
             <Modal visible={modalVisible} animationType="slide" onRequestClose={() => setModalVisible(false)}>
                 <ScreenLayout style={{ backgroundColor: '#FFF' }}>
                     <View style={styles.modalHeader}>
@@ -585,7 +663,6 @@ const CreateLessonScreen = () => {
                             />
 
                             <Text style={styles.label}>Attachment</Text>
-                            {/* Preview Media trong Modal */}
                             {currentQ.mediaUrl ? (
                                 <MediaPreviewItem
                                     url={currentQ.mediaUrl}

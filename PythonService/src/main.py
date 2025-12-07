@@ -49,9 +49,9 @@ try:
         PUBLIC_KEY = serialization.load_pem_public_key(
             f.read(), backend=default_backend()
         )
-    logger.info("✅ Public key loaded successfully.")
+    logger.info("Public key loaded successfully.")
 except Exception as e:
-    logger.critical(f"❌ Could not load public_key.pem: {e}")
+    logger.critical(f"Could not load public_key.pem: {e}")
 
 internal_router = APIRouter(prefix="/internal")
 protected_router = APIRouter(dependencies=[Depends(security)])
@@ -127,7 +127,7 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
     try:
         token = credentials.credentials
         if not PUBLIC_KEY:
-             return jwt.decode(token, options={"verify_signature": False})
+            return jwt.decode(token, options={"verify_signature": False})
         
         return jwt.decode(
             token, 

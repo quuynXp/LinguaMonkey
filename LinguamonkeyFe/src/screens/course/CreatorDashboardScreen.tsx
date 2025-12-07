@@ -748,7 +748,6 @@ const CreatorDashboardScreen = () => {
 };
 
 const styles = createScaledSheet({
-    // ... Copy styles from your code
     listContent: { paddingBottom: 40, backgroundColor: "#F8FAFC" },
     headerContainer: { backgroundColor: "#F8FAFC" },
     creatorHeaderRow: { padding: 16, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },

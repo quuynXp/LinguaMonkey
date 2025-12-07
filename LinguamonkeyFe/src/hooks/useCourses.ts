@@ -712,7 +712,15 @@ export const useCourses = () => {
         const { data } = await instance.post<AppApiResponse<CourseVersionDiscountResponse>>("/api/v1/course-version-discounts", req);
         return data.result!;
       },
-      onSuccess: () => queryClient.invalidateQueries({ queryKey: courseKeys.discounts({}) }),
+      onSuccess: (_, vars) => {
+        // invalidate all discounts queries (safer)
+        queryClient.invalidateQueries({
+          predicate: (query) => {
+            const key = query.queryKey;
+            return Array.isArray(key) && key.includes("discounts");
+          }
+        });
+      },
     });
   };
 

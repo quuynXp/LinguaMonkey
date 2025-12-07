@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from "react";
+// EditCourseScreen.tsx (FULL updated file)
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -34,11 +35,10 @@ interface DiscountModalProps {
   onClose: () => void;
   versionId: string;
   initialData?: CourseVersionDiscountResponse;
-  onSuccess: () => void;
+  onSuccess: (versionId: string) => void;
 }
 
-// --- Components ---
-
+// Discount modal (fixed: use isPending, ensure mutate is called)
 const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: DiscountModalProps) => {
   const { t } = useTranslation();
   const [code, setCode] = useState(initialData?.code || "");
@@ -59,12 +59,15 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
   }, [visible, initialData]);
 
   const handleSubmit = () => {
-    if (!code || !percentage) return;
+    if (!code || !percentage) {
+      Alert.alert(t("error"), t("course.invalidDiscountInput") || "Invalid input");
+      return;
+    }
 
     const payload: CourseVersionDiscountRequest = {
       versionId,
       code: code.toUpperCase(),
-      discountPercentage: parseInt(percentage),
+      discountPercentage: parseInt(percentage, 10),
       isActive: true,
       startDate: new Date().toISOString(),
       endDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
@@ -72,10 +75,13 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
 
     const options = {
       onSuccess: () => {
-        onSuccess();
+        onSuccess(versionId);
         onClose();
       },
-      onError: () => Alert.alert(t("error"), t("course.discountFailed"))
+      onError: (error: any) => {
+        const errorMessage = error?.response?.data?.message || t("course.discountFailed");
+        Alert.alert(t("error"), errorMessage);
+      }
     };
 
     if (isEdit && initialData) {
@@ -104,8 +110,9 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
               <TextInput
                 style={styles.input}
                 value={percentage}
-                onChangeText={setPercentage}
-                keyboardType="numeric"
+                onChangeText={(v) => setPercentage(v.replace(/[^0-9]/g, ""))}
+                keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+                maxLength={2}
               />
             </View>
           </View>
@@ -115,6 +122,39 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
             </TouchableOpacity>
             <TouchableOpacity onPress={handleSubmit} disabled={isPending} style={styles.confirmBtn}>
               {isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.confirmText}>{isEdit ? t("common.update") : t("common.create")}</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// Publish reason modal (cross-platform replacement for Alert.prompt)
+const PublishReasonModal = ({ visible, onClose, onConfirm }: { visible: boolean; onClose: () => void; onConfirm: (reason: string) => void; }) => {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState("");
+  useEffect(() => {
+    if (visible) setReason("");
+  }, [visible]);
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{t("course.publishTitle")}</Text>
+          <Text style={{ marginBottom: 8 }}>{t("course.publishReasonPrompt")}</Text>
+          <TextInput
+            style={[styles.input, { marginTop: 8 }]}
+            value={reason}
+            onChangeText={setReason}
+            placeholder={t("course.publishReasonPlaceholder") || "Reason for publishing"}
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity onPress={onClose} style={styles.cancelBtn}>
+              <Text style={styles.cancelText}>{t("common.cancel")}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onConfirm(reason)} style={styles.confirmBtn}>
+              <Text style={styles.confirmText}>{t("common.publish")}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -138,6 +178,8 @@ const EditCourseScreen = () => {
 
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [selectedDiscount, setSelectedDiscount] = useState<CourseVersionDiscountResponse | undefined>(undefined);
+
+  const [publishModalVisible, setPublishModalVisible] = useState(false);
 
   const {
     useCourse,
@@ -187,149 +229,46 @@ const EditCourseScreen = () => {
     size: 50
   });
 
+  // Price change handler (keeps stable reference)
+  const handlePriceChange = useCallback((text: string) => {
+    const numericValue = text.replace(/[^0-9.]/g, '');
+    setPrice(numericValue);
+  }, []);
+
+  const handleRefetchDiscounts = (versionId: string) => {
+    refetchDiscounts();
+  }
+
   useEffect(() => {
     if (courseData) setTitle(courseData.title);
   }, [courseData]);
 
+  // Sync working version into state when version changes
   useEffect(() => {
     if (workingVersion) {
       if (!description) setDescription(workingVersion.description || "");
-      if (price === "0") setPrice(workingVersion.price?.toString() || "0");
+      if (price === "0" || workingVersion.price?.toString() !== price) {
+        setPrice(workingVersion.price?.toString() || "0");
+      }
       setDifficulty(workingVersion.difficultyLevel || DifficultyLevel.A1);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [workingVersion?.versionId]);
 
-  const { mutate: updateDetailsMutate, isPending: isUpdatingDetails } = useUpdateCourseDetails();
-  const { mutate: updateVersionMutate, isPending: isUpdatingVersion } = useUpdateCourseVersion();
-  const { mutate: createDraftMutate, isPending: isCreatingDraft } = useCreateDraftVersion();
-  const { mutate: publishMutate, isPending: isPublishing } = usePublishVersion();
+  // Mutations (use isPending from react-query)
+  // trước đó: const { mutate: updateDetailsMutate, isPending: isUpdatingDetails } = useUpdateCourseDetails();
+  // thêm mutateAsync:
+  const { mutate: updateDetailsMutate, mutateAsync: updateDetailsMutateAsync, isPending: isUpdatingDetails } = useUpdateCourseDetails();
+  const { mutate: updateVersionMutate, mutateAsync: updateVersionMutateAsync, isPending: isUpdatingVersion } = useUpdateCourseVersion();
+  const { mutate: createDraftMutate, mutateAsync: createDraftMutateAsync, isPending: isCreatingDraft } = useCreateDraftVersion();
 
   const isSaving = isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing;
 
-  // Use local upload if available, otherwise fallback to version, otherwise placeholder
   const displayThumbnail = localThumbnailUrl || workingVersion?.thumbnailUrl;
 
-  const handleSave = () => {
-    if (!title) return Alert.alert(t("error"), t("course.titleRequired"));
-
-    // Update course title
-    updateDetailsMutate({ id: initialCourseId, req: { title } }, {
-      onError: () => Alert.alert(t("error"), t("course.saveFailed"))
-    });
-
-    // Prepare version payload
-    const versionPayload = {
-      description,
-      thumbnailUrl: displayThumbnail || "",
-      price: parseFloat(price) || 0,
-      difficultyLevel: difficulty,
-      lessonIds: lessonsList.map((l: LessonResponse) => l.lessonId)
-    };
-
-    if (isDraft && workingVersion) {
-      // Save to existing draft
-      updateVersionMutate({
-        versionId: workingVersion.versionId,
-        req: versionPayload
-      }, {
-        onSuccess: () => Alert.alert(t("success"), t("course.saved")),
-        onError: () => Alert.alert(t("error"), t("course.saveFailed"))
-      });
-    } else {
-      // Create new draft version first
-      Alert.alert(
-        t("course.editMode"),
-        t("course.createDraftPrompt"),
-        [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("common.continue"),
-            onPress: () => {
-              createDraftMutate(initialCourseId, {
-                onSuccess: (newDraft) => {
-                  updateVersionMutate({
-                    versionId: newDraft.versionId,
-                    req: versionPayload
-                  }, {
-                    onSuccess: () => {
-                      refetchVersions();
-                      Alert.alert(t("success"), t("course.draftCreatedAndSaved"));
-                    },
-                    onError: () => Alert.alert(t("error"), t("course.saveFailed"))
-                  });
-                },
-                onError: () => Alert.alert(t("error"), t("course.createDraftFailed"))
-              });
-            }
-          }
-        ]
-      );
-    }
-  };
-
-  const handlePublish = () => {
-    if (!isDraft || !workingVersion) {
-      Alert.alert(t("notice"), t("course.noDraftToPublish"));
-      return;
-    }
-
-    Alert.prompt(
-      t("course.publishTitle"),
-      t("course.publishReasonPrompt"),
-      [
-        { text: t("common.cancel"), style: "cancel" },
-        {
-          text: t("common.publish"),
-          onPress: (reason) => {
-            publishMutate({
-              versionId: workingVersion.versionId,
-              req: { reasonForChange: reason || "Update content" }
-            }, {
-              onSuccess: () => {
-                refetchVersions();
-                Alert.alert(t("success"), t("course.publishSuccess"));
-              },
-              onError: (err: any) => {
-                const msg = err?.response?.data?.message || t("course.publishFailed");
-                Alert.alert(t("error"), msg);
-              }
-            });
-          }
-        }
-      ],
-      "plain-text"
-    );
-  };
-
-  const handleDeleteDiscount = (id: string) => {
-    Alert.alert(t("common.confirm"), t("common.deleteConfirm"), [
-      { text: t("common.cancel"), style: "cancel" },
-      {
-        text: t("common.delete"),
-        style: "destructive",
-        onPress: () => deleteDiscount.mutate(id, { onSuccess: () => refetchDiscounts() })
-      }
-    ]);
-  };
-
-  const navigateToLesson = (lessonId?: string) => {
-    if (!isDraft) {
-      Alert.alert(t("notice"), t("course.mustCreateDraftToEditLesson"), [
-        { text: "Cancel", style: "cancel" },
-        { text: "Create Draft", onPress: handleSave }
-      ]);
-      return;
-    }
-    navigation.navigate("CreateLessonScreen", {
-      courseId: initialCourseId,
-      versionId: workingVersion?.versionId,
-      lessonId: lessonId
-    });
-  };
-
-  const renderHeader = () => (
+  // Memoize header so it won't remount on each render (fix keyboard losing focus)
+  const headerElement = useMemo(() => (
     <View style={styles.contentContainer}>
-      {/* Thumbnail Section */}
       <View style={styles.thumbnailContainer}>
         <Image
           source={getCourseImage(displayThumbnail)}
@@ -360,7 +299,6 @@ const EditCourseScreen = () => {
         </View>
       </View>
 
-      {/* Basic Info */}
       <View style={styles.section}>
         <Text style={styles.label}>{t("course.title")}</Text>
         <TextInput style={styles.input} value={title} onChangeText={setTitle} />
@@ -368,11 +306,20 @@ const EditCourseScreen = () => {
         <View style={styles.row}>
           <View style={[styles.column, { marginRight: 8 }]}>
             <Text style={styles.label}>{t("course.price")} ($)</Text>
-            <TextInput style={styles.input} value={price} onChangeText={setPrice} keyboardType="numeric" />
+            <TextInput
+              style={styles.input}
+              value={price}
+              onChangeText={handlePriceChange}
+              keyboardType={Platform.OS === "ios" ? "decimal-pad" : "numeric"}
+              key="price-input"
+              returnKeyType="done"
+              // prevent auto-correct / suggestions
+              autoCorrect={false}
+            />
           </View>
           <View style={[styles.column, { marginLeft: 8 }]}>
             <Text style={styles.label}>{t("course.difficulty")}</Text>
-            <TextInput style={styles.input} value={difficulty} onChangeText={(t) => setDifficulty(t as DifficultyLevel)} />
+            <TextInput style={styles.input} value={String(difficulty)} onChangeText={(t) => setDifficulty(t as DifficultyLevel)} />
           </View>
         </View>
 
@@ -380,7 +327,6 @@ const EditCourseScreen = () => {
         <TextInput style={[styles.input, styles.textArea]} value={description} onChangeText={setDescription} multiline />
       </View>
 
-      {/* Discounts Section */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t("course.promotions")}</Text>
@@ -427,7 +373,18 @@ const EditCourseScreen = () => {
         </TouchableOpacity>
       </View>
     </View>
-  );
+  ), [
+    displayThumbnail,
+    isUploadingThumb,
+    title,
+    price,
+    description,
+    difficulty,
+    discountsData,
+    isDraft,
+    lessonsList.length,
+    t
+  ]);
 
   const renderLessonItem = ({ item, index }: { item: LessonResponse; index: number }) => (
     <TouchableOpacity
@@ -449,6 +406,120 @@ const EditCourseScreen = () => {
       <Icon name="chevron-right" size={24} color="#9CA3AF" />
     </TouchableOpacity>
   );
+
+  // Save handler
+  // Thay thế handleSave cũ bằng đoạn này
+  const handleSave = async () => {
+    if (!title) return Alert.alert(t("error"), t("course.titleRequired"));
+
+    try {
+      // 1) Update course details (title) and wait kết quả
+      await updateDetailsMutateAsync({ id: initialCourseId, req: { title } });
+
+      // Chuẩn bị payload version
+      const versionPayload = {
+        description,
+        thumbnailUrl: displayThumbnail || "",
+        price: parseFloat(price) || 0,
+        difficultyLevel: difficulty,
+        lessonIds: lessonsList.map((l: LessonResponse) => l.lessonId)
+      };
+
+      if (isDraft && workingVersion) {
+        // Save vào draft hiện tại
+        await updateVersionMutateAsync({
+          versionId: workingVersion.versionId,
+          req: versionPayload
+        });
+        Alert.alert(t("success"), t("course.saved"));
+      } else {
+        // Tạo draft mới, rồi update nó
+        Alert.alert(
+          t("course.editMode"),
+          t("course.createDraftPrompt"),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            {
+              text: t("common.continue"),
+              onPress: async () => {
+                try {
+                  const newDraft = await createDraftMutateAsync(initialCourseId);
+                  await updateVersionMutateAsync({
+                    versionId: newDraft.versionId,
+                    req: versionPayload
+                  });
+                  await refetchVersions();
+                  Alert.alert(t("success"), t("course.draftCreatedAndSaved"));
+                } catch (err) {
+                  Alert.alert(t("error"), t("course.saveFailed"));
+                }
+              }
+            }
+          ]
+        );
+      }
+    } catch (err) {
+      Alert.alert(t("error"), t("course.saveFailed"));
+    }
+  };
+
+
+  const handlePublishConfirm = (reason?: string) => {
+    if (!isDraft || !workingVersion) {
+      Alert.alert(t("notice"), t("course.noDraftToPublish"));
+      setPublishModalVisible(false);
+      return;
+    }
+    setPublishModalVisible(false);
+    publishMutate({
+      versionId: workingVersion.versionId,
+      req: { reasonForChange: reason || "Update content" }
+    }, {
+      onSuccess: () => {
+        refetchVersions();
+        Alert.alert(t("success"), t("course.publishSuccess"));
+      },
+      onError: (err: any) => {
+        const msg = err?.response?.data?.message || t("course.publishFailed");
+        Alert.alert(t("error"), msg);
+      }
+    });
+  };
+
+  const handlePublish = () => {
+    if (!isDraft || !workingVersion) {
+      Alert.alert(t("notice"), t("course.noDraftToPublish"));
+      return;
+    }
+    // show our cross-platform modal
+    setPublishModalVisible(true);
+  };
+
+  const handleDeleteDiscount = (id: string) => {
+    Alert.alert(t("common.confirm"), t("common.deleteConfirm"), [
+      { text: t("common.cancel"), style: "cancel" },
+      {
+        text: t("common.delete"),
+        style: "destructive",
+        onPress: () => deleteDiscount.mutate(id, { onSuccess: () => handleRefetchDiscounts(id) })
+      }
+    ]);
+  };
+
+  const navigateToLesson = (lessonId?: string) => {
+    if (!isDraft) {
+      Alert.alert(t("notice"), t("course.mustCreateDraftToEditLesson"), [
+        { text: "Cancel", style: "cancel" },
+        { text: "Create Draft", onPress: handleSave }
+      ]);
+      return;
+    }
+    navigation.navigate("CreateLessonScreen", {
+      courseId: initialCourseId,
+      versionId: workingVersion?.versionId,
+      lessonId: lessonId
+    });
+  };
 
   return (
     <ScreenLayout>
@@ -488,7 +559,7 @@ const EditCourseScreen = () => {
           data={lessonsList}
           keyExtractor={(item) => item.lessonId}
           renderItem={renderLessonItem}
-          ListHeaderComponent={renderHeader}
+          ListHeaderComponent={headerElement}
           contentContainerStyle={styles.listContent}
           onEndReached={() => {
             if (hasNextPage) fetchNextPage();
@@ -502,6 +573,8 @@ const EditCourseScreen = () => {
               </View>
             ) : null
           }
+          // keep keyboard behavior better
+          keyboardShouldPersistTaps="handled"
         />
       </KeyboardAvoidingView>
 
@@ -511,9 +584,15 @@ const EditCourseScreen = () => {
           onClose={() => setShowDiscountModal(false)}
           versionId={workingVersion.versionId}
           initialData={selectedDiscount}
-          onSuccess={refetchDiscounts}
+          onSuccess={handleRefetchDiscounts}
         />
       )}
+
+      <PublishReasonModal
+        visible={publishModalVisible}
+        onClose={() => setPublishModalVisible(false)}
+        onConfirm={handlePublishConfirm}
+      />
     </ScreenLayout>
   );
 };

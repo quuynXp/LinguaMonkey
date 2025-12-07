@@ -13,23 +13,18 @@ import {
   ApproveRefundRequest
 } from "../types/dto";
 
-// --- STRUCTURAL TYPE FOR INVALIDATION ---
-// Vì TransactionResponse gốc không chứa senderId/receiverId/requesterId, 
-// ta thêm chúng vào đây để code onSuccess có thể truy cập.
 type TransactionWithUserIds = TransactionResponse & {
   senderId: string;
   receiverId: string;
-  requesterId: string; // Cho Refund
+  requesterId: string;
 };
 
-// --- Keys Factory ---
 export const walletKeys = {
   all: ["wallet"] as const,
   balance: (userId: string) => [...walletKeys.all, "balance", userId] as const,
   history: (userId: string, params: any) => [...walletKeys.all, "history", userId, params] as const,
 };
 
-// --- Helper to standardize pagination return ---
 const mapPageResponse = <T>(result: any, page: number, size: number) => ({
   data: (result?.content as T[]) || [],
   pagination: {
@@ -47,11 +42,6 @@ const mapPageResponse = <T>(result: any, page: number, size: number) => ({
 export const useWallet = () => {
   const queryClient = useQueryClient();
 
-  // ==========================================
-  // === QUERIES ===
-  // ==========================================
-
-  // GET /api/v1/wallets/balance
   const useWalletBalance = (userId?: string) => {
     return useQuery({
       queryKey: walletKeys.balance(userId!),
@@ -68,7 +58,6 @@ export const useWallet = () => {
     });
   };
 
-  // GET /api/v1/wallets/history
   const useTransactionHistory = (userId?: string, page = 0, size = 10) => {
     const params = { page, size };
     return useQuery({
@@ -90,11 +79,6 @@ export const useWallet = () => {
     });
   };
 
-  // ==========================================
-  // === MUTATIONS (Transactions) ===
-  // ==========================================
-
-  // POST /api/v1/wallets/deposit (Returns payment URL string)
   const useDeposit = () => {
     return useMutation({
       mutationFn: async (payload: DepositRequest) => {
@@ -110,7 +94,6 @@ export const useWallet = () => {
     });
   };
 
-  // POST /api/v1/wallets/withdraw
   const useWithdraw = () => {
     return useMutation({
       mutationFn: async (payload: WithdrawRequest) => {
@@ -121,14 +104,11 @@ export const useWallet = () => {
         return data.result!;
       },
       onSuccess: (data) => {
-        // data.userId là trường có sẵn trong TransactionResponse
-        queryClient.invalidateQueries({ queryKey: walletKeys.balance(data.userId) });
-        queryClient.invalidateQueries({ queryKey: walletKeys.history(data.userId, {}) });
+        // Đã xóa invalidateQueries ở đây, vì việc này đã được xử lý bằng userId có sẵn trong WithdrawScreen.tsx
       },
     });
   };
 
-  // POST /api/v1/wallets/transfer
   const useTransfer = () => {
     return useMutation({
       mutationFn: async (payload: TransferRequest) => {
@@ -139,7 +119,6 @@ export const useWallet = () => {
         return data.result!;
       },
       onSuccess: (data: TransactionWithUserIds) => {
-        // FIX: Sử dụng senderId/receiverId từ Structural Type
         queryClient.invalidateQueries({ queryKey: walletKeys.balance(data.senderId) });
         queryClient.invalidateQueries({ queryKey: walletKeys.balance(data.receiverId) });
         queryClient.invalidateQueries({ queryKey: walletKeys.history(data.senderId, {}) });
@@ -148,7 +127,6 @@ export const useWallet = () => {
     });
   };
 
-  // POST /api/v1/wallets/refund
   const useRequestRefund = () => {
     return useMutation({
       mutationFn: async (payload: RefundRequest) => {
@@ -159,13 +137,11 @@ export const useWallet = () => {
         return data.result!;
       },
       onSuccess: (data: TransactionWithUserIds) => {
-        // FIX: Sử dụng requesterId từ Structural Type
         queryClient.invalidateQueries({ queryKey: walletKeys.history(data.requesterId, {}) });
       },
     });
   };
 
-  // POST /api/v1/wallets/webhook
   const useHandleWebhook = () => {
     return useMutation({
       mutationFn: async (payload: WebhookRequest) => {
@@ -178,11 +154,6 @@ export const useWallet = () => {
     });
   };
 
-  // ==========================================
-  // === MUTATIONS (Admin) ===
-  // ==========================================
-
-  // POST /api/v1/wallets/admin/approve-refund
   const useApproveRefund = () => {
     return useMutation({
       mutationFn: async (payload: ApproveRefundRequest) => {
@@ -193,14 +164,12 @@ export const useWallet = () => {
         return data.result!;
       },
       onSuccess: (data) => {
-        // data.userId là trường có sẵn trong TransactionResponse
         queryClient.invalidateQueries({ queryKey: walletKeys.balance(data.userId) });
         queryClient.invalidateQueries({ queryKey: walletKeys.history(data.userId, {}) });
       },
     });
   };
 
-  // POST /api/v1/wallets/admin/reject-refund
   const useRejectRefund = () => {
     return useMutation({
       mutationFn: async ({ refundTransactionId, adminId, reason }: { refundTransactionId: string, adminId: string, reason: string }) => {
@@ -212,7 +181,6 @@ export const useWallet = () => {
         return data.result!;
       },
       onSuccess: (data) => {
-        // data.userId là trường có sẵn trong TransactionResponse
         queryClient.invalidateQueries({ queryKey: walletKeys.history(data.userId, {}) });
       },
     });
