@@ -1087,6 +1087,7 @@ export interface CourseResponse {
     createdAt: string;
     updatedAt: string;
     latestPublicVersion: CourseVersionResponse;
+    latestDraftVersion: CourseVersionResponse;
 
     creatorNickname?: string;
     creatorCountry?: Enums.Country;

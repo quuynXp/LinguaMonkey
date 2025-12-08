@@ -37,4 +37,6 @@ public class PaymentRequest {
     private String currency;
 
     private String description;
+
+    private UUID courseVersionId;
 }

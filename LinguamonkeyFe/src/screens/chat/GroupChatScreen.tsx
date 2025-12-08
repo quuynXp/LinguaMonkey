@@ -293,7 +293,7 @@ const styles = StyleSheet.create({
     headerTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937' },
     headerSubtitle: { fontSize: 12, color: '#9CA3AF' },
     headerActiveDot: { position: 'absolute', bottom: 0, right: 0, width: 10, height: 10, borderRadius: 5, backgroundColor: '#10B981', borderWidth: 1.5, borderColor: '#FFF' },
-    modalContainer: { flex: 1, backgroundColor: '#F9FAFB' },
+    modalContainer: { flex: 1, backgroundColor: '#F9FAFB', paddingTop: 30 },
     modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#EEE' },
     modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
     sectionContainer: { marginTop: 16, backgroundColor: '#FFF', paddingVertical: 8 },

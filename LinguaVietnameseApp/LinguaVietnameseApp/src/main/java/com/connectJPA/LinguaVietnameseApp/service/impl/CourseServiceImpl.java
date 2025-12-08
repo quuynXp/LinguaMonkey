@@ -105,8 +105,10 @@ public class CourseServiceImpl implements CourseService {
                         response.setCreatorVip(creator.isVip());
                         response.setCreatorLevel(creator.getLevel());
                     }
-                } catch (IllegalArgumentException e) { }
+                } catch (IllegalArgumentException e) {
+                }
             }
+
             try {
                 Double avgRating = courseReviewRepository.getAverageRatingByCourseId(response.getCourseId());
                 long count = courseReviewRepository.countByCourseIdAndParentIsNullAndIsDeletedFalse(response.getCourseId());
@@ -115,10 +117,12 @@ public class CourseServiceImpl implements CourseService {
                 response.setReviewCount((int) count);
                 response.setTotalStudents((int) studentCount);
             } catch (Exception e) {
-                response.setAverageRating(0.0);
-                response.setReviewCount(0);
-                response.setTotalStudents(0);
             }
+
+            courseVersionRepository.findByCourseIdAndStatusAndIsDeletedFalse(response.getCourseId(), VersionStatus.DRAFT)
+                    .stream()
+                    .findFirst()
+                    .ifPresent(draft -> response.setLatestDraftVersion(versionMapper.toResponse(draft)));
         }
         return response;
     }
@@ -240,11 +244,11 @@ public class CourseServiceImpl implements CourseService {
         course.setCreatorId(request.getCreatorId());
         
         course.setApprovalStatus(CourseApprovalStatus.PENDING);
-        course = courseRepository.save(course);
+        course = courseRepository.save(course); // ID đã được tạo ở đây
 
         // Create first Version (Draft v1)
         CourseVersion version = new CourseVersion();
-        version.setCourseId(course.getCourseId());
+        version.setCourseId(course.getCourseId()); // Link version với courseId vừa tạo
         version.setVersionNumber(1);
         version.setStatus(VersionStatus.DRAFT);
         version.setIsIntegrityValid(null);

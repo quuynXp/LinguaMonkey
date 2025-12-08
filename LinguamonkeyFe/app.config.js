@@ -1,5 +1,4 @@
 export default () => ({
-  // Các thuộc tính cơ bản (vẫn cần cho Expo ecosystem)
   name: "MonkeyLingua",
   assets: ["./assets/fonts/"],
   slug: "MonkeyLingua",
@@ -16,8 +15,9 @@ export default () => ({
     backgroundColor: "#ffffff",
   },
 
-  // Khối iOS và Android đã được loại bỏ hoàn toàn
-  // Cấu hình Package Name, Permissions, v.v., sẽ được đọc từ /android/ và /ios/
+  android: {
+    package: "com.monkeylingua.linguamonkey",
+  },
 
   web: {
     build: {
@@ -29,8 +29,6 @@ export default () => ({
     favicon: "./src/assets/images/icon.png",
   },
 
-  // Plugins được giữ lại vì chúng cần thiết để inject các thuộc tính (như NDK)
-  // và khởi tạo Splash Screen, v.v.
   plugins: [
     [
       "expo-splash-screen",

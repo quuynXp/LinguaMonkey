@@ -71,7 +71,7 @@ public class TransactionServiceImpl implements TransactionService {
     @Value("${vnpay.url}")
     private String vnpPayUrl;
 
-    @Value("${app.backend.url:http://localhost:8080}")
+    @Value("${app.backend.url:http://localhost:8000}")
     private String appBackendUrl;
 
     @Value("${vip.price.monthly:9.99}")
@@ -355,8 +355,11 @@ public class TransactionServiceImpl implements TransactionService {
                 .description(request.getDescription())
                 .status(TransactionStatus.PENDING)
                 .createdAt(OffsetDateTime.now())
+                .courseVersionId(request.getCourseVersionId()) 
                 .build();
         
+        transaction.setCourseVersionId(request.getCourseVersionId()); 
+
         transaction = transactionRepository.save(transaction);
 
         if (request.getProvider() == TransactionProvider.VNPAY) {
@@ -403,7 +406,7 @@ public class TransactionServiceImpl implements TransactionService {
         String vnp_Command = "pay";
         String vnp_OrderInfo = (transaction.getDescription() != null) ? transaction.getDescription() : "Payment";
         String vnp_TxnRef = transaction.getTransactionId().toString();
-        String vnp_IpAddr = (clientIp != null) ? clientIp : "127.0.0.1";
+        String vnp_IpAddr = (clientIp != null && !clientIp.equals("127.0.0.1") && !clientIp.equals("0:0:0:0:0:0:0:1")) ? clientIp : "113.160.22.11"; 
         
         String backendReturnUrl = appBackendUrl + "/api/v1/transactions/vnpay-return";
 
@@ -509,7 +512,7 @@ public class TransactionServiceImpl implements TransactionService {
         String signValue = hashAllFields(fields);
         String txnRef = request.getParameter("vnp_TxnRef");
         
-        String baseDeepLink = "linguamonkey://deposit-result";
+       String baseDeepLink = "linguamonkey://payment/result";
 
         if (signValue.equals(vnp_SecureHash)) {
             String responseCode = request.getParameter("vnp_ResponseCode");
@@ -601,29 +604,26 @@ public class TransactionServiceImpl implements TransactionService {
         Transaction transaction = transactionRepository.findById(UUID.fromString(transactionId))
                 .orElseThrow(() -> new AppException(ErrorCode.TRANSACTION_NOT_FOUND));
 
-        if (transaction.getStatus() == TransactionStatus.PENDING) {
-            transaction.setStatus(TransactionStatus.SUCCESS);
+        if (transaction.getStatus() == TransactionStatus.SUCCESS) {
             
             UUID userId = transaction.getUser().getUserId();
             BigDecimal amount = transaction.getAmount();
 
             if (transaction.getType() == TransactionType.DEPOSIT) {
                 walletService.credit(userId, amount);
-            } else if (transaction.getType() == TransactionType.UPGRADE_VIP || transaction.getType() == TransactionType.PAYMENT) {
+            } 
+            else if (transaction.getType() == TransactionType.PAYMENT) {
+                
+                log.info("Payment successful for transaction {}. Check enrollment manually if field missing.", transactionId);
+            }
+            else if (transaction.getType() == TransactionType.UPGRADE_VIP) {
                 boolean isVip = transaction.getType() == TransactionType.UPGRADE_VIP;
                 String descLower = transaction.getDescription() != null ? transaction.getDescription().toLowerCase() : "";
                 
                 if (isVip || descLower.contains("vip") || descLower.contains("trial")) {
-                      if (descLower.contains("monthly")) {
-                        userService.extendVipSubscription(userId, new BigDecimal("30"));
-                      } else if (descLower.contains("yearly")) {
-                        userService.extendVipSubscription(userId, new BigDecimal("365"));
-                      } else if (descLower.contains("trial")) {
-                        userService.extendVipSubscription(userId, new BigDecimal("14")); 
-                      }
+                     activateVipForUser(userId, descLower);
                 }
             }
-            transactionRepository.save(transaction);
         }
     }
 

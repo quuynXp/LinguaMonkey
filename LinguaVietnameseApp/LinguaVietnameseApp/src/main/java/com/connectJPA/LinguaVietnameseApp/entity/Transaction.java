@@ -65,6 +65,8 @@ public class Transaction extends BaseEntity {
     @Column(nullable = false)
     private TransactionType type;
 
+    private UUID courseVersionId;
+
     private String paymentGatewayTransactionId; // Mã giao dịch của bên thứ 3
 
     @Column(name = "provider", nullable = false)

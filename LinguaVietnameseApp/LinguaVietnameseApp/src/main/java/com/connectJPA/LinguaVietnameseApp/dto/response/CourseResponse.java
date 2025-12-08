@@ -21,7 +21,7 @@ public class CourseResponse {
     private UUID creatorId;
     private UUID RoomId;
 
-    // Creator Info Enrichment
+    // Creator Info
     private String creatorName;
     private String creatorAvatar;
     private String creatorNickname;
@@ -31,6 +31,9 @@ public class CourseResponse {
 
     private CourseApprovalStatus approvalStatus;
 
+    // QUAN TRỌNG: Thêm field này để Edit Screen biết version nào đang soạn thảo
+    private CourseVersionResponse latestDraftVersion; 
+    
     private CourseVersionResponse latestPublicVersion;
 
     private OffsetDateTime createdAt;
@@ -41,7 +44,6 @@ public class CourseResponse {
     private Integer reviewCount;
     private Boolean isAdminCreated;
 
-    // Special Offer Fields
     private Integer activeDiscountPercentage;
     private BigDecimal discountedPrice;
 }
