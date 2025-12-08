@@ -78,7 +78,7 @@ const RootNavigation = () => {
     return () => { if (cleanup) cleanup(); };
   }, []);
 
-  const HEALTH_CHECK_ENDPOINT = "/health";
+  const HEALTH_CHECK_ENDPOINT = "/actuator/health";
 
   useEffect(() => {
     let mounted = true;

@@ -12,10 +12,13 @@ import {
   FlatList,
   Modal,
   StyleSheet,
+  ScrollView
 } from "react-native";
 import { useTranslation } from "react-i18next";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute } from "@react-navigation/native";
+import DateTimePicker from '@react-native-community/datetimepicker'; // Import Picker
+
 import { useCourses } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
 import { createScaledSheet } from "../../utils/scaledStyles";
@@ -31,7 +34,7 @@ import {
 import FileUploader from "../../components/common/FileUploader";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 
-// --- Components Con (Modal) - Giữ nguyên logic cũ ---
+// --- Components Con (Modal) ---
 
 interface DiscountModalProps {
   visible: boolean;
@@ -46,6 +49,13 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
   const [code, setCode] = useState(initialData?.code || "");
   const [percentage, setPercentage] = useState(initialData?.discountPercentage?.toString() || "10");
 
+  // Date States
+  const [startDate, setStartDate] = useState(initialData?.startDate ? new Date(initialData.startDate) : new Date());
+  const [endDate, setEndDate] = useState(initialData?.endDate ? new Date(initialData.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)); // Default +30 days
+
+  const [showStartPicker, setShowStartPicker] = useState(false);
+  const [showEndPicker, setShowEndPicker] = useState(false);
+
   const { useCreateDiscount, useUpdateDiscount } = useCourses();
   const createDiscount = useCreateDiscount();
   const updateDiscount = useUpdateDiscount();
@@ -57,11 +67,20 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
     if (visible) {
       setCode(initialData?.code || "");
       setPercentage(initialData?.discountPercentage?.toString() || "10");
-    } else {
-      setCode("");
-      setPercentage("10");
+      setStartDate(initialData?.startDate ? new Date(initialData.startDate) : new Date());
+      setEndDate(initialData?.endDate ? new Date(initialData.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
     }
   }, [visible, initialData]);
+
+  const onStartDateChange = (event: any, selectedDate?: Date) => {
+    setShowStartPicker(Platform.OS === 'ios');
+    if (selectedDate) setStartDate(selectedDate);
+  };
+
+  const onEndDateChange = (event: any, selectedDate?: Date) => {
+    setShowEndPicker(Platform.OS === 'ios');
+    if (selectedDate) setEndDate(selectedDate);
+  };
 
   const handleSubmit = () => {
     if (!code || !percentage) {
@@ -69,16 +88,19 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
       return;
     }
 
-    const now = new Date();
-    const future = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    if (endDate <= startDate) {
+      Alert.alert(t("error"), "End date must be after start date");
+      return;
+    }
 
     const payload: CourseVersionDiscountRequest = {
-      versionId,
-      code: code.toUpperCase(),
+      versionId: versionId,
+      code: code.toUpperCase().trim(),
       discountPercentage: parseInt(percentage, 10),
       isActive: true,
-      startDate: now.toISOString(),
-      endDate: future.toISOString(),
+      startDate: startDate.toISOString(), // Backend expects ISO-8601
+      endDate: endDate.toISOString(),
+      isDeleted: false
     };
 
     const options = {
@@ -87,6 +109,7 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
         onClose();
       },
       onError: (error: any) => {
+        console.error("Discount Error:", error);
         const errorMessage = error?.response?.data?.message || t("course.discountFailed");
         Alert.alert(t("error"), errorMessage);
       }
@@ -104,6 +127,8 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
       <View style={styles.modalOverlay}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>{isEdit ? t("course.editDiscount") : t("course.createDiscount")}</Text>
+
+          <Text style={styles.label}>Discount Code</Text>
           <TextInput
             style={styles.input}
             placeholder="CODE (e.g. SUMMER2025)"
@@ -112,18 +137,52 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
             autoCapitalize="characters"
             editable={!isEdit}
           />
+
+          <Text style={styles.label}>Percentage (%)</Text>
+          <TextInput
+            style={styles.input}
+            value={percentage}
+            onChangeText={(v) => setPercentage(v.replace(/[^0-9]/g, ""))}
+            keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
+            maxLength={2}
+            placeholder="10"
+          />
+
           <View style={styles.row}>
-            <View style={styles.column}>
-              <Text style={styles.label}>{t("course.percentage")} (%)</Text>
-              <TextInput
-                style={styles.input}
-                value={percentage}
-                onChangeText={(v) => setPercentage(v.replace(/[^0-9]/g, ""))}
-                keyboardType={Platform.OS === "ios" ? "number-pad" : "numeric"}
-                maxLength={2}
-              />
+            <View style={[styles.column, { marginRight: 8 }]}>
+              <Text style={styles.label}>Start Date</Text>
+              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowStartPicker(true)}>
+                <Text style={styles.dateText}>{startDate.toLocaleDateString()}</Text>
+                <Icon name="calendar-today" size={16} color="#4F46E5" />
+              </TouchableOpacity>
+              {showStartPicker && (
+                <DateTimePicker
+                  value={startDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  onChange={onStartDateChange}
+                />
+              )}
+            </View>
+
+            <View style={[styles.column, { marginLeft: 8 }]}>
+              <Text style={styles.label}>End Date</Text>
+              <TouchableOpacity style={styles.dateBtn} onPress={() => setShowEndPicker(true)}>
+                <Text style={styles.dateText}>{endDate.toLocaleDateString()}</Text>
+                <Icon name="event" size={16} color="#4F46E5" />
+              </TouchableOpacity>
+              {showEndPicker && (
+                <DateTimePicker
+                  value={endDate}
+                  mode="date"
+                  display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                  minimumDate={startDate}
+                  onChange={onEndDateChange}
+                />
+              )}
             </View>
           </View>
+
           <View style={styles.modalActions}>
             <TouchableOpacity onPress={onClose} style={styles.cancelBtn}>
               <Text style={styles.cancelText}>{t("common.cancel")}</Text>
@@ -214,7 +273,6 @@ const EditCourseScreen = () => {
   const { data: versionsData, refetch: refetchVersions, isLoading: isLoadingVersions } = useCourseVersions(activeCourseId || null);
   const deleteDiscount = useDeleteDiscount();
 
-  // FIX: Logic tìm workingVersion an toàn hơn
   const workingVersion = useMemo(() => {
     if (!versionsData || versionsData.length === 0) return null;
     return versionsData.find(v => v.status === VersionStatus.DRAFT) ||
@@ -222,10 +280,9 @@ const EditCourseScreen = () => {
       versionsData[0];
   }, [versionsData]);
 
-  // FIX: Logic isDraft chính xác hơn, tránh bị false khi đang loading
   const isDraft = useMemo(() => {
-    if (!activeCourseId) return true; // Chưa có ID -> Đang tạo mới -> Draft
-    if (!workingVersion) return false; // Chưa load xong version -> Tạm thời false (nhưng sẽ block UI)
+    if (!activeCourseId) return true;
+    if (!workingVersion) return false;
     return workingVersion.status === VersionStatus.DRAFT;
   }, [activeCourseId, workingVersion]);
 
@@ -309,7 +366,6 @@ const EditCourseScreen = () => {
     </TouchableOpacity>
   );
 
-  // FIX: Header Element useMemo - cần phụ thuộc workingVersion.versionId
   const headerElement = useMemo(() => (
     <View style={styles.contentContainer}>
       <View style={styles.thumbnailContainer}>
@@ -442,7 +498,9 @@ const EditCourseScreen = () => {
     lessonsList.length,
     activeCourseId,
     workingVersion,
-    t
+    t,
+    startDate, // Re-render if dates change (for modal)
+    endDate
   ]);
 
   const handleSave = async () => {
@@ -452,7 +510,6 @@ const EditCourseScreen = () => {
       let targetCourseId = activeCourseId;
       let targetVersion = workingVersion;
 
-      // 1. TẠO MỚI COURSE
       if (!targetCourseId) {
         if (!user?.userId) return Alert.alert(t("error"), "User authentication missing.");
 
@@ -472,8 +529,6 @@ const EditCourseScreen = () => {
         return;
       }
 
-      // 2. UPDATE COURSE
-      // Kiểm tra workingVersion trước khi update
       if (!targetVersion && !isNew) {
         return Alert.alert(t("error"), "Course data is not fully loaded yet. Please wait.");
       }
@@ -490,14 +545,12 @@ const EditCourseScreen = () => {
       };
 
       if (isDraft && targetVersion) {
-        // Đang là Draft -> Update bản hiện tại
         await updateVersionMutateAsync({
           versionId: targetVersion.versionId,
           req: versionPayload
         });
         Alert.alert(t("success"), t("course.saved"));
       } else if (!isDraft) {
-        // Đang là Public -> Tạo Draft mới
         Alert.alert(
           t("course.editMode"),
           t("course.createDraftPrompt"),
@@ -508,7 +561,6 @@ const EditCourseScreen = () => {
               onPress: async () => {
                 try {
                   const newDraft = await createDraftMutateAsync(targetCourseId!);
-                  // Update draft mới tạo
                   await updateVersionMutateAsync({
                     versionId: newDraft.versionId,
                     req: versionPayload
@@ -531,7 +583,6 @@ const EditCourseScreen = () => {
   };
 
   const handlePublishConfirm = (reason?: string) => {
-    // FIX: Check workingVersion trước khi publish
     if (!isDraft || !workingVersion) {
       Alert.alert(t("notice"), t("course.noDraftToPublish"));
       setPublishModalVisible(false);
@@ -579,7 +630,6 @@ const EditCourseScreen = () => {
       Alert.alert(t("notice"), "Please save the course first to create lessons.");
       return;
     }
-    // FIX: Kiểm tra workingVersion và versionId trước khi navigate
     if (!workingVersion || !workingVersion.versionId) {
       Alert.alert(t("error"), "Draft version not ready. Please try again or save course.");
       return;
@@ -593,7 +643,6 @@ const EditCourseScreen = () => {
       return;
     }
 
-    // FIX: Truyền versionId sang màn CreateLesson
     navigation.navigate("CreateLessonScreen", {
       courseId: activeCourseId,
       versionId: workingVersion.versionId,
@@ -601,7 +650,6 @@ const EditCourseScreen = () => {
     });
   };
 
-  // FIX: Chặn render khi có activeCourseId nhưng chưa load được workingVersion
   if (activeCourseId && (!workingVersion && !isNew) && isLoadingVersions) {
     return (
       <ScreenLayout>
@@ -692,6 +740,7 @@ const EditCourseScreen = () => {
   );
 };
 
+// ... (Styles cũ) ...
 const styles = createScaledSheet({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E5E7EB" },
   headerTitle: { fontSize: 16, fontWeight: "700", color: "#1F2937" },
@@ -719,6 +768,21 @@ const styles = createScaledSheet({
   textArea: { height: 80, textAlignVertical: "top" },
   row: { flexDirection: "row" },
   column: { flex: 1 },
+
+  dateBtn: {
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#D1D5DB',
+    borderRadius: 8,
+    padding: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dateText: {
+    fontSize: 14,
+    color: '#1F2937',
+  },
 
   actionLink: { color: "#4F46E5", fontWeight: "600", fontSize: 14 },
   discountCard: { backgroundColor: "#EEF2FF", padding: 10, borderRadius: 8, marginRight: 10, borderWidth: 1, borderColor: "#C7D2FE", minWidth: 100 },

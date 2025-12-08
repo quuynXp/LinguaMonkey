@@ -14,6 +14,12 @@ import ScreenLayout from '../../components/layout/ScreenLayout';
 import FileUploader from '../../components/common/FileUploader';
 import { QuestionType, VersionStatus } from '../../types/enums';
 
+// Helper để đảm bảo gửi null thay vì chuỗi rỗng cho UUID
+const sanitizeId = (id: string | undefined | null) => {
+    if (!id || id.trim() === "") return null;
+    return id;
+};
+
 const BACKEND_LESSON_TYPES = [
     "COURSE_LESSON", "FLASHCARD_SET", "FLASHCARD", "QUIZ",
     "SPEAKING", "READING", "WRITING", "VOCABULARY",
@@ -92,11 +98,12 @@ const CreateLessonScreen = () => {
     const route = useRoute<RouteProp<RootStackParamList, 'CreateLesson'>>();
     const { courseId, lessonId } = route.params || {};
 
-    // State riêng cho versionId để xử lý fallback
+    // State riêng cho versionId
     const [targetVersionId, setTargetVersionId] = useState<string | undefined>(route.params?.versionId);
 
     const user = useUserStore(state => state.user);
     const { useCreateLesson, useUpdateLesson, useLesson, useAllQuestions, useDeleteQuestion } = useLessons();
+    // Gọi useCourseVersions đúng tham số (courseId, enabled)
     const { useCourseVersions } = useCourses();
 
     const createLessonMutation = useCreateLesson();
@@ -104,13 +111,17 @@ const CreateLessonScreen = () => {
     const deleteQuestionMutation = useDeleteQuestion();
 
     const isEditMode = !!lessonId;
-    const { data: lessonData } = useLesson(lessonId || null);
-    const { data: questionsData } = useAllQuestions(lessonId ? { lessonId, size: 100 } : {});
+    const { data: lessonData } = useLesson(sanitizeId(lessonId));
 
-    // FETCH FALLBACK: Lấy version list nếu chưa có versionId
+    // FIX LOAD QUESTIONS: Đảm bảo fetch questions đúng lessonId
+    const { data: questionsData } = useAllQuestions(
+        isEditMode ? { lessonId: sanitizeId(lessonId)!, size: 100 } : {}
+    );
+
+    // Fetch versions nếu chưa có versionId
     const { data: versionsData } = useCourseVersions(courseId, !targetVersionId);
 
-    // AUTO-DETECT DRAFT: Tự động tìm Version Draft nếu params không có
+    // Auto-detect Draft Version nếu thiếu
     useEffect(() => {
         if (!targetVersionId && versionsData && versionsData.length > 0) {
             const draft = versionsData.find((v: any) => v.status === VersionStatus.DRAFT);
@@ -133,6 +144,7 @@ const CreateLessonScreen = () => {
     const [isEditingIndex, setIsEditingIndex] = useState<number | null>(null);
     const [currentQ, setCurrentQ] = useState<LocalQuestionState>(defaultQ);
 
+    // Fill data lesson info
     useEffect(() => {
         if (isEditMode && lessonData) {
             setLessonName(lessonData.title);
@@ -144,8 +156,10 @@ const CreateLessonScreen = () => {
         }
     }, [isEditMode, lessonData]);
 
+    // Fill data questions (FIX LỖI KHÔNG LOAD ĐƯỢC QUESTION)
     useEffect(() => {
-        if (isEditMode && questionsData?.data) {
+        if (isEditMode && questionsData && questionsData.data) {
+            console.log("Questions Loaded:", questionsData.data.length);
             const mapped = questionsData.data.map((q: LessonQuestionResponse) => {
                 let options = { A: '', B: '', C: '', D: '' };
                 let pairs = [{ key: '', value: '' }];
@@ -157,7 +171,9 @@ const CreateLessonScreen = () => {
                         else if (q.questionType === QuestionType.ORDERING) orderItems = Array.isArray(parsed) ? parsed : orderItems;
                         else if (q.questionType === QuestionType.MULTIPLE_CHOICE) options = { ...options, ...parsed };
                     }
-                } catch (e) { }
+                } catch (e) {
+                    console.warn("Error parsing optionsJson for question:", q.lessonQuestionId);
+                }
                 return {
                     id: q.lessonQuestionId,
                     question: q.question,
@@ -178,7 +194,7 @@ const CreateLessonScreen = () => {
 
     const handleSaveQuestion = () => {
         const finalQ = { ...currentQ };
-        if (!finalQ.question) finalQ.question = "Question Text";
+        if (!finalQ.question || finalQ.question.trim() === "") finalQ.question = "Question Text";
         if (finalQ.questionType === QuestionType.TRUE_FALSE && !['True', 'False'].includes(finalQ.correctOption)) {
             finalQ.correctOption = 'True';
         }
@@ -193,7 +209,8 @@ const CreateLessonScreen = () => {
 
     const handleDeleteQuestion = async (index: number) => {
         const q = questions[index];
-        if (isEditMode && q.id.length > 20) {
+        // Chỉ gọi API xóa nếu question ID là UUID thực (không phải temp ID tạo bằng Date.now())
+        if (isEditMode && q.id && q.id.length > 20) {
             try { await deleteQuestionMutation.mutateAsync(q.id); } catch (e) { }
         }
         setQuestions(questions.filter((_, i) => i !== index));
@@ -210,45 +227,54 @@ const CreateLessonScreen = () => {
         setIsSubmitting(true);
 
         try {
+            // FIX: Map Question Payload chuẩn định dạng Backend
             const questionsPayload = questions.map((q, i) => {
                 let optionsJson = null;
                 let finalCorrect = q.correctOption;
+
                 if (q.questionType === QuestionType.MATCHING) {
                     optionsJson = JSON.stringify(q.pairs);
-                    finalCorrect = JSON.stringify(q.pairs.reduce((acc, p) => ({ ...acc, [p.key]: p.value }), {}));
+                    // Matching correct option cũng nên là JSON
+                    try {
+                        finalCorrect = JSON.stringify(q.pairs.reduce((acc, p) => ({ ...acc, [p.key]: p.value }), {}));
+                    } catch (e) { finalCorrect = "{}"; }
                 } else if (q.questionType === QuestionType.ORDERING) {
                     optionsJson = JSON.stringify(q.orderItems);
                     finalCorrect = q.orderItems.join(" ");
                 } else if (q.questionType === QuestionType.MULTIPLE_CHOICE) {
                     optionsJson = JSON.stringify(q.options);
                 }
+
                 const strictSkill = getQuestionSkillType(q.questionType);
+
                 return {
-                    lessonId: (lessonId && lessonId.length > 5) ? lessonId : null,
+                    // Nếu là tạo mới, lessonId gửi null. Nếu sửa, gửi lessonId cũ.
+                    lessonId: (lessonId && lessonId.length > 5) ? sanitizeId(lessonId) : null,
                     question: q.question,
-                    questionType: q.questionType,
+                    questionType: q.questionType, // Enum tự động map sang string
                     skillType: strictSkill,
                     languageCode: 'vi',
                     optionsJson: optionsJson,
                     optionA: q.options.A, optionB: q.options.B, optionC: q.options.C, optionD: q.options.D,
                     correctOption: finalCorrect,
                     transcript: q.transcript,
-                    mediaUrl: q.mediaUrl || null,
+                    mediaUrl: sanitizeId(q.mediaUrl), // Null nếu rỗng
                     explainAnswer: q.explainAnswer,
-                    weight: parseInt(q.weight) || 1,
-                    orderIndex: i,
+                    weight: parseInt(q.weight) || 1, // Integer
+                    orderIndex: i, // Integer
                     isDeleted: false
                 };
             });
 
             const strictLessonSkill = getBackendSkillType(lessonType);
 
+            // FIX: Payload Lesson chuẩn
             const payload: any = {
                 lessonName: lessonName.trim(),
                 title: lessonName.trim(),
-                creatorId: user?.userId || '',
+                creatorId: sanitizeId(user?.userId),
                 description: description || '',
-                thumbnailUrl: thumbnailUrl || '',
+                thumbnailUrl: sanitizeId(thumbnailUrl),
                 lessonType: lessonType,
                 mediaUrls: mediaUrls,
                 skillType: strictLessonSkill,
@@ -261,12 +287,12 @@ const CreateLessonScreen = () => {
                 passScorePercent: 80,
                 shuffleQuestions: true,
                 allowedRetakeCount: 999,
-                courseId: courseId || '',
-                versionId: targetVersionId, // FIX: Đã đảm bảo có ID ở bước check trên
+                courseId: sanitizeId(courseId),
+                versionId: sanitizeId(targetVersionId), // UUID or Null
                 questions: questionsPayload
             };
 
-            console.log("PAYLOAD:", JSON.stringify(payload, null, 2));
+            console.log("PAYLOAD SENDING:", JSON.stringify(payload, null, 2));
 
             if (isEditMode && lessonId) {
                 await updateLessonMutation.mutateAsync({ id: lessonId, req: payload });
@@ -277,7 +303,7 @@ const CreateLessonScreen = () => {
             Alert.alert("Thành công", "Đã lưu bài học", [{ text: "OK", onPress: () => navigation.goBack() }]);
 
         } catch (e: any) {
-            console.log("ERROR:", e);
+            console.error("SAVE ERROR:", e.response?.data || e);
             const msg = e.response?.data?.message || "Lỗi lưu dữ liệu. Kiểm tra lại định dạng câu hỏi.";
             Alert.alert("Lỗi Server", JSON.stringify(msg));
         } finally {
@@ -285,6 +311,7 @@ const CreateLessonScreen = () => {
         }
     };
 
+    // ... Render Dynamic Inputs giữ nguyên ...
     const renderDynamicInputs = () => {
         const transcriptInput = (
             <View>

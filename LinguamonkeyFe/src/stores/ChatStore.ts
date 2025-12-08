@@ -580,10 +580,8 @@ import { RoomPurpose } from "../types/enums";
 import { playInAppSound } from '../utils/soundUtils';
 import { useAppStore } from './appStore';
 
-// --- CONSTANTS ---
 const AI_BOT_ID = "00000000-0000-0000-0000-000000000000";
 
-// --- TYPES ---
 type AiMessage = {
   id: string;
   role: 'user' | 'assistant';
@@ -607,11 +605,9 @@ export type UserStatus = {
 };
 
 interface UseChatState {
-  // Connection State
   stompConnected: boolean;
   aiWsConnected: boolean;
 
-  // Data State
   rooms: { [roomId: string]: Room };
   userStatuses: { [userId: string]: UserStatus };
 
@@ -626,10 +622,8 @@ interface UseChatState {
   aiChatHistory: AiMessage[];
   isAiStreaming: boolean;
 
-  // Cache for Eager Translation
   eagerTranslations: { [messageId: string]: { [lang: string]: string } };
 
-  // Services & UI State
   videoSubtitleService: VideoSubtitleService | null;
   currentVideoSubtitles: DualSubtitle | null;
   activeBubbleRoomId: string | null;
@@ -642,7 +636,6 @@ interface UseChatState {
 
   disconnectStompClient: () => void;
 
-  // Actions
   initStompClient: () => void;
   subscribeToRoom: (roomId: string) => void;
   unsubscribeFromRoom: (roomId: string) => void;
@@ -674,11 +667,9 @@ interface UseChatState {
   rejectIncomingCall: () => void;
   updateUserStatus: (userId: string, isOnline: boolean, lastActiveAt?: string) => void;
 
-  // New Action for Eager Translation
   performEagerTranslation: (messageId: string, text: string) => Promise<void>;
 }
 
-// --- HELPERS ---
 const normalizeMessage = (msg: any): Message => {
   if (!msg) {
     return {
@@ -725,7 +716,6 @@ function upsertMessage(list: Message[], rawMsg: any, eagerCallback?: (msg: Messa
   const currentUserId = useUserStore.getState().user?.userId;
   if (msg.isDeleted) return list.filter(m => m.id.chatMessageId !== msg.id.chatMessageId);
 
-  // EAGER TRANSLATION TRIGGER
   if (eagerCallback && msg.senderId !== currentUserId && msg.messageType === 'TEXT' && msg.content) {
     eagerCallback(msg);
   }
@@ -761,23 +751,26 @@ let streamTimeout: number | null = null;
 const STREAM_THROTTLE_MS = 60;
 
 export const getMessageDisplayData = (msg: any) => {
-  const { nativeLanguage } = useAppStore.getState();
+  const { nativeLanguage, chatSettings } = useAppStore.getState();
+  const autoTranslate = chatSettings?.autoTranslate ?? false;
+  const targetLang = nativeLanguage || 'en';
+
   const textContent = msg.content || msg.text || '';
 
-  // Check global store for eager translation
   const eagerStore = useChatStore.getState().eagerTranslations;
-  const eagerTrans = eagerStore[msg.id?.chatMessageId || msg.id]?.[nativeLanguage || 'en'];
+  const eagerTrans = eagerStore[msg.id?.chatMessageId || msg.id]?.[targetLang];
 
-  if (eagerTrans) {
-    return { text: eagerTrans, isTranslated: true, showToggle: true, lang: nativeLanguage };
+  if (eagerTrans && autoTranslate) {
+    return { text: eagerTrans, isTranslated: true, showToggle: true, lang: targetLang };
   }
 
   const hasEagerTranslation = !!msg.translatedText && !!msg.translatedLang;
-  const isMatchingLanguage = msg.translatedLang === nativeLanguage;
+  const isMatchingLanguage = msg.translatedLang === targetLang;
 
-  if (hasEagerTranslation && isMatchingLanguage) {
+  if (hasEagerTranslation && isMatchingLanguage && autoTranslate) {
     return { text: msg.translatedText, isTranslated: true, showToggle: true, lang: msg.translatedLang };
   }
+
   return { text: textContent, isTranslated: false, showToggle: !!eagerTrans || hasEagerTranslation, lang: 'original' };
 };
 
@@ -826,11 +819,9 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     const { nativeLanguage } = useAppStore.getState();
     const targetLang = nativeLanguage || 'vi';
 
-    // Don't translate if already exists
     if (get().eagerTranslations[messageId]?.[targetLang]) return;
 
     try {
-      // Fire and forget request
       const res = await instance.post('/api/py/translate', { text, target_lang: targetLang, source_lang: 'auto' });
       const translatedText = res.data.result.translated_text;
 
@@ -866,9 +857,11 @@ export const useChatStore = create<UseChatState>((set, get) => ({
           const currentUserId = useUserStore.getState().user?.userId;
           const state = get();
 
-          // Eager trigger
           const triggerEager = (m: Message) => {
-            get().performEagerTranslation(m.id.chatMessageId, m.content);
+            const { chatSettings } = useAppStore.getState();
+            if (chatSettings.autoTranslate) {
+              get().performEagerTranslation(m.id.chatMessageId, m.content);
+            }
           };
 
           if (roomId && senderId !== currentUserId && senderId !== AI_BOT_ID) {
@@ -880,8 +873,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         });
       } catch (e) { console.warn("Notif sub error", e); }
 
-      // ... (User Status logic unchanged) ...
-
       const pendingSubs = get().pendingSubscriptions || [];
       pendingSubs.forEach(dest => {
         try {
@@ -890,7 +881,10 @@ export const useChatStore = create<UseChatState>((set, get) => ({
             if (dest.includes('/status')) { if (rawMsg.userId) { get().updateUserStatus(rawMsg.userId, rawMsg.status === 'ONLINE', rawMsg.timestamp); } return; }
 
             const triggerEager = (m: Message) => {
-              get().performEagerTranslation(m.id.chatMessageId, m.content);
+              const { chatSettings } = useAppStore.getState();
+              if (chatSettings.autoTranslate) {
+                get().performEagerTranslation(m.id.chatMessageId, m.content);
+              }
             };
 
             set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg, triggerEager) } }));
@@ -919,7 +913,10 @@ export const useChatStore = create<UseChatState>((set, get) => ({
         if (rawMsg && !rawMsg.roomId) rawMsg.roomId = roomId;
 
         const triggerEager = (m: Message) => {
-          get().performEagerTranslation(m.id.chatMessageId, m.content);
+          const { chatSettings } = useAppStore.getState();
+          if (chatSettings.autoTranslate) {
+            get().performEagerTranslation(m.id.chatMessageId, m.content);
+          }
         };
 
         set((state) => ({ messagesByRoom: { ...state.messagesByRoom, [roomId]: upsertMessage(state.messagesByRoom[roomId] || [], rawMsg, triggerEager) } }));
@@ -936,8 +933,6 @@ export const useChatStore = create<UseChatState>((set, get) => ({
     set((s) => ({ pendingSubscriptions: Array.from(new Set([...s.pendingSubscriptions, chatDest, statusDest])) }));
     get().initStompClient();
   },
-
-  // ... (Rest of functions like unsubscribeFromRoom, initAiClient... UNCHANGED) ...
 
   unsubscribeFromRoom: (roomId: string) => {
     const chatDest = `/topic/room/${roomId}`;

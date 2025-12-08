@@ -201,6 +201,7 @@ export interface CourseVersionDiscountRequest {
     endDate?: string;
     code: string;
     isActive?: boolean;
+    isDeleted?: boolean;
 }
 
 export interface CourseVersionEnrollmentRequest {

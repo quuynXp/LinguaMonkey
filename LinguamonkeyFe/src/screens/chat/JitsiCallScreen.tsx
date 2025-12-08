@@ -8,7 +8,8 @@ import {
   Platform,
   ActivityIndicator,
   Dimensions,
-  DimensionValue // Fix type style error
+  DimensionValue,
+  Alert
 } from 'react-native';
 import {
   RTCView,
@@ -31,8 +32,7 @@ import { useVideoCalls } from '../../hooks/useVideos';
 import { VideoCallStatus } from '../../types/enums';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-// Fix Error: RTCPeerConnection types missing legacy handlers
-// We define a helper type or just cast to any in the code
+// Helper type để tránh lỗi TS với các event cũ
 type RTCPeerConnectionWithHandlers = RTCPeerConnection & {
   onicecandidate: ((event: any) => void) | null;
   ontrack: ((event: any) => void) | null;
@@ -59,6 +59,7 @@ type SubtitleData = {
 const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' }, // Thêm server backup
 ];
 
 const WebRTCCallScreen = () => {
@@ -70,11 +71,13 @@ const WebRTCCallScreen = () => {
   const { user } = useUserStore();
   const accessToken = useTokenStore.getState().accessToken;
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
-
+  const reconnectAttempts = useRef(0);
+  const maxReconnectAttempts = 5;
+  const isManuallyClosed = useRef(false);
   const { useUpdateVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
 
-  // State
+  // --- STATE ---
   const [nativeLang] = useState(defaultNativeLangCode);
   const [spokenLang] = useState('auto');
   const [subtitleMode, setSubtitleMode] = useState<'dual' | 'native' | 'original' | 'off'>('dual');
@@ -83,28 +86,26 @@ const WebRTCCallScreen = () => {
   const [isMicOn, setIsMicOn] = useState(true);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
-  // Map lưu trữ Streams của nhiều người
+  // Map streams của partner (key: userId)
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
 
-  // Refs
+  // --- REFS ---
   const ws = useRef<WebSocket | null>(null);
-  // Map lưu trữ PeerConnections
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
-  const localStreamRef = useRef<MediaStream | null>(null);
+  // 🔥 Queue lưu ICE Candidate khi PC chưa sẵn sàng (Fix lỗi disconnect phổ biến)
+  const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
 
-  // Fix Error: Type 'number' is not assignable to type 'Timeout'.
-  // Use 'any' for RN timers or ReturnType<typeof setInterval>
+  const localStreamRef = useRef<MediaStream | null>(null);
   const pingInterval = useRef<any>(null);
 
-  // Fix Error: Property 'wavFile' is missing
   const audioOptions = {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
     audioSource: Platform.OS === 'android' ? 7 : 0,
     bufferSize: 4096,
-    wavFile: 'temp.wav' // Added required property
+    wavFile: 'temp.wav'
   };
 
   useEffect(() => {
@@ -133,27 +134,33 @@ const WebRTCCallScreen = () => {
   }, []);
 
   const connectWebSocket = () => {
-    if (!roomId || !accessToken) return;
+    if (!roomId || !accessToken || isManuallyClosed.current) return;
+
+    // Clear socket cũ nếu có
+    if (ws.current) {
+      try { ws.current.close(); } catch (_) { }
+      ws.current = null;
+    }
 
     const normalizedRoomId = String(roomId).trim().toLowerCase();
     let cleanBase = API_BASE_URL.replace('http://', '').replace('https://', '').replace(/\/$/, '');
     const protocol = API_BASE_URL.includes('https') ? 'wss://' : 'ws://';
     const wsUrl = `${protocol}${cleanBase}/ws/py/live-subtitles?token=${accessToken}&roomId=${normalizedRoomId}&nativeLang=${nativeLang}&spokenLang=${spokenLang}`;
 
-    if (ws.current) {
-      try { ws.current.close(); } catch (_) { }
-    }
-
-    console.log("🔌 Connecting WS:", wsUrl);
+    console.log(`🔌 Connecting WS (Attempt ${reconnectAttempts.current + 1})...`);
     ws.current = new WebSocket(wsUrl);
 
     ws.current.onopen = () => {
       console.log("✅ Socket Open");
+      isManuallyClosed.current = false;
+      reconnectAttempts.current = 0; // Reset số lần retry khi connect thành công
+      setConnectionStatus("Connected. Waiting for others...");
       initSubtitleAudioStream();
-      setConnectionStatus("Connected. Waiting for peers...");
 
-      // Gửi tín hiệu báo mình đã vào phòng
-      sendSignalingMessage({ type: 'JOIN_ROOM' });
+      setTimeout(() => {
+        sendSignalingMessage({ type: 'JOIN_ROOM' });
+      }, 500);
+
       startPing();
     };
 
@@ -161,18 +168,16 @@ const WebRTCCallScreen = () => {
       try {
         const data = JSON.parse(e.data);
 
-        // 1. Xử lý Subtitle
         if (data.type === 'subtitle') {
           handleSubtitleMessage(data);
           return;
         }
 
-        // 2. Xử lý Signaling WebRTC
         if (data.type === 'webrtc_signal') {
           const senderId = String(data.senderId || 'unknown');
           const myId = String(user?.userId || 'me');
 
-          if (senderId === myId) return;
+          if (senderId === myId) return; // Ignore my own messages
 
           const payload = data.payload;
           await handleSignalingData(senderId, payload);
@@ -182,26 +187,48 @@ const WebRTCCallScreen = () => {
       }
     };
 
-    ws.current.onclose = () => {
+    ws.current.onerror = (e) => {
+      console.log("❌ WS Error:", e);
+    };
+
+    ws.current.onclose = (e) => {
+      if (isManuallyClosed.current) return;
+
+      console.log(`⚠️ WS Closed (Code: ${e.code}). Attempting reconnect...`);
       stopPing();
-      setConnectionStatus("Disconnected");
+
+      if (reconnectAttempts.current < maxReconnectAttempts) {
+        reconnectAttempts.current += 1;
+        setConnectionStatus(`Reconnecting (${reconnectAttempts.current}/${maxReconnectAttempts})...`);
+        setTimeout(connectWebSocket, 2000);
+      } else {
+        setConnectionStatus("Connection Lost. Please restart.");
+      }
     };
   };
 
   const handleSignalingData = async (senderId: string, payload: any) => {
     const type = payload.type;
+    console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
 
+    // CASE 1: Người mới vào phòng (JOIN_ROOM)
+    // Mình (người cũ) sẽ chủ động tạo Connection và gửi Offer cho họ
     if (type === 'JOIN_ROOM') {
-      console.log(`👋 New peer joined: ${senderId}. Creating Offer.`);
+      console.log(`👋 Partner ${senderId} joined via JOIN_ROOM`);
+      setConnectionStatus(`Partner Joined. Connecting...`);
+      // Tạo Offer ngay
       await createPeerConnection(senderId, true);
       return;
     }
 
+    // CASE 2: Nhận Offer
     if (type === 'offer') {
-      console.log(`📩 Received Offer from ${senderId}`);
       const pc = await createPeerConnection(senderId, false);
       if (pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        // Xử lý các candidate bị pending
+        await processIceQueue(senderId, pc);
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
         sendSignalingMessage({ type: 'answer', targetId: senderId }, answer);
@@ -209,25 +236,45 @@ const WebRTCCallScreen = () => {
       return;
     }
 
+    // CASE 3: Nhận Answer
     if (type === 'answer') {
-      console.log(`📩 Received Answer from ${senderId}`);
       const pc = peerConnections.current.get(senderId);
       if (pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        // Xử lý các candidate bị pending
+        await processIceQueue(senderId, pc);
       }
       return;
     }
 
+    // CASE 4: ICE Candidate
     if (type === 'ice_candidate') {
       const pc = peerConnections.current.get(senderId);
-      if (pc) {
-        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+      const candidate = new RTCIceCandidate(payload.candidate);
+
+      if (pc && pc.remoteDescription) {
+        // Nếu đã có Remote Description, add luôn
+        await pc.addIceCandidate(candidate);
+      } else {
+        // 🔥 QUAN TRỌNG: Nếu chưa có Remote Description, phải Queue lại
+        // Nếu không add lúc này sẽ bị lỗi và fail kết nối
+        console.log(`⚠️ Queuing ICE for ${senderId} (No RemoteDesc)`);
+        const queue = iceCandidatesQueue.current.get(senderId) || [];
+        queue.push(candidate);
+        iceCandidatesQueue.current.set(senderId, queue);
       }
       return;
     }
+  };
 
-    if (type === 'PING') {
-      sendSignalingMessage({ type: 'PONG' });
+  const processIceQueue = async (partnerId: string, pc: RTCPeerConnection) => {
+    const queue = iceCandidatesQueue.current.get(partnerId);
+    if (queue && queue.length > 0) {
+      console.log(`🔄 Processing ${queue.length} queued ICE candidates for ${partnerId}`);
+      for (const candidate of queue) {
+        await pc.addIceCandidate(candidate);
+      }
+      iceCandidatesQueue.current.delete(partnerId);
     }
   };
 
@@ -238,19 +285,18 @@ const WebRTCCallScreen = () => {
 
     console.log(`🛠 Creating PC for ${partnerId}`);
     const pc = new RTCPeerConnection({ iceServers });
-
-    // Fix Error: Property 'onicecandidate' does not exist...
-    // Cast to any to access legacy event handlers
-    const pcAny = pc as any;
+    const pcAny = pc as any; // Cast để dùng legacy handlers
 
     peerConnections.current.set(partnerId, pc);
 
+    // Add Local Tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
       });
     }
 
+    // --- Handlers ---
     pcAny.onicecandidate = (event: any) => {
       if (event.candidate) {
         sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
@@ -258,27 +304,39 @@ const WebRTCCallScreen = () => {
     };
 
     pcAny.ontrack = (event: any) => {
+      console.log(`🎥 ontrack triggered from ${partnerId}`);
       if (event.streams && event.streams[0]) {
-        console.log(`🎥 Received Stream from ${partnerId}`);
         setRemoteStreams(prev => {
           const newMap = new Map(prev);
           newMap.set(partnerId, event.streams[0]);
           return newMap;
         });
+        setConnectionStatus("Connected");
       }
     };
 
     pcAny.oniceconnectionstatechange = () => {
-      console.log(`❄️ ICE State with ${partnerId}: ${pc.iceConnectionState}`);
-      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+      const state = pc.iceConnectionState;
+      console.log(`❄️ ICE State (${partnerId}): ${state}`);
+      if (state === 'connected') {
+        setConnectionStatus("Connected");
+      } else if (state === 'failed' || state === 'disconnected') {
         handlePeerDisconnect(partnerId);
+        setConnectionStatus("Reconnecting...");
       }
     };
 
+    // --- Create Offer Logic ---
     if (shouldCreateOffer) {
       try {
-        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+        // Restart Ice để đảm bảo fresh connection
+        const offer = await pc.createOffer({
+          offerToReceiveAudio: true,
+          offerToReceiveVideo: true,
+          iceRestart: true
+        });
         await pc.setLocalDescription(offer);
+        console.log(`📤 Sending Offer to ${partnerId}`);
         sendSignalingMessage({ type: 'offer', targetId: partnerId }, offer);
       } catch (err) {
         console.error(`Error creating offer for ${partnerId}`, err);
@@ -289,7 +347,7 @@ const WebRTCCallScreen = () => {
   };
 
   const handlePeerDisconnect = (partnerId: string) => {
-    console.log(`❌ Peer ${partnerId} disconnected`);
+    console.log(`❌ Peer ${partnerId} disconnected cleanup`);
     const pc = peerConnections.current.get(partnerId);
     if (pc) {
       pc.close();
@@ -305,18 +363,45 @@ const WebRTCCallScreen = () => {
   const sendSignalingMessage = (meta: any, payloadData?: any) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       const message = {
-        type: 'webrtc_signal',
+        type: meta.type === 'JOIN_ROOM' ? 'JOIN_ROOM' : 'webrtc_signal',
         roomId: roomId,
         senderId: user?.userId,
-        payload: {
-          ...meta,
-          ...payloadData
-        }
+        payload: { ...meta, ...payloadData }
       };
-      ws.current.send(JSON.stringify(message));
+      if (meta.type === 'JOIN_ROOM') {
+        ws.current.send(JSON.stringify({
+          type: "JOIN_ROOM",
+          roomId: roomId,
+          senderId: user?.userId
+        }));
+      } else {
+        ws.current.send(JSON.stringify({
+          type: "webrtc_signal",
+          roomId: roomId,
+          senderId: user?.userId,
+          payload: { ...meta, ...payloadData }
+        }));
+      }
+    } else {
+      console.log("⚠️ Socket not ready, cannot send:", meta.type);
     }
   };
 
+  // Nút Retry quan trọng: Gửi lại JOIN_ROOM nếu lỡ bị miss tín hiệu
+  const handleRetryConnection = () => {
+    console.log("♻️ Retrying Handshake...");
+    setConnectionStatus("Retrying...");
+
+    // 1. Gửi lại JOIN_ROOM
+    sendSignalingMessage({ type: 'JOIN_ROOM' });
+
+    // 2. Nếu đã có PC bị lỗi, đóng đi để tạo lại
+    peerConnections.current.forEach(pc => pc.close());
+    peerConnections.current.clear();
+    setRemoteStreams(new Map());
+  };
+
+  // ... (Phần Audio Stream & UI giữ nguyên)
   const initSubtitleAudioStream = async () => {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
@@ -326,7 +411,7 @@ const WebRTCCallScreen = () => {
       LiveAudioStream.stop();
       LiveAudioStream.init(audioOptions);
       LiveAudioStream.on('data', (base64Data) => {
-        if (ws.current?.readyState === WebSocket.OPEN && isMicOn) {
+        if (ws.current?.readyState === WebSocket.OPEN && isMicOn && !isManuallyClosed.current) {
           ws.current.send(JSON.stringify({ audio_chunk: base64Data }));
         }
       });
@@ -361,16 +446,32 @@ const WebRTCCallScreen = () => {
     }
   };
 
-  const cleanupCall = () => {
+  const cleanupCall = useCallback(() => {
+    console.log("🧹 Cleaning up call...");
+    isManuallyClosed.current = true;
+
     stopPing();
-    LiveAudioStream.stop();
-    localStreamRef.current?.getTracks().forEach(track => track.stop());
+
+    try {
+      LiveAudioStream.stop();
+      LiveAudioStream.on('data', () => { });
+    } catch (e) { console.warn("Stop stream error", e); }
+
+    localStreamRef.current?.getTracks().forEach(track => {
+      track.stop();
+      track.enabled = false;
+    });
+    setLocalStream(null);
 
     peerConnections.current.forEach(pc => pc.close());
     peerConnections.current.clear();
+    setRemoteStreams(new Map());
 
-    try { ws.current?.close(); } catch (_) { }
-  };
+    if (ws.current) {
+      ws.current.close(1000, "User ended call");
+      ws.current = null;
+    }
+  }, []);
 
   const getMediaStream = async () => {
     if (Platform.OS === 'android') {
@@ -391,13 +492,20 @@ const WebRTCCallScreen = () => {
   };
 
   const handleCallEnd = () => {
+    cleanupCall();
+
     if (videoCallId && user?.userId) {
       updateCallStatus({ id: videoCallId, payload: { callerId: user.userId, status: VideoCallStatus.ENDED } });
     }
     navigation.goBack();
   };
 
-  // --- RENDER UI (GRID) ---
+  useEffect(() => {
+    return () => {
+      cleanupCall();
+    }
+  }, [cleanupCall]);
+
   const renderRemoteVideos = () => {
     const streams = Array.from(remoteStreams.values());
     const count = streams.length;
@@ -407,18 +515,18 @@ const WebRTCCallScreen = () => {
         <View style={styles.remoteVideoPlaceholder}>
           <ActivityIndicator size="large" color="#4f46e5" />
           <Text style={styles.statusText}>{connectionStatus}</Text>
-          {mode === 'RANDOM' && <Text style={{ color: '#9ca3af', marginTop: 10 }}>Finding someone to practice with...</Text>}
+          <TouchableOpacity style={styles.retryButton} onPress={handleRetryConnection}>
+            <Text style={styles.retryText}>Thử lại / Kết nối lại</Text>
+          </TouchableOpacity>
         </View>
       );
     }
 
-    // Fix Error: Type 'string' is not assignable to type 'DimensionValue'.
-    // Explicitly type these variables
     let width: DimensionValue = '100%';
     let height: DimensionValue = '100%';
 
     if (count === 1) {
-      // 1-1: Full screen
+      // 1-1
     } else if (count === 2) {
       height = '50%';
     } else if (count <= 4) {
@@ -442,7 +550,6 @@ const WebRTCCallScreen = () => {
       <View style={styles.container}>
         {renderRemoteVideos()}
 
-        {/* Local Video (PiP) */}
         {localStream && (
           <View style={styles.localVideoContainer}>
             <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit="cover" zOrder={1} />
@@ -499,6 +606,8 @@ const styles = createScaledSheet({
   gridContainer: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   remoteVideoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827', gap: 20 },
   statusText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
+  retryButton: { padding: 12, backgroundColor: '#374151', borderRadius: 8, marginTop: 20 },
+  retryText: { color: '#fbbf24', fontWeight: 'bold', fontSize: 16 },
   localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
   localVideo: { flex: 1 },
   endCallButton: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },

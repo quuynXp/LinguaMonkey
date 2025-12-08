@@ -1,5 +1,5 @@
-import React, { useEffect, useCallback, useState, useMemo } from "react";
-import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, TextInput, KeyboardAvoidingView, Platform, Switch, ScrollView } from "react-native";
+import React, { useEffect, useState, useMemo } from "react";
+import { View, TouchableOpacity, Modal, Text, FlatList, Image, Alert, StyleSheet, Switch, ScrollView } from "react-native";
 import { useRoute, RouteProp, useNavigation } from "@react-navigation/native";
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
@@ -112,8 +112,6 @@ const GroupChatScreen = () => {
     const renderActiveDot = (userId: string | undefined, size = 10) => {
         if (!userId) return null;
         const realtimeStatus = userStatuses[userId];
-
-        // Priority: Realtime Socket -> Initial Room Info -> Member Info
         const isOnline = realtimeStatus?.isOnline ??
             (isPrivateRoom && userId === targetMember?.userId ? roomInfo?.partnerIsOnline : false);
 
@@ -188,28 +186,19 @@ const GroupChatScreen = () => {
         if (isPrivateRoom && targetMember) {
             const userId = targetMember.userId;
             const realtimeStatus = userStatuses[userId];
-
-            // 1. Check Realtime Online
             if (realtimeStatus?.isOnline) return t('chat.active_now');
-
-            // 2. Check Static/Initial Online (from RoomInfo)
             if (!realtimeStatus && roomInfo?.partnerIsOnline) return t('chat.active_now');
-
-            // 3. Calculate Last Active (Realtime -> RoomInfo -> MemberInfo)
             const lastActive = realtimeStatus?.lastActiveAt || roomInfo?.partnerLastActiveText;
-
             if (lastActive) {
                 const diff = Date.now() - new Date(lastActive).getTime();
                 const minutes = Math.floor(diff / 60000);
-                if (minutes < 1) return t('chat.active_now'); // Just went offline
+                if (minutes < 1) return t('chat.active_now');
                 if (minutes < 60) return `${t('chat.active')} ${minutes}m ${t('chat.ago')}`;
                 const hours = Math.floor(minutes / 60);
                 if (hours < 24) return `${t('chat.active')} ${hours}h ${t('chat.ago')}`;
-                // Return text from roomInfo if available (e.g. "Active 2 days ago")
                 if (roomInfo?.partnerLastActiveText) return roomInfo.partnerLastActiveText;
                 return t('chat.offline');
             }
-
             return roomInfo?.partnerLastActiveText || t('chat.offline');
         }
         return `${members?.length || 0} ${t('chat.members')}`;
@@ -246,10 +235,9 @@ const GroupChatScreen = () => {
                 <ChatInnerView
                     roomId={roomId}
                     isBubbleMode={false}
-                    autoTranslate={chatSettings.autoTranslate}
                     soundEnabled={notificationPreferences.soundEnabled}
                     initialFocusMessageId={initialFocusMessageId}
-                    members={members} // 🎯 FIX: Pass members to ChatInnerView
+                    members={members}
                 />
             </View>
 
