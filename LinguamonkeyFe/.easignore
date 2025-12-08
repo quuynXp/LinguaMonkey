@@ -10,6 +10,7 @@ build
 .tmp
 temp
 
+/android
 
 # Android build files
 android/app/build
