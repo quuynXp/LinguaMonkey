@@ -17,10 +17,8 @@ import java.util.UUID;
 public class LessonQuestionRequest {
     private UUID lessonId;
 
-    @NotNull(message = "Question content is required")
     private String question;
     
-    @NotNull(message = "Question Type is required (CHECK ENUM UPPERCASE)")
     private QuestionType questionType; 
 
     private SkillType skillType;

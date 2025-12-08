@@ -504,6 +504,7 @@ export interface LessonRequest {
     creatorId: string;
     orderIndex: number;
     courseId: string;
+    versionId: string;
     description?: string;
     isFree?: boolean;
     lessonType?: Enums.LessonType;

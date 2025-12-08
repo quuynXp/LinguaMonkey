@@ -26,6 +26,7 @@ public class CourseVersionDiscountRequest {
 
     private OffsetDateTime startDate;
     private OffsetDateTime endDate;
+    @NotBlank(message = "Discount code is required")
     private String code;
     private boolean isActive = true;
     private boolean isDeleted = false;

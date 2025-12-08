@@ -302,13 +302,9 @@ public class CourseServiceImpl implements CourseService {
             }
         }
 
-        // --- UPDATED LOGIC: AUTO-VALIDATE ---
-        // Thay vì set NULL, chúng ta check luôn điều kiện.
-        // Nếu đủ điều kiện thì set TRUE để cho phép Publish.
         boolean isValid = true;
         
-        // Validation logic tương đương hàm Publish
-        if (version.getDescription() == null || version.getDescription().length() < 20) isValid = false;
+        if (version.getDescription() == null ) isValid = false;
         if (version.getThumbnailUrl() == null || version.getThumbnailUrl().isBlank()) isValid = false;
         if (version.getLessons() == null || version.getLessons().isEmpty()) isValid = false;
         if (version.getPrice() != null && version.getPrice().compareTo(BigDecimal.ZERO) < 0) isValid = false;

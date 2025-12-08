@@ -31,6 +31,8 @@ public class LessonRequest {
 
     private UUID courseId;
 
+    private UUID versionId; 
+
     private UUID lessonSeriesId;
 
     private List<String> mediaUrls;

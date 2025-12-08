@@ -69,7 +69,8 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "🔧 Start signed local EAS build..."
-          eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
+          # Thêm cờ --skip-credentials-check để buộc sử dụng Keystore cục bộ
+          eas build --platform android --profile production --local --non-interactive --output ./app-release.apk --skip-credentials-check
 
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
