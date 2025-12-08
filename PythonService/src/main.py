@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 from fastapi import (
-    FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query, BackgroundTasks
+    FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Depends, status, APIRouter, Query
 )
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
@@ -21,6 +21,7 @@ from cryptography.hazmat.backends import default_backend
 from dotenv import load_dotenv, find_dotenv
 from redis.asyncio import Redis
 
+# --- import dự án (giữ nguyên các import nội bộ của bạn) ---
 from src.core.session import get_db, AsyncSessionLocal
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.core.cache import get_redis_client, close_redis_client
@@ -31,14 +32,12 @@ from src.api.speech_to_text import speech_to_text
 from src.api.tts_generator import generate_tts
 from src.core.java_persistence_client import send_chat_to_java_via_grpc
 from src.core.translator import get_translator
-# Import Task
 from src.worker.tasks import ingest_huggingface_task
 
 load_dotenv(find_dotenv())
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# UUID cố định cho AI Bot (đã insert vào DB ở bước trước)
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
 
 security = HTTPBearer()
@@ -72,23 +71,25 @@ class ChatRequest(BaseModel):
 class ConnectionManager:
     def __init__(self):
         self.active_connections = defaultdict(list)
-    
+
     async def connect(self, websocket: WebSocket, room_id: str):
         await websocket.accept()
         self.active_connections[room_id].append(websocket)
+        logger.info(f"WS connect -> room={room_id} total={len(self.active_connections[room_id])}")
 
     def disconnect(self, websocket: WebSocket, room_id: str):
         if room_id in self.active_connections:
             if websocket in self.active_connections[room_id]:
                 self.active_connections[room_id].remove(websocket)
+                logger.info(f"WS disconnect -> room={room_id} remaining={len(self.active_connections.get(room_id, []))}")
                 if not self.active_connections[room_id]:
                     del self.active_connections[room_id]
-    
+
     async def broadcast(self, message: dict, room_id: str):
         if room_id in self.active_connections:
             data = json.dumps(message)
-            for conn in self.active_connections[room_id]:
-                try: 
+            for conn in list(self.active_connections[room_id]):
+                try:
                     await conn.send_text(data)
                 except Exception as e:
                     logger.error(f"Broadcast error: {e}")
@@ -96,44 +97,46 @@ class ConnectionManager:
     async def broadcast_json(self, message: dict, room_id: str):
         await self.broadcast(message, room_id)
 
+    async def broadcast_except(self, message: dict, room_id: str, exclude_ws: WebSocket):
+        if room_id in self.active_connections:
+            data = json.dumps(message)
+            for conn in list(self.active_connections[room_id]):
+                if conn is exclude_ws:
+                    continue
+                try:
+                    await conn.send_text(data)
+                except Exception as e:
+                    logger.error(f"Broadcast except error: {e}")
+
 manager = ConnectionManager()
 audio_buffers = defaultdict(list)
 
-# --- LIFESPAN EVENT: AUTO TRIGGER INGESTION ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 1. Startup
     await get_redis_client()
     logger.info("Redis client initialized.")
-    
-    # Trigger task nạp dữ liệu Hugging Face ngay khi Server chạy
     logger.info("🚀 Triggering Auto-Ingest Task...")
     try:
         ingest_huggingface_task.delay()
         logger.info("✅ Auto-Ingest Task sent to Worker.")
     except Exception as e:
         logger.error(f"❌ Failed to trigger Auto-Ingest: {e}")
-
     yield
-    
-    # 2. Shutdown
     await close_redis_client()
     logger.info("Redis client closed.")
 
 app = FastAPI(lifespan=lifespan)
 
-# --- AUTH HELPER (HTTP) ---
 async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     try:
         token = credentials.credentials
         if not PUBLIC_KEY:
             return jwt.decode(token, options={"verify_signature": False})
-        
         return jwt.decode(
-            token, 
-            PUBLIC_KEY, 
+            token,
+            PUBLIC_KEY,
             algorithms=["RS256"],
-            issuer="LinguaMonkey.com", 
+            issuer="LinguaMonkey.com",
             options={"verify_exp": True, "verify_aud": False}
         )
     except jwt.ExpiredSignatureError:
@@ -142,12 +145,10 @@ async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(secur
         logger.error(f"Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# --- AUTH HELPER (WEBSOCKET) ---
 async def validate_websocket_token(websocket: WebSocket, token: str) -> str:
     if not token:
         logger.warning("WS Auth: Token missing")
         return None
-        
     try:
         key = PUBLIC_KEY if PUBLIC_KEY else ""
         options = {"verify_signature": False} if PUBLIC_KEY is None else {
@@ -155,22 +156,18 @@ async def validate_websocket_token(websocket: WebSocket, token: str) -> str:
             "verify_aud": False,
             "verify_iss": True
         }
-        
         decoded_token = jwt.decode(
-            token, 
-            key, 
-            algorithms=["RS256"], 
-            issuer="LinguaMonkey.com", 
+            token,
+            key,
+            algorithms=["RS256"],
+            issuer="LinguaMonkey.com",
             options=options
         )
-        
         user_id = decoded_token.get("sub")
         if not user_id:
             logger.warning("WS Auth: No 'sub' claim in token")
             return None
-            
         return user_id
-        
     except jwt.ExpiredSignatureError:
         logger.warning("WS Auth: Token expired")
         return None
@@ -178,10 +175,7 @@ async def validate_websocket_token(websocket: WebSocket, token: str) -> str:
         logger.warning(f"WS Auth failed: {e}")
         return None
 
-# ==============================================================================
-# INTERNAL ENDPOINTS
-# ==============================================================================
-@internal_router.post("/invalidate-cache") 
+@internal_router.post("/invalidate-cache")
 async def invalidate_user_cache(
     request: CacheInvalidationRequest,
     redis: Redis = Depends(get_redis_client)
@@ -209,12 +203,9 @@ async def check_redis_key(lang: str, text: str, redis: Redis = Depends(get_redis
         "value": value
     }
 
-# ==============================================================================
-# PROTECTED API
-# ==============================================================================
 @protected_router.post("/translate")
 async def translate(
-    request: TranslationRequest, 
+    request: TranslationRequest,
     user: dict = Depends(verify_token),
     redis: Redis = Depends(get_redis_client)
 ):
@@ -225,7 +216,7 @@ async def translate(
         )
         return {
             "code": 200,
-            "result": { 
+            "result": {
                 "translated_text": translated_text,
                 "detected_lang": detected_lang
             },
@@ -237,8 +228,8 @@ async def translate(
 
 @protected_router.post("/chat-ai")
 async def chat(
-    request: ChatRequest, 
-    user: dict = Depends(verify_token), 
+    request: ChatRequest,
+    user: dict = Depends(verify_token),
     db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis_client)
 ):
@@ -265,9 +256,6 @@ async def text_to_speech_endpoint(
         "audio_base64": base64.b64encode(audio_bytes).decode('utf-8')
     }
 
-# ==============================================================================
-# WEBSOCKETS
-# ==============================================================================
 @app.websocket("/voice")
 async def voice_stream(websocket: WebSocket, token: str = Query(...)):
     await websocket.accept()
@@ -275,7 +263,6 @@ async def voice_stream(websocket: WebSocket, token: str = Query(...)):
     if not user_id:
         await websocket.close(code=1008, reason="Unauthorized")
         return
-
     try:
         while True:
             data = await websocket.receive_text()
@@ -302,33 +289,27 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
         return
 
     logger.info(f"✅ User {user_id_str} connected to AI Chat")
-    
+
     db_session = AsyncSessionLocal()
     redis = await get_redis_client()
-    
+
     try:
         user_profile = await get_user_profile(user_id_str, db_session, redis)
-        
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
-            
             if msg.get("type") == "chat_request":
                 raw_prompt = msg.get("prompt", "")
                 history = msg.get("history", [])
                 room_id_str = msg.get("roomId")
-                
                 if not room_id_str or not raw_prompt:
                     continue
-                
                 try:
                     room_uuid = uuid.UUID(room_id_str)
                     user_uuid = uuid.UUID(user_id_str)
                 except ValueError:
                     logger.error(f"Invalid UUID format")
                     continue
-
-                # 1. Save User Message (Python DB)
                 try:
                     user_msg_db = ChatMessage(
                         chat_message_id=uuid.uuid4(),
@@ -343,11 +324,6 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                 except Exception as e:
                     logger.error(f"Failed to save user message: {e}")
                     await db_session.rollback()
-
-                # DISABLE DUPLICATE GRPC CALL
-                # asyncio.create_task(send_chat_to_java_via_grpc({...}))
-
-                # 2. Stream AI Response
                 full_ai_response = ""
                 async for chunk in chat_with_ai_stream(raw_prompt, history, user_profile):
                     full_ai_response += chunk
@@ -356,10 +332,7 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                         "content": chunk,
                         "roomId": room_id_str
                     }))
-                
                 await websocket.send_text(json.dumps({"type": "chat_response_complete", "roomId": room_id_str}))
-                
-                # 3. Save AI Message (Python DB Only)
                 if full_ai_response.strip():
                     try:
                         ai_msg_db = ChatMessage(
@@ -375,10 +348,6 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
                     except Exception as e:
                         logger.error(f"Failed to save AI message: {e}")
                         await db_session.rollback()
-
-                    # DISABLE DUPLICATE GRPC CALL
-                    # asyncio.create_task(send_chat_to_java_via_grpc({...}))
-
     except WebSocketDisconnect:
         logger.info(f"User {user_id_str} disconnected form Chat AI")
     except Exception as e:
@@ -388,50 +357,44 @@ async def chat_stream(websocket: WebSocket, token: str = Query(...)):
 
 @app.websocket("/live-subtitles")
 async def live_subtitles(
-    websocket: WebSocket, 
-    token: str = Query(...), 
-    roomId: str = Query(...), 
+    websocket: WebSocket,
+    token: str = Query(...),
+    roomId: str = Query(...),
     nativeLang: str = Query("vi"),
     spokenLang: str = Query("en")
 ):
-    # --- FIX: STRICT ROOM ID NORMALIZATION ---
-    # Python dictionary keys are case-sensitive. 
-    # UUIDs from Java/DB might be uppercase, React might send lowercase.
-    # We enforce lowercase string to ensure they meet in the same list.
     normalized_room_id = str(roomId).strip().lower()
-
     user_id = await validate_websocket_token(websocket, token)
     if not user_id:
         await websocket.close(code=1008, reason="Unauthorized")
         return
 
-    # Use normalized ID for connection manager
     await manager.connect(websocket, normalized_room_id)
-    
     redis = await get_redis_client()
     translator = get_translator(redis)
     buffer_key = f"{normalized_room_id}_{user_id}"
-    
+
     try:
         while True:
             data = await websocket.receive_text()
             msg = json.loads(data)
             
-            # --- SIGNALING BRIDGE ---
+            # WebRTC Signaling Relay
             if msg.get("type") == "webrtc_signal":
-                # Ensure roomId in payload matches connection key logic if needed, 
-                # but broadcast goes to active_connections[normalized_room_id]
-                await manager.broadcast_json(msg, normalized_room_id)
+                msg["senderId"] = user_id
+                # Log minimal info
+                payload_type = msg.get('payload', {}).get('type', 'unknown')
+                logger.info(f"Signal Relayed: {payload_type} from {user_id} in {normalized_room_id}")
+                await manager.broadcast_except(msg, normalized_room_id, websocket)
                 continue
-                
-            # --- SUBTITLES LOGIC ---
-            original_text = ""
+
+            # Subtitle Logic
             if "audio_chunk" in msg and msg["audio_chunk"]:
                 chunk = base64.b64decode(msg["audio_chunk"])
                 audio_buffers[buffer_key].append(chunk)
-                full_audio = b"".join(audio_buffers[buffer_key]) 
-                
+                full_audio = b"".join(audio_buffers[buffer_key])
                 stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, full_audio, spokenLang)
+                
                 if stt_text and len(stt_text.strip()) > 1:
                     translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
                     await manager.broadcast_json({
@@ -442,20 +405,17 @@ async def live_subtitles(
                         "translatedLang": nativeLang,
                         "senderId": user_id
                     }, normalized_room_id)
+                    audio_buffers[buffer_key] = [] # Clear buffer after successful process
+                    
             elif "text" in msg:
-                original_text = msg["text"]
-            
-            if original_text:
-                translated, err = await translator.translate(original_text, spokenLang, nativeLang)
+                translated, _ = await translator.translate(msg["text"], spokenLang, nativeLang)
                 await manager.broadcast({
                     "type": "subtitle",
                     "senderId": user_id,
-                    "original": original_text,
-                    "originalLang": spokenLang,
+                    "original": msg["text"],
                     "translated": translated,
-                    "translatedLang": nativeLang,
-                    "timestamp": datetime.now().isoformat()
                 }, normalized_room_id)
+                
     except WebSocketDisconnect:
         manager.disconnect(websocket, normalized_room_id)
         if buffer_key in audio_buffers: del audio_buffers[buffer_key]
@@ -467,5 +427,5 @@ app.include_router(protected_router, tags=["Protected API"])
 app.include_router(internal_router, tags=["Internal API"])
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8001)) 
+    port = int(os.environ.get("PORT", 8001))
     uvicorn.run(app, host="0.0.0.0", port=port, proxy_headers=True, forwarded_allow_ips="*")

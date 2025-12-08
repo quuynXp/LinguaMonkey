@@ -2,6 +2,9 @@
     "anErrorOccurred": "An Error Occurred",
     "useOtpInstead": "Use OTP",
     "usePasswordInstead": "Use password instead",
+    "partner": "partner",
+    "you" : "You",
+    "subtitle_mode": "Subtitle mode",
     "error": {
         "generic_internal": "Loading error",
         "general": "Error",

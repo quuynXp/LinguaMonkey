@@ -20,11 +20,6 @@ const ChatScreen = ({ navigation }: { navigation: any }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current
   const slideAnim = useRef(new Animated.Value(30)).current
 
-  // LOẠI BỎ LOGIC KẾT NỐI STOMP TẠI ĐÂY
-  // const initStompClient = useChatStore((state) => state.initStompClient);
-  // const disconnectStomp = useChatStore((state) => state.disconnectStomp);
-  // useFocusEffect(useCallback(() => { ... }, [...]));
-
   const { data: stats, isLoading: isLoadingStats } = useQuery<ExtendedChatStatsResponse>({
     queryKey: ['chatStats', user?.userId],
     queryFn: async () => {

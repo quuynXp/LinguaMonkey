@@ -44,6 +44,7 @@ jobs:
           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
+
       - name: 🔐 Install EAS CLI
         run: npm install -g eas-cli
 
@@ -53,6 +54,7 @@ jobs:
       - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
+
       - name: ⚙️ Build signed APK locally
         env:
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
@@ -63,16 +65,16 @@ jobs:
         run: |
           echo "🔧 Start signed local EAS build..."
           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
+
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
-          
-      # - name: 🚀 Submit to Google Play
-      #   env:
-      #     EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
-      #     GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-      #   run: |
-      #     echo "📤 Submitting local APK to Google Play..."
-      #     eas submit -p android --path ./app-release.apk --non-interactive
+
+      - name: 🧹 Clean up disk space
+        if: always()
+        run: |
+          echo "✨ Cleaning up disk space..."
+          rm -rf ~/.gradle/caches/
+          npm cache clean --force
