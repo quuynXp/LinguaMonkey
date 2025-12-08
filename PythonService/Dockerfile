@@ -48,16 +48,19 @@ RUN mkdir -p src/grpc_generated && \
 
 RUN sed -i 's/^import learning_service_pb2/from . import learning_service_pb2/' src/grpc_generated/learning_service_pb2_grpc.py
 
+# ----------------------------------------------------------------------
+# ⚠️ SỬA LỖI: CẬP NHẬT TÊN FILE gRPC VÀ LỆNH CHẠY TRONG SCRIPT
+# ----------------------------------------------------------------------
 RUN printf '#!/bin/bash\n\
 set -e\n\
 \n\
 echo "Starting Python Service..."\n\
 \n\
-if [ -f "src/grpc_server.py" ]; then\n\
-    echo "Found gRPC server file, starting..."\n\
-    python -m src.grpc_server &\n\
+if [ -f "src/learning_service.py" ]; then\n\
+    echo "✅ Found gRPC server file, starting..."\n\
+    python -m src.learning_service &\n\
 else\n\
-    echo "WARNING: gRPC server file not found. Skipping gRPC start."\n\
+    echo "⚠️ WARNING: src/learning_service.py not found. Skipping gRPC start."\n\
 fi\n\
 \n\
 echo "Starting FastAPI Server on port $PORT..."\n\
@@ -65,6 +68,10 @@ exec python -m src.main\n\
 ' > start_services.sh
 
 RUN chmod +x start_services.sh
+
+# Thêm biến môi trường tối ưu hóa bộ nhớ
+ENV MALLOC_ARENA_MAX=2
+ENV PYTHONUNBUFFERED=1
 
 EXPOSE 10000
 EXPOSE 50051

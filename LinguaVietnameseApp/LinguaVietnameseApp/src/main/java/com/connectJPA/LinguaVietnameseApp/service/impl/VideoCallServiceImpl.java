@@ -30,7 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -146,19 +148,25 @@ public class VideoCallServiceImpl implements VideoCallService {
 
         VideoCallResponse response = videoCallMapper.toResponse(videoCall);
         
-        messagingTemplate.convertAndSend("/topic/room/" + roomSaved.getRoomId(), 
-            wrapWithMessageType(response, "VIDEO_CALL"));
+        Map<String, Object> socketPayload = new HashMap<>();
+        socketPayload.put("type", "INCOMING_CALL");
+        socketPayload.put("roomId", roomSaved.getRoomId().toString());
+        socketPayload.put("videoCallId", videoCall.getVideoCallId());
+        socketPayload.put("callerId", callerId);
+        socketPayload.put("roomName", "Group Call");
+
+        messagingTemplate.convertAndSend("/topic/room/" + roomSaved.getRoomId(), socketPayload);
 
         for (UUID userId : participantIds) {
             if (!userId.equals(callerId)) {
                 try {
                     messagingTemplate.convertAndSendToUser(
-                        userId.toString(), 
-                        "/queue/notifications", 
-                        wrapWithMessageType(response, "VIDEO_CALL")
+                        userId.toString(),
+                        "/queue/notifications",
+                        socketPayload
                     );
                 } catch (Exception e) {
-                    log.warn("Failed to send socket notification to user {}", userId);
+                    log.warn("Failed to notify user {}", userId);
                 }
             }
         }

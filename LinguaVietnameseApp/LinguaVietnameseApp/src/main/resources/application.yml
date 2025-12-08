@@ -12,7 +12,6 @@ spring:
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
-      # ddl-auto: ${SPRING_JPA_HIBERNATE_DDL_AUTO}
       ddl-auto: update
     show-sql: true
     properties:

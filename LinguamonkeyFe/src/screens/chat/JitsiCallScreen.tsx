@@ -1,6 +1,23 @@
 import React, { useEffect, useState, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Modal, PermissionsAndroid, Platform, ActivityIndicator } from 'react-native';
-import { RTCView, RTCIceCandidate, RTCSessionDescription, mediaDevices, RTCPeerConnection, MediaStream } from 'react-native-webrtc';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Modal,
+  PermissionsAndroid,
+  Platform,
+  ActivityIndicator,
+  Dimensions,
+  DimensionValue // Fix type style error
+} from 'react-native';
+import {
+  RTCView,
+  RTCIceCandidate,
+  RTCSessionDescription,
+  mediaDevices,
+  RTCPeerConnection,
+  MediaStream
+} from 'react-native-webrtc';
 import { useTranslation } from 'react-i18next';
 import { useRoute, RouteProp, useNavigation } from '@react-navigation/native';
 import { useAppStore } from '../../stores/appStore';
@@ -14,10 +31,20 @@ import { useVideoCalls } from '../../hooks/useVideos';
 import { VideoCallStatus } from '../../types/enums';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
+// Fix Error: RTCPeerConnection types missing legacy handlers
+// We define a helper type or just cast to any in the code
+type RTCPeerConnectionWithHandlers = RTCPeerConnection & {
+  onicecandidate: ((event: any) => void) | null;
+  ontrack: ((event: any) => void) | null;
+  oniceconnectionstatechange: ((event: any) => void) | null;
+};
+
 type WebRTCParams = {
   WebRTCCall: {
     roomId: string;
     videoCallId: string;
+    isCaller?: boolean;
+    mode?: 'RANDOM' | 'GROUP';
   };
 };
 
@@ -38,17 +65,16 @@ const WebRTCCallScreen = () => {
   const { t } = useTranslation();
   const route = useRoute<RouteProp<WebRTCParams, 'WebRTCCall'>>();
   const navigation = useNavigation();
-  const { roomId, videoCallId } = route.params;
+  const { roomId, videoCallId, isCaller, mode = 'RANDOM' } = route.params;
 
   const { user } = useUserStore();
   const accessToken = useTokenStore.getState().accessToken;
   const defaultNativeLangCode = useAppStore.getState().nativeLanguage || 'vi';
 
-  const { useUpdateVideoCall, useVideoCall } = useVideoCalls();
+  const { useUpdateVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { data: videoCallData } = useVideoCall(videoCallId);
 
+  // State
   const [nativeLang] = useState(defaultNativeLangCode);
   const [spokenLang] = useState('auto');
   const [subtitleMode, setSubtitleMode] = useState<'dual' | 'native' | 'original' | 'off'>('dual');
@@ -56,28 +82,29 @@ const WebRTCCallScreen = () => {
   const [subtitle, setSubtitle] = useState<SubtitleData | null>(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+
+  // Map lưu trữ Streams của nhiều người
+  const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
 
+  // Refs
   const ws = useRef<WebSocket | null>(null);
-  const pc = useRef<RTCPeerConnection | null>(null);
+  // Map lưu trữ PeerConnections
+  const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
   const localStreamRef = useRef<MediaStream | null>(null);
-  const pingInterval = useRef<NodeJS.Timeout | null>(null);
 
-  const pendingSignalingQueue = useRef<any[]>([]);
-  const isPCReady = useRef<boolean>(false);
-  const isOfferCreated = useRef<boolean>(false);
-  const partnerReady = useRef<boolean>(false);
+  // Fix Error: Type 'number' is not assignable to type 'Timeout'.
+  // Use 'any' for RN timers or ReturnType<typeof setInterval>
+  const pingInterval = useRef<any>(null);
 
-  // --- TỐI ƯU AUDIO OPTIONS ---
-  // Sử dụng audioSource 7 (VOICE_COMMUNICATION) cho Android để bật khử vọng (AEC)
-  // bufferSize nhỏ (2048/4096) giúp giảm độ trễ
+  // Fix Error: Property 'wavFile' is missing
   const audioOptions = {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: Platform.OS === 'android' ? 7 : 0, // 7 = VOICE_COMMUNICATION (Android), 0 = Default (iOS)
+    audioSource: Platform.OS === 'android' ? 7 : 0,
     bufferSize: 4096,
+    wavFile: 'temp.wav' // Added required property
   };
 
   useEffect(() => {
@@ -90,10 +117,7 @@ const WebRTCCallScreen = () => {
       if (isMounted && stream) {
         setLocalStream(stream);
         localStreamRef.current = stream;
-        setupPeerConnection(stream);
-        isPCReady.current = true;
-        await processPendingSignals();
-        tryStartPingWhenReady();
+        connectWebSocket();
       } else {
         setConnectionStatus("Camera Error");
       }
@@ -108,7 +132,7 @@ const WebRTCCallScreen = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
+  const connectWebSocket = () => {
     if (!roomId || !accessToken) return;
 
     const normalizedRoomId = String(roomId).trim().toLowerCase();
@@ -125,20 +149,25 @@ const WebRTCCallScreen = () => {
 
     ws.current.onopen = () => {
       console.log("✅ Socket Open");
-      setConnectionStatus("Looking for Partner...");
       initSubtitleAudioStream();
-      tryStartPingWhenReady();
+      setConnectionStatus("Connected. Waiting for peers...");
+
+      // Gửi tín hiệu báo mình đã vào phòng
+      sendSignalingMessage({ type: 'JOIN_ROOM' });
+      startPing();
     };
 
-    ws.current.onmessage = (e) => {
+    ws.current.onmessage = async (e) => {
       try {
         const data = JSON.parse(e.data);
 
+        // 1. Xử lý Subtitle
         if (data.type === 'subtitle') {
           handleSubtitleMessage(data);
           return;
         }
 
+        // 2. Xử lý Signaling WebRTC
         if (data.type === 'webrtc_signal') {
           const senderId = String(data.senderId || 'unknown');
           const myId = String(user?.userId || 'me');
@@ -146,23 +175,7 @@ const WebRTCCallScreen = () => {
           if (senderId === myId) return;
 
           const payload = data.payload;
-
-          if (payload?.type === 'PING') {
-            partnerReady.current = true;
-            setConnectionStatus("Partner Found");
-            sendSignalingMessage({ type: 'PONG' });
-            decideAndMaybeCreateOffer(senderId);
-            return;
-          }
-
-          if (payload?.type === 'PONG') {
-            partnerReady.current = true;
-            setConnectionStatus("Partner Found");
-            decideAndMaybeCreateOffer(senderId);
-            return;
-          }
-
-          handleSignaling(payload);
+          await handleSignalingData(senderId, payload);
         }
       } catch (err) {
         console.error("WS Message Error", err);
@@ -173,184 +186,134 @@ const WebRTCCallScreen = () => {
       stopPing();
       setConnectionStatus("Disconnected");
     };
+  };
 
-    return () => {
-      LiveAudioStream.stop();
-      try { ws.current?.close(); } catch (_) { }
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, accessToken, nativeLang, spokenLang, user?.userId]);
+  const handleSignalingData = async (senderId: string, payload: any) => {
+    const type = payload.type;
 
-  // Quản lý trạng thái Mic bật/tắt để gửi/dừng gửi Audio Stream
-  useEffect(() => {
-    if (isMicOn) {
-      LiveAudioStream.start();
-    } else {
-      LiveAudioStream.stop();
+    if (type === 'JOIN_ROOM') {
+      console.log(`👋 New peer joined: ${senderId}. Creating Offer.`);
+      await createPeerConnection(senderId, true);
+      return;
     }
-  }, [isMicOn]);
 
-  const tryStartPingWhenReady = () => {
-    if (ws.current && ws.current.readyState === WebSocket.OPEN && isPCReady.current) {
-      startPing();
+    if (type === 'offer') {
+      console.log(`📩 Received Offer from ${senderId}`);
+      const pc = await createPeerConnection(senderId, false);
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(payload));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        sendSignalingMessage({ type: 'answer', targetId: senderId }, answer);
+      }
+      return;
+    }
+
+    if (type === 'answer') {
+      console.log(`📩 Received Answer from ${senderId}`);
+      const pc = peerConnections.current.get(senderId);
+      if (pc) {
+        await pc.setRemoteDescription(new RTCSessionDescription(payload));
+      }
+      return;
+    }
+
+    if (type === 'ice_candidate') {
+      const pc = peerConnections.current.get(senderId);
+      if (pc) {
+        await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+      }
+      return;
+    }
+
+    if (type === 'PING') {
+      sendSignalingMessage({ type: 'PONG' });
     }
   };
 
-  const decideAndMaybeCreateOffer = (partnerId: string) => {
-    if (isOfferCreated.current) return;
-    if (!pc.current || !isPCReady.current) return;
-
-    const myId = String(user?.userId || "");
-    const otherId = String(partnerId || "");
-
-    // Logic: ID nhỏ hơn sẽ gọi (Caller)
-    if (myId < otherId) {
-      console.log("👑 I am the Caller");
-      createOffer();
-    } else {
-      console.log("👂 I am the Receiver");
-      setConnectionStatus("Connecting...");
+  const createPeerConnection = async (partnerId: string, shouldCreateOffer: boolean) => {
+    if (peerConnections.current.has(partnerId)) {
+      return peerConnections.current.get(partnerId);
     }
-  };
 
-  const setupPeerConnection = (stream: MediaStream) => {
-    if (pc.current) return;
+    console.log(`🛠 Creating PC for ${partnerId}`);
+    const pc = new RTCPeerConnection({ iceServers });
 
-    const configuration = { iceServers };
-    pc.current = new RTCPeerConnection(configuration);
+    // Fix Error: Property 'onicecandidate' does not exist...
+    // Cast to any to access legacy event handlers
+    const pcAny = pc as any;
 
-    stream.getTracks().forEach(track => {
-      pc.current?.addTrack(track, stream);
-    });
+    peerConnections.current.set(partnerId, pc);
 
-    const pcAny = pc.current as any;
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => {
+        pc.addTrack(track, localStreamRef.current!);
+      });
+    }
 
     pcAny.onicecandidate = (event: any) => {
       if (event.candidate) {
-        sendSignalingMessage({ type: 'ice_candidate', candidate: event.candidate });
+        sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
       }
     };
 
     pcAny.ontrack = (event: any) => {
       if (event.streams && event.streams[0]) {
-        setRemoteStream(event.streams[0]);
-        setConnectionStatus("Connected");
-        stopPing();
+        console.log(`🎥 Received Stream from ${partnerId}`);
+        setRemoteStreams(prev => {
+          const newMap = new Map(prev);
+          newMap.set(partnerId, event.streams[0]);
+          return newMap;
+        });
       }
     };
 
     pcAny.oniceconnectionstatechange = () => {
-      const state = pc.current?.iceConnectionState;
-      if (state === 'connected' || state === 'completed') {
-        setConnectionStatus("Connected");
-        stopPing();
-      } else if (state === 'failed' || state === 'disconnected') {
-        setConnectionStatus(`Reconnecting...`);
-        restartHandshake();
+      console.log(`❄️ ICE State with ${partnerId}: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === 'disconnected' || pc.iceConnectionState === 'failed') {
+        handlePeerDisconnect(partnerId);
       }
     };
-  };
 
-  const processPendingSignals = async () => {
-    while (pendingSignalingQueue.current.length > 0) {
-      const payload = pendingSignalingQueue.current.shift();
-      await handleSignaling(payload);
-    }
-  };
-
-  const handleSignaling = async (data: any) => {
-    if (!pc.current || !isPCReady.current) {
-      pendingSignalingQueue.current.push(data);
-      return;
-    }
-
-    try {
-      if (data.type === 'offer') {
-        stopPing();
-        await pc.current.setRemoteDescription(new RTCSessionDescription(data));
-        const answer = await pc.current.createAnswer();
-        await pc.current.setLocalDescription(answer);
-        sendSignalingMessage(pc.current.localDescription);
-      } else if (data.type === 'answer') {
-        await pc.current.setRemoteDescription(new RTCSessionDescription(data));
-      } else if (data.type === 'ice_candidate') {
-        await pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
+    if (shouldCreateOffer) {
+      try {
+        const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+        await pc.setLocalDescription(offer);
+        sendSignalingMessage({ type: 'offer', targetId: partnerId }, offer);
+      } catch (err) {
+        console.error(`Error creating offer for ${partnerId}`, err);
       }
-    } catch (err) {
-      console.error("Signaling Error:", err);
     }
+
+    return pc;
   };
 
-  const createOffer = async () => {
-    if (!pc.current) return;
-    try {
-      isOfferCreated.current = true;
-      const offer = await pc.current.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-      await pc.current.setLocalDescription(offer);
-      sendSignalingMessage(pc.current.localDescription);
-    } catch (err) {
-      console.error("Create Offer Failed", err);
-      isOfferCreated.current = false;
+  const handlePeerDisconnect = (partnerId: string) => {
+    console.log(`❌ Peer ${partnerId} disconnected`);
+    const pc = peerConnections.current.get(partnerId);
+    if (pc) {
+      pc.close();
+      peerConnections.current.delete(partnerId);
     }
+    setRemoteStreams(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(partnerId);
+      return newMap;
+    });
   };
 
-  const sendSignalingMessage = (msg: any) => {
+  const sendSignalingMessage = (meta: any, payloadData?: any) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
-      const payload = {
+      const message = {
         type: 'webrtc_signal',
         roomId: roomId,
         senderId: user?.userId,
-        payload: msg
+        payload: {
+          ...meta,
+          ...payloadData
+        }
       };
-      ws.current.send(JSON.stringify(payload));
-    }
-  };
-
-  const startPing = () => {
-    stopPing();
-    pingInterval.current = setInterval(() => {
-      if (pc.current?.iceConnectionState !== 'connected') {
-        sendSignalingMessage({ type: 'PING' });
-      }
-    }, 2000);
-  };
-
-  const stopPing = () => {
-    if (pingInterval.current) {
-      clearInterval(pingInterval.current);
-      pingInterval.current = null;
-    }
-  };
-
-  const restartHandshake = () => {
-    isOfferCreated.current = false;
-    startPing();
-  };
-
-  const cleanupCall = () => {
-    stopPing();
-    LiveAudioStream.stop();
-    if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach(track => track.stop());
-    }
-    if (pc.current) pc.current.close();
-    try { ws.current?.close(); } catch (_) { }
-  };
-
-  const getMediaStream = async () => {
-    if (Platform.OS === 'android') {
-      const perms = [PermissionsAndroid.PERMISSIONS.CAMERA, PermissionsAndroid.PERMISSIONS.RECORD_AUDIO];
-      const granted = await PermissionsAndroid.requestMultiple(perms);
-      if (granted[PermissionsAndroid.PERMISSIONS.CAMERA] !== 'granted') return null;
-    }
-    try {
-      return await mediaDevices.getUserMedia({
-        audio: true,
-        video: { width: 640, height: 480, frameRate: 24, facingMode: 'user' }
-      });
-    } catch (e) {
-      console.error("getUserMedia Error", e);
-      return null;
+      ws.current.send(JSON.stringify(message));
     }
   };
 
@@ -363,7 +326,6 @@ const WebRTCCallScreen = () => {
       LiveAudioStream.stop();
       LiveAudioStream.init(audioOptions);
       LiveAudioStream.on('data', (base64Data) => {
-        // Chỉ gửi nếu socket mở và mic đang bật
         if (ws.current?.readyState === WebSocket.OPEN && isMicOn) {
           ws.current.send(JSON.stringify({ audio_chunk: base64Data }));
         }
@@ -382,9 +344,51 @@ const WebRTCCallScreen = () => {
       translatedLang: data.translatedLang || nativeLang,
       senderId: data.senderId
     });
-    // Tự động ẩn subtitle sau 5s nếu không có câu mới
     setTimeout(() => setSubtitle(null), 5000);
   }, [nativeLang]);
+
+  const startPing = () => {
+    stopPing();
+    pingInterval.current = setInterval(() => {
+      sendSignalingMessage({ type: 'PING' });
+    }, 5000);
+  };
+
+  const stopPing = () => {
+    if (pingInterval.current) {
+      clearInterval(pingInterval.current);
+      pingInterval.current = null;
+    }
+  };
+
+  const cleanupCall = () => {
+    stopPing();
+    LiveAudioStream.stop();
+    localStreamRef.current?.getTracks().forEach(track => track.stop());
+
+    peerConnections.current.forEach(pc => pc.close());
+    peerConnections.current.clear();
+
+    try { ws.current?.close(); } catch (_) { }
+  };
+
+  const getMediaStream = async () => {
+    if (Platform.OS === 'android') {
+      await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.CAMERA,
+        PermissionsAndroid.PERMISSIONS.RECORD_AUDIO
+      ]);
+    }
+    try {
+      return await mediaDevices.getUserMedia({
+        audio: true,
+        video: { width: 480, height: 640, frameRate: 24, facingMode: 'user' }
+      });
+    } catch (e) {
+      console.error("getUserMedia Error", e);
+      return null;
+    }
+  };
 
   const handleCallEnd = () => {
     if (videoCallId && user?.userId) {
@@ -393,23 +397,56 @@ const WebRTCCallScreen = () => {
     navigation.goBack();
   };
 
+  // --- RENDER UI (GRID) ---
+  const renderRemoteVideos = () => {
+    const streams = Array.from(remoteStreams.values());
+    const count = streams.length;
+
+    if (count === 0) {
+      return (
+        <View style={styles.remoteVideoPlaceholder}>
+          <ActivityIndicator size="large" color="#4f46e5" />
+          <Text style={styles.statusText}>{connectionStatus}</Text>
+          {mode === 'RANDOM' && <Text style={{ color: '#9ca3af', marginTop: 10 }}>Finding someone to practice with...</Text>}
+        </View>
+      );
+    }
+
+    // Fix Error: Type 'string' is not assignable to type 'DimensionValue'.
+    // Explicitly type these variables
+    let width: DimensionValue = '100%';
+    let height: DimensionValue = '100%';
+
+    if (count === 1) {
+      // 1-1: Full screen
+    } else if (count === 2) {
+      height = '50%';
+    } else if (count <= 4) {
+      width = '50%';
+      height = '50%';
+    }
+
+    return (
+      <View style={styles.gridContainer}>
+        {streams.map((stream, index) => (
+          <View key={stream.id} style={{ width, height, borderWidth: 1, borderColor: '#111' }}>
+            <RTCView streamURL={stream.toURL()} style={{ flex: 1 }} objectFit="cover" />
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   return (
     <ScreenLayout>
       <View style={styles.container}>
-        {remoteStream ? (
-          <RTCView streamURL={remoteStream.toURL()} style={styles.remoteVideo} objectFit="cover" />
-        ) : (
-          <View style={styles.remoteVideoPlaceholder}>
-            <ActivityIndicator size="large" color="#4f46e5" />
-            <Text style={styles.statusText}>{connectionStatus}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={restartHandshake}>
-              <Text style={styles.retryText}>Thử lại kết nối</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+        {renderRemoteVideos()}
 
+        {/* Local Video (PiP) */}
         {localStream && (
-          <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit="cover" zOrder={1} />
+          <View style={styles.localVideoContainer}>
+            <RTCView streamURL={localStream.toURL()} style={styles.localVideo} objectFit="cover" zOrder={1} />
+          </View>
         )}
 
         <TouchableOpacity style={styles.endCallButton} onPress={handleCallEnd}>
@@ -418,9 +455,8 @@ const WebRTCCallScreen = () => {
 
         {subtitleMode !== 'off' && subtitle && (
           <View style={styles.subtitleContainer}>
-            <Text style={styles.subtitleTextOriginal}>
-              {String(subtitle.senderId) === String(user?.userId) ? `${t('you')}: ` : `${t('partner')}: `}{subtitle.original}
-            </Text>
+            <Text style={styles.subtitleSender}>{subtitle.senderId === user?.userId ? 'You' : 'Partner'}</Text>
+            <Text style={styles.subtitleTextOriginal}>{subtitle.original}</Text>
             <Text style={styles.subtitleTextTranslated}>{subtitle.translated}</Text>
           </View>
         )}
@@ -448,6 +484,9 @@ const WebRTCCallScreen = () => {
                 </TouchableOpacity>
               ))}
             </View>
+            <TouchableOpacity style={styles.closeSettings} onPress={() => setShowSettings(false)}>
+              <Text style={{ color: 'white' }}>Close</Text>
+            </TouchableOpacity>
           </View>
         </Modal>
       </View>
@@ -457,14 +496,14 @@ const WebRTCCallScreen = () => {
 
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
-  remoteVideo: { flex: 1, width: '100%', height: '100%', backgroundColor: '#111827' },
+  gridContainer: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
   remoteVideoPlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#111827', gap: 20 },
   statusText: { color: 'white', fontSize: 18, fontWeight: 'bold' },
-  retryButton: { padding: 10, backgroundColor: '#374151', borderRadius: 8, marginTop: 20 },
-  retryText: { color: '#fbbf24', fontWeight: 'bold' },
-  localVideo: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, backgroundColor: '#374151', borderWidth: 1, borderColor: '#4b5563' },
+  localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
+  localVideo: { flex: 1 },
   endCallButton: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },
   subtitleContainer: { position: 'absolute', bottom: 120, left: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.7)', padding: 12, borderRadius: 12 },
+  subtitleSender: { color: '#9ca3af', fontSize: 12, fontWeight: 'bold', marginBottom: 2 },
   subtitleTextOriginal: { color: '#e5e7eb', textAlign: 'center', marginBottom: 4 },
   subtitleTextTranslated: { color: '#fbbf24', textAlign: 'center', fontWeight: 'bold', fontSize: 16 },
   controls: { position: 'absolute', top: 60, left: 20, gap: 12 },
@@ -473,7 +512,8 @@ const styles = createScaledSheet({
   modalContainer: { height: '30%', backgroundColor: '#1f2937', marginTop: 'auto', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20 },
   sectionTitle: { color: '#9ca3af', fontWeight: 'bold', marginBottom: 10 },
   modeButton: { padding: 10, backgroundColor: '#374151', borderRadius: 8, minWidth: '45%', alignItems: 'center', justifyContent: 'center' },
-  modeButtonActive: { backgroundColor: '#4f46e5' }
+  modeButtonActive: { backgroundColor: '#4f46e5' },
+  closeSettings: { marginTop: 20, alignSelf: 'center', padding: 10 },
 });
 
 export default WebRTCCallScreen;

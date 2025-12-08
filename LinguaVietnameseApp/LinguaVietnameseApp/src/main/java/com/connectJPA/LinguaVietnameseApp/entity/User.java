@@ -54,9 +54,9 @@ public class User extends BaseEntity {
     @Column(name = "avatar_url")
     private String avatarUrl;
 
-    @Column(name = "allow_stranger_chat")
-    @Builder.Default
-    private boolean allowStrangerChat = true;
+    // @Column(name = "allow_stranger_chat")
+    // @Builder.Default
+    // private boolean allowStrangerChat = true;
 
     @Column(name = "character3d_id")
     private UUID character3dId;

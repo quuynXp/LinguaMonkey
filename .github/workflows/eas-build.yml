@@ -31,7 +31,7 @@ jobs:
 
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
-        
+
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
@@ -57,6 +57,8 @@ jobs:
       - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
+          # Đảm bảo quyền truy cập file để Keystore không bị từ chối
+          chmod 600 my-release-key.keystore
 
       - name: ⚙️ Build signed APK locally
         env:
