@@ -29,6 +29,9 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: 🛠️ Generate Android directory (Prebuild)
+        run: npx expo prebuild --platform android --no-install
+        
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
