@@ -765,6 +765,6 @@ const styles = StyleSheet.create({
   summaryFooter: { flexDirection: 'row', gap: 10, marginTop: 20 },
   primaryBtn: { flex: 1, backgroundColor: '#4F46E5', padding: 15, borderRadius: 10, alignItems: 'center' },
   secondaryBtn: { flex: 1, backgroundColor: '#EEE', padding: 15, borderRadius: 10, alignItems: 'center' },
-});
-
+}); 
+ 
 export default LessonScreen;
