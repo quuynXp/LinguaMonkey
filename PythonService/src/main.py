@@ -39,7 +39,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
-
+SILENCE_THRESHOLD = 300
 security = HTTPBearer()
 PUBLIC_KEY = None
 
@@ -110,6 +110,15 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 audio_buffers = defaultdict(list)
+
+def calculate_rms(audio_chunk: bytes) -> float:
+    count = len(audio_chunk) // 2
+    if count == 0:
+        return 0
+    # Unpack 16-bit integers (short)
+    shorts = struct.unpack(f"{count}h", audio_chunk)
+    sum_squares = sum(s**2 for s in shorts)
+    return math.sqrt(sum_squares / count)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -391,9 +400,30 @@ async def live_subtitles(
             # Subtitle Logic
             if "audio_chunk" in msg and msg["audio_chunk"]:
                 chunk = base64.b64decode(msg["audio_chunk"])
+
+                if rms < SILENCE_THRESHOLD:
+                    continue
+
                 audio_buffers[buffer_key].append(chunk)
-                full_audio = b"".join(audio_buffers[buffer_key])
-                stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, full_audio, spokenLang)
+                current_buffer_size = sum(len(c) for c in audio_buffers[buffer_key])
+                
+                if current_buffer_size > 32000:
+                    full_audio = b"".join(audio_buffers[buffer_key])
+                    audio_buffers[buffer_key] = []
+
+                    stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, full_audio, spokenLang)
+                    
+                    if stt_text and len(stt_text.strip()) > 1 and "Thank you" not in stt_text: 
+                        translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
+                        
+                        await manager.broadcast_json({
+                            "type": "subtitle",
+                            "original": stt_text,
+                            "originalLang": detected_lang,
+                            "translated": translated_text,
+                            "translatedLang": nativeLang,
+                            "senderId": user_id
+                        }, normalized_room_id)
                 
                 if stt_text and len(stt_text.strip()) > 1:
                     translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
@@ -415,7 +445,7 @@ async def live_subtitles(
                     "original": msg["text"],
                     "translated": translated,
                 }, normalized_room_id)
-                
+
     except WebSocketDisconnect:
         manager.disconnect(websocket, normalized_room_id)
         if buffer_key in audio_buffers: del audio_buffers[buffer_key]

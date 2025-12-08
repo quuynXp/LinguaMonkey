@@ -24,7 +24,6 @@ credentials.json
 *.iws
 *.iml
 *.ipr
-android/
 ios/
 
 **/serviceAccountKey.json

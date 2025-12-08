@@ -32,9 +32,6 @@ type SubtitleData = {
 const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' },
-  { urls: 'stun:stun3.l.google.com:19302' },
-  { urls: 'stun:stun4.l.google.com:19302' },
 ];
 
 const WebRTCCallScreen = () => {
@@ -49,10 +46,11 @@ const WebRTCCallScreen = () => {
 
   const { useUpdateVideoCall, useVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { data: videoCallData } = useVideoCall(videoCallId);
 
-  const [nativeLang, setNativeLang] = useState(defaultNativeLangCode);
-  const [spokenLang, setSpokenLang] = useState('auto');
+  const [nativeLang] = useState(defaultNativeLangCode);
+  const [spokenLang] = useState('auto');
   const [subtitleMode, setSubtitleMode] = useState<'dual' | 'native' | 'original' | 'off'>('dual');
   const [showSettings, setShowSettings] = useState(false);
   const [subtitle, setSubtitle] = useState<SubtitleData | null>(null);
@@ -71,13 +69,15 @@ const WebRTCCallScreen = () => {
   const isOfferCreated = useRef<boolean>(false);
   const partnerReady = useRef<boolean>(false);
 
+  // --- TỐI ƯU AUDIO OPTIONS ---
+  // Sử dụng audioSource 7 (VOICE_COMMUNICATION) cho Android để bật khử vọng (AEC)
+  // bufferSize nhỏ (2048/4096) giúp giảm độ trễ
   const audioOptions = {
     sampleRate: 16000,
     channels: 1,
     bitsPerSample: 16,
-    audioSource: 6,
+    audioSource: Platform.OS === 'android' ? 7 : 0, // 7 = VOICE_COMMUNICATION (Android), 0 = Default (iOS)
     bufferSize: 4096,
-    wavFile: 'temp_audio.wav'
   };
 
   useEffect(() => {
@@ -105,6 +105,7 @@ const WebRTCCallScreen = () => {
       isMounted = false;
       cleanupCall();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -147,18 +148,16 @@ const WebRTCCallScreen = () => {
           const payload = data.payload;
 
           if (payload?.type === 'PING') {
-            console.log(`📡 PING received from ${senderId}`);
             partnerReady.current = true;
-            setConnectionStatus("Partner Found. Negotiating...");
+            setConnectionStatus("Partner Found");
             sendSignalingMessage({ type: 'PONG' });
             decideAndMaybeCreateOffer(senderId);
             return;
           }
 
           if (payload?.type === 'PONG') {
-            console.log(`📡 PONG received from ${senderId}`);
             partnerReady.current = true;
-            setConnectionStatus("Partner Found. Negotiating...");
+            setConnectionStatus("Partner Found");
             decideAndMaybeCreateOffer(senderId);
             return;
           }
@@ -179,7 +178,17 @@ const WebRTCCallScreen = () => {
       LiveAudioStream.stop();
       try { ws.current?.close(); } catch (_) { }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, accessToken, nativeLang, spokenLang, user?.userId]);
+
+  // Quản lý trạng thái Mic bật/tắt để gửi/dừng gửi Audio Stream
+  useEffect(() => {
+    if (isMicOn) {
+      LiveAudioStream.start();
+    } else {
+      LiveAudioStream.stop();
+    }
+  }, [isMicOn]);
 
   const tryStartPingWhenReady = () => {
     if (ws.current && ws.current.readyState === WebSocket.OPEN && isPCReady.current) {
@@ -194,16 +203,13 @@ const WebRTCCallScreen = () => {
     const myId = String(user?.userId || "");
     const otherId = String(partnerId || "");
 
-    console.log(`⚖️ Tie-Breaker: Me(${myId}) vs Partner(${otherId})`);
-
-    // Deterministic Logic: String comparison
-    // Whoever has the "smaller" ID string creates the offer
+    // Logic: ID nhỏ hơn sẽ gọi (Caller)
     if (myId < otherId) {
-      console.log("👑 I am the Caller (based on ID)");
+      console.log("👑 I am the Caller");
       createOffer();
     } else {
-      console.log("👂 I am the Receiver (waiting for offer)");
-      setConnectionStatus("Waiting for Offer...");
+      console.log("👂 I am the Receiver");
+      setConnectionStatus("Connecting...");
     }
   };
 
@@ -226,7 +232,6 @@ const WebRTCCallScreen = () => {
     };
 
     pcAny.ontrack = (event: any) => {
-      console.log("🎥 Remote Stream Received via ontrack");
       if (event.streams && event.streams[0]) {
         setRemoteStream(event.streams[0]);
         setConnectionStatus("Connected");
@@ -236,15 +241,12 @@ const WebRTCCallScreen = () => {
 
     pcAny.oniceconnectionstatechange = () => {
       const state = pc.current?.iceConnectionState;
-      console.log(`❄️ ICE State: ${state}`);
       if (state === 'connected' || state === 'completed') {
         setConnectionStatus("Connected");
         stopPing();
       } else if (state === 'failed' || state === 'disconnected') {
-        setConnectionStatus(`Connection ${state}`);
+        setConnectionStatus(`Reconnecting...`);
         restartHandshake();
-      } else {
-        setConnectionStatus(`Connecting (${state})...`);
       }
     };
   };
@@ -264,16 +266,12 @@ const WebRTCCallScreen = () => {
 
     try {
       if (data.type === 'offer') {
-        console.log("📩 Handling Offer");
         stopPing();
         await pc.current.setRemoteDescription(new RTCSessionDescription(data));
-
         const answer = await pc.current.createAnswer();
         await pc.current.setLocalDescription(answer);
-
         sendSignalingMessage(pc.current.localDescription);
       } else if (data.type === 'answer') {
-        console.log("📩 Handling Answer");
         await pc.current.setRemoteDescription(new RTCSessionDescription(data));
       } else if (data.type === 'ice_candidate') {
         await pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
@@ -290,7 +288,6 @@ const WebRTCCallScreen = () => {
       const offer = await pc.current.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
       await pc.current.setLocalDescription(offer);
       sendSignalingMessage(pc.current.localDescription);
-      console.log("📤 Offer Sent");
     } catch (err) {
       console.error("Create Offer Failed", err);
       isOfferCreated.current = false;
@@ -326,7 +323,6 @@ const WebRTCCallScreen = () => {
   };
 
   const restartHandshake = () => {
-    console.log("♻️ Restarting Handshake");
     isOfferCreated.current = false;
     startPing();
   };
@@ -367,11 +363,12 @@ const WebRTCCallScreen = () => {
       LiveAudioStream.stop();
       LiveAudioStream.init(audioOptions);
       LiveAudioStream.on('data', (base64Data) => {
+        // Chỉ gửi nếu socket mở và mic đang bật
         if (ws.current?.readyState === WebSocket.OPEN && isMicOn) {
           ws.current.send(JSON.stringify({ audio_chunk: base64Data }));
         }
       });
-      LiveAudioStream.start();
+      if (isMicOn) LiveAudioStream.start();
     } catch (e) {
       console.error("AudioStream Init Error", e);
     }
@@ -385,6 +382,7 @@ const WebRTCCallScreen = () => {
       translatedLang: data.translatedLang || nativeLang,
       senderId: data.senderId
     });
+    // Tự động ẩn subtitle sau 5s nếu không có câu mới
     setTimeout(() => setSubtitle(null), 5000);
   }, [nativeLang]);
 
@@ -405,7 +403,7 @@ const WebRTCCallScreen = () => {
             <ActivityIndicator size="large" color="#4f46e5" />
             <Text style={styles.statusText}>{connectionStatus}</Text>
             <TouchableOpacity style={styles.retryButton} onPress={restartHandshake}>
-              <Text style={styles.retryText}>Retry Signal</Text>
+              <Text style={styles.retryText}>Thử lại kết nối</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -431,7 +429,9 @@ const WebRTCCallScreen = () => {
           <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
             <Icon name="chat" size={24} color="white" />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.iconButton, { backgroundColor: isMicOn ? '#ef4444' : '#22c55e' }]} onPress={() => setIsMicOn(!isMicOn)}>
+          <TouchableOpacity
+            style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]}
+            onPress={() => setIsMicOn(!isMicOn)}>
             <Icon name={isMicOn ? "mic" : "mic-off"} size={24} color="white" />
           </TouchableOpacity>
         </View>
