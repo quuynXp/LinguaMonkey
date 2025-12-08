@@ -93,7 +93,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
   const { data: roomData } = useCourseRoom(courseId);
   const { data: versionHistory } = useCourseVersions(courseId);
-  const { data: userProgressData } = useLessonProgresses({ userId: user?.userId, size: 100 });
+  const { data: userProgressData } = useLessonProgresses({ userId: user?.userId, size: 1000 });
 
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
 

@@ -65,7 +65,7 @@ public class SkillLessonController {
                 PronunciationResponseBody result = grpcClientService.callCheckPronunciationAsync(
                         token, audioBytes, languageCode, referenceText).join();
 
-                saveQuestionProgress(question.getLesson().getLessonId(), userId, result.getScore());
+                saveQuestionActivity(question.getLesson().getLessonId(), userId);
 
                 return AppApiResponse.<PronunciationResponseBody>builder()
                         .code(200)
@@ -97,43 +97,23 @@ public class SkillLessonController {
 
                 byte[] mediaBytes = null;
                 String mediaUrl = null;
-                String mediaType = "text/plain"; // Default
+                String mediaType = "text/plain"; 
 
-                // 1. User Upload (Ưu tiên cao nhất)
                 if (image != null && !image.isEmpty()) {
                     mediaBytes = image.getBytes();
                     mediaType = image.getContentType();
                 } 
-                // 2. Context Media (Nếu có URL thì gửi luôn, không check đuôi file nữa)
                 else if (question.getMediaUrl() != null && !question.getMediaUrl().isEmpty()) {
                     mediaUrl = question.getMediaUrl();
-                    
-                    // Cố gắng đoán loại media dựa trên SkillType hoặc QuestionType để AI có context tốt hơn
-                    // (Ví dụ: Skill LISTENING -> khả năng cao là Audio)
-                    if (question.getSkillType() != null) {
-                        switch (question.getSkillType()) {
-                            case LISTENING:
-                                mediaType = "audio/mpeg"; // Gợi ý cho AI
-                                break;
-                            case SPEAKING:
-                                mediaType = "audio/wav";
-                                break;
-                            default:
-                                mediaType = "image/jpeg"; // Mặc định Writing/Reading thường là hình ảnh
-                                break;
-                        }
-                    } else {
-                        mediaType = "application/octet-stream"; // Loại chung chung
-                    }
+                    mediaType = "image/jpeg"; 
                 }
 
                 String prompt = question.getQuestion();
 
-                // 3. Gọi gRPC (Python sẽ lo phần download nếu nhận được URL)
                 WritingResponseBody result = grpcClientService.callCheckWritingAssessmentAsync(
                         token, text, prompt, mediaBytes, mediaUrl, mediaType).join();
 
-                saveQuestionProgress(question.getLesson().getLessonId(), userId, result.getScore());
+                saveQuestionActivity(question.getLesson().getLessonId(), userId);
 
                 userLearningActivityService.logActivityEndAndCheckChallenges(LearningActivityEventRequest.builder()
                         .userId(userId)
@@ -167,26 +147,37 @@ public class SkillLessonController {
         LessonQuestion question = lessonQuestionRepository.findByLessonQuestionIdAndIsDeletedFalse(lessonQuestionId)
                 .orElseThrow(() -> new AppException(ErrorCode.QUESTION_NOT_FOUND));
 
-        boolean isCorrect = validateAnswer(question, selectedOption);
-        float score = isCorrect ? 100 : 0;
-        String feedback = isCorrect ? "Correct" : "Incorrect";
-
-        saveQuestionProgress(question.getLesson().getLessonId(), userId, score);
+        // FIX: Just log, do NOT save lesson progress score here
+        saveQuestionActivity(question.getLesson().getLessonId(), userId);
 
         userLearningActivityService.logActivityEndAndCheckChallenges(LearningActivityEventRequest.builder()
                 .userId(userId)
                 .activityType(ActivityType.LESSON)
                 .relatedEntityId(question.getLesson().getLessonId())
                 .durationInSeconds(duration)
-                .details("Quiz Type: " + question.getQuestionType() + " | Result: " + feedback)
+                .details("Quiz Type: " + question.getQuestionType())
                 .build());
 
         return AppApiResponse.<String>builder()
                 .code(200)
                 .message("Quiz submitted")
-                .result(feedback + (isCorrect ? "" : ". Explanation: " + question.getExplainAnswer()))
+                .result("Submitted")
                 .build();
     }
+
+    private void saveQuestionActivity(UUID lessonId, UUID userId) {
+        LessonProgress progress = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId))
+                .orElse(LessonProgress.builder()
+                        .id(new LessonProgressId(lessonId, userId))
+                        .createdAt(OffsetDateTime.now())
+                        .score(0f) 
+                        .build());
+        
+        progress.setUpdatedAt(OffsetDateTime.now());
+        lessonProgressRepository.save(progress);
+    }
+
+
 
     private boolean validateAnswer(LessonQuestion question, String selectedOption) {
         if (selectedOption == null || question.getCorrectOption() == null) return false;

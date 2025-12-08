@@ -13,6 +13,9 @@ target/
 .springBeans
 .sts4-cache
 
+/android
+
+android/
 
 # .gitignore
 *.keystore
