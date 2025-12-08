@@ -7,14 +7,13 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useLessons } from '../../hooks/useLessons';
-import { useCourses } from '../../hooks/useCourses'; // Import useCourses để fetch version fallback
+import { useCourses } from '../../hooks/useCourses';
 import { useUserStore } from '../../stores/UserStore';
 import { LessonQuestionResponse } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import FileUploader from '../../components/common/FileUploader';
 import { QuestionType, VersionStatus } from '../../types/enums';
 
-// ... (Giữ nguyên các mảng ENUMS backend cũ) ...
 const BACKEND_LESSON_TYPES = [
     "COURSE_LESSON", "FLASHCARD_SET", "FLASHCARD", "QUIZ",
     "SPEAKING", "READING", "WRITING", "VOCABULARY",
@@ -98,7 +97,6 @@ const CreateLessonScreen = () => {
 
     const user = useUserStore(state => state.user);
     const { useCreateLesson, useUpdateLesson, useLesson, useAllQuestions, useDeleteQuestion } = useLessons();
-    // Hook dùng để tìm Draft Version nếu params bị thiếu
     const { useCourseVersions } = useCourses();
 
     const createLessonMutation = useCreateLesson();
@@ -109,10 +107,10 @@ const CreateLessonScreen = () => {
     const { data: lessonData } = useLesson(lessonId || null);
     const { data: questionsData } = useAllQuestions(lessonId ? { lessonId, size: 100 } : {});
 
-    // Fetch versions nếu chưa có versionId
+    // FETCH FALLBACK: Lấy version list nếu chưa có versionId
     const { data: versionsData } = useCourseVersions(courseId, !targetVersionId);
 
-    // Effect: Tự động tìm Version Draft nếu params không có
+    // AUTO-DETECT DRAFT: Tự động tìm Version Draft nếu params không có
     useEffect(() => {
         if (!targetVersionId && versionsData && versionsData.length > 0) {
             const draft = versionsData.find((v: any) => v.status === VersionStatus.DRAFT);
@@ -235,7 +233,7 @@ const CreateLessonScreen = () => {
                     optionA: q.options.A, optionB: q.options.B, optionC: q.options.C, optionD: q.options.D,
                     correctOption: finalCorrect,
                     transcript: q.transcript,
-                    mediaUrl: q.mediaUrl || null, // Gửi null nếu rỗng
+                    mediaUrl: q.mediaUrl || null,
                     explainAnswer: q.explainAnswer,
                     weight: parseInt(q.weight) || 1,
                     orderIndex: i,
@@ -287,8 +285,6 @@ const CreateLessonScreen = () => {
         }
     };
 
-    // ... (Phần render UI giữ nguyên như cũ, chỉ thay đổi logic xử lý ở trên) ...
-    // Copy lại phần render UI từ code cũ của bạn
     const renderDynamicInputs = () => {
         const transcriptInput = (
             <View>

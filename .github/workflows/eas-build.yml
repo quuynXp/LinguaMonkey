@@ -54,23 +54,39 @@ jobs:
       - name: 🔑 Setup Expo authentication
         run: echo "EXPO_TOKEN=${{ secrets.EAS_TOKEN }}" >> $GITHUB_ENV
 
-      - name: 🔑 Decode Android keystore
+      - name: 📝 Create Local Credentials
+        id: create-credentials
         run: |
+          # Giải mã Keystore file
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
-          # Đảm bảo quyền truy cập file để Keystore không bị từ chối
           chmod 600 my-release-key.keystore
+          
+          # Tạo file credentials.json bằng jq để đảm bảo đúng format JSON
+          # File này buộc EAS sử dụng keystore tại chỗ, bỏ qua check server
+          jq -n \
+            --arg kp "./my-release-key.keystore" \
+            --arg ksp "${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" \
+            --arg ka "${{ secrets.ANDROID_KEY_ALIAS }}" \
+            --arg keyp "${{ secrets.ANDROID_KEY_PASSWORD }}" \
+            '{
+              android: {
+                keystore: {
+                  keystorePath: $kp,
+                  keystorePassword: $ksp,
+                  keyAlias: $ka,
+                  keyPassword: $keyp
+                }
+              }
+            }' > credentials.json
 
       - name: ⚙️ Build signed APK locally
         env:
           EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
-          ANDROID_KEYSTORE_PATH: ./my-release-key.keystore
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "🔧 Start signed local EAS build..."
-          # Thêm cờ --skip-credentials-check để buộc sử dụng Keystore cục bộ
-          eas build --platform android --profile production --local --non-interactive --output ./app-release.apk --skip-credentials-check
+          # Sử dụng profile 'production-apk' từ eas.json của bạn
+          # Sử dụng --credentials-json để nạp keystore từ file vừa tạo
+          eas build --platform android --profile production-apk --local --non-interactive --output ./app-release.apk --credentials-json ./credentials.json
 
       - name: 📤 Upload signed APK to GitHub Artifacts
         uses: actions/upload-artifact@v4
@@ -83,4 +99,5 @@ jobs:
         run: |
           echo "✨ Cleaning up disk space..."
           rm -rf ~/.gradle/caches/
+          rm -f credentials.json
           npm cache clean --force

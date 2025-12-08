@@ -168,7 +168,8 @@ export const useCourses = () => {
     });
   };
 
-  const useCourseVersions = (courseId: string | null) => {
+  // FIXED: Added 'enabled' parameter to fix TS Error 2554
+  const useCourseVersions = (courseId: string | null, enabled: boolean = true) => {
     return useQuery({
       queryKey: courseKeys.courseVersions(courseId!),
       queryFn: async () => {
@@ -178,7 +179,7 @@ export const useCourses = () => {
         );
         return data.result || [];
       },
-      enabled: !!courseId
+      enabled: !!courseId && enabled
     });
   };
 
