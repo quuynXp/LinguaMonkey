@@ -13,9 +13,6 @@ target/
 .springBeans
 .sts4-cache
 
-/android
-
-android/
 
 # .gitignore
 *.keystore
@@ -27,7 +24,6 @@ credentials.json
 *.iws
 *.iml
 *.ipr
-ios/
 
 **/serviceAccountKey.json
 
