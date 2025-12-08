@@ -160,11 +160,11 @@ services:
   # 3. PYTHON SERVICE
   # ==============================================================================
   - name: python-service
-    # Render dynamic ports might vary, but since you hardcoded 8001 in python main.py check, 
+    # Render dynamic ports might vary, but since you hardcoded 10000 in python main.py check, 
     # make sure PythonService/main.py uses the PORT env var as suggested previously.
     # If Python uses PORT=10000 (default), change this to 10000. 
-    # For now, assuming you set PORT: 8001 in render.yaml for Python or code handles it.
-    url: http://pythonservice:8001
+    # For now, assuming you set PORT: 10000 in render.yaml for Python or code handles it.
+    url: http://pythonservice:10000
     connect_timeout: 60000
     write_timeout: 300000
     read_timeout: 300000

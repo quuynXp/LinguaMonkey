@@ -17,7 +17,7 @@ import {
 import { useTranslation } from "react-i18next";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useNavigation, useRoute } from "@react-navigation/native";
-import DateTimePicker from '@react-native-community/datetimepicker'; // Import Picker
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 import { useCourses } from "../../hooks/useCourses";
 import { useUserStore } from "../../stores/UserStore";
@@ -98,7 +98,7 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
       code: code.toUpperCase().trim(),
       discountPercentage: parseInt(percentage, 10),
       isActive: true,
-      startDate: startDate.toISOString(), // Backend expects ISO-8601
+      startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
       isDeleted: false
     };
@@ -366,6 +366,7 @@ const EditCourseScreen = () => {
     </TouchableOpacity>
   );
 
+  // FIX: Đã xóa startDate và endDate khỏi dependency array
   const headerElement = useMemo(() => (
     <View style={styles.contentContainer}>
       <View style={styles.thumbnailContainer}>
@@ -498,9 +499,7 @@ const EditCourseScreen = () => {
     lessonsList.length,
     activeCourseId,
     workingVersion,
-    t,
-    startDate, // Re-render if dates change (for modal)
-    endDate
+    t
   ]);
 
   const handleSave = async () => {
@@ -740,7 +739,6 @@ const EditCourseScreen = () => {
   );
 };
 
-// ... (Styles cũ) ...
 const styles = createScaledSheet({
   header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: 16, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E5E7EB" },
   headerTitle: { fontSize: 16, fontWeight: "700", color: "#1F2937" },
