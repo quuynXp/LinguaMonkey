@@ -29,29 +29,14 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: ➕ Install Expo CLI dependency
-        # Đảm bảo @expo/cli được cài đặt cục bộ, khắc phục lỗi MODULE_NOT_FOUND
-        run: yarn add @expo/cli --dev --ignore-scripts
-
-      - name: 🧹 Clean up old Android build files and cache 💥
-        run: |
-          echo "✨ Cleaning up old Android build directories and caches..."
-          # Cache chính của dự án
-          rm -rf ./android/app/build
-          rm -rf ./android/build
-          rm -rf ./android/.cxx
-          
-          # Xóa các thư mục cache build native (CMake) bên trong node_modules
-          find ./node_modules -name build -type d -exec rm -rf {} +
-          find ./node_modules -name .cxx -type d -exec rm -rf {} +
-
       - name: 🛠️ Generate Android directory (Prebuild)
-        # Bước này sẽ gọi @expo/cli
+        # Tạo thư mục android/
         run: npx expo prebuild --platform android --no-install
 
       - name: 🧹 Clean up duplicate icon files
+        # Xóa file webp để tránh lỗi Duplicate resources
         run: |
-          echo "✨ Cleaning up duplicate icon files (removing .webp)..."
+          echo "✨ Cleaning up duplicate icon files..."
           find ./android/app/src/main/res -name "*.webp" -delete
 
       - name: ☕ Setup Java (JDK)
@@ -69,10 +54,20 @@ jobs:
           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
-            
-      - name: 🧹 Clean up large components (Pre-build)
+
+      - name: 🧹 Safe Clean Gradle & CMake
+        # Đây là bước quan trọng sửa lỗi BuildCacheStep và CMake
+        # Chạy clean chuẩn của Gradle thay vì rm -rf thủ công gây lỗi module
         run: |
-          echo "✨ Freeing up disk space by removing large tools..."
+          echo "✨ Running Gradle Clean..."
+          cd android
+          chmod +x gradlew
+          ./gradlew clean
+
+      - name: 🧹 Clean up large components (Safe Mode)
+        # Giữ lại SDK, chỉ xoá các phần không liên quan
+        run: |
+          echo "✨ Freeing up disk space..."
           sudo rm -rf /usr/share/dotnet/
           sudo apt-get clean
 
@@ -85,7 +80,6 @@ jobs:
       - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
-          # Đảm bảo quyền truy cập cho Keystore
           chmod 600 my-release-key.keystore
 
       - name: ⚙️ Build signed APK locally
@@ -97,6 +91,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           echo "🔧 Start signed local EAS build..."
+          # EAS Build sẽ tự động sử dụng cấu hình Gradle đã được clean sạch sẽ
           eas build --platform android --profile production --local --non-interactive --output ./app-release.apk
 
       - name: 📤 Upload signed APK to GitHub Artifacts
@@ -109,7 +104,6 @@ jobs:
         if: always()
         run: |
           echo "✨ Cleaning up final disk space..."
-          # Dọn dẹp Gradle caches và Keystore file
           rm -rf ~/.gradle/caches/
           rm -f my-release-key.keystore
           npm cache clean --force
