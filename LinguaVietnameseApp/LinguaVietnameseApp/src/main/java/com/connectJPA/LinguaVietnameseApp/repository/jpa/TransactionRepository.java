@@ -55,4 +55,7 @@ public interface TransactionRepository extends JpaRepository<Transaction, UUID> 
 
     Page<Transaction> findByStatus(TransactionStatus ts, Pageable pageable);
 
+    List<Transaction> findByTypeAndStatusAndCreatedAtBetween(TransactionType deposit, TransactionStatus success,
+                OffsetDateTime start, OffsetDateTime end);
+
 }

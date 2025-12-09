@@ -512,7 +512,7 @@ public class TransactionServiceImpl implements TransactionService {
         String signValue = hashAllFields(fields);
         String txnRef = request.getParameter("vnp_TxnRef");
         
-       String baseDeepLink = "linguamonkey://payment/result";
+        String baseDeepLink = "linguamonkey://payment/result";
 
         if (signValue.equals(vnp_SecureHash)) {
             String responseCode = request.getParameter("vnp_ResponseCode");
@@ -527,7 +527,7 @@ public class TransactionServiceImpl implements TransactionService {
                     if (transaction.getType() == TransactionType.DEPOSIT) {
                         walletService.credit(transaction.getUser().getUserId(), transaction.getAmount());
                     } else if (transaction.getType() == TransactionType.PAYMENT || transaction.getType() == TransactionType.UPGRADE_VIP) {
-                          handleSuccessfulPayment(transaction.getTransactionId().toString());
+                        handleSuccessfulPayment(transaction.getTransactionId().toString());
                     }
                     
                     transactionRepository.save(transaction);
@@ -538,7 +538,7 @@ public class TransactionServiceImpl implements TransactionService {
                     return baseDeepLink + "?status=failed&reason=payment_failed_code_" + responseCode;
                 }
             } else {
-                 return baseDeepLink + "?status=success&transactionId=" + txnRef;
+                return baseDeepLink + "?status=success&transactionId=" + txnRef;
             }
         } else {
             return baseDeepLink + "?status=failed&reason=invalid_checksum";
@@ -577,7 +577,7 @@ public class TransactionServiceImpl implements TransactionService {
         String signatureHeader = params.get("stripe-signature");
 
         if (payload == null || signatureHeader == null) {
-             throw new AppException(ErrorCode.INVALID_REQUEST);
+            throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
         try {

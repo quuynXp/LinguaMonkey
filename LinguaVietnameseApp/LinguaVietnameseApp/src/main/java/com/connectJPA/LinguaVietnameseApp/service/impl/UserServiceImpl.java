@@ -182,9 +182,9 @@ public class UserServiceImpl implements UserService {
         
         if (isVip && user.getVipExpirationDate() != null) {
              long days = Duration.between(OffsetDateTime.now(), user.getVipExpirationDate()).toDays();
-             response.setVipDaysRemaining(Math.max(0, days)); 
+             response.setVipDaysRemaining(Math.max(0L, days)); // FIXED: Passed Long value
         } else {
-             response.setVipDaysRemaining(0L);
+             response.setVipDaysRemaining(0L); // FIXED: Passed Long value
         }
         int nextLevelExp = user.getLevel() * EXP_PER_LEVEL;
         response.setExpToNextLevel(nextLevelExp);
@@ -266,13 +266,18 @@ public class UserServiceImpl implements UserService {
         return response;
     }
 
-    @Override
+   @Override
     public Page<UserResponse> getAllUsers(String email, String fullname, String nickname, Pageable pageable) {
         try {
             if (pageable == null) {
                 throw new AppException(ErrorCode.INVALID_PAGEABLE);
             }
-            Page<User> users = userRepository.findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(email, fullname, nickname, pageable);
+            
+            String emailFilter = email.trim();
+            String fullnameFilter = fullname.trim();
+            String nicknameFilter = nickname.trim();
+
+            Page<User> users = userRepository.findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(emailFilter, fullnameFilter, nicknameFilter, pageable);
             return users.map(this::mapUserToResponseWithAllDetails);
         } catch (Exception e) {
             log.error("Error while fetching all users: {}", e.getMessage());
@@ -332,10 +337,11 @@ public class UserServiceImpl implements UserService {
             user = userRepository.saveAndFlush(user);
 
             UserSettings userSettings = UserSettings.builder()
-                    .user(user)
-                    .userId(user.getUserId())
-                    .build();
-            userSettingsRepository.saveAndFlush(userSettings);
+                    .build(); 
+
+            user.setUserSettings(userSettings); 
+
+            user = userRepository.saveAndFlush(user);
             
             if (request.getAuthProvider() == null || request.getAuthProvider().equals(AuthProvider.EMAIL.toString())) {
                 authenticationService.createAuthAccountLink(user, AuthProvider.EMAIL, user.getEmail());
@@ -348,7 +354,6 @@ public class UserServiceImpl implements UserService {
                 dailyChallengeService.assignAllChallengesToNewUser(user.getUserId());
             }
 
-            // --- AUTO ASSIGN STARTER BADGES ---
             if (badgeService != null) {
                 badgeService.assignStarterBadges(user.getUserId());
             }
@@ -571,7 +576,7 @@ public class UserServiceImpl implements UserService {
                     try {
                         return UserCertificate.builder()
                                 .id(new UserCertificateId(userId,
-                                        Certification.valueOf(certStr.toUpperCase()).toString()))
+                                             Certification.valueOf(certStr.toUpperCase()).toString()))
                                 .build();
                     } catch (IllegalArgumentException ex) {
                         log.warn("Unknown Certification: {}", certStr);
@@ -593,63 +598,49 @@ public class UserServiceImpl implements UserService {
         if (targetId == null) throw new AppException(ErrorCode.INVALID_KEY);
         User target = userRepository.findByUserIdAndIsDeletedFalse(targetId)
                 .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+        // Sử dụng MapStruct để map các trường cơ bản
+        UserProfileResponse resp = userMapper.toProfileResponse(target); 
+
+        // Các trường logic và aggregate cần xử lý thủ công
+        // Thay vì sử dụng builder lại, ta dùng response đã map ở trên
+        
         List<String> languages = new ArrayList<>();
         try {
             languages = userLanguageRepository.findLanguageCodesByUserId(targetId);
         } catch (Exception e) {
             log.warn("Failed to fetch languages for user profile {}: {}", targetId, e.getMessage());
         }
-        UserProfileResponse.UserProfileResponseBuilder respB = UserProfileResponse.builder()
-                .userId(target.getUserId())
-                .fullname(target.getFullname())
-                .nickname(target.getNickname())
-                .avatarUrl(target.getAvatarUrl())
-                .country(target.getCountry())
-                .level(target.getLevel())
-                .streak(target.getStreak())    
-                .languages(languages)            
-                .exp(target.getExp())
-                .bio(target.getBio())
-                .gender(target.getGender())
-                .ageRange(target.getAgeRange())        
-                .proficiency(target.getProficiency())
-                .learningPace(target.getLearningPace())
-                .lastActiveAt(target.getLastActiveAt())
-                .isOnline(UserStatusUtils.isOnline(target.getLastActiveAt()))
-                .lastActiveText(UserStatusUtils.formatLastActive(target.getLastActiveAt()));
+        resp.setLanguages(languages);
         
-        // --- Calculate Age ---
-        if (target.getDayOfBirth() != null) {
-            respB.age(Period.between(target.getDayOfBirth(), LocalDate.now()).getYears());
-        }
+        // --- Calculate Age (already done in mapper if dayOfBirth exists) ---
         
         try {
-             respB.allowStrangerChat(true); 
+            resp.setAllowStrangerChat(true); 
         } catch (Exception e) {
-             respB.allowStrangerChat(true);
+            resp.setAllowStrangerChat(true);
         }
         
         if (target.getCountry() != null) {
-            respB.flag(target.getCountry().name());
+            resp.setFlag(target.getCountry().name());
         }
         try {
             if (target.getCharacter3dId() != null) {
                 Character3dResponse ch = character3dMapper.toResponse(
                         character3dRepository.findByCharacter3dIdAndIsDeletedFalse(target.getCharacter3dId())
                                 .orElse(null));
-                respB.character3d(ch);
+                resp.setCharacter3d(ch);
             }
         } catch (Exception e) {
             log.debug("character3d mapping failed for user {}: {}", targetId, e.getMessage());
         }
         try {
-            respB.stats(this.getUserStats(targetId));
+            resp.setStats(this.getUserStats(targetId));
         } catch (Exception e) {
             log.debug("getUserStats failed for {}: {}", targetId, e.getMessage());
         }
         try {
             if (badgeService != null) {
-                respB.badges(badgeService.getBadgesForUser(targetId));
+                resp.setBadges(badgeService.getBadgesForUser(targetId));
             }
         } catch (Exception e) {
             log.debug("getBadgesForUser failed: {}", e.getMessage());
@@ -684,7 +675,7 @@ public class UserServiceImpl implements UserService {
                         if (startDate == null) startDate = f.getCreatedAt();
                         
                         long days = ChronoUnit.DAYS.between(startDate.toLocalDate(), LocalDate.now());
-                        respB.friendshipDurationDays(days);
+                        resp.setFriendshipDurationDays(days);
                     }
                 }
 
@@ -694,17 +685,22 @@ public class UserServiceImpl implements UserService {
         } else {
             canSendFriendRequest = false;
         }
-        respB.isFriend(isFriend)
-                .friendRequestStatus(friendReqStatus)
-                .canSendFriendRequest(canSendFriendRequest)
-                .canUnfriend(canUnfriend)
-                .canBlock(canBlock);
+        resp.setFriend(isFriend);
+        resp.setFriendRequestStatus(friendReqStatus);
+        resp.setCanSendFriendRequest(canSendFriendRequest);
+        resp.setCanUnfriend(canUnfriend);
+        resp.setCanBlock(canBlock);
+
         long admirationCount = admirationRepository.countByUserId(targetId);
         boolean hasAdmired = false;
         if (viewerId != null) {
             hasAdmired = admirationRepository.existsByUserIdAndSenderId(targetId, viewerId);
         }
-        respB.admirationCount(admirationCount).hasAdmired(hasAdmired);
+        
+        // FIXED: Chuyển admirationCount về Long
+        resp.setAdmirationCount(admirationCount);
+        resp.setHasAdmired(hasAdmired);
+
         boolean isTeacher = false;
         List<CourseSummaryResponse> teacherCourses = Collections.emptyList();
         try {
@@ -715,7 +711,8 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.debug("teacher check or courses load failed: {}", e.getMessage());
         }
-        respB.isTeacher(isTeacher).teacherCourses(teacherCourses);
+        resp.setTeacher(isTeacher);
+        resp.setTeacherCourses(teacherCourses);
         Map<String, Integer> leaderboardRanks = new HashMap<>();
         try {
             Integer globalRank = leaderboardEntryService.getRankForUserByTab("global", "student", targetId);
@@ -729,7 +726,7 @@ public class UserServiceImpl implements UserService {
         } catch (Exception e) {
             log.debug("leaderboard rank fetch failed: {}", e.getMessage());
         }
-        respB.leaderboardRanks(leaderboardRanks);
+        resp.setLeaderboardRanks(leaderboardRanks);
         
         try {
             Optional<Couple> coupleOpt = coupleRepository.findByUserId(targetId);
@@ -756,7 +753,7 @@ public class UserServiceImpl implements UserService {
                         .sharedAvatarUrl(c.getSharedAvatarUrl())
                         .build();
 
-                respB.coupleInfo(coupleDetailed);
+                resp.setCoupleInfo(coupleDetailed);
                 
                 if (c.getStatus() == CoupleStatus.EXPLORING && c.getExploringExpiresAt() != null) {
                     Duration rem = Duration.between(OffsetDateTime.now(), c.getExploringExpiresAt());
@@ -766,8 +763,8 @@ public class UserServiceImpl implements UserService {
                     String exploringExpiresInHuman = days + " ngày " + hours + " giờ";
                     boolean exploringExpiringSoon = seconds > 0 && seconds <= (2 * 24 * 3600);
                     
-                    respB.exploringExpiresInHuman(exploringExpiresInHuman);
-                    respB.exploringExpiringSoon(exploringExpiringSoon);
+                    resp.setExploringExpiresInHuman(exploringExpiresInHuman);
+                    resp.setExploringExpiringSoon(exploringExpiringSoon);
                 }
             }
         } catch (Exception e) {
@@ -794,7 +791,7 @@ public class UserServiceImpl implements UserService {
                             .build();
                 }
             }
-            respB.datingInviteSummary(inviteSummary);
+            resp.setDatingInviteSummary(inviteSummary);
         } catch (Exception e) {
             log.debug("dating invite check failed: {}", e.getMessage());
         }
@@ -803,16 +800,16 @@ public class UserServiceImpl implements UserService {
             if (viewerId != null && eventService != null) {
                 mutualMemories = eventService.findMutualMemories(viewerId, targetId);
             }
-            respB.mutualMemories(mutualMemories);
+            resp.setMutualMemories(mutualMemories);
         } catch (Exception e) {
             log.debug("mutual memories fetch failed: {}", e.getMessage());
         }
         if (viewerId != null && viewerId.equals(targetId)) {
             try {
                 List<FriendshipResponse> pending = friendshipService.getPendingRequestsForUser(targetId, PageRequest.of(0,10)).getContent();
-                respB.privateFriendRequests(pending);
+                resp.setPrivateFriendRequests(pending);
                 List<DatingInvite> pendingInvites = datingInviteRepository.findByTargetIdAndStatus(targetId, DatingInviteStatus.PENDING);
-                respB.privateDatingInvites(pendingInvites.stream().map(di -> DatingInviteSummary.builder()
+                resp.setPrivateDatingInvites(pendingInvites.stream().map(di -> DatingInviteSummary.builder()
                         .inviteId(di.getInviteId())
                         .senderId(di.getSenderId())
                         .targetId(di.getTargetId())
@@ -826,7 +823,26 @@ public class UserServiceImpl implements UserService {
                 log.debug("private inbox fetch failed: {}", e.getMessage());
             }
         }
-        return respB.build();
+        return resp;
+    }
+
+    @Override
+    public void changePassword(UUID userId, String currentPassword, String newPassword) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+        if (!passwordEncoder.matches(currentPassword, user.getPassword())) {
+            throw new AppException(ErrorCode.CURRENT_PASSWORD_INVALID);
+        }
+
+        if (newPassword == null || newPassword.length() < 6) {
+             throw new AppException(ErrorCode.INVALID_PASSWORD);
+        }
+
+        user.setPassword(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        authenticationService.logoutAll(userId);
     }
 
     @Override
@@ -858,22 +874,22 @@ public class UserServiceImpl implements UserService {
 
     @Transactional
     public UserResponse updateAvatarUrl(UUID id, String avatarUrl) {
-         try {
-            if (id == null || avatarUrl == null || avatarUrl.isBlank()) {
-                throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
-            }
-            if (!isValidUrl(avatarUrl)) {
-                throw new AppException(ErrorCode.INVALID_URL);
-            }
-            User user = userRepository.findByUserIdAndIsDeletedFalse(id)
-                    .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-            
-            user.setAvatarUrl(avatarUrl);
-            user = userRepository.saveAndFlush(user);
-            return mapUserToResponseWithAllDetails(user);
-         } catch (Exception e) {
-             throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
-         }
+          try {
+             if (id == null || avatarUrl == null || avatarUrl.isBlank()) {
+                 throw new AppException(ErrorCode.MISSING_REQUIRED_FIELD);
+             }
+             if (!isValidUrl(avatarUrl)) {
+                 throw new AppException(ErrorCode.INVALID_URL);
+             }
+             User user = userRepository.findByUserIdAndIsDeletedFalse(id)
+                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+             
+             user.setAvatarUrl(avatarUrl);
+             user = userRepository.saveAndFlush(user);
+             return mapUserToResponseWithAllDetails(user);
+          } catch (Exception e) {
+              throw new SystemException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+          }
     }
 
     @Override

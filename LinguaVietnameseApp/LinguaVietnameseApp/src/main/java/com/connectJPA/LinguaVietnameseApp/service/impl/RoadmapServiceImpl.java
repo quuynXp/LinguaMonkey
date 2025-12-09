@@ -42,6 +42,7 @@ public class RoadmapServiceImpl implements RoadmapService {
     private final InterestRepository interestRepository;
     private final RoadmapSuggestionRepository roadmapSuggestionRepository;
     private final RoadmapRatingRepository roadmapRatingRepository;
+    private final RoadmapFavoriteRepository roadmapFavoriteRepository;
 
     @Override
     public List<RoadmapUserResponse> getUserRoadmaps(UUID userId, String language) {
@@ -107,7 +108,7 @@ public class RoadmapServiceImpl implements RoadmapService {
     }
 
     @Override
-    public Page<RoadmapPublicResponse> getPublicRoadmapsWithStats(String language, int page, int size) {
+    public Page<RoadmapPublicResponse> getPublicRoadmapsWithStats(String language, int page, int size, UUID userId) {
         PageRequest pageRequest = PageRequest.of(page, size);
 
         Page<UserRoadmap> publicRoadmaps = userRoadmapRepository
@@ -118,6 +119,7 @@ public class RoadmapServiceImpl implements RoadmapService {
             long suggestionCount = roadmapSuggestionRepository
                     .countByRoadmapRoadmapIdAndAppliedFalse(roadmap.getRoadmapId());
             double avgRating = calculateRoadmapRating(roadmap.getRoadmapId());
+            boolean isFavorite = userId != null && roadmapFavoriteRepository.existsById(new UserRoadmapId(userId, roadmap.getRoadmapId()));
 
             return RoadmapPublicResponse.builder()
                     .roadmapId(roadmap.getRoadmapId())
@@ -129,12 +131,12 @@ public class RoadmapServiceImpl implements RoadmapService {
                     .creatorAvatar(ur.getUser().getAvatarUrl())
                     .totalItems(roadmap.getTotalItems())
                     .suggestionCount((int) suggestionCount)
-                    .averageRating(avgRating)
                     .difficulty(roadmap.getType())
                     .type(roadmap.getType())
                     .createdAt(ur.getCreatedAt())
                     .viewCount(0)
                     .favoriteCount(0)
+                    .isFavorite(isFavorite)
                     .build();
         });
     }
@@ -248,13 +250,14 @@ public class RoadmapServiceImpl implements RoadmapService {
     }
 
     @Override
-    public Page<RoadmapPublicResponse> getOfficialRoadmaps(String language, int page, int size) {
+    public Page<RoadmapPublicResponse> getOfficialRoadmaps(String language, int page, int size, UUID userId) {
         PageRequest pageRequest = PageRequest.of(page, size);
         Page<Roadmap> roadmaps = roadmapRepository.findByLanguageCodeAndIsDeletedFalse(language, pageRequest);
 
         return roadmaps.map(r -> {
             double avgRating = calculateRoadmapRating(r.getRoadmapId());
             long suggestionCount = roadmapSuggestionRepository.countByRoadmapRoadmapIdAndAppliedFalse(r.getRoadmapId());
+            boolean isFavorite = userId != null && roadmapFavoriteRepository.existsById(new UserRoadmapId(userId, r.getRoadmapId()));
 
             return RoadmapPublicResponse.builder()
                     .roadmapId(r.getRoadmapId())
@@ -264,16 +267,17 @@ public class RoadmapServiceImpl implements RoadmapService {
                     .creator("System Official")
                     .totalItems(r.getTotalItems())
                     .suggestionCount((int) suggestionCount)
-                    .averageRating(avgRating)
                     .difficulty(r.getType())
                     .type("OFFICIAL")
                     .createdAt(r.getCreatedAt())
+                    .favoriteCount(0)
+                    .isFavorite(isFavorite)
                     .build();
         });
     }
 
     @Override
-    public Page<RoadmapPublicResponse> getCommunityRoadmaps(String language, int page, int size) {
+    public Page<RoadmapPublicResponse> getCommunityRoadmaps(String language, int page, int size, UUID userId) {
         PageRequest pageRequest = PageRequest.of(page, size);
         Page<UserRoadmap> publicRoadmaps = userRoadmapRepository
                 .findByIsPublicTrueAndLanguageOrderByCreatedAtDesc(language, pageRequest);
@@ -282,6 +286,7 @@ public class RoadmapServiceImpl implements RoadmapService {
             Roadmap roadmap = ur.getRoadmap();
             long suggestionCount = roadmapSuggestionRepository.countByRoadmapRoadmapIdAndAppliedFalse(roadmap.getRoadmapId());
             double avgRating = calculateRoadmapRating(roadmap.getRoadmapId());
+            boolean isFavorite = userId != null && roadmapFavoriteRepository.existsById(new UserRoadmapId(userId, roadmap.getRoadmapId()));
 
             return RoadmapPublicResponse.builder()
                     .roadmapId(roadmap.getRoadmapId())
@@ -293,10 +298,11 @@ public class RoadmapServiceImpl implements RoadmapService {
                     .creatorAvatar(ur.getUser().getAvatarUrl())
                     .totalItems(roadmap.getTotalItems())
                     .suggestionCount((int) suggestionCount)
-                    .averageRating(avgRating)
                     .difficulty(roadmap.getType())
                     .type("COMMUNITY")
                     .createdAt(ur.getCreatedAt())
+                    .favoriteCount(0)
+                    .isFavorite(isFavorite)
                     .build();
         });
     }
@@ -314,7 +320,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                     List<ResourceResponse> itemResources = allResources.stream()
                             .filter(res -> res.getItemId() != null && res.getItemId().equals(i.getItemId()))
                             .map(res -> ResourceResponse.builder()
-                                    .id(res.getResourceId()) // Fixed: Now matches updated DTO
+                                    .id(res.getResourceId()) 
                                     .title(res.getTitle())
                                     .url(res.getUrl())
                                     .type(res.getType())
@@ -493,11 +499,6 @@ public class RoadmapServiceImpl implements RoadmapService {
     @Transactional
     @Override
     public RoadmapResponse generateFromAI(String token, GenerateRoadmapRequest req) {
-        // ... (Keep existing AI logic as provided in previous turns, ensuring repositories are used correctly)
-        // For brevity, assuming this logic is unchanged unless it relies on new helpers
-        // ...
-        // Re-paste logic if needed, but existing context implies it was working except for resource/item mapping errors in other methods.
-        // To be safe and compliant with "Full Files Only", I'll include the AI logic here too.
         try {
             String sanitizedToken = token;
             if (sanitizedToken != null && sanitizedToken.startsWith("Bearer ")) {
@@ -556,11 +557,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                 item.setOrderIndex(itemProto.getOrderIndex());
                 item.setExpReward(itemProto.getExpReward());
                 roadmapItemRepository.save(item);
-                
-                // Map Resources for AI items if any (Simplified)
             }
-            
-            // ... (Rest of AI logic for Milestones/Guidance/Resources) ...
             
             if (req.getUserId() != null && !req.getUserId().isEmpty()) {
                 UserRoadmap ur = new UserRoadmap();
@@ -588,7 +585,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                     List<ResourceResponse> itemResources = allResources.stream()
                             .filter(res -> res.getItemId() != null && res.getItemId().equals(i.getItemId()))
                             .map(res -> ResourceResponse.builder()
-                                    .id(res.getResourceId()) // Fixed: Now exists
+                                    .id(res.getResourceId()) 
                                     .title(res.getTitle())
                                     .url(res.getUrl())
                                     .type(res.getType())
@@ -602,7 +599,7 @@ public class RoadmapServiceImpl implements RoadmapService {
                             .name(i.getTitle())
                             .description(i.getDescription())
                             .completed(i.getOrderIndex() <= ur.getCompletedItems())
-                            .resources(itemResources) // Fixed: Now exists
+                            .resources(itemResources) 
                             .build();
                 })
                 .collect(Collectors.toList());
@@ -641,6 +638,33 @@ public class RoadmapServiceImpl implements RoadmapService {
         for (int i = 0; i < items.size(); i++) {
             items.get(i).setOrderIndex(i);
             roadmapItemRepository.save(items.get(i));
+        }
+    }
+
+    // --- NEW: TOGGLE FAVORITE LOGIC ---
+    @Transactional
+    @Override
+    public boolean toggleFavorite(UUID userId, UUID roadmapId) {
+        UserRoadmapId id = new UserRoadmapId(userId, roadmapId);
+        
+        // Ensure user and roadmap exist
+        if (!userRepository.existsById(userId)) throw new AppException(ErrorCode.USER_NOT_FOUND);
+        if (!roadmapRepository.existsById(roadmapId)) throw new AppException(ErrorCode.ROADMAP_NOT_FOUND);
+
+        if (roadmapFavoriteRepository.existsById(id)) {
+            // Unfavorite
+            roadmapFavoriteRepository.deleteById(id);
+            return false;
+        } else {
+            // Favorite
+            RoadmapFavorite fav = RoadmapFavorite.builder()
+                    .id(id)
+                    .user(userRepository.getReferenceById(userId))
+                    .roadmap(roadmapRepository.getReferenceById(roadmapId))
+                    .createdAt(OffsetDateTime.now())
+                    .build();
+            roadmapFavoriteRepository.save(fav);
+            return true;
         }
     }
 

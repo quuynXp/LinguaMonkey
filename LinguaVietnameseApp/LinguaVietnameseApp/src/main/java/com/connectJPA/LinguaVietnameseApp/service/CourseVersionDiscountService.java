@@ -8,6 +8,7 @@ import org.springframework.data.domain.Pageable;
 import java.util.UUID;
 
 public interface CourseVersionDiscountService {
+    Page<CourseVersionDiscountResponse> getDiscountsByVersionId(UUID versionId, Pageable pageable);
     Page<CourseVersionDiscountResponse> getAllCourseVersionDiscounts(UUID versionId, Integer discountPercentage, Pageable pageable);
     CourseVersionDiscountResponse getCourseVersionDiscountById(UUID id);
     CourseVersionDiscountResponse createCourseVersionDiscount(CourseVersionDiscountRequest request);

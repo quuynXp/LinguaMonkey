@@ -544,6 +544,34 @@ export const getTeacherCourseLessonStats = async (
   return res.data.result;
 };
 
+export const getDepositRevenueStatistics = async (
+  params: DateRangeParams = {}
+) => {
+  const formattedParams: any = {
+    period: params.period,
+    aggregate: params.aggregate,
+    startDate: formatDateParam(params.startDate),
+    endDate: formatDateParam(params.endDate),
+  };
+
+  const filteredParams = Object.fromEntries(
+    Object.entries(formattedParams).filter(([, v]) => v !== undefined)
+  );
+
+  try {
+    const res = await instance.get(`/api/v1/statistics/deposit-revenue`, {
+      params: filteredParams,
+    });
+    return res.data.result;
+  } catch (error: any) {
+    console.error(
+      "Error fetching deposit revenue statistics:",
+      error?.response?.data || error.message
+    );
+    throw error;
+  }
+}
+
 export const getTeacherCourseRevenue = async (
   courseId: string,
   params: Omit<DateRangeParams, 'period'> & { teacherId?: string } = {}

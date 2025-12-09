@@ -1,6 +1,5 @@
 import "dotenv/config";
 
-// Tự động lấy tất cả biến EXPO_PUBLIC_* từ .env để truyền vào Constants.expoConfig.extra
 const EXPO_ENV_VARS = Object.keys(process.env)
   .filter((key) => key.startsWith("EXPO_PUBLIC_"))
   .reduce((acc, key) => {
@@ -20,7 +19,7 @@ export default ({ config }) => {
       version: "1.0.0",
       orientation: "portrait",
       icon: "./src/assets/images/icon.png",
-      scheme: "monkeylingua",
+      scheme: ["monkeylingua", "fb1230650165201263"],
       userInterfaceStyle: "automatic",
       newArchEnabled: true,
       ios: {
@@ -32,8 +31,16 @@ export default ({ config }) => {
         },
       },
       android: {
-        // 👇 THÊM DÒNG NÀY VÀO ĐÂY
         usesCleartextTraffic: true,
+
+        config: {
+          facebook: {
+            appId: "1230650165201263",
+            displayName: "LinguaMonkey",
+            autoLogAppEventsEnabled: true,
+            advertiserIDCollectionEnabled: true,
+          },
+        },
 
         icon: "./src/assets/images/icon.png",
         adaptiveIcon: {

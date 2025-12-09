@@ -18,7 +18,6 @@ import { useAppStore } from '../../stores/appStore';
 WebBrowser.maybeCompleteAuthSession();
 
 const GOOGLE_CLIENT_ID_ANDROID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_ANDROID;
-const GOOGLE_CLIENT_ID_WEB = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID_WEB;
 const FACEBOOK_CLIENT_ID = process.env.EXPO_PUBLIC_FACEBOOK_CLIENT_ID;
 
 const LoginScreen = ({ navigation }) => {
@@ -37,7 +36,6 @@ const LoginScreen = ({ navigation }) => {
 
   const googleAuthConfig = {
     androidClientId: GOOGLE_CLIENT_ID_ANDROID,
-    webClientId: GOOGLE_CLIENT_ID_WEB,
     scopes: ['profile', 'email'],
   };
 
@@ -127,7 +125,7 @@ const LoginScreen = ({ navigation }) => {
       const success = await authService.requestOtp(identifier);
       if (success) {
         showSuccess(t("otpSentSuccess"));
-        navigation.navigate('VerifyOtpScreen', { identifier: identifier });
+        navigation.navigate('VerifyCodeScreen', { identifier: identifier });
       } else {
         showError(t("otpSentFailed"));
       }

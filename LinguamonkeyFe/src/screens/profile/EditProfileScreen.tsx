@@ -40,11 +40,18 @@ const ENUM_OPTIONS = {
   })),
 };
 
-const LANGUAGE_OPTIONS = [
-  { value: 'vi', label: 'Vietnamese', flag: getCountryFlag('vi') },
-  { value: 'en', label: 'English', flag: getCountryFlag('en') },
-  { value: 'zh', label: 'Chinese', flag: getCountryFlag('zh') },
-];
+const getLanguageName = (code: string) => {
+  switch (code) {
+    case 'vi':
+      return 'Vietnamese';
+    case 'en':
+      return 'English';
+    case 'zh':
+      return 'Chinese';
+    default:
+      return code.toUpperCase();
+  }
+};
 
 const OptionModal = ({ visible, onClose, options, onSelect, title, t }: any) => (
   <Modal visible={visible} animationType="slide" transparent>
@@ -195,6 +202,15 @@ const EditProfileScreen: React.FC = () => {
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [isProcessingDelete, setIsProcessingDelete] = useState(false);
 
+  const ALL_LANGUAGE_OPTIONS = useMemo(() => {
+    const uniqueLangs = new Set(user?.languages || ['vi', 'en', 'zh']);
+    return Array.from(uniqueLangs).map(code => ({
+      value: code,
+      label: getLanguageName(code),
+      flag: getCountryFlag(code)
+    }));
+  }, [user?.languages]);
+
   useEffect(() => {
     if (user) {
       setLocal({
@@ -273,7 +289,7 @@ const EditProfileScreen: React.FC = () => {
   };
 
   const handleChangePassword = () => {
-    gotoTab("AuthStack", "ResetPasswordScreen");
+    gotoTab("Profile", "ResetPasswordScreen", { userId: user?.userId });
   };
 
   const handleDeactivateAccount = async () => {
@@ -381,10 +397,10 @@ const EditProfileScreen: React.FC = () => {
           <TouchableOpacity style={styles.fieldRow} onPress={() => setLanguageModalVisible(true)}>
             <Text style={styles.label}>{t('profile.languages') ?? 'Languages'}</Text>
             <View style={styles.pillRight}>
-              <View style={{ flexDirection: 'row', maxWidth: '60%', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <View style={styles.languageFlagsContainer}>
                 {local.languages && local.languages.length > 0 ? (
                   local.languages.map((lang: string) => {
-                    const opt = LANGUAGE_OPTIONS.find(o => o.value === lang);
+                    const opt = ALL_LANGUAGE_OPTIONS.find(o => o.value === lang);
                     return opt ? <Text key={lang} style={styles.flagStyle}>{opt.flag}</Text> : null;
                   })
                 ) : (
@@ -510,7 +526,7 @@ const EditProfileScreen: React.FC = () => {
         <MultiSelectModal
           visible={languageModalVisible}
           onClose={() => setLanguageModalVisible(false)}
-          options={LANGUAGE_OPTIONS}
+          options={ALL_LANGUAGE_OPTIONS}
           selectedValues={local.languages || []}
           onToggle={handleToggleLanguage}
           title={t('profile.selectLanguages') ?? 'Select Languages'}
@@ -572,6 +588,13 @@ const styles = createScaledSheet({
   },
   pillRight: { flexDirection: 'row', alignItems: 'center' },
   rightText: { color: '#374151', marginRight: 8, fontSize: 15, fontWeight: '500' },
+  languageFlagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    maxWidth: '60%',
+    justifyContent: 'flex-end',
+    marginRight: 8,
+  },
   flagStyle: { marginRight: 8, fontSize: 20 },
   smallAgeText: { fontSize: 11, color: '#6B7280', marginTop: 2 },
 

@@ -1,10 +1,15 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
-import com.connectJPA.LinguaVietnameseApp.dto.*;
+import com.connectJPA.LinguaVietnameseApp.dto.CourseProgressDto;
+import com.connectJPA.LinguaVietnameseApp.dto.OverviewMetricsDto;
+import com.connectJPA.LinguaVietnameseApp.dto.TimeSeriesPoint;
+import com.connectJPA.LinguaVietnameseApp.dto.TransactionSummaryDto;
+import com.connectJPA.LinguaVietnameseApp.dto.BadgeProgressDto;
 import com.connectJPA.LinguaVietnameseApp.dto.response.*;
 import com.connectJPA.LinguaVietnameseApp.entity.*;
 import com.connectJPA.LinguaVietnameseApp.enums.ActivityType;
 import com.connectJPA.LinguaVietnameseApp.enums.TransactionStatus;
+import com.connectJPA.LinguaVietnameseApp.enums.TransactionType;
 import com.connectJPA.LinguaVietnameseApp.mapper.UserLearningActivityMapper;
 import com.connectJPA.LinguaVietnameseApp.repository.jpa.*;
 import com.connectJPA.LinguaVietnameseApp.service.BadgeService;
@@ -30,7 +35,7 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final UserRepository userRepository;
     private final TransactionRepository transactionRepository;
     private final UserLearningActivityRepository userLearningActivityRepository;
-    private final CourseVersionEnrollmentRepository CourseVersionEnrollmentRepository;
+    private final CourseVersionEnrollmentRepository courseVersionEnrollmentRepository;
     private final UserDailyChallengeRepository userDailyChallengeRepository;
     private final VideoCallParticipantRepository videoCallParticipantRepository;
     private final UserEventRepository userEventRepository;
@@ -41,185 +46,9 @@ public class StatisticsServiceImpl implements StatisticsService {
     private final BadgeRepository badgeRepository;
 
     /* --------------------------------------------------------------------- */
-    /* DASHBOARD STATISTICS                                                  */
+    /* UTILITY METHODS */
     /* --------------------------------------------------------------------- */
-    @Override
-    public DashboardStatisticsResponse getDashboardStatistics(UUID userId,
-                                                              LocalDate startDate,
-                                                              LocalDate endDate) {
-        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
-
-        // 1. Query toàn bộ hoạt động (nền tảng của biểu đồ)
-        List<UserLearningActivity> activities = userLearningActivityRepository
-                .findByUserIdAndCreatedAtBetween(userId, start, end);
-
-        // 2. Tính toán metrics (Xử lý null safe cho duration)
-        long totalLearningTime = activities.stream()
-                .filter(a -> (a.getActivityType() == ActivityType.LESSON_END ||
-                        a.getActivityType() == ActivityType.CHAT_END))
-                .mapToLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L)
-                .sum();
-
-        long lessonsCompleted = activities.stream()
-                .filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETION)
-                .count();
-
-        long badgesEarned = activities.stream()
-                .filter(a -> a.getActivityType() == ActivityType.BADGE_EARNED)
-                .count();
-
-        OverviewMetricsDto overview = OverviewMetricsDto.builder()
-                .totalLearningTimeSeconds(totalLearningTime)
-                .lessonsCompleted(lessonsCompleted)
-                .badgesEarned(badgesEarned)
-                .streakDays(0) // TODO: Lấy từ User entity
-                .build();
-
-        // 3. Xây dựng biểu đồ thời gian (Chart Data)
-        List<TimeSeriesPoint> learningChart = buildLearningTimeSeries(startDate, endDate, activities);
-
-        // 4. Tiến độ khóa học
-        List<CourseVersionEnrollment> enrollments = CourseVersionEnrollmentRepository
-                .findByUserIdAndIsDeletedFalse(userId);
-
-        List<CourseProgressDto> courseProgressList = new ArrayList<>();
-        for (CourseVersionEnrollment e : enrollments) {
-            // Fix: Fetch Course manually because relationship is cut
-            Course course = courseRepository.findById(e.getCourseVersion().getCourseId()).orElse(null);
-            
-            CourseVersion version = (course != null) ? course.getLatestPublicVersion() : null;
-            if (course == null || version == null) continue;
-
-            try {
-                Page<LessonProgressResponse> progressPage = lessonProgressService.getAllLessonProgress(
-                        course.getCourseId().toString(),
-                        userId.toString(),
-                        Pageable.unpaged()
-                );
-                int completed = (int) progressPage.getContent().stream().filter(LessonProgressResponse::isCompleted).count();
-                int totalLessons = (version.getLessons() != null) ? version.getLessons().size() : 0;
-
-                courseProgressList.add(CourseProgressDto.builder()
-                        .courseId(course.getCourseId())
-                        .courseTitle(course.getTitle())
-                        .totalLessons(totalLessons)
-                        .completedLessons(completed)
-                        .build());
-            } catch (Exception ex) {
-                // Ignore lỗi lẻ tẻ để không crash dashboard
-            }
-        }
-
-        // 5. Badge
-        List<BadgeResponse> earnedBadges = badgeService.getBadgesForUser(userId);
-        long totalBadges = badgeRepository.countByIsDeletedFalse();
-
-        BadgeProgressDto badgeProgress = BadgeProgressDto.builder()
-                .totalBadgesInSystem((int) totalBadges)
-                .earnedBadgesCount(earnedBadges.size())
-                .earnedBadges(earnedBadges)
-                .build();
-
-        // 6. Giao dịch
-        List<Transaction> transactions = transactionRepository
-                .findByUserIdAndCreatedAtBetween(userId, start, end);
-
-        BigDecimal totalSpent = transactions.stream()
-                .filter(t -> t.getStatus() == TransactionStatus.SUCCESS && t.getAmount() != null)
-                .map(Transaction::getAmount)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-
-        TransactionSummaryDto transactionSummary = TransactionSummaryDto.builder()
-                .totalTransactions(transactions.size())
-                .totalSpent(totalSpent)
-                .build();
-
-        // 7. Hoạt động gần đây
-        List<UserLearningActivityResponse> recentActivities = userLearningActivityRepository
-                .findTop5ByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(userId)
-                .stream()
-                .map(userLearningActivityMapper::toUserLearningActivityResponse)
-                .collect(Collectors.toList());
-
-        return DashboardStatisticsResponse.builder()
-                .overview(overview)
-                .learningTimeChart(learningChart)
-                .courseProgress(courseProgressList)
-                .badgeProgress(badgeProgress)
-                .transactionSummary(transactionSummary)
-                .recentActivities(recentActivities)
-                .build();
-    }
-
-    private List<TimeSeriesPoint> buildLearningTimeSeries(LocalDate startDate,
-                                                          LocalDate endDate,
-                                                          List<UserLearningActivity> activities) {
-        Map<LocalDate, Long> dailyDuration = activities.stream()
-                .filter(a -> (a.getActivityType() == ActivityType.LESSON_END ||
-                        a.getActivityType() == ActivityType.CHAT_END))
-                .collect(Collectors.groupingBy(
-                        a -> a.getCreatedAt().toLocalDate(),
-                        Collectors.summingLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L)
-                ));
-
-        List<TimeSeriesPoint> series = new ArrayList<>();
-        LocalDate cur = startDate;
-        while (!cur.isAfter(endDate)) {
-            long duration = dailyDuration.getOrDefault(cur, 0L);
-            series.add(new TimeSeriesPoint(
-                    String.format("%02d/%02d", cur.getDayOfMonth(), cur.getMonthValue()),
-                    null,
-                    duration
-            ));
-            cur = cur.plusDays(1);
-        }
-        return series;
-    }
-
-    @Override
-    public StatisticsOverviewResponse getOverview(UUID userId, LocalDate startDate, LocalDate endDate, String aggregate) {
-        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
-        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
-
-        List<User> users = userRepository.findByCreatedAtBetween(start, end);
-        long totalUsers = users != null ? users.size() : 0L;
-
-        List<CourseVersionEnrollment> enrollments = userId != null
-                ? CourseVersionEnrollmentRepository.findByUserIdAndEnrolledAtBetween(userId, start, end)
-                : CourseVersionEnrollmentRepository.findByEnrolledAtBetween(start, end);
-        int totalCourses = enrollments != null ? enrollments.size() : 0;
-
-        List<UserLearningActivity> activities = userId != null
-                ? userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, start, end)
-                : userLearningActivityRepository.findByCreatedAtBetween(start, end);
-        int totalLessons = 0;
-        if (activities != null) {
-            totalLessons = (int) activities.stream()
-                    .filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETION)
-                    .count();
-        }
-
-        List<Transaction> transactions = userId != null
-                ? transactionRepository.findByUserIdAndCreatedAtBetween(userId, start, end)
-                : transactionRepository.findByCreatedAtBetween(start, end);
-
-        BigDecimal totalRevenue = BigDecimal.ZERO;
-        long totalTransactions = 0;
-        if (transactions != null && !transactions.isEmpty()) {
-            totalRevenue = transactions.stream()
-                    .filter(t -> t.getAmount() != null && "USD".equalsIgnoreCase(t.getCurrency()))
-                    .map(Transaction::getAmount)
-                    .reduce(BigDecimal.ZERO, BigDecimal::add);
-            totalTransactions = transactions.size();
-        }
-
-        List<TimeSeriesPoint> series = buildTimeSeries(startDate, endDate, aggregate, transactions);
-
-        return new StatisticsOverviewResponse(totalUsers, totalCourses, totalLessons,
-                totalRevenue, totalTransactions, series);
-    }
-
+    
     private List<TimeSeriesPoint> buildTimeSeries(LocalDate startDate,
                                                   LocalDate endDate,
                                                   String aggregate,
@@ -231,7 +60,12 @@ public class StatisticsServiceImpl implements StatisticsService {
             if (t == null || t.getCreatedAt() == null) continue;
             LocalDate d = t.getCreatedAt().toLocalDate();
             BucketAggregate b = byDate.computeIfAbsent(d, k -> new BucketAggregate(BigDecimal.ZERO, 0L));
-            if (t.getAmount() != null && "USD".equalsIgnoreCase(t.getCurrency())) {
+            
+            // CHỈ SỬ DỤNG GIAO DỊCH CÓ TIỀN TỆ USD HOẶC ĐANG LÀ DEPOSIT ĐỂ THỐNG KÊ (nếu là DEPOSIT, tính tất cả, giả định FE sẽ quy đổi)
+            boolean shouldAggregateRevenue = t.getAmount() != null && 
+                                             (t.getType() == TransactionType.DEPOSIT || "USD".equalsIgnoreCase(t.getCurrency()));
+
+            if (shouldAggregateRevenue) {
                 b.revenue = b.revenue.add(t.getAmount());
             }
             b.count++;
@@ -286,7 +120,7 @@ public class StatisticsServiceImpl implements StatisticsService {
             }
             String label = switch (aggregate.toLowerCase()) {
                 case "day" -> String.format("%02d/%02d", b.start.getDayOfMonth(), b.start.getMonthValue());
-                case "week" -> "Week " + weekIdx++;
+                case "week" -> "W" + weekIdx++;
                 case "month" -> b.start.getMonth().getDisplayName(java.time.format.TextStyle.SHORT, Locale.ENGLISH);
                 default -> b.start.toString();
             };
@@ -305,15 +139,220 @@ public class StatisticsServiceImpl implements StatisticsService {
         BucketRange(LocalDate s, LocalDate e) { start = s; end = e; }
     }
 
+    /* --------------------------------------------------------------------- */
+    /* DEPOSIT REVENUE STATISTICS - NEW */
+    /* --------------------------------------------------------------------- */
+
     @Override
-    public StatisticsResponse getUserStatistics(UUID userId,
-                                                LocalDate startDate,
-                                                LocalDate endDate,
-                                                String aggregate) {
+    public DepositRevenueResponse getDepositRevenueStatistics(LocalDate startDate, LocalDate endDate, String aggregate) {
         OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
 
-        // Transactions
+        List<Transaction> depositTransactions = transactionRepository
+                .findByTypeAndStatusAndCreatedAtBetween(
+                        TransactionType.DEPOSIT,
+                        TransactionStatus.SUCCESS,
+                        start,
+                        end
+                );
+
+        BigDecimal totalDepositRevenue = BigDecimal.ZERO;
+        if (depositTransactions != null) {
+            totalDepositRevenue = depositTransactions.stream()
+                    .filter(t -> t.getAmount() != null) // BỎ QUA KIỂM TRA TIỀN TỆ Ở ĐÂY
+                    .map(Transaction::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+        }
+
+        List<TimeSeriesPoint> revenueTimeSeries = buildTimeSeries(startDate, endDate, aggregate, depositTransactions);
+
+        return new DepositRevenueResponse(totalDepositRevenue, revenueTimeSeries);
+    }
+    
+    
+    /* --------------------------------------------------------------------- */
+    /* DASHBOARD STATISTICS                                                  */
+    /* --------------------------------------------------------------------- */
+    @Override
+    public DashboardStatisticsResponse getDashboardStatistics(UUID userId,
+                                                            LocalDate startDate,
+                                                            LocalDate endDate) {
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        List<UserLearningActivity> activities = userLearningActivityRepository
+                .findByUserIdAndCreatedAtBetween(userId, start, end);
+
+        long totalLearningTime = activities.stream()
+                .filter(a -> (a.getActivityType() == ActivityType.LESSON_END ||
+                        a.getActivityType() == ActivityType.CHAT_END))
+                .mapToLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L)
+                .sum();
+
+        long lessonsCompleted = activities.stream()
+                .filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETION)
+                .count();
+
+        long badgesEarned = activities.stream()
+                .filter(a -> a.getActivityType() == ActivityType.BADGE_EARNED)
+                .count();
+
+        OverviewMetricsDto overview = OverviewMetricsDto.builder()
+                .totalLearningTimeSeconds(totalLearningTime)
+                .lessonsCompleted(lessonsCompleted)
+                .badgesEarned(badgesEarned)
+                .streakDays(0)
+                .build();
+
+        List<TimeSeriesPoint> learningChart = buildLearningTimeSeries(startDate, endDate, activities);
+
+        List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository
+                .findByUserIdAndIsDeletedFalse(userId);
+
+        List<CourseProgressDto> courseProgressList = new ArrayList<>();
+        for (CourseVersionEnrollment e : enrollments) {
+            Course course = courseRepository.findById(e.getCourseVersion().getCourseId()).orElse(null);
+            
+            CourseVersion version = (course != null) ? course.getLatestPublicVersion() : null;
+            if (course == null || version == null) continue;
+
+            try {
+                Page<LessonProgressResponse> progressPage = lessonProgressService.getAllLessonProgress(
+                        course.getCourseId().toString(),
+                        userId.toString(),
+                        Pageable.unpaged()
+                );
+                int completed = (int) progressPage.getContent().stream().filter(LessonProgressResponse::isCompleted).count();
+                int totalLessons = (version.getLessons() != null) ? version.getLessons().size() : 0;
+
+                courseProgressList.add(CourseProgressDto.builder()
+                        .courseId(course.getCourseId())
+                        .courseTitle(course.getTitle())
+                        .totalLessons(totalLessons)
+                        .completedLessons(completed)
+                        .build());
+            } catch (Exception ex) {
+            }
+        }
+
+        List<BadgeResponse> earnedBadges = badgeService.getBadgesForUser(userId);
+        long totalBadges = badgeRepository.countByIsDeletedFalse();
+
+        BadgeProgressDto badgeProgress = BadgeProgressDto.builder()
+                .totalBadgesInSystem((int) totalBadges)
+                .earnedBadgesCount(earnedBadges.size())
+                .earnedBadges(earnedBadges)
+                .build();
+
+        List<Transaction> transactions = transactionRepository
+                .findByUserIdAndCreatedAtBetween(userId, start, end);
+
+        BigDecimal totalSpent = transactions.stream()
+                .filter(t -> t.getStatus() == TransactionStatus.SUCCESS && t.getAmount() != null)
+                .map(Transaction::getAmount)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        TransactionSummaryDto transactionSummary = TransactionSummaryDto.builder()
+                .totalTransactions(transactions.size())
+                .totalSpent(totalSpent)
+                .build();
+
+        List<UserLearningActivityResponse> recentActivities = userLearningActivityRepository
+                .findTop5ByUserIdAndIsDeletedFalseOrderByCreatedAtDesc(userId)
+                .stream()
+                .map(userLearningActivityMapper::toUserLearningActivityResponse)
+                .collect(Collectors.toList());
+
+        return DashboardStatisticsResponse.builder()
+                .overview(overview)
+                .learningTimeChart(learningChart)
+                .courseProgress(courseProgressList)
+                .badgeProgress(badgeProgress)
+                .transactionSummary(transactionSummary)
+                .recentActivities(recentActivities)
+                .build();
+    }
+
+    private List<TimeSeriesPoint> buildLearningTimeSeries(LocalDate startDate,
+                                                          LocalDate endDate,
+                                                          List<UserLearningActivity> activities) {
+        Map<LocalDate, Long> dailyDuration = activities.stream()
+                .filter(a -> (a.getActivityType() == ActivityType.LESSON_END ||
+                        a.getActivityType() == ActivityType.CHAT_END))
+                .collect(Collectors.groupingBy(
+                        a -> a.getCreatedAt().toLocalDate(),
+                        Collectors.summingLong(a -> a.getDurationInSeconds() != null ? a.getDurationInSeconds() : 0L)
+                ));
+
+        List<TimeSeriesPoint> series = new ArrayList<>();
+        LocalDate cur = startDate;
+        while (!cur.isAfter(endDate)) {
+            long duration = dailyDuration.getOrDefault(cur, 0L);
+            series.add(new TimeSeriesPoint(
+                    String.format("%02d/%02d", cur.getDayOfMonth(), cur.getMonthValue()),
+                    null,
+                    duration
+            ));
+            cur = cur.plusDays(1);
+        }
+        return series;
+    }
+
+    @Override
+    public StatisticsOverviewResponse getOverview(UUID userId, LocalDate startDate, LocalDate endDate, String aggregate) {
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
+        List<User> users = userRepository.findByCreatedAtBetween(start, end);
+        long totalUsers = users != null ? users.size() : 0L;
+
+        int totalCourses;
+        if (userId != null) {
+            List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository.findByUserIdAndEnrolledAtBetween(userId, start, end);
+            totalCourses = enrollments != null ? enrollments.size() : 0;
+        } else {
+            List<Course> courses = courseRepository.findByCreatedAtBetweenAndIsDeletedFalse(start, end);
+            totalCourses = courses != null ? courses.size() : 0;
+        }
+
+        List<UserLearningActivity> activities = userId != null
+                ? userLearningActivityRepository.findByUserIdAndCreatedAtBetween(userId, start, end)
+                : userLearningActivityRepository.findByCreatedAtBetween(start, end);
+        int totalLessons = 0;
+        if (activities != null) {
+            totalLessons = (int) activities.stream()
+                    .filter(a -> a.getActivityType() == ActivityType.LESSON_COMPLETION)
+                    .count();
+        }
+
+        List<Transaction> transactions = userId != null
+                ? transactionRepository.findByUserIdAndCreatedAtBetween(userId, start, end)
+                : transactionRepository.findByCreatedAtBetween(start, end);
+
+        BigDecimal totalRevenue = BigDecimal.ZERO;
+        long totalTransactions = 0;
+        if (transactions != null && !transactions.isEmpty()) {
+            totalRevenue = transactions.stream()
+                    .filter(t -> t.getAmount() != null && "USD".equalsIgnoreCase(t.getCurrency()))
+                    .map(Transaction::getAmount)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            totalTransactions = transactions.size();
+        }
+
+        List<TimeSeriesPoint> series = buildTimeSeries(startDate, endDate, aggregate, transactions);
+
+        return new StatisticsOverviewResponse(totalUsers, totalCourses, totalLessons,
+                totalRevenue, totalTransactions, series);
+    }
+
+    @Override
+    public StatisticsResponse getUserStatistics(UUID userId,
+                                             LocalDate startDate,
+                                             LocalDate endDate,
+                                             String aggregate) {
+        OffsetDateTime start = startDate.atStartOfDay().atOffset(ZoneOffset.UTC);
+        OffsetDateTime end = endDate.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
+
         List<Transaction> transactions = transactionRepository
                 .findByUserIdAndCreatedAtBetween(userId, start, end);
         BigDecimal totalAmount = transactions.stream()
@@ -322,34 +361,28 @@ public class StatisticsServiceImpl implements StatisticsService {
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         long totalTransactions = transactions.size();
 
-        // Activities
         List<UserLearningActivity> activities = userLearningActivityRepository
                 .findByUserIdAndCreatedAtBetween(userId, start, end);
         Map<String, Long> breakdown = activities.stream()
                 .collect(Collectors.groupingBy(a -> a.getActivityType().name(), Collectors.counting()));
 
-        // Map các loại hoạt động sang thống kê
         int lessonsCompleted = breakdown.getOrDefault(ActivityType.LESSON_COMPLETION.toString(), 0L).intValue();
         int quizzesCompleted = breakdown.getOrDefault(ActivityType.QUIZ_COMPLETE.toString(), 0L).intValue();
         int groupSessions = breakdown.getOrDefault(ActivityType.GROUP_SESSION_JOINED.toString(), 0L).intValue();
         int examsTaken = breakdown.getOrDefault(ActivityType.EXAM.toString(), 0L).intValue();
 
-        // Enrollments
-        List<CourseVersionEnrollment> enrollments = CourseVersionEnrollmentRepository
+        List<CourseVersionEnrollment> enrollments = courseVersionEnrollmentRepository
                 .findByUserIdAndEnrolledAtBetween(userId, start, end);
         int coursesEnrolled = enrollments.size();
 
-        // Challenges
         List<UserDailyChallenge> challenges = userDailyChallengeRepository
                 .findByUser_UserIdAndCompletedAtBetween(userId, start, end);
         int challengesCompleted = (int) challenges.stream().filter(UserDailyChallenge::getCompleted).count();
 
-        // Events
         List<UserEvent> events = userEventRepository
                 .findById_UserIdAndParticipatedAtBetween(userId, start, end);
         int eventsParticipated = events.size();
 
-        // Calls
         List<VideoCallParticipant> calls = videoCallParticipantRepository
                 .findByUser_UserIdAndJoinedAtBetween(userId, start, end);
         int callsJoined = calls.size();
@@ -374,7 +407,6 @@ public class StatisticsServiceImpl implements StatisticsService {
         return resp;
     }
 
-    // Các hàm phụ trợ còn lại giữ nguyên cấu trúc
     @Override
     public List<UserCountResponse> getUserCounts(String period, LocalDate startDate, LocalDate endDate) {
         return new ArrayList<>(); 

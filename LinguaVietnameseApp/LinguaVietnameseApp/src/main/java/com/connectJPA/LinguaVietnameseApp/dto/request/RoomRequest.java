@@ -6,9 +6,9 @@ import jakarta.validation.constraints.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
-import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -24,11 +24,18 @@ public class RoomRequest {
 
     private String description;
 
+    @Min(value = 2, message = "Max members must be at least 2")
     private int maxMembers;
 
     private RoomPurpose purpose;
 
     private RoomType roomType;
 
+    private String roomCode;
+
+    private String password;
+
     private boolean isDeleted = false;
+
+    private List<UUID> memberIds;
 }

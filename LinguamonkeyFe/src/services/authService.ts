@@ -3,7 +3,7 @@ import { publicClient, privateClient } from '../api/axiosClient';
 import { useTokenStore } from '../stores/tokenStore';
 import { useUserStore } from '../stores/UserStore';
 import { resetToAuth, resetToTab, gotoTab } from '../utils/navigationRef';
-import { decodeToken, getRoleFromToken } from '../utils/decodeToken';
+import { decodeToken, getRolesFromToken } from '../utils/decodeToken';
 import eventBus from '../events/appEvents';
 import { AxiosRequestConfig } from 'axios';
 import NotificationService from './notificationService';
@@ -46,14 +46,13 @@ export const authService = {
       const normalizedUser = {
         ...userProfile,
         userId: userProfile.userId ?? userProfile.id,
-        roles: getRoleFromToken(accessToken),
+        roles: getRolesFromToken(accessToken),
       };
 
       useUserStore.getState().setUser(normalizedUser);
       useUserStore.getState().setAuthenticated(true);
       await AsyncStorage.setItem('hasLoggedIn', 'true');
 
-      // Register FCM Token if not already in store
       NotificationService.registerTokenToBackend();
 
       eventBus.emit('logged_in', { userId: normalizedUser.userId, token: accessToken });
@@ -119,6 +118,22 @@ export const authService = {
     } catch (error) {
       console.error('[AuthService] Facebook Login Error:', error);
       throw error;
+    }
+  },
+
+  changePasswordForAuthenticatedUser: async (userId: string, currentPassword: string, newPassword: string) => {
+    try {
+      const res = await privateClient.post(`/api/v1/users/${userId}/change-password`, {
+        currentPassword,
+        newPassword
+      });
+      if (res.status === 200 || res.status === 204 || res.data.code === 200) {
+        return true;
+      }
+      throw new Error(res.data?.message || 'Password update failed');
+    } catch (error: any) {
+      console.error('[AuthService] Change Password Error:', error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || 'Failed to change password');
     }
   },
 

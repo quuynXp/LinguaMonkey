@@ -147,33 +147,7 @@ public class LessonServiceImpl implements LessonService {
                     .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
             
             LessonResponse response = toLessonResponse(lesson);
-
-            List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(id);
-            
-            List<LessonQuestionResponse> questionResponses = questions.stream().map(q -> 
-                LessonQuestionResponse.builder()
-                    .lessonQuestionId(q.getLessonQuestionId())
-                    .lessonId(q.getLesson().getLessonId())
-                    .question(q.getQuestion())
-                    .questionType(q.getQuestionType())
-                    .skillType(q.getSkillType())
-                    .languageCode(q.getLanguageCode())
-                    .optionsJson(q.getOptionsJson())
-                    .optionA(q.getOptionA())
-                    .optionB(q.getOptionB())
-                    .optionC(q.getOptionC())
-                    .optionD(q.getOptionD())
-                    .correctOption(q.getCorrectOption())
-                    .transcript(q.getTranscript())
-                    .mediaUrl(q.getMediaUrl())
-                    .explainAnswer(q.getExplainAnswer())
-                    .weight(q.getWeight())
-                    .orderIndex(q.getOrderIndex())
-                    .isDeleted(q.isDeleted())
-                    .build()
-            ).collect(Collectors.toList());
-
-            response.setQuestions(questionResponses);
+            response.setQuestions(getQuestionResponses(id));
 
             return response;
         } catch (AppException e) {
@@ -188,33 +162,32 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public LessonResponse createLesson(LessonRequest request) {
         try {
-            // 1. Validate Creator
             userRepository.findById(request.getCreatorId())
                     .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-            // 2. Create and Save Lesson FIRST (to generate ID)
             Lesson lesson = lessonMapper.toEntity(request);
-            lesson = lessonRepository.save(lesson); // Saved! Now has ID.
+            lesson = lessonRepository.save(lesson);
 
-            // 3. Link to Course if applicable
             if (request.getCourseId() != null) {
                 CourseLesson courseLesson = CourseLesson.builder()
-                        .id(new CourseLessonId(request.getCourseId(), lesson.getLessonId())) // Safe now
+                        .id(new CourseLessonId(request.getCourseId(), lesson.getLessonId()))
                         .orderIndex(lesson.getOrderIndex() != null ? lesson.getOrderIndex() : 0)
                         .build();
                 courseLessonRepository.save(courseLesson);
             }
+            
+            if (request.getVersionId() != null) {
+                saveLessonForVersion(lesson, request.getVersionId(), request.getOrderIndex());
+            }
 
-            // 4. Handle Questions (Simplified Logic)
             if (request.getQuestions() != null && !request.getQuestions().isEmpty()) {
-                Lesson finalLesson = lesson;
-                List<LessonQuestion> questions = request.getQuestions().stream()
-                        .map(qDto -> mapToQuestionEntity(qDto, finalLesson))
-                        .collect(Collectors.toList());
+                List<LessonQuestion> questions = processQuestions(request.getQuestions(), lesson);
                 lessonQuestionRepository.saveAll(questions);
             }
 
-            return toLessonResponse(lesson);
+            LessonResponse response = toLessonResponse(lesson);
+            response.setQuestions(getQuestionResponses(lesson.getLessonId())); 
+            return response;
         } catch (AppException e) {
             throw e;
         } catch (Exception e) {
@@ -223,12 +196,51 @@ public class LessonServiceImpl implements LessonService {
         }
     }
 
+    @Override
+    @Transactional
+    public LessonResponse updateLesson(UUID id, LessonRequest request) {
+        try {
+            Lesson lesson = lessonRepository.findById(id).filter(l -> !l.isDeleted())
+                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
+            
+            lessonMapper.updateEntityFromRequest(request, lesson);
+            lesson.setUpdatedAt(OffsetDateTime.now());
+            lesson = lessonRepository.save(lesson);
+
+            if (request.getQuestions() != null) {
+                List<LessonQuestion> existingQuestions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(id);
+                existingQuestions.forEach(q -> q.setDeleted(true));
+                lessonQuestionRepository.saveAll(existingQuestions);
+
+                if (!request.getQuestions().isEmpty()) {
+                    List<LessonQuestion> newQuestions = processQuestions(request.getQuestions(), lesson);
+                    lessonQuestionRepository.saveAll(newQuestions);
+                }
+            }
+
+            LessonResponse response = toLessonResponse(lesson);
+            response.setQuestions(getQuestionResponses(lesson.getLessonId()));
+            return response;
+        } catch (AppException e) {
+            throw e;
+        } catch (Exception e) {
+            log.error("Error updating lesson", e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
+    private List<LessonQuestion> processQuestions(List<LessonQuestionRequest> dtos, Lesson lesson) {
+        return dtos.stream()
+                .map(dto -> mapToQuestionEntity(dto, lesson))
+                .collect(Collectors.toList());
+    }
+
     private LessonQuestion mapToQuestionEntity(LessonQuestionRequest dto, Lesson lesson) {
         return LessonQuestion.builder()
-                .lesson(lesson)
+                .lesson(lesson) 
                 .question(dto.getQuestion())
                 .questionType(dto.getQuestionType())
-                .skillType(dto.getSkillType() != null ? dto.getSkillType() : lesson.getSkillTypes()) // Fallback to lesson skill
+                .skillType(dto.getSkillType() != null ? dto.getSkillType() : lesson.getSkillTypes())
                 .languageCode(dto.getLanguageCode() != null ? dto.getLanguageCode() : lesson.getLanguageCode())
                 .optionsJson(dto.getOptionsJson())
                 .optionA(dto.getOptionA())
@@ -243,6 +255,33 @@ public class LessonServiceImpl implements LessonService {
                 .orderIndex(dto.getOrderIndex() != null ? dto.getOrderIndex() : 0)
                 .isDeleted(false)
                 .build();
+    }
+
+    private List<LessonQuestionResponse> getQuestionResponses(UUID lessonId) {
+        List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
+        return questions.stream()
+            .filter(q -> !q.isDeleted())
+            .map(q -> LessonQuestionResponse.builder()
+                .lessonQuestionId(q.getLessonQuestionId())
+                .lessonId(q.getLesson().getLessonId())
+                .question(q.getQuestion())
+                .questionType(q.getQuestionType())
+                .skillType(q.getSkillType())
+                .languageCode(q.getLanguageCode())
+                .optionsJson(q.getOptionsJson())
+                .optionA(q.getOptionA())
+                .optionB(q.getOptionB())
+                .optionC(q.getOptionC())
+                .optionD(q.getOptionD())
+                .correctOption(q.getCorrectOption())
+                .transcript(q.getTranscript())
+                .mediaUrl(q.getMediaUrl())
+                .explainAnswer(q.getExplainAnswer())
+                .weight(q.getWeight())
+                .orderIndex(q.getOrderIndex())
+                .isDeleted(q.isDeleted())
+                .build()
+            ).collect(Collectors.toList());
     }
 
     @Override
@@ -262,6 +301,7 @@ public class LessonServiceImpl implements LessonService {
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
 
         List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
+        questions = questions.stream().filter(q -> !q.isDeleted()).collect(Collectors.toList());
         
         if (Boolean.TRUE.equals(lesson.getShuffleQuestions())) {
             Collections.shuffle(questions);
@@ -303,15 +343,13 @@ public class LessonServiceImpl implements LessonService {
     List<String> wrongQuestionIds = new ArrayList<>();
 
     if (userId != null) {
-        // 1. Lấy thông tin Progress hiện tại
         Optional<LessonProgress> existing = lessonProgressRepository.findById(new LessonProgressId(lessonId, userId));
         if (existing.isPresent()) {
             LessonProgress lp = existing.get();
             attemptNumber = lp.getAttemptNumber() + 1;
-            latestScore = lp.getScore(); // Lấy điểm số cao nhất/gần nhất
+            latestScore = lp.getScore(); 
         }
 
-        // 2. Lấy danh sách câu sai từ lần trước
         List<LessonProgressWrongItem> wrongItems = lessonProgressWrongItemRepository
                 .findById_LessonIdAndId_UserIdAndIsDeletedFalse(lessonId, userId);
         
@@ -321,8 +359,8 @@ public class LessonServiceImpl implements LessonService {
     }
 
     resp.put("attemptNumber", attemptNumber);
-    resp.put("latestScore", latestScore); // Trả về điểm số (null nếu chưa học)
-    resp.put("wrongQuestionIds", wrongQuestionIds); // Trả về list ID câu sai
+    resp.put("latestScore", latestScore); 
+    resp.put("wrongQuestionIds", wrongQuestionIds); 
 
     return resp;
 }
@@ -337,7 +375,8 @@ public class LessonServiceImpl implements LessonService {
                 .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
         if (userId == null) throw new AppException(ErrorCode.USER_NOT_FOUND);
 
-        List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId);
+        List<LessonQuestion> questions = lessonQuestionRepository.findByLesson_LessonIdOrderByOrderIndex(lessonId)
+                .stream().filter(q -> !q.isDeleted()).collect(Collectors.toList());
 
         int totalMax = questions.stream().mapToInt(q -> q.getWeight() == null ? 1 : q.getWeight()).sum();
         int totalScore = 0;
@@ -654,14 +693,14 @@ public class LessonServiceImpl implements LessonService {
     @Transactional
     public Lesson saveLessonForVersion(Lesson lesson, UUID versionId, Integer lessonIndex) {
         try {
-            if (lesson.getLessonName() == null) lesson.setLessonName("Untitled Lesson");
+            if (lesson.getLessonName() == null) lesson.setLessonName("Untitled Lesson " + UUID.randomUUID());
             lesson.setDeleted(false);
             Lesson savedLesson = lessonRepository.save(lesson);
 
             CourseVersionLessonId linkId = new CourseVersionLessonId(versionId, savedLesson.getLessonId());
             CourseVersionLesson courseVersionLesson = CourseVersionLesson.builder()
                     .id(linkId)
-                    .orderIndex(lessonIndex)
+                    .orderIndex(lessonIndex != null ? lessonIndex : 0)
                     .build();
             courseVersionLessonRepository.save(courseVersionLesson);
             return savedLesson;
@@ -692,23 +731,6 @@ public class LessonServiceImpl implements LessonService {
         } catch (InterruptedException | ExecutionException e) {
             if (e.getCause() instanceof AppException appEx) throw appEx;
             throw new AppException(ErrorCode.AI_PROCESSING_FAILED);
-        }
-    }
-
-    @Override
-    @Transactional
-    public LessonResponse updateLesson(UUID id, LessonRequest request) {
-        try {
-            Lesson lesson = lessonRepository.findById(id).filter(l -> !l.isDeleted())
-                    .orElseThrow(() -> new AppException(ErrorCode.LESSON_NOT_FOUND));
-            lessonMapper.updateEntityFromRequest(request, lesson);
-            lesson.setUpdatedAt(OffsetDateTime.now());
-            lesson = lessonRepository.save(lesson);
-            return toLessonResponse(lesson);
-        } catch (AppException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
 

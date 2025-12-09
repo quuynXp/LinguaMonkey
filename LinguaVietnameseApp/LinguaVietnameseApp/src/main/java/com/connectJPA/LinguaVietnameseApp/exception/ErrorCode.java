@@ -40,6 +40,7 @@ public enum ErrorCode {
     MAX_SESSIONS_EXCEEDED(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
         CHALLENGE_NOT_COMPLETED(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
         INVALID_TRANSACTION_STATUS(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
+        CURRENT_PASSWORD_INVALID(1108, "error.max_sessions_exceeded", HttpStatus.BAD_REQUEST, true),
 
     // Đã chuẩn hoá lại code và key cho các enum cũ
     INCORRECT_PASSWORD(1109, "error.incorrect_password", HttpStatus.BAD_REQUEST, true),

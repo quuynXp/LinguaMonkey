@@ -42,7 +42,7 @@ const NotesScreen = ({ navigation, route }: any) => {
   const [isReminderEnabled, setIsReminderEnabled] = useState(false);
   const [reminderHour, setReminderHour] = useState("09");
   const [reminderMinute, setReminderMinute] = useState("00");
-  const [showTimePicker, setShowTimePicker] = useState(false);
+  // const [showTimePicker, setShowTimePicker] = useState(false); // Unused variable removed
   const [reminderRepeat, setReminderRepeat] = useState<Enums.RepeatType>(Enums.RepeatType.DAILY);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -115,12 +115,21 @@ const NotesScreen = ({ navigation, route }: any) => {
   const handleAddNote = () => {
     if (!newNote.trim()) return;
 
+    // FIX: Ensure user exists before sending
+    if (!user?.userId) {
+      Alert.alert("Error", "User session invalid. Please relogin.");
+      return;
+    }
+
+    // FIX: contentId logic. Backend UUID expects strict null, not "" or undefined
+    const cleanContentId = (courseId && typeof courseId === 'string' && courseId.length > 0) ? courseId : null;
+
     const notePayload: MemorizationRequest = {
       contentType: mapNoteTypeToContentType(selectedNoteType),
-      contentId: courseId || null,
+      contentId: cleanContentId,
       noteText: newNote.trim(),
       isFavorite: false,
-      userId: user?.userId || "",
+      userId: user.userId, // Guaranteed valid due to check above
     };
 
     createMemorization(notePayload, {
@@ -131,7 +140,10 @@ const NotesScreen = ({ navigation, route }: any) => {
           finishAddProcess();
         }
       },
-      onError: () => Alert.alert("Error", t("common.error"))
+      onError: (err) => {
+        console.error("Create note error:", err);
+        Alert.alert("Error", t("common.error"));
+      }
     });
   };
 

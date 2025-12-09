@@ -93,9 +93,11 @@ const SpecialOfferScreen = ({ navigation }: any) => {
     }
 
     const renderCourseCard: ListRenderItem<CourseResponse> = ({ item }) => {
+        // Fix: Use Active discount and latest version fields for display
         const discount = item.activeDiscountPercentage || 0
-        const oldPrice = item.latestPublicVersion?.price || 0
-        const newPrice = item.discountedPrice || oldPrice
+        const version = item.latestPublicVersion
+        const oldPrice = version?.price || 0
+        const newPrice = item.discountedPrice || (oldPrice * (100 - discount) / 100)
 
         return (
             <TouchableOpacity
@@ -103,7 +105,7 @@ const SpecialOfferScreen = ({ navigation }: any) => {
                 onPress={() => navigation.navigate("CourseDetailsScreen", { courseId: item.courseId })}
             >
                 <View style={styles.imageContainer}>
-                    <Image source={getCourseImage(item.latestPublicVersion?.thumbnailUrl)} style={styles.cardImage} />
+                    <Image source={getCourseImage(version?.thumbnailUrl)} style={styles.cardImage} />
                     {discount > 0 && (
                         <View style={styles.badge}>
                             <Text style={styles.badgeText}>-{discount}%</Text>
@@ -113,9 +115,9 @@ const SpecialOfferScreen = ({ navigation }: any) => {
 
                 <View style={styles.cardContent}>
                     <View style={styles.topRow}>
-                        <Text style={styles.langTag}>{item.latestPublicVersion?.languageCode || 'EN'}</Text>
+                        <Text style={styles.langTag}>{version?.languageCode || 'EN'}</Text>
                         <View style={styles.ratingRow}>
-                            {renderRatingStars(item.latestPublicVersion?.systemRating || 5)}
+                            {renderRatingStars(version?.systemRating || 5)}
                             <Text style={styles.ratingText}>({item.reviewCount || 0})</Text>
                         </View>
                     </View>

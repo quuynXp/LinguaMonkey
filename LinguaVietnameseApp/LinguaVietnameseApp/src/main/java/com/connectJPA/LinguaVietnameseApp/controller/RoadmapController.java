@@ -2,10 +2,9 @@ package com.connectJPA.LinguaVietnameseApp.controller;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.*;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AppApiResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapItemDetailResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapPublicResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapResponse;
-import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapSuggestionResponse; // Cần thiết
+import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapSuggestionResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.RoadmapUserResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.RoadmapItem;
 import com.connectJPA.LinguaVietnameseApp.entity.RoadmapSuggestion;
@@ -42,10 +41,11 @@ public class RoadmapController {
     public AppApiResponse<Page<RoadmapPublicResponse>> getCommunityRoadmaps(
             @RequestParam(defaultValue = "en") String language,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) UUID userId // Add userId to check isFavorite
     ) {
         return AppApiResponse.<Page<RoadmapPublicResponse>>builder()
-                .result(roadmapService.getCommunityRoadmaps(language, page, size))
+                .result(roadmapService.getCommunityRoadmaps(language, page, size, userId))
                 .build();
     }
 
@@ -53,13 +53,27 @@ public class RoadmapController {
     public AppApiResponse<Page<RoadmapPublicResponse>> getOfficialRoadmaps(
             @RequestParam(defaultValue = "en") String language,
             @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) UUID userId // Add userId to check isFavorite
     ) {
         return AppApiResponse.<Page<RoadmapPublicResponse>>builder()
-                .result(roadmapService.getOfficialRoadmaps(language, page, size))
+                .result(roadmapService.getOfficialRoadmaps(language, page, size, userId))
                 .build();
     }
 
+    // --- NEW: TOGGLE FAVORITE ---
+    @Operation(summary = "Toggle favorite status for a roadmap")
+    @PostMapping("/{roadmapId}/favorite")
+    public AppApiResponse<Void> toggleFavorite(
+            @PathVariable UUID roadmapId,
+            @RequestParam UUID userId,
+            Locale locale
+    ) {
+        boolean isFavorited = roadmapService.toggleFavorite(userId, roadmapId);
+        String msgKey = isFavorited ? "roadmap.favorite.added" : "roadmap.favorite.removed";
+        return buildResponse(200, msgKey, locale, null);
+    }
+    // ---------------------------
 
     @Operation(summary = "Get roadmap details (no user progress)")
     @GetMapping("/{roadmapId}")
@@ -85,8 +99,9 @@ public class RoadmapController {
             @RequestParam(defaultValue = "en") String language,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) UUID userId, // Add userId
             Locale locale) {
-        Page<RoadmapPublicResponse> roadmapsPage = roadmapService.getPublicRoadmapsWithStats(language, page, size);
+        Page<RoadmapPublicResponse> roadmapsPage = roadmapService.getPublicRoadmapsWithStats(language, page, size, userId);
         return buildResponse(200, "roadmap.public.stats.list", locale, roadmapsPage);
     }
 
@@ -138,7 +153,7 @@ public class RoadmapController {
         return buildResponse(200, "roadmap.update", locale, roadmap);
     }
 
-    @Operation(summary = "Assign roadmap to user (choose default or assign generated)")
+    @Operation(summary = "Assign roadmap to user")
     @PostMapping("/assign")
     public AppApiResponse<Void> assignRoadmap(@RequestBody AssignRoadmapRequest req, Locale locale) {
         roadmapService.assignRoadmapToUser(req.getUserId(), req.getRoadmapId());
@@ -209,7 +224,7 @@ public class RoadmapController {
     @PostMapping("/{roadmapId}/suggestions")
     public AppApiResponse<RoadmapSuggestion> addSuggestion(
             @PathVariable UUID roadmapId,
-            @RequestBody AddSuggestionRequest req, // DTO với userId, itemId, suggestedOrderIndex, reason
+            @RequestBody AddSuggestionRequest req,
             Locale locale) {
         RoadmapSuggestion suggestion = roadmapService.addSuggestion(req.getUserId(), roadmapId, req.getItemId(), req.getSuggestedOrderIndex(), req.getReason());
         return buildResponse(201, "roadmap.suggestion.add", locale, suggestion);

@@ -11,6 +11,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -21,22 +22,21 @@ public class RoomResponse {
     private UUID roomId;
     private String roomName;
     private String roomCode;
-    private String content; // Description
+    private String content;
     private int maxMembers;
+
+    private String password;
     
-    // Creator Info
     private UUID creatorId;
     private String creatorName;
     private String creatorAvatarUrl;
 
-    // Display Info
-    private String avatarUrl; // Dynamic: User Avatar (1-1) or Group Avatar
+    private String avatarUrl;
     private int memberCount;
     
     private boolean partnerIsOnline;
     private String partnerLastActiveText;
     
-    // Preview Info
     private String lastMessage;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime lastMessageTime;
@@ -45,6 +45,8 @@ public class RoomResponse {
     private RoomType roomType;
     private RoomStatus status;
     
+    private List<UserProfileResponse> members;
+
     @JsonSerialize(using = OffsetDateTimeSerializer.class)
     private OffsetDateTime createdAt;
     @JsonSerialize(using = OffsetDateTimeSerializer.class)

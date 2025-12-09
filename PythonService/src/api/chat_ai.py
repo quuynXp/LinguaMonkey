@@ -5,8 +5,13 @@ import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted, NotFound, PermissionDenied, GoogleAPICallError
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
-genai.api_key = os.getenv("GOOGLE_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+else:
+    logger.error("Missing GOOGLE_API_KEY in Chat AI Service")
 
 MODEL_TIERS = [
     {"name": "gemini-2.5-pro", "purpose": "Pro - Max Quality"},
@@ -61,8 +66,8 @@ async def chat_with_ai(
         current_model = tier["name"]
         
         try:
-            logging.info(f"Attempting to use model: {current_model} ({tier['purpose']})")
-            
+            # Note: GenerativeModel client instantiation is lightweight. 
+            # The actual heavy lifting is done on Google's servers.
             model = genai.GenerativeModel(
                 current_model,
                 system_instruction=system_instruction

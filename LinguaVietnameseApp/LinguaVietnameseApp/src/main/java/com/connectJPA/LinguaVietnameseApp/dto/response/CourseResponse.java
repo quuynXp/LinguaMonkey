@@ -28,6 +28,7 @@ public class CourseResponse {
     private Country creatorCountry;
     private Boolean creatorVip;
     private Integer creatorLevel;
+    
 
     private CourseApprovalStatus approvalStatus;
 

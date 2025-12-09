@@ -42,7 +42,7 @@ public class UserProfileResponse {
     private List<BadgeResponse> badges;
     
     private boolean isVip;
-    private long vipDaysRemaining;
+    private Long vipDaysRemaining; // FIXED: Changed from Integer to Long
     private boolean isOnline;
     private String lastActiveText;
     private OffsetDateTime lastActiveAt;
@@ -58,7 +58,7 @@ public class UserProfileResponse {
     private List<FriendshipResponse> privateFriendRequests;
     private List<DatingInviteSummary> privateDatingInvites;
 
-    private long admirationCount;
+    private Long admirationCount; // FIXED: Changed from Integer to Long
     private boolean hasAdmired;
 
     private boolean isTeacher;

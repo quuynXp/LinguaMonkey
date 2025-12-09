@@ -35,7 +35,8 @@ const CreateRoomScreen = () => {
   const { useSearchPublicUsers } = useUsers();
 
   const { mutate: createRoom, isPending: isCreating } = useCreateRoom();
-  const { mutate: addMembers, isPending: isAddingMembers } = useAddRoomMembers();
+  // Chúng ta không cần useAddRoomMembers nữa vì logic đã được chuyển sang createRoom ở Backend
+  // const { mutate: addMembers, isPending: isAddingMembers } = useAddRoomMembers(); 
 
   const [roomName, setRoomName] = useState('');
   const [description, setDescription] = useState('');
@@ -83,7 +84,7 @@ const CreateRoomScreen = () => {
   };
 
   const handleCreateRoom = () => {
-    if (isCreating || isAddingMembers) return;
+    if (isCreating) return; // Chỉ cần kiểm tra isCreating vì addMembers đã được loại bỏ
 
     if (!roomName.trim()) {
       Alert.alert(t('common.error'), t('createRoom.errors.nameRequired'));
@@ -108,42 +109,19 @@ const CreateRoomScreen = () => {
       purpose: roomPurpose,
       roomType: isPrivate ? RoomType.PRIVATE : RoomType.PUBLIC,
       password: isPrivate ? roomPassword : "",
-      roomCode: "", // Backend generated
+      roomCode: "",
       isDeleted: false,
+      memberIds: Array.from(selectedUsers)
     };
 
     createRoom(roomPayload, {
       onSuccess: (newRoom) => {
-        if (selectedUsers.size > 0) {
-          const memberRequests = Array.from(selectedUsers).map(userId => ({
-            userId,
-            roomId: newRoom.roomId,
-            role: 'MEMBER',
-            isDeleted: false
-          }));
-
-          addMembers({ roomId: newRoom.roomId, memberRequests }, {
-            onSuccess: () => {
-              navigation.replace('GroupChatScreen', {
-                roomId: newRoom.roomId,
-                roomName: newRoom.roomName
-              });
-            },
-            onError: (err) => {
-              console.error("Failed to add members", err);
-              Alert.alert(t('common.warning'), t('createRoom.membersAddFailed'));
-              navigation.replace('GroupChatScreen', {
-                roomId: newRoom.roomId,
-                roomName: newRoom.roomName
-              });
-            }
-          });
-        } else {
-          navigation.replace('GroupChatScreen', {
-            roomId: newRoom.roomId,
-            roomName: newRoom.roomName
-          });
-        }
+        // newRoom.members (list UserProfileResponse) đã có sẵn từ BE, chuyển hướng ngay
+        navigation.replace('GroupChatScreen', {
+          roomId: newRoom.roomId,
+          roomName: newRoom.roomName
+          // Có thể truyền thêm members list nếu cần thiết cho màn hình GroupChatScreen
+        });
       },
       onError: (error) => {
         console.error(error);
@@ -176,7 +154,7 @@ const CreateRoomScreen = () => {
     );
   };
 
-  const isLoading = isCreating || isAddingMembers;
+  const isLoading = isCreating; // Chỉ cần kiểm tra isCreating
 
   return (
     <ScreenLayout>
@@ -376,7 +354,7 @@ const CreateRoomScreen = () => {
                   <ActivityIndicator size="small" color="#4F46E5" style={{ padding: 20 }} />
                 ) : (
                   <FlatList<UserProfileResponse>
-                    data={(searchResults?.data as UserProfileResponse[]) || []} // Fixed: Type assertion
+                    data={(searchResults?.data as UserProfileResponse[]) || []}
                     keyExtractor={item => item.userId}
                     renderItem={renderUserItem}
                     scrollEnabled={false}

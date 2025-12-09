@@ -91,6 +91,7 @@ twilio:
   account-sid: ${TWILIO_ACCOUNT_SID}
   auth-token: ${TWILIO_AUTH_TOKEN}
   from-phone-number: ${TWILIO_FROM_PHONE_NUMBER}
+  verify-service-sid: ${TWILIO_VERIFY_SERVICE_SID}
 
 google:
   credentials-file-url: ${GOOGLE_CREDENTIALS_FILE_URL}

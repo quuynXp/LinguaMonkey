@@ -57,4 +57,6 @@ public interface UserService {
     User getUserIfExists(UUID userId);
 
     long countOnlineUsers();
+
+    void changePassword(UUID userId, String currentPassword, String newPassword);
 }

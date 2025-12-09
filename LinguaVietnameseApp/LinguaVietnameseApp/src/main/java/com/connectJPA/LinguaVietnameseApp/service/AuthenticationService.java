@@ -48,13 +48,12 @@ public interface AuthenticationService {
     @Transactional
     void requestPasswordResetOtp(String identifier, String method);
 
-    // ENDPOINT MỚI 3: Verify Password Reset OTP
     @Transactional
     String verifyPasswordResetOtp(String identifier, String code);
 
     @Transactional
     Map<String, Object> checkResetMethods(String identifier);
 
-
     String generateSystemToken();
+
 }

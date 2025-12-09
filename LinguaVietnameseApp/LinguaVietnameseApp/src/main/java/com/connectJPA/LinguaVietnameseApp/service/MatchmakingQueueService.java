@@ -32,10 +32,8 @@ public class MatchmakingQueueService {
 
     private final Map<UUID, QueueItem> waitingUsers = new ConcurrentHashMap<>();
     
-    // Store matches for the passive partner to retrieve on their next poll
     private final Map<UUID, MatchResult> pendingMatches = new ConcurrentHashMap<>();
 
-    // Scoring Weights
     private static final int SCORE_LANGUAGE_EXCHANGE = 50;
     private static final int SCORE_INTERESTS = 15;
     private static final int SCORE_PROFICIENCY = 15;
@@ -74,15 +72,13 @@ public class MatchmakingQueueService {
         return Math.max(INITIAL_THRESHOLD - reduction, MIN_THRESHOLD);
     }
 
-    // New method to check if user was already matched by someone else
     public MatchResult checkPendingMatch(UUID userId) {
         return pendingMatches.remove(userId);
     }
 
-    // Stores the match for the partner so they find it when they poll
     public void notifyPartner(UUID partnerId, MatchResult result) {
         pendingMatches.put(partnerId, result);
-        waitingUsers.remove(partnerId); // Remove from wait queue but keep in match queue
+        waitingUsers.remove(partnerId);
     }
 
     public MatchResult findMatch(UUID currentUserId) {

@@ -28,6 +28,12 @@ public class CourseVersionDiscountServiceImpl implements CourseVersionDiscountSe
 
     @Override
     public Page<CourseVersionDiscountResponse> getAllCourseVersionDiscounts(UUID versionId, Integer discountPercentage, Pageable pageable) {
+        // Fix: Handle null discountPercentage to fetch ALL discounts for the version
+        if (discountPercentage == null) {
+            return courseVersionDiscountRepository.findAllByCourseVersion_VersionIdAndIsDeletedFalse(versionId, pageable)
+                    .map(courseVersionDiscountMapper::toResponse);
+        }
+        
         return courseVersionDiscountRepository.findAllByCourseVersion_VersionIdAndDiscountPercentageAndIsDeletedFalse(versionId, discountPercentage, pageable)
                 .map(courseVersionDiscountMapper::toResponse);
     }
@@ -42,11 +48,13 @@ public class CourseVersionDiscountServiceImpl implements CourseVersionDiscountSe
     @Override
     @Transactional
     public CourseVersionDiscountResponse createCourseVersionDiscount(CourseVersionDiscountRequest request) {
-        if (!courseVersionRepository.existsById(request.getVersionId())) {
-             throw new AppException(ErrorCode.COURSE_VERSION_NOT_FOUND);
-        }
+        CourseVersion courseVersion = courseVersionRepository.findById(request.getVersionId())
+                .orElseThrow(() -> new AppException(ErrorCode.COURSE_VERSION_NOT_FOUND));
 
         CourseVersionDiscount discount = courseVersionDiscountMapper.toEntity(request);
+
+        discount.setCourseVersion(courseVersion);
+        
         discount = courseVersionDiscountRepository.save(discount);
         return courseVersionDiscountMapper.toResponse(discount);
     }
@@ -60,6 +68,15 @@ public class CourseVersionDiscountServiceImpl implements CourseVersionDiscountSe
         courseVersionDiscountMapper.updateEntityFromRequest(request, discount);
         discount = courseVersionDiscountRepository.save(discount);
         return courseVersionDiscountMapper.toResponse(discount);
+    }
+
+    @Override
+    public Page<CourseVersionDiscountResponse> getDiscountsByVersionId(UUID versionId, Pageable pageable) {
+        if (!courseVersionRepository.existsById(versionId)) {
+            throw new AppException(ErrorCode.COURSE_VERSION_NOT_FOUND);
+        }
+        return courseVersionDiscountRepository.findAllByCourseVersion_VersionIdAndIsDeletedFalse(versionId, pageable)
+                .map(courseVersionDiscountMapper::toResponse);
     }
 
     @Override

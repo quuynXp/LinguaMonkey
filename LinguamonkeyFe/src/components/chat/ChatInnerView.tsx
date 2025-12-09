@@ -16,23 +16,20 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTranslation } from "react-i18next";
 import { useMutation } from "@tanstack/react-query";
-import { useNavigation, useRoute, RouteProp } from "@react-navigation/native";
-import { useChatStore, getMessageDisplayData } from "../../stores/ChatStore";
+import { useNavigation } from "@react-navigation/native";
+import { useChatStore } from "../../stores/ChatStore";
 import { useUserStore } from "../../stores/UserStore";
-import { useFriendships } from "../../hooks/useFriendships";
 import instance from "../../api/axiosClient";
 import { useToast } from "../../utils/useToast";
-import { FriendshipStatus } from "../../types/enums";
 import { MemberResponse, UserProfileResponse } from "../../types/dto";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { getCountryFlag } from "../../utils/flagUtils";
 import { getAvatarSource } from "../../utils/avatarUtils";
-import { useAppStore } from "../../stores/appStore"; // Import AppStore
+import { useAppStore } from "../../stores/appStore";
 
 const { width } = Dimensions.get('window');
 
-// --- TYPES ---
 type UIMessage = {
     id: string;
     sender: 'user' | 'other';
@@ -62,16 +59,10 @@ interface ChatInnerViewProps {
     isBubbleMode?: boolean;
     onCloseBubble?: () => void;
     onMinimizeBubble?: () => void;
-    // autoTranslate?: boolean; // REMOVED PROP: Use Store directly
     soundEnabled?: boolean;
     initialFocusMessageId?: string | null;
     members?: MemberResponse[];
 }
-
-type ChatInnerViewRouteParams = {
-    roomId: string;
-    initialFocusMessageId?: string | null;
-};
 
 type LanguageOption = {
     code: string;
@@ -79,7 +70,6 @@ type LanguageOption = {
     flag: React.JSX.Element | null;
 };
 
-// --- HELPER FUNCTIONS ---
 const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en') => {
     const date = new Date(sentAt);
     if (isNaN(date.getTime())) return '...';
@@ -87,7 +77,6 @@ const formatMessageTime = (sentAt: string | number | Date, locale: string = 'en'
     return date.toLocaleTimeString(locale, timeOptions);
 };
 
-// --- SUB-COMPONENT: QUICK PROFILE POPUP ---
 const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile, currentUserId, statusInfo }: any) => {
     if (!visible || !profile) return null;
     return (
@@ -104,7 +93,6 @@ const QuickProfilePopup = ({ visible, profile, onClose, onNavigateProfile, curre
     );
 };
 
-// --- SUB-COMPONENT: CHAT LANGUAGE SELECTOR ---
 const ChatLanguageSelector = ({
     selectedLanguage,
     onSelectLanguage,
@@ -128,7 +116,6 @@ const ChatLanguageSelector = ({
                 activeOpacity={canExpand ? 0.7 : 1}
                 disabled={!canExpand}
             >
-                <Text style={styles.selectorLabel}>{t('common.translateTo', 'Dịch sang')}:</Text>
                 <View style={styles.languageFlagWrapper}>
                     {selectedLanguage.flag}
                 </View>
@@ -136,8 +123,8 @@ const ChatLanguageSelector = ({
                     <Icon
                         name={isExpanded ? "keyboard-arrow-up" : "keyboard-arrow-down"}
                         size={20}
-                        color="#4F46E5"
-                        style={{ marginLeft: 4 }}
+                        color="#6B7280"
+                        style={{ marginLeft: 0 }}
                     />
                 )}
             </TouchableOpacity>
@@ -166,22 +153,21 @@ const ChatLanguageSelector = ({
 
 const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     roomId,
-    initialRoomName,
     isBubbleMode = false,
-    onCloseBubble,
-    onMinimizeBubble,
-    soundEnabled = true,
     members = []
 }) => {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
     const { showToast } = useToast();
     const navigation = useNavigation<any>();
     const { user } = useUserStore();
 
-    // 🔥 SUBSCRIBE TO APP STORE DIRECTLY FOR INSTANT UPDATES 🔥
     const chatSettings = useAppStore(state => state.chatSettings);
+    const setChatSettings = useAppStore(state => state.setChatSettings);
     const nativeLanguage = useAppStore(state => state.nativeLanguage);
-    const autoTranslate = chatSettings.autoTranslate; // Live reactive value
+    const autoTranslate = chatSettings.autoTranslate;
+
+    // Fallback to native language if target not set
+    const translationTargetLang = chatSettings.targetLanguage || nativeLanguage || 'vi';
 
     const currentUserId = user?.userId;
     const setCurrentViewedRoomId = useChatStore(s => s.setCurrentViewedRoomId);
@@ -192,42 +178,35 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const [localTranslations, setLocalTranslations] = useState<any>({});
     const [messagesToggleState, setMessagesToggleState] = useState<any>({});
 
-    // Default translation target based on AppStore, can be overridden by dropdown
-    const [translationTargetLang, setTranslationTargetLang] = useState(nativeLanguage || 'vi');
     const [translatingMessageId, setTranslatingMessageId] = useState<string | null>(null);
-
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const [editingMessage, setEditingMessage] = useState<UIMessage | null>(null);
     const [selectedProfile, setSelectedProfile] = useState<UserProfileResponse | MemberResponse | null>(null);
     const [isPopupVisible, setIsPopupVisible] = useState(false);
 
-    // --- Language Options Logic ---
     const getLanguageOption = useCallback((langCode: string): LanguageOption => ({
         code: langCode,
         name: langCode === 'zh' || langCode.startsWith('zh') ? 'ZH' : langCode.toUpperCase(),
-        flag: getCountryFlag(langCode, 20),
+        flag: getCountryFlag(langCode, 24),
     }), []);
 
     const availableLanguages: LanguageOption[] = useMemo(() => {
         const uniqueLangs = new Set<string>();
-        // Add defaults
         if (nativeLanguage) uniqueLangs.add(nativeLanguage);
-        uniqueLangs.add('en');
-        uniqueLangs.add('vi');
-        uniqueLangs.add('zh'); // Explicitly add ZH support
-
         if (user?.languages) user.languages.forEach(l => uniqueLangs.add(l));
 
+        // Ensure current target is available
+        if (translationTargetLang) uniqueLangs.add(translationTargetLang);
+
         return Array.from(uniqueLangs).map(getLanguageOption);
-    }, [user?.languages, nativeLanguage, getLanguageOption]);
+    }, [user?.languages, nativeLanguage, translationTargetLang, getLanguageOption]);
 
     const selectedLanguageOption = useMemo(() =>
         availableLanguages.find(l => l.code === translationTargetLang) || getLanguageOption(translationTargetLang),
         [availableLanguages, translationTargetLang, getLanguageOption]);
 
     const handleSelectLanguage = (lang: LanguageOption) => {
-        setTranslationTargetLang(lang.code);
-        // Clear local toggles when switching lang to force re-evaluation
+        setChatSettings({ targetLanguage: lang.code });
         setMessagesToggleState({});
     };
 
@@ -256,8 +235,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const senderId = msg?.senderId ?? 'unknown';
             const messageId = msg?.id?.chatMessageId || `${senderId}_${msg.sentAt}`;
 
-            // LOGIC:
-            // 1. Check if we have a translation for the CURRENT selected target language
             const dbTrans = msg.translatedLang === translationTargetLang ? msg.translatedText : null;
             const eagerTrans = eagerTranslations[messageId]?.[translationTargetLang];
             const localTrans = localTranslations[messageId]?.[translationTargetLang];
@@ -266,9 +243,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             const isAutoTranslated = autoTranslate && msg.senderId !== currentUserId;
             const hasMedia = !!(msg as any).mediaUrl || (msg as any).messageType !== 'TEXT';
 
-            // Show translation if: Not Media AND Has Translation Content AND (AutoTranslate ON OR User Manually Requested)
             const showTranslation = !hasMedia && !!finalTranslation && (isAutoTranslated || !!localTrans || !!eagerTrans);
-
             const senderProfile = msg.senderProfile || membersMap[senderId];
 
             return {
@@ -279,7 +254,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 text: msg.content || '',
                 content: msg.content || '',
                 translatedText: finalTranslation,
-                translatedLang: translationTargetLang, // Use current target lang for context
+                translatedLang: translationTargetLang,
                 mediaUrl: (msg as any).mediaUrl,
                 messageType: (msg as any).messageType || 'TEXT',
                 user: senderProfile?.fullname || senderProfile?.nickname || 'Unknown',
@@ -318,7 +293,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const { mutate: translateMutate } = useMutation({
         mutationFn: async ({ text, target, id }: any) => {
             setTranslatingMessageId(id);
-            // Ensure target_lang is passed correctly
             const res = await instance.post('/api/py/translate', { text, target_lang: target, source_lang: 'auto' });
             if (!res.data || !res.data.result) throw new Error("No translation result");
             return { text: res.data.result.translated_text, id, target };
@@ -338,25 +312,17 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     const handleTranslateClick = (id: string, text: string) => {
         const currentView = messagesToggleState[id];
 
-        // CASE 1: Currently showing translation -> Switch to Original
         if (currentView === translationTargetLang) {
             setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
-        }
-        // CASE 2: Currently showing Original (explicitly) -> Switch to Translation
-        else if (currentView === 'original') {
-            // Check cache first
+        } else if (currentView === 'original') {
             const eagerTrans = eagerTranslations[id]?.[translationTargetLang];
             const localTrans = localTranslations[id]?.[translationTargetLang];
-
             if (localTrans || eagerTrans) {
                 setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang }));
             } else {
                 translateMutate({ text, target: translationTargetLang, id });
             }
-        }
-        // CASE 3: Undefined state (Default view) -> Toggle based on what is currently shown
-        else {
-            // If autoTranslate is ON, we are likely showing translation, so toggle to original
+        } else {
             const eagerTrans = eagerTranslations[id]?.[translationTargetLang];
             const localTrans = localTranslations[id]?.[translationTargetLang];
             const hasTranslation = !!(localTrans || eagerTrans);
@@ -364,7 +330,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             if (autoTranslate && hasTranslation) {
                 setMessagesToggleState((prev: any) => ({ ...prev, [id]: 'original' }));
             } else {
-                // Otherwise try to show translation
                 if (hasTranslation) {
                     setMessagesToggleState((prev: any) => ({ ...prev, [id]: translationTargetLang }));
                 } else {
@@ -380,17 +345,14 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
         const isUser = item.sender === 'user';
         const isMedia = item.messageType !== 'TEXT' || !!item.mediaUrl;
         const currentView = messagesToggleState[item.id];
-
         let displayText = item.text;
         let isTranslatedView = false;
 
         const eagerTrans = eagerTranslations[item.id]?.[translationTargetLang];
         const localTrans = localTranslations[item.id]?.[translationTargetLang];
         const dbTrans = item.translatedLang === translationTargetLang ? item.translatedText : null;
-
         const availableTranslation = localTrans || eagerTrans || dbTrans;
 
-        // DISPLAY LOGIC
         if (currentView === translationTargetLang) {
             displayText = availableTranslation || item.text;
             isTranslatedView = true;
@@ -398,7 +360,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
             displayText = item.text;
             isTranslatedView = false;
         } else if (autoTranslate && availableTranslation) {
-            // Default state with AutoTranslate ON
             displayText = availableTranslation;
             isTranslatedView = true;
         }
@@ -450,7 +411,6 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
     return (
         <ScreenLayout style={styles.container}>
             <View style={styles.chatHeaderToolbar}>
-                <View style={{ flex: 1 }} />
                 <ChatLanguageSelector
                     selectedLanguage={selectedLanguageOption}
                     onSelectLanguage={handleSelectLanguage}
@@ -458,7 +418,7 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
                 />
             </View>
 
-            <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} />
+            <FlatList ref={flatListRef} data={messages} keyExtractor={item => item.id} style={styles.list} renderItem={renderMessageItem} contentContainerStyle={{ paddingTop: 40 }} />
             <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} keyboardVerticalOffset={isBubbleMode ? 0 : 90}>
                 {editingMessage && (
                     <View style={styles.editBanner}>
@@ -479,14 +439,13 @@ const ChatInnerView: React.FC<ChatInnerViewProps> = ({
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: '#FFF' },
     chatHeaderToolbar: {
+        position: 'absolute',
+        top: 8,
+        right: 16,
+        zIndex: 100,
+        backgroundColor: 'transparent',
         flexDirection: 'row',
         justifyContent: 'flex-end',
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        borderBottomWidth: 1,
-        borderBottomColor: '#F3F4F6',
-        backgroundColor: '#FFF',
-        zIndex: 50,
     },
     languageSelectorContainer: {
         position: 'relative',
@@ -495,20 +454,20 @@ const styles = createScaledSheet({
     selectedLanguageButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#F3F4F6',
+        backgroundColor: 'rgba(243, 244, 246, 0.9)',
         borderRadius: 20,
-        paddingHorizontal: 12,
+        paddingHorizontal: 8,
         paddingVertical: 6,
         justifyContent: 'center',
-    },
-    selectorLabel: {
-        fontSize: 12,
-        color: '#6B7280',
-        marginRight: 6,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
     },
     languageDropdown: {
         position: 'absolute',
-        top: 40,
+        top: 45,
         right: 0,
         backgroundColor: '#FFF',
         borderRadius: 12,
@@ -518,14 +477,15 @@ const styles = createScaledSheet({
         shadowOpacity: 0.1,
         shadowRadius: 10,
         elevation: 5,
-        minWidth: 60,
+        minWidth: 50,
         zIndex: 100,
+        paddingVertical: 4,
     },
     languageItem: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        padding: 12,
+        padding: 10,
         borderBottomWidth: 1,
         borderBottomColor: '#F3F4F6',
     },

@@ -24,11 +24,14 @@ public class TwilioConfig {
 
     @Value("${twilio.from-phone-number}")
     private String fromPhoneNumber;
+    
+    @Value("${twilio.verify-service-sid}")
+    private String verifyServiceSid;
 
     @PostConstruct
     public void initTwilio() {
-        if (accountSid == null || authToken == null || fromPhoneNumber == null) {
-            log.warn("TWILIO credentials (accountSid, authToken, fromPhoneNumber) chưa được cấu hình. SMS Service sẽ KHÔNG hoạt động.");
+        if (accountSid == null || authToken == null || verifyServiceSid == null) {
+            log.warn("TWILIO credentials (accountSid, authToken, verifyServiceSid) chưa được cấu hình. SMS Service sẽ KHÔNG hoạt động.");
             return;
         }
 
@@ -40,4 +43,3 @@ public class TwilioConfig {
         }
     }
 }
-

@@ -38,13 +38,13 @@ public class UserResponse {
 
     private AgeRange ageRange;
     private LocalDate dayOfBirth;
-    private Long vipDaysRemaining;
+    private Long vipDaysRemaining; // FIXED: Changed from int to Long
     private ProficiencyLevel proficiency;
     private LearningPace learningPace;
      private String latestImprovementSuggestion;
 
     private List<String> certificationIds;
-    private List<UUID> interestIds;        
+    private List<UUID> interestIds; 	 	
     private List<String> goalIds;
 
     private int level;
@@ -58,11 +58,9 @@ public class UserResponse {
     private OffsetDateTime updatedAt;
     private List<String> languages;
 
-    // --- Status Flags for Frontend Routing ---
     private boolean hasFinishedSetup;
     private boolean hasDonePlacementTest;
     private OffsetDateTime lastDailyWelcomeAt;
 
-    // --- Couple Profile Info ---
     private CoupleProfileSummary coupleProfile;
 }

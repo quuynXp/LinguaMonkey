@@ -641,6 +641,7 @@ export interface RoomRequest {
     purpose: Enums.RoomPurpose;
     roomType: Enums.RoomType;
     isDeleted: boolean;
+    memberIds?: string[];
 }
 
 export interface SocialLoginRequest {
@@ -1700,10 +1701,11 @@ export interface RoadmapItemResponse {
 export interface RoadmapItemUserResponse {
     id: string;
     name: string;
-    description: string;
     completed: boolean;
     progress: number;
-    status: string;
+    status: 'locked' | 'available' | 'in_progress' | 'completed';
+    completedAt?: string;
+    startedAt?: string;
 }
 
 export interface RoadmapMilestoneDetailResponse {
@@ -1744,16 +1746,19 @@ export interface RoadmapPublicResponse {
     description: string;
     language: string;
     creator: string;
-    creatorId: string;
-    creatorAvatar: string;
+    creatorId?: string;
+    creatorAvatar?: string;
     totalItems: number;
     suggestionCount: number;
-    averageRating: number;
-    difficulty: string;
-    type: string;
+    difficulty?: string;
+    type?: string;
     createdAt: string;
+    updatedAt: string;
     viewCount: number;
+
     favoriteCount: number;
+    isFavorite: boolean;
+    isOfficial?: boolean;
 }
 
 export interface RoadmapResponse {

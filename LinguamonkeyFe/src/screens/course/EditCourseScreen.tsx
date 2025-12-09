@@ -34,8 +34,6 @@ import {
 import FileUploader from "../../components/common/FileUploader";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 
-// --- Components Con (Modal) ---
-
 interface DiscountModalProps {
   visible: boolean;
   onClose: () => void;
@@ -49,9 +47,8 @@ const DiscountModal = ({ visible, onClose, versionId, initialData, onSuccess }: 
   const [code, setCode] = useState(initialData?.code || "");
   const [percentage, setPercentage] = useState(initialData?.discountPercentage?.toString() || "10");
 
-  // Date States
   const [startDate, setStartDate] = useState(initialData?.startDate ? new Date(initialData.startDate) : new Date());
-  const [endDate, setEndDate] = useState(initialData?.endDate ? new Date(initialData.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)); // Default +30 days
+  const [endDate, setEndDate] = useState(initialData?.endDate ? new Date(initialData.endDate) : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000));
 
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
@@ -229,8 +226,6 @@ const PublishReasonModal = ({ visible, onClose, onConfirm }: { visible: boolean;
   );
 };
 
-// --- Main Screen ---
-
 const EditCourseScreen = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -242,7 +237,6 @@ const EditCourseScreen = () => {
 
   const [activeCourseId, setActiveCourseId] = useState<string | undefined>(initialCourseId);
 
-  // Form State
   const [title, setTitle] = useState("");
   const [price, setPrice] = useState("0");
   const [description, setDescription] = useState("");
@@ -250,12 +244,10 @@ const EditCourseScreen = () => {
   const [difficulty, setDifficulty] = useState<DifficultyLevel>(DifficultyLevel.A1);
   const [isUploadingThumb, setIsUploadingThumb] = useState(false);
 
-  // Modal State
   const [showDiscountModal, setShowDiscountModal] = useState(false);
   const [selectedDiscount, setSelectedDiscount] = useState<CourseVersionDiscountResponse | undefined>(undefined);
   const [publishModalVisible, setPublishModalVisible] = useState(false);
 
-  // Hooks
   const {
     useCourse,
     useCourseVersions,
@@ -286,7 +278,6 @@ const EditCourseScreen = () => {
     return workingVersion.status === VersionStatus.DRAFT;
   }, [activeCourseId, workingVersion]);
 
-  // Pagination Logic
   const {
     data: lessonsData,
     fetchNextPage,
@@ -303,6 +294,7 @@ const EditCourseScreen = () => {
     return (pages.flatMap((page: any) => page.data || []) as LessonResponse[]);
   }, [lessonsData]);
 
+  // FIX: This calls getAllCourseVersionDiscounts without percentage param, which should now return ALL discounts via backend fix.
   const { data: discountsData, refetch: refetchDiscounts } = useDiscounts({
     versionId: workingVersion?.versionId,
     page: 0,
@@ -334,7 +326,6 @@ const EditCourseScreen = () => {
     }
   }, [workingVersion]);
 
-  // Mutations
   const { mutateAsync: createCourseMutateAsync, isPending: isCreatingCourse } = useCreateCourse();
   const { mutateAsync: updateDetailsMutateAsync, isPending: isUpdatingDetails } = useUpdateCourseDetails();
   const { mutateAsync: updateVersionMutateAsync, isPending: isUpdatingVersion } = useUpdateCourseVersion();
@@ -342,9 +333,15 @@ const EditCourseScreen = () => {
   const { mutate: publishMutate, isPending: isPublishing } = usePublishVersion();
 
   const isSaving = isCreatingCourse || isUpdatingDetails || isUpdatingVersion || isCreatingDraft || isPublishing;
-  const displayThumbnail = localThumbnailUrl || workingVersion?.thumbnailUrl || "";
 
-  // Render Lesson Item
+  // FIX: Logic for image source to handle Drive URLs simply
+  const imageSource = useMemo(() => {
+    if (localThumbnailUrl) {
+      return { uri: localThumbnailUrl };
+    }
+    return getCourseImage(workingVersion?.thumbnailUrl);
+  }, [localThumbnailUrl, workingVersion?.thumbnailUrl]);
+
   const renderLessonItem = ({ item, index }: { item: LessonResponse; index: number }) => (
     <TouchableOpacity
       style={styles.lessonItem}
@@ -366,12 +363,12 @@ const EditCourseScreen = () => {
     </TouchableOpacity>
   );
 
-  // FIX: Đã xóa startDate và endDate khỏi dependency array
   const headerElement = useMemo(() => (
     <View style={styles.contentContainer}>
       <View style={styles.thumbnailContainer}>
+        {/* FIX: Using calculated imageSource to avoid breaking Drive links */}
         <Image
-          source={getCourseImage(displayThumbnail)}
+          source={imageSource}
           style={styles.thumbnail}
           resizeMode="cover"
         />
@@ -488,7 +485,7 @@ const EditCourseScreen = () => {
       )}
     </View>
   ), [
-    displayThumbnail,
+    imageSource, // Updated dependency
     isUploadingThumb,
     title,
     price,
@@ -536,7 +533,7 @@ const EditCourseScreen = () => {
 
       const versionPayload = {
         description,
-        thumbnailUrl: displayThumbnail || "",
+        thumbnailUrl: localThumbnailUrl || workingVersion?.thumbnailUrl || "",
         price: parseFloat(price) || 0,
         difficultyLevel: difficulty,
         languageCode: "en",
@@ -610,6 +607,29 @@ const EditCourseScreen = () => {
       Alert.alert(t("notice"), t("course.noDraftToPublish"));
       return;
     }
+
+    // --- CHECK UNSAVED CHANGES ---
+    if (description !== workingVersion.description || (localThumbnailUrl && localThumbnailUrl !== workingVersion.thumbnailUrl)) {
+      Alert.alert(t("notice"), "You have unsaved changes. Please save the course before publishing.");
+      return;
+    }
+
+    // --- VALIDATION LOGIC MATCHING BACKEND ---
+    if (!workingVersion.description || workingVersion.description.length < 20) {
+      Alert.alert(t("error"), "Description is too short (min 20 chars). Please update and save.");
+      return;
+    }
+
+    if (!workingVersion.thumbnailUrl) {
+      Alert.alert(t("error"), "Course thumbnail is required. Please upload and save.");
+      return;
+    }
+
+    if (lessonsList.length === 0) {
+      Alert.alert(t("error"), "Course must have at least one lesson. Please add lessons and save.");
+      return;
+    }
+
     setPublishModalVisible(true);
   };
 

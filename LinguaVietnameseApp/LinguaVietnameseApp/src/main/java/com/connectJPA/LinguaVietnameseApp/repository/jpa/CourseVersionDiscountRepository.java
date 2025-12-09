@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.repository.jpa;
 
+import com.connectJPA.LinguaVietnameseApp.dto.response.CourseVersionDiscountResponse;
 import com.connectJPA.LinguaVietnameseApp.entity.CourseVersionDiscount;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -17,8 +18,8 @@ import java.util.UUID;
 @Repository
 public interface CourseVersionDiscountRepository extends JpaRepository<CourseVersionDiscount, UUID> {
     
-    Page<CourseVersionDiscount> findAllByCourseVersion_VersionIdAndDiscountPercentageAndIsDeletedFalse(UUID versionId, Integer discountPercentage, Pageable pageable);
-    
+Page<CourseVersionDiscount> findAllByCourseVersion_VersionIdAndDiscountPercentageAndIsDeletedFalse(UUID versionId, Integer discountPercentage, Pageable pageable);
+
     List<CourseVersionDiscount> findAllByCourseVersion_VersionIdAndIsDeletedFalse(UUID versionId);
     
     Optional<CourseVersionDiscount> findByCodeAndCourseVersion_VersionIdAndIsDeletedFalse(String code, UUID versionId);
@@ -41,8 +42,8 @@ public interface CourseVersionDiscountRepository extends JpaRepository<CourseVer
             "AND d.startDate <= :now " +
             "AND (d.endDate IS NULL OR d.endDate >= :now) " +
             "AND c.isDeleted = false " +
-            "AND v.status = 'PUBLIC' " +
-            "AND (:keyword IS NULL OR LOWER(c.title) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
+            "AND v.status = 'PUBLIC' " + 
+            "AND (:keyword IS NULL OR LOWER(CAST(c.title AS string)) LIKE LOWER(CONCAT('%', :keyword, '%'))) " +
             "AND (:languageCode IS NULL OR v.languageCode = :languageCode) " +
             "AND (:minRating IS NULL OR v.systemRating >= :minRating) " +
             "ORDER BY d.discountPercentage DESC")
@@ -53,4 +54,5 @@ public interface CourseVersionDiscountRepository extends JpaRepository<CourseVer
             @Param("now") OffsetDateTime now,
             Pageable pageable
     );
+    Page<CourseVersionDiscount> findAllByCourseVersion_VersionIdAndIsDeletedFalse(UUID versionId, Pageable pageable);
 }

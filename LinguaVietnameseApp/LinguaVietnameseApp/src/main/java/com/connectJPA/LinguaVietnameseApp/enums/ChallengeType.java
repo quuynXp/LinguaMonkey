@@ -10,5 +10,6 @@ public enum ChallengeType {
     EXP_EARNED,
     FRIEND_ADDED,
     REVIEW_SESSION,
-    LEARNING_TIME
+    LEARNING_TIME,
+    GIVE_ADMIRATION
 }

@@ -29,6 +29,10 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: 🛠️ Generate Android directory (Prebuild)
+        # Bổ sung để tạo lại thư mục 'android' (chứa gradlew) sau khi checkout
+        run: npx expo prebuild --platform android --no-install
+
       - name: ☕ Setup Java (JDK)
         uses: actions/setup-java@v4
         with:
@@ -44,6 +48,14 @@ jobs:
           key: ${{ runner.os }}-gradle-fe-${{ hashFiles('LinguamonkeyFe/**/*.gradle*', 'LinguamonkeyFe/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-fe-
+            
+      - name: 🧹 Clean up large components (Pre-build)
+        # Dọn dẹp mạnh mẽ các công cụ lớn để giải phóng không gian trước khi build Gradle
+        run: |
+          echo "✨ Freeing up disk space by removing large tools..."
+          sudo rm -rf /usr/local/lib/android/sdk/
+          sudo rm -rf /usr/share/dotnet/
+          sudo apt-get clean
 
       - name: 🔐 Install EAS CLI
         run: npm install -g eas-cli
@@ -54,6 +66,8 @@ jobs:
       - name: 🔑 Decode Android keystore
         run: |
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > my-release-key.keystore
+          # Đảm bảo quyền truy cập cho Keystore
+          chmod 600 my-release-key.keystore
 
       - name: ⚙️ Build signed APK locally
         env:
@@ -71,11 +85,12 @@ jobs:
         with:
           name: android-signed-apk
           path: LinguamonkeyFe/app-release.apk
-          
-      # - name: 🚀 Submit to Google Play
-      #   env:
-      #     EXPO_TOKEN: ${{ secrets.EAS_TOKEN }}
-      #     GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
-      #   run: |
-      #     echo "📤 Submitting local APK to Google Play..."
-      #     eas submit -p android --path ./app-release.apk --non-interactive
+
+      - name: 🧹 Clean up final disk space
+        if: always()
+        run: |
+          echo "✨ Cleaning up final disk space..."
+          # Dọn dẹp Gradle caches và Keystore file
+          rm -rf ~/.gradle/caches/
+          rm -f my-release-key.keystore
+          npm cache clean --force

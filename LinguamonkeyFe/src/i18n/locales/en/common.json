@@ -239,6 +239,7 @@
         "friendRequestSent": "Friend request sent successfully",
         "friendRequestAccepted": "Friend request accepted"
     },
+    "loadingGeneric": "Loading...",
     "loading": {
         "ai": "AI is responding...",
         "room": "Loading chat room...",

@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
+import com.connectJPA.LinguaVietnameseApp.configuration.TwilioConfig;
 import com.connectJPA.LinguaVietnameseApp.dto.request.AuthenticationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
 import com.connectJPA.LinguaVietnameseApp.dto.response.FacebookUserResponse;
@@ -21,6 +22,7 @@ import com.nimbusds.jose.crypto.RSASSASigner;
 import com.nimbusds.jose.crypto.RSASSAVerifier;
 import com.nimbusds.jwt.JWTClaimsSet;
 import com.nimbusds.jwt.SignedJWT;
+import com.twilio.rest.verify.v2.service.VerificationCheck;
 
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
@@ -87,6 +89,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     final RestTemplate restTemplate;
     final UserAuthAccountRepository userAuthAccountRepository;
     final UserSettingsRepository userSettingsRepository;
+    final TwilioConfig twilioConfig;
     
     private RSAPrivateKey getPrivateKey() throws Exception {
         try {
@@ -365,39 +368,70 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     @Transactional
     public boolean requestOtp(String emailOrPhone) {
-        boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
-        
-        String key = isPhone ? normalizePhone(emailOrPhone) : emailOrPhone.toLowerCase().trim();
-        String code = String.format("%06d", new Random().nextInt(999999));
-        log.info("Generated OTP: {} for user: {} (key: {})", code, emailOrPhone, key);
-        otpLoginCodes.put(key, code);
-        otpLoginExpiry.put(key, Instant.now().plus(10, ChronoUnit.MINUTES));
-        try {
-            if (isPhone) {
-                smsService.sendSms(key, code); 
-                return true;
-            } else {
-                emailService.sendOtpEmail(key, code, Locale.getDefault());
+    boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
+    
+    String key = isPhone ? normalizePhone(emailOrPhone) : emailOrPhone.toLowerCase().trim();
+    
+    try {
+        if (isPhone) {
+            smsService.sendSms(key, null);
+
+            
+            otpLoginCodes.put(key, ""); 
+            otpLoginExpiry.put(key, Instant.now().plus(10, ChronoUnit.MINUTES));
+            return true;
+        } else {
+            String code = String.format("%06d", new Random().nextInt(999999));
+            log.info("Generated OTP: {} for user: {} (key: {})", code, emailOrPhone, key);
+            otpLoginCodes.put(key, code);
+            otpLoginExpiry.put(key, Instant.now().plus(10, ChronoUnit.MINUTES));
+            emailService.sendOtpEmail(key, code, Locale.getDefault());
             }
+        } catch (AppException e) {
+            log.error("Failed to send OTP for {}: {}", key, e.getErrorCode());
+            throw e;
         } catch (Exception e) {
             log.error("Failed to send OTP for {}", key, e);
             throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
         return true;
     }
+
     @Override
     @Transactional
     public AuthenticationResponse verifyOtpAndLogin(String emailOrPhone, String code, String deviceId, String ip, String userAgent) {
         boolean isPhone = emailOrPhone.matches("^\\+?[0-9. ()-]{7,}$") && !emailOrPhone.contains("@");
         String key = isPhone ? normalizePhone(emailOrPhone) : emailOrPhone.toLowerCase().trim();
-        String storedCode = otpLoginCodes.get(key);
+
         Instant expiry = otpLoginExpiry.get(key);
-        if (storedCode == null || !storedCode.equals(code))
-            throw new AppException(ErrorCode.OTP_INVALID);
-        if (expiry == null || expiry.isBefore(Instant.now()))
+        
+        if (expiry == null || expiry.isBefore(Instant.now())) {
+            otpLoginCodes.remove(key);
+            otpLoginExpiry.remove(key);
             throw new AppException(ErrorCode.OTP_EXPIRED);
-        otpLoginCodes.remove(emailOrPhone);
-        otpLoginExpiry.remove(emailOrPhone);
+        }
+
+        if (isPhone) {
+            try {
+                boolean isVerified = smsService.verifyOtp(key, code);
+                if (!isVerified) {
+                    throw new AppException(ErrorCode.OTP_INVALID);
+                }
+            } catch (AppException e) {
+                throw e;
+            } catch (Exception e) {
+                log.error("Twilio verification check failed for {}: {}", key, e.getMessage());
+                throw new AppException(ErrorCode.OTP_INVALID);
+            }
+        } else {
+            String storedCode = otpLoginCodes.get(key);
+            if (storedCode == null || !storedCode.equals(code))
+                throw new AppException(ErrorCode.OTP_INVALID);
+        }
+
+        otpLoginCodes.remove(key);
+        otpLoginExpiry.remove(key);
+
         String providerUserId = key;
         User user = findOrCreateUserAccount(
                 isPhone ? null : emailOrPhone,
@@ -408,7 +442,7 @@ public class AuthenticationServiceImpl implements AuthenticationService {
         );
         return createAndSaveTokens(user, deviceId, ip, userAgent);
     }
-
+    
     @Transactional
     public AuthenticationResponse handleRefreshToken(String refreshToken, String deviceId, String ip, String userAgent) {
         if (deviceId != null && ip != null && userAgent != null) {

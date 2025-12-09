@@ -173,10 +173,16 @@ const AdminDashboardScreen = () => {
           />
         </View>
 
-        {/* Cập nhật Section Management */}
         <View style={styles.section}>
           <Text style={styles.sectionHeader}>{t("admin.section.management") || "Management"}</Text>
           <View style={styles.menuCard}>
+            <MenuStepItem
+              title={t("admin.screens.revenueAnalytics") || "Revenue Analytics"}
+              subtitle="Wallet Deposit & Payment trend statistics"
+              icon="analytics"
+              color="#059669"
+              route="AdminRevenueAnalyticsScreen"
+            />
             <MenuStepItem
               title={t("admin.screens.users") || "User Management"}
               subtitle="View, Search & Manage user accounts"
@@ -195,15 +201,13 @@ const AdminDashboardScreen = () => {
               title={t("admin.screens.transactions") || "Transaction Management"}
               subtitle="View and track all payment history"
               icon="receipt-long"
-              color="#059669"
+              color="#DC2626"
               route="AdminTransactionScreen"
               isLast
             />
           </View>
         </View>
 
-        {/* Xóa Section Content/Business không cần thiết, thay bằng một section mới nếu cần, hoặc xóa hoàn toàn */}
-        {/* Giữ nguyên Logout Button */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
           <Icon name="logout" size={20} color="#EF4444" />
           <Text style={styles.logoutText}>{t("admin.auth.logout")}</Text>

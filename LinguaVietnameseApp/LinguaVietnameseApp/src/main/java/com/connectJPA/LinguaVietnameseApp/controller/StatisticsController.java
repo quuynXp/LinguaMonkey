@@ -42,7 +42,6 @@ public class StatisticsController {
             @Parameter(description = "End date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             Locale locale) {
 
-        // Logic xử lý ngày tháng (tương tự như các hàm khác của bạn)
         LocalDate today = LocalDate.now();
         if (startDate == null || endDate == null) {
             if (period != null) {
@@ -50,11 +49,11 @@ public class StatisticsController {
                     case "day" -> { startDate = today; endDate = today; }
                     case "month" -> { endDate = today; startDate = today.minusMonths(1).plusDays(1); }
                     case "year" -> { endDate = today; startDate = today.minusYears(1).plusDays(1); }
-                    default -> { endDate = today; startDate = today.minusWeeks(1).plusDays(1); } // 7 ngày
+                    default -> { endDate = today; startDate = today.minusWeeks(1).plusDays(1); }
                 }
             } else {
                 endDate = today;
-                startDate = today.minusDays(29); // Default 30 ngày
+                startDate = today.minusDays(29);
             }
         }
 
@@ -62,12 +61,11 @@ public class StatisticsController {
             throw new IllegalArgumentException("startDate cannot be after endDate");
         }
 
-        // Gọi service mới
         DashboardStatisticsResponse dashboardData = statisticsService.getDashboardStatistics(userId, startDate, endDate);
 
         return AppApiResponse.<DashboardStatisticsResponse>builder()
                 .code(200)
-                .message(messageSource.getMessage("statistics.dashboard.success", null, locale)) // Thêm key này vào message properties
+                .message(messageSource.getMessage("statistics.dashboard.success", null, locale))
                 .result(dashboardData)
                 .build();
     }
@@ -79,7 +77,6 @@ public class StatisticsController {
             @RequestParam(value = "period", required = false) String period,
             @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate
     ) {
-        // parse / default dates
         LocalDate today = LocalDate.now();
         LocalDate localStartDate = null;
         LocalDate localEndDate = null;
@@ -89,7 +86,6 @@ public class StatisticsController {
                 localStartDate = LocalDate.parse(startDate);
                 localEndDate = LocalDate.parse(endDate);
             } else {
-                // derive from period
                 if (period != null) {
                     switch (period.toLowerCase()) {
                         case "day" -> {
@@ -110,7 +106,6 @@ public class StatisticsController {
                         }
                     }
                 } else {
-                    // fallback 7 days
                     localEndDate = today;
                     localStartDate = today.minusWeeks(1).plusDays(1);
                 }
@@ -151,7 +146,6 @@ public class StatisticsController {
             @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate,
             Locale locale) {
 
-        // Nếu không truyền start/end thì set theo period (phải làm trước khi gọi service)
         LocalDate today = LocalDate.now();
         if (startDate == null || endDate == null) {
             if (period != null) {
@@ -174,18 +168,15 @@ public class StatisticsController {
                     }
                 }
             } else {
-                // fallback 7 ngày
                 endDate = today;
                 startDate = today.minusWeeks(1).plusDays(1);
             }
         }
 
-        // Validate: nếu FE truyền startDate > endDate
         if (startDate.isAfter(endDate)) {
             throw new IllegalArgumentException("startDate cannot be after endDate");
         }
 
-        // Gọi service sau khi đã có startDate/endDate
         StatisticsResponse statistics = statisticsService.getUserStatistics(userId, startDate, endDate, aggregate);
 
         return AppApiResponse.<StatisticsResponse>builder()
@@ -194,8 +185,6 @@ public class StatisticsController {
                 .result(statistics)
                 .build();
     }
-
-    // --- users/count & users/growth (giữ nguyên) ---
 
     @Operation(summary = "Get user count statistics", description = "Retrieve user counts by period (day, month, year) with optional filters")
     @ApiResponses({
@@ -305,7 +294,6 @@ public class StatisticsController {
             @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate,
             Locale locale) {
 
-        // If client provided period, use it to compute start/end when they're missing
         if (period != null && (startDate == null || endDate == null)) {
             LocalDate today = LocalDate.now();
             switch (period.toLowerCase()) {
@@ -315,7 +303,7 @@ public class StatisticsController {
                 }
                 case "week" -> {
                     endDate = today;
-                    startDate = today.minusWeeks(1).plusDays(1); // last 7 days
+                    startDate = today.minusWeeks(1).plusDays(1);
                 }
                 case "month" -> {
                     endDate = today;
@@ -326,7 +314,6 @@ public class StatisticsController {
                     startDate = today.minusYears(1).plusDays(1);
                 }
                 default -> {
-                    // fallback to last 7 days
                     endDate = today;
                     startDate = today.minusWeeks(1).plusDays(1);
                 }
@@ -362,7 +349,6 @@ public class StatisticsController {
             Locale locale) {
 
 
-        // Nếu không truyền start/end thì set theo period
         if (startDate == null || endDate == null) {
             LocalDate today = LocalDate.now();
 
@@ -385,27 +371,23 @@ public class StatisticsController {
                         startDate = today.minusYears(1).plusDays(1);
                     }
                     default -> {
-                        // fallback 7 ngày gần nhất
                         endDate = today;
                         startDate = today.minusWeeks(1).plusDays(1);
                     }
                 }
             } else {
-                // fallback mặc định nếu period không truyền
                 endDate = today;
                 startDate = today.minusWeeks(1).plusDays(1);
             }
         }
 
 
-        // Validate: nếu FE truyền startDate > endDate
         if (startDate.isAfter(endDate)) {
             throw new IllegalArgumentException("startDate cannot be after endDate");
         }
         String usedPeriod = (aggregate != null ? aggregate : period);
         if (usedPeriod == null) usedPeriod = "day";
 
-        // truyền period xuống service để group đúng
         List<TransactionStatsResponse> transactions = statisticsService.getTransactionStatistics(status, provider, startDate, endDate, usedPeriod);
         return AppApiResponse.<List<TransactionStatsResponse>>builder()
                 .code(200)
@@ -520,7 +502,6 @@ public class StatisticsController {
             @RequestParam(value = "startDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(value = "endDate", required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate
     ) {
-        // startDate/endDate optional, default: last 30 days
         LocalDate today = LocalDate.now();
         if (startDate == null || endDate == null) {
             endDate = today;
@@ -559,6 +540,75 @@ public class StatisticsController {
                 .code(200)
                 .message(messageSource.getMessage("statistics.get.success", null, LocaleContextHolder.getLocale()))
                 .result(ts)
+                .build();
+    }
+
+    @Operation(summary = "Get Deposit Revenue statistics", description = "Retrieve total revenue and time series for DEPOSIT transactions")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Successfully retrieved deposit revenue statistics"),
+            @ApiResponse(responseCode = "400", description = "Invalid parameters")
+    })
+    @GetMapping("/deposit-revenue")
+    public AppApiResponse<DepositRevenueResponse> getDepositRevenueStatistics(
+            @Parameter(description = "Period shortcut (optional): day, week, month, year") @RequestParam(required = false) String period,
+            @Parameter(description = "Start date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String startDate,
+            @Parameter(description = "End date (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) String endDate,
+            @RequestParam(value = "aggregate", required = false, defaultValue = "day") String aggregate,
+            Locale locale
+    ) {
+        LocalDate today = LocalDate.now();
+        LocalDate localStartDate = null;
+        LocalDate localEndDate = null;
+
+        try {
+            if (startDate != null && endDate != null) {
+                localStartDate = LocalDate.parse(startDate);
+                localEndDate = LocalDate.parse(endDate);
+            } else {
+                if (period != null) {
+                    switch (period.toLowerCase()) {
+                        case "day" -> {
+                            localStartDate = today;
+                            localEndDate = today;
+                        }
+                        case "week" -> {
+                            localEndDate = today;
+                            localStartDate = today.minusWeeks(1).plusDays(1);
+                        }
+                        case "month" -> {
+                            localEndDate = today;
+                            localStartDate = today.minusMonths(1).plusDays(1);
+                        }
+                        case "year" -> {
+                            localEndDate = today;
+                            localStartDate = today.minusYears(1).plusDays(1);
+                        }
+                        default -> {
+                            localEndDate = today;
+                            localStartDate = today.minusWeeks(1).plusDays(1);
+                        }
+                    }
+                } else {
+                    localEndDate = today;
+                    localStartDate = today.minusWeeks(1).plusDays(1);
+                }
+            }
+        } catch (DateTimeParseException ex) {
+            throw new IllegalArgumentException("Invalid date format. Use yyyy-MM-dd");
+        }
+
+        if (localStartDate.isAfter(localEndDate)) {
+            throw new IllegalArgumentException("startDate cannot be after endDate");
+        }
+
+        DepositRevenueResponse resp = statisticsService.getDepositRevenueStatistics(localStartDate, localEndDate, aggregate);
+
+        String msg = messageSource.getMessage("statistics.get.success", null, "OK", locale);
+
+        return AppApiResponse.<DepositRevenueResponse>builder()
+                .code(200)
+                .message(msg)
+                .result(resp)
                 .build();
     }
 }

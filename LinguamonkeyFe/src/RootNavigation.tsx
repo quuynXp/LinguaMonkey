@@ -6,7 +6,7 @@ import { RootNavigationRef, flushPendingActions } from "./utils/navigationRef";
 import { NavigationContainer } from "@react-navigation/native";
 import notificationService from "./services/notificationService";
 import { useTokenStore } from "./stores/tokenStore";
-import { getRoleFromToken, decodeToken } from "./utils/decodeToken";
+import { isAdmin, decodeToken } from "./utils/decodeToken";
 import { useUserStore } from "./stores/UserStore";
 import { useChatStore } from "./stores/ChatStore";
 import * as Localization from "expo-localization";
@@ -22,6 +22,7 @@ import ChatBubble from "./components/chat/ChatBubble";
 const RootNavigation = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [serverErrorMsg, setServerErrorMsg] = useState<string | null>(null);
+  const [isUserAdmin, setIsUserAdmin] = useState(false);
 
   const accessToken = useTokenStore((state) => state.accessToken);
   const initializeTokens = useTokenStore((state) => state.initializeTokens);
@@ -128,17 +129,29 @@ const RootNavigation = () => {
         if (i18n.language !== savedLanguage) await i18n.changeLanguage(savedLanguage);
 
         const currentToken = useTokenStore.getState().accessToken;
+
         if (currentToken) {
+          const userIsAdmin = isAdmin(currentToken);
+          setIsUserAdmin(userIsAdmin);
+
           const payload = decodeToken(currentToken);
           if (payload?.userId) {
             try {
               const userRes = await instance.get(`/api/v1/users/${payload.userId}`);
               const rawUser = userRes.data.result || {};
-              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: getRoleFromToken(currentToken) }, savedLanguage);
+              setUser({ ...rawUser, userId: rawUser.userId ?? rawUser.id, roles: userIsAdmin ? ["ROLE_ADMIN"] : ["ROLE_USER"] }, savedLanguage);
               notificationService.registerTokenToBackend();
-              setInitialMainRoute("TabApp");
+
+              if (userIsAdmin) {
+                setInitialMainRoute("AdminStack");
+              } else if (rawUser.hasFinishedSetup === false) {
+                setInitialMainRoute("SetupInitScreen");
+              } else {
+                setInitialMainRoute("TabApp");
+              }
             } catch (userErr) {
               console.error("Fetch user failed", userErr);
+              setInitialMainRoute("TabApp");
             }
           }
         }
@@ -169,7 +182,7 @@ const RootNavigation = () => {
           setCurrentAppScreen(currentRouteName || null);
         }}
       >
-        {accessToken ? <MainStack initialRouteName={initialMainRoute} /> : <AuthStack initialParams={initialAuthParams} />}
+        {accessToken ? <MainStack initialRouteName={initialMainRoute} isAdmin={isUserAdmin} /> : <AuthStack initialParams={initialAuthParams} />}
         {accessToken && <ChatBubble />}
       </NavigationContainer>
     </View>

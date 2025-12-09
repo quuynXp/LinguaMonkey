@@ -1,5 +1,6 @@
 package com.connectJPA.LinguaVietnameseApp.controller;
 
+import com.connectJPA.LinguaVietnameseApp.dto.request.ChangePasswordRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.NotificationRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.PasswordUpdateRequest;
 import com.connectJPA.LinguaVietnameseApp.dto.request.UserRequest;
@@ -428,6 +429,23 @@ public AppApiResponse<Long> countOnlineUsers() {
                 .code(200)
                 .message(messageSource.getMessage("user.restored.success", null, locale))
                 .result(user)
+                .build();
+    }
+    
+    @PostMapping("/{userId}/change-password")
+    @PreAuthorize("hasAuthority('ROLE_ADMIN') or #userId.toString().equals(authentication.name)")
+    @Operation(summary = "Change Password", description = "Change password for an authenticated user using the current password.")
+    @ApiResponse(responseCode = "200", description = "Password changed successfully")
+    @ApiResponse(responseCode = "400", description = "Invalid current password or new password format")
+    public AppApiResponse<Void> changePassword(
+            @PathVariable UUID userId,
+            @Valid @RequestBody ChangePasswordRequest request) {
+
+        userService.changePassword(userId, request.getCurrentPassword(), request.getNewPassword());
+
+        return AppApiResponse.<Void>builder()
+                .code(200)
+                .message("Password changed successfully")
                 .build();
     }
 }

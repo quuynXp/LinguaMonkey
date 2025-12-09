@@ -27,8 +27,32 @@ export const roadmapKeys = {
   itemDetail: (itemId: string) => [...roadmapKeys.all, "itemDetail", itemId] as const,
   goals: (userId: string) => [...roadmapKeys.all, "goals", userId] as const,
   suggestions: (roadmapId: string) => [...roadmapKeys.all, "suggestions", roadmapId] as const,
+  reviews: (roadmapId: string) => [...roadmapKeys.all, "reviews", roadmapId] as const,
   community: (lang?: string, page?: number) => [...roadmapKeys.all, "community", { lang, page }] as const,
   official: (lang?: string, page?: number) => [...roadmapKeys.all, "official", { lang, page }] as const,
+};
+
+export type ExtendedPublicRoadmapDetail = RoadmapPublicResponse & {
+  items: RoadmapItem[];
+};
+const mapItemResponseToRoadmapItem = (responseItem: any): RoadmapItem => {
+  return {
+    itemId: responseItem.id || responseItem.itemId,
+    title: responseItem.title || responseItem.name,
+    description: responseItem.description,
+    type: responseItem.type,
+    level: responseItem.level,
+    estimatedTime: responseItem.estimatedTime,
+    orderIndex: responseItem.orderIndex,
+    category: responseItem.category,
+    difficulty: responseItem.difficulty,
+    expReward: responseItem.expReward,
+    contentId: responseItem.contentId,
+    skills: responseItem.skills,
+    createdAt: responseItem.createdAt || new Date().toISOString(),
+    updatedAt: responseItem.updatedAt,
+    isDeleted: responseItem.isDeleted || false,
+  } as RoadmapItem;
 };
 
 export const useRoadmap = () => {
@@ -72,6 +96,20 @@ export const useRoadmap = () => {
       },
     });
 
+  const useToggleFavoriteRoadmap = () =>
+    useMutation({
+      mutationFn: async (roadmapId: string) => {
+        if (!userId) throw new Error("User not logged in");
+        await instance.post(`/api/v1/roadmaps/${roadmapId}/favorite`, null, {
+          params: { userId }
+        });
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.community() });
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.official() });
+      }
+    });
+
   const usePublicRoadmapsWithStats = (language: string = "en", page: number = 0, size: number = 10) =>
     useQuery({
       queryKey: roadmapKeys.publicStats(language, page),
@@ -86,6 +124,45 @@ export const useRoadmap = () => {
 
         return [] as RoadmapPublicResponse[];
       },
+    });
+
+  // --- NEW HOOK FIX: Map Backend Response to UI Expectations ---
+  const usePublicRoadmapDetail = (roadmapId: string | null, options?: { enabled?: boolean }) =>
+    useQuery({
+      queryKey: roadmapKeys.detail(roadmapId!),
+      queryFn: async () => {
+        if (!roadmapId) throw new Error("Missing roadmapId");
+
+        // Gọi API lấy chi tiết (RoadmapResponse từ Java)
+        const res = await instance.get<AppApiResponse<RoadmapResponse>>(
+          `/api/v1/roadmaps/${roadmapId}`
+        );
+        const data = res.data.result;
+
+        if (!data) throw new Error("Roadmap not found");
+
+        const itemsMapped: RoadmapItem[] = (data.items || []).map(mapItemResponseToRoadmapItem);
+
+        const mappedData: ExtendedPublicRoadmapDetail = {
+          roadmapId: data.id,
+          title: data.title,
+          description: data.description,
+          language: data.language,
+          items: itemsMapped,
+          isOfficial: false,
+          creator: "",
+          creatorAvatar: "",
+          favoriteCount: 0, // Will merge later or need backend update for detail
+          isFavorite: false,
+          suggestionCount: 0,
+          totalItems: data.items?.length || 0,
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          viewCount: 0
+        };
+        return mappedData;
+      },
+      enabled: !!roadmapId && (options?.enabled ?? true),
     });
 
   const useRoadmapDetail = (roadmapId: string | null) =>
@@ -122,6 +199,35 @@ export const useRoadmap = () => {
         return res.data.result || [];
       },
       enabled: !!roadmapId,
+    });
+
+  // --- 5. REVIEWS ---
+  const useRoadmapReviews = (roadmapId: string) =>
+    useQuery({
+      queryKey: roadmapKeys.reviews(roadmapId),
+      queryFn: async () => {
+        const res = await instance.get<AppApiResponse<any[]>>(`/api/v1/roadmaps/${roadmapId}/reviews`);
+        return res.data.result || [];
+      },
+      enabled: !!roadmapId,
+    });
+
+  const useAddRoadmapReview = () =>
+    useMutation({
+      mutationFn: async ({ roadmapId, comment, rating, parentId }: { roadmapId: string, comment: string, rating: number | null, parentId?: string }) => {
+        if (!userId) throw new Error("User not logged in");
+        const res = await instance.post<AppApiResponse<any>>(`/api/v1/roadmaps/${roadmapId}/reviews`, {
+          userId,
+          comment,
+          rating,
+          parentId
+        });
+        return res.data.result;
+      },
+      onSuccess: (_data, { roadmapId }) => {
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.reviews(roadmapId) });
+        queryClient.invalidateQueries({ queryKey: roadmapKeys.publicStats() });
+      },
     });
 
   // --- 4. MUTATIONS ---
@@ -177,14 +283,13 @@ export const useRoadmap = () => {
       },
     });
 
-  // --- 2. COMMUNITY ROADMAPS (User Shared) ---
   const useCommunityRoadmaps = (language: string = "en", page: number = 0, size: number = 10) =>
     useQuery({
       queryKey: roadmapKeys.community(language, page),
       queryFn: async () => {
-        const res = await instance.get<AppApiResponse<any>>("/api/v1/roadmaps/public/community", {
-          params: { language, page, size }
-        });
+        const params: any = { language, page, size };
+        if (userId) params.userId = userId;
+        const res = await instance.get<AppApiResponse<any>>("/api/v1/roadmaps/public/community", { params });
         if (res.data.result && res.data.result.content) {
           return res.data.result.content as RoadmapPublicResponse[];
         }
@@ -192,14 +297,13 @@ export const useRoadmap = () => {
       },
     });
 
-  // --- 3. OFFICIAL ROADMAPS (System Templates) ---
   const useOfficialRoadmaps = (language: string = "en", page: number = 0, size: number = 10) =>
     useQuery({
       queryKey: roadmapKeys.official(language, page),
       queryFn: async () => {
-        const res = await instance.get<AppApiResponse<any>>("/api/v1/roadmaps/public/official", {
-          params: { language, page, size }
-        });
+        const params: any = { language, page, size };
+        if (userId) params.userId = userId;
+        const res = await instance.get<AppApiResponse<any>>("/api/v1/roadmaps/public/official", { params });
         if (res.data.result && res.data.result.content) {
           return res.data.result.content as RoadmapPublicResponse[];
         }
@@ -278,6 +382,8 @@ export const useRoadmap = () => {
     useSuggestions,
     useCommunityRoadmaps,
     useOfficialRoadmaps,
+    useToggleFavoriteRoadmap,
+    usePublicRoadmapDetail,
     useCreateRoadmap,
     useAssignRoadmap,
     useAddSuggestion,
@@ -286,6 +392,8 @@ export const useRoadmap = () => {
     useCompleteRoadmapItem,
     useGenerateRoadmap,
     useEditRoadmap,
-    useDeleteRoadmap
+    useDeleteRoadmap,
+    useRoadmapReviews,
+    useAddRoadmapReview
   };
 };

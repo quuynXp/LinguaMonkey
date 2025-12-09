@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   View,
   Text,
@@ -10,20 +10,24 @@ import {
   Dimensions,
   Image,
   FlatList,
-  Modal
+  Modal,
+  TextInput
 } from "react-native";
 import Icon from "react-native-vector-icons/MaterialIcons";
 import { useTranslation } from "react-i18next";
-import { useRoadmap } from "../../hooks/useRoadmap";
+import { useRoadmap, ExtendedPublicRoadmapDetail } from "../../hooks/useRoadmap";
 import ScreenLayout from "../../components/layout/ScreenLayout";
 import RoadmapTimeline from "../../components/roadmap/RoadmapTimeline";
 import { createScaledSheet } from "../../utils/scaledStyles";
 import { useUserStore } from "../../stores/UserStore";
 import { getAvatarSource } from "../../utils/avatarUtils";
-import { RoadmapUserResponse } from "../../types/dto";
+import { RoadmapUserResponse, RoadmapPublicResponse, RoadmapItemUserResponse } from "../../types/dto";
+import { RoadmapItem } from "../../types/entity";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 const SCREEN_HEIGHT = Dimensions.get("window").height;
+
+type SortOption = 'newest' | 'popularity';
 
 const RoadmapScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
@@ -35,6 +39,11 @@ const RoadmapScreen = ({ navigation }: any) => {
   const [selectedRoadmapId, setSelectedRoadmapId] = useState<string | null>(null);
   const [showCompletedModal, setShowCompletedModal] = useState(false);
 
+  // Search & Filter State
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortOption, setSortOption] = useState<SortOption>('newest');
+  const [isSortModalVisible, setIsSortModalVisible] = useState(false);
+
   const tabAnim = useRef(new Animated.Value(0)).current;
 
   const {
@@ -43,7 +52,10 @@ const RoadmapScreen = ({ navigation }: any) => {
     useOfficialRoadmaps,
     useSuggestions,
     useCompleteRoadmapItem,
-    useAddSuggestion
+    useAddSuggestion,
+    usePublicRoadmapDetail,
+    useAssignRoadmap,
+    useToggleFavoriteRoadmap // Hook toggle favorite
   } = useRoadmap();
 
   const { data: userRoadmaps, isLoading: userLoading, refetch: refetchUser } = useUserRoadmaps();
@@ -60,28 +72,57 @@ const RoadmapScreen = ({ navigation }: any) => {
     refetch: refetchCommunity
   } = useCommunityRoadmaps(currentLanguage);
 
-  // --- LOGIC SORTING & FILTERING ---
-  const allRoadmaps = userRoadmaps || [];
+  const shouldFetchPublicDetail = activeTab === 'explore' && !!selectedRoadmapId;
+  const {
+    data: publicRoadmapDetail,
+    isLoading: publicDetailLoading,
+    refetch: refetchPublicDetail
+  } = usePublicRoadmapDetail(selectedRoadmapId, { enabled: shouldFetchPublicDetail });
 
+  const assignRoadmapMut = useAssignRoadmap();
+  const toggleFavoriteMut = useToggleFavoriteRoadmap();
+
+  // --- LOGIC USER ROADMAPS ---
+  const allUserRoadmaps = userRoadmaps || [];
   const getProgress = (r: RoadmapUserResponse) => (r.totalItems > 0 ? r.completedItems / r.totalItems : 0);
 
-  // Active: < 100%, sorted by progress DESC
-  const activeRoadmaps = allRoadmaps
+  const activeRoadmaps = allUserRoadmaps
     .filter(r => getProgress(r) < 1)
     .sort((a, b) => getProgress(b) - getProgress(a));
 
-  // Completed: 100%
-  const completedRoadmaps = allRoadmaps
+  const completedRoadmaps = allUserRoadmaps
     .filter(r => getProgress(r) >= 1)
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  // Find roadmap from ALL lists (so if it becomes 100% completed, we still find it and don't kick user out)
-  const currentRoadmap = allRoadmaps.find(r => r.roadmapId === selectedRoadmapId);
+  const currentMyRoadmap = allUserRoadmaps.find(r => r.roadmapId === selectedRoadmapId);
+
+  const getPublicBasicInfo = () => {
+    if (!selectedRoadmapId) return null;
+    const list = exploreType === 'official' ? officialRoadmaps : communityRoadmaps;
+    return list?.find(r => r.roadmapId === selectedRoadmapId);
+  };
 
   const { data: suggestions, refetch: refetchSuggestions } = useSuggestions(selectedRoadmapId);
-
   const completeItemMut = useCompleteRoadmapItem();
   const addSuggestionMut = useAddSuggestion();
+
+  // --- LOGIC EXPLORE FILTER & SORT ---
+  const filteredExploreRoadmaps = useMemo(() => {
+    const rawData = exploreType === 'official' ? (officialRoadmaps || []) : (communityRoadmaps || []);
+
+    let filtered = rawData.filter((r: RoadmapPublicResponse) =>
+      r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (r.description && r.description.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+
+    if (sortOption === 'newest') {
+      filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    } else if (sortOption === 'popularity') {
+      filtered.sort((a, b) => (b.favoriteCount || 0) - (a.favoriteCount || 0));
+    }
+
+    return filtered;
+  }, [exploreType, officialRoadmaps, communityRoadmaps, searchQuery, sortOption]);
 
   useEffect(() => {
     if (activeTab === 'explore') {
@@ -91,6 +132,7 @@ const RoadmapScreen = ({ navigation }: any) => {
 
   const handleTabChange = (tab: 'my_roadmap' | 'explore') => {
     setActiveTab(tab);
+    setSelectedRoadmapId(null);
     Animated.spring(tabAnim, {
       toValue: tab === 'my_roadmap' ? 0 : 1,
       useNativeDriver: true,
@@ -98,7 +140,9 @@ const RoadmapScreen = ({ navigation }: any) => {
   };
 
   const handleRefresh = async () => {
-    if (activeTab === 'my_roadmap') {
+    if (selectedRoadmapId && activeTab === 'explore') {
+      await refetchPublicDetail();
+    } else if (activeTab === 'my_roadmap') {
       await refetchUser();
       if (selectedRoadmapId) refetchSuggestions();
     } else {
@@ -131,6 +175,29 @@ const RoadmapScreen = ({ navigation }: any) => {
     }
   };
 
+  const handleEnroll = async () => {
+    if (!selectedRoadmapId) return;
+    try {
+      await assignRoadmapMut.mutateAsync({ roadmapId: selectedRoadmapId });
+      setActiveTab('my_roadmap');
+      refetchUser();
+    } catch (error) {
+      console.error("Enroll failed", error);
+    }
+  };
+
+  // Toggle Favorite
+  const handleToggleFavorite = async (roadmapId: string) => {
+    try {
+      await toggleFavoriteMut.mutateAsync(roadmapId);
+      // Refetch both lists to update counts/icon state
+      if (exploreType === 'official') refetchOfficial();
+      else refetchCommunity();
+    } catch (error) {
+      console.error("Favorite toggle failed", error);
+    }
+  };
+
   const handleBack = () => {
     if (selectedRoadmapId) {
       setSelectedRoadmapId(null);
@@ -145,21 +212,46 @@ const RoadmapScreen = ({ navigation }: any) => {
   };
 
   const handleNavigateToManage = () => {
-    // Navigate to the edit screen without a specific ID to trigger the list view
     navigation.navigate("EditRoadmapScreen", { userId: user?.userId });
   };
 
-  const renderHeader = () => (
-    <View style={styles.header}>
-      <TouchableOpacity onPress={handleBack}>
-        <Icon name="arrow-back" size={24} color="#1F2937" />
-      </TouchableOpacity>
-      <Text style={styles.headerTitle}>
-        {selectedRoadmapId ? t('roadmap.detail') : t('roadmap.title')}
-      </Text>
-      <View style={{ width: 24 }} />
-    </View>
-  );
+  const renderHeader = () => {
+    const detailTitle = activeTab === 'explore'
+      ? publicRoadmapDetail?.title || t('roadmap.exploreDetail')
+      : currentMyRoadmap?.title || t('roadmap.detail');
+
+    return (
+      <View style={styles.header}>
+        <TouchableOpacity onPress={handleBack}>
+          <Icon name="arrow-back" size={24} color="#1F2937" />
+        </TouchableOpacity>
+
+        {activeTab === 'explore' && !selectedRoadmapId ? (
+          <View style={styles.searchContainer}>
+            <Icon name="search" size={20} color="#9CA3AF" />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={t('common.search', "Search roadmaps...")}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+          </View>
+        ) : (
+          <Text style={styles.headerTitle}>
+            {selectedRoadmapId ? detailTitle : t('roadmap.title')}
+          </Text>
+        )}
+
+        {activeTab === 'explore' && !selectedRoadmapId ? (
+          <TouchableOpacity onPress={() => setIsSortModalVisible(true)}>
+            <Icon name="filter-list" size={24} color="#3B82F6" />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 24 }} />
+        )}
+      </View>
+    );
+  };
 
   const renderMainTabs = () => (
     <View style={styles.tabContainer}>
@@ -245,7 +337,6 @@ const RoadmapScreen = ({ navigation }: any) => {
 
     return (
       <View style={{ flex: 1 }}>
-        {/* Button to open Completed Popup */}
         {completedRoadmaps.length > 0 && (
           <TouchableOpacity
             style={styles.historyButton}
@@ -259,7 +350,6 @@ const RoadmapScreen = ({ navigation }: any) => {
           </TouchableOpacity>
         )}
 
-        {/* Active List */}
         <FlatList
           data={activeRoadmaps}
           keyExtractor={(item) => item.roadmapId}
@@ -276,41 +366,122 @@ const RoadmapScreen = ({ navigation }: any) => {
     );
   };
 
-  const renderMyRoadmapDetail = () => {
-    if (!currentRoadmap) return null;
+  const renderRoadmapDetail = () => {
+    const isUserRoadmap = activeTab === 'my_roadmap';
+    const loading = isUserRoadmap ? userLoading : publicDetailLoading;
 
-    const progress = currentRoadmap.totalItems > 0
-      ? Math.round((currentRoadmap.completedItems / currentRoadmap.totalItems) * 100)
+    const myData = isUserRoadmap ? currentMyRoadmap : null;
+    const publicData = !isUserRoadmap ? publicRoadmapDetail : null;
+    const publicBasicInfo = !isUserRoadmap ? getPublicBasicInfo() : null;
+
+    if (loading) return <ActivityIndicator style={styles.loader} color="#3B82F6" />;
+
+    if (isUserRoadmap && !myData) return <View style={styles.emptyState}><Text>Roadmap not found</Text></View>;
+    if (!isUserRoadmap && !publicData) return <View style={styles.emptyState}><Text>Public roadmap not loaded</Text></View>;
+
+    const title = isUserRoadmap ? myData!.title : publicData!.title;
+    const desc = isUserRoadmap ? myData!.description : publicData!.description;
+
+    let displayItems: RoadmapItemUserResponse[] = [];
+
+    if (isUserRoadmap && myData?.items) {
+      displayItems = myData.items;
+    } else if (!isUserRoadmap && publicData?.items) {
+      displayItems = publicData.items.map((item, index) => ({
+        ...item,
+        id: item.itemId,
+        status: index === 0 ? 'available' : 'locked',
+        completed: false,
+        progress: 0,
+        completedAt: undefined,
+        startedAt: undefined,
+        name: item.title,
+        itemId: item.itemId,
+        roadmapId: publicData!.roadmapId,
+        userId: '',
+        createdAt: '',
+        updatedAt: '',
+      } as unknown as RoadmapItemUserResponse));
+    }
+
+    const progress = isUserRoadmap
+      ? (myData!.totalItems > 0 ? Math.round((myData!.completedItems / myData!.totalItems) * 100) : 0)
       : 0;
 
     return (
       <ScrollView
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={userLoading} onRefresh={handleRefresh} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={handleRefresh} />}
       >
-        <View style={styles.progressCard}>
-          <View style={styles.progressInfo}>
-            <Text style={styles.roadmapTitle}>{currentRoadmap.title}</Text>
-            <Text style={styles.roadmapStats}>
-              {currentRoadmap.completedItems}/{currentRoadmap.totalItems} {t('roadmap.stepsCompleted')}
-            </Text>
+        {isUserRoadmap ? (
+          <View style={styles.progressCard}>
+            <View style={styles.progressInfo}>
+              <Text style={styles.roadmapTitle}>{title}</Text>
+              <Text style={styles.roadmapStats}>
+                {myData!.completedItems}/{myData!.totalItems} {t('roadmap.stepsCompleted')}
+              </Text>
+            </View>
+            <View style={[styles.circularProgress, progress === 100 && { borderColor: '#10B981' }]}>
+              <Text style={[styles.progressPercent, progress === 100 && { color: '#10B981' }]}>
+                {progress}%
+              </Text>
+            </View>
           </View>
-          <View style={[styles.circularProgress, progress === 100 && { borderColor: '#10B981' }]}>
-            <Text style={[styles.progressPercent, progress === 100 && { color: '#10B981' }]}>
-              {progress}%
-            </Text>
+        ) : (
+          <View style={styles.exploreDetailHeader}>
+            <Text style={styles.exploreDetailTitle}>{title}</Text>
+            <View style={styles.exploreDetailMeta}>
+              <View style={styles.creatorInfoDetail}>
+                <Image
+                  source={getAvatarSource(publicBasicInfo?.creatorAvatar)}
+                  style={styles.creatorAvatarLarge}
+                />
+                <Text style={styles.creatorName}>{publicBasicInfo?.creator || (exploreType === 'official' ? 'Official' : 'Community')}</Text>
+              </View>
+
+              {/* REPLACED RATING WITH FAVORITE */}
+              <TouchableOpacity
+                style={[styles.favBox, publicBasicInfo?.isFavorite && styles.favBoxActive]}
+                onPress={() => handleToggleFavorite(publicBasicInfo?.roadmapId!)}
+              >
+                <Icon
+                  name={publicBasicInfo?.isFavorite ? "favorite" : "favorite-border"}
+                  size={20}
+                  color={publicBasicInfo?.isFavorite ? "#EF4444" : "#6B7280"}
+                />
+                <Text style={[styles.favCount, publicBasicInfo?.isFavorite && { color: "#EF4444" }]}>
+                  {publicBasicInfo?.favoriteCount || 0}
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.exploreDetailDesc}>{desc}</Text>
+
+            <TouchableOpacity
+              style={[styles.enrollButton, assignRoadmapMut.isPending && { opacity: 0.7 }]}
+              onPress={handleEnroll}
+              disabled={assignRoadmapMut.isPending}
+            >
+              {assignRoadmapMut.isPending ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.enrollButtonText}>{t('roadmap.enroll', 'Start Learning')}</Text>
+              )}
+            </TouchableOpacity>
           </View>
+        )}
+
+        <View style={{ paddingHorizontal: 20, paddingTop: isUserRoadmap ? 0 : 10 }}>
+          <Text style={styles.sectionHeader}>{t('roadmap.timeline')}</Text>
         </View>
 
         <RoadmapTimeline
-          items={currentRoadmap.items}
+          items={displayItems}
           suggestions={suggestions || []}
-          isOwner={true}
+          isOwner={isUserRoadmap}
           onCompleteItem={handleCompleteItem}
           onAddSuggestion={handleAddSuggestion}
         />
 
-        {/* Bottom padding for scroll */}
         <View style={{ height: 40 }} />
       </ScrollView>
     );
@@ -343,8 +514,42 @@ const RoadmapScreen = ({ navigation }: any) => {
     </Modal>
   );
 
+  const renderSortModal = () => (
+    <Modal
+      visible={isSortModalVisible}
+      transparent={true}
+      animationType="fade"
+      onRequestClose={() => setIsSortModalVisible(false)}
+    >
+      <TouchableOpacity
+        style={styles.modalOverlay}
+        activeOpacity={1}
+        onPress={() => setIsSortModalVisible(false)}
+      >
+        <View style={styles.sortModalContent}>
+          <Text style={styles.sortModalTitle}>{t('common.sortBy', 'Sort By')}</Text>
+
+          <TouchableOpacity
+            style={styles.sortOption}
+            onPress={() => { setSortOption('newest'); setIsSortModalVisible(false); }}
+          >
+            <Icon name="access-time" size={20} color={sortOption === 'newest' ? '#3B82F6' : '#6B7280'} />
+            <Text style={[styles.sortText, sortOption === 'newest' && styles.sortTextActive]}>{t('common.newest', 'Newest')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.sortOption}
+            onPress={() => { setSortOption('popularity'); setIsSortModalVisible(false); }}
+          >
+            <Icon name="trending-up" size={20} color={sortOption === 'popularity' ? '#3B82F6' : '#6B7280'} />
+            <Text style={[styles.sortText, sortOption === 'popularity' && styles.sortTextActive]}>{t('common.popularity', 'Popularity')}</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+
   const renderExplore = () => {
-    const data = exploreType === 'official' ? officialRoadmaps : communityRoadmaps;
     const isLoading = exploreType === 'official' ? officialLoading : communityLoading;
 
     return (
@@ -371,18 +576,30 @@ const RoadmapScreen = ({ navigation }: any) => {
             contentContainerStyle={styles.exploreList}
             refreshControl={<RefreshControl refreshing={isLoading} onRefresh={handleRefresh} />}
           >
-            {data?.map((roadmap) => (
+            {filteredExploreRoadmaps.map((roadmap) => (
               <TouchableOpacity
                 key={roadmap.roadmapId}
                 style={styles.exploreCard}
-                onPress={() => navigation.navigate('RoadmapSuggestionsScreen', { roadmapId: roadmap.roadmapId, isOwner: false })}
+                onPress={() => {
+                  handleSelectRoadmap(roadmap.roadmapId);
+                }}
               >
                 <View style={styles.exploreHeader}>
                   <Text style={styles.exploreTitle}>{roadmap.title}</Text>
-                  <View style={styles.ratingBadge}>
-                    <Icon name="star" size={14} color="#F59E0B" />
-                    <Text style={styles.ratingText}>{roadmap.averageRating || 'N/A'}</Text>
-                  </View>
+                  {/* REPLACED RATING WITH FAVORITE IN LIST */}
+                  <TouchableOpacity
+                    style={styles.ratingBadge} // Reusing badge style for heart
+                    onPress={() => handleToggleFavorite(roadmap.roadmapId)}
+                  >
+                    <Icon
+                      name={roadmap.isFavorite ? "favorite" : "favorite-border"}
+                      size={14}
+                      color={roadmap.isFavorite ? "#EF4444" : "#6B7280"}
+                    />
+                    <Text style={[styles.ratingText, roadmap.isFavorite && { color: "#EF4444" }]}>
+                      {roadmap.favoriteCount || 0}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
 
                 <Text style={styles.exploreDesc} numberOfLines={2}>{roadmap.description}</Text>
@@ -406,7 +623,7 @@ const RoadmapScreen = ({ navigation }: any) => {
                 </View>
               </TouchableOpacity>
             ))}
-            {(!data || data.length === 0) && <Text style={styles.emptyText}>No roadmaps found.</Text>}
+            {filteredExploreRoadmaps.length === 0 && <Text style={styles.emptyText}>No roadmaps found.</Text>}
           </ScrollView>
         )}
       </View>
@@ -419,15 +636,14 @@ const RoadmapScreen = ({ navigation }: any) => {
       {!selectedRoadmapId && renderMainTabs()}
 
       <View style={styles.content}>
-        {activeTab === 'explore'
-          ? renderExplore()
-          : selectedRoadmapId
-            ? renderMyRoadmapDetail()
+        {selectedRoadmapId
+          ? renderRoadmapDetail()
+          : activeTab === 'explore'
+            ? renderExplore()
             : renderMyRoadmapList()
         }
       </View>
 
-      {/* Floating Action Button for Creating/Editing Roadmaps */}
       {activeTab === 'my_roadmap' && !selectedRoadmapId && (
         <TouchableOpacity
           style={styles.fab}
@@ -438,6 +654,7 @@ const RoadmapScreen = ({ navigation }: any) => {
       )}
 
       {renderCompletedModal()}
+      {renderSortModal()}
     </ScreenLayout>
   );
 };
@@ -454,7 +671,11 @@ const styles = createScaledSheet({
     borderBottomWidth: 1,
     borderColor: "#F1F5F9",
   },
-  headerTitle: { fontSize: 18, fontWeight: "bold", color: "#1F2937" },
+  headerTitle: { fontSize: 18, fontWeight: "bold", color: "#1F2937", flex: 1, textAlign: 'center' },
+
+  // Search
+  searchContainer: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 8, marginHorizontal: 12, height: 40 },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14, color: '#374151' },
 
   // Tabs
   tabContainer: { flexDirection: 'row', backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#E5E7EB', position: 'relative' },
@@ -482,13 +703,47 @@ const styles = createScaledSheet({
   continueBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   continueText: { fontSize: 13, color: '#3B82F6', fontWeight: '600' },
 
-  // Detail View Styles (Timeline)
+  // Detail View Styles
   progressCard: { margin: 20, padding: 20, backgroundColor: '#FFF', borderRadius: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 2 },
   progressInfo: { flex: 1 },
   roadmapTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937', marginBottom: 4 },
   roadmapStats: { fontSize: 14, color: '#6B7280' },
   circularProgress: { width: 60, height: 60, borderRadius: 30, borderWidth: 4, borderColor: '#3B82F6', justifyContent: 'center', alignItems: 'center' },
   progressPercent: { fontSize: 14, fontWeight: 'bold', color: '#3B82F6' },
+  sectionHeader: { fontSize: 18, fontWeight: '700', color: '#1F2937', marginBottom: 10, marginTop: 10 },
+
+  // Explore Detail Styles
+  exploreDetailHeader: {
+    backgroundColor: '#FFF',
+    margin: 20,
+    marginTop: 0,
+    borderRadius: 16,
+    padding: 20,
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+  },
+  exploreDetailTitle: { fontSize: 24, fontWeight: 'bold', color: '#1F2937', marginBottom: 12 },
+  exploreDetailDesc: { fontSize: 15, color: '#6B7280', lineHeight: 22, marginBottom: 20 },
+  exploreDetailMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  creatorInfoDetail: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  creatorAvatarLarge: { width: 36, height: 36, borderRadius: 18, marginRight: 4 },
+  creatorName: { fontSize: 14, fontWeight: '600', color: '#374151' },
+
+  // Fav Box Detail
+  favBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#E5E7EB' },
+  favBoxActive: { backgroundColor: '#FEE2E2', borderColor: '#FECACA' },
+  favCount: { fontSize: 14, color: '#6B7280', marginLeft: 4, fontWeight: '600' },
+
+  enrollButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  enrollButtonText: { color: '#FFF', fontWeight: 'bold', fontSize: 16 },
 
   // Explore & Subtabs
   subTabContainer: { flexDirection: 'row', padding: 12, gap: 12 },
@@ -502,8 +757,10 @@ const styles = createScaledSheet({
   exploreCard: { backgroundColor: '#FFF', padding: 16, borderRadius: 12, marginBottom: 16, borderWidth: 1, borderColor: '#E5E7EB' },
   exploreHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   exploreTitle: { fontSize: 16, fontWeight: 'bold', color: '#1F2937', flex: 1, marginRight: 8 },
-  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFBEB', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
-  ratingText: { fontSize: 12, fontWeight: 'bold', color: '#B45309', marginLeft: 2 },
+
+  ratingBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#F3F4F6', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
+  ratingText: { fontSize: 12, fontWeight: 'bold', color: '#6B7280', marginLeft: 2 },
+
   exploreDesc: { fontSize: 13, color: '#6B7280', marginVertical: 8, lineHeight: 18 },
   exploreFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 },
   creatorInfo: { flexDirection: 'row', alignItems: 'center', gap: 6 },
@@ -524,6 +781,13 @@ const styles = createScaledSheet({
   modalContent: { backgroundColor: '#F8FAFC', borderTopLeftRadius: 20, borderTopRightRadius: 20, height: SCREEN_HEIGHT * 0.8 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, backgroundColor: '#FFF', borderBottomWidth: 1, borderColor: '#F1F5F9', borderTopLeftRadius: 20, borderTopRightRadius: 20 },
   modalTitle: { fontSize: 18, fontWeight: 'bold', color: '#1F2937' },
+
+  // Sort Modal
+  sortModalContent: { backgroundColor: '#FFF', margin: 20, borderRadius: 12, padding: 20, elevation: 5, justifyContent: 'center', alignSelf: 'center', width: '80%' },
+  sortModalTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 16, textAlign: 'center' },
+  sortOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', gap: 12 },
+  sortText: { fontSize: 16, color: '#374151' },
+  sortTextActive: { color: '#3B82F6', fontWeight: 'bold' },
 
   // FAB
   fab: {

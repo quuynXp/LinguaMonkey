@@ -18,12 +18,13 @@ public interface RoadmapService {
     RoadmapUserResponse getRoadmapWithUserProgress(UUID roadmapId, UUID userId);
     void assignRoadmapToUser(UUID userId, UUID roadmapId);
     List<RoadmapResponse> getPublicRoadmaps(String language);
-    Page<RoadmapPublicResponse> getPublicRoadmapsWithStats(String language, int page, int size);
+    
+    Page<RoadmapPublicResponse> getPublicRoadmapsWithStats(String language, int page, int size, UUID userId);
+    
     void setPublic(UUID userId, UUID roadmapId, boolean isPublic);
     
-    // Thêm các method Suggestion mới
     List<RoadmapSuggestion> getSuggestions(UUID roadmapId);
-    List<RoadmapSuggestionResponse> getSuggestionsWithDetails(UUID roadmapId); // 👈 Cần DTO này
+    List<RoadmapSuggestionResponse> getSuggestionsWithDetails(UUID roadmapId); 
     RoadmapSuggestion addSuggestion(UUID userId, UUID roadmapId, UUID itemId, Integer suggestedOrderIndex, String reason);
     void applySuggestion(UUID userId, UUID suggestionId);
 
@@ -37,8 +38,10 @@ public interface RoadmapService {
     RoadmapItem getRoadmapItemDetail(UUID itemId);
     RoadmapResponse generateFromAI(String token, GenerateRoadmapRequest req);
 
-    Page<RoadmapPublicResponse> getOfficialRoadmaps(String language, int page, int size);
+    Page<RoadmapPublicResponse> getOfficialRoadmaps(String language, int page, int size, UUID userId);
     
-    Page<RoadmapPublicResponse> getCommunityRoadmaps(String language, int page, int size);
+    Page<RoadmapPublicResponse> getCommunityRoadmaps(String language, int page, int size, UUID userId);
+    
+    boolean toggleFavorite(UUID userId, UUID roadmapId);
 
 }

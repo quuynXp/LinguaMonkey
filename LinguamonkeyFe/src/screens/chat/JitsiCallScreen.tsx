@@ -32,7 +32,6 @@ import { useVideoCalls } from '../../hooks/useVideos';
 import { VideoCallStatus } from '../../types/enums';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-// Helper type để tránh lỗi TS với các event cũ
 type RTCPeerConnectionWithHandlers = RTCPeerConnection & {
   onicecandidate: ((event: any) => void) | null;
   ontrack: ((event: any) => void) | null;
@@ -49,17 +48,18 @@ type WebRTCParams = {
 };
 
 type SubtitleData = {
-  original: string;
+  originalFull: string;
   originalLang: string;
   translated: string;
   translatedLang: string;
   senderId: string;
+  status?: 'complete' | 'noise';
 };
 
 const iceServers = [
   { urls: 'stun:stun.l.google.com:19302' },
   { urls: 'stun:stun1.l.google.com:19302' },
-  { urls: 'stun:stun2.l.google.com:19302' }, // Thêm server backup
+  { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
 const WebRTCCallScreen = () => {
@@ -76,24 +76,22 @@ const WebRTCCallScreen = () => {
   const isManuallyClosed = useRef(false);
   const { useUpdateVideoCall } = useVideoCalls();
   const { mutate: updateCallStatus } = useUpdateVideoCall();
+  const subtitleTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- STATE ---
   const [nativeLang] = useState(defaultNativeLangCode);
   const [spokenLang] = useState('auto');
   const [subtitleMode, setSubtitleMode] = useState<'dual' | 'native' | 'original' | 'off'>('dual');
   const [showSettings, setShowSettings] = useState(false);
-  const [subtitle, setSubtitle] = useState<SubtitleData | null>(null);
+  const [fullSubtitle, setFullSubtitle] = useState<SubtitleData | null>(null);
   const [isMicOn, setIsMicOn] = useState(true);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
 
-  // Map streams của partner (key: userId)
   const [remoteStreams, setRemoteStreams] = useState<Map<string, MediaStream>>(new Map());
   const [connectionStatus, setConnectionStatus] = useState<string>('Initializing...');
 
   // --- REFS ---
   const ws = useRef<WebSocket | null>(null);
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map());
-  // 🔥 Queue lưu ICE Candidate khi PC chưa sẵn sàng (Fix lỗi disconnect phổ biến)
   const iceCandidatesQueue = useRef<Map<string, RTCIceCandidate[]>>(new Map());
 
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -130,13 +128,11 @@ const WebRTCCallScreen = () => {
       isMounted = false;
       cleanupCall();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const connectWebSocket = () => {
     if (!roomId || !accessToken || isManuallyClosed.current) return;
 
-    // Clear socket cũ nếu có
     if (ws.current) {
       try { ws.current.close(); } catch (_) { }
       ws.current = null;
@@ -153,7 +149,7 @@ const WebRTCCallScreen = () => {
     ws.current.onopen = () => {
       console.log("✅ Socket Open");
       isManuallyClosed.current = false;
-      reconnectAttempts.current = 0; // Reset số lần retry khi connect thành công
+      reconnectAttempts.current = 0;
       setConnectionStatus("Connected. Waiting for others...");
       initSubtitleAudioStream();
 
@@ -177,7 +173,7 @@ const WebRTCCallScreen = () => {
           const senderId = String(data.senderId || 'unknown');
           const myId = String(user?.userId || 'me');
 
-          if (senderId === myId) return; // Ignore my own messages
+          if (senderId === myId) return;
 
           const payload = data.payload;
           await handleSignalingData(senderId, payload);
@@ -211,22 +207,17 @@ const WebRTCCallScreen = () => {
     const type = payload.type;
     console.log(`📩 Signal [${type}] from ${senderId.substring(0, 5)}...`);
 
-    // CASE 1: Người mới vào phòng (JOIN_ROOM)
-    // Mình (người cũ) sẽ chủ động tạo Connection và gửi Offer cho họ
     if (type === 'JOIN_ROOM') {
       console.log(`👋 Partner ${senderId} joined via JOIN_ROOM`);
       setConnectionStatus(`Partner Joined. Connecting...`);
-      // Tạo Offer ngay
       await createPeerConnection(senderId, true);
       return;
     }
 
-    // CASE 2: Nhận Offer
     if (type === 'offer') {
       const pc = await createPeerConnection(senderId, false);
       if (pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload));
-        // Xử lý các candidate bị pending
         await processIceQueue(senderId, pc);
 
         const answer = await pc.createAnswer();
@@ -236,28 +227,22 @@ const WebRTCCallScreen = () => {
       return;
     }
 
-    // CASE 3: Nhận Answer
     if (type === 'answer') {
       const pc = peerConnections.current.get(senderId);
       if (pc) {
         await pc.setRemoteDescription(new RTCSessionDescription(payload));
-        // Xử lý các candidate bị pending
         await processIceQueue(senderId, pc);
       }
       return;
     }
 
-    // CASE 4: ICE Candidate
     if (type === 'ice_candidate') {
       const pc = peerConnections.current.get(senderId);
       const candidate = new RTCIceCandidate(payload.candidate);
 
       if (pc && pc.remoteDescription) {
-        // Nếu đã có Remote Description, add luôn
         await pc.addIceCandidate(candidate);
       } else {
-        // 🔥 QUAN TRỌNG: Nếu chưa có Remote Description, phải Queue lại
-        // Nếu không add lúc này sẽ bị lỗi và fail kết nối
         console.log(`⚠️ Queuing ICE for ${senderId} (No RemoteDesc)`);
         const queue = iceCandidatesQueue.current.get(senderId) || [];
         queue.push(candidate);
@@ -285,18 +270,16 @@ const WebRTCCallScreen = () => {
 
     console.log(`🛠 Creating PC for ${partnerId}`);
     const pc = new RTCPeerConnection({ iceServers });
-    const pcAny = pc as any; // Cast để dùng legacy handlers
+    const pcAny = pc as any;
 
     peerConnections.current.set(partnerId, pc);
 
-    // Add Local Tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => {
         pc.addTrack(track, localStreamRef.current!);
       });
     }
 
-    // --- Handlers ---
     pcAny.onicecandidate = (event: any) => {
       if (event.candidate) {
         sendSignalingMessage({ type: 'ice_candidate', targetId: partnerId }, { candidate: event.candidate });
@@ -326,10 +309,8 @@ const WebRTCCallScreen = () => {
       }
     };
 
-    // --- Create Offer Logic ---
     if (shouldCreateOffer) {
       try {
-        // Restart Ice để đảm bảo fresh connection
         const offer = await pc.createOffer({
           offerToReceiveAudio: true,
           offerToReceiveVideo: true,
@@ -387,21 +368,17 @@ const WebRTCCallScreen = () => {
     }
   };
 
-  // Nút Retry quan trọng: Gửi lại JOIN_ROOM nếu lỡ bị miss tín hiệu
   const handleRetryConnection = () => {
     console.log("♻️ Retrying Handshake...");
     setConnectionStatus("Retrying...");
 
-    // 1. Gửi lại JOIN_ROOM
     sendSignalingMessage({ type: 'JOIN_ROOM' });
 
-    // 2. Nếu đã có PC bị lỗi, đóng đi để tạo lại
     peerConnections.current.forEach(pc => pc.close());
     peerConnections.current.clear();
     setRemoteStreams(new Map());
   };
 
-  // ... (Phần Audio Stream & UI giữ nguyên)
   const initSubtitleAudioStream = async () => {
     if (Platform.OS === 'android') {
       const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
@@ -421,15 +398,39 @@ const WebRTCCallScreen = () => {
     }
   };
 
+  // 🔥 Cập nhật logic xử lý phụ đề theo cơ chế reset VAD và hiển thị
   const handleSubtitleMessage = useCallback((data: any) => {
-    setSubtitle({
-      original: data.original,
+    if (subtitleTimeoutRef.current) {
+      clearTimeout(subtitleTimeoutRef.current);
+      subtitleTimeoutRef.current = null;
+    }
+
+    const newSubtitleData: SubtitleData = {
+      originalFull: data.originalFull || '',
       originalLang: data.originalLang || 'en',
-      translated: data.translated,
+      translated: data.translated || '',
       translatedLang: data.translatedLang || nativeLang,
-      senderId: data.senderId
-    });
-    setTimeout(() => setSubtitle(null), 5000);
+      senderId: data.senderId,
+      status: data.status,
+    };
+
+    if (newSubtitleData.status === 'noise' || !newSubtitleData.originalFull.trim()) {
+      // Trường hợp nhiễu hoặc tin nhắn trống (server reset chuỗi)
+      setFullSubtitle({
+        ...newSubtitleData,
+        originalFull: newSubtitleData.originalFull || "hmm...",
+      });
+    } else {
+      setFullSubtitle(newSubtitleData);
+    }
+
+    // Ngắt câu (reset) sau 3 giây không có hoạt động nói
+    if (newSubtitleData.status === 'complete' || newSubtitleData.status === 'noise') {
+      subtitleTimeoutRef.current = setTimeout(() => {
+        setFullSubtitle(null);
+      }, 3000);
+    }
+
   }, [nativeLang]);
 
   const startPing = () => {
@@ -451,6 +452,7 @@ const WebRTCCallScreen = () => {
     isManuallyClosed.current = true;
 
     stopPing();
+    if (subtitleTimeoutRef.current) clearTimeout(subtitleTimeoutRef.current);
 
     try {
       LiveAudioStream.stop();
@@ -526,7 +528,6 @@ const WebRTCCallScreen = () => {
     let height: DimensionValue = '100%';
 
     if (count === 1) {
-      // 1-1
     } else if (count === 2) {
       height = '50%';
     } else if (count <= 4) {
@@ -545,6 +546,52 @@ const WebRTCCallScreen = () => {
     );
   };
 
+  const renderSubtitleText = (data: SubtitleData) => {
+    if (!data.originalFull.trim()) return null;
+
+    const senderIsMe = data.senderId === user?.userId;
+    const senderLabel = senderIsMe ? t('You') : t('Partner');
+
+    const originalText = data.originalFull;
+    const translatedText = data.translated;
+
+    let displayOriginal = false;
+    let displayTranslated = false;
+
+    if (subtitleMode === 'dual') {
+      displayOriginal = true;
+      displayTranslated = true;
+    } else if (subtitleMode === 'native' && translatedText) {
+      displayTranslated = true;
+    } else if (subtitleMode === 'original' || !translatedText) {
+      displayOriginal = true;
+    }
+
+    // Căn giữa phụ đề
+    const alignment = 'center';
+
+    return (
+      <View style={styles.subtitleContainer}>
+        <Text style={[styles.subtitleSender, { textAlign: alignment }]}>{senderLabel}</Text>
+        {displayOriginal && (
+          <Text style={[styles.subtitleTextOriginal, { textAlign: alignment }]}>
+            {originalText}
+          </Text>
+        )}
+        {displayTranslated && translatedText && (
+          <Text style={[styles.subtitleTextTranslated, { textAlign: alignment }]}>
+            {translatedText}
+          </Text>
+        )}
+        {displayTranslated && !translatedText && originalText !== "hmm..." && (
+          <Text style={[styles.subtitleTextTranslated, { textAlign: alignment, color: '#9ca3af' }]}>
+            {t('translating')}...
+          </Text>
+        )}
+      </View>
+    );
+  }
+
   return (
     <ScreenLayout>
       <View style={styles.container}>
@@ -560,17 +607,12 @@ const WebRTCCallScreen = () => {
           <Icon name="call-end" size={30} color="white" />
         </TouchableOpacity>
 
-        {subtitleMode !== 'off' && subtitle && (
-          <View style={styles.subtitleContainer}>
-            <Text style={styles.subtitleSender}>{subtitle.senderId === user?.userId ? 'You' : 'Partner'}</Text>
-            <Text style={styles.subtitleTextOriginal}>{subtitle.original}</Text>
-            <Text style={styles.subtitleTextTranslated}>{subtitle.translated}</Text>
-          </View>
-        )}
+        {/* Hiển thị phụ đề ở giữa màn hình */}
+        {subtitleMode !== 'off' && fullSubtitle && renderSubtitleText(fullSubtitle)}
 
         <View style={styles.controls}>
           <TouchableOpacity style={styles.iconButton} onPress={() => setShowSettings(true)}>
-            <Icon name="chat" size={24} color="white" />
+            <Icon name="settings" size={24} color="white" />
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.iconButton, { backgroundColor: isMicOn ? '#22c55e' : '#ef4444' }]}
@@ -601,6 +643,8 @@ const WebRTCCallScreen = () => {
   );
 };
 
+const windowWidth = Dimensions.get('window').width;
+
 const styles = createScaledSheet({
   container: { flex: 1, backgroundColor: 'black' },
   gridContainer: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', alignItems: 'center' },
@@ -611,10 +655,22 @@ const styles = createScaledSheet({
   localVideoContainer: { position: 'absolute', top: 60, right: 20, width: 100, height: 150, borderRadius: 8, overflow: 'hidden', borderWidth: 1, borderColor: '#4b5563', backgroundColor: '#374151' },
   localVideo: { flex: 1 },
   endCallButton: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: '#ef4444', width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5 },
-  subtitleContainer: { position: 'absolute', bottom: 120, left: 20, right: 20, backgroundColor: 'rgba(0,0,0,0.7)', padding: 12, borderRadius: 12 },
+
+  // 🔥 Cập nhật Subtitle Container: Căn giữa, rộng tùy nội dung, và dùng maxWidth 90%
+  subtitleContainer: {
+    position: 'absolute',
+    bottom: 120,
+    alignSelf: 'center', // Căn giữa màn hình
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    maxWidth: windowWidth * 0.9, // Cho phép nó rộng hơn khi câu dài
+    marginHorizontal: 10,
+  },
   subtitleSender: { color: '#9ca3af', fontSize: 12, fontWeight: 'bold', marginBottom: 2 },
-  subtitleTextOriginal: { color: '#e5e7eb', textAlign: 'center', marginBottom: 4 },
-  subtitleTextTranslated: { color: '#fbbf24', textAlign: 'center', fontWeight: 'bold', fontSize: 16 },
+  subtitleTextOriginal: { color: '#e5e7eb', marginBottom: 4, flexShrink: 1, fontSize: 18 },
+  subtitleTextTranslated: { color: '#fbbf24', fontWeight: 'bold', fontSize: 18, flexShrink: 1 },
+
   controls: { position: 'absolute', top: 60, left: 20, gap: 12 },
   iconButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },

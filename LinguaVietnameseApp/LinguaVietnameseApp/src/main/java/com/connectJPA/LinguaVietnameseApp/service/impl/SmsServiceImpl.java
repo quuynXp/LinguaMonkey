@@ -1,51 +1,88 @@
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.configuration.TwilioConfig;
+import com.connectJPA.LinguaVietnameseApp.dto.response.AuthenticationResponse;
+import com.connectJPA.LinguaVietnameseApp.entity.User;
+import com.connectJPA.LinguaVietnameseApp.enums.AuthProvider;
 import com.connectJPA.LinguaVietnameseApp.exception.AppException;
 import com.connectJPA.LinguaVietnameseApp.exception.ErrorCode;
 import com.connectJPA.LinguaVietnameseApp.service.SmsService;
-import com.twilio.exception.ApiException;
-import com.twilio.rest.api.v2010.account.Message;
-import com.twilio.type.PhoneNumber;
+import com.twilio.rest.verify.v2.service.Verification;
+import com.twilio.rest.verify.v2.service.VerificationCheck;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import java.time.Instant;
+
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Slf4j
 @RequiredArgsConstructor
+@Slf4j
 public class SmsServiceImpl implements SmsService {
 
     private final TwilioConfig twilioConfig;
 
     @Override
-    public void sendSms(String toPhoneNumber, String messageBody) {
-        // Kiểm tra xem config đã được load và init thành công chưa
-        if (twilioConfig.getFromPhoneNumber() == null) {
-            log.error("Twilio 'fromPhoneNumber' is null. SMS not sent. Vui lòng kiểm tra 'twilio.from-phone-number' trong file properties.");
-            // Dùng lại ErrorCode cũ của bạn
-            throw new AppException(ErrorCode.SMS_SERVICE_NOT_CONFIGURED);
+    public void sendSms(String toPhoneNumber, String otpCode) {
+        if (twilioConfig.getAccountSid() == null || twilioConfig.getVerifyServiceSid() == null) {
+            log.warn("Twilio Verify Service is not fully configured. Cannot send SMS to: {}", toPhoneNumber);
+            log.info("OTP (SMS Service Disabled): {} for phone: {}", otpCode, toPhoneNumber);
+            throw new AppException(ErrorCode.SMS_SEND_FAILED); 
         }
 
         try {
-            // Chuyển đổi chuỗi SĐT sang object PhoneNumber của Twilio
-            PhoneNumber to = new PhoneNumber(toPhoneNumber);
-            PhoneNumber from = new PhoneNumber(twilioConfig.getFromPhoneNumber());
+            Verification verification = Verification.creator(
+                            twilioConfig.getVerifyServiceSid(),
+                            toPhoneNumber,
+                            "sms")
+                    .create();
 
-            // Gửi tin nhắn
-            Message message = Message.creator(to, from, messageBody).create();
+            log.info("Verification requested for {} using SID: {}", toPhoneNumber, verification.getSid());
 
-            log.info("Sent SMS to {}. Message SID: {}", toPhoneNumber, message.getSid());
-
-        } catch (ApiException e) {
-            // Lỗi từ phía Twilio (ví dụ: SĐT không hợp lệ, không đủ tiền...)
-            log.error("Failed to send SMS to {}: {} (Code: {})", toPhoneNumber, e.getMessage(), e.getCode());
-            // Bạn nên thêm ErrorCode.SMS_SEND_FAILED vào enum ErrorCode
+        } catch (com.twilio.exception.ApiException e) {
+            log.error("Failed to send verification SMS to {}: {} (Code: {})", 
+                toPhoneNumber, e.getMessage(), e.getCode());
             throw new AppException(ErrorCode.SMS_SEND_FAILED);
         } catch (Exception e) {
-            // Bắt các lỗi khác, ví dụ: SĐT không hợp lệ (lỗi parse)
-            log.error("Failed to send SMS to {}: {}", toPhoneNumber, e.getMessage());
-            throw new AppException(ErrorCode.SMS_SEND_FAILED);
+            log.error("An unexpected error occurred while sending SMS to {}", toPhoneNumber, e);
+            throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
         }
     }
+
+    @Override
+    public boolean verifyOtp(String toPhoneNumber, String otpCode) {
+    if (twilioConfig.getVerifyServiceSid() == null) {
+        log.error("Twilio Verify Service SID not configured for verification.");
+        throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+    }
+
+    try {
+        VerificationCheck verificationCheck = VerificationCheck.creator(
+                        twilioConfig.getVerifyServiceSid())
+                .setTo(toPhoneNumber)
+                .setCode(otpCode)
+                .create();
+
+        if (verificationCheck.getValid()) {
+            log.info("OTP successfully verified for {}. SID: {}", 
+                toPhoneNumber, verificationCheck.getSid());
+            return true;
+        } else {
+            log.warn("OTP verification failed for {}. Status: {}", 
+                toPhoneNumber, verificationCheck.getStatus());
+            return false;
+        }
+    } catch (com.twilio.exception.ApiException e) {
+        log.error("Twilio API error during OTP verification for {}: {} (Code: {})", 
+            toPhoneNumber, e.getMessage(), e.getCode());
+        return false; 
+    } catch (Exception e) {
+        log.error("An unexpected error occurred during OTP verification for {}", toPhoneNumber, e);
+        throw new AppException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+    }
+}
+
 }

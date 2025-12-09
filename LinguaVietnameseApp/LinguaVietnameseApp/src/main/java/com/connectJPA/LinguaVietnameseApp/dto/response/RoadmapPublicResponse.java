@@ -19,10 +19,12 @@ public class RoadmapPublicResponse {
     private String creatorAvatar;
     private Integer totalItems;
     private Integer suggestionCount;
-    private Double averageRating;
+    // Removed averageRating
     private String difficulty;
     private String type;
     private OffsetDateTime createdAt;
     private Integer viewCount;
+    
     private Integer favoriteCount;
+    private Boolean isFavorite;
 }

@@ -17,7 +17,6 @@ import WebViewScreen from '../../screens/profile/WebViewScreen';
 import TestSessionScreen from '../../screens/appLaunch/TestSessionScreen';
 import TestResultScreen from '../../screens/appLaunch/TestResultScreen';
 import NotificationsScreen from '../../screens/notification/NotificationsScreen';
-
 export type MainStackParamList = {
   TabApp: undefined;
   LearnStack: { screen?: string; params?: any } | undefined;
@@ -38,14 +37,12 @@ export type MainStackParamList = {
   TestResultScreen: undefined;
   NotificationsScreen: undefined;
 };
-
 const Stack = createNativeStackNavigator<MainStackParamList>();
-
 interface MainStackProps {
   initialRouteName?: keyof MainStackParamList;
+  isAdmin?: boolean;
 }
-
-const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
+const MainStack = ({ initialRouteName = 'TabApp', isAdmin = false }: MainStackProps) => {
   return (
     <Stack.Navigator
       initialRouteName={initialRouteName}
@@ -58,12 +55,9 @@ const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
         fullScreenGestureEnabled: true,
       }}
     >
-      {/* 1. Main Tabs */}
       <Stack.Screen name="TabApp" component={TabNavigator} />
-
-      {/* 2. Feature Stacks */}
       <Stack.Screen name="LearnStack" component={LearnStack} />
-      <Stack.Screen name="AdminStack" component={AdminStack} />
+      {isAdmin && <Stack.Screen name="AdminStack" component={AdminStack} />}
       <Stack.Screen name="ChatStack" component={ChatStack} />
       <Stack.Screen name="ProfileStack" component={ProfileStack} />
       <Stack.Screen name="ProgressStack" component={ProgressStack} />
@@ -73,8 +67,6 @@ const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
       <Stack.Screen name="TestSessionScreen" component={TestSessionScreen} />
       <Stack.Screen name="TestResultScreen" component={TestResultScreen} />
       <Stack.Screen name="NotificationsScreen" component={NotificationsScreen} />
-
-      {/* 3. Onboarding / Setup Flows */}
       <Stack.Screen
         name="DailyWelcomeScreen"
         component={DailyWelcomeScreen}
@@ -91,12 +83,8 @@ const MainStack = ({ initialRouteName = 'TabApp' }: MainStackProps) => {
         options={{ gestureEnabled: false }}
       />
       <Stack.Screen name="ResetPasswordScreen" component={ResetPasswordScreen} />
-
-      {/* 4. Payment & Transactions */}
       <Stack.Screen name="PaymentStack" component={PaymentStack} />
-
     </Stack.Navigator>
   );
 };
-
 export default MainStack;

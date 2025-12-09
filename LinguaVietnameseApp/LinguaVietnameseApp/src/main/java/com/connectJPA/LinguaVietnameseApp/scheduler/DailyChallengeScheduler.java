@@ -41,7 +41,6 @@ public class DailyChallengeScheduler {
 
     private static final String TIME_ZONE = "UTC";
 
-    // 00:00 Monday VN time = 17:00 Sunday UTC
     @Scheduled(cron = "0 0 17 * * SUN", zone = TIME_ZONE)
     @Transactional
     public void assignWeeklyChallengesJob() {
@@ -50,7 +49,6 @@ public class DailyChallengeScheduler {
         log.info("Weekly challenges assigned.");
     }
 
-    // 00:00 VN time = 17:00 Previous Day UTC
     @Scheduled(cron = "0 0 17 * * ?", zone = TIME_ZONE)
     @Transactional
     public void assignDailyChallengesJob() {
@@ -133,7 +131,6 @@ public class DailyChallengeScheduler {
         }
     }
 
-    // 21:00 VN Time = 14:00 UTC
     @Scheduled(cron = "0 0 14 * * ?", zone = TIME_ZONE)
     @Transactional
     public void remindIncompleteChallenge() {

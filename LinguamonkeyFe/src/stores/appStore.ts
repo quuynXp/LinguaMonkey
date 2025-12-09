@@ -11,24 +11,22 @@ export interface CallPreferences {
   ageRange: string;
 }
 
-// Matches UserSettings.java fields related to Chat
 export interface ChatSettings {
   autoTranslate: boolean;
+  targetLanguage?: string;
 }
 
-// Matches UserSettings.java fields related to Notifications/System
 export interface NotificationPreferences {
   studyReminders: boolean;
   streakReminders: boolean;
-  dailyChallengeReminders: boolean; // Added
-  courseReminders: boolean;         // Added
-  coupleReminders: boolean;         // Added
-  vipReminders: boolean;            // Added
-  soundEnabled: boolean;            // Global setting
-  vibrationEnabled: boolean;        // Global setting
+  dailyChallengeReminders: boolean;
+  courseReminders: boolean;
+  coupleReminders: boolean;
+  vipReminders: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
 }
 
-// Matches UserSettings.java fields related to Privacy
 export interface PrivacySettings {
   profileVisibility: boolean;
   progressSharing: boolean;
@@ -53,30 +51,25 @@ export interface RegisterInputState {
 }
 
 interface AppState {
-  // Navigation state
   selectedGrammarTopic: Entities.GrammarTopic | null;
   selectedVideo: Entities.Video | null;
   selectedNoteTopic: string;
   selectedChapter: any;
 
-  // Language settings
   supportLanguage: string[];
   languages: string[];
   nativeLanguage: string;
 
-  // App settings
   theme: 'light' | 'dark';
   callPreferences: CallPreferences;
   chatSettings: ChatSettings;
   notificationPreferences: NotificationPreferences;
   privacySettings: PrivacySettings;
 
-  // Auth Inputs
   loginInput: LoginInputState;
   registerInput: RegisterInputState;
   forgotPasswordInput: string;
 
-  // Actions
   setSelectedGrammarTopic: (topic: Entities.GrammarTopic | null) => void;
   setSelectedVideo: (video: Entities.Video | null) => void;
   setSupportLanguage: (languages: string[]) => void;
@@ -87,7 +80,6 @@ interface AppState {
   setCallPreferences: (preferences: CallPreferences) => void;
   setChatSettings: (settings: Partial<ChatSettings>) => void;
 
-  // Updated actions for new structure
   setNotificationPreferences: (preferences: NotificationPreferences) => void;
   toggleNotification: (field: keyof NotificationPreferences, value?: boolean) => void;
 
@@ -98,7 +90,6 @@ interface AppState {
   resetPrivacySettings: () => void;
   logout: () => void;
 
-  // Auth Input Actions
   setLoginInput: (input: Partial<LoginInputState>) => void;
   setRegisterInput: (input: Partial<RegisterInputState>) => void;
   setForgotPasswordInput: (input: string) => void;
@@ -127,6 +118,7 @@ export const useAppStore = create<AppState>()(
 
       chatSettings: {
         autoTranslate: false,
+        targetLanguage: 'vi',
       },
 
       notificationPreferences: {
@@ -210,6 +202,7 @@ export const useAppStore = create<AppState>()(
         set({
           chatSettings: {
             autoTranslate: false,
+            targetLanguage: 'vi',
           },
         }),
 
@@ -234,7 +227,7 @@ export const useAppStore = create<AppState>()(
 
       logout: () =>
         set({
-          chatSettings: { autoTranslate: false },
+          chatSettings: { autoTranslate: false, targetLanguage: 'vi' },
           notificationPreferences: {
             studyReminders: true,
             streakReminders: true,

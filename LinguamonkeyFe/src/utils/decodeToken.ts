@@ -1,65 +1,57 @@
 import { jwtDecode } from "jwt-decode";
-import { CommonActions } from "@react-navigation/native";
 
-interface TokenPayload {
+export interface StandardJwtPayload {
   sub: string;
-  userId: string;
-  exp: number;
   scope?: string;
+  exp: number;
+  [key: string]: any;
 }
 
-// --- Decode helpers ---
-export const decodeToken = (token: string): TokenPayload | null => {
+export interface TokenPayload extends StandardJwtPayload {
+  userId: string;
+  scope: string;
+}
+
+export const decodeToken = (token: string | null): TokenPayload | null => {
+  if (!token) return null;
   try {
-    return jwtDecode<TokenPayload>(token);
+    const decodedPayload = jwtDecode<StandardJwtPayload>(token);
+
+    const scopeString = decodedPayload.scope || "";
+
+    return {
+      ...decodedPayload,
+      userId: decodedPayload.sub,
+      scope: scopeString,
+    } as TokenPayload;
   } catch (error) {
-    console.error("Invalid token:", error);
+    console.warn("Failed to decode token. Token might be invalid or expired.");
     return null;
   }
-
-};
-export const isTokenExpired = (token: string): boolean => {
-  const decoded = decodeToken(token);
-  if (!decoded) return true;
-  return decoded.exp * 1000 < Date.now();
 };
 
-export const getRoleFromToken = (token: string): string[] => {
-  try {
-    const decoded = jwtDecode<any>(token);
-
-    // BE trả scope: "ROLE_ADMIN ROLE_TEACHER"
-    if (decoded.scope && typeof decoded.scope === "string") {
-      return decoded.scope.split(" ").map((r: string) => r.trim());
-    }
-
-    return [];
-  } catch (err) {
-    console.error("Decode token error:", err);
+export const getRolesFromToken = (token: string | null): string[] => {
+  const payload = decodeToken(token);
+  if (!payload) {
     return [];
   }
+
+  const rawScope = payload.scope;
+
+  console.log("DEBUG: Raw Token Scope:", rawScope);
+
+  return rawScope
+    .trim()
+    .split(/\s+/)
+    .filter((role) => role.length > 0);
 };
 
+export const isAdmin = (token: string | null): boolean => {
+  const roles = getRolesFromToken(token);
+  const isAdministrator = roles.includes("ROLE_ADMIN");
 
+  console.log("DEBUG: Extracted Roles:", roles);
+  console.log("DEBUG: Is Admin:", isAdministrator);
 
-
-// --- Role Guard helpers ---
-export const hasRole = (token: string, role: string): boolean => {
-  const roles = getRoleFromToken(token);
-  return roles.includes(role);
-};
-
-export const requireRole = (token: string, roles: string[], navigation: any) => {
-  const userRoles = getRoleFromToken(token);
-  const matched = roles.some(r => userRoles.includes(r));
-
-  if (!matched) {
-    console.warn("Access denied. Redirecting to Home.");
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: "Home" }],
-      })
-    );
-  }
+  return isAdministrator;
 };

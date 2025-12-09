@@ -8,7 +8,6 @@ from redis.asyncio import Redis
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- CẤU HÌNH DATASET ---
 DATASET_SOURCES = [
     {
         "name": "Helsinki-NLP/opus-100",
@@ -27,7 +26,7 @@ DATASET_SOURCES = [
 ]
 
 BATCH_SIZE = 2000
-REDIS_EXPIRY = 60 * 60 * 24 * 60 # 60 Days
+REDIS_EXPIRY = 60 * 60 * 24 * 60
 INGESTION_FLAG_KEY = "system:hf_ingestion_complete_v4" 
 
 def normalize_text(text: str) -> str:
@@ -45,7 +44,6 @@ async def clean_old_lexicon_keys(redis: Redis):
     logger.info("🧹 scanning and cleaning old 'lex:*' keys to prevent collision...")
     cursor = b"0"
     count = 0
-    # Dùng scan_iter để không block Redis
     keys_to_delete = []
     
     async for key in redis.scan_iter(match="lex:*"):
@@ -64,12 +62,10 @@ async def clean_old_lexicon_keys(redis: Redis):
 
 async def ingest_huggingface_data(redis: Redis):
     try:
-        # 1. Check Flag
         if await redis.exists(INGESTION_FLAG_KEY):
             logger.info(f"⚡ [SKIP] Hugging Face data already ingested (Key: {INGESTION_FLAG_KEY}).")
             return
         
-        # 2. CLEANUP (Quan trọng: Xóa dữ liệu cũ bị sai type)
         await clean_old_lexicon_keys(redis)
 
         pipeline = redis.pipeline()
@@ -79,7 +75,6 @@ async def ingest_huggingface_data(redis: Redis):
             logger.info(f"📥 Loading dataset: {source['name']} ({source['config']})...")
             
             try:
-                # Load dataset không dùng trust_remote_code cho opus-100
                 dataset = await asyncio.to_thread(
                     load_dataset, 
                     source['name'], 

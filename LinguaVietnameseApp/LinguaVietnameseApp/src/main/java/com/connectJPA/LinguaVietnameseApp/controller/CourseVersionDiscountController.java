@@ -12,7 +12,10 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.MessageSource;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Locale;
@@ -42,11 +45,14 @@ public class CourseVersionDiscountController {
 
     @Operation(summary = "Get course version discount by ID")
     @GetMapping("/{id}")
-    public AppApiResponse<CourseVersionDiscountResponse> getCourseVersionDiscountById(
-            @PathVariable UUID id,
+    public AppApiResponse<Page<CourseVersionDiscountResponse>> getDiscounts(
+        @RequestParam("versionId") UUID versionId,
+        @RequestParam(value = "page", defaultValue = "0") int page,
+        @RequestParam(value = "size", defaultValue = "50") int size,
             Locale locale) {
-        CourseVersionDiscountResponse discount = courseVersionDiscountService.getCourseVersionDiscountById(id);
-        return AppApiResponse.<CourseVersionDiscountResponse>builder()
+                Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+        Page<CourseVersionDiscountResponse> discount = courseVersionDiscountService.getDiscountsByVersionId(versionId, pageable);
+        return AppApiResponse.<Page<CourseVersionDiscountResponse>>builder()
                 .code(200)
                 .message(messageSource.getMessage("courseDiscount.get.success", null, locale))
                 .result(discount)

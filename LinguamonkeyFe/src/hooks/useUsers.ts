@@ -91,17 +91,21 @@ export const useUsers = () => {
       queryFn: async () => {
         const { data } = await instance.get<AppApiResponse<PageResponse<UserResponse>>>(
           `/api/v1/users`,
-          { params: { ...rest, page, size } }
+          {
+            params: { ...rest, page, size }
+          }
         );
         return mapPageResponse(data.result, page, size);
       },
       enabled: true,
+      staleTime: 0,
+      refetchOnWindowFocus: true,
     });
   };
 
   const useCountOnlineUsers = () => {
     return useQuery({
-      queryKey: ["users", "count-online"], // Key để cache
+      queryKey: ["users", "count-online"],
       queryFn: async () => {
         const { data } = await instance.get<AppApiResponse<number>>("/api/v1/users/count-online");
         return data.result || 0;

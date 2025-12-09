@@ -63,6 +63,7 @@
             "SLOW": "Slow (20 mins/day)"
         }
     },
+    "admin": "",
     "proficiency": {
         "A1": "A1",
         "A2": "A2",

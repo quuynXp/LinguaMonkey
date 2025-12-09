@@ -104,10 +104,21 @@ const EditRoadmapScreen = ({ route, navigation }: any) => {
       return;
     }
 
+    // STRICT CLEANING: Ensure items match the Backend DTO exactly
+    // Removing 'key', 'name', 'id' and other UI-only fields to prevent backend validation errors
     const cleanedItems = items.map((item, idx) => ({
-      ...item,
+      title: item.title || item.name || "Untitled Step",
+      description: item.description || "",
       orderIndex: idx,
       estimatedTime: parseInt(String(item.estimatedTime || 0)),
+      // Map resources to ResourceRequest list structure
+      resources: (item.resources || []).map((res: any) => ({
+        title: res.title || "Resource",
+        url: res.url || "",
+        type: res.type || "article",
+        description: res.description || "",
+        duration: res.duration || 0 // Default duration if missing
+      }))
     }));
 
     const req: CreateRoadmapRequest = {
@@ -134,7 +145,8 @@ const EditRoadmapScreen = ({ route, navigation }: any) => {
       }
       refetchList();
     } catch (err: any) {
-      Alert.alert("Error", err.message || "Failed to save");
+      console.error("Save Roadmap Error:", err);
+      Alert.alert("Error", err.message || "Failed to save. Please check input data.");
     }
   };
 
@@ -177,7 +189,7 @@ const EditRoadmapScreen = ({ route, navigation }: any) => {
       resourceType: res ? res.type : "article",
       resourceTitle: res ? res.title : ""
     });
-    setInputType(res && !res.url.startsWith('http') ? 'upload' : 'link'); // Simple heuristic
+    setInputType(res && !res.url.startsWith('http') ? 'upload' : 'link');
     setIsItemModalVisible(true);
   };
 
@@ -198,7 +210,7 @@ const EditRoadmapScreen = ({ route, navigation }: any) => {
 
     const newItem = {
       title: tempItem.title,
-      name: tempItem.title,
+      name: tempItem.title, // kept for UI compatibility if needed, stripped before save
       description: tempItem.description,
       estimatedTime: parseInt(tempItem.estimatedTime) || 0,
       key: editingItemIndex !== null ? items[editingItemIndex].key : `new-${Date.now()}`,
@@ -206,7 +218,8 @@ const EditRoadmapScreen = ({ route, navigation }: any) => {
         title: tempItem.resourceTitle || "Attached Resource",
         url: tempItem.resourceUrl,
         type: tempItem.resourceType,
-        description: "User uploaded resource"
+        description: "User uploaded resource",
+        duration: 0
       }] : []
     };
 

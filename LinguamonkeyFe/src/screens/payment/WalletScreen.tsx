@@ -4,19 +4,34 @@ import { useTranslation } from 'react-i18next';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useUserStore } from '../../stores/UserStore';
 import { useWallet } from '../../hooks/useWallet';
-import { useTransactionsApi } from '../../hooks/useTransaction';
 import { createScaledSheet } from '../../utils/scaledStyles';
 import { useCurrencyConverter } from '../../hooks/useCurrencyConverter';
 import { TransactionResponse } from '../../types/dto';
 import ScreenLayout from '../../components/layout/ScreenLayout';
 import * as Enums from '../../types/enums';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 const PAGE_SIZE = 10;
+const BASE_CURRENCY = 'USD';
+
+// Khai báo kiểu cho kết quả Query để đảm bảo TypeScript không bị lỗi khi lấy .data
+// Kiểu này mô phỏng lại cấu trúc trả về từ useTransactionHistory
+interface TransactionQueryResult {
+  data: TransactionResponse[];
+  pagination: {
+    hasNext: boolean;
+    // Thêm các thuộc tính khác nếu cần
+  };
+}
+
 
 const WalletScreen = ({ navigation }: any) => {
   const { t } = useTranslation();
   const { user } = useUserStore();
-  const formatCurrency = useCurrencyConverter().convert;
+  const { convert: convertCurrency } = useCurrencyConverter();
+  const targetCurrency = BASE_CURRENCY;
+
+  const { useWalletBalance, useTransactionHistory } = useWallet();
 
   const [page, setPage] = useState(0);
   const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
@@ -25,25 +40,35 @@ const WalletScreen = ({ navigation }: any) => {
     data: walletData,
     isLoading: loadingBalance,
     refetch: refetchWallet
-  } = useWallet().useWalletBalance(user?.userId);
+  } = useWalletBalance(user?.userId);
 
+  // Ép kiểu kết quả query sang kiểu TransactionQueryResult để giải quyết lỗi
   const {
     data: historyQueryResult,
     isLoading: loadingHistory,
     refetch: refetchHistory,
     isRefetching,
-  } = useTransactionsApi().useTransactionsByUser(user?.userId, page, PAGE_SIZE);
+  } = useTransactionHistory(user?.userId, page, PAGE_SIZE) as {
+    data: TransactionQueryResult | undefined;
+    isLoading: boolean;
+    refetch: () => Promise<any>;
+    isRefetching: boolean;
+  };
 
   useEffect(() => {
     if (historyQueryResult?.data) {
+      // Ép kiểu historyQueryResult.data thành TransactionResponse[] để TypeScript không báo lỗi
+      const newTransactions = historyQueryResult.data as TransactionResponse[];
+
       if (page === 0) {
-        setTransactions(historyQueryResult.data);
+        setTransactions(newTransactions);
       } else {
-        setTransactions(prev => [...prev, ...historyQueryResult.data]);
+        setTransactions(prev => [...prev, ...newTransactions]);
       }
     }
   }, [historyQueryResult, page]);
 
+  // Tương tự, ép kiểu cho historyQueryResult
   const hasNextPage = historyQueryResult?.pagination?.hasNext ?? false;
 
   const onRefresh = async () => {
@@ -60,50 +85,59 @@ const WalletScreen = ({ navigation }: any) => {
     }
   };
 
-  const renderHeader = () => (
-    <View style={styles.headerContainer}>
-      <View style={styles.balanceCard}>
-        <Text style={styles.balanceLabel}>{t('wallet.availableBalance')}</Text>
-        <Text style={styles.balanceAmount}>
-          {loadingBalance ? '...' : formatCurrency(walletData?.balance || 0, 'USD')}
-        </Text>
+  const renderHeader = () => {
+    const balanceInBase = walletData?.balance || 0;
+    const convertedBalance = convertCurrency(balanceInBase, targetCurrency);
 
-        <View style={styles.actionRow}>
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => navigation.navigate('TopUpScreen')}
-          >
-            <Icon name="add" size={20} color="#fff" />
-            <Text style={styles.actionText}>{t('wallet.topup')}</Text>
-          </TouchableOpacity>
+    return (
+      <View style={styles.headerContainer}>
+        <View style={styles.balanceCard}>
+          <Text style={styles.balanceLabel}>{t('wallet.availableBalance')}</Text>
+          <Text style={styles.balanceAmount}>
+            {loadingBalance
+              ? '...'
+              : formatCurrency(convertedBalance, targetCurrency)
+            }
+          </Text>
 
-          <TouchableOpacity
-            style={styles.actionBtn}
-            onPress={() => navigation.navigate('WithdrawScreen')}
-          >
-            <Icon name="arrow-downward" size={20} color="#fff" />
-            <Text style={styles.actionText}>{t('wallet.withdraw')}</Text>
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation.navigate('TopUpScreen')}
+            >
+              <Icon name="add" size={20} color="#fff" />
+              <Text style={styles.actionText}>{t('wallet.topup')}</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.actionBtn}
+              onPress={() => navigation.navigate('WithdrawScreen')}
+            >
+              <Icon name="arrow-downward" size={20} color="#fff" />
+              <Text style={styles.actionText}>{t('wallet.withdraw')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.listHeader}>
+          <Text style={styles.sectionTitle}>{t('wallet.transactionHistory')}</Text>
         </View>
       </View>
-
-      <View style={styles.listHeader}>
-        <Text style={styles.sectionTitle}>{t('wallet.transactionHistory')}</Text>
-      </View>
-    </View>
-  );
+    )
+  };
 
   const renderTransactionItem = ({ item }: { item: TransactionResponse }) => {
     const isIncome = [
       Enums.TransactionType.DEPOSIT,
       Enums.TransactionType.REFUND,
-    ].includes(item.type) || (item.type === Enums.TransactionType.TRANSFER && item.receiver?.userId === user?.userId);
-
-    const isExpense = !isIncome;
+    ].includes(item.type) || (item.type === Enums.TransactionType.TRANSFER);
 
     const statusColor =
       item.status === Enums.TransactionStatus.SUCCESS ? '#10B981' :
         item.status === Enums.TransactionStatus.PENDING ? '#F59E0B' : '#EF4444';
+
+    const transactionAmount = item.amount;
+    const convertedTxnAmount = convertCurrency(transactionAmount, targetCurrency);
 
     return (
       <TouchableOpacity
@@ -127,7 +161,8 @@ const WalletScreen = ({ navigation }: any) => {
         </View>
         <View style={styles.txnRight}>
           <Text style={[styles.txnAmount, { color: isIncome ? '#10B981' : '#EF4444' }]}>
-            {isIncome ? '+' : '-'}{formatCurrency(item.amount, item.currency || 'USD')}
+            {isIncome ? '+' : '-'}
+            {formatCurrency(convertedTxnAmount, targetCurrency)}
           </Text>
           <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
             <Text style={styles.statusText}>

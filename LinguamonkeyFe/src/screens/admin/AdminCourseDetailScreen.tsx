@@ -23,13 +23,14 @@ const AdminCourseDetailScreen = () => {
 
     const isNew = !courseId;
     const { data: course, isLoading } = useCourse(courseId);
-    
-    // Lấy userId từ UserStore
+
     const currentUserId = useUserStore.getState().user?.userId;
 
     const [title, setTitle] = useState("");
     const [price, setPrice] = useState("0");
     const [desc, setDesc] = useState("");
+    const [thumbnailUrl, setThumbnailUrl] = useState("");
+
 
     const { mutate: createCourse, isPending: creating } = useCreateCourse();
     const { mutate: updateCourse, isPending: updating } = useUpdateCourseDetails();
@@ -38,8 +39,9 @@ const AdminCourseDetailScreen = () => {
     useEffect(() => {
         if (course) {
             setTitle(course.title);
-            setPrice(String(course.latestPublicVersion.price));
+            setPrice(String(course.latestPublicVersion?.price || "0"));
             setDesc(course.latestPublicVersion?.description || "");
+            setThumbnailUrl(course.latestPublicVersion?.thumbnailUrl || "");
         }
     }, [course]);
 
@@ -49,17 +51,23 @@ const AdminCourseDetailScreen = () => {
             return;
         }
 
+        // Kiểm tra validation cơ bản
+        if (!title.trim() || !desc.trim() || Number.isNaN(Number(price))) {
+            Alert.alert("Validation Error", "Please fill in all required fields (Title, Description, Price).");
+            return;
+        }
+
         const payload = {
             title,
+            // Đảm bảo giá là số và gửi lên dưới dạng số
             price: Number(price),
             description: desc,
-            // Defaults for simplified UI
-            languageCode: "en",
-            difficultyLevel: "BEGINNER" as any
+            difficultyLevel: "BEGINNER" as any, // Giữ nguyên giá trị mặc định cho FE đơn giản
+            thumbnailUrl: thumbnailUrl || null, // Thêm thumbnailUrl, gửi null nếu trống
         };
 
         if (isNew) {
-            // FIX: Thêm creatorId vào payload để phù hợp với CreateCourseRequest
+            // Cấu trúc cho CreateCourseRequest
             const createPayload = {
                 ...payload,
                 creatorId: currentUserId!,
@@ -70,6 +78,7 @@ const AdminCourseDetailScreen = () => {
                 onError: (error) => Alert.alert("Error Creating Course", (error as any)?.message || "An error occurred")
             });
         } else if (courseId) {
+            // Cấu trúc cho UpdateCourseDetailsRequest
             updateCourse({ id: courseId, req: payload }, {
                 onSuccess: () => Alert.alert("Success", "Course updated"),
                 onError: (error) => Alert.alert("Error Updating Course", (error as any)?.message || "An error occurred")
@@ -110,7 +119,12 @@ const AdminCourseDetailScreen = () => {
                     <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="Enter title" />
 
                     <Text style={styles.label}>Price ($)</Text>
-                    <TextInput style={styles.input} value={price} onChangeText={setPrice} keyboardType="numeric" />
+                    <TextInput
+                        style={styles.input}
+                        value={price}
+                        onChangeText={setPrice}
+                        keyboardType="numeric"
+                    />
 
                     <Text style={styles.label}>Description</Text>
                     <TextInput

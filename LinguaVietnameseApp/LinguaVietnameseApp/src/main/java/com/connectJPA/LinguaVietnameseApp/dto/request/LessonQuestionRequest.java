@@ -2,6 +2,7 @@ package com.connectJPA.LinguaVietnameseApp.dto.request;
 
 import com.connectJPA.LinguaVietnameseApp.enums.QuestionType;
 import com.connectJPA.LinguaVietnameseApp.enums.SkillType;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties; // Import
 import jakarta.validation.constraints.NotNull;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -14,7 +15,9 @@ import java.util.UUID;
 @AllArgsConstructor
 @NoArgsConstructor
 @Builder
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class LessonQuestionRequest {
+    
     private UUID lessonId;
 
     private String question;
@@ -27,7 +30,6 @@ public class LessonQuestionRequest {
 
     private String optionsJson;
 
-    // Các field rời rạc (nên ưu tiên dùng optionsJson để nhẹ payload)
     private String optionA;
     private String optionB;
     private String optionC;
@@ -41,5 +43,6 @@ public class LessonQuestionRequest {
     
     private Integer weight;
     private Integer orderIndex;
+    
     private boolean isDeleted;
 }

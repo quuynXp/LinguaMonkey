@@ -23,16 +23,21 @@ const AdminUserManagementScreen = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(0);
 
+  // Chỉ gửi các tham số lọc nếu searchQuery có giá trị.
+  // Nếu searchQuery là chuỗi rỗng (''), các tham số sẽ là undefined và bị bỏ qua.
+  const queryParams = searchQuery
+    ? {
+      email: searchQuery,
+      fullname: searchQuery,
+      nickname: searchQuery,
+    }
+    : {};
+
   const { data, isLoading, refetch, isFetching } = useAllUsers({
     page,
     size: 20,
-    email: searchQuery || undefined,
+    ...queryParams,
   });
-  // NOTE: useAllUsers trong hooks/useUsers.ts mặc định có enabled: false. 
-  // Để khắc phục, ta cần đảm bảo hook này được kích hoạt.
-  // Nếu không thể thay đổi hook trong useUsers.ts, ta phải thêm enabled: true vào đây, 
-  // hoặc lý tưởng là xóa 'enabled: false' trong useUsers.ts. 
-  // Giả định bạn đã sửa lại file useUsers.ts hoặc sẽ sửa.
 
   const { mutate: deleteUser, isPending: isDeleting } = useDeleteUser();
 
@@ -63,15 +68,15 @@ const AdminUserManagementScreen = () => {
         style={styles.avatar}
       />
       <View style={styles.userInfo}>
-        <Text style={styles.userName}>{item.fullName || item.username}</Text>
+        <Text style={styles.userName}>{item.fullname || item.nickname || "No Name"}</Text>
         <Text style={styles.userEmail}>{item.email}</Text>
         <Text style={styles.userMeta}>
-          Level {item.level} • {item.country}
+          Level {item.level || 0} • {item.country || "Unknown"}
         </Text>
       </View>
       <TouchableOpacity
         style={styles.deleteBtn}
-        onPress={() => handleDelete(item.userId, item.fullName)}
+        onPress={() => handleDelete(item.userId, item.fullname)}
         disabled={isDeleting}
       >
         <Icon name="delete-outline" size={24} color="#EF4444" />

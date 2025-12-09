@@ -1,4 +1,3 @@
-// CourseServiceImpl.java (FULL FILE - Updated logic)
 package com.connectJPA.LinguaVietnameseApp.service.impl;
 
 import com.connectJPA.LinguaVietnameseApp.dto.request.CreateCourseRequest;
@@ -243,12 +242,13 @@ public class CourseServiceImpl implements CourseService {
         course.setTitle(request.getTitle());
         course.setCreatorId(request.getCreatorId());
         
-        course.setApprovalStatus(CourseApprovalStatus.PENDING);
-        course = courseRepository.save(course); // ID đã được tạo ở đây
+        // Changed: Defaults to APPROVED to allow immediate publishing without admin intervention
+        course.setApprovalStatus(CourseApprovalStatus.APPROVED);
+        course = courseRepository.save(course); 
 
         // Create first Version (Draft v1)
         CourseVersion version = new CourseVersion();
-        version.setCourseId(course.getCourseId()); // Link version với courseId vừa tạo
+        version.setCourseId(course.getCourseId());
         version.setVersionNumber(1);
         version.setStatus(VersionStatus.DRAFT);
         version.setIsIntegrityValid(null);
@@ -316,9 +316,7 @@ public class CourseServiceImpl implements CourseService {
         } else {
             version.setIsContentValid(false);
             version.setIsIntegrityValid(false);
-            // Có thể thêm warnings vào đây nếu entity có field String validationWarnings
         }
-        // -------------------------------------
 
         version = courseVersionRepository.save(version);
         return versionMapper.toResponse(version);
@@ -340,54 +338,33 @@ public class CourseServiceImpl implements CourseService {
              throw new AppException(ErrorCode.INVALID_REQUEST);
         }
 
-        // Logic cũ: check flag valid
-        // Vì hàm updateCourseVersion đã set flag này rồi nên logic dưới đây sẽ pass
         if (Boolean.FALSE.equals(version.getIsIntegrityValid()) || Boolean.FALSE.equals(version.getIsContentValid())) {
             throw new AppException(ErrorCode.COURSE_VALIDATION_FAILED);
         }
 
         version.setReasonForChange(request.getReasonForChange());
-        boolean requiresAdminApproval = false;
-
-        if (version.getPrice() != null && version.getPrice().compareTo(BigDecimal.ZERO) > 0) {
-            requiresAdminApproval = true;
+        
+        // Changed: Removed logic for PENDING_APPROVAL based on price/changes.
+        // All publish requests now go directly to PUBLIC.
+        
+        // Archive old version if exists
+        if (course.getLatestPublicVersion() != null) {
+            CourseVersion oldPublic = course.getLatestPublicVersion();
+            oldPublic.setStatus(VersionStatus.ARCHIVED);
+            courseVersionRepository.save(oldPublic);
         }
 
-        if (version.getVersionNumber() > 1) {
-            CourseVersion previousVersion = courseVersionRepository.findLatestPublicVersionByCourseId(course.getCourseId())
-                    .orElse(null);
-            if (isMajorChange(version, previousVersion)) {
-                requiresAdminApproval = true;
-            }
-        }
+        version.setStatus(VersionStatus.PUBLIC);
+        version.setPublishedAt(OffsetDateTime.now());
+        course.setLatestPublicVersion(version);
+        course.setApprovalStatus(CourseApprovalStatus.APPROVED);
+        courseRepository.save(course);
 
-        if (requiresAdminApproval) {
-            version.setStatus(VersionStatus.PENDING_APPROVAL);
-            sendAdminNotification(
-                    "Course Approval Request",
-                    "The course '" + course.getTitle() + "' (v" + version.getVersionNumber() + ") requires approval. Price: " + version.getPrice(),
-                    "COURSE_APPROVAL_PENDING"
-            );
-        } else {
-            // Archive old version if exists
-            if (course.getLatestPublicVersion() != null) {
-                CourseVersion oldPublic = course.getLatestPublicVersion();
-                oldPublic.setStatus(VersionStatus.ARCHIVED);
-                courseVersionRepository.save(oldPublic);
-            }
-
-            version.setStatus(VersionStatus.PUBLIC);
-            version.setPublishedAt(OffsetDateTime.now());
-            course.setLatestPublicVersion(version);
-            course.setApprovalStatus(CourseApprovalStatus.APPROVED);
-            courseRepository.save(course);
-
-            sendLearnerUpdateNotification(
-                    course,
-                    version,
-                    "A new version (v" + version.getVersionNumber() + ") is available. Update notes: " + version.getReasonForChange()
-            );
-        }
+        sendLearnerUpdateNotification(
+                course,
+                version,
+                "A new version (v" + version.getVersionNumber() + ") is available. Update notes: " + version.getReasonForChange()
+        );
 
         version = courseVersionRepository.save(version);
         return versionMapper.toResponse(version);
@@ -448,31 +425,6 @@ public class CourseServiceImpl implements CourseService {
         }
         course = courseRepository.save(course);
         return enrichCourseResponse(courseMapper.toResponse(course));
-    }
-
-    private boolean isMajorChange(CourseVersion newVersion, CourseVersion oldVersion) {
-        if (oldVersion == null) {
-            return false;
-        }
-
-        Set<UUID> oldLessonIds = cvlRepository.findByCourseVersion_VersionIdOrderByOrderIndex(oldVersion.getVersionId())
-                .stream()
-                .map(cvl -> cvl.getLesson().getLessonId())
-                .collect(Collectors.toSet());
-
-        Set<UUID> newLessonIds = newVersion.getLessons().stream()
-                .map(cvl -> cvl.getLesson().getLessonId())
-                .collect(Collectors.toSet());
-
-        long lessonsAdded = newLessonIds.stream().filter(id -> !oldLessonIds.contains(id)).count();
-        long lessonsRemoved = oldLessonIds.stream().filter(id -> !newLessonIds.contains(id)).count();
-        long totalChanges = lessonsAdded + lessonsRemoved;
-
-        int oldSize = oldLessonIds.size();
-        if (oldSize == 0) return newLessonIds.size() > 0;
-
-        double changePercentage = (double) totalChanges / oldSize;
-        return changePercentage > 0.3;
     }
 
     private void sendAdminNotification(String title, String content, String type) {
@@ -541,18 +493,27 @@ public class CourseServiceImpl implements CourseService {
         );
 
         return discounts.map(discount -> {
-            Course course = courseRepository.findById(discount.getCourseVersion().getCourseId()).orElse(null);
+            CourseVersion version = discount.getCourseVersion();
+            Course course = version.getCourse();
             
-            CourseResponse response = (course != null) ? courseMapper.toResponse(course) : new CourseResponse();
+            CourseResponse response = courseMapper.toResponse(course);
+            response = enrichCourseResponse(response); 
             
+            response.setLatestPublicVersion(versionMapper.toResponse(version));
+
             response.setActiveDiscountPercentage(discount.getDiscountPercentage());
-            if (discount.getCourseVersion().getPrice() != null) {
-                BigDecimal originalPrice = discount.getCourseVersion().getPrice();
+            
+            if (version.getPrice() != null) {
+                BigDecimal originalPrice = version.getPrice();
                 BigDecimal discountAmount = originalPrice
                         .multiply(BigDecimal.valueOf(discount.getDiscountPercentage()))
                         .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                
                 response.setDiscountedPrice(originalPrice.subtract(discountAmount));
+            } else {
+                response.setDiscountedPrice(BigDecimal.ZERO);
             }
+            
             return response;
         });
     }

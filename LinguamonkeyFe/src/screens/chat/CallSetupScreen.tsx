@@ -90,7 +90,6 @@ const CallSetupScreen = ({ navigation }: any) => {
 
   const { data: interests = [], isLoading: isLoadingInterests } = useInterests()
 
-  // Helper function moved inside component to match SetupInitScreen pattern
   const getFlagIsoFromLang = (langCode?: string) => {
     if (!langCode) return undefined
     const lower = String(langCode).toLowerCase()
@@ -277,7 +276,17 @@ const CallSetupScreen = ({ navigation }: any) => {
   )
 
   const renderLearningLanguageChips = () => {
-    const displayLangs = supportedLanguages?.length > 0 ? supportedLanguages : []
+    const FIXED_LANGUAGES = [
+      { languageCode: 'vi', languageName: t('language.vietnamese') || 'Vietnamese' },
+      { languageCode: 'en', languageName: t('language.english') || 'English' },
+      { languageCode: 'zh', languageName: t('language.chinese') || 'Chinese' },
+    ]
+
+    const displayLangs = FIXED_LANGUAGES.map(lang => ({
+      ...lang,
+      languageCode: String(lang.languageCode).toLowerCase()
+    }))
+
     return (
       <View style={styles.languagesGrid}>
         {displayLangs.map((lang) => {

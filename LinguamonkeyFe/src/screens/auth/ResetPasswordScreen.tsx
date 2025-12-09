@@ -8,18 +8,23 @@ import ScreenLayout from "../../components/layout/ScreenLayout";
 import { createScaledSheet } from "../../utils/scaledStyles";
 
 const ResetPasswordScreen = ({ navigation, route }) => {
-    const { t } = useTranslation();
-    const { identifier, methods } = route.params;
+    const { identifier, methods, userId } = route.params || {};
 
-    const [currentStep, setCurrentStep] = useState<'METHOD' | 'OTP' | 'NEW_PASSWORD'>('METHOD');
+    const isChangePasswordFlow = !!userId;
+
+    const [currentStep, setCurrentStep] = useState<'METHOD' | 'OTP' | 'NEW_PASSWORD'>(
+        isChangePasswordFlow ? 'NEW_PASSWORD' : 'METHOD'
+    );
     const [selectedMethod, setSelectedMethod] = useState<'EMAIL' | 'PHONE' | null>(null);
     const [otp, setOtp] = useState("");
     const [newPassword, setNewPassword] = useState("");
+    const [currentPassword, setCurrentPassword] = useState(""); // Cần cho Change Password
     const [confirmPassword, setConfirmPassword] = useState("");
     const [secureToken, setSecureToken] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
 
+    const { t } = useTranslation();
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const slideAnim = useRef(new Animated.Value(30)).current;
 
@@ -31,21 +36,28 @@ const ResetPasswordScreen = ({ navigation, route }) => {
     }, [currentStep]);
 
     useEffect(() => {
-        if (methods) {
+        if (!isChangePasswordFlow && methods) {
             if (methods.hasEmail && !methods.hasPhone) {
                 handleSendOtp('EMAIL');
             } else if (!methods.hasEmail && methods.hasPhone) {
                 handleSendOtp('PHONE');
             }
         }
-    }, [methods]);
+    }, [methods, isChangePasswordFlow]);
+
+    const targetIdentifier = selectedMethod === 'EMAIL' ? methods?.email : methods?.phone;
+    const resetTarget = targetIdentifier || identifier;
 
     const handleSendOtp = async (method: 'EMAIL' | 'PHONE') => {
+        if (!resetTarget) {
+            showError(t('errors.missingIdentifier') || 'Missing account identifier.');
+            return;
+        }
+
         setSelectedMethod(method);
         setIsLoading(true);
         try {
-            const target = method === 'EMAIL' ? methods.email : methods.phone;
-            await authService.requestPasswordResetOtp(target || identifier, method);
+            await authService.requestPasswordResetOtp(resetTarget, method);
             showSuccess(t('otpSentSuccess'));
             setCurrentStep('OTP');
         } catch (error: any) {
@@ -62,8 +74,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         }
         setIsLoading(true);
         try {
-            const target = selectedMethod === 'EMAIL' ? methods.email : methods.phone;
-            const token = await authService.verifyPasswordResetOtp(target || identifier, otp);
+            const token = await authService.verifyPasswordResetOtp(resetTarget, otp);
             setSecureToken(token);
             setCurrentStep('NEW_PASSWORD');
         } catch (error: any) {
@@ -73,7 +84,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         }
     };
 
-    const handleSubmitNewPassword = async () => {
+    const handleResetPassword = async () => {
         if (newPassword.length < 6) {
             showError(t('passwordLength'));
             return;
@@ -86,6 +97,7 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         try {
             await authService.resetPassword(secureToken, newPassword);
             showSuccess(t('passwordResetSuccess'));
+
             navigation.reset({
                 index: 0,
                 routes: [{ name: 'Login' }],
@@ -97,29 +109,65 @@ const ResetPasswordScreen = ({ navigation, route }) => {
         }
     };
 
-    const renderMethodSelection = () => (
-        <View>
-            <Text style={styles.stepTitle}>{t('selectRecoveryMethod')}</Text>
-            {methods?.hasEmail && (
-                <TouchableOpacity style={styles.methodButton} onPress={() => handleSendOtp('EMAIL')}>
-                    <Icon name="email" size={24} color="#4F46E5" />
-                    <View style={{ marginLeft: 12 }}>
-                        <Text style={styles.methodLabel}>{t('sendViaEmail')}</Text>
-                        <Text style={styles.methodValue}>{methods.email}</Text>
-                    </View>
-                </TouchableOpacity>
-            )}
-            {methods?.hasPhone && (
-                <TouchableOpacity style={styles.methodButton} onPress={() => handleSendOtp('PHONE')}>
-                    <Icon name="smartphone" size={24} color="#4F46E5" />
-                    <View style={{ marginLeft: 12 }}>
-                        <Text style={styles.methodLabel}>{t('sendViaSms')}</Text>
-                        <Text style={styles.methodValue}>{methods.phone}</Text>
-                    </View>
-                </TouchableOpacity>
-            )}
-        </View>
-    );
+    const handleChangePassword = async () => {
+        if (newPassword.length < 6) {
+            showError(t('passwordLength'));
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            showError(t('passwordMismatch'));
+            return;
+        }
+        if (!currentPassword) {
+            showError(t('enterCurrentPassword'));
+            return;
+        }
+
+        setIsLoading(true);
+        try {
+            await authService.changePasswordForAuthenticatedUser(userId, currentPassword, newPassword);
+
+            showSuccess(t('passwordChangedSuccess'));
+            navigation.goBack();
+        } catch (error: any) {
+            showError(error.message || t('changePasswordFailed'));
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSubmit = isChangePasswordFlow ? handleChangePassword : handleResetPassword;
+
+    const renderMethodSelection = () => {
+        // Nếu không có identifier hoặc methods, báo lỗi
+        if (!identifier || !methods || (!methods.hasEmail && !methods.hasPhone)) {
+            return <Text style={styles.stepDesc}>{t('errors.noRecoveryMethods') || 'No recovery methods available.'}</Text>;
+        }
+
+        return (
+            <View>
+                <Text style={styles.stepTitle}>{t('selectRecoveryMethod')}</Text>
+                {methods?.hasEmail && (
+                    <TouchableOpacity style={styles.methodButton} onPress={() => handleSendOtp('EMAIL')}>
+                        <Icon name="email" size={24} color="#4F46E5" />
+                        <View style={{ marginLeft: 12 }}>
+                            <Text style={styles.methodLabel}>{t('sendViaEmail')}</Text>
+                            <Text style={styles.methodValue}>{methods.email}</Text>
+                        </View>
+                    </TouchableOpacity>
+                )}
+                {methods?.hasPhone && (
+                    <TouchableOpacity style={styles.methodButton} onPress={() => handleSendOtp('PHONE')}>
+                        <Icon name="smartphone" size={24} color="#4F46E5" />
+                        <View style={{ marginLeft: 12 }}>
+                            <Text style={styles.methodLabel}>{t('sendViaSms')}</Text>
+                            <Text style={styles.methodValue}>{methods.phone}</Text>
+                        </View>
+                    </TouchableOpacity>
+                )}
+            </View>
+        );
+    }
 
     const renderOtpInput = () => (
         <View>
@@ -142,8 +190,21 @@ const ResetPasswordScreen = ({ navigation, route }) => {
 
     const renderNewPasswordInput = () => (
         <View>
-            <Text style={styles.stepTitle}>{t('createNewPassword')}</Text>
-            <View style={styles.inputWrapper}>
+            <Text style={styles.stepTitle}>
+                {isChangePasswordFlow ? t('changePasswordTitle') : t('createNewPassword')}
+            </Text>
+
+            {isChangePasswordFlow && (
+                <TextInput
+                    style={styles.textInput}
+                    placeholder={t('currentPassword')}
+                    value={currentPassword}
+                    onChangeText={setCurrentPassword}
+                    secureTextEntry={!showPassword}
+                />
+            )}
+
+            <View style={[styles.inputWrapper, { marginTop: isChangePasswordFlow ? 12 : 0 }]}>
                 <TextInput
                     style={styles.textInput}
                     placeholder={t('newPassword')}
@@ -162,27 +223,35 @@ const ResetPasswordScreen = ({ navigation, route }) => {
                 onChangeText={setConfirmPassword}
                 secureTextEntry={!showPassword}
             />
-            <TouchableOpacity style={styles.primaryButton} onPress={handleSubmitNewPassword} disabled={isLoading}>
-                {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>{t('updatePassword')}</Text>}
+            <TouchableOpacity style={styles.primaryButton} onPress={handleSubmit} disabled={isLoading}>
+                {isLoading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.buttonText}>{isChangePasswordFlow ? t('savePassword') : t('updatePassword')}</Text>}
             </TouchableOpacity>
         </View>
     );
+
+    // Xử lý nút back
+    const handleGoBack = () => {
+        if (currentStep === 'METHOD' || isChangePasswordFlow) {
+            navigation.goBack();
+        } else if (currentStep === 'OTP') {
+            setCurrentStep('METHOD');
+        } else if (currentStep === 'NEW_PASSWORD') {
+            setCurrentStep('OTP');
+        }
+    };
 
     return (
         <ScreenLayout style={styles.container}>
             <Animated.View style={[styles.content, { opacity: fadeAnim, transform: [{ translateY: slideAnim }] }]}>
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => {
-                        if (currentStep === 'METHOD') navigation.goBack();
-                        else if (currentStep === 'OTP') setCurrentStep('METHOD');
-                        else setCurrentStep('OTP');
-                    }}>
+                    <TouchableOpacity onPress={handleGoBack}>
                         <Icon name="arrow-back" size={24} color="#374151" />
                     </TouchableOpacity>
                 </View>
                 {currentStep === 'METHOD' && renderMethodSelection()}
                 {currentStep === 'OTP' && renderOtpInput()}
                 {currentStep === 'NEW_PASSWORD' && renderNewPasswordInput()}
+                {isLoading && <ActivityIndicator style={styles.loadingOverlay} size="large" color="#4F46E5" />}
             </Animated.View>
         </ScreenLayout>
     );
@@ -199,9 +268,20 @@ const styles = createScaledSheet({
     methodValue: { fontSize: 16, fontWeight: '600', color: '#1F2937' },
     textInput: { backgroundColor: '#fff', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 14, fontSize: 16, color: '#1F2937' },
     inputWrapper: { flexDirection: 'row', alignItems: 'center' },
-    eyeIcon: { position: 'absolute', right: 12 },
+    eyeIcon: { position: 'absolute', right: 12, padding: 4 },
     primaryButton: { backgroundColor: '#4F46E5', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
-    buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' }
+    buttonText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'rgba(255, 255, 255, 0.7)',
+        zIndex: 99
+    }
 });
 
 export default ResetPasswordScreen;

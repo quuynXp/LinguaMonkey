@@ -69,9 +69,16 @@ public interface UserRepository extends JpaRepository<User , UUID>, JpaSpecifica
     boolean existsByPhoneAndIsDeletedFalse(String phone);
     boolean existsByUserIdAndIsDeletedFalse(UUID userId);
 
-    @Query("SELECT u FROM User u WHERE u.email LIKE %:email% AND u.fullname LIKE %:fullname% AND u.nickname LIKE %:nickname% AND u.isDeleted = false")
+    @Query("SELECT u FROM User u WHERE " +
+           "(:email IS NULL OR LOWER(u.email) LIKE LOWER(CONCAT('%', :email, '%'))) AND " +
+           "(:fullname IS NULL OR LOWER(u.fullname) LIKE LOWER(CONCAT('%', :fullname, '%'))) AND " +
+           "(:nickname IS NULL OR LOWER(u.nickname) LIKE LOWER(CONCAT('%', :nickname, '%'))) AND " +
+           "u.isDeleted = false")
     Page<User> findByEmailContainingAndFullnameContainingAndNicknameContainingAndIsDeletedFalse(
-            @Param("email") String email, @Param("fullname") String fullname, @Param("nickname") String nickname, Pageable pageable);
+            @Param("email") String email, 
+            @Param("fullname") String fullname, 
+            @Param("nickname") String nickname, 
+            Pageable pageable);
 
     @Query("SELECT u FROM User u WHERE u.userId = :id AND u.isDeleted = false")
     Optional<User> findByUserIdAndIsDeletedFalse(@Param("id") UUID id);

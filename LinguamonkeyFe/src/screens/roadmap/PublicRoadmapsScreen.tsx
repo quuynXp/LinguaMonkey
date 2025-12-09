@@ -7,21 +7,39 @@ import ScreenLayout from '../../components/layout/ScreenLayout'
 import { createScaledSheet } from '../../utils/scaledStyles'
 import { RoadmapPublicResponse } from '../../types/dto'
 
-const PublicRoadmapsScreen = ({ navigation }) => {
+const PublicRoadmapsScreen = ({ navigation }: any) => {
   const { t } = useTranslation()
-  const { usePublicRoadmapsWithStats, useAssignRoadmap } = useRoadmap()
+  // Updated hook usage to include Community and Official roadmaps
+  const { useCommunityRoadmaps, useOfficialRoadmaps, useAssignRoadmap } = useRoadmap()
 
   const [searchQuery, setSearchQuery] = useState('')
-  const { data: publicRoadmaps, isLoading } = usePublicRoadmapsWithStats("en", 0, 50) // Default to EN for now
-  const assignMutation = useAssignRoadmap()
+  const [filterType, setFilterType] = useState<'all' | 'official' | 'community'>('all')
 
+  // Fetch both data sources
+  const { data: communityRoadmaps, isLoading: isCommLoading } = useCommunityRoadmaps("en", 0, 50)
+  const { data: officialRoadmaps, isLoading: isOffLoading } = useOfficialRoadmaps("en", 0, 50)
+
+  const assignMutation = useAssignRoadmap()
+  const isLoading = isCommLoading || isOffLoading;
+
+  // Combine and Filter Data
   const filteredRoadmaps = useMemo(() => {
-    if (!publicRoadmaps) return [];
-    return publicRoadmaps.filter((roadmap: RoadmapPublicResponse) =>
+    let combined: RoadmapPublicResponse[] = [];
+
+    if (filterType === 'all' || filterType === 'official') {
+      combined = [...combined, ...(officialRoadmaps || [])];
+    }
+    if (filterType === 'all' || filterType === 'community') {
+      combined = [...combined, ...(communityRoadmaps || [])];
+    }
+
+    if (!searchQuery.trim()) return combined;
+
+    return combined.filter((roadmap: RoadmapPublicResponse) =>
       roadmap.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      roadmap.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  }, [publicRoadmaps, searchQuery])
+      (roadmap.description && roadmap.description.toLowerCase().includes(searchQuery.toLowerCase()))
+    );
+  }, [communityRoadmaps, officialRoadmaps, searchQuery, filterType])
 
   const handleEnroll = async (roadmapId: string, title: string) => {
     try {
@@ -39,7 +57,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
   const renderRating = (rating: number) => {
     return (
       <View style={styles.ratingContainer}>
-        <Text style={styles.ratingText}>{rating.toFixed(1)}</Text>
+        <Text style={styles.ratingText}>{rating ? rating.toFixed(1) : 'New'}</Text>
         <Icon name="star" size={16} color="#F59E0B" />
       </View>
     )
@@ -48,7 +66,9 @@ const PublicRoadmapsScreen = ({ navigation }) => {
   const renderCard = ({ item }: { item: RoadmapPublicResponse }) => (
     <TouchableOpacity
       style={styles.card}
-      onPress={() => navigation.navigate('RoadmapSuggestionsScreen', { roadmapId: item.roadmapId, isOwner: false })}
+      onPress={() => {
+        navigation.navigate('RoadmapItemDetailScreen', { roadmapId: item.roadmapId });
+      }}
     >
       <View style={styles.cardHeader}>
         <View style={styles.creatorInfo}>
@@ -56,15 +76,16 @@ const PublicRoadmapsScreen = ({ navigation }) => {
             <Image source={{ uri: item.creatorAvatar }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatar, styles.avatarPlaceholder]}>
-              <Text style={styles.avatarText}>{item.creator.charAt(0)}</Text>
+              <Text style={styles.avatarText}>{(item.creator || 'S').charAt(0)}</Text>
             </View>
           )}
           <View>
             <Text style={styles.cardTitle}>{item.title}</Text>
-            <Text style={styles.creatorName}>by {item.creator}</Text>
+            <Text style={styles.creatorName}>
+              {item.type === 'OFFICIAL' ? 'Official Template' : `by ${item.creator}`}
+            </Text>
           </View>
         </View>
-        {renderRating(item.averageRating)}
       </View>
 
       <Text style={styles.description} numberOfLines={2}>{item.description}</Text>
@@ -80,7 +101,7 @@ const PublicRoadmapsScreen = ({ navigation }) => {
         </View>
         <View style={styles.statItem}>
           <Icon name="bar-chart" size={14} color="#6B7280" />
-          <Text style={styles.statText}>{item.difficulty}</Text>
+          <Text style={styles.statText}>{item.difficulty || 'General'}</Text>
         </View>
       </View>
 
@@ -128,6 +149,28 @@ const PublicRoadmapsScreen = ({ navigation }) => {
         />
       </View>
 
+      {/* Filter Tabs */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, filterType === 'all' && styles.activeTab]}
+          onPress={() => setFilterType('all')}
+        >
+          <Text style={[styles.tabText, filterType === 'all' && styles.activeTabText]}>All</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, filterType === 'official' && styles.activeTab]}
+          onPress={() => setFilterType('official')}
+        >
+          <Text style={[styles.tabText, filterType === 'official' && styles.activeTabText]}>Templates</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tab, filterType === 'community' && styles.activeTab]}
+          onPress={() => setFilterType('community')}
+        >
+          <Text style={[styles.tabText, filterType === 'community' && styles.activeTabText]}>Community</Text>
+        </TouchableOpacity>
+      </View>
+
       {isLoading ? (
         <View style={styles.center}><ActivityIndicator size="large" color="#3B82F6" /></View>
       ) : (
@@ -154,8 +197,14 @@ const styles = createScaledSheet({
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center', backgroundColor: '#fff', borderBottomWidth: 1, borderColor: '#E5E7EB' },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#1F2937' },
 
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', margin: 16, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB' },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff', marginHorizontal: 16, marginTop: 16, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, borderColor: '#E5E7EB' },
   searchInput: { flex: 1, paddingVertical: 12, marginLeft: 8 },
+
+  tabContainer: { flexDirection: 'row', paddingHorizontal: 16, paddingVertical: 12, gap: 12 },
+  tab: { paddingVertical: 6, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#E5E7EB' },
+  activeTab: { backgroundColor: '#3B82F6' },
+  tabText: { color: '#4B5563', fontWeight: '500', fontSize: 13 },
+  activeTabText: { color: '#FFF', fontWeight: '600' },
 
   listContent: { padding: 16 },
 

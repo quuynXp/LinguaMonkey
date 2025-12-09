@@ -41,8 +41,10 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 AI_BOT_ID = uuid.UUID('00000000-0000-0000-0000-000000000000')
-# Tăng ngưỡng lọc nhiễu lên một chút nếu mic quá nhạy
-SILENCE_THRESHOLD = 500 
+
+# Mức này sẽ bắt được tiếng thì thầm hoặc nói nhỏ.
+SILENCE_THRESHOLD = 150 
+
 security = HTTPBearer()
 PUBLIC_KEY = None
 
@@ -119,7 +121,12 @@ class ConnectionManager:
                 self.disconnect(dead_conn, room_id)
 
 manager = ConnectionManager()
-audio_buffers = defaultdict(list)
+audio_buffers: Dict[str, List[bytes]] = defaultdict(list)
+silence_counters: Dict[str, int] = defaultdict(int)
+user_text_cache: Dict[str, str] = defaultdict(str)
+
+SILENCE_CHUNK_LIMIT = 8 
+MAX_TEXT_CACHE_LENGTH = 250 
 
 # --- HELPER FUNCTIONS ---
 def calculate_rms(audio_chunk: bytes) -> float:
@@ -134,10 +141,6 @@ def calculate_rms(audio_chunk: bytes) -> float:
         return 0
 
 def create_wav_bytes(pcm_data: bytes, sample_rate=16000, channels=1, sampwidth=2) -> bytes:
-    """
-    Đóng gói Raw PCM thành định dạng WAV để AI không bị nhầm lẫn format.
-    React Native gửi lên là 16000Hz, 1 kênh, 16bit (2 bytes).
-    """
     io_buf = io.BytesIO()
     with wave.open(io_buf, "wb") as wav:
         wav.setnchannels(channels)
@@ -146,16 +149,25 @@ def create_wav_bytes(pcm_data: bytes, sample_rate=16000, channels=1, sampwidth=2
         wav.writeframes(pcm_data)
     return io_buf.getvalue()
 
+# --- LIFESPAN (QUAN TRỌNG: KHỞI TẠO SINGLETON TẠI ĐÂY) ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await get_redis_client()
+    # 1. Start Redis
+    redis = await get_redis_client()
     logger.info("Redis client initialized.")
+    
+    # 2. Warmup Translator (Load models/configs once)
+    # Điều này đảm bảo instance Singleton được tạo ra khi app khởi động
+    # thay vì tạo mới khi có request đầu tiên.
     try:
-        # ingest_huggingface_task.delay()
-        pass
+        get_translator(redis)
+        logger.info("Translator singleton initialized & warmed up.")
     except Exception as e:
-        logger.error(f"❌ Failed to trigger Auto-Ingest: {e}")
+        logger.error(f"Translator warmup warning: {e}")
+
     yield
+    
+    # 3. Cleanup
     await close_redis_client()
     logger.info("Redis client closed.")
 
@@ -212,6 +224,7 @@ async def check_redis_key(lang: str, text: str, redis: Redis = Depends(get_redis
 @protected_router.post("/translate")
 async def translate(request: TranslationRequest, redis: Redis = Depends(get_redis_client)):
     try:
+        # Singleton instance đã được warm-up ở lifespan
         translator = get_translator(redis)
         translated_text, detected_lang = await translator.translate(request.text, request.source_lang, request.target_lang)
         return {"code": 200, "result": {"translated_text": translated_text, "detected_lang": detected_lang}}
@@ -236,6 +249,7 @@ async def chat(
 
 @protected_router.post("/tts")
 async def text_to_speech_endpoint(text: str, language: str, redis: Redis = Depends(get_redis_client)):
+    # LƯU Ý: Nếu generate_tts load model nặng, hãy đảm bảo nó được cache bên trong hàm hoặc warm-up ở lifespan
     audio_bytes, error = await generate_tts(text, language, redis)
     if error: raise HTTPException(status_code=500, detail=error)
     return {"audio_base64": base64.b64encode(audio_bytes).decode('utf-8')}
@@ -253,8 +267,8 @@ async def voice_stream(websocket: WebSocket, token: str = Query(...)):
             msg = json.loads(data)
             audio_chunk = base64.b64decode(msg.get("audio_chunk", "")) if msg.get("audio_chunk") else b""
             if audio_chunk:
-                # Wrap WAV header for standard STT processing
                 wav_data = create_wav_bytes(audio_chunk)
+                # LƯU Ý: speech_to_text cần load model 1 lần (Singleton) bên trong module speech_to_text
                 text, detected_lang, error = await asyncio.to_thread(speech_to_text, wav_data, "en")
                 
                 response = {"seq": msg.get("seq", 0)}
@@ -321,8 +335,8 @@ async def live_subtitles(
     websocket: WebSocket,
     token: str = Query(...),
     roomId: str = Query(...),
-    nativeLang: str = Query("vi"),
-    spokenLang: str = Query("en")
+    nativeLang: str = Query(None),
+    spokenLang: str = Query(None)
 ):
     normalized_room_id = str(roomId).strip().lower()
     
@@ -332,16 +346,38 @@ async def live_subtitles(
         return
 
     await manager.connect(websocket, normalized_room_id)
+    
+    db_session = AsyncSessionLocal()
     redis = await get_redis_client()
     translator = get_translator(redis)
     buffer_key = f"{normalized_room_id}_{user_id}"
 
-    # Danh sách các từ ảo giác phổ biến của Whisper khi gặp silence
+    try:
+        user_profile = await get_user_profile(user_id, db_session, redis)
+        
+        if not nativeLang:
+            nativeLang = user_profile.get("native_language", "vi") 
+            
+        if not spokenLang:
+            learning = user_profile.get("learning_languages", [])
+            spokenLang = learning[0]["lang"] if learning else "en"
+
+        logger.info(f"User {user_id} Context: Native={nativeLang}, Target={spokenLang}")
+        
+    except Exception as e:
+        logger.error(f"Failed to load profile context: {e}")
+        nativeLang = nativeLang or "vi"
+        spokenLang = spokenLang or "en"
+    finally:
+        await db_session.close()
+
     HALLUCINATION_FILTERS = [
         "you", "you.", "you?", "thank you", "thank you.", "bye", "bye.", 
         "i", "subtitles by", "watched", "watching", ".", "?", "!"
     ]
-
+    
+    MIN_BUFFER_SIZE_TO_PROCESS = 16000 # 0.5 giây
+    
     try:
         while True:
             data = await websocket.receive_text()
@@ -357,70 +393,107 @@ async def live_subtitles(
                 await manager.broadcast_except(join_msg, normalized_room_id, websocket)
                 continue
 
-            # --- Subtitle Logic ---
             if "audio_chunk" in msg and msg["audio_chunk"]:
                 chunk = base64.b64decode(msg["audio_chunk"])
                 rms = calculate_rms(chunk) 
                 
-                # Logic: Nếu đang nói thì add vào buffer, nếu im lặng thì có thể bỏ qua
-                # Tuy nhiên, nếu đang giữa câu thì phải giữ lại.
-                # Cách đơn giản nhất: Chỉ append nếu RMS > THRESHOLD HOẶC buffer đang có dữ liệu
-                
-                if rms > SILENCE_THRESHOLD or len(audio_buffers[buffer_key]) > 0:
-                    audio_buffers[buffer_key].append(chunk)
+                should_process_buffer = False
+                should_reset_full_text = False
                 
                 current_buffer_size = sum(len(c) for c in audio_buffers[buffer_key])
-                
-                # 32000 bytes ~ 1s audio (16k * 2 bytes). 
-                # Tăng lên 48000 (~1.5s) để có ngữ cảnh tốt hơn
-                if current_buffer_size > 48000: 
-                    full_audio_pcm = b"".join(audio_buffers[buffer_key])
-                    audio_buffers[buffer_key] = [] # Reset buffer
 
-                    # QUAN TRỌNG: Wrap Raw PCM vào WAV Header
+                if rms > SILENCE_THRESHOLD:
+                    audio_buffers[buffer_key].append(chunk)
+                    silence_counters[buffer_key] = 0
+                elif current_buffer_size > 0:
+                    audio_buffers[buffer_key].append(chunk)
+                    silence_counters[buffer_key] += 1
+                    
+                    if silence_counters[buffer_key] >= SILENCE_CHUNK_LIMIT and current_buffer_size >= MIN_BUFFER_SIZE_TO_PROCESS:
+                        should_process_buffer = True
+                        should_reset_full_text = True
+                
+                if len(user_text_cache[buffer_key]) > MAX_TEXT_CACHE_LENGTH:
+                    should_process_buffer = True
+                    should_reset_full_text = True
+
+                if should_process_buffer and current_buffer_size > 0:
+                    full_audio_pcm = b"".join(audio_buffers[buffer_key])
+                    audio_buffers[buffer_key] = []
+                    silence_counters[buffer_key] = 0
+
                     wav_data = create_wav_bytes(full_audio_pcm)
 
-                    # Gọi STT với dữ liệu WAV chuẩn
                     stt_text, detected_lang, _ = await asyncio.to_thread(speech_to_text, wav_data, spokenLang)
                     
-                    # Normalize text để check filter
                     clean_text = stt_text.strip().lower() if stt_text else ""
+                    is_valid_speech = clean_text and len(clean_text) > 1 and clean_text not in HALLUCINATION_FILTERS
                     
-                    if clean_text and len(clean_text) > 1 and clean_text not in HALLUCINATION_FILTERS:
-                        logger.info(f"🎤 Heard: '{stt_text}' (Lang: {detected_lang}) -> Translating to {nativeLang}")
+                    if is_valid_speech:
+                        if len(clean_text.split()) < 3: 
+                            detected_lang = spokenLang
+
+                        logger.info(f"🎤 Heard: '{stt_text}' (Ctx: {spokenLang}, Det: {detected_lang})")
                         
-                        translated_text, _ = await translator.translate(stt_text, detected_lang, nativeLang)
+                        current_full_text = user_text_cache[buffer_key].strip()
+                        new_original_text = current_full_text + " " + stt_text.strip() if current_full_text else stt_text.strip()
                         
+                        translated_text, _ = await translator.translate(new_original_text, detected_lang, nativeLang)
+                        
+                        user_text_cache[buffer_key] = new_original_text
+
                         await manager.broadcast({
                             "type": "subtitle",
-                            "original": stt_text,
+                            "status": "complete", 
+                            "original": stt_text.strip(),
+                            "originalFull": user_text_cache[buffer_key],
                             "originalLang": detected_lang,
-                            "translated": translated_text,
+                            "translated": translated_text, 
                             "translatedLang": nativeLang,
                             "senderId": user_id
                         }, normalized_room_id)
+                        
+                        user_text_cache[buffer_key] = ""
+                            
                     else:
-                        logger.debug(f"🔇 Ignored noise/hallucination: '{stt_text}'")
-                    
+                        if current_buffer_size > MIN_BUFFER_SIZE_TO_PROCESS:
+                            await manager.broadcast({
+                                "type": "subtitle",
+                                "status": "noise",
+                                "originalFull": "hmm...",
+                                "translated": "",
+                                "translatedLang": nativeLang,
+                                "senderId": user_id
+                            }, normalized_room_id)
+                        
+                        user_text_cache[buffer_key] = ""
+                        
             elif "text" in msg:
                 translated, _ = await translator.translate(msg["text"], spokenLang, nativeLang)
                 await manager.broadcast({
                     "type": "subtitle",
+                    "status": "complete",
                     "senderId": user_id,
-                    "original": msg["text"],
+                    "originalFull": msg["text"],
                     "translated": translated,
                 }, normalized_room_id)
+                user_text_cache[buffer_key] = ""
 
     except WebSocketDisconnect:
         manager.disconnect(websocket, normalized_room_id)
         if buffer_key in audio_buffers: del audio_buffers[buffer_key]
+        if buffer_key in silence_counters: del silence_counters[buffer_key]
+        if buffer_key in user_text_cache: del user_text_cache[buffer_key]
     except Exception as e:
         logger.error(f"Live Subtitles WS Error: {e}", exc_info=True)
         manager.disconnect(websocket, normalized_room_id)
+        if buffer_key in audio_buffers: del audio_buffers[buffer_key]
+        if buffer_key in silence_counters: del silence_counters[buffer_key]
+        if buffer_key in user_text_cache: del user_text_cache[buffer_key]
 
 app.include_router(protected_router, tags=["Protected API"])
 app.include_router(internal_router, tags=["Internal API"])
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8001))
+    port = int(os.environ.get("PORT", 10000))
     uvicorn.run("src.main:app", host="0.0.0.0", port=port, workers=1, proxy_headers=True, forwarded_allow_ips="*")

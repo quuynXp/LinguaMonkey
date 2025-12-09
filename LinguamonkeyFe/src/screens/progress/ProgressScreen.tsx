@@ -40,7 +40,7 @@ const ProgressScreen = () => {
     } = useGetStudyHistory(userId, timeFilter)
 
     const studySessions: StudySessionResponse[] = studyHistory?.sessions || []
-    
+
     // Default safe stats
     // FIX 1: Added totalExperience and averageScore to match StatsResponse interface
     const stats: StatsResponse = studyHistory?.stats || {
@@ -72,7 +72,7 @@ const ProgressScreen = () => {
     const formatStudyTime = (seconds: number) => {
         const hours = Math.floor(seconds / 3600)
         const minutes = Math.floor((seconds % 3600) / 60)
-        
+
         if (hours >= 1) {
             return `${hours}h ${minutes}m`
         }
@@ -117,7 +117,7 @@ const ProgressScreen = () => {
                     {data.map((item, index) => (
                         <View key={index} style={styles.chartColumn}>
                             <View style={styles.barContainer}>
-                                <View style={[styles.bar, { 
+                                <View style={[styles.bar, {
                                     height: `${(item.value / maxVal) * 100}%`,
                                     backgroundColor: item.value > 0 ? '#4F46E5' : '#E5E7EB'
                                 }]} />
@@ -133,7 +133,7 @@ const ProgressScreen = () => {
     // Manual Lollipop/Line-ish Chart for Accuracy
     const renderAccuracyChart = () => {
         const data = stats.accuracyChartData || []
-        
+
         return (
             <View style={styles.chartContainer}>
                 <View style={styles.chartHeaderRow}>
@@ -148,9 +148,9 @@ const ProgressScreen = () => {
                         <View key={index} style={styles.chartColumn}>
                             <View style={styles.lineChartContainer}>
                                 {/* Line stick */}
-                                <View style={[styles.lineStick, { 
-                                    height: `${item.value}%`, 
-                                    backgroundColor: item.value > 0 ? '#10B981' : 'transparent' 
+                                <View style={[styles.lineStick, {
+                                    height: `${item.value}%`,
+                                    backgroundColor: item.value > 0 ? '#10B981' : 'transparent'
                                 }]} />
                                 {/* Dot */}
                                 {item.value > 0 && (
@@ -165,7 +165,7 @@ const ProgressScreen = () => {
                 </View>
                 <View style={styles.chartFooter}>
                     <Text style={styles.footerText}>
-                        {t("history.stats.weakestSkill")}: <Text style={{fontWeight: 'bold', color: '#EF4444'}}>{stats.weakestSkill}</Text>
+                        {t("history.stats.weakestSkill")}: <Text style={{ fontWeight: 'bold', color: '#EF4444' }}>{stats.weakestSkill}</Text>
                     </Text>
                 </View>
             </View>
@@ -191,30 +191,30 @@ const ProgressScreen = () => {
 
             <View style={styles.statsGrid}>
                 {renderStatCard(
-                    t("history.stats.studyTime"), 
-                    formatStudyTime(stats.totalTimeSeconds), 
-                    "schedule", 
-                    "#4F46E5", 
+                    t("history.stats.studyTime"),
+                    formatStudyTime(stats.totalTimeSeconds),
+                    "schedule",
+                    "#4F46E5",
                     stats.timeGrowthPercent
                 )}
                 {renderStatCard(
-                    t("history.stats.accuracy"), 
-                    `${Math.round(stats.averageAccuracy)}%`, 
-                    "check-circle", 
-                    "#10B981", 
+                    t("history.stats.accuracy"),
+                    `${Math.round(stats.averageAccuracy)}%`,
+                    "check-circle",
+                    "#10B981",
                     stats.accuracyGrowthPercent
                 )}
                 {renderStatCard(
-                    t("history.stats.coins"), 
-                    stats.totalCoins.toLocaleString(), 
-                    "monetization-on", 
-                    "#F59E0B", 
+                    t("history.stats.coins"),
+                    stats.totalCoins.toLocaleString(),
+                    "monetization-on",
+                    "#F59E0B",
                     stats.coinsGrowthPercent
                 )}
                 {renderStatCard(
-                    t("history.stats.lessons"), 
-                    stats.lessonsCompleted, 
-                    "menu-book", 
+                    t("history.stats.lessons"),
+                    stats.lessonsCompleted,
+                    "menu-book",
                     "#EC4899",
                     undefined,
                     "Completed"
@@ -226,11 +226,11 @@ const ProgressScreen = () => {
         </View>
     )
 
-    const getTypeIcon = (type: string) => "book" 
+    const getTypeIcon = (type: string) => "book"
     const getTypeColor = (type: string) => "#6B7280"
 
     const renderSessionCard = (session: StudySessionResponse) => (
-       <View key={session.id} style={styles.sessionCard}>
+        <View key={session.id} style={styles.sessionCard}>
             <View style={styles.sessionHeader}>
                 <View style={[styles.typeIcon, { backgroundColor: `${getTypeColor(session.type)}20` }]}>
                     <Icon name={getTypeIcon(session.type)} size={20} color={getTypeColor(session.type)} />
@@ -243,7 +243,7 @@ const ProgressScreen = () => {
                 </View>
                 <Text style={styles.sessionScore}>{session.score ? `${session.score} pts` : ''}</Text>
             </View>
-       </View>
+        </View>
     )
 
     // Main Render
@@ -255,7 +255,7 @@ const ProgressScreen = () => {
                 </View>
 
                 {/* Tabs */}
-                <View style={styles.tabContainer}>
+                {/* <View style={styles.tabContainer}>
                     {[{ key: "stats", icon: "analytics" }, { key: "sessions", icon: "history" }].map((tab) => (
                         <TouchableOpacity
                             key={tab.key}
@@ -268,7 +268,7 @@ const ProgressScreen = () => {
                             </Text>
                         </TouchableOpacity>
                     ))}
-                </View>
+                </View> */}
 
                 {/* Filter */}
                 <View style={styles.filterContainer}>
@@ -312,7 +312,7 @@ const ProgressScreen = () => {
 
 const styles = createScaledSheet({
     container: { flex: 1, backgroundColor: "#F8FAFC" },
-    header: { padding: 20, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E5E7EB" },
+    header: { justifyContent: 'center', alignItems: 'center', padding: 20, backgroundColor: "#FFF", borderBottomWidth: 1, borderColor: "#E5E7EB" },
     headerTitle: { fontSize: 20, fontWeight: "700", color: "#1F2937" },
     tabContainer: { flexDirection: "row", padding: 16, backgroundColor: "#FFF", gap: 12 },
     tab: { flex: 1, flexDirection: "row", padding: 10, borderRadius: 8, justifyContent: "center", alignItems: "center", gap: 8, backgroundColor: "#F3F4F6" },
@@ -336,9 +336,9 @@ const styles = createScaledSheet({
     statValue: { fontSize: 20, fontWeight: "800", color: "#1F2937" },
     statLabel: { fontSize: 12, color: "#6B7280", marginTop: 4 },
     statSubLabel: { fontSize: 10, color: "#9CA3AF", marginTop: 2 },
-    
+
     // AI Card
-    aiCard: { backgroundColor: "#4F46E5", borderRadius: 12, padding: 16, elevation: 4 }, 
+    aiCard: { backgroundColor: "#4F46E5", borderRadius: 12, padding: 16, elevation: 4 },
     aiHeader: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
     aiTitle: { color: "#FFF", fontWeight: "700", fontSize: 14 },
     aiText: { color: "#E0E7FF", fontSize: 13, lineHeight: 20, fontStyle: 'italic' },
@@ -352,7 +352,7 @@ const styles = createScaledSheet({
     barContainer: { height: 130, width: '100%', justifyContent: 'flex-end', alignItems: 'center' },
     bar: { width: 12, borderRadius: 6 },
     axisLabel: { marginTop: 8, fontSize: 10, color: "#9CA3AF" },
-    
+
     // Line Chart Custom
     lineChartContainer: { height: 130, width: '100%', justifyContent: 'flex-end', alignItems: 'center', position: 'relative' },
     lineStick: { width: 2, borderRadius: 1, opacity: 0.5 },

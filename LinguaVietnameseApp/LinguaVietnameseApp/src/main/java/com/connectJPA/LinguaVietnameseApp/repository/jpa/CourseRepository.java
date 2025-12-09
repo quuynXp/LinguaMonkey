@@ -18,7 +18,6 @@ import java.util.UUID;
 
 public interface CourseRepository extends JpaRepository<Course, UUID> {
     
-    // 1. Cập nhật để tìm kiếm theo languageCode của latestPublicVersion
     @Query("SELECT c FROM Course c WHERE LOWER(c.title) LIKE LOWER(CONCAT('%', :title, '%')) " +
            "AND c.latestPublicVersion.languageCode = :languageCode " +
            "AND c.isDeleted = false")
@@ -27,6 +26,8 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
     Optional<Course> findByCourseIdAndIsDeletedFalse(UUID courseId);
     Page<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId, Pageable pageable);
     List<Course> findByCreatorIdAndIsDeletedFalse(UUID creatorId);
+
+    List<Course> findByCreatedAtBetweenAndIsDeletedFalse(OffsetDateTime start, OffsetDateTime end);
 
     @Query("SELECT c FROM Course c " +
            "JOIN c.latestPublicVersion cv " +
