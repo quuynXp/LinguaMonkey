@@ -1,9 +1,14 @@
+# ==========================================
+# STAGE 1: BUILDER
+# ==========================================
 FROM python:3.11-bookworm AS builder
 
 WORKDIR /opt/venv
 RUN python -m venv .
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Cài đặt các thư viện cần thiết để BUILD packages
+# Thêm: libssl-dev, ca-certificates (cho Azure SDK compile linking)
 RUN apt-get update && apt-get install -y \
     build-essential \
     libsndfile1-dev \
@@ -11,44 +16,60 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     libfreetype6-dev \
     libpq-dev \
+    libssl-dev \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 RUN pip install --upgrade pip setuptools wheel
 
 COPY requirements.txt .
+# Cài đặt requirements vào venv
 RUN pip install --no-cache-dir -r requirements.txt \
     --index-url https://download.pytorch.org/whl/cpu || \
     pip install --no-cache-dir -r requirements.txt
 
+# ==========================================
+# STAGE 2: FINAL RUNTIME
+# ==========================================
 FROM python:3.11-slim-bookworm
 
+# Cài đặt các thư viện RUNTIME (Bắt buộc phải có để Azure chạy được)
+# 1. libssl-dev & ca-certificates: Fix lỗi kết nối Azure (Error 2176)
+# 2. libasound2: Fix lỗi khởi tạo platform âm thanh (bắt buộc cho SDK)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     libjpeg62-turbo \
     libfreetype6 \
     zlib1g \
     libpq5 \
+    libssl-dev \
+    ca-certificates \
+    libasound2 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
+# Cập nhật chứng chỉ CA mới nhất (An toàn)
+RUN update-ca-certificates
 
 WORKDIR /app
 
+# Tạo user non-root để bảo mật
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 RUN chown -R appuser:appuser /app
 
+# Copy môi trường ảo từ builder sang
 COPY --from=builder /opt/venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-# SỬA PYTHON PATH: Không cần thiết cho VENV, nhưng nếu dùng thì nên trỏ tới thư mục code chính.
-# Vì volume mapping sẽ ghi đè, ta tạm thời để là /app. Lỗi này có thể do thư viện không được cài.
 ENV PYTHONPATH="/app"
 
-# Copy tất cả nội dung từ BUILD CONTEXT (./PythonService trên host) vào /app
+# Copy source code
 COPY . ./
 
-# Khắc phục lỗi: Lệnh này đã đúng vị trí.
+# Cấp quyền execute cho script khởi động
 RUN chmod +x ./start_services_local.sh
 
+# Expose port (HTTP và gRPC)
 EXPOSE 8001 50051
 
-WORKDIR /app
+# Chạy container
 CMD ["./start_services_local.sh"]

@@ -22,7 +22,7 @@ jobs:
       - name: 🧩 Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24.4
+          node-version: 20
           cache: 'yarn'
           cache-dependency-path: ./LinguamonkeyFe/yarn.lock
 
@@ -30,20 +30,32 @@ jobs:
         run: yarn install --frozen-lockfile
 
       - name: 🔧 Setup specific NDK (Force v26)
-        # QUAN TRỌNG: Xóa NDK 27 để tránh Gradle tự động chọn sai phiên bản
         run: |
-          echo "✨ Removing incompatible NDK versions..."
-          sudo rm -rf /usr/local/lib/android/sdk/ndk/27.*
+          echo "✨ Locating Android SDK..."
+          echo "SDK Root: $ANDROID_SDK_ROOT"
+          
+          echo "✨ Removing incompatible NDK versions (v27+)..."
+          sudo rm -rf $ANDROID_SDK_ROOT/ndk/27*
+          sudo rm -rf $ANDROID_SDK_ROOT/ndk-bundle
           
           echo "✨ Installing/Verifying NDK 26.1.10909125..."
-          # Cài đặt chính xác bản 26 nếu chưa có (thường có sẵn nhưng lệnh này đảm bảo chắc chắn)
           sudo $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "ndk;26.1.10909125"
           
-          echo "✨ Setting ANDROID_NDK_HOME..."
-          echo "ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "✨ setting Environment Variables..."
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> $GITHUB_ENV
 
       - name: 🛠️ Generate Android directory (Prebuild)
         run: npx expo prebuild --platform android --no-install
+
+      - name: 🔒 Force NDK in local.properties
+        # This is the critical fix. We explicitly tell Gradle where the NDK is via file.
+        run: |
+          echo "✨ Forcing NDK path in local.properties..."
+          cd android
+          echo "ndk.dir=$ANDROID_SDK_ROOT/ndk/26.1.10909125" >> local.properties
+          echo "sdk.dir=$ANDROID_SDK_ROOT" >> local.properties
+          cat local.properties
 
       - name: 🧹 Clean up duplicate icon files
         run: |
@@ -67,7 +79,6 @@ jobs:
             ${{ runner.os }}-gradle-fe-
 
       - name: 🧹 Safe Clean Gradle & CMake
-        # Chạy clean để đảm bảo build với NDK mới sạch sẽ hoàn toàn
         run: |
           echo "✨ Running Gradle Clean..."
           cd android
