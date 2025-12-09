@@ -96,6 +96,7 @@ export default ({ config }) => {
           {
             android: {
               ndkVersion: "26.1.10909125",
+              cmakeVersion: "3.22.1",
             },
           },
         ],

@@ -29,6 +29,14 @@ jobs:
       - name: 📦 Install dependencies
         run: yarn install --frozen-lockfile
 
+      - name: 🧹 Clean up old Android build files and cache 💥
+        # Xóa các thư mục build cache để đảm bảo CMake/Gradle chạy lại từ đầu
+        run: |
+          echo "✨ Cleaning up old Android build directories..."
+          rm -rf ./android/app/build
+          rm -rf ./android/build
+          rm -rf ./android/.cxx
+
       - name: 🛠️ Generate Android directory (Prebuild)
         # Bổ sung để tạo lại thư mục 'android' (chứa gradlew) sau khi checkout
         run: npx expo prebuild --platform android --no-install
@@ -56,7 +64,6 @@ jobs:
             ${{ runner.os }}-gradle-fe-
             
       - name: 🧹 Clean up large components (Pre-build)
-        # Sửa lỗi NDK: Không xóa /usr/local/lib/android/sdk/
         run: |
           echo "✨ Freeing up disk space by removing large tools..."
           sudo rm -rf /usr/share/dotnet/
