@@ -35,6 +35,7 @@ export const roadmapKeys = {
 export type ExtendedPublicRoadmapDetail = RoadmapPublicResponse & {
   items: RoadmapItem[];
 };
+
 const mapItemResponseToRoadmapItem = (responseItem: any): RoadmapItem => {
   return {
     itemId: responseItem.id || responseItem.itemId,
@@ -235,7 +236,30 @@ export const useRoadmap = () => {
   const useCreateRoadmap = () =>
     useMutation({
       mutationFn: async (req: CreateRoadmapRequest) => {
-        const res = await instance.post<AppApiResponse<RoadmapResponse>>("/api/v1/roadmaps", req);
+        // [FIX] Sanitization Layer: Ensure types match Java Backend Strictness
+        const sanitizedReq = {
+          ...req,
+          // Force convert strings to numbers for Integer fields
+          currentLevel: Number(req.currentLevel) || 0,
+          targetLevel: Number(req.targetLevel) || 0,
+          estimatedCompletionTime: Number(req.estimatedCompletionTime) || 0,
+
+          // Force null if enum is empty string (Java crashes on "")
+          certification: (req.certification as any) === "" ? null : req.certification,
+
+          // Ensure items is an array (not null/undefined) and its numbers are numbers
+          items: (req.items || []).map((item, index) => ({
+            ...item,
+            estimatedTime: Number(item.estimatedTime) || 0,
+            orderIndex: Number(item.orderIndex) || index,
+            resources: (item.resources || []).map(res => ({
+              ...res,
+              duration: Number(res.duration) || 0
+            }))
+          }))
+        };
+
+        const res = await instance.post<AppApiResponse<RoadmapResponse>>("/api/v1/roadmaps", sanitizedReq);
         return res.data.result;
       },
       onSuccess: () => queryClient.invalidateQueries({ queryKey: roadmapKeys.all }),
@@ -353,7 +377,25 @@ export const useRoadmap = () => {
   const useEditRoadmap = () =>
     useMutation({
       mutationFn: async ({ id, req }: { id: string; req: CreateRoadmapRequest }) => {
-        const res = await instance.put<AppApiResponse<RoadmapResponse>>(`/api/v1/roadmaps/${id}`, req);
+        // [FIX] Sanitization Layer for Edit as well
+        const sanitizedReq = {
+          ...req,
+          currentLevel: Number(req.currentLevel) || 0,
+          targetLevel: Number(req.targetLevel) || 0,
+          estimatedCompletionTime: Number(req.estimatedCompletionTime) || 0,
+          certification: (req.certification as any) === "" ? null : req.certification,
+          items: (req.items || []).map((item, index) => ({
+            ...item,
+            estimatedTime: Number(item.estimatedTime) || 0,
+            orderIndex: Number(item.orderIndex) || index,
+            resources: (item.resources || []).map(res => ({
+              ...res,
+              duration: Number(res.duration) || 0
+            }))
+          }))
+        };
+
+        const res = await instance.put<AppApiResponse<RoadmapResponse>>(`/api/v1/roadmaps/${id}`, sanitizedReq);
         return res.data.result;
       },
       onSuccess: (data) => {

@@ -118,9 +118,9 @@ services:
       - key: TWILIO_AUTH_TOKEN
         value: ACbff92c92cf22146853ca99a75ff70082
       - key: TWILIO_FROM_PHONE_NUMBER
+        value: +84373730397
       - key: GOOGLE_OAUTH_CLIENT_ID
         value: 691949892970-sifep58js9d5a79pfifs3ff471e34v5k.apps.googleusercontent.com
-        value: +84373730397
       - key: SPRING_SERVLET_MULTIPART_MAX_FILE_SIZE
         value: 200MB
       - key: SPRING_SERVLET_MULTIPART_MAX_REQUEST_SIZE
@@ -145,10 +145,8 @@ services:
     envVars:
       - key: TZ
         value: Asia/Ho_Chi_Minh
-      # Port Render sẽ lắng nghe (HTTP)
       - key: PORT
         value: 10000
-      # FIX OOM: Giới hạn phân mảnh bộ nhớ cho glibc
       - key: MALLOC_ARENA_MAX
         value: "2"
       - key: DB_HOST

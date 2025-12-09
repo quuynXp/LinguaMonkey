@@ -91,7 +91,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const { useCourseRoom } = useRooms();
 
   const { data: course, isLoading: courseLoading } = useCourse(courseId);
-  // Refetch functions exposed for focus effect
   const { data: enrollments, refetch: refetchEnrollments } = useEnrollments({ userId: user?.userId });
   const { data: roomData } = useCourseRoom(courseId);
   const { data: versionHistory } = useCourseVersions(courseId);
@@ -99,7 +98,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
   const [viewingVersionId, setViewingVersionId] = useState<string | null>(null);
 
-  // Force refresh when returning from LessonScreen
   useFocusEffect(
     useCallback(() => {
       if (user?.userId) {
@@ -170,7 +168,7 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     size: 5
   });
 
-  const { mutate: enroll } = useCreateEnrollment();
+  const { mutateAsync: enrollAsync, isPending: isEnrolling } = useCreateEnrollment();
   const { mutateAsync: createReviewAsync, isPending: isCreatingReview } = useCreateReview();
 
   const activeEnrollment = useMemo(() => {
@@ -205,39 +203,40 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
   const displayPriceStr = convert(priceAfterDiscount, 'VND');
   const displayOriginalPriceStr = convert(originalPrice, 'VND');
 
-  const handleLessonPress = (lesson: LessonResponse) => {
+  const handleLessonPress = async (lesson: LessonResponse) => {
     const isAccessible = hasAccess || lesson.isFree;
 
     if (!isAccessible) {
       if (isPaidCourse) {
         setPurchaseModalVisible(true);
       } else {
-        handleFreeEnroll();
+        await handleFreeEnrollAndNavigate(lesson);
       }
       return;
     }
 
     if (isFreeCourse && !isEnrolled && !isCreator) {
-      handleFreeEnroll();
+      await handleFreeEnrollAndNavigate(lesson);
+      return;
     }
 
     gotoTab("CourseStack", "LessonScreen", { lesson: lesson });
   };
 
-  const handleFreeEnroll = () => {
+  const handleFreeEnrollAndNavigate = async (lesson: LessonResponse) => {
     if (!user?.userId || !activeVersionId) return;
-    enroll({
-      userId: user.userId,
-      courseVersionId: activeVersionId,
-      status: CourseVersionEnrollmentStatus.ACTIVE
-    }, {
-      onSuccess: () => {
-        refetchEnrollments();
-      },
-      onError: () => {
-        Alert.alert(t("error"), t("course.enrollmentFailed"));
-      }
-    });
+
+    try {
+      await enrollAsync({
+        userId: user.userId,
+        courseVersionId: activeVersionId,
+        status: CourseVersionEnrollmentStatus.ACTIVE
+      });
+      await refetchEnrollments();
+      gotoTab("CourseStack", "LessonScreen", { lesson: lesson });
+    } catch (error) {
+      Alert.alert(t("error"), t("course.enrollmentFailed"));
+    }
   };
 
   const handlePurchaseSuccess = () => {
@@ -537,7 +536,6 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
     const isLocked = !isUnlocked;
 
     const score = progressMap[item.lessonId];
-    // Check score >= 50 or just existence of attempt
     const isLessonCompleted = score !== undefined && score >= 50;
 
     return (
@@ -637,6 +635,17 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 40, backgroundColor: "#FFF" }}
       />
+
+      {/* Loading Overlay for Enrollment */}
+      {isEnrolling && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color="#4F46E5" />
+            <Text style={styles.loadingText}>Joining Course...</Text>
+          </View>
+        </View>
+      )}
+
       <CoursePurchaseModal
         visible={purchaseModalVisible}
         onClose={() => setPurchaseModalVisible(false)}
@@ -769,6 +778,9 @@ const CourseDetailsScreen = ({ route, navigation }: any) => {
 
 const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: '#FFF' },
+  loadingOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 999 },
+  loadingBox: { backgroundColor: 'white', padding: 20, borderRadius: 12, alignItems: 'center', gap: 10 },
+  loadingText: { color: '#4F46E5', fontWeight: 'bold' },
   headerContainer: { backgroundColor: "#FFF" },
   coverContainer: { height: 240, width: "100%", position: "relative" },
   coverImage: { width: "100%", height: "100%", borderRadius: 0, backgroundColor: "#E5E7EB" },
